@@ -38,6 +38,7 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
       columns: cols,
       indexes: await readSqliteIndexes(k, t.name),
       foreignKeys: await readSqliteForeignKeys(k, t.name),
+      checks: [], // CHECK introspection is out of scope; expected-side derives them
       primaryKey: pk,
     });
   }

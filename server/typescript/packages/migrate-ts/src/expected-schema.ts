@@ -25,6 +25,8 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_VALUES,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_DB_COLUMN_TYPE,
@@ -39,6 +41,7 @@ import {
 import type { SqlType } from "./sql-type.js";
 import type {
   Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
+  CheckDescriptor,
 } from "./types.js";
 import { buildExpectedViews } from "./expected-views.js";
 import {
@@ -215,6 +218,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy),
+    checks: buildChecks(entity, tableName, strategy),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -270,6 +274,33 @@ function buildSecondaryIndexes(
     });
   }
   return indexes;
+}
+
+/**
+ * Derive a CHECK constraint per `field.enum` field: `CHECK (<col> IN ('A', 'B'))`,
+ * constraining the column to the declared `@values` members. The constraint name
+ * is `<table>_<column>_chk`, mirroring the FK/index naming conventions.
+ *
+ * `@values` is read effective (`field.attr`) so a concrete field that extends an
+ * abstract `field.enum` super inherits its members. The loader rejects a
+ * `field.enum` without `@values` (ERR_MISSING_REQUIRED_ATTR), so a present enum
+ * field always yields a non-empty member set; a defensive guard skips any edge
+ * case where the array is absent rather than emitting `IN ()`.
+ */
+function buildChecks(
+  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy,
+): CheckDescriptor[] {
+  const checks: CheckDescriptor[] = [];
+  for (const field of entity.fields()) {
+    if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
+    const raw = field.attr(FIELD_ATTR_VALUES);
+    if (!Array.isArray(raw) || raw.length === 0) continue;
+    const values = raw.map((v) => String(v));
+    const col = resolveColumnName(field, strategy);
+    const expression = `${col} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+    checks.push({ name: `${tableName}_${col}_chk`, expression });
+  }
+  return checks;
 }
 
 function buildForeignKeys(
