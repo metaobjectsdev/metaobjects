@@ -86,6 +86,12 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                 jsonObject.addProperty(name, mf.getDouble(vo));
                 break;
 
+            case DECIMAL:
+                // Write the exact BigDecimal as a JSON number (Gson emits an
+                // unquoted number for any Number, preserving full precision).
+                jsonObject.addProperty(name, mf.getDecimal(vo));
+                break;
+
             case STRING_ARRAY:
                 jsonObject.add(name, context.serialize(mf.getStringArray(vo)));
                 break;

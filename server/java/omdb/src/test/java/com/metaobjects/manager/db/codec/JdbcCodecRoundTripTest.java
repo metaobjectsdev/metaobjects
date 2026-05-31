@@ -120,10 +120,14 @@ public class JdbcCodecRoundTripTest {
             assertEquals("BooleanCodec round-trip", Boolean.TRUE, read.getBoolean("active"));
             assertEquals("DoubleCodec round-trip", Double.valueOf(3.5d), read.getDouble("ratio"));
             assertEquals("FloatCodec round-trip", Float.valueOf(2.5f), read.getFloat("rate"));
-            // DecimalField is backed by DataTypes.DOUBLE, so the field surfaces the
-            // value as a Double; the DecimalCodec write/read still goes through
-            // PreparedStatement.setBigDecimal / ResultSet.getBigDecimal.
-            assertEquals("DecimalCodec round-trip", Double.valueOf(123.45d), read.getDouble("amount"));
+            // DecimalField is backed by DataTypes.DECIMAL (SP-D Unit 2): the field
+            // surfaces an exact BigDecimal (not a lossy Double); the DecimalCodec
+            // write/read goes through PreparedStatement.setBigDecimal /
+            // ResultSet.getBigDecimal against a DECIMAL(18,2) column.
+            assertTrue("DecimalCodec must surface a BigDecimal, not a Double",
+                    read.getObject("amount") instanceof java.math.BigDecimal);
+            assertEquals("DecimalCodec round-trip", 0,
+                    new java.math.BigDecimal("123.45").compareTo((java.math.BigDecimal) read.getObject("amount")));
             assertEquals("StringCodec round-trip", "hello-codec", read.getString("label"));
             // DateCodec stores as a timestamp; compare epoch millis.
             assertNotNull("DateCodec round-trip non-null", read.getDate("createdAt"));

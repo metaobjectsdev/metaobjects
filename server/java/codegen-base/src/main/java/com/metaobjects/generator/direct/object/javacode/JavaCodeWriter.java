@@ -47,6 +47,7 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
             case LONG: baseType = "Long"; break;
             case FLOAT: baseType = "Float"; break;
             case DOUBLE: baseType = "Double"; break;
+            case DECIMAL: baseType = "java.math.BigDecimal"; break;
             case DATE: baseType = "java.util.Date"; break;
             case STRING: baseType = "String"; break;
             case OBJECT: baseType = "Object"; break;

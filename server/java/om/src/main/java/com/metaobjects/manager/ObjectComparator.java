@@ -86,6 +86,7 @@ public class ObjectComparator implements Comparator<Object>
           case LONG:    rc = ((Long) aVal ).compareTo( (Long) bVal ); break;
           case FLOAT:   rc = ((Float) aVal ).compareTo( (Float) bVal ); break;
           case DOUBLE:  rc = ((Double) aVal ).compareTo( (Double) bVal ); break;
+          case DECIMAL: rc = ((java.math.BigDecimal) aVal ).compareTo( (java.math.BigDecimal) bVal ); break;
           case STRING:  rc = ((String) aVal ).compareToIgnoreCase( (String) bVal ); break;
           case DATE:    rc = ((Date) aVal ).compareTo( (Date) bVal ); break;
 

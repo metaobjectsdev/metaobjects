@@ -912,6 +912,10 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
         setObject(obj, value );
     }
 
+    public void setDecimal(Object obj, java.math.BigDecimal value){
+        setObject(obj, value );
+    }
+
     public void setString(Object obj, String value) {
         setObject(obj, value );
     }
@@ -980,6 +984,10 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
 
     public Double getDouble(Object obj) {
         return DataConverter.toDouble(getObjectAttribute(obj));
+    }
+
+    public java.math.BigDecimal getDecimal(Object obj) {
+        return DataConverter.toBigDecimal(getObjectAttribute(obj));
     }
 
     public String getString(Object obj) {

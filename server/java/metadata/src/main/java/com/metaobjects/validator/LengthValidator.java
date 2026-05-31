@@ -88,6 +88,7 @@ public class LengthValidator extends MetaValidator
             case LONG: return 15;
             case FLOAT: return 12;
             case DOUBLE: return 16;
+            case DECIMAL: return 16;
             case STRING: return 100;
             case DATE: return 15;
             default:  return 1000000;

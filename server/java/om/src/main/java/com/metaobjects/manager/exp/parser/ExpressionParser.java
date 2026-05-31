@@ -210,6 +210,7 @@ public class ExpressionParser
         switch( mf.getDataType() ) {
         case STRING: value = name; break;
         case DOUBLE: value = Double.valueOf( name ); break;
+        case DECIMAL: value = new java.math.BigDecimal( name ); break;
         case FLOAT: value = Float.valueOf( name ); break;
         case LONG: value = Long.valueOf( name ); break;
         case INT: value = Integer.valueOf( name ); break;
