@@ -180,11 +180,6 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     // === validation (SP-C validator parity) =================================
 
-    /** Field metadata attribute marking a field required (peer of {@code validator.required}). */
-    private static final String ATTR_REQUIRED = "required";
-    /** Field metadata attribute carrying the string-length cap (peer of {@code validator.length @max}). */
-    private static final String ATTR_MAX_LENGTH = "maxLength";
-
     /**
      * Java DTO-record component type for {@code field}. Scalar fields delegate
      * to {@link SpringTypeMapper}; array fields ({@code isArray=true}) are
@@ -220,7 +215,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean isString = field instanceof StringField;
         List<String> out = new ArrayList<>();
 
-        boolean required = attrBool(field, ATTR_REQUIRED) || hasValidator(field, RequiredValidator.class);
+        boolean required = attrBool(field, MetaField.ATTR_REQUIRED) || hasValidator(field, RequiredValidator.class);
         if (required) {
             out.add("@NotNull");
             if (isString && !isArray) out.add("@NotBlank");
@@ -234,8 +229,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             lengthMin = attrInt(length, LengthValidator.ATTR_MIN);
             lengthMax = attrInt(length, LengthValidator.ATTR_MAX);
         }
-        if (attrInt(field, ATTR_MAX_LENGTH) != null) {
-            lengthMax = attrInt(field, ATTR_MAX_LENGTH);
+        Integer fieldMaxLength = attrInt(field, StringField.ATTR_MAX_LENGTH);
+        if (fieldMaxLength != null) {
+            lengthMax = fieldMaxLength;
         }
         if (lengthMin != null || lengthMax != null) {
             out.add(sizeAnnotation(lengthMin, lengthMax));
