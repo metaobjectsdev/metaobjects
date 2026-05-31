@@ -37,6 +37,10 @@ public sealed class ExtractorCodegenTests
     //   • lines   : REQUIRED array-of-objects Line{ sku (required), qty:int }
     //   • tags    : REQUIRED scalar-array string[]
     //   • scores  : REQUIRED scalar-array int[]   (kind-typed mirror element regression guard)
+    //   • quantities: REQUIRED scalar-array long[]   (StrictArg long .Value unwrap)
+    //   • weights : REQUIRED scalar-array double[]   (StrictArg double .Value unwrap)
+    //   • flagsArr: REQUIRED scalar-array bool[]   (StrictArg bool .Value unwrap)
+    //   • priority: REQUIRED enum (strict-map `m.priority!` run-proof)
     //   • note    : scalar (not @required)
     //   • shipTo  : single nested Customer (not @required)
     private const string Model = """
@@ -54,6 +58,10 @@ public sealed class ExtractorCodegenTests
         { "field.object": { "name": "lines", "isArray": true, "@required": true, "@objectRef": "Line" } },
         { "field.string": { "name": "tags", "isArray": true, "@required": true } },
         { "field.int":    { "name": "scores", "isArray": true, "@required": true } },
+        { "field.long":   { "name": "quantities", "isArray": true, "@required": true } },
+        { "field.double": { "name": "weights", "isArray": true, "@required": true } },
+        { "field.boolean":{ "name": "flagsArr", "isArray": true, "@required": true } },
+        { "field.enum":   { "name": "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
         { "field.string": { "name": "note" } },
         { "field.object": { "name": "shipTo", "@objectRef": "Customer" } }
       ]}},
@@ -134,6 +142,10 @@ public sealed class ExtractorCodegenTests
             "  \"lines\": [ { \"sku\": \"A\", \"qty\": 2 }, { \"sku\": \"B\", \"qty\": 5 } ]," +
             "  \"tags\": [\"x\", \"y\"]," +
             "  \"scores\": [3, 7]," +
+            "  \"quantities\": [10, 9000000000]," +
+            "  \"weights\": [1.5, 2.25]," +
+            "  \"flagsArr\": [true, false, true]," +
+            "  \"priority\": \"HIGH\"," +
             "  \"shipTo\": { \"name\": \"Grace\" }, }\n```";
 
         var order = extract.Invoke(null, new object?[] { orderMo, dirty })!;
@@ -162,9 +174,86 @@ public sealed class ExtractorCodegenTests
         var scores = ((IEnumerable)scoresProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 3, 7 }, scores.ToArray());
 
+        // required NON-STRING scalar-array (long[]) — proves the StrictArg `x!.Value` long unwrap
+        // narrows the kind-typed mirror (IReadOnlyList<long?>?) to the strict long element. The
+        // CS8619-as-error compile gate would have failed had the element type mismatched.
+        var quantitiesProp = order.GetType().GetProperty("quantities")!;
+        Assert.Equal(typeof(IReadOnlyList<long>), quantitiesProp.PropertyType);
+        var quantities = ((IEnumerable)quantitiesProp.GetValue(order)!).Cast<object>().ToList();
+        Assert.Equal(new object[] { 10L, 9000000000L }, quantities.ToArray());
+        Assert.IsType<long>(quantities[0]);
+
+        // required NON-STRING scalar-array (double[]) — proves the double `x!.Value` unwrap.
+        var weightsProp = order.GetType().GetProperty("weights")!;
+        Assert.Equal(typeof(IReadOnlyList<double>), weightsProp.PropertyType);
+        var weights = ((IEnumerable)weightsProp.GetValue(order)!).Cast<object>().ToList();
+        Assert.Equal(new object[] { 1.5d, 2.25d }, weights.ToArray());
+        Assert.IsType<double>(weights[0]);
+
+        // required NON-STRING scalar-array (bool[]) — proves the bool `x!.Value` unwrap.
+        var flagsProp = order.GetType().GetProperty("flagsArr")!;
+        Assert.Equal(typeof(IReadOnlyList<bool>), flagsProp.PropertyType);
+        var flags = ((IEnumerable)flagsProp.GetValue(order)!).Cast<object>().ToList();
+        Assert.Equal(new object[] { true, false, true }, flags.ToArray());
+        Assert.IsType<bool>(flags[0]);
+
+        // required ENUM through the strict tier — the StrictArg enum branch (`m.priority!`,
+        // string-backed) populates the strict record from dirty input. NOTE the strict property
+        // type is `object` (not `string`): PayloadCodegen's scalar map has no enum entry, so an enum
+        // field falls through to the `object` default — but the value is the string-backed member.
+        var priorityProp = order.GetType().GetProperty("priority")!;
+        Assert.Equal(typeof(object), priorityProp.PropertyType);
+        Assert.Equal("HIGH", priorityProp.GetValue(order));
+
         // non-@required single nested, present -> populates.
         var shipTo = order.GetType().GetProperty("shipTo")!.GetValue(order)!;
         Assert.Equal("Grace", shipTo.GetType().GetProperty("name")!.GetValue(shipTo));
+    }
+
+    [Fact]
+    public void Generated_extract_opts_overload_populates_same_strict_graph()
+    {
+        var root = Load(Model);
+        var asm = Compile(root);
+
+        var extractorType = asm.GetType("Acme.Generated.OrderExtractor")!;
+        var optsType = typeof(MetaObjects.Render.Extract.ExtractOptions);
+
+        // The 3-arg overload: Extract(MetaObject, string, ExtractOptions).
+        var extractWithOpts = extractorType.GetMethod("Extract",
+            new[] { typeof(MetaObject), typeof(string), optsType })!;
+        Assert.NotNull(extractWithOpts);
+
+        MetaObject orderMo = root.FindObject("Order")!;
+
+        // NOTE: shipTo is included because PayloadCodegen types EVERY field (even non-@required ones)
+        // as `required` non-nullable, so the strict mapper maps shipTo as required — omitting it would
+        // pass null to ToStrict_Customer (the documented C#-specific optionality, see the file header).
+        const string dirty =
+            "Here:\n```json\n" +
+            "{ \"orderId\": \"A-200\"," +
+            "  \"customer\": { \"name\": \"Ada\" }," +
+            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 3 } ]," +
+            "  \"tags\": [\"x\"]," +
+            "  \"scores\": [9]," +
+            "  \"quantities\": [42]," +
+            "  \"weights\": [3.5]," +
+            "  \"flagsArr\": [false]," +
+            "  \"priority\": \"HIGH\"," +
+            "  \"shipTo\": { \"name\": \"Grace\" } }\n```";
+
+        var opts = optsType.GetMethod("Defaults")!.Invoke(null, null);
+        var order = extractWithOpts.Invoke(null, new object?[] { orderMo, dirty, opts })!;
+
+        // Same populated strict graph as the 2-arg path, via the opts overload.
+        Assert.Equal("A-200", order.GetType().GetProperty("orderId")!.GetValue(order));
+        var customer = order.GetType().GetProperty("customer")!.GetValue(order)!;
+        Assert.Equal("Ada", customer.GetType().GetProperty("name")!.GetValue(customer));
+
+        var quantities = ((IEnumerable)order.GetType().GetProperty("quantities")!.GetValue(order)!)
+            .Cast<object>().ToList();
+        Assert.Equal(new object[] { 42L }, quantities.ToArray());
+        Assert.Equal("HIGH", order.GetType().GetProperty("priority")!.GetValue(order));
     }
 
     [Fact]
@@ -195,7 +284,8 @@ public sealed class ExtractorCodegenTests
 
         const string clean =
             "{ \"orderId\": \"A-7\", \"customer\": { \"name\": \"Ada\" }," +
-            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1] }";
+            "  \"lines\": [ { \"sku\": \"A\", \"qty\": 1 } ], \"tags\": [\"a\"], \"scores\": [1]," +
+            "  \"quantities\": [1], \"weights\": [1.0], \"flagsArr\": [true], \"priority\": \"LOW\" }";
 
         var result = extractLenient.Invoke(null, new object?[] { orderMo, clean })!;
         var report = result.GetType().GetProperty("Report")!.GetValue(result)!;

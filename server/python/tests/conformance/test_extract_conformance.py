@@ -120,6 +120,22 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
     return FieldSpec.scalar(name, kind, required, default_value)
 
 
+def _flatten_leaves(prefix: str, value: object, out: dict[str, object]) -> None:
+    """Flatten an assembled-data value into dotted leaf paths: dicts recurse by key
+    (``prefix.key``), lists recurse by index (``prefix[i]``), and every terminal scalar is
+    recorded. Mirrors the engine's per-field state enumeration so data leaves line up with
+    state leaves (minus dropped/malformed leaves)."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            key = str(k) if not prefix else f"{prefix}.{k}"
+            _flatten_leaves(key, v, out)
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            _flatten_leaves(f"{prefix}[{i}]", item, out)
+    else:
+        out[prefix] = value
+
+
 def _parse_schema(node: dict[str, object]) -> ExtractSchema:
     fmt = _FORMATS[str(node["format"])]
     root_name = str(node["rootName"])
@@ -149,36 +165,29 @@ def test_classification_and_canonical_value_match(case_name: str) -> None:
     expected_states = {str(k): str(v) for k, v in expected["states"].items()}
     assert actual_states == expected_states, f"{case_name}: states mismatch"
 
-    # per-field data (canonical value + exhaustive key-set)
+    # Data is compared as a flat DOTTED-LEAF map (mirroring states): nested objects and arrays
+    # are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every leaf VALUE
+    # is asserted — including scalar-array elements and nested-object leaves.
+    actual_leaves: dict[str, object] = {}
+    for key, val in outcome.data.items():
+        _flatten_leaves(key, val, actual_leaves)
+
     expected_data = expected["data"]
-    assert set(outcome.data.keys()) == set(expected_data.keys()), (
-        f"{case_name}: data key-set mismatch"
+    assert set(actual_leaves.keys()) == set(expected_data.keys()), (
+        f"{case_name}: data leaf-set mismatch"
     )
-    for field, exp in expected_data.items():
-        act = outcome.data[field]
+    for path, exp in expected_data.items():
+        act = actual_leaves[path]
         if isinstance(exp, bool):
-            assert act == exp, f"{case_name} data[{field}]: expected {exp} got {act}"
+            assert act == exp, f"{case_name} data[{path}]: expected {exp} got {act}"
         elif isinstance(exp, (int, float)):
             assert isinstance(act, (int, float)) and not isinstance(act, bool), (
-                f"{case_name} data[{field}]: expected number got {act!r}"
+                f"{case_name} data[{path}]: expected number got {act!r}"
             )
             assert math.isclose(float(exp), float(act), abs_tol=1e-9), (
-                f"{case_name} data[{field}]: expected {exp} got {act}"
-            )
-        elif isinstance(exp, dict):
-            # FR-011: object expected values in the corpus are deliberate PLACEHOLDERS
-            # ({}) — the real assertion lives in the per-field states (e.g. meta.score).
-            # Assert only structural correspondence (map ↔ object).
-            assert isinstance(act, dict), (
-                f"{case_name} data[{field}]: expected an object got {act!r}"
-            )
-        elif isinstance(exp, list):
-            # FR-011: array-of-objects expected values are placeholders ([{},…]); assert
-            # only structural correspondence (list ↔ array), states carry the real check.
-            assert isinstance(act, list), (
-                f"{case_name} data[{field}]: expected an array got {act!r}"
+                f"{case_name} data[{path}]: expected {exp} got {act}"
             )
         else:
             assert str(act) == str(exp), (
-                f"{case_name} data[{field}]: expected {exp!r} got {act!r}"
+                f"{case_name} data[{path}]: expected {exp!r} got {act!r}"
             )

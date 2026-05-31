@@ -139,6 +139,22 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(order.tags.every((t: unknown) => typeof t === "string")).toBe(true);
     // optional scalar array present → null-filtered string[]
     expect(order.flags).toEqual(["fragile"]);
+    // optional single nested object `shipTo` ABSENT in this input → the `m.shipTo ? toStrictCustomer(...) : null`
+    // branch produces null at runtime (not undefined, not a partial object).
+    expect(order.shipTo).toBeNull();
+
+    // optional single nested object PRESENT → the null-guard recurses into toStrictCustomer and populates.
+    const withShipTo =
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "shipTo": { "name": "Grace" } }';
+    const shipped = ex.extractOrderOut(root, withShipTo);
+    expect(shipped.shipTo).not.toBeNull();
+    expect(shipped.shipTo.name).toBe("Grace");
+    // and when shipTo is genuinely absent on a separate clean input, it is null (re-confirm the branch)
+    const noShipTo = ex.extractOrderOut(
+      root,
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }',
+    );
+    expect(noShipTo.shipTo).toBeNull();
 
     // missing required `customer` → throws
     expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow();

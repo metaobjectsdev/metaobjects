@@ -142,13 +142,30 @@ function parseSchema(n: { format: string; rootName: string; fields: RawFieldJson
   };
 }
 
-function assertCanonical(caseName: string, field: string, expected: unknown, actual: unknown): void {
+function assertCanonical(caseName: string, path: string, expected: unknown, actual: unknown): void {
   if (typeof expected === "number") {
     expect(typeof actual === "number" ? Math.abs(expected - (actual as number)) <= 1e-9 : false).toBe(true);
   } else {
     const expectedStr = typeof expected === "string" ? expected : String(expected);
     const actualStr = actual == null ? String(actual) : typeof actual === "string" ? actual : String(actual);
     expect(actualStr).toBe(expectedStr);
+  }
+}
+
+/**
+ * Flatten an assembled-data value into dotted leaf paths: objects recurse by key
+ * (`prefix.key`), arrays recurse by index (`prefix[i]`), and every terminal scalar is recorded.
+ * Mirrors the engine's per-field state enumeration so data leaves line up with state leaves.
+ */
+function flattenLeaves(prefix: string, value: unknown, out: Record<string, unknown>): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => flattenLeaves(`${prefix}[${i}]`, item, out));
+  } else if (value !== null && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      flattenLeaves(prefix === "" ? k : `${prefix}.${k}`, v, out);
+    }
+  } else {
+    out[prefix] = value;
   }
 }
 
@@ -183,14 +200,19 @@ describe("extract-conformance corpus", () => {
       // states key-set exhaustive (no extras, none missing)
       expect([...actualStates.keys()].sort()).toEqual(Object.keys(expected.states).sort());
 
-      // per-field data (canonical value check)
-      for (const [field, expectedValue] of Object.entries(expected.data)) {
-        expect(Object.prototype.hasOwnProperty.call(outcome.data, field)).toBe(true);
-        assertCanonical(caseName, field, expectedValue, outcome.data[field]);
+      // Data is compared as a flat DOTTED-LEAF map (mirroring states): nested objects and
+      // arrays are flattened to leaf paths (meta.score, items[0].label, tags[0], …) and every
+      // leaf VALUE is asserted — including scalar-array elements and nested-object leaves.
+      const actualLeaves: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(outcome.data)) flattenLeaves(key, val, actualLeaves);
+
+      for (const [path, expectedValue] of Object.entries(expected.data)) {
+        expect(Object.prototype.hasOwnProperty.call(actualLeaves, path)).toBe(true);
+        assertCanonical(caseName, path, expectedValue, actualLeaves[path]);
       }
 
-      // data key-set exhaustive (no extras, none missing)
-      expect(Object.keys(outcome.data).sort()).toEqual(Object.keys(expected.data).sort());
+      // data leaf-set exhaustive (no extras, none missing)
+      expect(Object.keys(actualLeaves).sort()).toEqual(Object.keys(expected.data).sort());
     });
   }
 });

@@ -262,6 +262,33 @@ public class GeneratedExtractorCompileRunTest {
             Object extracted = result.getClass().getMethod("data").invoke(result);
             assertSame("extractLenient().data() must be the generated flavored type",
                     answerCls, extracted.getClass());
+
+            // --- extract(loader, lostRequired) — the strict orThrow() gate fires ---
+            // The payload marks `title` @required. Feed input that loses it (well-formed JSON with
+            // NO title); the generated extract(...) must throw the strict lost-required exception
+            // (com.metaobjects.render.extract.ExtractException, a RuntimeException), surfaced via
+            // reflection as an InvocationTargetException whose cause is that type.
+            String lostRequired = "{\"count\":3,"
+                    + "\"address\":{\"city\":\"Austin\",\"zip\":\"78701\"},"
+                    + "\"items\":[{\"sku\":\"A1\",\"qty\":2}]}";
+            Class<?> extractExceptionCls = cl.loadClass("com.metaobjects.render.extract.ExtractException");
+            try {
+                extract.invoke(null, loader, lostRequired);
+                fail("extract(...) must throw when a required field is lost (flavor=" + flavor + ")");
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                Throwable cause = ite.getCause();
+                assertNotNull("InvocationTargetException must carry a cause (flavor=" + flavor + ")", cause);
+                assertSame("extract(...) lost-required cause must be ExtractException (flavor=" + flavor
+                                + "); got " + cause.getClass().getName(),
+                        extractExceptionCls, cause.getClass());
+                assertTrue("ExtractException must be a RuntimeException",
+                        cause instanceof RuntimeException);
+                // and it must name the lost required path
+                @SuppressWarnings("unchecked")
+                List<String> lost = (List<String>) cause.getClass().getMethod("lostRequired").invoke(cause);
+                assertTrue("lostRequired() must name `title` (flavor=" + flavor + "); got " + lost,
+                        lost.contains("title"));
+            }
         }
     }
 }

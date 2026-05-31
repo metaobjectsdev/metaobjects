@@ -300,6 +300,24 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     // tryExtract gate: non-empty, no required lost → ok
     const gate = parser.tryExtractLenientTicketOut(dirty);
     expect(gate.ok).toBe(true);
+    // and the success wrapper still carries the full result (data + report)
+    expect(gate.result.data.subject).toBe("Cannot log in");
+    expect(gate.result.report.hasLostRequired()).toBe(false);
+
+    // ---- tryExtract gate ok:FALSE branch (run-asserted) ----
+    // (a) a payload that LOST a @required field (omit `subject`/`priority`/`score`/`tags`) →
+    //     ok === false because report.hasLostRequired() is true; the wrapper still carries the report.
+    const lostRequired = '{ "assignee": "Grace" }';
+    const lost = parser.tryExtractLenientTicketOut(lostRequired);
+    expect(lost.ok).toBe(false);
+    expect(lost.result.report.hasLostRequired()).toBe(true);
+    expect(lost.result.report.lostRequired()).toContain("subject");
+
+    // (b) empty/garbage input → ok === false because report.isEmpty() is true; report still present.
+    const empty = parser.tryExtractLenientTicketOut("   ");
+    expect(empty.ok).toBe(false);
+    expect(empty.result.report.isEmpty()).toBe(true);
+    expect(empty.result.report).toBeDefined();
 
     // ---- render*Format(): comment-free guide fragment ----
     const fragment: string = prompt.renderTicketOutFormat();
