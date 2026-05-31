@@ -26,6 +26,9 @@ import kotlin.test.fail
  *  - REQUIRED string scalar-array (tags: List<String>)
  *  - REQUIRED int scalar-array (scores: List<Int>) — proves non-string scalar arrays (the C# bug)
  *  - REQUIRED float scalar-array (ratings: List<Float>) — proves a non-Int numeric element parse
+ *  - REQUIRED long scalar-array (counts: List<Long>) — proves the Long element parse (it.toLong())
+ *  - REQUIRED double scalar-array (weights: List<Double>) — proves the Double element parse
+ *  - REQUIRED bool scalar-array (active: List<Boolean>) — proves the Boolean element parse
  *  - REQUIRED enum scalar-array (flags: List<String>) — proves the enum element type passthrough
  *  - OPTIONAL scalar (note: String)
  *
@@ -51,6 +54,9 @@ class KotlinExtractorCompilesTest {
             { "field.string":   { "name": "tags", "isArray": true, "@required": true } },
             { "field.int":      { "name": "scores", "isArray": true, "@required": true } },
             { "field.float":    { "name": "ratings", "isArray": true, "@required": true } },
+            { "field.long":     { "name": "counts", "isArray": true, "@required": true } },
+            { "field.double":   { "name": "weights", "isArray": true, "@required": true } },
+            { "field.boolean":  { "name": "active", "isArray": true, "@required": true } },
             { "field.enum":     { "name": "flags", "isArray": true, "@required": true, "@values": ["A", "B"] } },
             { "field.string":   { "name": "note" } }
         ] } },
@@ -102,6 +108,9 @@ class KotlinExtractorCompilesTest {
                 "\"tags\":[\"x\",\"y\"]," +
                 "\"scores\":[3,7]," +
                 "\"ratings\":[1.5,2.5]," +
+                "\"counts\":[10,20]," +
+                "\"weights\":[1.25,2.75]," +
+                "\"active\":[true,false]," +
                 "\"flags\":[\"A\",\"B\"]," +
                 "\"note\":\"hi\",}\n```"
 
@@ -136,6 +145,24 @@ class KotlinExtractorCompilesTest {
                 "float scalar-array must populate as typed List<Float> (non-Int numeric element parse)")
 
             @Suppress("UNCHECKED_CAST")
+            val counts = orderClass.getDeclaredMethod("getCounts").invoke(order) as List<Long>
+            assertEquals(listOf(10L, 20L), counts,
+                "long scalar-array must populate as typed List<Long> (it.toLong() element parse)")
+            counts.forEach { assertTrue(it is Long, "counts element must be a boxed Long, got ${it!!::class}") }
+
+            @Suppress("UNCHECKED_CAST")
+            val weights = orderClass.getDeclaredMethod("getWeights").invoke(order) as List<Double>
+            assertEquals(listOf(1.25, 2.75), weights,
+                "double scalar-array must populate as typed List<Double> (it.toDouble() element parse)")
+            weights.forEach { assertTrue(it is Double, "weights element must be a boxed Double, got ${it!!::class}") }
+
+            @Suppress("UNCHECKED_CAST")
+            val active = orderClass.getDeclaredMethod("getActive").invoke(order) as List<Boolean>
+            assertEquals(listOf(true, false), active,
+                "boolean scalar-array must populate as typed List<Boolean> (it.toBoolean() element parse)")
+            active.forEach { assertTrue(it is Boolean, "active element must be a boxed Boolean, got ${it!!::class}") }
+
+            @Suppress("UNCHECKED_CAST")
             val flags = orderClass.getDeclaredMethod("getFlags").invoke(order) as List<String>
             assertEquals(listOf("A", "B"), flags,
                 "enum scalar-array must populate (enum element type is String → passthrough)")
@@ -156,7 +183,8 @@ class KotlinExtractorCompilesTest {
             val extractLenientMethod = extractorClass.getDeclaredMethod("extractLenient", loaderClass, String::class.java)
             val clean = "{\"customer\":{\"name\":\"Ada\"}," +
                 "\"lines\":[{\"sku\":\"A\",\"qty\":1}]," +
-                "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5],\"flags\":[\"A\"],\"note\":\"hi\"}"
+                "\"tags\":[\"x\"],\"scores\":[3],\"ratings\":[1.5]," +
+                "\"counts\":[10],\"weights\":[1.25],\"active\":[true],\"flags\":[\"A\"],\"note\":\"hi\"}"
             val rr = extractLenientMethod.invoke(extractorInstance, loader, clean)
             val reportClass = cl.loadClass("com.metaobjects.render.extract.ExtractionReport")
             val report = rr.javaClass.getMethod("report").invoke(rr)
