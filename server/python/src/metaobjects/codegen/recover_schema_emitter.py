@@ -64,8 +64,11 @@ def _field_spec_literal(field: MetaData, owner: MetaData) -> str:
         )
 
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        # nested recover deferred — model it as a plain (string) scalar slot.
-        return f'FieldSpec.scalar("{name}", FieldKind.STRING, {req})  # FR-010: nested recover deferred'
+        # Self-contained path models a nested object as a plain (opaque) STRING scalar
+        # slot — it does not recurse. The runtime-delegating ``*_with_loader`` entry
+        # populates the real nested graph. (No trailing inline comment: this literal is
+        # joined into a ``[...]`` argument list, where a ``#`` comment would be illegal.)
+        return f'FieldSpec.scalar("{name}", FieldKind.STRING, {req})'
 
     kind = fm.scalar_kind(field.sub_type) or "STRING"
     return f'FieldSpec.scalar("{name}", FieldKind.{kind}, {req})'

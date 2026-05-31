@@ -20,7 +20,7 @@ from metaobjects.codegen import (
     recover_schema_emitter as rse,
 )
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.generator import EmittedFile, GenContext
 from metaobjects.codegen.generators.output_parser_generator import (
     OutputParserGenerator,
     render_output_parser,
@@ -322,3 +322,180 @@ def test_generated_recover_folds_coerce_default_and_classifies_defaulted(
     assert not report.has_lost_required()
     assert report.states()["confidence"].value == "DEFAULTED"
     assert report.states()["text"].value == "RECOVERED"
+
+
+# ---------------------------------------------------------------------------
+# FR-010 nested-codegen-gap PROOF — the runtime-delegating recover populates
+# nested-object + array-of-object components (the self-contained path leaves
+# them None). Import-and-run via the generated parser + a loaded MetaRoot.
+# Mirrors the Java/Kotlin/TS nested pilots.
+# ---------------------------------------------------------------------------
+
+
+def _nested_root() -> MetaRoot:
+    """A payload with a nested object (``address``) + an array-of-objects
+    (``items``), each backed by its own value-object declared at root level."""
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    root.package = "acme::ai"
+
+    # --- nested single object: AddressPayload ---
+    street = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "street")
+    zip_ = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "zip")
+    address_vo = MetaObject(TYPE_OBJECT, "value", "AddressPayload")
+    address_vo.package = "acme::ai"
+    address_vo.add_child(street)
+    address_vo.add_child(zip_)
+
+    # --- array element object: LineItemPayload ---
+    sku = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "sku")
+    qty = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_INT, "qty")
+    item_vo = MetaObject(TYPE_OBJECT, "value", "LineItemPayload")
+    item_vo.package = "acme::ai"
+    item_vo.add_child(sku)
+    item_vo.add_child(qty)
+
+    # --- root payload: OrderPayload (scalar + nested object + array-of-objects) ---
+    customer = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "customer")
+    customer.set_attr(fc.FIELD_ATTR_REQUIRED, True)
+
+    address = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_OBJECT, "address")
+    address.set_attr(fc.FIELD_ATTR_OBJECT_REF, address_vo.resolution_key())
+
+    items = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_OBJECT, "items")
+    items.set_attr(KEY_IS_ARRAY, True)
+    items.set_attr(fc.FIELD_ATTR_OBJECT_REF, item_vo.resolution_key())
+
+    order_vo = MetaObject(TYPE_OBJECT, "value", "OrderPayload")
+    order_vo.package = "acme::ai"
+    for f in (customer, address, items):
+        order_vo.add_child(f)
+
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, "OrderOutput")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OrderPayload")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "ai/order")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, "json")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PROMPT_STYLE, "guide")
+
+    # Payload VOs first (so resolve_payload_vo + the nested @objectRef walk find them),
+    # then the template.
+    root.add_child(order_vo)
+    root.add_child(address_vo)
+    root.add_child(item_vo)
+    root.add_child(tmpl)
+    return root
+
+
+def _stub_order_payload() -> list[EmittedFile]:
+    """A minimal importable strict-parser payload module for the nested proof.
+
+    The generated parser's strict ``parse_*`` does ``from .order_output_payload
+    import OrderOutputPayload``, so SOME payload module must exist on import. The
+    strict Pydantic emit for *nested-object* payload fields is an orthogonal,
+    pre-existing payload-VO codegen concern; this proof targets ONLY the
+    runtime-delegating recover path, which never touches the strict payload class.
+    A hand-written stub keeps the proof focused and import-clean."""
+    src = (
+        "from __future__ import annotations\n\n"
+        "from pydantic import BaseModel\n\n\n"
+        "class OrderOutputPayload(BaseModel):\n"
+        "    customer: str\n"
+    )
+    return [EmittedFile(path="order_output_payload.py", content=src)]
+
+
+def test_nested_mirror_dataclasses_are_typed_not_object() -> None:
+    """The emitted parser types the nested mirror fields as the nested ``*Recovered``
+    dataclasses (+ ``list[...]``), not a flat ``object``/``str`` — the gap-closing shape."""
+    root = _nested_root()
+    parser = render_output_parser(root.own_children()[-1], root)
+    assert parser is not None
+    # nested single object -> the nested mirror type
+    assert 'address: "AddressPayloadRecovered" | None = None' in parser
+    # array-of-objects -> list of the nested mirror (NOT list[str | None])
+    assert 'items: list["LineItemPayloadRecovered" | None] | None = None' in parser
+    # the nested mirror dataclasses themselves are emitted
+    assert "class AddressPayloadRecovered:" in parser
+    assert "class LineItemPayloadRecovered:" in parser
+    # the delegating entry + baked payload name
+    assert 'PAYLOAD_NAME = "OrderPayload"' in parser
+    assert "def recover_order_output_with_loader(" in parser
+    assert "recover_object(mo, text, Format.JSON, opts)" in parser
+
+
+def test_delegating_recover_populates_nested_and_array_of_objects(
+    tmp_path, monkeypatch
+) -> None:
+    """Import-and-run PROOF: the generated delegating recover, given a loaded MetaRoot
+    + dirty input, FULLY populates the nested object + array-of-objects into typed
+    mirrors. The self-contained path leaves those components None."""
+    root = _nested_root()
+    parser_files = OutputParserGenerator().generate(_ctx(root))
+    assert len(parser_files) == 1
+
+    pkg_dir = str(tmp_path / "_fr010_pkg")
+    _materialize(pkg_dir, [*_stub_order_payload(), *parser_files])
+    _import_pkg(pkg_dir, monkeypatch)
+
+    parser_mod = importlib.import_module("_fr010_pkg.order_output_output_parser")
+
+    dirty = (
+        "Here's the order:\n"
+        "```json\n"
+        "{\n"
+        '  "customer": "Ada",\n'
+        '  "address": { "street": "1 Main St", "zip": "12345" },\n'
+        '  "items": [\n'
+        '    { "sku": "A1", "qty": 2 },\n'
+        '    { "sku": "B2", "qty": 5 }\n'
+        "  ]\n"
+        "}\n"
+        "```\n"
+    )
+
+    # --- self-contained path: nested components stay None (the historical gap) ---
+    self_contained = parser_mod.recover_order_output(dirty)
+    assert self_contained.data is not None
+    assert self_contained.data.customer == "Ada"
+    assert self_contained.data.address is None
+    assert self_contained.data.items is None
+
+    # --- delegating path: nested + array-of-objects FULLY populate ---
+    result = parser_mod.recover_order_output_with_loader(root, dirty)
+    assert result.data is not None
+    assert result.data.customer == "Ada"
+
+    # nested single object -> typed AddressPayloadRecovered mirror, populated.
+    addr = result.data.address
+    assert addr is not None
+    assert addr.street == "1 Main St"
+    assert addr.zip == "12345"
+
+    # array-of-objects -> list of typed LineItemPayloadRecovered mirrors, populated.
+    items = result.data.items
+    assert isinstance(items, list)
+    assert len(items) == 2
+    assert items[0] is not None and items[0].sku == "A1" and items[0].qty == 2
+    assert items[1] is not None and items[1].sku == "B2" and items[1].qty == 5
+
+    # never raises; nothing required lost.
+    assert not result.report.has_lost_required()
+
+
+def test_delegating_recover_raises_on_unknown_payload(tmp_path, monkeypatch) -> None:
+    """The delegating entry raises a clear error when the supplied MetaRoot does not
+    declare the baked payload value-object."""
+    root = _nested_root()
+    parser_files = OutputParserGenerator().generate(_ctx(root))
+
+    pkg_dir = str(tmp_path / "_fr010_pkg")
+    _materialize(pkg_dir, [*_stub_order_payload(), *parser_files])
+    _import_pkg(pkg_dir, monkeypatch)
+
+    parser_mod = importlib.import_module("_fr010_pkg.order_output_output_parser")
+
+    empty = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "empty")
+    empty.package = "acme::ai"
+    import pytest
+
+    with pytest.raises(ValueError, match="OrderPayload"):
+        parser_mod.recover_order_output_with_loader(empty, "{}")
