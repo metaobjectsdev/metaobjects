@@ -102,13 +102,18 @@ internal static class Fr010FieldMapping
         _ => null,
     };
 
-    /// <summary>The nullable C# type for a field in the recover mirror record.</summary>
+    /// <summary>The nullable C# type for a field in the SELF-CONTAINED recover mirror record.</summary>
     public static string MirrorType(MetaData field)
     {
+        // Object BEFORE array (the object-before-isArray fix): a nested-object field — whether
+        // single OR array — is deferred to null in the self-contained path, so it must NOT be
+        // typed as a string list (that would force RecoverMapCall down the AsStringList branch
+        // and mismatch the nested-aware mirror the delegating path shares). The delegating path
+        // overrides this with nested-mirror typing (RecoverDelegateEmitter.NestedMirrorRecords).
+        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred (self-contained)
         // Nullable element to match RecoverMap.AsStringList's IReadOnlyList<string?>? return —
         // a recovered array can contain null elements where individual items were lost.
         if (IsArray(field)) return "global::System.Collections.Generic.IReadOnlyList<string?>?";
-        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "object?"; // nested deferred
         if (field.SubType == FIELD_SUBTYPE_ENUM) return "string?";   // enum is string-backed
         return ScalarKind(field.SubType) switch
         {
@@ -124,8 +129,10 @@ internal static class Fr010FieldMapping
     public static string RecoverMapCall(MetaData field)
     {
         string name = field.Name;
+        // Object BEFORE array (object-before-isArray): a nested object/array-of-objects defers to
+        // null on the self-contained path (it cannot map a List<NestedRecovered> from a flat map).
+        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "null /* FR-010: nested recover deferred (self-contained) */";
         if (IsArray(field)) return $"RecoverMap.AsStringList(d, \"{name}\")";
-        if (field.SubType == FIELD_SUBTYPE_OBJECT) return "null /* FR-010: nested recover deferred */";
         if (field.SubType == FIELD_SUBTYPE_ENUM) return $"RecoverMap.AsString(d, \"{name}\")";
         return ScalarKind(field.SubType) switch
         {

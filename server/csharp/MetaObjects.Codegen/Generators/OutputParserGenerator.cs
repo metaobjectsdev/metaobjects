@@ -13,6 +13,32 @@
 // presence enforcement (.NET 7+). No DataAnnotations / Validator pass —
 // `required`-keyword construction + STJ's strict deserialization cover
 // presence + type in BCL-native form.
+//
+// FR-010 tolerant recovery — TWO flavours (Plan 2.1). For `@format: json|xml`
+// outputs the parser also emits tolerant best-effort recovery (never throws;
+// lost/malformed components are null in a nullable mirror + classified in the
+// report):
+//   • Self-contained  Recover(string[, RecoverOptions]) — drives a baked
+//     RecoverSchema literal + RecoverMap reads. No runtime metadata needed, but
+//     does NOT populate nested-object / array-of-object components (those stay
+//     null — the historical FR-010 gap). Always emitted for back-compat.
+//   • Runtime-delegating  Recover(MetaObject, string[, RecoverOptions]) (+ a
+//     Recover(MetaRoot, ...) convenience overload that resolves the baked
+//     PAYLOAD_FQN) — delegates to MetaObjects.Codegen.Runtime.RecoverObject,
+//     which assembles the FULL nested object graph reflection-free via the Phase
+//     A object model, then maps the assembled ValueObject graph into the typed
+//     nullable mirror via generated From*Recovered mappers. CLOSES the nested
+//     gap. Emitted only when the payload (or a reachable nested VO) has a
+//     nested-object / array-of-object field.
+//
+// ASSEMBLY CONTRACT (delegating recover). RecoverObject is sited in
+// MetaObjects.Codegen (it bridges core + Render, which neither can host alone).
+// So the GENERATED parser, when compiled in a CONSUMER assembly, references
+// MetaObjects.Codegen (RecoverObject) + MetaObjects (core: MetaObject / MetaRoot
+// / ValueObject) + MetaObjects.Render (the recover engine) for the delegating
+// path. The self-contained Recover(string) needs only MetaObjects.Render. A
+// consumer wanting nested recovery must carry MetaObjects.Codegen on its
+// classpath (it transitively brings core + Render).
 
 using System.Text;
 using MetaObjects.Meta;
@@ -119,6 +145,15 @@ public sealed class OutputParserGenerator : IGenerator
         sb.AppendLine("        }");
         sb.AppendLine("    }");
 
+        // FR-010 Plan 2.1: when the payload (or a reachable nested VO) has a nested-object /
+        // array-of-object field, additionally emit the runtime-DELEGATING recover overload that
+        // closes the nested gap. The self-contained baked Recover(string) is ALWAYS kept (back-compat,
+        // scalar/enum-only). The payload mirror is emitted nested-aware on the delegating path so its
+        // one shared <Payload>Recovered type can carry populated nested components.
+        bool emitDelegate = emitRecover && RecoverDelegateEmitter.HasNested(vo!, ctx.Root);
+        string formatEnum = format.Equals("xml", StringComparison.OrdinalIgnoreCase)
+            ? "Format.Xml" : "Format.Json";
+
         if (emitRecover)
         {
             string schemaLiteral = RecoverSchemaEmitter.SchemaLiteral(vo!, format, payloadType);
@@ -128,11 +163,17 @@ public sealed class OutputParserGenerator : IGenerator
             sb.AppendLine($"    // mirror (<see cref=\"{recoveredType}\"/>) with components null where lost/malformed.");
             sb.AppendLine($"    private static readonly RecoverSchema RecoverSchemaDef = {schemaLiteral};");
             sb.AppendLine();
-            sb.AppendLine($"    /// <summary>Tolerant best-effort recovery of a dirty LLM response; never throws.</summary>");
+            sb.AppendLine($"    /// <summary>Self-contained tolerant best-effort recovery of a dirty LLM response; never throws.");
+            if (emitDelegate)
+                sb.AppendLine($"    /// Does NOT populate nested-object / array-of-object components (those stay null) — use the");
+            if (emitDelegate)
+                sb.AppendLine($"    /// <see cref=\"Recover(global::MetaObjects.Meta.MetaObject, string, RecoverOptions)\"/> overload for full nested recovery.</summary>");
+            else
+                sb.AppendLine($"    /// </summary>");
             sb.AppendLine($"    public static RecoveryResult<{recoveredType}> Recover(string text) =>");
             sb.AppendLine("        Recover(text, RecoverOptions.Defaults());");
             sb.AppendLine();
-            sb.AppendLine($"    /// <summary>Tolerant recovery with explicit <see cref=\"RecoverOptions\"/>.</summary>");
+            sb.AppendLine($"    /// <summary>Self-contained tolerant recovery with explicit <see cref=\"RecoverOptions\"/>.</summary>");
             sb.AppendLine($"    public static RecoveryResult<{recoveredType}> Recover(string text, RecoverOptions opts)");
             sb.AppendLine("    {");
             sb.AppendLine("        var o = global::MetaObjects.Render.Recover.Recover.Run(text, RecoverSchemaDef, opts);");
@@ -147,6 +188,9 @@ public sealed class OutputParserGenerator : IGenerator
             sb.AppendLine("        result = Recover(text);");
             sb.AppendLine("        return !result.Report.IsEmpty && !result.Report.HasLostRequired();");
             sb.AppendLine("    }");
+
+            if (emitDelegate)
+                sb.Append(RecoverDelegateEmitter.DelegatingMembers(vo!, ctx.Root, payloadType, recoveredType, formatEnum));
         }
 
         sb.AppendLine("}");
@@ -154,7 +198,13 @@ public sealed class OutputParserGenerator : IGenerator
         if (emitRecover)
         {
             sb.AppendLine();
-            sb.Append(RecoverSchemaEmitter.MirrorRecordDecl(vo!, recoveredType));
+            // On the delegating path the payload mirror is emitted nested-aware (object fields typed
+            // as nested mirrors) along with the nested mirror records; otherwise the self-contained
+            // payload mirror (object fields -> object?) suffices.
+            if (emitDelegate)
+                sb.Append(RecoverDelegateEmitter.NestedMirrorRecords(vo!, ctx.Root, recoveredType));
+            else
+                sb.Append(RecoverSchemaEmitter.MirrorRecordDecl(vo!, recoveredType));
         }
 
         return new EmittedFile($"{templateName}.output.cs", sb.ToString());
