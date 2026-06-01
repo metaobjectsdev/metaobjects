@@ -46,8 +46,11 @@ public class PromptStyleAttrTest extends SharedRegistryTestBase {
         String styleAttr = promptStyleValue != null
             ? ", \"@promptStyle\": \"" + promptStyleValue + "\""
             : "";
+        // A template.output defaults to @kind="document", which requires @textRef
+        // (a document is never bodyless). Include it so these @promptStyle-focused
+        // fixtures satisfy the document/textRef cross-field rule.
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-               "  { \"template.output\": { \"name\": \"T\"" + styleAttr + " } }" +
+               "  { \"template.output\": { \"name\": \"T\", \"@textRef\": \"out/t\"" + styleAttr + " } }" +
                "] } }";
     }
 

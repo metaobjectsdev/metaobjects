@@ -56,4 +56,67 @@ describe("template load-time validation", () => {
     ]);
     expect(errs.map((e) => e.code)).toContain("ERR_INVALID_TEMPLATE");
   });
+
+  // --- @kind (document|email) + email part-refs (Task 1) ---
+
+  test("@kind=email with @subjectRef + @htmlBodyRef → no errors", async () => {
+    const errs = await load([
+      authorBrief,
+      {
+        "template.output": {
+          name: "welcome",
+          "@payloadRef": "AuthorBrief",
+          "@kind": "email",
+          "@format": "html",
+          "@subjectRef": "email/welcome-subject",
+          "@htmlBodyRef": "email/welcome-html",
+        },
+      },
+    ]);
+    expect(errs).toEqual([]);
+  });
+
+  test("@kind=email missing @subjectRef → ERR_INVALID_TEMPLATE", async () => {
+    const errs = await load([
+      authorBrief,
+      {
+        "template.output": {
+          name: "welcome",
+          "@payloadRef": "AuthorBrief",
+          "@kind": "email",
+          "@htmlBodyRef": "email/welcome-html",
+        },
+      },
+    ]);
+    expect(errs.map((e) => e.code)).toContain("ERR_INVALID_TEMPLATE");
+  });
+
+  test("@kind=document (absent) missing @textRef → ERR_INVALID_TEMPLATE", async () => {
+    const errs = await load([
+      authorBrief,
+      {
+        "template.output": {
+          name: "report",
+          "@payloadRef": "AuthorBrief",
+          "@format": "html",
+        },
+      },
+    ]);
+    expect(errs.map((e) => e.code)).toContain("ERR_INVALID_TEMPLATE");
+  });
+
+  test("@kind not in the closed enum → closed-enum error", async () => {
+    const errs = await load([
+      authorBrief,
+      {
+        "template.output": {
+          name: "bogus",
+          "@payloadRef": "AuthorBrief",
+          "@textRef": "out/x",
+          "@kind": "carrier-pigeon",
+        },
+      },
+    ]);
+    expect(errs.length).toBeGreaterThan(0);
+  });
 });

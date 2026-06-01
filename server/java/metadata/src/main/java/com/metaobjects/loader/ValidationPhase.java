@@ -1413,6 +1413,61 @@ public final class ValidationPhase {
             }
         }
 
+        // R6 — @kind (template.output only, Task 1) closed-enum + conditional
+        // ref requirements. @kind is a closed set (document|email); an email
+        // requires @subjectRef + @htmlBodyRef; a document (or absent @kind)
+        // requires @textRef. template.prompt always requires @textRef (its
+        // renderable body). Mirrors TS validateTemplatePayloadRefs.
+        if (TemplateConstants.SUBTYPE_OUTPUT.equals(subType)) {
+            String kind = template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)
+                ? template.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString()
+                : null;
+            // Closed-enum membership (own-only; absent → default "document").
+            if (kind != null && !TemplateConstants.ALLOWED_KINDS.contains(kind)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": template '" + template.getName()
+                        + "' @kind '" + kind
+                        + "' is not a valid value; allowed: "
+                        + TemplateConstants.ALLOWED_KINDS,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
+            }
+            if (TemplateConstants.KIND_EMAIL.equals(kind)) {
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_SUBJECT_REF, false)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                            + ": template '" + template.getName()
+                            + "' @kind 'email' requires @subjectRef",
+                        ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+                }
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_HTML_BODY_REF, false)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                            + ": template '" + template.getName()
+                            + "' @kind 'email' requires @htmlBodyRef",
+                        ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+                }
+            } else {
+                // @kind absent or "document" → require @textRef so a document is
+                // never bodyless. (An out-of-enum @kind already threw above.)
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF, false)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                            + ": template '" + template.getName()
+                            + "' @kind 'document' requires @textRef",
+                        ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+                }
+            }
+        } else if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)) {
+            // template.prompt always carries a renderable body via @textRef.
+            if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF, false)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                        + ": template '" + template.getName() + "' requires @textRef",
+                    ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
+            }
+        }
+
         // R2 + R3 only apply if @payloadRef is set. Missing @payloadRef on
         // subtypes that require it (template.prompt, template.toolcall) has
         // already been caught by validateRequiredAttrs above; if we get here

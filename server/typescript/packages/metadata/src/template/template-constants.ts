@@ -41,6 +41,29 @@ export const TEMPLATE_ATTR_SINCE = "since";
 // carry a tag contract a downstream parser depends on.
 export const TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags";
 
+// --- @kind + email part-refs (template.output only) ---
+//
+// A template.output is either a plain document (renders @textRef in @format → one
+// string) or an email (renders subject + html + optional text → a structured
+// EmailDocument). @kind is a closed enum; the email part-refs are 2-layer logical
+// (group/source) textRefs resolved by a provider at render time, like @textRef.
+// Cross-field rules live in the loader validation pass (validateTemplatePayloadRefs):
+//   - @kind="email"    → require @subjectRef AND @htmlBodyRef (textRef unused; @textBodyRef optional)
+//   - @kind="document" / absent → require @textRef
+export const TEMPLATE_ATTR_KIND = "kind";
+export const TEMPLATE_KIND_DOCUMENT = "document";
+export const TEMPLATE_KIND_EMAIL = "email";
+export const TEMPLATE_KIND_DEFAULT = TEMPLATE_KIND_DOCUMENT;
+export const TEMPLATE_KINDS = [
+  TEMPLATE_KIND_DOCUMENT,
+  TEMPLATE_KIND_EMAIL,
+] as const;
+export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
+
+export const TEMPLATE_ATTR_SUBJECT_REF = "subjectRef";
+export const TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef";
+export const TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef";
+
 // Prompt-overlay attrs (template.prompt only).
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";
 export const TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
