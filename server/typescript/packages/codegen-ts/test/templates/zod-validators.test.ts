@@ -201,4 +201,25 @@ describe("renderZodValidators", () => {
 
     expect(renderZodValidators(user).toString()).not.toContain("INTERNAL_SECRET");
   });
+
+  test("FR-013: fields with @readOnly: true are excluded from both InsertSchema and UpdateSchema", () => {
+    const customer = metaObject(OBJECT_SUBTYPE_ENTITY, "Customer");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    customer.addChild(id);
+    const name = metaField(FIELD_SUBTYPE_STRING, "name");
+    customer.addChild(name);
+    const computedTotal = metaField(FIELD_SUBTYPE_LONG, "lifetimeValue");
+    computedTotal.setAttr("readOnly", true);
+    customer.addChild(computedTotal);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    customer.addChild(primary);
+
+    const out = renderZodValidators(customer).toString();
+    expect(out).toContain("export const CustomerInsertSchema");
+    expect(out).toContain("export const CustomerUpdateSchema");
+    // FR-013: read-only field appears nowhere in Insert / Update schemas.
+    expect(out).not.toContain("lifetimeValue");
+  });
 });

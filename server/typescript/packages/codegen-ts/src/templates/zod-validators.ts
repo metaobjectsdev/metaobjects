@@ -20,7 +20,8 @@ import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
-  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
+  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_READ_ONLY,
+  AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
@@ -58,6 +59,10 @@ export function renderInsertSchemaOnly(obj: MetaObject): Code {
   const insertFieldLines: Code[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
+    // FR-013: @readOnly fields are populated by DB / replication / external
+    // owner; the application has no path to write them. Exclude from the
+    // create-shape schema entirely.
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
@@ -89,6 +94,11 @@ export function renderZodValidators(obj: MetaObject): Code {
   const updateFieldLines: Code[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
+    // FR-013: @readOnly fields appear in neither InsertSchema nor UpdateSchema.
+    // The DB / trigger / replication owns the write path; the app must not
+    // pass these values in POST/PATCH bodies (routesFile enforces the same
+    // contract at the boundary with a 400 response).
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
