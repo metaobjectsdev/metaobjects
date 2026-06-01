@@ -59,6 +59,7 @@ export async function computeDrift(
   return diff({
     expected,
     actual,
+    dialect,
     allow: opts?.allow ?? {},
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });

@@ -32,6 +32,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
   const result = await diff({
     expected: nextSnapshot,
     actual: args.snapshot,
+    dialect: args.dialect,
     ...(args.allow ? { allow: args.allow } : {}),
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),

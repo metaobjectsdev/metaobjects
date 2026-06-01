@@ -214,6 +214,7 @@ export async function migrateCommand(
       diffResult = await diff({
         expected,
         actual,
+        dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
