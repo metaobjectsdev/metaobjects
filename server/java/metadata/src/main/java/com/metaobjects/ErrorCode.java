@@ -174,6 +174,18 @@ public enum ErrorCode {
     /** FR-015: a parameter field's origin.passthrough @from references a field with a mismatched subtype. */
     ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
 
+    /** FR-014: object.entity @discriminator names a field that does not exist on the entity. */
+    ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
+
+    /** FR-014: two subtypes of the same root claim the same @discriminatorValue. */
+    ERR_DISCRIMINATOR_VALUE_DUPLICATE,
+
+    /** FR-014: a concrete subtype of a @discriminator-bearing root is missing @discriminatorValue. */
+    ERR_DISCRIMINATOR_VALUE_MISSING,
+
+    /** FR-014: @discriminatorValue is not a member of an enum discriminator's @values, or fails the field's coercion. */
+    ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+
     /**
      * Two contributing files set the same {@code @attr} on the same node to
      * different non-empty values during overlay merge (FR5c). Envelope is

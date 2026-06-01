@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Auth",
+          "@discriminator": "type",
+          "children": [
+            { "source.rdb": { "@table": "auths" } },
+            {
+              "field.enum": {
+                "name": "type",
+                "@values": ["Bridge"]
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ForgotValue",
+          "extends": "Auth",
+          "children": [
+            { "field.int": { "name": "q" } }
+          ]
+        }
+      }
+    ]
+  }
+}

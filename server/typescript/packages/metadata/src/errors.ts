@@ -60,6 +60,11 @@ export const ERROR_CODES = [
   "ERR_PARAMETER_REF_NOT_VALUE_OBJECT",
   "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND",
   "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH",
+  // FR-014 — TPH discriminator cross-attribute validation.
+  "ERR_DISCRIMINATOR_FIELD_NOT_FOUND",
+  "ERR_DISCRIMINATOR_VALUE_DUPLICATE",
+  "ERR_DISCRIMINATOR_VALUE_MISSING",
+  "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH",
   // ADR-0006 D2 — YAML type-coercion guard. Emitted by every port's YAML
   // loader when a coerced scalar mismatches the schema-declared type.
   "ERR_YAML_COERCION",

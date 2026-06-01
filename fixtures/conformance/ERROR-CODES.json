@@ -40,6 +40,10 @@
     "ERR_PARAMETER_REF_NOT_VALUE_OBJECT": "FR-015: source.rdb @parameterRef references an object.entity instead of object.value. Input shapes are value-objects by definition (no identity).",
     "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND": "FR-015: source.rdb @parameterRef is set with @kind: \"table\" / \"view\" / \"materializedView\". These kinds do not accept parameters; only \"storedProc\" / \"tableFunction\" do.",
     "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH": "FR-015: a parameter field uses origin.passthrough @from: \"Entity.field\" but the parameter's subtype does not match the referenced field's subtype (drift gate).",
+    "ERR_DISCRIMINATOR_FIELD_NOT_FOUND": "FR-014: object.entity @discriminator names a field that does not exist on the entity (including inherited fields).",
+    "ERR_DISCRIMINATOR_VALUE_DUPLICATE": "FR-014: two subtypes of the same @discriminator-bearing root declare the same @discriminatorValue.",
+    "ERR_DISCRIMINATOR_VALUE_MISSING": "FR-014: a concrete entity extends a chain whose root declares @discriminator but the subtype lacks @discriminatorValue.",
+    "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH": "FR-014: @discriminatorValue is not a member of the discriminator field's @values (when the discriminator field is field.enum) or cannot be coerced to its subtype.",
     "ERR_YAML_COERCION": "A YAML 1.2 silent type coercion produced a value whose runtime type differs from the attribute's declared valueType (e.g. an unquoted `column: TRUE` parsed as boolean for a string-typed attr). Emitted by every port's YAML loader; canonical JSON is unaffected.",
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."

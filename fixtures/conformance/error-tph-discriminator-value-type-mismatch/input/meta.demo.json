@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Auth",
+          "@discriminator": "type",
+          "children": [
+            { "source.rdb": { "@table": "auths" } },
+            {
+              "field.enum": {
+                "name": "type",
+                "@values": ["Bridge", "Copay"]
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Unknown",
+          "extends": "Auth",
+          "@discriminatorValue": "NotInEnum",
+          "children": []
+        }
+      }
+    ]
+  }
+}

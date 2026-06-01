@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Auth",
+          "abstract": true,
+          "@discriminator": "type",
+          "children": [
+            {
+              "field.string": {
+                "name": "type"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "MidAuth",
+          "extends": "Auth",
+          "abstract": true
+        }
+      },
+      {
+        "object.entity": {
+          "name": "LeafAuth",
+          "extends": "MidAuth",
+          "@discriminatorValue": "Leaf",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "leaf_auths"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
