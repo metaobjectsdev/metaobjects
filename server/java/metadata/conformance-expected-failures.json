@@ -1,9 +1,13 @@
 {
   "language": "java",
-  "_comment": "FR-013 (@readOnly) is implemented in the TS reference (commits e255c631, 13cf4f8e) but the Java port has not yet shipped FR-013. These three fixtures are deferred until the FR-013 Java fan-out lands. The field-readonly-upgrade-on-subtype canonical-mismatch surfaces a separate effective-tree merge interaction with FR-013's read-only upgrade rule that Java will pick up at the same time.",
+  "_comment": "FR-013 (@readOnly) and FR-015 (@parameterRef) are implemented in the TS reference but the Java port has not yet shipped them. These fixtures are deferred until the FR-013 / FR-015 Java fan-out lands.",
   "fixtures": [
     "error-field-readonly-assigned-primary",
     "error-field-readonly-downgrade",
-    "field-readonly-upgrade-on-subtype"
+    "field-readonly-upgrade-on-subtype",
+    "error-parameter-ref-unresolved",
+    "error-parameter-ref-not-value-object",
+    "error-parameter-ref-on-table-kind",
+    "error-parameter-ref-passthrough-type-mismatch"
   ]
 }

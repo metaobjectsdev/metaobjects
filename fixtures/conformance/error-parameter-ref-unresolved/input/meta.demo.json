@@ -1,0 +1,23 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BadProc",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@proc": "fn_x",
+                "@parameterRef": "NonexistentArgs"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "PhaseSummaryArgs",
+          "children": [
+            {
+              "field.int": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "asOfDate"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PhaseSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@parameterRef": "PhaseSummaryArgs",
+                "@proc": "fn_get_phase_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "phaseId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "phaseName"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "enteredAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "phaseId"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

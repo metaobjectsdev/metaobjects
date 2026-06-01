@@ -36,6 +36,10 @@
     "ERR_PHYSICAL_NAME_MULTIPLE": "FR-016 / ADR-0018: a source.rdb declares two or more kind-aware physical-name aliases at once (e.g. both @table and @view). Exactly one is permitted.",
     "ERR_READONLY_ASSIGNED_PRIMARY": "FR-013: a field with @readOnly: true is the target of an identity.primary with @generation: \"assigned\". The application has no path to populate the identity value (no setter; not generated; not defaulted).",
     "ERR_READONLY_DOWNGRADE": "FR-013: a concrete entity declares @readOnly: false on a field whose extends-chain parent declares @readOnly: true. Read-only-ness can only be upgraded, never downgraded.",
+    "ERR_PARAMETER_REF_UNRESOLVED": "FR-015: source.rdb @parameterRef names an object that does not exist in the loaded model.",
+    "ERR_PARAMETER_REF_NOT_VALUE_OBJECT": "FR-015: source.rdb @parameterRef references an object.entity instead of object.value. Input shapes are value-objects by definition (no identity).",
+    "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND": "FR-015: source.rdb @parameterRef is set with @kind: \"table\" / \"view\" / \"materializedView\". These kinds do not accept parameters; only \"storedProc\" / \"tableFunction\" do.",
+    "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH": "FR-015: a parameter field uses origin.passthrough @from: \"Entity.field\" but the parameter's subtype does not match the referenced field's subtype (drift gate).",
     "ERR_YAML_COERCION": "A YAML 1.2 silent type coercion produced a value whose runtime type differs from the attribute's declared valueType (e.g. an unquoted `column: TRUE` parsed as boolean for a string-typed attr). Emitted by every port's YAML loader; canonical JSON is unaffected.",
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."

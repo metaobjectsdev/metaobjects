@@ -2,7 +2,11 @@
   "language": "python",
   "fixtures": [
     "error-field-readonly-assigned-primary",
-    "error-field-readonly-downgrade"
+    "error-field-readonly-downgrade",
+    "error-parameter-ref-unresolved",
+    "error-parameter-ref-not-value-object",
+    "error-parameter-ref-on-table-kind",
+    "error-parameter-ref-passthrough-type-mismatch"
   ],
-  "notes": "FR-013 (@readOnly) is implemented in the TS reference (commits e255c631, 13cf4f8e) but the Python port has not yet shipped FR-013. These two fixtures are deferred until the FR-013 Python fan-out lands."
+  "notes": "FR-013 (@readOnly) and FR-015 (@parameterRef) are implemented in the TS reference but the Python port has not yet shipped them. These fixtures are deferred until the FR-013 / FR-015 Python fan-out lands."
 }

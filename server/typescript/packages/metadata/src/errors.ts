@@ -55,6 +55,11 @@ export const ERROR_CODES = [
   // FR-013 — field-level @readOnly cross-attribute validation.
   "ERR_READONLY_ASSIGNED_PRIMARY",
   "ERR_READONLY_DOWNGRADE",
+  // FR-015 — source.rdb @parameterRef typed-input validation.
+  "ERR_PARAMETER_REF_UNRESOLVED",
+  "ERR_PARAMETER_REF_NOT_VALUE_OBJECT",
+  "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND",
+  "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH",
   // ADR-0006 D2 — YAML type-coercion guard. Emitted by every port's YAML
   // loader when a coerced scalar mismatches the schema-declared type.
   "ERR_YAML_COERCION",

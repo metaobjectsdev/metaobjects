@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ping",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@proc": "fn_ping"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

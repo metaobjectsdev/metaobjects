@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            { "source.rdb": { "@table": "cases" } },
+            { "field.string": { "name": "label" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Args",
+          "children": [
+            {
+              "field.int": {
+                "name": "label",
+                "children": [
+                  { "origin.passthrough": { "@from": "Case.label" } }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Proc",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@proc": "fn_x",
+                "@parameterRef": "Args"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

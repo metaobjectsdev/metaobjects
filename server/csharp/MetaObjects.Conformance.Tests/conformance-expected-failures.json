@@ -1,6 +1,14 @@
 {
   "language": "csharp",
   "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# is now reconciled with TS on the JSON-side FR5a envelopes (parser malformed-JSON catch builds a $-rooted JsonSource with the source-file name; inline-attr loop reports ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR / ERR_BAD_ATTR_VALUE at the parent's path — not key-deeper). Keep this file as the documented ledger surface.",
-  "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. The `overlay-attr-last-writer-wins` fixture now declares its ERR_MERGE_CONFLICT in `expected-errors.json` and asserts identically across all four ports — no ledger entry needed. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically.",
-  "fixtures": []
+  "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. The `overlay-attr-last-writer-wins` fixture now declares its ERR_MERGE_CONFLICT in `expected-errors.json` and asserts identically across all four ports — no ledger entry needed. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically. FR-013 (@readOnly) and FR-015 (@parameterRef) are implemented in the TS reference but the C# port has not yet shipped them; their fixtures are deferred until the per-port fan-out lands.",
+  "fixtures": [
+    "error-field-readonly-assigned-primary",
+    "error-field-readonly-downgrade",
+    "field-readonly-upgrade-on-subtype",
+    "error-parameter-ref-unresolved",
+    "error-parameter-ref-not-value-object",
+    "error-parameter-ref-on-table-kind",
+    "error-parameter-ref-passthrough-type-mismatch"
+  ]
 }
