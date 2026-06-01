@@ -139,7 +139,7 @@ export type Change =
   | { kind: "add-fk"; table: string; schema?: string; fk: FkDescriptor; status: ChangeStatus }
   | { kind: "drop-fk"; table: string; schema?: string; fk: string; restore?: FkDescriptor; status: ChangeStatus }
   | { kind: "add-check"; table: string; schema?: string; check: CheckDescriptor; status: ChangeStatus }
-  | { kind: "drop-check"; table: string; schema?: string; check: string; status: ChangeStatus }
+  | { kind: "drop-check"; table: string; schema?: string; check: string; restore?: CheckDescriptor; status: ChangeStatus }
   // Declared for v0.3, never produced in v0.1:
   | { kind: "create-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus }
   | { kind: "drop-view"; view: string; schema?: string; status: ChangeStatus }
@@ -163,6 +163,7 @@ export interface AllowOptions {
   typeChange?: boolean;
   dropIndex?: boolean;
   dropFk?: boolean;
+  dropCheck?: boolean;
   /** Existing data must satisfy NOT NULL; diff cannot verify this. */
   nullableToNotNull?: boolean;
 }

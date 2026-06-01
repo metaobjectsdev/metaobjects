@@ -27,6 +27,8 @@ function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
       return allow.dropIndex ? null : "destructive: drop-index not allowed (pass allow.dropIndex)";
     case "drop-fk":
       return allow.dropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)";
+    case "drop-check":
+      return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
 
     case "change-column-type":
       if (isWidening(c.from, c.to)) return null;     // widening always allowed
@@ -48,7 +50,6 @@ function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
     case "add-index":
     case "add-fk":
     case "add-check":
-    case "drop-check":
     case "create-view":
     case "drop-view":
     case "replace-view":

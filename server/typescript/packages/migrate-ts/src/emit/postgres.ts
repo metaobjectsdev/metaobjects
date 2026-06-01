@@ -123,7 +123,10 @@ function renderDown(c: Change): string {
     // add-check / drop-check down arms: declared but not yet produced by the diff
     // (checks are create-time-only; see renderUp note).
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check.name)};`;
-    case "drop-check":             return `-- WARNING: down migration cannot restore the original CHECK definition`;
+    case "drop-check":
+      return c.restore
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.restore.name)} CHECK (${c.restore.expression});`
+        : `-- WARNING: down migration cannot restore the original CHECK definition`;
     case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
     case "drop-view":              return `-- WARNING: down migration cannot restore the original view definition`;
     case "replace-view":           return `-- WARNING: down migration cannot restore the original view definition`;
