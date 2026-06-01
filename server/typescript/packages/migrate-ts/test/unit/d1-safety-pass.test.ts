@@ -58,6 +58,24 @@ describe("applyD1SafetyPass", () => {
     expect(applyD1SafetyPass(input)).toBe(input);
   });
 
+  test("does not split on a ';' inside a -- line comment", () => {
+    // Regression: the old splitter only tracked single quotes, so a ';' inside a
+    // comment split the statement into a broken fragment. A '-- …; …' comment
+    // attached to a CREATE must stay attached as ONE statement.
+    const input = "-- TODO: restore data; see backup\nCREATE TABLE t (id INT);";
+    expect(applyD1SafetyPass(input)).toBe(input);
+  });
+
+  test("does not split on a ';' inside a /* block comment */", () => {
+    const input = "/* drop; then */ CREATE TABLE z (id INT);";
+    expect(applyD1SafetyPass(input)).toBe(input);
+  });
+
+  test("does not split on a ';' inside a double-quoted identifier", () => {
+    const input = 'CREATE TABLE "od;d" (id INT);';
+    expect(applyD1SafetyPass(input)).toBe(input);
+  });
+
   test("collapses multiple blank lines between statements to a single blank", () => {
     const input = "CREATE TABLE a (id INT);\n\n\n\nCREATE TABLE b (id INT);";
     const expected = "CREATE TABLE a (id INT);\n\nCREATE TABLE b (id INT);";
