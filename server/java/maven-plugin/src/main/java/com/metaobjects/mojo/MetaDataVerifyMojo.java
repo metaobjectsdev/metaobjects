@@ -54,6 +54,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** Arg used by {@link GeneratorBase} to locate each generator's output root. */
     static final String ARG_OUTPUT_DIR = GeneratorBase.ARG_OUTPUTDIR;
 
+    /** The gen goal to suggest in the failure message ({@code groupId:artifactId:goal}). */
+    private static final String GEN_GOAL = "metaobjects:generate";
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         if (getLoader() == null) {
@@ -90,7 +93,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 }
                 Path tempDir = tempRoot.resolve("gen-" + (idx++));
                 overrides.put(g, Collections.singletonMap(ARG_OUTPUT_DIR, tempDir.toString()));
-                targets.add(new GenTarget(g.getClassname(), Path.of(realDir), tempDir));
+                targets.add(new GenTarget(Path.of(realDir), tempDir));
             }
         }
 
@@ -110,7 +113,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
             if (!drift.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
-                sb.append("generated code is stale — run `mvn ").append(genGoalName())
+                sb.append("generated code is stale — run `mvn ").append(GEN_GOAL)
                         .append("` and commit. Drifted files:");
                 for (String d : drift) {
                     sb.append("\n  ").append(d);
@@ -123,11 +126,6 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         } finally {
             deleteRecursively(tempRoot);
         }
-    }
-
-    /** The gen goal to suggest in the failure message ({@code groupId:artifactId:goal}). */
-    private String genGoalName() {
-        return "metaobjects:generate";
     }
 
     /**
@@ -219,12 +217,10 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     /** One generator's committed-vs-temp output-dir mapping. */
     private static final class GenTarget {
-        final String classname;
         final Path realDir;
         final Path tempDir;
 
-        GenTarget(String classname, Path realDir, Path tempDir) {
-            this.classname = classname;
+        GenTarget(Path realDir, Path tempDir) {
             this.realDir = realDir;
             this.tempDir = tempDir;
         }
