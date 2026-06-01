@@ -101,7 +101,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
 
 def _relative_set(root: Path) -> dict[str, str]:
-    """Map every ``*.py`` file under ``root`` to its content, keyed by rel path."""
+    """Map every ``*.py`` file under ``root`` to its content, keyed by rel path.
+
+    Scoped to ``*.py`` because the Python codegen suite emits only Python sources;
+    if a generator ever emits a non-``.py`` artifact, broaden this glob so ``verify``
+    drift-checks it too.
+    """
     files: dict[str, str] = {}
     if root.exists():
         for p in sorted(root.rglob("*.py")):
