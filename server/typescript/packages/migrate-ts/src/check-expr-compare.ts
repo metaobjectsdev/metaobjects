@@ -16,7 +16,12 @@
 export function normalizeCheckExpr(expr: string): string {
   const stripped = expr
     .toLowerCase()
-    .replace(/::\s*"?\w+"?/g, "") // drop `::text` / `::"MyType"` type casts PG adds to literals
+    // Drop `::text` / `::"MyType"` type casts PG adds to literals. The lookbehind
+    // restricts the strip to a cast that immediately follows a CLOSING single
+    // quote (`'open'::text`), so a `::` appearing INSIDE a regex pattern literal
+    // (`slug ~ 'a::foo'`) is preserved — otherwise two distinct regex CHECKs would
+    // normalize equal and a pattern change would be silently missed.
+    .replace(/(?<=')::\s*"?\w+"?/g, "")
     .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
     .replace(/\s+/g, " ")
     .trim();

@@ -27,6 +27,14 @@ describe("normalizeCheckExpr", () => {
       "status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text, 'CANCELLED'::text])",
     )).toBe(false);
   });
+  test("a `::` inside a regex pattern is preserved (only post-quote casts are stripped)", () => {
+    // the cast-strip must not corrupt a regex literal containing `::`, else two
+    // distinct regex CHECKs would compare equal and a pattern change be missed.
+    expect(checkExprEquals("slug ~ 'a::foo'", "slug ~ 'a::bar'")).toBe(false);
+    expect(normalizeCheckExpr("slug ~ 'a::foo'")).toBe("slug ~ 'a::foo'");
+    // but PG's post-literal `::text` cast (enum form) is still stripped
+    expect(normalizeCheckExpr("'open'::text")).toBe("'open'");
+  });
   test("genuinely different expressions are not equal", () => {
     expect(checkExprEquals("col >= 0", "col >= 5")).toBe(false);
   });
