@@ -1,5 +1,6 @@
 export { entityFile, type EntityFileOpts } from "./entity-file.js";
 export { queriesFile, type QueriesFileOpts } from "./queries-file.js";
+export { callableFile, type CallableFileOpts } from "./callable-file.js";
 export { routesFile, type RoutesFileOpts } from "./routes-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
 export { barrel, type BarrelOpts } from "./barrel.js";
