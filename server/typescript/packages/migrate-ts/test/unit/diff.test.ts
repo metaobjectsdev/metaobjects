@@ -58,7 +58,7 @@ describe("diff — per-table column-level", () => {
     const tableA = { name: "users", columns: [col("count", "text")], indexes: [], foreignKeys: [], primaryKey: [], checks: [] };
     const r = await diff(snapshot([tableE]), snapshot([tableA]));
     const c = r.changes.find((x) => x.kind === "change-column-type");
-    expect(c).toBeDefined();
+    expect(c).toMatchObject({ kind: "change-column-type", table: "users", column: "count" });
   });
 
   test("nullable mismatch → change-column-nullable", async () => {
@@ -74,7 +74,9 @@ describe("diff — per-table column-level", () => {
     const tableE = { name: "users", columns: [{ ...col("flag", "boolean"), default: { kind: "literal" as const, value: "true" } }], indexes: [], foreignKeys: [], primaryKey: [], checks: [] };
     const tableA = { name: "users", columns: [col("flag", "boolean")], indexes: [], foreignKeys: [], primaryKey: [], checks: [] };
     const r = await diff(snapshot([tableE]), snapshot([tableA]));
-    expect(r.changes.find((x) => x.kind === "change-column-default")).toBeDefined();
+    expect(r.changes.find((x) => x.kind === "change-column-default")).toMatchObject({
+      kind: "change-column-default", table: "users", column: "flag", to: { kind: "literal", value: "true" },
+    });
   });
 });
 
@@ -83,14 +85,18 @@ describe("diff — per-table index/FK", () => {
     const tableE = { name: "users", columns: [col("id", "integer"), col("email")], indexes: [{ name: "users_email_idx", columns: ["email"], unique: true }], foreignKeys: [], primaryKey: ["id"], checks: [] };
     const tableA = { name: "users", columns: [col("id", "integer"), col("email")], indexes: [], foreignKeys: [], primaryKey: ["id"], checks: [] };
     const r = await diff(snapshot([tableE]), snapshot([tableA]));
-    expect(r.changes.find((x) => x.kind === "add-index")).toBeDefined();
+    expect(r.changes.find((x) => x.kind === "add-index")).toMatchObject({
+      kind: "add-index", table: "users", index: { name: "users_email_idx", columns: ["email"], unique: true },
+    });
   });
 
   test("actual FK not in expected → drop-fk", async () => {
     const tableE = { name: "weeks", columns: [col("id", "integer"), col("program_id", "integer")], indexes: [], foreignKeys: [], primaryKey: ["id"], checks: [] };
     const tableA = { name: "weeks", columns: [col("id", "integer"), col("program_id", "integer")], indexes: [], foreignKeys: [{ name: "weeks_program_id_fk", columns: ["program_id"], refTable: "programs", refColumns: ["id"] }], primaryKey: ["id"], checks: [] };
     const r = await diff(snapshot([tableE]), snapshot([tableA]));
-    expect(r.changes.find((x) => x.kind === "drop-fk")).toBeDefined();
+    expect(r.changes.find((x) => x.kind === "drop-fk")).toMatchObject({
+      kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk",
+    });
   });
 });
 
@@ -117,7 +123,7 @@ describe("diff — view-body drift", () => {
     ]);
     const r = await diff(expected, actual);
     const viewChange = r.changes.find((c) => c.kind === "replace-view");
-    expect(viewChange).toBeDefined();
+    expect(viewChange).toMatchObject({ kind: "replace-view", view: { name: "order_summary" } });
     // No spurious create/drop pair when the view exists on both sides.
     expect(r.changes.find((c) => c.kind === "create-view")).toBeUndefined();
     expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
@@ -126,6 +132,8 @@ describe("diff — view-body drift", () => {
   test("expected view absent from actual → create-view (unchanged)", async () => {
     const expected = withViews([{ name: "order_summary", sql: "SELECT id FROM orders" }]);
     const r = await diff(expected, { tables: [], views: [] });
-    expect(r.changes.find((c) => c.kind === "create-view")).toBeDefined();
+    expect(r.changes.find((c) => c.kind === "create-view")).toMatchObject({
+      kind: "create-view", view: { name: "order_summary" },
+    });
   });
 });

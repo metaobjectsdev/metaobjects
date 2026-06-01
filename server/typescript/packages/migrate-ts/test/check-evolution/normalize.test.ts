@@ -35,6 +35,17 @@ describe("normalizeCheckExpr", () => {
     // but PG's post-literal `::text` cast (enum form) is still stripped
     expect(normalizeCheckExpr("'open'::text")).toBe("'open'");
   });
+  test("the IN↔ANY fold does not false-positive on a literal containing 'any array'", () => {
+    // The fold is anchored on `= any array` (the shape only PG's ARRAY rewrite
+    // produces after bracket-stripping). A quoted literal that merely contains
+    // the words must be left intact — a stray quote breaks the `=…any…array`
+    // adjacency, so there is no `in` rewrite.
+    expect(normalizeCheckExpr("note = 'pick any array item'")).toBe("note = 'pick any array item'");
+    expect(checkExprEquals(
+      "note = 'pick any array item'",
+      "note in 'pick', 'item'",
+    )).toBe(false);
+  });
   test("genuinely different expressions are not equal", () => {
     expect(checkExprEquals("col >= 0", "col >= 5")).toBe(false);
   });
