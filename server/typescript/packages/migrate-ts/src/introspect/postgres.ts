@@ -28,7 +28,7 @@
  */
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
-import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor } from "../types.js";
+import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor, CheckDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
@@ -52,7 +52,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
       columns,
       indexes: await readPgIndexes(k, schema, name),
       foreignKeys: await readPgForeignKeys(k, schema, name),
-      checks: [], // CHECK introspection is out of scope; expected-side derives them
+      checks: await readPgChecks(k, schema, name),
       primaryKey,
     });
   }
@@ -436,4 +436,32 @@ function pgRuleToAction(rule: string): FkAction {
   if (r === "SET NULL") return "set-null";
   if (r === "RESTRICT") return "restrict";
   return "no-action";
+}
+
+/**
+ * Read CHECK constraints for a table from pg_constraint. pg-mem does not support
+ * pg_constraint, so this catches and returns [] there (same accepted gap as
+ * readPgForeignKeys/readPgIndexes); real-DB coverage is the MIGRATE_TS_PG_URL-gated
+ * integration test. `pg_get_constraintdef` returns `CHECK (<expr>)`; the wrapper is
+ * stripped to the expression, compared via normalizeCheckExpr at diff time.
+ */
+async function readPgChecks(k: RawKysely, schema: string, table: string): Promise<CheckDescriptor[]> {
+  try {
+    const rows = await sql<{ name: string; def: string }>`
+      SELECT con.conname AS name, pg_get_constraintdef(con.oid) AS def
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+      JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+      WHERE con.contype = 'c' AND rel.relname = ${table} AND ns.nspname = ${schema}
+    `.execute(k);
+    return rows.rows.map((r) => ({ name: r.name, expression: stripCheckWrapper(r.def) }));
+  } catch {
+    return []; // pg-mem: pg_constraint unsupported
+  }
+}
+
+/** `CHECK (<expr>)` → `<expr>` (balanced outer wrapper); returns input unchanged if no wrapper. */
+function stripCheckWrapper(def: string): string {
+  const m = /^\s*CHECK\s*\((.*)\)\s*$/is.exec(def);
+  return m ? m[1]!.trim() : def.trim();
 }
