@@ -203,12 +203,22 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /**
-     * Resolve the SQL proc name from (in order): {@code @procName} → {@code @table}
-     * → the entity's lowercased short name.
+     * Resolve the SQL proc name from (in order):
+     *   1. {@code @procName} — Kotlin-specific override.
+     *   2. {@code @proc} (FR-016 canonical for {@code @kind: "storedProc"}).
+     *   3. {@code @table} (FR-016 legacy spelling; warned by the loader).
+     *   4. The entity's lowercased short name.
+     *
+     * Procs are not tables — the lowercase fallback intentionally diverges
+     * from {@link RdbSource#getPhysicalName} (which pluralizes + snake-cases
+     * for table-kind entities). FR-016 aliases are honored explicitly so a
+     * source declared with {@code @proc} works without going through the
+     * table-oriented physical-name chain.
      */
     private fun resolveProcName(sourceRdb: RdbSource, entityShortName: String): String {
         readStringAttr(sourceRdb, ATTR_PROC_NAME)?.let { return it }
-        sourceRdb.tableName?.let { return it }
+        readStringAttr(sourceRdb, "proc")?.let { return it }
+        readStringAttr(sourceRdb, "table")?.let { return it }
         return entityShortName.lowercase()
     }
 
