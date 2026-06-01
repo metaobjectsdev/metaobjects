@@ -307,6 +307,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		case LONG: return Types.BIGINT;
 		case FLOAT: return Types.FLOAT;
 		case DOUBLE: return Types.DOUBLE;
+		case DECIMAL: return Types.DECIMAL;
 		case STRING: return Types.VARCHAR;
 		case OBJECT: return Types.BLOB;
 		default: throw new IllegalArgumentException( "Unable to get SQL type for MetaField [" + mf + "] with type (" + mf.getDataType() + ")" );
@@ -329,6 +330,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			case DATE:
 			case LONG:
 			case FLOAT:
+			case DECIMAL:
 			case DOUBLE: return 8;
 			case STRING: return readStringMaxLength(mf);
 			case OBJECT: return 100;

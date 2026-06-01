@@ -129,6 +129,12 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     }
                     break;
 
+                case DECIMAL:
+                    // Read the JSON number losslessly as a BigDecimal (getAsBigDecimal
+                    // parses the exact text, never via double). No array form for decimal.
+                    mf.setDecimal(vo, el.getAsBigDecimal());
+                    break;
+
                 case STRING_ARRAY:
                     if (el.isJsonArray()) mf.setStringArray(vo, context.deserialize(el, List.class));
                     else mf.setString(vo, el.getAsString());

@@ -15,6 +15,11 @@ public enum DataTypes {
     // String & Date
     STRING(8), DATE(9),
 
+    // Exact decimal (BigDecimal-backed; field.decimal). Slot 10 (between DATE=9
+    // and BOOLEAN_ARRAY=11). No DECIMAL_ARRAY — arrays-of-decimal are not a thing
+    // in the metamodel; getArrayEquivalent maps DECIMAL to itself (see below).
+    DECIMAL(10),
+
     // Numeric  Arrays
     BOOLEAN_ARRAY(11), BYTE_ARRAY(12), SHORT_ARRAY(13), INT_ARRAY(14), LONG_ARRAY(15),
     FLOAT_ARRAY(16), DOUBLE_ARRAY(17),
@@ -61,6 +66,7 @@ public enum DataTypes {
             case 7:  valueClass=Double.class;  isNumeric=true; break;
             case 8:  valueClass=String.class;  isString=true;  break;
             case 9:  valueClass=Date.class;    isDate=true;    break;
+            case 10: valueClass=java.math.BigDecimal.class; isNumeric=true; break;
             case 20: valueClass=Object.class;  isObject=true;  break;
 
             case 11: valueClass=List.class; isArray=true; itemClass=Boolean.class; isBooleanArray=true; break;
@@ -175,6 +181,11 @@ public enum DataTypes {
             case DATE: return DATE_ARRAY;
             case OBJECT: return OBJECT_ARRAY;
             case CUSTOM: return OBJECT_ARRAY; // Custom objects become object arrays
+
+            // No DECIMAL_ARRAY exists (arrays-of-decimal aren't in the metamodel);
+            // map to itself so @isArray on a decimal degrades gracefully rather
+            // than throwing. Matches the "no array form" intent of slot 10.
+            case DECIMAL: return DECIMAL;
 
             // Already arrays - return as-is
             case BOOLEAN_ARRAY:

@@ -34,3 +34,4 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0014 — Type-registry resolution is loader-scoped, not process-global](ADR-0014-loader-scoped-type-registry-resolution.md) — *Accepted*
 - [ADR-0017 — Cross-port runtime object model (ValueObject default + MetaObjectAware + self-registering ObjectClassRegistry + newInstance factory)](ADR-0017-cross-port-runtime-object-model.md) — *Accepted*
 - [ADR-0018 — Per-kind physical-name attributes within source paradigms](ADR-0018-per-kind-physical-name-attrs.md) — *Proposed*
+- [ADR-0019 — Runtime return-type contract: native in-process, canonicalize at the boundary](ADR-0019-runtime-return-type-contract.md) — *Accepted*

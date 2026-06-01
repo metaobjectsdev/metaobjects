@@ -160,6 +160,9 @@ public class JsonObjectReader extends JsonMetaDataReader {
                 case LONG:          mf.setLong( vo, in().nextLong() ); break;
                 case FLOAT:
                 case DOUBLE:        mf.setDouble( vo, in().nextDouble() ); break;
+                // JsonReader.nextString() returns a JSON number's exact text, so a
+                // BigDecimal built from it is lossless (nextDouble would not be).
+                case DECIMAL:       mf.setDecimal( vo, new java.math.BigDecimal( in().nextString() ) ); break;
                 case STRING_ARRAY:
                 case STRING:        mf.setString( vo, in().nextString() ); break;
 

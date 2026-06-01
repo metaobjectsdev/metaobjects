@@ -17,8 +17,9 @@ import java.sql.Statement;
  * their schema with this verbatim {@code CREATE TABLE} instead of the removed
  * runtime auto-create path. Column types mirror what the deleted Derby
  * createTable used to emit for each {@code java.sql.Types} mapping (long→BIGINT,
- * int→INTEGER, boolean→BOOLEAN, double→DOUBLE, float→REAL, timestamp→TIMESTAMP,
- * time→TIME), with the {@code id} primary key as a GENERATED-ALWAYS identity to
+ * int→INTEGER, boolean→BOOLEAN, double→DOUBLE, float→REAL, decimal→DECIMAL,
+ * timestamp→TIMESTAMP, time→TIME), with the {@code id} primary key as a
+ * GENERATED-ALWAYS identity to
  * mirror the {@code @generation:"increment"} identity the metadata declares.</p>
  */
 public final class CodecSchema {
@@ -35,7 +36,7 @@ public final class CodecSchema {
             + "  ratio DOUBLE,\n"
             + "  label VARCHAR(100),\n"
             + "  rate REAL,\n"
-            + "  amount DOUBLE,\n"
+            + "  amount DECIMAL(18,2),\n"
             + "  createdAt TIMESTAMP,\n"
             + "  startTime TIME\n"
             + ")";

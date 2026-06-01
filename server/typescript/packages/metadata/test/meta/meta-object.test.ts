@@ -104,13 +104,19 @@ describe("MetaObject.dbTable", () => {
     expect(obj.dbTable).toBeUndefined();
   });
 
-  it("returns undefined when source exists but @table is empty string", () => {
+  it("falls back to entity-name pluralization when @table is empty (FR-016 four-step rule)", () => {
+    // FR-016: empty @table is treated as absent at the resolution layer; the
+    // loader validation pass separately rejects literal "" with ERR_BAD_ATTR_VALUE.
+    // This programmatic test asserts the resolver's step-4 fallback when neither
+    // an alias nor a source.name is present.
     const obj = makeObject("User");
-    const source = new MetaSource(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), SOURCE_SUBTYPE_RDB);
+    // Pass empty string as source.name so step 3 (source.name) doesn't apply
+    // and we cleanly exercise step 4 (entity-name pluralize).
+    const source = new MetaSource(new TypeId(TYPE_SOURCE, SOURCE_SUBTYPE_RDB), "");
     source.setAttr(SOURCE_ATTR_TABLE, "");
     obj.addChild(source);
     obj.freeze();
-    expect(obj.dbTable).toBeUndefined();
+    expect(obj.dbTable).toBe("users");
   });
 });
 

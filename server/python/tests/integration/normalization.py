@@ -2,6 +2,22 @@
 
 The same row → the same canonical JSON on every port, so `expect` blocks
 compare byte-equal after canonical serialization.
+
+This is the **serialization boundary** for the Python port (ADR-0019): the
+runtime ``ObjectManager`` returns native pg8000 values (``int`` / ``Decimal`` /
+``datetime`` / ``date`` / ``time`` / ``uuid.UUID`` / ``dict`` / ``list``); the
+canonicalization to the cross-port wire form lives HERE, keyed by Python native
+type — mirroring the other ports' by-native-type runners (Java keys off
+``Long`` vs ``Integer`` / ``BigDecimal`` / ``OffsetDateTime``; TS keys off
+``typeof`` + Number.isInteger).
+
+The one SQL-type distinction a native Python value cannot carry is int4-vs-int8
+(pg8000 returns plain ``int`` for both, and a BIGINT aggregate over an INTEGER
+column is indistinguishable by value). The boundary recovers it from the
+per-column Postgres OID that ``ObjectManager`` surfaces alongside the query
+(``last_column_oids``) — the same SQL-type discriminator the other ports get from
+their driver's native typing. A field whose column OID is BIGINT (or any int8
+OID) stringifies; an INTEGER/SMALLINT int stays a JSON number.
 """
 from __future__ import annotations
 
@@ -14,21 +30,42 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
+# Stable Postgres type OIDs (see pg_type.dat) for the int8 family — the BIGINT→
+# string wire discriminator. INTEGER (23) / SMALLINT (21) stay JSON numbers.
+_PG_OID_INT8 = 20  # BIGINT / BIGSERIAL
 
-def normalize_row(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {k: normalize_value(v) for k, v in row.items()}
+
+def normalize_row(
+    row: Mapping[str, Any], column_oids: Mapping[str, int] | None = None
+) -> dict[str, Any]:
+    """Canonicalize a native-typed row to its wire form.
+
+    *column_oids* (field-name → Postgres type OID) supplies the int4-vs-int8
+    discriminator the value alone can't carry; when absent (top-level scalar /
+    expected-block normalization) the value-only path applies.
+    """
+    oids = column_oids or {}
+    return {k: normalize_value(v, oids.get(k)) for k, v in row.items()}
 
 
-def normalize_value(v: Any) -> Any:
+def normalize_value(v: Any, column_oid: int | None = None) -> Any:
     if v is None:
         return None
     if isinstance(v, bool):
+        # bool is an int subclass — must be tested BEFORE int.
         return v
     if isinstance(v, int):
-        # BIGINT vs INTEGER is a SQL-side distinction; pg8000 returns ints either way.
-        # We can't tell them apart without column metadata, so always stringify large
-        # ints (> 2^31) and leave smaller ones as JSON numbers. The corpus pins long
-        # PKs as strings, so this gives stable cross-port output without overreach.
+        # BIGINT → string (the cross-port contract; avoids the JS Number 2^53
+        # precision cliff). The OID is the authoritative discriminator: pg8000
+        # returns plain int for both INTEGER and BIGINT, so we key off the column
+        # OID surfaced by ObjectManager. With no OID (a nested jsonb int, or an
+        # `expect` literal), fall back to the value heuristic the TS runner uses
+        # (stringify ints outside the int4 range) so cross-port output stays
+        # stable without column metadata.
+        if column_oid == _PG_OID_INT8:
+            return str(v)
+        if column_oid is not None:
+            return v
         return str(v) if v > 2**31 - 1 or v < -(2**31) else v
     if isinstance(v, float):
         return _canonical_float(v)
@@ -39,21 +76,18 @@ def normalize_value(v: Any) -> Any:
     if isinstance(v, (bytes, bytearray, memoryview)):
         return base64.b64encode(bytes(v)).decode("ascii")
     if isinstance(v, datetime.datetime):
-        # Fallback only: TIMESTAMP/TIMESTAMPTZ rows are canonicalized to their
-        # wire strings at the driver layer (PostgresDriver._coerce_for_contract,
-        # keyed by column OID — the authoritative TIMESTAMP-vs-TIMESTAMPTZ
-        # discriminator), so a typed datetime should not normally reach here. If
-        # one does, follow the cross-port contract by tzinfo: tz-aware → UTC + "Z"
-        # (TIMESTAMPTZ), naive → no Z (plain TIMESTAMP). See
-        # fixtures/persistence-conformance/normalization.md.
+        # The contract distinguishes TIMESTAMP from TIMESTAMPTZ by tzinfo
+        # (ADR-0019): pg8000 surfaces a TIMESTAMPTZ as a tz-aware datetime and a
+        # plain TIMESTAMP as naive. tz-aware → UTC instant + "Z"; naive → wall
+        # clock with no Z. See fixtures/persistence-conformance/normalization.md.
         if v.tzinfo is not None:
             v = v.astimezone(datetime.timezone.utc).replace(tzinfo=None)
             return v.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(v.microsecond) + "Z"
         return v.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(v.microsecond)
     if isinstance(v, datetime.date):
-        return v.isoformat()
+        return v.strftime("%Y-%m-%d")
     if isinstance(v, datetime.time):
-        return v.isoformat()
+        return v.strftime("%H:%M:%S") + _ms_suffix(v.microsecond)
     if isinstance(v, str):
         if _DECIMAL_RE.match(v) and "." in v:
             return _canonical_decimal(decimal.Decimal(v))
@@ -67,9 +101,15 @@ def normalize_value(v: Any) -> Any:
     return str(v)
 
 
-def canonical_rows_json(rows: list[Mapping[str, Any]]) -> str:
+def canonical_rows_json(
+    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None
+) -> str:
     """Stable JSON: sort object keys, no whitespace, normalize each row first."""
-    return json.dumps([normalize_row(r) for r in rows], sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        [normalize_row(r, column_oids) for r in rows],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def canonical_value_json(v: Any) -> str:
@@ -104,6 +144,11 @@ def _canonical_float(x: float) -> str:
 
 
 def _ms_suffix(microseconds: int) -> str:
-    if microseconds == 0:
+    """Sub-second wire component at millisecond resolution, no trailing zeros, with
+    the ``.`` and the entire fractional part OMITTED when zero — the exact analogue
+    of the NUMERIC/float trailing-zero rule (normalization.md). ``.120`` → ``.12``;
+    ``.123`` → ``.123``; ``.000`` → ``""``."""
+    millis = microseconds // 1000
+    if millis == 0:
         return ""
-    return f".{microseconds // 1000:03d}"
+    return f".{millis:03d}".rstrip("0")

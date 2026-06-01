@@ -34,6 +34,7 @@ public final class DataConverter
 			case LONG: return toLong( val );
 			case FLOAT: return toFloat( val );
 			case DOUBLE: return toDouble( val );
+			case DECIMAL: return toBigDecimal( val );
 			case STRING: return toString( val );
 			case DATE: return toDate( val );
 			case OBJECT: return toObject( val );
@@ -317,7 +318,43 @@ public final class DataConverter
 	
 	    return 0.0;
 	} // toDouble
-	
+
+	/**
+	 * Converts the object value to an exact {@link BigDecimal} (DataTypes.DECIMAL /
+	 * field.decimal). Unlike {@link #toDouble}, this preserves full precision: a
+	 * {@link BigDecimal} passes through unchanged, and a numeric/string source is
+	 * converted via its exact decimal text — never via {@code double}, which would
+	 * reintroduce the float-rounding this type exists to avoid.
+	 *
+	 * @param val Value
+	 * @return BigDecimal value (null when {@code val} is null or an empty string)
+	 */
+	public static java.math.BigDecimal toBigDecimal( Object val )
+	{
+	    if ( val == null ) return null;
+
+	    if ( val instanceof java.math.BigDecimal ) return (java.math.BigDecimal) val;
+	    if ( val instanceof String ) {
+	        String s = ((String) val).trim();
+	        if ( s.isEmpty() ) return null;
+	        try { return new java.math.BigDecimal( s ); } catch ( NumberFormatException ignored ) { return java.math.BigDecimal.ZERO; }
+	    }
+	    if ( val instanceof Boolean ) return ((Boolean) val) ? java.math.BigDecimal.ONE : java.math.BigDecimal.ZERO;
+	    if ( val instanceof java.math.BigInteger ) return new java.math.BigDecimal( (java.math.BigInteger) val );
+	    if ( val instanceof Byte || val instanceof Short || val instanceof Integer || val instanceof Long ) {
+	        return java.math.BigDecimal.valueOf( ((Number) val).longValue() );
+	    }
+	    if ( val instanceof Float || val instanceof Double ) {
+	        // Go through the shortest-decimal text form (not the binary double) so a
+	        // value like 0.1 yields BigDecimal("0.1"), not 0.1000000000000000055...
+	        return new java.math.BigDecimal( val.toString() );
+	    }
+	    if ( val instanceof Date ) return java.math.BigDecimal.valueOf( ((Date) val).getTime() );
+
+	    try { return new java.math.BigDecimal( val.toString().trim() ); } catch ( NumberFormatException ignored ) {}
+	    return java.math.BigDecimal.ZERO;
+	} // toBigDecimal
+
 	/**
 	 * Converts the object value to Float value
 	 * 

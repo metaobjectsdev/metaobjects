@@ -15,7 +15,7 @@
               "source.rdb": {
                 "@kind": "view",
                 "@role": "replica",
-                "@table": "v_products_replica"
+                "@view": "v_products_replica"
               }
             },
             {

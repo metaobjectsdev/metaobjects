@@ -4,13 +4,27 @@ Compiles a Filter dict to parameterized SQL and runs it via a pg-style
 driver. Identifiers are double-quoted throughout (mixed-case columns like
 `programId` round-trip through PG); placeholders are pg8000 / psycopg-style
 ``%s``.
+
+Per ADR-0019 (runtime return-type contract) the query path returns **native,
+in-process Python types** — pg8000's own `int` / `Decimal` / `datetime` /
+`date` / `time` / `uuid.UUID` / `dict` / `list`. Canonicalization to the
+cross-port wire form is a *serialization/boundary* concern, applied by the
+persistence runner (see ``tests/integration/normalization.py``), never baked
+into this runtime query path.
+
+The one piece of SQL-type information the boundary cannot recover from a native
+Python value is the int4-vs-int8 distinction (pg8000 returns plain ``int`` for
+both INTEGER and BIGINT, and a BIGINT aggregate over an INTEGER column — e.g.
+``count``/``sum`` → BIGINT vs ``min``/``max`` → INTEGER on the projection views —
+is genuinely indistinguishable by value). Other ports get this for free from
+their driver's native typing (Java JDBC ``Long`` vs ``Integer``; node-postgres
+BIGINT-as-string vs INTEGER-as-number). To keep the same discriminator available
+at the Python boundary we expose the per-column OID alongside each query — as
+out-of-band type metadata, not by mutating the native row values — so the runner
+can apply the BIGINT→string wire rule by SQL type, exactly like the other ports.
 """
 from __future__ import annotations
 
-import datetime as _datetime
-import decimal
-import re
-import uuid as _uuid
 from collections.abc import Iterable
 from typing import Any, Protocol
 
@@ -21,31 +35,6 @@ from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
-
-
-# pg8000 / psycopg type oids coerced at extraction so the cross-port
-# normalization contract (BIGINT → string, NUMERIC → canonical decimal string,
-# the temporal wire forms) is honored without leaking SQL-type awareness into
-# the comparison layer. Mirrors the TS authority's OID-keyed driver parsers
-# (temporal-parsers.ts) — pg8000 surfaces TIMESTAMP and TIMESTAMPTZ as datetimes
-# that differ only by tzinfo, but the OID is the authoritative discriminator, so
-# we key off it (never off the python value type) exactly like TS keys off the
-# column type OID. Stable across PG versions (see pg_type.dat).
-_PG_OID_BIGINT = 20
-_PG_OID_NUMERIC = 1700
-_PG_OID_UUID = 2950
-_PG_OID_DATE = 1082
-_PG_OID_TIME = 1083
-_PG_OID_TIMESTAMP = 1114
-_PG_OID_TIMESTAMPTZ = 1184
-
-# Canonical 8-4-4-4-12 hex shape (case-insensitive). Used to recognize a uuid
-# value surfaced as text so the PORT can lowercase-canonicalize it dialect-
-# independently (mirrors the Java parseField uuid fix) — never relying on the DB
-# to return lowercase.
-_UUID_SHAPE = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
 
 
 # Filter shape:
@@ -69,31 +58,49 @@ class Connection(Protocol):
     def close(self) -> None: ...
 
 
+class SelectResult:
+    """A native-typed result set plus the per-column OID type metadata.
+
+    ``rows`` carry pg8000's native Python values verbatim (ADR-0019 — the runtime
+    returns native types, never wire-strings). ``column_oids`` maps each selected
+    column name to its Postgres type OID so the serialization boundary can apply
+    the int4-vs-int8 (and any other SQL-type-driven) wire rule without inspecting
+    the value — type metadata travels beside the data, not inside it.
+    """
+
+    __slots__ = ("rows", "column_oids")
+
+    def __init__(self, rows: list[dict[str, Any]], column_oids: dict[str, int]) -> None:
+        self.rows = rows
+        self.column_oids = column_oids
+
+
 class PostgresDriver:
     """Wrap a DB-API 2 connection (pg8000 / psycopg). Owns no state itself."""
 
     def __init__(self, conn: Connection) -> None:
         self._conn = conn
 
-    def select(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+    def select(self, sql: str, params: tuple[Any, ...] = ()) -> SelectResult:
         cur = self._conn.cursor()
         try:
             cur.execute(sql, params)
             cols = [d[0] for d in cur.description]
             oids = [d[1] for d in cur.description]
-            return [
-                {c: _coerce_for_contract(v, oids[i]) for i, (c, v) in enumerate(zip(cols, row))}
+            column_oids = {c: oids[i] for i, c in enumerate(cols)}
+            rows = [
+                {c: v for c, v in zip(cols, row)}
                 for row in cur.fetchall()
             ]
+            return SelectResult(rows, column_oids)
         finally:
             cur.close()
 
     def scalar(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
-        rows = self.select(sql, params)
-        if not rows:
+        result = self.select(sql, params)
+        if not result.rows:
             return None
-        first_row = rows[0]
-        return next(iter(first_row.values()))
+        return next(iter(result.rows[0].values()))
 
 
 class ObjectManager:
@@ -106,6 +113,16 @@ class ObjectManager:
         for c in root.own_children():
             if isinstance(c, MetaObject):
                 self._entity_by_name.setdefault(c.name, c)
+        #: Per-field Postgres type OID from the most recent ``find_*`` query,
+        #: keyed by metadata field name. Out-of-band SQL-type metadata for the
+        #: serialization boundary (the int4-vs-int8 wire discriminator); the
+        #: returned row values themselves stay native (ADR-0019).
+        #:
+        #: Single-query-scoped: overwritten by each ``find_*`` call, so read it
+        #: immediately after the query whose result you are serializing. Not
+        #: safe to interleave concurrent queries on one ObjectManager instance
+        #: (the row values are unaffected — only this discriminator is racy).
+        self.last_column_oids: dict[str, int] = {}
 
     # --- Public API ----------------------------------------------------------
 
@@ -146,10 +163,16 @@ class ObjectManager:
             sql += f" LIMIT {int(limit)}"
         if offset is not None:
             sql += f" OFFSET {int(offset)}"
-        rows = self._driver.select(sql, tuple(params))
+        result = self._driver.select(sql, tuple(params))
         # Map raw column → metadata field name for cross-port row-shape parity.
+        # Values stay native (ADR-0019); the boundary canonicalizes them.
         col_to_field = {_column_of(f): f.name for f in entity.fields()}
-        return [{col_to_field.get(k, k): v for k, v in row.items()} for row in rows]
+        self.last_column_oids = {
+            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
+        }
+        return [
+            {col_to_field.get(k, k): v for k, v in row.items()} for row in result.rows
+        ]
 
     def count(self, entity_name: str, filter: Filter | None = None) -> int:
         entity = self._require_entity(entity_name)
@@ -266,84 +289,3 @@ def _q(ident: str) -> str:
         raise ValueError(f"unsafe identifier: {ident}")
     return f'"{ident}"'
 
-
-def _coerce_for_contract(value: Any, oid: int) -> Any:
-    if value is None:
-        return None
-    if oid == _PG_OID_BIGINT and isinstance(value, int) and not isinstance(value, bool):
-        return str(value)
-    if oid == _PG_OID_NUMERIC and isinstance(value, decimal.Decimal):
-        s = format(value.normalize(), "f")
-        if "." in s:
-            s = s.rstrip("0").rstrip(".")
-        return s
-    # uuid: the PORT canonicalizes to a lowercased str dialect-independently
-    # (matching the wire contract + the other ports — mirrors the Java parseField
-    # uuid fix). A driver may surface a uuid column as a native uuid.UUID (pg8000)
-    # or as text; either way the runtime row value is a lowercased str, never a
-    # raw uuid.UUID. We do NOT rely on Postgres returning canonical lowercase.
-    if isinstance(value, _uuid.UUID):
-        return str(value).lower()
-    if oid == _PG_OID_UUID and isinstance(value, str) and _UUID_SHAPE.match(value):
-        return value.lower()
-    # Temporal canonicalization, keyed by column OID (the authoritative
-    # TIMESTAMP-vs-TIMESTAMPTZ discriminator — pg8000 returns a tz-aware datetime
-    # for TIMESTAMPTZ and a naive datetime for plain TIMESTAMP, but we trust the
-    # OID, not the python value, to mirror the TS authority's OID-keyed parsers).
-    if oid == _PG_OID_TIMESTAMPTZ and isinstance(value, _datetime.datetime):
-        return _canonical_timestamptz(value)
-    if oid == _PG_OID_TIMESTAMP and isinstance(value, _datetime.datetime):
-        return _canonical_timestamp(value)
-    if oid == _PG_OID_DATE and isinstance(value, _datetime.date):
-        return _canonical_date(value)
-    if oid == _PG_OID_TIME and isinstance(value, _datetime.time):
-        return _canonical_time(value)
-    return value
-
-
-def _ms_suffix(microsecond: int) -> str:
-    """Sub-second wire component at **millisecond** resolution (SP-A).
-
-    Mirrors the cross-port rule in fixtures/persistence-conformance/normalization.md:
-    truncate to milliseconds, strip trailing zeros, and OMIT the ``.`` and the entire
-    fractional component when the sub-second value is zero — the exact analogue of the
-    NUMERIC/float trailing-zero rule, applied to the fractional-seconds field. This is
-    the linchpin that keeps every whole-second row byte-identical (``…:00`` stays
-    ``…:00``, never ``…:00.000``). ``.120`` → ``.12``; ``.123`` → ``.123``.
-    """
-    if microsecond == 0:
-        return ""
-    return f".{microsecond // 1000:03d}".rstrip("0")
-
-
-def _canonical_timestamptz(dt: _datetime.datetime) -> str:
-    """TIMESTAMPTZ → ``YYYY-MM-DDTHH:MM:SS[.fff]Z`` (always UTC).
-
-    pg8000 surfaces a TIMESTAMPTZ as a tz-aware ``datetime``; convert any offset
-    to UTC and append ``Z`` so a non-UTC-seeded value reads back as its UTC
-    equivalent (proving normalization, not just formatting). A naive datetime on
-    this OID is treated as already-UTC (defensive; pg8000 always carries tzinfo
-    here). A sub-second component is carried at millisecond resolution per the
-    omit-when-zero rule (see ``_ms_suffix``).
-    """
-    if dt.tzinfo is not None:
-        dt = dt.astimezone(_datetime.timezone.utc).replace(tzinfo=None)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(dt.microsecond) + "Z"
-
-
-def _canonical_timestamp(dt: _datetime.datetime) -> str:
-    """TIMESTAMP (no tz) → ``YYYY-MM-DDTHH:MM:SS[.fff]`` (no Z); wall clock passes through.
-
-    Carries a millisecond sub-second component per the omit-when-zero rule.
-    """
-    return dt.strftime("%Y-%m-%dT%H:%M:%S") + _ms_suffix(dt.microsecond)
-
-
-def _canonical_date(d: _datetime.date) -> str:
-    """DATE → ``YYYY-MM-DD``."""
-    return d.strftime("%Y-%m-%d")
-
-
-def _canonical_time(t: _datetime.time) -> str:
-    """TIME → ``HH:MM:SS[.fff]``; millisecond sub-second component, omit-when-zero."""
-    return t.strftime("%H:%M:%S") + _ms_suffix(t.microsecond)

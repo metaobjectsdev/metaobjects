@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "CustomerList",
+          "children": [
+            {
+              "source.rdb": {
+                "@function": "fn_customer_list",
+                "@kind": "tableFunction"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

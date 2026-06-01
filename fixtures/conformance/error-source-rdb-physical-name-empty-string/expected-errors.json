@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[0]['source.rdb']"
+      }
+    }
+  ],
+  "warnings": []
+}

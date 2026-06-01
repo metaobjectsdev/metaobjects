@@ -262,24 +262,16 @@ final class ObjectManagerDbAdapter {
      *       in UTC so {@link Normalization} appends the suffix (a plain TIMESTAMP stays
      *       a {@link java.sql.Timestamp} and renders with no {@code Z}).</li>
      * </ul>
+     *
+     * <p>NUMERIC/DECIMAL needs no fix-up here: as of SP-D Unit 2 {@code DecimalField}
+     * is backed by {@code DataTypes.DECIMAL}, so OMDB surfaces an exact
+     * {@link java.math.BigDecimal} natively and {@link Normalization} canonicalizes
+     * it directly (the prior {@code BigDecimal.valueOf(double)} workaround is gone).</p>
      */
     private static Object coerceWireType(MetaField<?> mf, Object value, Map<String, Integer> columnSqlTypes) {
         if (value == null) return null;
         if (isTimestampTzField(mf) && value instanceof java.util.Date d) {
             return d.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        // NUMERIC/DECIMAL → BigDecimal. OMDB's DecimalField is backed by DataTypes.DOUBLE
-        // (its getValueClass is Double), so ObjectManagerDB surfaces the value as a Double
-        // even though the DecimalCodec read it via ResultSet.getBigDecimal. Restore the
-        // BigDecimal for a NUMERIC/DECIMAL column so Normalization emits the canonical
-        // no-trailing-zeros wire string. BigDecimal.valueOf(double) round-trips through the
-        // shortest-decimal Double.toString, which is exact for the in-band corpus values
-        // (12.5, -3.25, 100.0, 0.0001).
-        if (value instanceof Double dbl) {
-            Integer sqlType = columnSqlTypes.get(mf.getName());
-            if (sqlType != null && (sqlType == Types.NUMERIC || sqlType == Types.DECIMAL)) {
-                return java.math.BigDecimal.valueOf(dbl);
-            }
         }
         if (value instanceof Long l) {
             Integer sqlType = columnSqlTypes.get(mf.getName());

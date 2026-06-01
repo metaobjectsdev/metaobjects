@@ -9,7 +9,7 @@
             {
               "source.rdb": {
                 "@kind": "view",
-                "@table": "cases_v1",
+                "@view": "cases_v1",
                 "@schema": "p3_api"
               }
             },

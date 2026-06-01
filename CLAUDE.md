@@ -420,6 +420,7 @@ Preserve the following contracts exactly across all language ports:
 **Wire format:**
 - Currency: integer minor units on the wire always. Float arithmetic for money is forbidden.
 - Pagination: `?limit=N&offset=N` — identical across all generated endpoints.
+- **Runtime return types**: a port's runtime `ObjectManager` returns **native in-process language types** (`field.decimal`→`BigDecimal`/`decimal`/`Decimal`, TS `string`; temporal→native; jsonb→native map). Wire canonicalization (the bullets above + `normalization.md`) is applied at the **serialization boundary**, never inside the runtime query path. See [ADR-0019](spec/decisions/ADR-0019-runtime-return-type-contract.md).
 
 **Grammar:**
 - Dotted-path syntax for `@via`: `"Program.weeks"` or `"Program.weeks.workouts"`.

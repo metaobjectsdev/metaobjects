@@ -37,7 +37,7 @@
             {
               "source.rdb": {
                 "@kind": "view",
-                "@table": "v_program_summary"
+                "@view": "v_program_summary"
               }
             },
             {

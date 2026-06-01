@@ -34,7 +34,7 @@ public class DecimalField extends PrimitiveField<BigDecimal> {
     public static final String ATTR_MAX_VALUE = "maxValue";   // Maximum allowed value
 
     public DecimalField(String name) {
-        super(SUBTYPE_DECIMAL, name, DataTypes.DOUBLE); // Use DOUBLE DataType for now, could add DECIMAL later
+        super(SUBTYPE_DECIMAL, name, DataTypes.DECIMAL);
     }
 
     /**

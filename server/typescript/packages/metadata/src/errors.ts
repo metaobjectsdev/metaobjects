@@ -49,6 +49,9 @@ export const ERROR_CODES = [
   "ERR_RESERVED_ATTR",
   "ERR_SOURCE_NO_PRIMARY",
   "ERR_SOURCE_MULTIPLE_PRIMARY",
+  // FR-016 / ADR-0018 — per-kind physical-name alias validation on source.rdb.
+  "ERR_PHYSICAL_NAME_KIND_MISMATCH",
+  "ERR_PHYSICAL_NAME_MULTIPLE",
   // ADR-0006 D2 — YAML type-coercion guard. Emitted by every port's YAML
   // loader when a coerced scalar mismatches the schema-declared type.
   "ERR_YAML_COERCION",
@@ -67,6 +70,9 @@ export const WARNING_CODES = [
   // strings; wrapped at the loader boundary into the envelope shape with
   // this code. Retired as those sites are migrated to envelopes.
   "WARN_LEGACY",
+  // FR-016 / ADR-0018 — pre-1.0 legacy @table spelling on a non-table @kind.
+  // Loader accepts; canonical-serializer rewrites to the kind-matching alias.
+  "WARN_LEGACY_PHYSICAL_NAME_ALIAS",
 ] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
 
