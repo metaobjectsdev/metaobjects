@@ -81,6 +81,35 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         }
         """;
 
+    // Nested/array payload: Order { customer: Customer{name}, items: Item[]{sku,qty} }.
+    // Used by the section-context drift cases below. NO package, so a BARE
+    // @objectRef resolves to its FQN identically across ports (bare == FQN only
+    // with no package — see GeneratedRenderHelperConformanceTest's order case).
+    private static final String ORDER_FIXTURE = """
+        {
+          "metadata.root": { "children": [
+            { "object.value": { "name": "Customer", "children": [
+                { "field.string": { "name": "name" } }
+            ] } },
+            { "object.value": { "name": "Item", "children": [
+                { "field.string": { "name": "sku" } },
+                { "field.int": { "name": "qty" } }
+            ] } },
+            { "object.value": { "name": "Order", "children": [
+                { "field.object": { "name": "customer", "@objectRef": "Customer" } },
+                { "field.object": { "name": "items", "isArray": true, "@objectRef": "Item" } }
+            ] } },
+            { "template.output": {
+                "name": "OrderEmail",
+                "@kind": "email",
+                "@payloadRef": "Order",
+                "@subjectRef": "email/order.subject",
+                "@htmlBodyRef": "email/order.html"
+            } }
+          ] }
+        }
+        """;
+
     // -------------------------------------------------------------------------
     // Test 1 — document → String
     // -------------------------------------------------------------------------
@@ -191,6 +220,56 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
             msg.contains("WelcomePage"));
         assertTrue("drift message must name the ref 'pages/welcome'; got: " + msg,
             msg.contains("pages/welcome"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 3c — BONUS: SECTION-context drift ({{#items}}{{bogus}}{{/items}}) is
+    // caught — proving the drift gate walks nested/section context, not just root.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void driftGateCatchesSectionContextDrift() throws Exception {
+        Path gen = tmp.newFolder("sec-drift-gen").toPath();
+        Path ws  = tmp.newFolder("sec-drift-ws").toPath();
+        Path templates = tmp.newFolder("sec-drift-templates").toPath();
+        writeTemplate(templates, "email/order.subject.mustache", "Order for {{customer.name}}");
+        // {{bogus}} is NOT a field on the Item element type the {{#items}} section pushes.
+        writeTemplate(templates, "email/order.html.mustache",
+            "<ul>{{#items}}<li>{{bogus}}</li>{{/items}}</ul>");
+
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "sec-drift", ORDER_FIXTURE);
+
+        GeneratorException ex = assertThrows(GeneratorException.class,
+            () -> generate(loader, gen, templates));
+
+        String msg = ex.getMessage();
+        assertTrue("section-drift message must name ERR_VAR_NOT_ON_PAYLOAD; got: " + msg,
+            msg.contains("ERR_VAR_NOT_ON_PAYLOAD"));
+        assertTrue("section-drift message must name the offending field 'bogus'; got: " + msg,
+            msg.contains("bogus"));
+        assertTrue("section-drift message must name the ref 'email/order.html'; got: " + msg,
+            msg.contains("email/order.html"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 3d — BONUS inverse: a clean nested/array section template does NOT throw.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void cleanNestedArraySectionTemplateDoesNotThrow() throws Exception {
+        Path gen = tmp.newFolder("sec-clean-gen").toPath();
+        Path ws  = tmp.newFolder("sec-clean-ws").toPath();
+        Path templates = tmp.newFolder("sec-clean-templates").toPath();
+        writeTemplate(templates, "email/order.subject.mustache", "Order for {{customer.name}}");
+        writeTemplate(templates, "email/order.html.mustache",
+            "<h1>{{customer.name}}</h1><ul>{{#items}}<li>{{sku}} x{{qty}}</li>{{/items}}</ul>");
+
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "sec-clean", ORDER_FIXTURE);
+
+        generate(loader, gen, templates);
+        assertTrue("clean nested codegen must emit the render helper",
+            collectSources(gen).stream()
+                .anyMatch(f -> f.getName().equals("OrderEmailRenderHelper.java")));
     }
 
     // -------------------------------------------------------------------------

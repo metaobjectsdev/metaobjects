@@ -135,6 +135,117 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
     }
 
     // -------------------------------------------------------------------------
+    // Gap 1 — email html SAFETY: @format=html part escapes markup/XSS; the
+    // @format=text parts (subject, textBody) stay raw. Renders the EXISTING
+    // WelcomeEmail with a special-char name (no fixture change). Expected strings
+    // are derived from the actual engine output (xml escaper: < > & " ') and pinned.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void emailHtmlPartEscapesButTextPartsRaw() throws Exception {
+        assertNotNull("corpus must be reachable", CORPUS);
+
+        Path templates = CORPUS.resolve("templates");
+        MetaDataLoader loader = loadCorpus(CORPUS.resolve("meta.json"), "email-xss");
+
+        Path gen = tmp.newFolder("email-xss-gen").toPath();
+        generate(loader, gen, templates);
+
+        Path classes = compile(collectSources(gen));
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+
+            Class<?> payloadClass = cl.loadClass("acme.ai.prompts.WelcomeEmailPayload");
+            Object payload = payloadClass.getConstructor(String.class).newInstance("<b>A & Co</b>");
+
+            Class<?> helperClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper");
+            Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
+            Class<?> emailDocClass = Class.forName("com.metaobjects.render.EmailDocument");
+            Object provider = newFilesystemProvider(templates);
+
+            Method render = helperClass.getMethod("render", payloadClass, providerClass);
+            Object email = render.invoke(null, payload, provider);
+
+            String htmlBody = (String) emailDocClass.getMethod("htmlBody").invoke(email);
+            String subject  = (String) emailDocClass.getMethod("subject").invoke(email);
+            String textBody = (String) emailDocClass.getMethod("textBody").invoke(email);
+
+            // html part: < > & entity-escaped → no raw <b> tag reaches a mail client.
+            assertEquals("<p>Hi &lt;b&gt;A &amp; Co&lt;/b&gt;</p>", htmlBody);
+            assertFalse("html body must NOT contain a raw <b> tag; got: " + htmlBody,
+                htmlBody.contains("<b>A"));
+            // text parts (@format=text): raw, NOT escaped.
+            assertEquals("Welcome <b>A & Co</b>", subject);
+            assertEquals("Hi <b>A & Co</b>", textBody);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Gaps 2 + 3 — nested customer + array-of-items with a {{#items}} section loop
+    // and a {{> shared/footer}} partial in the html body. Proves the field-tree
+    // builder + build-time drift gate handle the nested/array shape (clean → no
+    // throw) and that section loops + partials render for email.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void emailOrderRendersNestedArrayLoopAndPartial() throws Exception {
+        assertNotNull("corpus must be reachable", CORPUS);
+
+        Path templates = CORPUS.resolve("templates");
+        // The nested/array VOs live in nested/meta.json (a NO-PACKAGE sub-corpus) so
+        // a BARE @objectRef resolves identically in both ports' render-helper
+        // field-tree walks (TS resolves objectRef by short name; the JVM expands a
+        // packaged ref to an FQN — bare == FQN only with no package). Both share
+        // templates/. No package → generated classes land in the bare `prompts` pkg.
+        MetaDataLoader loader = loadCorpus(CORPUS.resolve("nested").resolve("meta.json"), "order");
+
+        Path gen = tmp.newFolder("order-gen").toPath();
+        // The clean nested template must pass the build-time drift gate (no throw).
+        generate(loader, gen, templates);
+
+        Path classes = compile(collectSources(gen));
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+
+            // SpringPayloadGenerator names nested payloads after the VO short name:
+            // CustomerPayload + ItemPayload; the root payload after the template:
+            // OrderEmailPayload(CustomerPayload customer, List<ItemPayload> items).
+            Class<?> customerClass = cl.loadClass("prompts.CustomerPayload");
+            Object customer = customerClass.getConstructor(String.class).newInstance("Ada");
+
+            // field.int → boxed Integer in the generated payload record.
+            Class<?> itemClass = cl.loadClass("prompts.ItemPayload");
+            Object itemA = itemClass.getConstructor(String.class, Integer.class)
+                .newInstance("A1", Integer.valueOf(2));
+            Object itemB = itemClass.getConstructor(String.class, Integer.class)
+                .newInstance("B2", Integer.valueOf(1));
+
+            Class<?> payloadClass = cl.loadClass("prompts.OrderEmailPayload");
+            Object payload = payloadClass
+                .getConstructor(customerClass, java.util.List.class)
+                .newInstance(customer, java.util.List.of(itemA, itemB));
+
+            Class<?> helperClass = cl.loadClass("prompts.OrderEmailRenderHelper");
+            Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
+            Class<?> emailDocClass = Class.forName("com.metaobjects.render.EmailDocument");
+            Object provider = newFilesystemProvider(templates);
+
+            Method render = helperClass.getMethod("render", payloadClass, providerClass);
+            Object email = render.invoke(null, payload, provider);
+
+            assertEquals("Order for Ada", emailDocClass.getMethod("subject").invoke(email));
+            assertEquals("<h1>Ada</h1><ul><li>A1 x2</li><li>B2 x1</li></ul><hr/>Sent by Acme",
+                emailDocClass.getMethod("htmlBody").invoke(email));
+            assertEquals("Order for Ada: A1 x2; B2 x1;",
+                emailDocClass.getMethod("textBody").invoke(email));
+            // Gap 3 — the partial resolved into the html body.
+            assertTrue("html body must contain the resolved footer partial",
+                ((String) emailDocClass.getMethod("htmlBody").invoke(email))
+                    .contains("<hr/>Sent by Acme"));
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // drift → GeneratorException(ERR_VAR_NOT_ON_PAYLOAD)
     // -------------------------------------------------------------------------
 

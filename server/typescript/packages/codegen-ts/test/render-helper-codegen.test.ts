@@ -140,6 +140,82 @@ describe("render-helper codegen — BUILD-TIME drift gate", () => {
     expect(() => renderRenderHelper(root, "WelcomePage", clean)).not.toThrow();
   });
 
+  test("a SECTION-context drift ({{#items}}{{bogus}}{{/items}}) THROWS — gate walks nested context", async () => {
+    // Nested/array payload: Order { customer: Customer{name}, items: Item[]{sku,qty} }.
+    // {{bogus}} is not a field on the Item element type pushed by the {{#items}}
+    // section — proving the drift gate walks the section/nested context, not just root.
+    const root = await loadRoot([
+      { "object.value": { name: "Customer", children: [{ "field.string": { name: "name" } }] } },
+      {
+        "object.value": {
+          name: "Item",
+          children: [{ "field.string": { name: "sku" } }, { "field.int": { name: "qty" } }],
+        },
+      },
+      {
+        "object.value": {
+          name: "Order",
+          children: [
+            { "field.object": { name: "customer", "@objectRef": "Customer" } },
+            { "field.object": { name: "items", isArray: true, "@objectRef": "Item" } },
+          ],
+        },
+      },
+      {
+        "template.output": {
+          name: "OrderEmail",
+          "@kind": "email",
+          "@payloadRef": "Order",
+          "@subjectRef": "emails/order.subject",
+          "@htmlBodyRef": "emails/order.html",
+        },
+      },
+    ]);
+    const provider = new InMemoryProvider({
+      "emails/order.subject": "Order for {{customer.name}}",
+      // drift INSIDE the {{#items}} section — {{bogus}} is not on Item.
+      "emails/order.html": "<ul>{{#items}}<li>{{bogus}}</li>{{/items}}</ul>",
+    });
+    expect(() => renderRenderHelper(root, "OrderEmail", provider)).toThrow(
+      /render-helper drift.*OrderEmail.*emails\/order\.html.*ERR_VAR_NOT_ON_PAYLOAD.*bogus/,
+    );
+  });
+
+  test("a clean nested/array template ({{#items}}{{sku}}{{/items}}) does NOT throw", async () => {
+    const root = await loadRoot([
+      { "object.value": { name: "Customer", children: [{ "field.string": { name: "name" } }] } },
+      {
+        "object.value": {
+          name: "Item",
+          children: [{ "field.string": { name: "sku" } }, { "field.int": { name: "qty" } }],
+        },
+      },
+      {
+        "object.value": {
+          name: "Order",
+          children: [
+            { "field.object": { name: "customer", "@objectRef": "Customer" } },
+            { "field.object": { name: "items", isArray: true, "@objectRef": "Item" } },
+          ],
+        },
+      },
+      {
+        "template.output": {
+          name: "OrderEmail",
+          "@kind": "email",
+          "@payloadRef": "Order",
+          "@subjectRef": "emails/order.subject",
+          "@htmlBodyRef": "emails/order.html",
+        },
+      },
+    ]);
+    const provider = new InMemoryProvider({
+      "emails/order.subject": "Order for {{customer.name}}",
+      "emails/order.html": "<h1>{{customer.name}}</h1><ul>{{#items}}<li>{{sku}} x{{qty}}</li>{{/items}}</ul>",
+    });
+    expect(() => renderRenderHelper(root, "OrderEmail", provider)).not.toThrow();
+  });
+
   test("a drifted EMAIL part-ref THROWS naming the offending part-ref + field", async () => {
     const root = await loadRoot(EMAIL_MODEL);
     const provider = new InMemoryProvider({
