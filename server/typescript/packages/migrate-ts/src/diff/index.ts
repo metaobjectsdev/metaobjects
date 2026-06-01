@@ -135,9 +135,9 @@ export async function diff(
       // CHECK constraints are inlined into the CREATE TABLE DDL at emit time
       // (both postgres and sqlite support inline CHECK), so they ride on
       // `create-table.table.checks` rather than as separate add-check changes.
-      // The diff intentionally never produces add-check / drop-check today;
-      // existing-table enum-value evolution is deferred (see diffTableChecks
-      // removal note in Pass 2).
+      // For brand-new tables no add-check is emitted here; existing-table CHECK
+      // evolution (add/drop on tables present on both sides) is handled by
+      // diffTableChecks in Pass 2.
     }
   }
   // Pass 1b: tables present in actual but not expected → drop-table
