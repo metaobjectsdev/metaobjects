@@ -11,6 +11,22 @@ describe("normalizeCheckExpr", () => {
     expect(checkExprEquals("length(code) >= 3", "(length(code) >= 3)")).toBe(true);
     expect(checkExprEquals("status IN ('A', 'B')", "status in ('A', 'B')")).toBe(true);
   });
+  test("PG `= ANY (ARRAY[...])` rewrite of an IN-list equals the generated IN form", () => {
+    // The crux idempotency case: PG stores `status IN ('OPEN','CLOSED')` and
+    // pg_get_constraintdef returns `status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])`.
+    // Both must normalize equal, else enum CHECKs churn drop+add on every --from-db run.
+    expect(checkExprEquals(
+      "status IN ('OPEN', 'CLOSED')",
+      "status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])",
+    )).toBe(true);
+    expect(normalizeCheckExpr("status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])"))
+      .toBe("status in 'open', 'closed'");
+    // different member sets remain distinct after the fold
+    expect(checkExprEquals(
+      "status IN ('OPEN', 'CLOSED')",
+      "status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text, 'CANCELLED'::text])",
+    )).toBe(false);
+  });
   test("genuinely different expressions are not equal", () => {
     expect(checkExprEquals("col >= 0", "col >= 5")).toBe(false);
   });

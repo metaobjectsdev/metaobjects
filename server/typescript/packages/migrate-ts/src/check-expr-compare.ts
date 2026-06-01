@@ -1,20 +1,28 @@
 // src/check-expr-compare.ts
 //
-// CHECK-expression comparison. Postgres rewrites a stored CHECK body — adding
-// parens around terms, normalizing whitespace/case — so the raw text we generate
-// (`col >= 0 AND col <= 100`) and the introspected text (`(col >= 0) AND (col <= 100)`)
-// differ textually but mean the same thing. This reduces both to ONE canonical
-// form for comparison. Reliable here because every check expression we emit is
-// machine-derived with a simple, known shape (comparison / IN / length / regex) —
-// there is no arbitrary author SQL to mis-normalize.
+// CHECK-expression comparison. Postgres rewrites a stored CHECK body so the raw
+// text we generate and the introspected text differ textually but mean the same
+// thing. This reduces both to ONE canonical form for comparison. Reliable here
+// because every check expression we emit is machine-derived with a simple, known
+// shape (comparison / IN / length / regex) — there is no arbitrary author SQL to
+// mis-normalize. The rewrites PG applies (verified against a live server):
+//   - parenthesizes terms:  `col >= 0 AND col <= 100`  →  `(col >= 0) AND (col <= 100)`
+//   - rewrites IN-lists:     `status IN ('A','B')`      →  `status = ANY (ARRAY['A'::text, 'B'::text])`
+//   - appends type casts:    string literals gain `::text`
+// All three are canonicalized below so an enum/range CHECK introspected from PG
+// compares equal to the one we generate (idempotency on the --from-db / verify paths).
 
-/** Canonical form: drop all parens, collapse whitespace, trim, lower-case. */
+/** Canonical form: drop casts/brackets/parens, fold `= ANY (ARRAY[…])` back to `IN`, lower-case, collapse whitespace. */
 export function normalizeCheckExpr(expr: string): string {
-  return expr
-    .replace(/[()]/g, " ")
+  const stripped = expr
+    .toLowerCase()
+    .replace(/::\s*"?\w+"?/g, "") // drop `::text` / `::"MyType"` type casts PG adds to literals
+    .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
     .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+    .trim();
+  // PG stores `col IN (…)` as `col = ANY (ARRAY[…])`; after the bracket strip above
+  // that reads `col = any array …`. Fold it back to the `col in …` form we emit.
+  return stripped.replace(/=\s*any\s+array/g, "in").replace(/\s+/g, " ").trim();
 }
 
 /** True when two CHECK expressions are equivalent after normalization. */
