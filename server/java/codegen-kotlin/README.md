@@ -122,6 +122,33 @@ so consumers can write `AuthorTable.postsQuery(author.id).toList()` (or chain `.
 </plugin>
 ```
 
+### Running via Maven
+
+Kotlin codegen runs through the **existing `meta:gen` goal** — there is no Kotlin-specific
+Mojo. Each Kotlin generator extends `MultiFileDirectGeneratorBase` (a `Generator`) with a
+no-arg constructor and reads its `outputDir` from `<args>`, which is exactly the SPI the
+plugin uses: it loads the `<classname>` off the project classpath, invokes the no-arg
+constructor, calls `setArgs(...)`, and runs `execute(loader)`. So wiring a
+`KotlinEntityGenerator` (etc.) as a `<generator>` above is all it takes:
+
+```bash
+mvn metaobjects:generate     # runs the configured Kotlin generators → emits .kt files
+```
+
+Codegen drift is covered by the **`meta:verify` goal** (added alongside `meta:gen`). It is
+generator-neutral — it regenerates whatever generators you have configured into a throwaway
+temp directory and fails the build if the result differs from the committed output (a file
+whose content differs, a committed file the generator no longer produces, or a newly produced
+file that isn't committed). Because it reuses the same generator wiring, it drift-checks the
+Kotlin generators above without any Kotlin-specific knowledge:
+
+```bash
+mvn metaobjects:verify       # fails the build if generated Kotlin is stale vs metadata
+```
+
+`meta:verify` here is **codegen drift only** — it is not the FR-004 prompt/template `verify`
+surface, and there is deliberately no schema/migrate goal (schema is Node-owned, ADR-0015).
+
 ## Spring Boot + Exposed wiring (auto-generated)
 
 The `KotlinSpringConfigGenerator` emits a `@Configuration` class that wires `Database.connect()` from the Spring `DataSource` bean and runs the validator at `ApplicationReadyEvent`:
@@ -147,6 +174,7 @@ No hand-written Exposed wiring needed.
 | Drift source | Where caught | When |
 |---|---|---|
 | Code-vs-DB | Codegen (`KotlinEntityGenerator` + `KotlinExposedTableGenerator`) | Build time |
+| Generated-code-vs-metadata (codegen drift) | `meta:verify` goal (regenerate-to-temp + compare) | Build time / CI |
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
 | DB-vs-metadata, Migration-vs-metadata | TypeScript toolchain (`@metaobjectsdev/cli migrate`) — schema migrations and live-DB schema-drift verification are TS-only | Build time / CI |
 | Generated-edited | `@generated` headers in KotlinPoet output | Code review |
@@ -157,8 +185,10 @@ No hand-written Exposed wiring needed.
 
 Schema migrations (and live-DB schema-drift verification) are owned by the
 TypeScript toolchain (`@metaobjectsdev/cli migrate`). The JVM-side Maven plugin's
-`meta:migrate` / `meta:verify` goals were removed along with the Java
-diff-and-converge engine; the Maven plugin ships `meta:gen` / `meta:editor` only.
+`meta:migrate` and the old live-DB-drift `meta:verify` goals were removed along with
+the Java diff-and-converge engine. The Maven plugin ships `meta:gen` / `meta:editor`
+plus a `meta:verify` goal that is **codegen drift only** (regenerate-to-temp +
+compare against committed output) — not schema drift.
 
 ## Cross-port codegen conformance (deferred)
 

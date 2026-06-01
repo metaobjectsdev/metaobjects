@@ -8,6 +8,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
@@ -67,7 +68,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         this.generators = generators;
     }
 
-    public void execute() throws MojoExecutionException
+    public void execute() throws MojoExecutionException, MojoFailureException
     {
         if ( getLoader() == null ) {
             throw new MojoExecutionException( "No <loader> element was defined");
@@ -76,18 +77,45 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         MetaDataLoader loader = createLoader(projectClassLoader);
 
+        List<Generator> generatorImpls = buildGenerators( projectClassLoader, null );
+
+        executeGenerators( loader, generatorImpls );
+    }
+
+    /**
+     * Reflectively instantiate and configure each declared generator, mirroring the exact
+     * mechanism {@code meta:gen} uses. This is the single source of truth for generator
+     * wiring so that sibling goals (e.g. {@code meta:verify}) drive identical behavior —
+     * including loading generators from any module on the project classpath
+     * (e.g. a {@code codegen-spring} or {@code codegen-kotlin} {@link Generator}).
+     *
+     * @param projectClassLoader the classloader that can see the project's generator deps
+     * @param argOverridesByGenerator optional per-generator arg overrides keyed by
+     *        {@link GeneratorParam} identity (e.g. redirecting {@code outputDir} to a temp
+     *        dir for drift verification). May be {@code null} for no overrides.
+     * @return the configured {@link Generator} list, in declaration order
+     */
+    protected List<Generator> buildGenerators(ClassLoader projectClassLoader,
+                                              Map<GeneratorParam, Map<String, String>> argOverridesByGenerator) {
         List<Generator> generatorImpls = new ArrayList<>();
 
         if ( getGenerators() != null ) {
             for ( GeneratorParam g : getGenerators() ) {
                 try {
-                    // Fixed: Replaced deprecated newInstance() with proper constructor usage
+                    // Reflective no-arg instantiation — the same SPI for every Generator
+                    // impl regardless of source module (codegen-spring, codegen-kotlin, ...).
                     Class<?> generatorClass = projectClassLoader.loadClass(g.getClassname());
                     Constructor<?> constructor = generatorClass.getDeclaredConstructor();
                     Generator impl = (Generator) constructor.newInstance();
 
                     // Merge generator args and global args
                     Map<String, String> allargs = mergeAndOverwriteArgs(g);
+
+                    // Apply any per-generator overrides (verify redirects outputDir here).
+                    if ( argOverridesByGenerator != null ) {
+                        Map<String, String> overrides = argOverridesByGenerator.get(g);
+                        if ( overrides != null ) allargs.putAll(overrides);
+                    }
                     impl.setArgs(allargs);
 
                     // Merge loader filters and generator filters
@@ -107,7 +135,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             }
         }
 
-        executeGenerators( loader, generatorImpls );
+        return generatorImpls;
     }
 
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {

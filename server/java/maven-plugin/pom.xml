@@ -106,6 +106,15 @@
             <version>3.9.11</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Test-only: prove a codegen-kotlin Generator loads + runs through the same
+             reflective SPI the meta:gen / meta:verify Mojos use (Generator no-arg ctor +
+             setArgs + execute). Not a runtime dep of the plugin. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-kotlin</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.apache.maven.plugin-testing</groupId>
             <artifactId>maven-plugin-testing-harness</artifactId>
