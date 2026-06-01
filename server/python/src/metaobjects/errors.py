@@ -42,6 +42,14 @@ class ErrorCode(str, Enum):
     # Source-v2 multi-source one-primary rule (ADR-0007).
     ERR_SOURCE_NO_PRIMARY = "ERR_SOURCE_NO_PRIMARY"
     ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY"
+    # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
+    ERR_PHYSICAL_NAME_KIND_MISMATCH = "ERR_PHYSICAL_NAME_KIND_MISMATCH"
+    ERR_PHYSICAL_NAME_MULTIPLE = "ERR_PHYSICAL_NAME_MULTIPLE"
+    # FR-013 — field-level @readOnly cross-attribute rules. Cross-language
+    # vocabulary; Python loader does not emit these yet (FR-013 Python fan-out
+    # is a separate workstream), but the enum tracks the shared corpus codes.
+    ERR_READONLY_ASSIGNED_PRIMARY = "ERR_READONLY_ASSIGNED_PRIMARY"
+    ERR_READONLY_DOWNGRADE = "ERR_READONLY_DOWNGRADE"
     # Cross-language vocabulary for features other ports added (FR-003 storage, FR-004 template);
     # the Python loader does not emit these yet, but the enum tracks the shared corpus codes.
     ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"

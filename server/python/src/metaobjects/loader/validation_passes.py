@@ -11,6 +11,8 @@ import math
 import re
 
 from ..errors import ErrorCode, MetaError
+from ..source.error_source import LoaderWarning
+from .validate_source_physical_names import validate_source_physical_names
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -80,10 +82,17 @@ def run_validations(
     registry: TypeRegistry,
     errors: list[MetaError],
     warnings: list[str],
+    envelope_warnings: list[LoaderWarning] | None = None,
 ) -> None:
     """Run all validation passes in order.
 
     Passes are designed to be additive: later tasks add passes here.
+
+    ``envelope_warnings`` (optional) — FR5c-style envelope warning channel for
+    validation passes that produce envelope-shaped warnings (e.g. FR-016's
+    ``WARN_LEGACY_PHYSICAL_NAME_ALIAS``). When ``None``, those passes still
+    push the warning code onto the legacy ``warnings`` channel so existing
+    consumers see something.
     """
     _validate_attr_schema(root, registry, errors)
     _validate_enum_values(root, errors)
@@ -93,6 +102,8 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
     _validate_one_primary_source(root, errors)
+    # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
+    validate_source_physical_names(root, errors, envelope_warnings, warnings)
     _validate_field_object_storage(root, errors)
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)

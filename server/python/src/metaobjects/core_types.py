@@ -87,10 +87,14 @@ from .meta.template.meta_template import MetaTemplate
 from .meta.template import template_constants as tc
 from .meta.persistence.source.meta_source import MetaSource
 from .meta.persistence.source.source_constants import (
+    SOURCE_ATTR_FUNCTION,
     SOURCE_ATTR_KIND,
+    SOURCE_ATTR_MATERIALIZED_VIEW,
+    SOURCE_ATTR_PROC,
     SOURCE_ATTR_ROLE,
     SOURCE_ATTR_SCHEMA,
     SOURCE_ATTR_TABLE,
+    SOURCE_ATTR_VIEW,
     SOURCE_RDB_KINDS,
     SOURCE_ROLES,
     SOURCE_SUBTYPE_RDB,
@@ -451,7 +455,17 @@ core_provider.add(
         sub_type=SOURCE_SUBTYPE_RDB,
         factory=MetaSource,
         attrs=[
+            # FR-016 / ADR-0018 — per-kind physical-name aliases (all five fill
+            # the same internal slot; only one may be set per source).
             AttrSchema(name=SOURCE_ATTR_TABLE, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=SOURCE_ATTR_VIEW, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(
+                name=SOURCE_ATTR_MATERIALIZED_VIEW,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+            ),
+            AttrSchema(name=SOURCE_ATTR_PROC, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=SOURCE_ATTR_FUNCTION, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(
                 name=SOURCE_ATTR_KIND,
                 value_type=ATTR_SUBTYPE_STRING,

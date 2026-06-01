@@ -121,7 +121,13 @@ class MetaDataLoader:
             )
             resolve_supers(result.root, result.errors)
 
-        run_validations(result.root, self._registry, result.errors, result.warnings)
+        run_validations(
+            result.root,
+            self._registry,
+            result.errors,
+            result.warnings,
+            envelope_warnings=result.envelope_warnings,
+        )
         result.root.freeze()
         return result
 

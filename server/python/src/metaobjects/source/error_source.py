@@ -260,3 +260,7 @@ class LoaderWarning:
 # contract.
 WARN_DUPLICATE_DECLARATION: str = "WARN_DUPLICATE_DECLARATION"
 WARN_LEGACY: str = "WARN_LEGACY"
+#: FR-016 / ADR-0018 — emitted when a source.rdb uses the pre-1.0 ``@table``
+#: spelling with a non-table ``@kind`` (e.g. ``@kind: "view"`` + ``@table``).
+#: Loader accepts; the canonical serializer rewrites to the kind-matching alias.
+WARN_LEGACY_PHYSICAL_NAME_ALIAS: str = "WARN_LEGACY_PHYSICAL_NAME_ALIAS"

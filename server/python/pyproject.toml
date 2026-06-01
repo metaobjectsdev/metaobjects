@@ -77,3 +77,8 @@ files = ["src/metaobjects", "tests"]
 # Golden expected files are generated-code fixtures (relative imports resolve only
 # as an emitted package); they are validated by the golden + import-check tests, not mypy.
 exclude = ["tests/codegen/golden/"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
