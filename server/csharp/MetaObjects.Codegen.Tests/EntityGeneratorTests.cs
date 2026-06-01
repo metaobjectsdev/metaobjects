@@ -175,8 +175,10 @@ public class EntityGeneratorTests
         // 404 error envelope.
         Assert.Contains("Results.NotFound(new { error = \"not_found\" })", src);
 
-        // Validation error envelope (unknown sort field → 400).
-        Assert.Contains("Results.BadRequest(new { error = \"validation\"", src);
+        // Invalid-sort error envelope (unknown sort field → 400). The cross-port
+        // api-contract uses the `invalid_sort` code (verified end-to-end by the
+        // SP-F generated-server lane against the corpus), not a generic "validation".
+        Assert.Contains("Results.BadRequest(new { error = \"invalid_sort\" })", src);
 
         // Sort dispatch uses EF.Property (no runtime reflection).
         Assert.Contains("EF.Property<object>", src);

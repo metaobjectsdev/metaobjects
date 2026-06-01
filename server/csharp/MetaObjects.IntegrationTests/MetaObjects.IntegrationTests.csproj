@@ -13,9 +13,21 @@
          scripts/integration-test.sh. -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+  <!-- The generated minimal-API routes (RoutesGenerator output) are hosted on a
+       real ASP.NET Core host (Kestrel) in the SP-F generated-server lane
+       (ApiContractGeneratedConformanceTest). The framework reference supplies the
+       ASP.NET shared framework both for the in-memory Roslyn compile of the
+       emitted routes/AppDbContext AND for hosting them at test time. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
+    <!-- Roslyn — compile the GENERATED routes/AppDbContext/entity in-memory so the
+         hosted server runs the emitted artifact unmodified (the SP-C generate→
+         compile→load pattern). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.6.4" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />

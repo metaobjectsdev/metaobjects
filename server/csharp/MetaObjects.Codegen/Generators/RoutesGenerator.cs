@@ -46,10 +46,15 @@ public sealed class RoutesGenerator : PerEntityGenerator
 
         var pkFields = entity.PrimaryIdentity()?.Fields ?? [];
         string? pkType = null;
+        string? pkProp = null;
         if (pkFields.Count == 1)
         {
             var pkField = entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]);
-            if (pkField is not null) pkType = CSharpNaming.ScalarFor(pkField.SubType);
+            if (pkField is not null)
+            {
+                pkType = CSharpNaming.ScalarFor(pkField.SubType);
+                pkProp = CSharpNaming.Pascal(pkField.Name);
+            }
         }
         bool isProjection = entity.IsReadOnlyProjection();
         bool hasItem = pkType is not null;           // GET by id (readable by key)
@@ -110,7 +115,7 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var field = parts[0];");
         sb.AppendLine("                var desc = parts.Length > 1 && string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase);");
         sb.AppendLine("                if (!SortAllowlist.TryGetValue(field, out var resolved))");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"validation\", message = $\"unknown sort field: {field}\" });");
+        sb.AppendLine("                    return Results.BadRequest(new { error = \"invalid_sort\" });");
         sb.AppendLine($"                q = ApplySort{cls}(q, resolved, desc);");
         sb.AppendLine("            }");
         sb.AppendLine();
@@ -149,15 +154,21 @@ public sealed class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            return Results.Created(prefix + \"/" + route + "\", input);");
             sb.AppendLine("        });");
 
-            // PATCH + PUT share the same handler — TS reference exposes both verbs.
+            // PATCH + PUT share the same handler — TS reference exposes both verbs,
+            // and both return the updated row (HTTP 200), matching the cross-port
+            // api-contract. The route id is authoritative for the key: stamp it onto
+            // the bound input BEFORE SetValues so EF sees the primary key unchanged
+            // (a default/zero key on the input would otherwise trip "the property is
+            // part of a key and so cannot be modified").
             sb.AppendLine();
             sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, " + cls + " input, AppDbContext db)");
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
+            sb.AppendLine("            input." + pkProp + " = id;");
             sb.AppendLine("            db.Entry(existing).CurrentValues.SetValues(input);");
             sb.AppendLine("            await db.SaveChangesAsync();");
-            sb.AppendLine("            return Results.NoContent();");
+            sb.AppendLine("            return Results.Ok(existing);");
             sb.AppendLine("        }");
             sb.AppendLine("        app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
             sb.AppendLine("        app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");

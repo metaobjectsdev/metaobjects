@@ -82,6 +82,20 @@ public sealed class DbContextGenerator : IGenerator
                     ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
                     : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
             }
+            // field.timestamp maps to a plain `timestamp without time zone` column
+            // (the cross-port contract: @dbColumnType:timestamp_with_tz opts INTO
+            // timestamptz). Npgsql's DbDateTime provider default is timestamptz, which
+            // rejects a Kind=Unspecified DateTime on WRITE — so without this explicit
+            // mapping a create/update over a `field.timestamp` column throws at runtime
+            // (DbUpdateException: "Cannot write DateTime with Kind=Unspecified to
+            // PostgreSQL type 'timestamp with time zone'"). The @dbColumnType path below
+            // owns the timestamptz opt-in, so only emit this for plain timestamps.
+            foreach (var f in e.Fields().Where(f =>
+                         !f.IsArray && f.SubType == FIELD_SUBTYPE_TIMESTAMP && f.DbColumnType is null))
+            {
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"timestamp without time zone\");");
+            }
             // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
             // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
             // told the provider column type (and, for uuid, a string↔Guid value converter)

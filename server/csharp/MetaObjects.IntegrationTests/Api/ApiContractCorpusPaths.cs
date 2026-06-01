@@ -14,4 +14,8 @@ internal static class ApiContractCorpusPaths
     public static readonly string Corpus = Path.Combine(Repo, "fixtures", "api-contract-conformance");
     public static readonly string ScenariosDir = Path.Combine(Corpus, "scenarios");
     public static readonly string SeedFile = Path.Combine(Corpus, "seed.json");
+
+    // The corpus Author model — fed to the C# generators in the SP-F generated-server
+    // lane (GeneratedAuthorServerFactory) to produce + host the real routes/AppDbContext.
+    public static readonly string MetaJson = Path.Combine(Corpus, "meta.json");
 }
