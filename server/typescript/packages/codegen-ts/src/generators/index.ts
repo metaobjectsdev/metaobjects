@@ -8,6 +8,7 @@ export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";
 export { outputPrompt, type OutputPromptOpts } from "./output-prompt-file.js";
+export { renderHelper, type RenderHelperOpts } from "./render-helper-file.js";
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
 export {
   templateGenerator,
