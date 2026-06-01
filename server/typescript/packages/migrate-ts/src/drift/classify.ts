@@ -1,6 +1,6 @@
 // src/drift/classify.ts
 import { diff } from "../diff/index.js";
-import type { Change, DiffResult, SchemaSnapshot } from "../types.js";
+import type { Change, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 
 /**
  * Change kinds that represent an object present in the live DB but absent from
@@ -42,7 +42,12 @@ export function classifyDrift(changes: Change[]): DriftClassification {
 export async function driftAgainstSnapshot(
   snapshot: SchemaSnapshot,
   actual: SchemaSnapshot,
+  dialect?: Dialect,
 ): Promise<DriftClassification> {
-  const result: DiffResult = await diff({ expected: snapshot, actual });
+  const result: DiffResult = await diff({
+    expected: snapshot,
+    actual,
+    ...(dialect !== undefined ? { dialect } : {}),
+  });
   return classifyDrift(result.changes);
 }

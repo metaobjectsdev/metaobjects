@@ -22,3 +22,15 @@ export function checkExprEquals(a: string | undefined, b: string | undefined): b
   if (a === undefined || b === undefined) return false;
   return normalizeCheckExpr(a) === normalizeCheckExpr(b);
 }
+
+/**
+ * `CHECK (<expr>)` → `<expr>` (balanced outer wrapper); returns input unchanged
+ * if there is no CHECK wrapper. Tolerates a trailing constraint modifier suffix
+ * (`pg_get_constraintdef` can return `CHECK (<expr>) NOT VALID`) so the wrapper
+ * still strips cleanly to the inner expression instead of falling through to the
+ * unchanged-input fallback (which would cause spurious drop+add churn).
+ */
+export function stripCheckWrapper(def: string): string {
+  const m = /^\s*CHECK\s*\((.*)\)(?:\s+NOT\s+VALID)?\s*$/is.exec(def);
+  return m ? m[1]!.trim() : def.trim();
+}

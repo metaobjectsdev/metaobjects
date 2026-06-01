@@ -31,6 +31,7 @@ import { sql } from "kysely";
 import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor, CheckDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
+import { stripCheckWrapper } from "../check-expr-compare.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -458,10 +459,4 @@ async function readPgChecks(k: RawKysely, schema: string, table: string): Promis
   } catch {
     return []; // pg-mem: pg_constraint unsupported
   }
-}
-
-/** `CHECK (<expr>)` → `<expr>` (balanced outer wrapper); returns input unchanged if no wrapper. */
-function stripCheckWrapper(def: string): string {
-  const m = /^\s*CHECK\s*\((.*)\)\s*$/is.exec(def);
-  return m ? m[1]!.trim() : def.trim();
 }
