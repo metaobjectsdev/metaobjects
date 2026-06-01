@@ -27,6 +27,7 @@ import {
   type TableDescriptor,
 } from "../../src/index.js";
 import { applyPending, rollbackTo } from "../../src/apply/apply.js";
+import { appliedNames } from "../../src/apply/ledger.js";
 import { normalizeCheckExpr } from "../../src/check-expr-compare.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
@@ -233,5 +234,174 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(dropCol!.status.state).toBe("blocked");            // blocked without allow.dropColumn
     const allowed = await diff({ expected: v1MinusEmail, actual: liveOrdersOnly, ...pgDialect(), allow: { dropColumn: true } });
     expect(allowed.changes.find((c) => c.kind === "drop-column")!.status.state).toBe("allowed");
+  }, 30000);
+
+  test("greenfield first deploy: a 4-entity app schema created from an empty database", async () => {
+    // A realistic small app shipped in ONE migration from empty: four related
+    // entities with cross-table FKs (Post→User, Comment→Post, Comment→User),
+    // enum + numeric CHECKs, and unique indexes. Proves the greenfield create
+    // path produces a coherent, applyable schema and that rollback tears it ALL
+    // back down to an empty database.
+    //
+    // Entities are deliberately declared CHILD-FIRST (Comment, then Post, then
+    // its parents User/Tag) — forward FK references. The Postgres emitter stages
+    // emission (all CREATE TABLE before any ADD CONSTRAINT … FOREIGN KEY), so a
+    // clean apply proves FK targets exist before their FKs regardless of
+    // declaration order — there is no reliance on parents being declared first.
+    await sql`DROP TABLE IF EXISTS gf_comments, gf_posts, gf_tags, gf_users CASCADE`.execute(db);
+    await sql`DROP TABLE IF EXISTS _metaobjects_migrations CASCADE`.execute(db);
+
+    const APP = JSON.stringify({
+      "metadata.root": { children: [
+        { "object.entity": { name: "Comment", children: [
+          { "field.long": { name: "id" } },
+          { "field.long": { name: "postId" } },
+          { "field.long": { name: "authorId" } },
+          { "field.string": { name: "body" } },
+          { "source.rdb": { name: "src", "@table": "gf_comments" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.reference": { name: "gf_comments_post_fk", "@fields": ["postId"], "@references": "Post" } },
+          { "identity.reference": { name: "gf_comments_author_fk", "@fields": ["authorId"], "@references": "User" } },
+        ] } },
+        { "object.entity": { name: "Post", children: [
+          { "field.long": { name: "id" } },
+          { "field.long": { name: "authorId" } },
+          { "field.string": { name: "title", "@required": true } },
+          { "field.enum": { name: "status", "@values": ["DRAFT", "PUBLISHED"] } },
+          { "field.int": { name: "views", children: [{ "validator.numeric": { name: "r", "@min": 0 } }] } },
+          { "source.rdb": { name: "src", "@table": "gf_posts" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.reference": { name: "gf_posts_author_fk", "@fields": ["authorId"], "@references": "User" } },
+        ] } },
+        { "object.entity": { name: "User", children: [
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "email" } },
+          { "field.enum": { name: "role", "@values": ["ADMIN", "EDITOR", "VIEWER"] } },
+          { "source.rdb": { name: "src", "@table": "gf_users" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.secondary": { name: "gf_users_email_uq", "@fields": ["email"] } },
+        ] } },
+        { "object.entity": { name: "Tag", children: [
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "name" } },
+          { "source.rdb": { name: "src", "@table": "gf_tags" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          { "identity.secondary": { name: "gf_tags_name_uq", "@fields": ["name"] } },
+        ] } },
+      ] },
+    });
+
+    const gfRoot = mkdtempSync(join(tmpdir(), "gf-mig-"));
+    try {
+      const app = buildExpectedSchema(await loadRoot(APP), pgDialect());
+      const EMPTY: SchemaSnapshot = { tables: [], views: [] };
+      const d0 = await diff({ expected: app, actual: EMPTY, ...pgDialect() });
+      expect(d0.blocked).toHaveLength(0);
+      // greenfield deploy = create-tables + add-fks (+ inline checks); never a drop
+      const kinds = new Set(d0.changes.map((c) => c.kind));
+      expect(kinds.has("create-table")).toBe(true);
+      expect(kinds.has("add-fk")).toBe(true);
+      expect([...kinds].some((k) => k.startsWith("drop-"))).toBe(false);
+
+      const e0 = emit(d0.changes, { dialect: "postgres", expectedSchema: app });
+      mkdirSync(join(gfRoot, "20260101000000-init-app"), { recursive: true });
+      writeFileSync(join(gfRoot, "20260101000000-init-app", "up.sql"), e0.up + "\n", "utf8");
+      writeFileSync(join(gfRoot, "20260101000000-init-app", "down.sql"), e0.down + "\n", "utf8");
+
+      // first deploy: apply the single migration against an empty DB. If any FK
+      // were added before its target table existed, PG would throw here — so a
+      // clean apply IS the cross-table dependency-ordering proof.
+      const applied = await applyPending(db, gfRoot, { dialect: "postgres", dryRun: false });
+      expect(applied.applied).toEqual(["20260101000000-init-app"]);
+
+      // assert the WHOLE app schema came up
+      const snap = await introspectPostgres(db);
+      const gf = snap.tables
+        .filter((t) => t.name.startsWith("gf_"))
+        .sort((a, b) => (a.name < b.name ? -1 : 1));
+      expect(gf.map((t) => t.name)).toEqual(["gf_comments", "gf_posts", "gf_tags", "gf_users"]);
+      // all three cross-table FKs landed (Post→User, Comment→Post, Comment→User)
+      const posts = gf.find((t) => t.name === "gf_posts")!;
+      const comments = gf.find((t) => t.name === "gf_comments")!;
+      expect(posts.foreignKeys.some((f) => f.refTable === "gf_users")).toBe(true);
+      expect(comments.foreignKeys.map((f) => f.refTable).sort()).toEqual(["gf_posts", "gf_users"]);
+      // enum + numeric checks + unique indexes survived the round-trip
+      expect(checkExprs(gf.find((t) => t.name === "gf_users")!)).toContain("role in 'admin', 'editor', 'viewer'");
+      expect(checkExprs(posts).some((e) => e.includes("views >= 0"))).toBe(true);
+      expect(gf.find((t) => t.name === "gf_tags")!.indexes.some((i) => i.unique && i.columns.includes("name"))).toBe(true);
+
+      // greenfield rollback: tear the whole app back down to an empty database
+      const rb = await rollbackTo(db, gfRoot, null, { dialect: "postgres" });
+      expect(rb.rolledBack).toEqual(["20260101000000-init-app"]);
+      const after = await introspectPostgres(db);
+      expect(after.tables.filter((t) => t.name.startsWith("gf_"))).toHaveLength(0);
+    } finally {
+      rmSync(gfRoot, { recursive: true, force: true });
+      await sql`DROP TABLE IF EXISTS gf_comments, gf_posts, gf_tags, gf_users CASCADE`.execute(db);
+    }
+  }, 30000);
+
+  test("ledger tracks which migrations are loaded: dry-run, incremental, re-apply no-op, tamper guard", async () => {
+    // The ledger (_metaobjects_migrations, here a per-test table) records exactly
+    // which migration files have been loaded into THIS database. Exercise the
+    // ways that record is read and written: a dry-run that records nothing, an
+    // incremental apply that loads only the newly-added file, a re-apply that is a
+    // pure no-op, and the tamper guard that refuses an edited already-loaded file.
+    const ledger = { table: "mo_ledger_variations" };
+    await sql`DROP TABLE IF EXISTS led_a CASCADE`.execute(db);
+    await sql`DROP TABLE IF EXISTS led_b CASCADE`.execute(db);
+    await sql.raw(`DROP TABLE IF EXISTS "${ledger.table}"`).execute(db);
+    const root = mkdtempSync(join(tmpdir(), "led-mig-"));
+    const m1 = join(root, "20260101000000-a");
+    const m2 = join(root, "20260102000000-b");
+    try {
+      mkdirSync(m1, { recursive: true });
+      writeFileSync(join(m1, "up.sql"), `CREATE TABLE "led_a" ("id" bigint PRIMARY KEY);\n`, "utf8");
+      writeFileSync(join(m1, "down.sql"), `DROP TABLE "led_a";\n`, "utf8");
+
+      // (1) dry-run reports what WOULD load and records nothing in the ledger
+      const dry = await applyPending(db, root, { dialect: "postgres", dryRun: true, ledger });
+      expect(dry.pending).toEqual(["20260101000000-a"]);
+      expect(dry.applied).toEqual([]);
+      expect((await appliedNames(db, "postgres", ledger)).size).toBe(0); // nothing loaded yet
+
+      // (2) first apply loads m1 and records it as loaded
+      const a1 = await applyPending(db, root, { dialect: "postgres", dryRun: false, ledger });
+      expect(a1.applied).toEqual(["20260101000000-a"]);
+      expect([...(await appliedNames(db, "postgres", ledger))]).toEqual(["20260101000000-a"]);
+
+      // (3) incremental deploy: add m2 to disk; re-apply loads ONLY the new file —
+      // m1 is skipped because the ledger already marks it loaded (idempotency comes
+      // from the ledger, not from re-diffing).
+      mkdirSync(m2, { recursive: true });
+      writeFileSync(join(m2, "up.sql"), `CREATE TABLE "led_b" ("id" bigint PRIMARY KEY);\n`, "utf8");
+      writeFileSync(join(m2, "down.sql"), `DROP TABLE "led_b";\n`, "utf8");
+      const a2 = await applyPending(db, root, { dialect: "postgres", dryRun: false, ledger });
+      expect(a2.pending).toEqual(["20260102000000-b"]);
+      expect(a2.applied).toEqual(["20260102000000-b"]);
+      expect([...(await appliedNames(db, "postgres", ledger))].sort()).toEqual([
+        "20260101000000-a",
+        "20260102000000-b",
+      ]);
+
+      // (4) re-apply with nothing new on disk → pure no-op
+      const a3 = await applyPending(db, root, { dialect: "postgres", dryRun: false, ledger });
+      expect(a3.pending).toEqual([]);
+      expect(a3.applied).toEqual([]);
+
+      // (5) tamper guard: editing an already-loaded migration's up.sql is a hard
+      // error, and it fires BEFORE any further mutation (led_a keeps its one column).
+      writeFileSync(join(m1, "up.sql"), `CREATE TABLE "led_a" ("id" bigint PRIMARY KEY, "x" int);\n`, "utf8");
+      await expect(
+        applyPending(db, root, { dialect: "postgres", dryRun: false, ledger }),
+      ).rejects.toThrow(/checksum changed/);
+      const ledA = (await introspectPostgres(db)).tables.find((t) => t.name === "led_a")!;
+      expect(ledA.columns.map((c) => c.name)).toEqual(["id"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      await sql`DROP TABLE IF EXISTS led_a CASCADE`.execute(db);
+      await sql`DROP TABLE IF EXISTS led_b CASCADE`.execute(db);
+      await sql.raw(`DROP TABLE IF EXISTS "${ledger.table}"`).execute(db);
+    }
   }, 30000);
 });
