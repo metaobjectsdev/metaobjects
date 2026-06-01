@@ -116,6 +116,7 @@ public final class ValidationPhase {
         validateFieldDefaults(root);
         validateDbColumnType(root);
         validateSourceAttrs(root);
+        validateSourcePhysicalNames(root, loader);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateOrigins(root);
@@ -624,6 +625,124 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
+    }
+
+    // =========================================================================
+    // FR-016 / ADR-0018 — per-kind physical-name alias validation
+    //
+    // Each source.rdb may declare at most one of @table / @view /
+    // @materializedView / @proc / @function. The chosen alias must match the
+    // source's @kind, with one pre-1.0 legacy exception: @table is also
+    // accepted for non-table kinds (e.g. @kind: "storedProc" + @table:
+    // "fn_x"), which emits WARN_LEGACY_PHYSICAL_NAME_ALIAS.
+    //
+    // Codes:
+    //   ERR_PHYSICAL_NAME_MULTIPLE       — ≥2 kind-aware aliases on one source.
+    //   ERR_PHYSICAL_NAME_KIND_MISMATCH  — alias other than @table set with non-matching @kind.
+    //   WARN_LEGACY_PHYSICAL_NAME_ALIAS  — @table set with non-table @kind (legacy spelling).
+    //   ERR_BAD_ATTR_VALUE               — explicit empty-string for any physical-name alias.
+    // =========================================================================
+
+    static void validateSourcePhysicalNames(MetaRoot root, MetaDataLoader loader) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            walkSourcePhysicalNames(rootChild, loader);
+        }
+    }
+
+    private static void walkSourcePhysicalNames(MetaData node, MetaDataLoader loader) {
+        if (node instanceof MetaObject) {
+            validateObjectSourcePhysicalNames((MetaObject) node, loader);
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkSourcePhysicalNames(child, loader);
+        }
+    }
+
+    private static void validateObjectSourcePhysicalNames(MetaObject obj, MetaDataLoader loader) {
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaSource)) continue;
+            MetaSource source = (MetaSource) child;
+            // Only source.rdb participates in the per-kind alias model.
+            if (!com.metaobjects.source.RdbSource.SUBTYPE_RDB.equals(source.getSubType())) continue;
+
+            // Empty-string check first — explicit "" is an authoring error
+            // regardless of which alias was used. Runs before the multi/mismatch
+            // checks so an explicit empty value can't slip through silently.
+            for (String attr : MetaSource.ALL_PHYSICAL_NAME_ALIASES) {
+                if (!source.hasMetaAttr(attr, false)) continue;
+                String v = source.getMetaAttr(attr, false).getValueAsString();
+                if (v != null && v.isEmpty()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                            + ": source.rdb on object \"" + obj.getName()
+                            + "\" sets @" + attr
+                            + " to an empty string; physical name attrs require a non-empty value",
+                        ErrorCode.ERR_BAD_ATTR_VALUE, source.getSource());
+                }
+            }
+
+            // Collect non-empty kind-aware aliases.
+            java.util.List<String> setAliases = new java.util.ArrayList<>();
+            for (String attr : MetaSource.ALL_PHYSICAL_NAME_ALIASES) {
+                if (!source.hasMetaAttr(attr, false)) continue;
+                String v = source.getMetaAttr(attr, false).getValueAsString();
+                if (v != null && !v.isEmpty()) {
+                    setAliases.add(attr);
+                }
+            }
+
+            if (setAliases.size() > 1) {
+                StringBuilder names = new StringBuilder();
+                for (int i = 0; i < setAliases.size(); i++) {
+                    if (i > 0) names.append(", ");
+                    names.append("@").append(setAliases.get(i));
+                }
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_PHYSICAL_NAME_MULTIPLE
+                        + ": source.rdb on object \"" + obj.getName()
+                        + "\" declares multiple physical-name aliases ("
+                        + names + "); set exactly one",
+                    ErrorCode.ERR_PHYSICAL_NAME_MULTIPLE, source.getSource());
+            }
+
+            if (setAliases.isEmpty()) continue;
+
+            String chosenAlias = setAliases.get(0);
+            String expectedAlias = MetaSource.PHYSICAL_NAME_ATTR_BY_KIND.get(source.getEffectiveKind());
+
+            if (chosenAlias.equals(expectedAlias)) continue;
+
+            // Legacy: @table is permitted for non-table kinds with a warning.
+            if (MetaSource.ATTR_TABLE.equals(chosenAlias)) {
+                if (loader != null) {
+                    String message = "source.rdb on object \"" + obj.getName()
+                        + "\" uses @table with @kind: \"" + source.getEffectiveKind()
+                        + "\"; prefer the kind-matching alias @" + expectedAlias + " (ADR-0018)";
+                    loader.addEnvelopeWarning(new com.metaobjects.source.LoaderWarning(
+                        ErrorMessageConstants.WARN_LEGACY_PHYSICAL_NAME_ALIAS,
+                        message,
+                        source.getSource()));
+                }
+                continue;
+            }
+
+            // Any other mismatch is a hard error.
+            String kindForAlias = kindForAlias(chosenAlias);
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_PHYSICAL_NAME_KIND_MISMATCH
+                    + ": source.rdb on object \"" + obj.getName()
+                    + "\" uses @" + chosenAlias + " with @kind: \""
+                    + source.getEffectiveKind() + "\"; @" + chosenAlias
+                    + " is only valid for @kind: \"" + kindForAlias + "\"",
+                ErrorCode.ERR_PHYSICAL_NAME_KIND_MISMATCH, source.getSource());
+        }
+    }
+
+    private static String kindForAlias(String alias) {
+        for (Map.Entry<String, String> e : MetaSource.PHYSICAL_NAME_ATTR_BY_KIND.entrySet()) {
+            if (e.getValue().equals(alias)) return e.getKey();
+        }
+        return "(unknown)";
     }
 
     // =========================================================================

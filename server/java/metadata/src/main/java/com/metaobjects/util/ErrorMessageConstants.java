@@ -70,6 +70,32 @@ public final class ErrorMessageConstants {
     public static final String ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY";
 
     /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
+     * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
+     * {@code @function}) that does not match its {@code @kind}. The legacy
+     * {@code @table}-for-non-table case warns rather than errors.
+     * Cross-language contract: {@code ERR_PHYSICAL_NAME_KIND_MISMATCH}.
+     */
+    public static final String ERR_PHYSICAL_NAME_KIND_MISMATCH = "ERR_PHYSICAL_NAME_KIND_MISMATCH";
+
+    /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares two or more kind-aware
+     * physical-name aliases at once (e.g. both {@code @table} and {@code @view}).
+     * Exactly one is permitted.
+     * Cross-language contract: {@code ERR_PHYSICAL_NAME_MULTIPLE}.
+     */
+    public static final String ERR_PHYSICAL_NAME_MULTIPLE = "ERR_PHYSICAL_NAME_MULTIPLE";
+
+    /**
+     * FR-016 / ADR-0018 warning: a {@code source.rdb} uses the pre-1.0 legacy
+     * {@code @table} spelling with a non-table {@code @kind}. The loader accepts
+     * the value but warns; the canonical serializer rewrites it to the
+     * kind-matching alias on round-trip.
+     * Cross-language contract: {@code WARN_LEGACY_PHYSICAL_NAME_ALIAS}.
+     */
+    public static final String WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
+
+    /**
      * Error code emitted when the YAML metadata input is not valid YAML, or cannot be
      * desugared into canonical metadata (ADR-0006).
      * Cross-language contract: {@code ERR_MALFORMED_YAML}.

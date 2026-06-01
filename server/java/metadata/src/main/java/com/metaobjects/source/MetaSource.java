@@ -5,6 +5,9 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -29,9 +32,26 @@ public abstract class MetaSource extends MetaData {
     public static final String SUBTYPE_BASE = "base";
 
     // === ATTRIBUTE NAME CONSTANTS ===
+    //
+    // Per-kind physical-name aliases (FR-016 / ADR-0018) — one canonical attr
+    // key per rdb @kind. The single internal physical-name "slot" on a source
+    // is filled by whichever alias matches @kind; the canonical serializer
+    // emits the kind-matching alias regardless of which spelling was on input.
 
-    /** Physical table/view name. Defaults to the logical entity name via the naming strategy. */
+    /** Physical SQL table name. Canonical attr for {@code @kind: "table"} (default). */
     public static final String ATTR_TABLE = "table";
+
+    /** Physical SQL view name. Canonical attr for {@code @kind: "view"}. */
+    public static final String ATTR_VIEW = "view";
+
+    /** Physical SQL materialized-view name. Canonical attr for {@code @kind: "materializedView"}. */
+    public static final String ATTR_MATERIALIZED_VIEW = "materializedView";
+
+    /** Physical SQL stored-procedure name. Canonical attr for {@code @kind: "storedProc"}. */
+    public static final String ATTR_PROC = "proc";
+
+    /** Physical SQL table-function name. Canonical attr for {@code @kind: "tableFunction"}. */
+    public static final String ATTR_FUNCTION = "function";
 
     /** Object kind: table / view / materializedView / storedProc / tableFunction. */
     public static final String ATTR_KIND = "kind";
@@ -71,6 +91,39 @@ public abstract class MetaSource extends MetaData {
         KIND_MATERIALIZED_VIEW,
         KIND_STORED_PROC,
         KIND_TABLE_FUNCTION
+    );
+
+    /**
+     * FR-016 / ADR-0018: map of {@code @kind} → canonical kind-aware physical-name
+     * attr key. Drives the four-step physical-name resolution rule and the
+     * canonical-serializer per-kind rewrite. The single internal physical-name
+     * "slot" on a source is the value of whichever alias matches the source's
+     * {@code @kind}.
+     *
+     * <p>{@link LinkedHashMap} so iteration order matches {@link #VALID_KINDS}.</p>
+     */
+    public static final Map<String, String> PHYSICAL_NAME_ATTR_BY_KIND;
+    static {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put(KIND_TABLE,             ATTR_TABLE);
+        m.put(KIND_VIEW,              ATTR_VIEW);
+        m.put(KIND_MATERIALIZED_VIEW, ATTR_MATERIALIZED_VIEW);
+        m.put(KIND_STORED_PROC,       ATTR_PROC);
+        m.put(KIND_TABLE_FUNCTION,    ATTR_FUNCTION);
+        PHYSICAL_NAME_ATTR_BY_KIND = java.util.Collections.unmodifiableMap(m);
+    }
+
+    /**
+     * FR-016 / ADR-0018: every kind-aware physical-name alias key, ordered for
+     * deterministic iteration (matches the {@link #PHYSICAL_NAME_ATTR_BY_KIND}
+     * insertion order).
+     */
+    public static final List<String> ALL_PHYSICAL_NAME_ALIASES = List.of(
+        ATTR_TABLE,
+        ATTR_VIEW,
+        ATTR_MATERIALIZED_VIEW,
+        ATTR_PROC,
+        ATTR_FUNCTION
     );
 
     // === ROLE VALUE CONSTANTS ===
@@ -114,8 +167,35 @@ public abstract class MetaSource extends MetaData {
                // Accept any attr child (for extensibility)
                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
 
-            // @table — physical name; optional, string, single value
+            // @table — physical SQL table name for @kind: "table" (default).
+            // FR-016: one of five kind-aware physical-name aliases; all write to
+            // the same internal slot. Pre-1.0 legacy: also accepted with non-table
+            // @kind (canonical-serializer rewrites; loader emits
+            // WARN_LEGACY_PHYSICAL_NAME_ALIAS).
             def.optionalAttributeWithConstraints(ATTR_TABLE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            // @view — physical SQL view name for @kind: "view" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_VIEW)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            // @materializedView — physical SQL materialized-view name for
+            // @kind: "materializedView" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_MATERIALIZED_VIEW)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            // @proc — physical SQL stored-procedure name for
+            // @kind: "storedProc" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_PROC)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            // @function — physical SQL table-function name for
+            // @kind: "tableFunction" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_FUNCTION)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
 
@@ -205,6 +285,116 @@ public abstract class MetaSource extends MetaData {
         return hasMetaAttr(ATTR_SCHEMA)
             ? getMetaAttr(ATTR_SCHEMA).getValueAsString()
             : null;
+    }
+
+    /**
+     * FR-016 / ADR-0018: resolved physical SQL name for this source, following
+     * the four-step rule:
+     * <ol>
+     *   <li>Kind-matching alias (e.g. {@code @proc} when {@code @kind: "storedProc"}).</li>
+     *   <li>Legacy {@code @table} for non-table kind (pre-1.0 fallback).</li>
+     *   <li>Source's bare structural {@code name} via snake_case (skipped when
+     *       the name was auto-generated by the parser, e.g. {@code rdb1}).</li>
+     *   <li>Owning entity's name via {@code pluralize(snake_case(...))}.</li>
+     * </ol>
+     *
+     * <p>Callers needing the legacy raw {@code @table} slot only should use
+     * {@link #getTableName()}; codegen / migrate / runtime should use
+     * {@code getPhysicalName()}.</p>
+     */
+    public String getPhysicalName() {
+        String kind = getEffectiveKind();
+
+        // Step 1: kind-matching alias.
+        String canonicalAttr = PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
+        if (canonicalAttr != null && hasMetaAttr(canonicalAttr, false)) {
+            String v = getMetaAttr(canonicalAttr, false).getValueAsString();
+            if (v != null && !v.isEmpty()) return v;
+        }
+
+        // Step 2: legacy @table for non-table kind.
+        if (canonicalAttr != null && !ATTR_TABLE.equals(canonicalAttr)
+                && hasMetaAttr(ATTR_TABLE, false)) {
+            String legacy = getMetaAttr(ATTR_TABLE, false).getValueAsString();
+            if (legacy != null && !legacy.isEmpty()) return legacy;
+        }
+
+        // Step 3: source's structural `name` via snake_case (no pluralization —
+        // the source's name IS the logical name). Skip the parser's
+        // auto-generated <subType>N names so a nameless authored source falls
+        // through to Step 4 (matches TS, where unnamed sources have name === "").
+        String shortName = getShortName();
+        if (shortName != null && !shortName.isEmpty() && !isAutoGeneratedSourceName(shortName)) {
+            return toSnakeCaseInternal(shortName);
+        }
+
+        // Step 4: owning entity's name via pluralize(snake_case). The MetaData
+        // parent of a source is always the entity that declared it.
+        MetaData owner = getParent();
+        if (owner != null) {
+            String ownerName = owner.getShortName();
+            if (ownerName != null && !ownerName.isEmpty()) {
+                return pluralizeInternal(toSnakeCaseInternal(ownerName));
+            }
+        }
+
+        return "";
+    }
+
+    /**
+     * Returns {@code true} when the given short name matches the parser's
+     * auto-naming pattern for source nodes ({@code <subType>N} — e.g. {@code rdb1}).
+     * Mirrors {@link com.metaobjects.io.json.CanonicalJsonSerializer}'s
+     * suppression of auto-names on emit so the FR-016 four-step rule treats
+     * authored vs auto-generated source names consistently across ports.
+     */
+    private boolean isAutoGeneratedSourceName(String shortName) {
+        String subType = getSubType();
+        String expectedPrefix = (subType != null && !subType.isEmpty())
+            ? subType.toLowerCase()
+            : TYPE_SOURCE.toLowerCase();
+        // Auto-generated name matches EXACTLY <expectedPrefix><digits>.
+        if (!shortName.startsWith(expectedPrefix)) return false;
+        String tail = shortName.substring(expectedPrefix.length());
+        if (tail.isEmpty()) return false;
+        for (int i = 0; i < tail.length(); i++) {
+            if (!Character.isDigit(tail.charAt(i))) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Snake-case conversion mirroring the TS reference {@code toSnakeCase}:
+     * {@code XMLHttpRequest} → {@code xml_http_request},
+     * {@code OrderItem} → {@code order_item}.
+     */
+    private static String toSnakeCaseInternal(String s) {
+        if (s == null || s.isEmpty()) return s;
+        // Step 1: ACRONYM + CapitalizedWord boundary (e.g. XMLHttp → XML_Http).
+        String p1 = s.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2");
+        // Step 2: lowercase/digit + Capitalized boundary (e.g. orderItem → order_Item).
+        String p2 = p1.replaceAll("([a-z0-9])([A-Z])", "$1_$2");
+        return p2.toLowerCase();
+    }
+
+    /**
+     * Tiny inflector mirroring the TS reference {@code pluralize}: handles the
+     * (s|x|z|ch|sh) → +es and consonant-y → +ies cases; otherwise +s.
+     */
+    private static String pluralizeInternal(String s) {
+        if (s == null || s.isEmpty()) return s;
+        String lower = s.toLowerCase();
+        if (lower.endsWith("s") || lower.endsWith("x") || lower.endsWith("z")
+                || lower.endsWith("ch") || lower.endsWith("sh")) {
+            return s + "es";
+        }
+        if (lower.endsWith("y") && lower.length() >= 2) {
+            char before = lower.charAt(lower.length() - 2);
+            if ("aeiou".indexOf(before) < 0) {
+                return s.substring(0, s.length() - 1) + "ies";
+            }
+        }
+        return s + "s";
     }
 
     @Override

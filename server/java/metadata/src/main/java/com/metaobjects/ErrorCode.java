@@ -134,6 +134,21 @@ public enum ErrorCode {
     ERR_SOURCE_MULTIPLE_PRIMARY,
 
     /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
+     * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
+     * {@code @function}) that does not match its {@code @kind}. The legacy
+     * {@code @table}-for-non-table case warns rather than errors.
+     */
+    ERR_PHYSICAL_NAME_KIND_MISMATCH,
+
+    /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares two or more kind-aware
+     * physical-name aliases at once (e.g. both {@code @table} and {@code @view}).
+     * Exactly one is permitted.
+     */
+    ERR_PHYSICAL_NAME_MULTIPLE,
+
+    /**
      * Two contributing files set the same {@code @attr} on the same node to
      * different non-empty values during overlay merge (FR5c). Envelope is
      * {@code format: "merged"} with both contributors listed.
