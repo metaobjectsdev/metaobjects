@@ -10,6 +10,7 @@
 
 using System.Text.RegularExpressions;
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Source;
 using MetaObjects.Source;
 
 namespace MetaObjects.Loader;
@@ -804,6 +805,111 @@ public static class ValidationPasses
                 ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY,
                 Envelope: obj.Source));
         }
+    }
+
+    // =========================================================================
+    // Pass: ValidateSourcePhysicalNames (FR-016 / ADR-0018)
+    //   Per-kind physical-name aliases on source.rdb. Each source.rdb may declare
+    //   at most one of @table / @view / @materializedView / @proc / @function.
+    //   The chosen alias must match the source's @kind, with one pre-1.0 legacy
+    //   exception: @table is also accepted for non-table kinds, which emits
+    //   WARN_LEGACY_PHYSICAL_NAME_ALIAS (loader accepts; canonical-serializer
+    //   rewrites to the kind-matching alias).
+    //
+    //   Codes:
+    //     ERR_BAD_ATTR_VALUE              — kind-aware alias set to "" (explicit empty).
+    //     ERR_PHYSICAL_NAME_MULTIPLE      — two or more kind-aware aliases on one source.
+    //     ERR_PHYSICAL_NAME_KIND_MISMATCH — alias other than @table set with a non-matching @kind.
+    //     WARN_LEGACY_PHYSICAL_NAME_ALIAS — @table set with a non-table @kind (legacy spelling).
+    // =========================================================================
+
+    /// <summary>Result of the FR-016 physical-name validation pass.</summary>
+    public sealed record PhysicalNameValidationResult(
+        IReadOnlyList<MetaError> Errors,
+        IReadOnlyList<LoaderWarning> Warnings);
+
+    public static PhysicalNameValidationResult ValidateSourcePhysicalNames(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var warnings = new List<LoaderWarning>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            var sources = obj.OwnChildren()
+                .Where(c => c.Type == TYPE_SOURCE
+                    && c.SubType == SourceConstants.SOURCE_SUBTYPE_RDB
+                    && c is MetaSource)
+                .Cast<MetaSource>();
+
+            foreach (var source in sources)
+            {
+                // Empty-string check first — explicit "" is meaningless and an
+                // authoring error regardless of which alias was used.
+                foreach (var attr in SourceConstants.ALL_PHYSICAL_NAME_ALIASES)
+                {
+                    if (source.OwnAttr(attr) is string sv && sv == "")
+                    {
+                        errors.Add(new MetaError(
+                            $"source.rdb on object \"{obj.Name}\" sets @{attr} to an empty string; " +
+                            "physical name attrs require a non-empty value",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: source.Source));
+                    }
+                }
+
+                var setAliases = SourceConstants.ALL_PHYSICAL_NAME_ALIASES
+                    .Where(attr => source.OwnAttr(attr) is string v && v != "")
+                    .ToList();
+
+                if (setAliases.Count > 1)
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" declares multiple physical-name aliases (" +
+                        string.Join(", ", setAliases.Select(a => "@" + a)) +
+                        "); set exactly one",
+                        ErrorCode.ERR_PHYSICAL_NAME_MULTIPLE,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                if (setAliases.Count == 0) continue;
+
+                string chosenAlias = setAliases[0];
+                SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND.TryGetValue(source.EffectiveKind, out var expectedAlias);
+
+                if (chosenAlias == expectedAlias) continue;
+
+                // Legacy: @table is permitted for non-table kinds with a warning.
+                if (chosenAlias == SourceConstants.SOURCE_ATTR_TABLE)
+                {
+                    warnings.Add(new LoaderWarning(
+                        Code: WarningCodes.WARN_LEGACY_PHYSICAL_NAME_ALIAS,
+                        Message:
+                            $"source.rdb on object \"{obj.Name}\" uses @table with @kind: \"{source.EffectiveKind}\"; " +
+                            $"prefer the kind-matching alias @{expectedAlias} (ADR-0018)",
+                        Source: source.Source));
+                    continue;
+                }
+
+                // Any other mismatch is a hard error.
+                errors.Add(new MetaError(
+                    $"source.rdb on object \"{obj.Name}\" uses @{chosenAlias} with @kind: \"{source.EffectiveKind}\"; " +
+                    $"@{chosenAlias} is only valid for @kind: \"{KindForAlias(chosenAlias)}\"",
+                    ErrorCode.ERR_PHYSICAL_NAME_KIND_MISMATCH,
+                    Envelope: source.Source));
+            }
+        }
+
+        return new PhysicalNameValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
+    }
+
+    private static string KindForAlias(string alias)
+    {
+        foreach (var (kind, attr) in SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND)
+        {
+            if (attr == alias) return kind;
+        }
+        return "(unknown)";
     }
 
     // =========================================================================

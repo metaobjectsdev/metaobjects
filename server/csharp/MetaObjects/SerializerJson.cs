@@ -10,6 +10,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Source;
 
 namespace MetaObjects;
 
@@ -31,6 +32,10 @@ public static class SerializerJson
     public static string CanonicalSerialize(MetaData model)
     {
         var nodeObj = SerializeNode(model, effective: false);
+        // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on
+        // source.rdb wrappers (run before alphabetical sort so the rewritten
+        // key sorts in its canonical position).
+        RewriteSourceRdbPhysicalNames(nodeObj);
         var sorted = SortAttrKeys(nodeObj)!;
         return Stringify(sorted) + "\n";
     }
@@ -44,8 +49,67 @@ public static class SerializerJson
     public static string CanonicalSerializeEffective(MetaData model)
     {
         var nodeObj = SerializeNode(model, effective: true);
+        RewriteSourceRdbPhysicalNames(nodeObj);
         var sorted = SortAttrKeys(nodeObj)!;
         return Stringify(sorted) + "\n";
+    }
+
+    // ---------------------------------------------------------------------------
+    // FR-016 / ADR-0018 — per-kind physical-name rewrite (pre-sort).
+    //
+    // When a source.rdb wrapper carries @table with a non-table @kind (the
+    // pre-1.0 legacy spelling), rewrite the attr key in place to the kind-
+    // matching alias (@view / @materializedView / @proc / @function). Mutates
+    // the JsonNode tree in place; idempotent and a no-op for canonical inputs.
+    // ---------------------------------------------------------------------------
+
+    private static readonly string SourceRdbFusedKey =
+        $"{TYPE_SOURCE}{TYPE_SUBTYPE_SEPARATOR}{SourceConstants.SOURCE_SUBTYPE_RDB}";
+
+    private static void RewriteSourceRdbPhysicalNames(JsonNode? node)
+    {
+        if (node is JsonArray arr)
+        {
+            foreach (var item in arr) RewriteSourceRdbPhysicalNames(item);
+            return;
+        }
+
+        if (node is not JsonObject obj) return;
+
+        if (obj.TryGetPropertyValue(SourceRdbFusedKey, out var rdbBody)
+            && rdbBody is JsonObject body)
+        {
+            var kindKey = $"{ATTR_PREFIX}{SourceConstants.SOURCE_ATTR_KIND}";
+            string kind = SourceConstants.DEFAULT_SOURCE_KIND;
+            if (body.TryGetPropertyValue(kindKey, out var kindNode)
+                && kindNode is JsonValue kv
+                && kv.TryGetValue<string>(out var ks)
+                && ks != "")
+            {
+                kind = ks;
+            }
+
+            if (SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND.TryGetValue(kind, out var canonical)
+                && canonical != SourceConstants.SOURCE_ATTR_TABLE)
+            {
+                var legacyKey = $"{ATTR_PREFIX}{SourceConstants.SOURCE_ATTR_TABLE}";
+                var canonicalKey = $"{ATTR_PREFIX}{canonical}";
+                if (body.TryGetPropertyValue(legacyKey, out var legacyValue)
+                    && !body.ContainsKey(canonicalKey))
+                {
+                    // Detach the legacy value from the parent so we can re-attach
+                    // under the canonical key. JsonNode disallows shared ownership.
+                    body.Remove(legacyKey);
+                    body[canonicalKey] = legacyValue;
+                }
+            }
+        }
+
+        // Recurse through every value (in particular `children` arrays).
+        foreach (var kvp in obj)
+        {
+            RewriteSourceRdbPhysicalNames(kvp.Value);
+        }
     }
 
     // ---------------------------------------------------------------------------

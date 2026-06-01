@@ -3,21 +3,30 @@
 // Ported 1:1 from typescript/packages/metadata/src/persistence/source/meta-source.ts
 // and the Java sibling com.metaobjects.source.MetaSource.
 //
-// Source v2 (ADR-0007): paradigm subtype "rdb" with @table/@kind/@role/@schema.
-// Read-only-ness is derived from @kind (view/materializedView/storedProc/tableFunction
-// are read-only; table is writable).
+// Source v2 (ADR-0007): paradigm subtype "rdb" with per-kind physical-name
+// aliases (@table/@view/@materializedView/@proc/@function — FR-016 / ADR-0018)
+// + @kind/@role/@schema. Read-only-ness is derived from @kind (view/
+// materializedView/storedProc/tableFunction are read-only; table is writable).
+
+using MetaObjects.Persistence.Source;
 
 namespace MetaObjects.Meta;
 
 /// <summary>
 /// Concrete node class for <c>source.*</c> nodes.
-/// Declares where an object's data lives. Source v2 uses
-/// <c>@table</c> (physical name), <c>@kind</c> (table/view/...), <c>@role</c>
-/// (primary/replica/...), and <c>@schema</c> (optional DB schema).
+/// Declares where an object's data lives. Source v2 uses kind-aware physical-name
+/// aliases (<c>@table</c>/<c>@view</c>/<c>@materializedView</c>/<c>@proc</c>/<c>@function</c>),
+/// <c>@kind</c> (table/view/...), <c>@role</c> (primary/replica/...), and
+/// <c>@schema</c> (optional DB schema). See <see cref="PhysicalName"/> for the
+/// FR-016 four-step resolution rule that codegen / migrate / runtime should use.
 /// </summary>
 public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
 {
-    /// <summary>The physical SQL table or view name (value of <c>@table</c>).</summary>
+    /// <summary>
+    /// Physical SQL table/view name from the legacy <c>@table</c> attr. Kept as a
+    /// back-compat accessor that reads ONLY the <c>@table</c> slot — callers should
+    /// use <see cref="PhysicalName"/> for the FR-016 four-step rule.
+    /// </summary>
     public string? TableName
     {
         get
@@ -71,4 +80,58 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
 
     /// <summary>True when this source is writable (i.e. not read-only).</summary>
     public bool IsWritable() => !IsReadOnly();
+
+    /// <summary>
+    /// Resolved physical SQL name for this source, following the FR-016 / ADR-0018
+    /// four-step rule:
+    /// <list type="number">
+    ///   <item>Kind-matching alias (e.g. <c>@proc</c> when <c>@kind: "storedProc"</c>).</item>
+    ///   <item>Legacy <c>@table</c> for non-table kind (pre-1.0 fallback).</item>
+    ///   <item>Source's bare structural <c>name</c> via <c>snake_case</c>.</item>
+    ///   <item>Owning entity's name via <c>pluralize(snake_case)</c>.</item>
+    /// </list>
+    /// <para>
+    /// Callers needing the legacy raw <c>@table</c> slot only should use
+    /// <see cref="TableName"/>; codegen / migrate / runtime should use
+    /// <see cref="PhysicalName"/>.
+    /// </para>
+    /// </summary>
+    public string PhysicalName
+    {
+        get
+        {
+            string kind = EffectiveKind;
+
+            // Step 1: kind-matching alias.
+            string? canonicalAttr = null;
+            if (SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND.TryGetValue(kind, out var attr))
+            {
+                canonicalAttr = attr;
+                if (OwnAttr(attr) is string s && s != "") return s;
+            }
+
+            // Step 2: legacy @table for non-table kind.
+            if (canonicalAttr != SOURCE_ATTR_TABLE)
+            {
+                if (OwnAttr(SOURCE_ATTR_TABLE) is string legacy && legacy != "") return legacy;
+            }
+
+            // Step 3: source's structural `name` via snake_case (no pluralization —
+            // the source's name IS the logical name).
+            if (Name != "")
+            {
+                return SourceNaming.ToSnakeCase(Name);
+            }
+
+            // Step 4: owning entity's name via pluralize(snake_case). The MetaData
+            // parent of a source is always the entity that declared it.
+            var owner = Parent;
+            if (owner is not null && owner.Name != "")
+            {
+                return SourceNaming.Pluralize(SourceNaming.ToSnakeCase(owner.Name));
+            }
+
+            return "";
+        }
+    }
 }

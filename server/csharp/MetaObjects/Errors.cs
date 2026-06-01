@@ -36,6 +36,13 @@ public enum ErrorCode
     // FR5c — multi-file overlay merge produced a conflicting attribute value:
     // two contributors set the same @attr to different non-empty values.
     ERR_MERGE_CONFLICT,
+    // FR-016 / ADR-0018 — a source.rdb declares two or more kind-aware
+    // physical-name aliases (e.g. both @table and @view). Exactly one is permitted.
+    ERR_PHYSICAL_NAME_MULTIPLE,
+    // FR-016 / ADR-0018 — a source.rdb declares a kind-aware physical-name alias
+    // that does not match its @kind. The legacy @table-for-non-table case warns
+    // rather than errors (WARN_LEGACY_PHYSICAL_NAME_ALIAS).
+    ERR_PHYSICAL_NAME_KIND_MISMATCH,
     ERR_UNKNOWN,
 }
 
@@ -57,6 +64,14 @@ public static class WarningCodes
     /// this code. Retired as those sites are migrated to envelopes.
     /// </summary>
     public const string WARN_LEGACY = "WARN_LEGACY";
+
+    /// <summary>
+    /// FR-016 / ADR-0018 — a source.rdb uses the pre-1.0 legacy <c>@table</c>
+    /// spelling with a non-table <c>@kind</c> (e.g. <c>@kind: "view"</c> +
+    /// <c>@table: "v_x"</c>). The loader accepts the input and the canonical
+    /// serializer rewrites the attr key to the kind-matching alias.
+    /// </summary>
+    public const string WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
 }
 
 /// <summary>

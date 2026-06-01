@@ -59,22 +59,32 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     }
 
     /// <summary>
-    /// The physical <c>@table</c> name from the primary writable <c>source.rdb</c>
-    /// (source-v2 ADR-0007). Walks the extends chain. Replaces the legacy object-
-    /// level <c>@dbTable</c> attr (dropped in source-v2). Returns null when the
-    /// object has no primary writable source.
+    /// The physical SQL name from the primary writable <c>source.rdb</c> via the
+    /// FR-016 four-step rule on <see cref="MetaSource.PhysicalName"/>. Walks the
+    /// extends chain. Replaces the legacy object-level <c>@dbTable</c> attr
+    /// (dropped in source-v2). Returns null when the object has no primary
+    /// writable source.
     /// </summary>
     public string? DbTable => Cached("dbTable", () =>
-        FindPrimaryWritableSource()?.TableName);
+    {
+        var src = FindPrimaryWritableSource();
+        var name = src?.PhysicalName;
+        return string.IsNullOrEmpty(name) ? null : name;
+    });
 
     /// <summary>
-    /// The physical <c>@table</c> name from the primary read-only <c>source.rdb</c>
-    /// (source-v2 ADR-0007). Own-only — used for projections. Replaces the legacy
-    /// object-level <c>@dbView</c> attr (dropped in source-v2). Returns null when
-    /// the object has no primary read-only source.
+    /// The physical SQL name from the primary read-only <c>source.rdb</c> via the
+    /// FR-016 four-step rule on <see cref="MetaSource.PhysicalName"/>. Own-only —
+    /// used for projections. Replaces the legacy object-level <c>@dbView</c> attr
+    /// (dropped in source-v2). Returns null when the object has no primary
+    /// read-only source.
     /// </summary>
     public string? DbView => Cached("dbView", () =>
-        FindPrimaryReadOnlySource()?.TableName);
+    {
+        var src = FindPrimaryReadOnlySource();
+        var name = src?.PhysicalName;
+        return string.IsNullOrEmpty(name) ? null : name;
+    });
 
     /// <summary>
     /// True when this object is a read-only projection: it has a read-only primary

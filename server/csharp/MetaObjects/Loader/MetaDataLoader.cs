@@ -361,6 +361,21 @@ public class MetaDataLoader
             // Pass 12: @dbColumnType physical column-type validation (R6 Plan 2b) —
             // own-only closed-value + (subtype × value) pairing check.
             errors.AddRange(ValidationPasses.ValidateDbColumnType(root));
+
+            // Pass 13 (FR-016 / ADR-0018): per-kind physical-name aliases on source.rdb.
+            // Validates empty-string, multi-alias, kind-mismatch; emits
+            // WARN_LEGACY_PHYSICAL_NAME_ALIAS on the @table-for-non-table-kind
+            // legacy spelling. The canonical serializer rewrites legacy on round-trip.
+            var physResult = ValidationPasses.ValidateSourcePhysicalNames(root);
+            errors.AddRange(physResult.Errors);
+            if (physResult.Warnings.Count > 0)
+            {
+                envelopeWarnings.AddRange(physResult.Warnings);
+                foreach (var w in physResult.Warnings)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

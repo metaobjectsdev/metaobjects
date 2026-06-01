@@ -35,8 +35,31 @@ public static class SourceConstants
     // Source v2 attrs
     // -----------------------------------------------------------------------
 
-    /// <summary>Physical SQL table/view name on source.rdb.</summary>
+    // FR-016 / ADR-0007 point 2: the source's "logical name" is the structural
+    // `name` field every MetaData node already carries — accessed via `source.Name`,
+    // NOT an @-attr. (An @-attr would conflict with the ERR_RESERVED_ATTR rule for
+    // the reserved structural key `name`.) See the four-step physical-name
+    // resolution rule on MetaSource.PhysicalName.
+
+    // --- Per-kind physical-name aliases (FR-016 / ADR-0018) ---------------------
+    // One canonical attr key per rdb @kind. The single internal physical-name
+    // "slot" on the source is filled by whichever alias matches @kind; the
+    // canonical serializer emits the kind-matching alias regardless of which
+    // spelling was on input.
+    /// <summary>Physical SQL table name. Canonical attr for @kind: "table" (default).</summary>
     public const string SOURCE_ATTR_TABLE = "table";
+
+    /// <summary>Physical SQL view name. Canonical attr for @kind: "view".</summary>
+    public const string SOURCE_ATTR_VIEW = "view";
+
+    /// <summary>Physical SQL materialized-view name. Canonical attr for @kind: "materializedView".</summary>
+    public const string SOURCE_ATTR_MATERIALIZED_VIEW = "materializedView";
+
+    /// <summary>Physical SQL stored-procedure name. Canonical attr for @kind: "storedProc".</summary>
+    public const string SOURCE_ATTR_PROC = "proc";
+
+    /// <summary>Physical SQL table-function name. Canonical attr for @kind: "tableFunction".</summary>
+    public const string SOURCE_ATTR_FUNCTION = "function";
 
     /// <summary>Object kind within the rdb paradigm; read-only-ness is derived from it.</summary>
     public const string SOURCE_ATTR_KIND = "kind";
@@ -72,6 +95,35 @@ public static class SourceConstants
         SOURCE_KIND_MATERIALIZED_VIEW,
         SOURCE_KIND_STORED_PROC,
         SOURCE_KIND_TABLE_FUNCTION,
+    ];
+
+    /// <summary>
+    /// Map @kind → canonical kind-aware physical-name attr key (FR-016 / ADR-0018).
+    /// Drives the four-step physical-name resolution rule and the canonical-serializer
+    /// per-kind rewrite. The single internal physical-name "slot" on a source is the
+    /// value of whichever alias matches the source's @kind.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> PHYSICAL_NAME_ATTR_BY_KIND =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SOURCE_KIND_TABLE]             = SOURCE_ATTR_TABLE,
+            [SOURCE_KIND_VIEW]              = SOURCE_ATTR_VIEW,
+            [SOURCE_KIND_MATERIALIZED_VIEW] = SOURCE_ATTR_MATERIALIZED_VIEW,
+            [SOURCE_KIND_STORED_PROC]       = SOURCE_ATTR_PROC,
+            [SOURCE_KIND_TABLE_FUNCTION]    = SOURCE_ATTR_FUNCTION,
+        };
+
+    /// <summary>
+    /// All five kind-aware physical-name alias keys, in deterministic order
+    /// (matches <see cref="SOURCE_RDB_KINDS"/>).
+    /// </summary>
+    public static readonly string[] ALL_PHYSICAL_NAME_ALIASES =
+    [
+        SOURCE_ATTR_TABLE,
+        SOURCE_ATTR_VIEW,
+        SOURCE_ATTR_MATERIALIZED_VIEW,
+        SOURCE_ATTR_PROC,
+        SOURCE_ATTR_FUNCTION,
     ];
 
     /// <summary>Default @kind when omitted (writable table).</summary>
