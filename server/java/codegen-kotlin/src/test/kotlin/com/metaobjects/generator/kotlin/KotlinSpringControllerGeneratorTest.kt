@@ -48,11 +48,14 @@ class KotlinSpringControllerGeneratorTest {
             // @PostMapping — create.
             assertTrue(Regex("""@PostMapping\s*\n\s*fun create""").containsMatchIn(src),
                 "expected @PostMapping create handler; saw:\n$src")
-            // @PatchMapping AND @PutMapping share the update handler (per API contract).
-            assertTrue("@PatchMapping(\"/{id}\")" in src,
-                "expected @PatchMapping(\"/{id}\"); saw:\n$src")
-            assertTrue("@PutMapping(\"/{id}\")" in src,
-                "expected @PutMapping(\"/{id}\") on the same update handler; saw:\n$src")
+            // PATCH + PUT share one update handler via a single composed @RequestMapping
+            // (per API contract). Stacking @PatchMapping + @PutMapping would only register
+            // one verb in Spring MVC — the other 405s (SP-F generated-controller lane).
+            assertTrue(
+                "@RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])" in src,
+                "expected a single @RequestMapping(method = [PATCH, PUT]) update handler; saw:\n$src")
+            assertTrue("@PatchMapping" !in src && "@PutMapping" !in src,
+                "must NOT stack @PatchMapping/@PutMapping (only one composed mapping is honored); saw:\n$src")
             // @DeleteMapping("/{id}") — delete.
             assertTrue("@DeleteMapping(\"/{id}\")" in src,
                 "expected @DeleteMapping(\"/{id}\"); saw:\n$src")

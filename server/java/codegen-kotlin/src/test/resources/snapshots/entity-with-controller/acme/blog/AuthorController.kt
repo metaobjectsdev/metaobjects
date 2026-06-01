@@ -15,12 +15,11 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestMethod
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.net.URLDecoder
@@ -191,20 +190,20 @@ private fun AuthorWhereOp(predicates: List<AuthorFilterPredicate>): Op<Boolean>?
         for (p in predicates) {
             val op: Op<Boolean> = when (p.field) {
                 "id" -> when (p.op) {
-                    "eq" -> AuthorTable.id eq (p.value as Any?)
-                    "ne" -> AuthorTable.id neq (p.value as Any?)
-                    "gt" -> AuthorTable.id greater p.value!!
-                    "gte" -> AuthorTable.id greaterEq p.value!!
-                    "lt" -> AuthorTable.id less p.value!!
-                    "lte" -> AuthorTable.id lessEq p.value!!
-                    "in" -> AuthorTable.id inList (p.value as List<Any?>)
+                    "eq" -> AuthorTable.id eq (p.value as Long)
+                    "ne" -> AuthorTable.id neq (p.value as Long)
+                    "gt" -> AuthorTable.id greater (p.value as Long)
+                    "gte" -> AuthorTable.id greaterEq (p.value as Long)
+                    "lt" -> AuthorTable.id less (p.value as Long)
+                    "lte" -> AuthorTable.id lessEq (p.value as Long)
+                    "in" -> AuthorTable.id inList (p.value as List<Long>)
                     "isNull" -> if (p.value as Boolean) AuthorTable.id.isNull() else AuthorTable.id.isNotNull()
                     else -> throw IllegalStateException("unsupported op for id: " + p.op)
                 }
                 "name" -> when (p.op) {
-                    "eq" -> AuthorTable.name eq (p.value as Any?)
-                    "ne" -> AuthorTable.name neq (p.value as Any?)
-                    "in" -> AuthorTable.name inList (p.value as List<Any?>)
+                    "eq" -> AuthorTable.name eq (p.value as String)
+                    "ne" -> AuthorTable.name neq (p.value as String)
+                    "in" -> AuthorTable.name inList (p.value as List<String>)
                     "like" -> AuthorTable.name like (p.value as String)
                     "isNull" -> if (p.value as Boolean) AuthorTable.name.isNull() else AuthorTable.name.isNotNull()
                     else -> throw IllegalStateException("unsupported op for name: " + p.op)
@@ -273,8 +272,7 @@ class AuthorController {
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthor(saved))
     }
 
-    @PatchMapping("/{id}")
-    @PutMapping("/{id}")
+    @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun update(@PathVariable id: Long, @Valid @RequestBody dto: Author): ResponseEntity<Any> = transaction {
         val updated = AuthorTable.update({ AuthorTable.id eq id }) {
             it[name] = dto.name
@@ -288,7 +286,7 @@ class AuthorController {
 
     @DeleteMapping("/{id}")
     fun delete(@PathVariable id: Long): ResponseEntity<Any> = transaction {
-        val deleted = AuthorTable.deleteWhere { AuthorTable.id eq id }
+        val deleted = AuthorTable.deleteWhere { with(SqlExpressionBuilder) { AuthorTable.id eq id } }
         if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.noContent().build<Any>()
     }

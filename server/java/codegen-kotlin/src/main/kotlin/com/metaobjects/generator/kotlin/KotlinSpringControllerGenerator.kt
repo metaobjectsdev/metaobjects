@@ -142,12 +142,14 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             .filterNot { it is ObjectField }
             .map { it.name }
 
-        // Per-field subtype map (filter dispatch); only used inside the generated
-        // file. Field subtype drives both the per-field dispatch arm (string vs
-        // numeric vs boolean vs timestamp) and the value coercion path.
-        val scalarFields: List<Pair<String, String?>> = entity.metaFields
+        // Per-field dispatch map (filter dispatch); only used inside the generated
+        // file. Each entry carries the field name, its subtype (drives the dispatch arm
+        // shape + value-coercion path) and the Exposed column's element Kotlin type
+        // (drives the eq/ne/in value cast — Exposed's typed `Column<T>.eq` rejects a bare
+        // `Any?`, so each predicate value is cast to the column's element type).
+        val scalarFields: List<ScalarFieldSpec> = entity.metaFields
             .filterNot { it is ObjectField }
-            .map { it.name to it.subType }
+            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
         val source = buildString {
@@ -169,12 +171,11 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
             append("import org.springframework.web.bind.annotation.GetMapping\n")
-            append("import org.springframework.web.bind.annotation.PatchMapping\n")
             append("import org.springframework.web.bind.annotation.PathVariable\n")
             append("import org.springframework.web.bind.annotation.PostMapping\n")
-            append("import org.springframework.web.bind.annotation.PutMapping\n")
             append("import org.springframework.web.bind.annotation.RequestBody\n")
             append("import org.springframework.web.bind.annotation.RequestMapping\n")
+            append("import org.springframework.web.bind.annotation.RequestMethod\n")
             append("import org.springframework.web.bind.annotation.RequestParam\n")
             append("import org.springframework.web.bind.annotation.RestController\n")
             append("import java.net.URLDecoder\n")
@@ -304,9 +305,12 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
             append("    }\n\n")
 
-            // PATCH + PUT — same handler (per API contract).
-            append("    @PatchMapping(\"/{id}\")\n")
-            append("    @PutMapping(\"/{id}\")\n")
+            // PATCH + PUT — single handler (per API contract; same body shape both verbs).
+            // Both verbs MUST be expressed on one @RequestMapping with method=[PATCH, PUT].
+            // Stacking @PatchMapping + @PutMapping on the same method does NOT register both
+            // in Spring MVC — only one composed @RequestMapping per method is honored, so the
+            // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
+            append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
             append("    fun update(@PathVariable id: Long, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        val updated = ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
             for (field in entity.metaFields) {
@@ -324,9 +328,14 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
 
             // DELETE — Exposed's `deleteWhere` is an extension fn on Table; the import
             // above pulls it in. 204 No Content on success, 404 envelope on miss.
+            // The `eq` op must be resolved through SqlExpressionBuilder: deleteWhere's
+            // lambda receiver does NOT bring the comparison ops into scope on its own
+            // (unlike `selectAll().where { }`), so a bare `Table.id eq id` is an
+            // "Unresolved reference: eq" compile error. (Surfaced by the SP-F
+            // generated-controller HTTP lane; mirrors the hand-rolled reference server.)
             append("    @DeleteMapping(\"/{id}\")\n")
             append("    fun delete(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
-            append("        val deleted = ${tableObjectName}.deleteWhere { ${tableObjectName}.${pkFieldName} eq id }\n")
+            append("        val deleted = ${tableObjectName}.deleteWhere { with(SqlExpressionBuilder) { ${tableObjectName}.${pkFieldName} eq id } }\n")
             append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        else ResponseEntity.noContent().build<Any>()\n")
             append("    }\n")
@@ -361,7 +370,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         shortName: String,
         tableObjectName: String,
         allowlistName: String,
-        scalarFields: List<Pair<String, String?>>,
+        scalarFields: List<ScalarFieldSpec>,
     ) {
         out.append("/** GENERATED — single parsed + validated FR-009 filter predicate. */\n")
         out.append("private data class ${shortName}FilterPredicate(val field: String, val op: String, val value: Any?)\n\n")
@@ -503,13 +512,14 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         out.append("        var combined: Op<Boolean>? = null\n")
         out.append("        for (p in predicates) {\n")
         out.append("            val op: Op<Boolean> = when (p.field) {\n")
-        for ((fname, subType) in scalarFields) {
+        for ((fname, subType, elementType) in scalarFields) {
             val isStringLike = (subType == StringField.SUBTYPE_STRING || subType == EnumField.SUBTYPE_ENUM)
             val isBoolean = (subType == BooleanField.SUBTYPE_BOOLEAN)
             emitPerFieldDispatchArm(
                 out,
                 tableObjectName = tableObjectName,
                 fieldName = fname,
+                elementType = elementType,
                 isStringLike = isStringLike,
                 isBoolean = isBoolean,
             )
@@ -533,22 +543,28 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         out: StringBuilder,
         tableObjectName: String,
         fieldName: String,
+        elementType: String,
         isStringLike: Boolean,
         isBoolean: Boolean,
     ) {
+        // Exposed's typed `Column<T>.eq(t: T)` / `.neq` / `.inList(Iterable<T>)` reject a
+        // bare `Any?` — cast each predicate value to the column's element Kotlin type so
+        // the comparison resolves. (Surfaced by the SP-F generated-controller HTTP lane:
+        // `(p.value as Any?)` was an `Unresolved reference: eq` compile error.) The
+        // coercer already produced a value of exactly this type; the cast is total.
         out.append("                \"$fieldName\" -> when (p.op) {\n")
-        out.append("                    \"eq\" -> ${tableObjectName}.${fieldName} eq (p.value as Any?)\n")
+        out.append("                    \"eq\" -> ${tableObjectName}.${fieldName} eq (p.value as $elementType)\n")
         if (!isBoolean) {
-            out.append("                    \"ne\" -> ${tableObjectName}.${fieldName} neq (p.value as Any?)\n")
+            out.append("                    \"ne\" -> ${tableObjectName}.${fieldName} neq (p.value as $elementType)\n")
         }
         if (!isStringLike && !isBoolean) {
-            out.append("                    \"gt\" -> ${tableObjectName}.${fieldName} greater p.value!!\n")
-            out.append("                    \"gte\" -> ${tableObjectName}.${fieldName} greaterEq p.value!!\n")
-            out.append("                    \"lt\" -> ${tableObjectName}.${fieldName} less p.value!!\n")
-            out.append("                    \"lte\" -> ${tableObjectName}.${fieldName} lessEq p.value!!\n")
+            out.append("                    \"gt\" -> ${tableObjectName}.${fieldName} greater (p.value as $elementType)\n")
+            out.append("                    \"gte\" -> ${tableObjectName}.${fieldName} greaterEq (p.value as $elementType)\n")
+            out.append("                    \"lt\" -> ${tableObjectName}.${fieldName} less (p.value as $elementType)\n")
+            out.append("                    \"lte\" -> ${tableObjectName}.${fieldName} lessEq (p.value as $elementType)\n")
         }
         if (!isBoolean) {
-            out.append("                    \"in\" -> ${tableObjectName}.${fieldName} inList (p.value as List<Any?>)\n")
+            out.append("                    \"in\" -> ${tableObjectName}.${fieldName} inList (p.value as List<$elementType>)\n")
         }
         if (isStringLike) {
             out.append("                    \"like\" -> ${tableObjectName}.${fieldName} like (p.value as String)\n")
@@ -591,6 +607,28 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      */
     private fun pluralLowercase(shortName: String): String =
         shortName.lowercase() + "s"
+
+    /**
+     * A scalar (non-[ObjectField]) field's filter-dispatch metadata. [subType] drives the
+     * arm shape + value-coercion path; [elementType] is the Exposed column's element Kotlin
+     * type name, used to cast each predicate value in the `Column<T>.eq/neq/inList` calls
+     * (Exposed's typed comparison ops reject a bare `Any?`).
+     */
+    private data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
+
+    /**
+     * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —
+     * the cast target for the eq/ne/in predicate value. For scalar fields this is the same
+     * simple type name the DTO property uses ([KotlinTypeMapper.kotlinTypeName]); for an
+     * [EnumField] it is the generated typed enum class (the column is
+     * `enumerationByName(..., <Enum>::class)`), keeping the cast aligned with the column type.
+     */
+    private fun columnElementType(field: com.metaobjects.field.MetaField<*>): String {
+        KotlinTypeMapper.enumTypeName(field, null)?.let { return it.simpleName }
+        return KotlinTypeMapper.kotlinTypeName(field).let { tn ->
+            (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
+        }
+    }
 
     private companion object {
         /** Default primary-key field name when the entity declares no identity.primary. */

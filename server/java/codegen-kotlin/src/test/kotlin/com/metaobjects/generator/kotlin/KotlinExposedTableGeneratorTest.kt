@@ -665,9 +665,9 @@ class KotlinExposedTableGeneratorTest {
      * the generated file compile-fails with "unresolved reference: date / timestamp".
      * See also the comment on [KotlinTypeMapper.exposedColumnImport].
      *
-     * Default for `field.timestamp` is the plain `timestamp(...)` (Postgres
-     * `timestamp without time zone`) — the more common shape. Column names are
-     * snake_case-d for Postgres convention. The opt-in TZ-aware variant is
+     * Default for `field.timestamp` is `datetime(...)` (Postgres `timestamp without
+     * time zone`, java.time.LocalDateTime) — the zone-less wall-clock wire shape. Column
+     * names are snake_case-d for Postgres convention. The opt-in TZ-aware variant is
      * covered by [timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant].
      */
     @Test fun dateAndTimestampFieldsEmitJavatimeImports() {
@@ -694,15 +694,15 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(table)
             assertTrue("import org.jetbrains.exposed.sql.javatime.date" in src,
                 "expected javatime.date import for field.date; saw:\n$src")
-            assertTrue("import org.jetbrains.exposed.sql.javatime.timestamp\n" in src ||
-                src.endsWith("import org.jetbrains.exposed.sql.javatime.timestamp"),
-                "expected javatime.timestamp (plain) import for field.timestamp; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.javatime.datetime\n" in src ||
+                src.endsWith("import org.jetbrains.exposed.sql.javatime.datetime"),
+                "expected javatime.datetime import for default field.timestamp; saw:\n$src")
             // Default `field.timestamp` MUST NOT bring in the timestampWithTimeZone variant.
             assertTrue("timestampWithTimeZone" !in src,
                 "default field.timestamp should NOT emit timestampWithTimeZone; saw:\n$src")
             // Column names are snake_case-d for Postgres convention.
             assertTrue("val occursOn = date(\"occurs_on\")" in src, src)
-            assertTrue("val loggedAt = timestamp(\"logged_at\")" in src, src)
+            assertTrue("val loggedAt = datetime(\"logged_at\")" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }

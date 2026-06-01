@@ -29,6 +29,8 @@
     <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
     <snakeyaml.version>2.3</snakeyaml.version>
     <jackson.version>2.18.2</jackson.version>
+    <spring.version>6.2.11</spring.version>
+    <h2.version>2.3.232</h2.version>
     <maven.compiler.release>21</maven.compiler.release>
   </properties>
 
@@ -80,6 +82,98 @@
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-codegen-kotlin</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- SP-F Unit 2 generated-controller lane: generate + compile + host the EMITTED
+         Kotlin Spring @RestController for Author against the api-contract corpus.
+         kctfork (the maintained kotlin-compile-testing fork) compiles the generated
+         sources (inheritClassPath brings Spring + Exposed + serialization onto the
+         compile classpath). The fork bundles a kotlin 2.0.x embedded compiler — the
+         legacy `com.github.tschuchortdev:kotlin-compile-testing` ships a 1.9.x compiler
+         that fails to resolve Exposed's `eq`/`neq` infix ops against the 2.0.21-metadata
+         stdlib the generated controller compiles against. Same `com.tschuchort.compiletesting`
+         API. -->
+    <dependency>
+      <groupId>dev.zacsweers.kctfork</groupId>
+      <artifactId>core</artifactId>
+      <version>0.5.1</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- @Serializable on the generated data class — resolved at compile + runtime. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-core-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-serialization-json-jvm</artifactId>
+      <version>1.7.3</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Spring Web MVC + Spring Test (MockMvc standaloneSetup hosts the generated
+         controller in-process — no Spring Boot context, no socket). -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+      <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-test</artifactId>
+      <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- jakarta validation: the generated controller annotates the request body with
+         @Valid; hibernate-validator + expressly provide a Validator + EL. -->
+    <dependency>
+      <groupId>org.hibernate.validator</groupId>
+      <artifactId>hibernate-validator</artifactId>
+      <version>8.0.1.Final</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.expressly</groupId>
+      <artifactId>expressly</artifactId>
+      <version>5.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- JSR-310 datatypes so the host ObjectMapper (de)serializes the generated
+         AuthorDto's java.time temporal field. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- jackson-module-kotlin binds JSON onto the generated Kotlin data class. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-kotlin</artifactId>
+      <version>${jackson.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- In-memory H2 (Exposed-backed) — the consumer persistence seam for the
+         generated controller, replacing the hand-rolled lane's Testcontainers Postgres.
+         The controller is the artifact; the DB is not a conformance subject (persistence
+         is gated separately). No Testcontainers / docker required for this lane. -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <version>${h2.version}</version>
       <scope>test</scope>
     </dependency>
 
@@ -150,6 +244,25 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.plugin.version}</version>
+      </plugin>
+      <!-- The SP-F generated-controller lane runs the embedded Kotlin compiler
+           (kctfork) IN-PROCESS to compile the generated controller. JaCoCo's runtime
+           agent (inherited from the parent pom) tries to instrument the loaded compiler
+           classes and chokes on kotlin-compiler-embeddable 2.0's giant
+           `FirErrors.<clinit>` (ASM MethodTooLargeException → IOException at class load).
+           Exclude the embedded-compiler packages from agent instrumentation; they are
+           third-party tooling, never a coverage subject. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.plugin.version}</version>
+        <configuration>
+          <excludes>
+            <exclude>org/jetbrains/kotlin/**</exclude>
+            <exclude>org/jetbrains/org/objectweb/**</exclude>
+            <exclude>com/tschuchort/compiletesting/**</exclude>
+          </excludes>
+        </configuration>
       </plugin>
     </plugins>
   </build>

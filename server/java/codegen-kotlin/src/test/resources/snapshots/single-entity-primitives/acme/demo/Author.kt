@@ -3,8 +3,8 @@ package acme.demo
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
-import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import kotlin.Boolean
 import kotlin.Double
 import kotlin.Int
@@ -27,5 +27,5 @@ public data class Author(
   public val active: Boolean? = null,
   public val ratio: Double? = null,
   public val birthday: LocalDate? = null,
-  public val createdAt: Instant? = null,
+  public val createdAt: LocalDateTime? = null,
 )

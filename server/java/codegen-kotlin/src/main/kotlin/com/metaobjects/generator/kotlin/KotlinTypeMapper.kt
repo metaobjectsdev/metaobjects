@@ -173,7 +173,15 @@ object KotlinTypeMapper {
         // field.time → java.time.LocalTime / Exposed `time(...)` (Postgres TIME). The
         // wall-clock-only sibling of DateField; the wire form is "HH:MM:SS".
         is TimeField      -> ClassName("java.time", "LocalTime")
-        is TimestampField -> ClassName("java.time", "Instant")
+        // Default for field.timestamp is `java.time.LocalDateTime` — the zone-less
+        // wall-clock shape (Postgres `timestamp without time zone`). The cross-port wire
+        // value is zone-less (`yyyy-MM-dd'T'HH:mm:ss`, no `Z`), which a `java.time.Instant`
+        // cannot carry — Jackson 400s deserializing it into the DTO. Opt in to
+        // `Instant` (UTC instant) via `@dbColumnType=timestamp_with_tz`, paired with the
+        // Exposed `timestampWithTimeZone` column. Mirrors the Java SpringTypeMapper fix.
+        is TimestampField ->
+            if (timestampWithTzOptIn(field)) ClassName("java.time", "Instant")
+            else ClassName("java.time", "LocalDateTime")
         // Currency: integer minor units on the wire (project-wide invariant). Same JVM
         // representation as Long; surfaced as its own arm so the semantic is documented
         // and downstream tooling can branch on subtype.
@@ -222,14 +230,16 @@ object KotlinTypeMapper {
         // field.time → Exposed `time(...)` (javatime extension; needs an explicit import,
         // same as `date(...)`).
         is TimeField      -> "org.jetbrains.exposed.sql.javatime.time"
-        // Default for field.timestamp is plain `timestamp(...)` (Postgres `timestamp
-        // without time zone` — the more common shape). Opt-in `@dbColumnType=timestamp_with_tz`
-        // switches to `timestampWithTimeZone(...)` (Postgres `timestamp with time zone`).
+        // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
+        // time zone`, mapped by exposed-java-time to `java.time.LocalDateTime` (the
+        // zone-less wall-clock shape carried on the cross-port wire). Opt-in
+        // `@dbColumnType=timestamp_with_tz` switches to `timestampWithTimeZone(...)`
+        // (Postgres `timestamp with time zone`, `java.time.Instant`).
         is TimestampField -> {
             if (timestampWithTzOptIn(field))
                 "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone"
             else
-                "org.jetbrains.exposed.sql.javatime.timestamp"
+                "org.jetbrains.exposed.sql.javatime.datetime"
         }
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
         // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
@@ -288,12 +298,12 @@ object KotlinTypeMapper {
         is DateField      -> "date(\"$colName\")"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
         is TimeField      -> "time(\"$colName\")"
-        // Default for field.timestamp is plain `timestamp(...)` — Postgres `timestamp
-        // without time zone` is the more common shape. Opt in to TZ-aware via
-        // `@dbColumnType=timestamp_with_tz`.
+        // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
+        // time zone` (`java.time.LocalDateTime`), the zone-less wall-clock wire shape.
+        // Opt in to TZ-aware (`java.time.Instant`) via `@dbColumnType=timestamp_with_tz`.
         is TimestampField -> {
             if (timestampWithTzOptIn(field)) "timestampWithTimeZone(\"$colName\")"
-            else "timestamp(\"$colName\")"
+            else "datetime(\"$colName\")"
         }
         // Currency stored as BIGINT minor units — same as Long. Separate arm for
         // semantic clarity (a future migration generator can branch on it).

@@ -81,8 +81,19 @@ class KotlinTypeMapperTest {
         assertEquals("LocalTime", tn.simpleName)
     }
 
-    @Test fun `timestamp field maps to java time Instant`() {
+    @Test fun `timestamp field defaults to java time LocalDateTime`() {
+        // Default for field.timestamp is zone-less LocalDateTime (Postgres `timestamp
+        // without time zone`) — the cross-port wire value is zone-less (no `Z`), which an
+        // Instant cannot carry. Opt in to Instant via @dbColumnType=timestamp_with_tz.
         val f = TimestampField("createdAt")
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.time", tn.packageName)
+        assertEquals("LocalDateTime", tn.simpleName)
+    }
+
+    @Test fun `timestamp field with dbColumnType=timestamp_with_tz maps to java time Instant`() {
+        val f = TimestampField("createdAt")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "timestamp_with_tz"))
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("Instant", tn.simpleName)
@@ -142,11 +153,12 @@ class KotlinTypeMapperTest {
         )
     }
 
-    @Test fun `timestamp field defaults to plain timestamp exposed column with snake_case column name`() {
-        // Default for field.timestamp is plain `timestamp(...)` (Postgres `timestamp
-        // without time zone` — the more common shape). Column name is snake_case-d.
+    @Test fun `timestamp field defaults to datetime exposed column with snake_case column name`() {
+        // Default for field.timestamp is `datetime(...)` (Postgres `timestamp without time
+        // zone`, java.time.LocalDateTime — the zone-less wall-clock wire shape). Column name
+        // is snake_case-d.
         val f = TimestampField("createdAt")
-        assertEquals("timestamp(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("datetime(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `timestamp field with dbColumnType=timestamp_with_tz emits timestampWithTimeZone`() {
@@ -161,10 +173,10 @@ class KotlinTypeMapperTest {
         )
     }
 
-    @Test fun `timestamp field default import is plain javatime timestamp`() {
+    @Test fun `timestamp field default import is javatime datetime`() {
         val f = TimestampField("createdAt")
         assertEquals(
-            "org.jetbrains.exposed.sql.javatime.timestamp",
+            "org.jetbrains.exposed.sql.javatime.datetime",
             KotlinTypeMapper.exposedColumnImport(f),
         )
     }
