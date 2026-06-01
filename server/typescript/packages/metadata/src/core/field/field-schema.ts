@@ -15,6 +15,7 @@ import {
   FIELD_ATTR_STORAGE,
   STORAGE_VALUES,
   FIELD_ATTR_REQUIRED,
+  FIELD_ATTR_READ_ONLY,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_MAX_LENGTH,
@@ -65,6 +66,17 @@ export const commonFieldAttrs: AttrSchema[] = [
     required: false,
     description:
       "When true, the field is NOT NULL. Equivalent to attaching a validator.required child.",
+  },
+  {
+    name: FIELD_ATTR_READ_ONLY,
+    valueType: ATTR_SUBTYPE_BOOLEAN,
+    required: false,
+    description:
+      "FR-013: when true, the field is read-only — codegen emits no setter / " +
+      "writable property, the persistence layer skips the column on INSERT/UPDATE, " +
+      "and Zod/Pydantic/class-validator schemas mark it read-only on input variants. " +
+      "The value is populated by the database (computed column, default expression, " +
+      "trigger), by replication, or by another external owner.",
   },
   {
     name: FIELD_ATTR_UNIQUE,

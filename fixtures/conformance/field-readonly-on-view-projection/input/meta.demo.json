@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "ProgramSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@readOnly": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@readOnly": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "memberCount",
+                "@readOnly": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

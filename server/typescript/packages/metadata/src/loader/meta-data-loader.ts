@@ -20,6 +20,7 @@ import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
+import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -448,6 +449,13 @@ export class MetaDataLoader {
       const physicalNameResult = validateSourcePhysicalNames(root);
       errors.push(...physicalNameResult.errors);
       envelopeWarnings.push(...physicalNameResult.warnings);
+
+      // FR-013 — field-level @readOnly cross-attribute rules
+      // (ERR_READONLY_DOWNGRADE / ERR_READONLY_ASSIGNED_PRIMARY /
+      // WARN_READONLY_VALUE_OBJECT).
+      const readOnlyResult = validateFieldReadOnly(root);
+      errors.push(...readOnlyResult.errors);
+      envelopeWarnings.push(...readOnlyResult.warnings);
 
       // Eleventh pass: per-type @default coercibility — a field's @default value
       // must coerce to the field's type (int/long → integer, double/float/decimal →

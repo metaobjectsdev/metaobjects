@@ -52,6 +52,9 @@ export const ERROR_CODES = [
   // FR-016 / ADR-0018 — per-kind physical-name alias validation on source.rdb.
   "ERR_PHYSICAL_NAME_KIND_MISMATCH",
   "ERR_PHYSICAL_NAME_MULTIPLE",
+  // FR-013 — field-level @readOnly cross-attribute validation.
+  "ERR_READONLY_ASSIGNED_PRIMARY",
+  "ERR_READONLY_DOWNGRADE",
   // ADR-0006 D2 — YAML type-coercion guard. Emitted by every port's YAML
   // loader when a coerced scalar mismatches the schema-declared type.
   "ERR_YAML_COERCION",
@@ -73,6 +76,10 @@ export const WARNING_CODES = [
   // FR-016 / ADR-0018 — pre-1.0 legacy @table spelling on a non-table @kind.
   // Loader accepts; canonical-serializer rewrites to the kind-matching alias.
   "WARN_LEGACY_PHYSICAL_NAME_ALIAS",
+  // FR-013 — @readOnly on a field child of object.value. The persistence
+  // implication does not apply to value-objects; the attr is retained for
+  // language-specific record/struct treatment (e.g. Kotlin `val` vs `var`).
+  "WARN_READONLY_VALUE_OBJECT",
 ] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
 

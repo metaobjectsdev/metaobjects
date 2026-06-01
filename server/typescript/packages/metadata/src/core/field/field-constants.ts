@@ -55,6 +55,12 @@ export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 
 export const FIELD_ATTR_REQUIRED = "required";
 export const FIELD_ATTR_UNIQUE = "unique";
+
+/** FR-013: when true, the field is read-only from the application's perspective.
+ *  Codegen emits no setter; persistence skips the column on INSERT/UPDATE; Zod
+ *  create/update variants omit the field. Default false (writable). See ADR-0013
+ *  layer split — this is logical (no DB-introspection round-trip). */
+export const FIELD_ATTR_READ_ONLY = "readOnly";
 export const FIELD_ATTR_DEFAULT = "default";
 export const FIELD_ATTR_MAX_LENGTH = "maxLength";
 export const FIELD_ATTR_PRECISION = "precision";

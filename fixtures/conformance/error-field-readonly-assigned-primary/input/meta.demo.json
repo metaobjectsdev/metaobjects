@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "subscribers"
+              }
+            },
+            {
+              "field.string": {
+                "name": "id",
+                "@readOnly": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id",
+                "@generation": "assigned"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_READONLY_ASSIGNED_PRIMARY",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.string']"
+      }
+    }
+  ],
+  "warnings": []
+}

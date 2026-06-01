@@ -34,6 +34,8 @@
     "ERR_SOURCE_MULTIPLE_PRIMARY": "An object declares more than one source node with role=primary.",
     "ERR_PHYSICAL_NAME_KIND_MISMATCH": "FR-016 / ADR-0018: a source.rdb declares a kind-aware physical-name alias (@view/@materializedView/@proc/@function) that does not match its @kind. The legacy @table-for-non-table case warns rather than errors.",
     "ERR_PHYSICAL_NAME_MULTIPLE": "FR-016 / ADR-0018: a source.rdb declares two or more kind-aware physical-name aliases at once (e.g. both @table and @view). Exactly one is permitted.",
+    "ERR_READONLY_ASSIGNED_PRIMARY": "FR-013: a field with @readOnly: true is the target of an identity.primary with @generation: \"assigned\". The application has no path to populate the identity value (no setter; not generated; not defaulted).",
+    "ERR_READONLY_DOWNGRADE": "FR-013: a concrete entity declares @readOnly: false on a field whose extends-chain parent declares @readOnly: true. Read-only-ness can only be upgraded, never downgraded.",
     "ERR_YAML_COERCION": "A YAML 1.2 silent type coercion produced a value whose runtime type differs from the attribute's declared valueType (e.g. an unquoted `column: TRUE` parsed as boolean for a string-typed attr). Emitted by every port's YAML loader; canonical JSON is unaffected.",
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."
