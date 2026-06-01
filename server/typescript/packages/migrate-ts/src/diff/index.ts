@@ -1,13 +1,14 @@
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   ViewDescriptor,
-  Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback,
+  Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
+import { checkExprEquals } from "../check-expr-compare.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 export interface DiffArgs {
@@ -26,6 +27,8 @@ export interface DiffArgs {
    * the default. Pass additional patterns to extend.
    */
   ignoreTables?: string[];
+  /** Dialect; CHECK-constraint evolution on existing tables is emitted for postgres only. */
+  dialect?: Dialect;
 }
 
 const ALLOWED: ChangeStatus = { state: "allowed" };
@@ -156,10 +159,10 @@ export async function diff(
     diffTableColumns(expectedTable, actualTable, changes);
     diffTableIndexes(expectedTable, actualTable, changes);
     diffTableForeignKeys(expectedTable, actualTable, changes);
-    // CHECK constraints on existing tables are intentionally NOT diffed:
-    // checks are a create-time-only concern (inlined in CREATE TABLE). Evolving
-    // an enum's values on a live table (which would alter its CHECK) is deferred
-    // until check introspection lands. No add-check / drop-check is produced here.
+    // CHECK constraints on existing tables are evolved for postgres only (SQLite
+    // evolves checks via table recreate, not ALTER). Gated on `actual.checks`
+    // being populated — by the snapshot offline, or pg_constraint introspection.
+    if (args.dialect === "postgres") diffTableChecks(expectedTable, actualTable, changes);
   }
 
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
@@ -289,6 +292,26 @@ function diffTableForeignKeys(
   for (const [name, af] of actualFk) {
     if (!expectedFk.has(name)) {
       changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: af, status: ALLOWED });
+    }
+  }
+}
+
+function diffTableChecks(expected: TableDescriptor, actual: TableDescriptor, changes: Change[]): void {
+  const sx = schemaSpread(expected.schema);
+  const expectedChk = new Map(expected.checks.map((c) => [c.name, c]));
+  const actualChk = new Map(actual.checks.map((c) => [c.name, c]));
+  for (const [name, ec] of expectedChk) {
+    const ac = actualChk.get(name);
+    if (!ac) {
+      changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
+    } else if (!checkExprEquals(ec.expression, ac.expression)) {
+      changes.push({ kind: "drop-check", table: expected.name, ...sx, check: name, restore: ac, status: ALLOWED });
+      changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
+    }
+  }
+  for (const [name, ac] of actualChk) {
+    if (!expectedChk.has(name)) {
+      changes.push({ kind: "drop-check", table: expected.name, ...sx, check: name, restore: ac, status: ALLOWED });
     }
   }
 }
