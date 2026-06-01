@@ -82,11 +82,11 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         // @PostMapping — create.
         assertTrue("expected @PostMapping create handler; saw:\n" + src,
             Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<AuthorDto> create").matcher(src).find());
-        // @PatchMapping AND @PutMapping share the update handler (per API contract).
-        assertTrue("expected @PatchMapping(\"/{id}\"); saw:\n" + src,
-            src.contains("@PatchMapping(\"/{id}\")"));
-        assertTrue("expected @PutMapping(\"/{id}\") on the same update handler; saw:\n" + src,
-            src.contains("@PutMapping(\"/{id}\")"));
+        // PATCH AND PUT share the update handler (per API contract) — expressed as a single
+        // @RequestMapping with method={PATCH, PUT}. Stacking @PatchMapping + @PutMapping on
+        // one method only registers one verb in Spring MVC (the other 405s).
+        assertTrue("expected @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT }); saw:\n" + src,
+            src.contains("@RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })"));
         // @DeleteMapping("/{id}") — delete.
         assertTrue("expected @DeleteMapping(\"/{id}\"); saw:\n" + src,
             src.contains("@DeleteMapping(\"/{id}\")"));

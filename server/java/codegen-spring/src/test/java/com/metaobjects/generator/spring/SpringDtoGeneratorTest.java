@@ -69,8 +69,10 @@ public class SpringDtoGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected `Long id` component; saw:\n" + src, src.contains("Long id"));
         assertTrue("expected `String name` component; saw:\n" + src, src.contains("String name"));
         assertTrue("expected `String bio` component; saw:\n" + src, src.contains("String bio"));
-        assertTrue("expected `java.time.Instant createdAt` component; saw:\n" + src,
-            src.contains("java.time.Instant createdAt"));
+        // Plain field.timestamp → LocalDateTime (no-tz wall-clock wire contract; see
+        // SpringTypeMapper). Was Instant; Instant can't carry the zone-less `createdAt`.
+        assertTrue("expected `java.time.LocalDateTime createdAt` component; saw:\n" + src,
+            src.contains("java.time.LocalDateTime createdAt"));
     }
 
     @Test

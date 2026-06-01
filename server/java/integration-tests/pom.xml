@@ -26,6 +26,7 @@
     <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
     <snakeyaml.version>2.3</snakeyaml.version>
     <jackson.version>2.18.2</jackson.version>
+    <spring.version>6.2.11</spring.version>
   </properties>
 
   <dependencies>
@@ -46,6 +47,66 @@
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-omdb</artifactId>
       <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- SP-F generated-controller lane: generate + compile + host the EMITTED
+         Spring @RestController for Author against the api-contract corpus.
+         codegen-spring supplies the generators + the controller runtime types
+         (FilterPredicate / FilterParser / FilterParseResult). -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-spring</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Spring Web MVC + Spring Test (MockMvc standaloneSetup hosts the generated
+         controller in-process — no Spring Boot context, no socket). -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-webmvc</artifactId>
+      <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-test</artifactId>
+      <version>${spring.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- jakarta servlet (the generated controller's list() takes HttpServletRequest
+         so the bracketed filter[...] grammar reaches FilterParser intact). -->
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- jakarta validation: the generated controller annotates the request body
+         with @Valid; hibernate-validator + expressly provide a Validator + EL. -->
+    <dependency>
+      <groupId>org.hibernate.validator</groupId>
+      <artifactId>hibernate-validator</artifactId>
+      <version>8.0.1.Final</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.expressly</groupId>
+      <artifactId>expressly</artifactId>
+      <version>5.0.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- JSR-310 datatypes: the generated AuthorDto types field.timestamp as
+         java.time.Instant; the JavaTimeModule lets the host's ObjectMapper
+         (de)serialize it. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>${jackson.version}</version>
       <scope>test</scope>
     </dependency>
 

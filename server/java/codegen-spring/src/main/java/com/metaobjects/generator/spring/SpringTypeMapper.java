@@ -13,6 +13,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.object.MetaObject;
 
 import java.util.HashSet;
@@ -75,7 +76,17 @@ public final class SpringTypeMapper {
         if (field instanceof DecimalField) return "java.math.BigDecimal";
         if (field instanceof BooleanField) return "Boolean";
         if (field instanceof DateField) return "java.time.LocalDate";
-        if (field instanceof TimestampField) return "java.time.Instant";
+        // Timestamp wire contract (normalization.md): plain `field.timestamp` is
+        // "timestamp WITHOUT time zone" → wall-clock ISO string with NO `Z`
+        // (e.g. "2026-01-01T10:00:00"), which round-trips as java.time.LocalDateTime.
+        // The `@dbColumnType=timestamp_with_tz` opt-in is "timestamp WITH time zone"
+        // → UTC `Z` form, which is java.time.Instant. Using Instant for the default
+        // (no-tz) case is wrong: Instant can neither parse nor emit a zone-less string,
+        // so the DTO can't accept the cross-port `createdAt` wire value. Mirrors
+        // KotlinTypeMapper's timestamp/timestampWithTimeZone split.
+        if (field instanceof TimestampField) {
+            return timestampWithTzOptIn(field) ? "java.time.Instant" : "java.time.LocalDateTime";
+        }
         // Currency wire/JVM type: Long (integer minor units cross-port invariant).
         if (field instanceof CurrencyField) return "Long";
         // Enum string-backed on the WIRE / SCHEMA / lenient mirror path — stays String.
@@ -89,6 +100,20 @@ public final class SpringTypeMapper {
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");
+    }
+
+    /**
+     * True iff {@code field} carries {@code @dbColumnType=timestamp_with_tz}
+     * (case-insensitive) — the opt-in to "timestamp WITH time zone" (UTC `Z`
+     * wire form → {@code java.time.Instant}). Mirrors
+     * {@code KotlinTypeMapper.timestampWithTzOptIn}. Own-only read; absent /
+     * non-attribute → {@code false} (plain no-tz timestamp).
+     */
+    private static boolean timestampWithTzOptIn(MetaField<?> field) {
+        if (!field.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)) return false;
+        Object raw = field.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue();
+        return raw != null
+            && CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equalsIgnoreCase(String.valueOf(raw).trim());
     }
 
     // =========================================================================

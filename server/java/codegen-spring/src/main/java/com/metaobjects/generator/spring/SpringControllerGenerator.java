@@ -145,12 +145,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import org.springframework.http.ResponseEntity;\n");
         src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
         src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.PatchMapping;\n");
         src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
         src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
-        src.append("import org.springframework.web.bind.annotation.PutMapping;\n");
         src.append("import org.springframework.web.bind.annotation.RequestBody;\n");
         src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
         src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
@@ -237,8 +236,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    }\n\n");
 
         // PATCH + PUT — single handler (per API contract; same body shape both verbs).
-        src.append("    @PatchMapping(\"/{id}\")\n");
-        src.append("    @PutMapping(\"/{id}\")\n");
+        // Both verbs MUST be expressed on one @RequestMapping with method={PATCH, PUT}.
+        // Stacking @PatchMapping + @PutMapping on the same method does NOT register both
+        // in Spring MVC — only one composed @RequestMapping per method is honored, so the
+        // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
+        src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
         src.append("    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody ").append(dtoName).append(" dto) {\n");
         src.append("        return repository.update(id, dto)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
