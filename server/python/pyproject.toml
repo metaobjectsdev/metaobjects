@@ -37,6 +37,11 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 
+[project.scripts]
+# Codegen CLI (gen + verify). Named `metaobjects`, NOT `meta` — `meta` is the
+# Node schema CLI. No `migrate` subcommand: schema is Node-owned (ADR-0015).
+metaobjects = "metaobjects.cli:main"
+
 [project.urls]
 Homepage = "https://metaobjects.dev"
 Repository = "https://github.com/metaobjectsdev/metaobjects"
