@@ -12,16 +12,20 @@
 
 import {
   type MetaData,
+  type MetaField,
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
 } from "@metaobjectsdev/metadata";
+import { enumValues } from "./enum-meta.js";
+import { enumUnionAliasName, enumUnionString } from "./templates/inferred-types.js";
 
 const SCALAR_TS: Record<string, string> = {
   string: "string",
@@ -44,7 +48,18 @@ function findObject(root: MetaData, name: string): MetaData | undefined {
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
 }
 
-function fieldTsType(field: MetaData): { type: string; refVo?: string } {
+/**
+ * Map a payload field to its strict TS type.
+ *  - `refVo`: the nested @objectRef VO to recurse into (object fields only).
+ *  - `enumAlias`: a `{ name, decl }` for a `field.enum` — `name` is the union-alias
+ *    type referenced inline; `decl` is the `export type <name> = "A" | "B";` line the
+ *    caller hoists above the interface (deduped). Reuses the SAME naming + union
+ *    logic as the entity inferred-types emitter (single source of truth).
+ */
+function fieldTsType(
+  field: MetaData,
+  ownerName: string,
+): { type: string; refVo?: string; enumAlias?: { name: string; decl: string } } {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     const refName = typeof ref === "string" ? ref : "unknown";
@@ -56,6 +71,21 @@ function fieldTsType(field: MetaData): { type: string; refVo?: string } {
     if (typeof ref === "string") result.refVo = ref;
     return result;
   }
+  // field.enum: a value-constrained string-literal union alias (NOT `unknown`).
+  // Field nodes are MetaField instances at runtime (MetaField extends MetaData),
+  // so the enum helpers (effective @values + super-resolving name) apply.
+  if (field.subType === FIELD_SUBTYPE_ENUM) {
+    const values = enumValues(field as MetaField);
+    if (values !== undefined) {
+      const aliasName = enumUnionAliasName(ownerName, field as MetaField);
+      return {
+        type: field.isArray ? `${aliasName}[]` : aliasName,
+        enumAlias: { name: aliasName, decl: `export type ${aliasName} = ${enumUnionString(values)};` },
+      };
+    }
+    // No @values → fall through to the raw-string representation.
+    return { type: field.isArray ? "string[]" : "string" };
+  }
   const scalar = SCALAR_TS[field.subType] ?? "unknown";
   return { type: field.isArray ? `${scalar}[]` : scalar };
 }
@@ -65,15 +95,28 @@ function isFieldRequired(field: MetaData): boolean {
   return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
 }
 
-function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out: string[]): void {
+function emitInterface(
+  root: MetaData,
+  voName: string,
+  emitted: Set<string>,
+  out: string[],
+  enumAliases: Set<string>,
+): void {
   if (emitted.has(voName)) return;
   const vo = findObject(root, voName);
   if (!vo) return;
   emitted.add(voName);
+  const aliasLines: string[] = [];
   const lines: string[] = [`export interface ${voName} {`];
   const refs: string[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
-    const { type, refVo } = fieldTsType(f);
+    const { type, refVo, enumAlias } = fieldTsType(f, voName);
+    // Hoist the enum union alias above the interface, deduped across the whole
+    // batch (multiple fields/objects can share one abstract enum's alias).
+    if (enumAlias && !enumAliases.has(enumAlias.name)) {
+      enumAliases.add(enumAlias.name);
+      aliasLines.push(enumAlias.decl);
+    }
     // Required fields: `name: T;`
     // Optional fields: `name?: T | null;` — the `| null` lets values from
     // Drizzle entity rows (which return `null` for nullable columns) flow
@@ -86,14 +129,15 @@ function emitInterface(root: MetaData, voName: string, emitted: Set<string>, out
     if (refVo) refs.push(refVo);
   }
   lines.push("}");
-  out.push(lines.join("\n"));
-  for (const r of refs) emitInterface(root, r, emitted, out);
+  const block = aliasLines.length > 0 ? `${aliasLines.join("\n")}\n${lines.join("\n")}` : lines.join("\n");
+  out.push(block);
+  for (const r of refs) emitInterface(root, r, emitted, out, enumAliases);
 }
 
 /** Emit the payload `interface` (+ nested element interfaces) for an object.value view-object. */
 export function generatePayloadInterfaces(root: MetaData, voName: string): string {
   const out: string[] = [];
-  emitInterface(root, voName, new Set<string>(), out);
+  emitInterface(root, voName, new Set<string>(), out, new Set<string>());
   return out.join("\n\n") + "\n";
 }
 
@@ -108,8 +152,9 @@ export function generatePayloadInterfacesBatch(root: MetaData, voNames: readonly
   if (voNames.length === 0) return "";
   const out: string[] = [];
   const emitted = new Set<string>();
+  const enumAliases = new Set<string>();
   for (const name of voNames) {
-    emitInterface(root, name, emitted, out);
+    emitInterface(root, name, emitted, out, enumAliases);
   }
   return out.length === 0 ? "" : out.join("\n\n") + "\n";
 }

@@ -219,6 +219,60 @@ final class SpringTestFixtures {
         }
         """;
 
+    /**
+     * Typed-enums fixture: a json {@code template.output} whose payload carries a scalar
+     * {@code field.enum} ({@code priority}, values LOW/HIGH) AND an enum array
+     * ({@code labels}, values A/B). Proves the strict {@code <Name>Payload} record types the
+     * enum component as a generated nested Java {@code enum} (single → {@code Priority};
+     * array → {@code List<Labels>}) and the extract mapper coerces via {@code valueOf}.
+     * Package: {@code acme::ai}. VO: {@code OrderPayload}; template: {@code Order}.
+     */
+    static final String TYPED_ENUM_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "OrderPayload", "children": [
+                { "field.string": { "name": "title", "@required": true } },
+                { "field.enum":   { "name": "priority", "@required": true,
+                                    "@values": ["LOW","HIGH"] } },
+                { "field.enum":   { "name": "labels", "isArray": true, "@required": true,
+                                    "@values": ["A","B"] } }
+            ] } },
+            { "template.output": {
+                "name": "Order",
+                "@payloadRef": "OrderPayload",
+                "@textRef": "ai/order",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
+    /**
+     * Shared-abstract-enum fixture: an abstract {@code field.enum Priority} (values LOW/HIGH)
+     * plus two payload fields ({@code currentPriority}, {@code previousPriority}) that
+     * {@code extends} it. Proves the generator emits EXACTLY ONE nested {@code enum Priority}
+     * (named for the super, deduped) and types BOTH fields {@code Priority}.
+     * Package: {@code acme::orders}. VO: {@code TicketPayload}; template: {@code Ticket}.
+     */
+    static final String SHARED_ENUM_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::orders", "children": [
+            { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW","HIGH"] } },
+            { "object.value": { "name": "TicketPayload", "children": [
+                { "field.string": { "name": "ticketId", "@required": true } },
+                { "field.enum":   { "name": "currentPriority",  "@required": true, "extends": "Priority" } },
+                { "field.enum":   { "name": "previousPriority", "@required": true, "extends": "Priority" } }
+            ] } },
+            { "template.output": {
+                "name": "Ticket",
+                "@payloadRef": "TicketPayload",
+                "@textRef": "orders/ticket",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

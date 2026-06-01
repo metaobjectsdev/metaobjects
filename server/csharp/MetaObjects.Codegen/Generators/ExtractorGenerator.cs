@@ -155,7 +155,7 @@ public sealed class ExtractorGenerator : IGenerator
         sb.AppendLine($"    private static {vo.Name} ToStrict_{vo.Name}({vo.Name}Extracted m) => new {vo.Name}");
         sb.AppendLine("    {");
         foreach (var f in Fr010FieldMapping.Fields(vo))
-            sb.AppendLine($"        {f.Name} = {StrictArg(f, root)},");
+            sb.AppendLine($"        {f.Name} = {StrictArg(vo, f, root)},");
         sb.AppendLine("    };");
 
         // Recurse into nested-object targets (single + array) for their mappers.
@@ -167,9 +167,10 @@ public sealed class ExtractorGenerator : IGenerator
     /// <summary>
     /// The strict-record initializer expression for one field, reading mirror member <c>m.&lt;name&gt;</c>.
     /// Matches PayloadCodegen's predicate: every strict field is <c>required</c> + non-nullable, so every
-    /// field is mapped as required (no optional-null variant).
+    /// field is mapped as required (no optional-null variant). <paramref name="owner"/> is the field's
+    /// value-object — needed to compute the nested enum type name for an enum field.
     /// </summary>
-    private static string StrictArg(MetaData field, MetaData root)
+    private static string StrictArg(MetaData owner, MetaData field, MetaData root)
     {
         string name = field.Name;
 
@@ -186,6 +187,17 @@ public sealed class ExtractorGenerator : IGenerator
                 : $"{fn}(m.{name}!)";
         }
 
+        // Enum ARRAY (checked BEFORE the generic scalar-array branch): the mirror is a string list
+        // (IReadOnlyList<string?>?) and the strict payload is IReadOnlyList<<EnumType>> — drop nulls
+        // and coerce each member via Enum.Parse (Parse RETURNS <EnumType>, so the element type matches
+        // with no cast). This is the string-LIST -> enum-list bridge.
+        if (field.SubType == FIELD_SUBTYPE_ENUM && Fr010FieldMapping.IsArray(field))
+        {
+            string et = EnumTypeRef(owner, field);
+            return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null)" +
+                   $".Select(x => System.Enum.Parse<{et}>(x!)).ToList()";
+        }
+
         // Scalar ARRAY: the mirror is kind-typed IReadOnlyList<TElem?>? (int?/long?/double?/bool?/
         // string?) and the strict payload is IReadOnlyList<TElem> — drop nulls so the element narrows
         // to non-null, unwrapping value-type elements via `.Value` (reference-type string stays bare),
@@ -193,20 +205,32 @@ public sealed class ExtractorGenerator : IGenerator
         if (Fr010FieldMapping.IsArray(field))
         {
             string elem = Fr010FieldMapping.ScalarMirrorType(field.SubType); // e.g. "int?" / "string?"
-            string unwrap = field.SubType != FIELD_SUBTYPE_ENUM &&
-                            Fr010FieldMapping.ScalarKind(field.SubType) is "Int" or "Long" or "Double" or "Boolean"
+            string unwrap = Fr010FieldMapping.ScalarKind(field.SubType) is "Int" or "Long" or "Double" or "Boolean"
                 ? "x!.Value" : "x!";
             return $"(m.{name} ?? global::System.Linq.Enumerable.Empty<{elem}>()).Where(x => x is not null).Select(x => {unwrap}).ToList()";
         }
 
-        // Scalar / enum (single): the strict record is non-null. Value-type scalars (int/long/
-        // double/bool) are typed T? in the mirror, so `m.F!` keeps type T? — unwrap via `.Value`.
-        // Reference-type scalars (string, incl. enum which is string-backed) use the null-forgiving `!`.
-        if (field.SubType == FIELD_SUBTYPE_ENUM) return $"m.{name}!";
+        // Enum (single): the mirror member is string-backed (string?); the strict record is the nested
+        // enum type. Coerce via Enum.Parse<<EnumType>> (which returns <EnumType>, so no cast mismatch).
+        // Engine already validated the member, so Parse is safe.
+        if (field.SubType == FIELD_SUBTYPE_ENUM)
+            return $"System.Enum.Parse<{EnumTypeRef(owner, field)}>(m.{name}!)";
+
+        // Scalar (single): the strict record is non-null. Value-type scalars (int/long/double/bool)
+        // are typed T? in the mirror, so `m.F!` keeps type T? — unwrap via `.Value`. Reference-type
+        // scalars (string) use the null-forgiving `!`.
         return Fr010FieldMapping.ScalarKind(field.SubType) switch
         {
             "Int" or "Long" or "Double" or "Boolean" => $"m.{name}!.Value",
             _ => $"m.{name}!",
         };
     }
+
+    /// <summary>
+    /// The fully-qualified reference to a payload field's nested enum type. PayloadCodegen emits the
+    /// enum NESTED inside the owning <c>record &lt;Owner&gt;</c>, so the mapper (a separate top-level
+    /// class) must qualify it as <c>&lt;Owner&gt;.&lt;EnumType&gt;</c>.
+    /// </summary>
+    private static string EnumTypeRef(MetaData owner, MetaData field) =>
+        $"{owner.Name}.{PayloadCodegen.EnumTypeName(owner, field)}";
 }

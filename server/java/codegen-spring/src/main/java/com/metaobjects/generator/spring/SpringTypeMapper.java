@@ -13,6 +13,11 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.object.MetaObject;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Centralised mapping from {@link MetaField} subtype to the Java type used in
@@ -54,11 +59,12 @@ public final class SpringTypeMapper {
      * money is forbidden by the cross-port contract; surfacing currency as a
      * distinct mapper arm documents the semantic.</p>
      *
-     * <p>Enum: returns {@code "String"} for v1 — the string-backed enum
-     * representation matches the wire format ({@code "ACTIVE"}, etc). A real
-     * generated Java {@code enum} type would require materialising the
-     * {@code @values} set into a top-level declaration, which is deferred
-     * (a parallel of {@code KotlinTypeMapper}'s {@code String}-arm fallback).</p>
+     * <p>Enum: returns {@code "String"} — the string-backed wire / engine-schema /
+     * lenient-mirror representation ({@code "ACTIVE"}, etc). The STRICT
+     * {@code <Name>Payload} record instead types a {@code field.enum} as the generated
+     * Java {@code enum} via {@link #payloadJavaTypeName(MetaField, MetaObject, String)};
+     * this arm stays {@code String} so the engine-facing string contract and any
+     * non-payload use of the mapper are preserved.</p>
      */
     public static String javaTypeName(MetaField<?> field) {
         if (field instanceof StringField) return "String";
@@ -72,12 +78,102 @@ public final class SpringTypeMapper {
         if (field instanceof TimestampField) return "java.time.Instant";
         // Currency wire/JVM type: Long (integer minor units cross-port invariant).
         if (field instanceof CurrencyField) return "Long";
-        // Enum string-backed (v1) — same fallback as KotlinTypeMapper.
+        // Enum string-backed on the WIRE / SCHEMA / lenient mirror path — stays String.
+        // The STRICT payload record types an enum field as the generated Java enum instead;
+        // see payloadJavaTypeName(...) (the typed-enums payload-VO change). Keeping this arm
+        // String preserves the engine-facing string contract (FieldKind.ENUM is string-backed)
+        // and any non-payload use of the mapper.
         if (field instanceof EnumField) return "String";
         // UUID — native java.util.UUID binding (R6 Plan 2a).
         if (field instanceof UuidField) return "java.util.UUID";
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");
+    }
+
+    // =========================================================================
+    // Typed-enum payload support
+    // =========================================================================
+
+    /**
+     * Map a {@link MetaField} to the type used in the STRICT
+     * {@code <Name>Payload} record component, as a Java type expression
+     * {@code enumQualifier}-qualified for enums.
+     *
+     * <p>Identical to {@link #javaTypeName(MetaField)} for every field type EXCEPT
+     * {@link EnumField}: a {@code field.enum} payload component is typed as the generated
+     * Java {@code enum} ({@link #enumTypeName(MetaObject, MetaField)}, qualified with
+     * {@code enumQualifier} so the mapper class — emitted as a sibling of the payload record —
+     * can name the record-nested enum), and an enum array as {@code java.util.List<<Qualified>>}.
+     * The lenient mirror / engine schema path keeps {@link #javaTypeName(MetaField)} (String),
+     * so only the strict payload carries the value-constrained type.</p>
+     *
+     * @param field         the payload value-object field
+     * @param owner         the field's owning value-object (for the {@code <Owner><Field>} name)
+     * @param enumQualifier a prefix (e.g. {@code "OrderPayload."}) qualifying the record-nested
+     *                      enum from a sibling class, or {@code ""} when referenced from inside
+     *                      the record body itself
+     */
+    public static String payloadJavaTypeName(MetaField<?> field, MetaObject owner, String enumQualifier) {
+        if (field instanceof EnumField) {
+            String enumType = enumQualifier + enumTypeName(owner, field);
+            return field.isArray() ? "java.util.List<" + enumType + ">" : enumType;
+        }
+        return javaTypeName(field);
+    }
+
+    /**
+     * The generated Java {@code enum} type name for an enum-subtype payload field — the SAME
+     * shared scheme the other ports use ({@code KotlinTypeMapper.enumTypeName} /
+     * C# {@code CSharpNaming.EnumTypeName}): when the field {@code extends} an abstract enum
+     * super, all extenders collapse onto ONE enum named for the top-most super
+     * ({@code Pascal(super.shortName)}); otherwise {@code Pascal(owner.shortName) +
+     * Pascal(field.name)}. Members verbatim.
+     */
+    public static String enumTypeName(MetaObject owner, MetaField<?> field) {
+        MetaField<?> superRoot = resolveSuperRoot(field);
+        if (superRoot != null) {
+            return pascal(SpringNaming.splitFqn(superRoot.getName())[1]);
+        }
+        return pascal(SpringNaming.splitFqn(owner.getName())[1]) + pascal(field.getName());
+    }
+
+    /**
+     * Walk a field's {@code extends} (super-field) chain to the top-most ancestor, returning it,
+     * or {@code null} when the field has no super. Naming the generated enum after the top-most
+     * super makes every extending field share one type. Cycle-guarded via a visited set.
+     */
+    static MetaField<?> resolveSuperRoot(MetaField<?> field) {
+        MetaField<?> current = field.getSuperField();
+        if (current == null) return null;
+        Set<String> seen = new HashSet<>();
+        while (true) {
+            MetaField<?> next = current.getSuperField();
+            if (next == null) break;
+            if (!seen.add(current.getName())) break; // cycle guard
+            current = next;
+        }
+        return current;
+    }
+
+    /**
+     * Read the EFFECTIVE {@code @values} of an {@link EnumField} (inheriting from an
+     * {@code extends}-super when the field carries no own values), as the verbatim member list.
+     * Mirrors {@code ExtractSchemaEmitter.enumFieldSpec}'s {@code getMetaAttr(ATTR_VALUES)} read.
+     * Returns an empty list when absent (defensive — the loader requires non-empty {@code @values}).
+     */
+    @SuppressWarnings("unchecked")
+    public static List<String> effectiveEnumValues(EnumField field) {
+        if (!field.hasMetaAttr(EnumField.ATTR_VALUES)) return List.of();
+        Object raw = field.getMetaAttr(EnumField.ATTR_VALUES).getValue();
+        return (raw instanceof List) ? (List<String>) raw : List.of();
+    }
+
+    /** Uppercase the first character of {@code s}; pass through unchanged when empty/already upper. */
+    private static String pascal(String s) {
+        if (s == null || s.isEmpty()) return s;
+        char c0 = s.charAt(0);
+        if (Character.isUpperCase(c0)) return s;
+        return Character.toUpperCase(c0) + s.substring(1);
     }
 }

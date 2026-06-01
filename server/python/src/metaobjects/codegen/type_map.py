@@ -39,11 +39,45 @@ def field_is_array(field: MetaField) -> bool:
     return field.is_array or field.attr(KEY_IS_ARRAY) is True
 
 
+def _py_str_literal(value: str) -> str:
+    """A double-quoted Python string literal (JSON-safe escaping) for embedding an
+    enum member into a ``Literal[...]`` annotation — quote-style is stable across
+    ruff formatting."""
+    import json
+
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def effective_enum_values(field: MetaField) -> list[str]:
+    """The string members of an enum field's ``@values`` — EFFECTIVE (own, else
+    inherited via the ``extends`` super chain). A field that extends an abstract
+    ``field.enum`` resolves the parent's ``@values`` here, mirroring the TS
+    ``enumValues`` (which reads the effective attr). Empty when absent."""
+    v = field.attrs().get(fc.FIELD_ATTR_VALUES)
+    if isinstance(v, (list, tuple)):
+        return [str(x) for x in v]
+    return []
+
+
 def py_type_for(field: MetaField) -> PyType:
-    """The (non-optional) Python annotation for a field, wrapping arrays in list[...]."""
+    """The (non-optional) Python annotation for a field, wrapping arrays in list[...].
+
+    A ``field.enum`` with effective ``@values`` types as ``Literal[...]`` (value-
+    constrained, Pydantic runtime-validated) rather than bare ``str``; an enum array
+    becomes ``list[Literal[...]]``. An enum WITHOUT declared values falls back to
+    ``str``."""
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
         base = PyType(str(ref)) if ref else PyType("object")
+    elif field.sub_type == fc.FIELD_SUBTYPE_ENUM:
+        values = effective_enum_values(field)
+        if values:
+            # Double-quoted members so the annotation reads identically whether or not
+            # the emitted module is ruff-formatted (ruff normalizes to double quotes).
+            members = ", ".join(_py_str_literal(v) for v in values)
+            base = PyType(f"Literal[{members}]", ("from typing import Literal",))
+        else:
+            base = PyType("str")
     else:
         base = _SCALAR.get(field.sub_type, PyType("str"))
     if field_is_array(field):

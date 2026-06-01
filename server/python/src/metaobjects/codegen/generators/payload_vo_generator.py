@@ -205,6 +205,56 @@ def _resolve_object_field_type(
     return nested_class, set()
 
 
+def _pascal(name: str) -> str:
+    """``priority`` → ``Priority``; ``order_priority`` is left as-is segment-wise
+    (only the leading char is upper-cased), matching the cross-port naming rule which
+    PascalCases the bare field / super name (no snake-splitting)."""
+    return name[:1].upper() + name[1:] if name else name
+
+
+def _shared_enum_super(field: MetaField) -> MetaData | None:
+    """The abstract ``field.enum`` super a field extends, or ``None``. A field whose
+    ``@values`` is inherited from an abstract base enum collapses (cross-port) to a
+    NAMED module alias keyed on the SUPER's name, so multiple fields sharing one
+    abstract enum reuse a single ``<Super> = Literal[...]`` alias. An inline enum
+    (no super) types inline."""
+    sup = field.super_data
+    if sup is not None and sup.sub_type == fc.FIELD_SUBTYPE_ENUM:
+        return sup
+    return None
+
+
+def _enum_field_type(
+    field: MetaField, enum_aliases: dict[str, str]
+) -> tuple[str, set[str]] | None:
+    """Resolve a ``field.enum`` annotation. Returns ``None`` for a non-enum field (the
+    caller falls through to the generic path).
+
+    * SHARED (extends an abstract ``field.enum``) → emit/reuse a module-level
+      ``<Pascal(super.name)> = Literal[...]`` alias (deduped in *enum_aliases*) and
+      reference it (``<Alias>`` / ``list[<Alias>]``).
+    * INLINE (no super) → inline ``Literal[...]`` via ``py_type_for`` (no alias).
+    * No effective ``@values`` → fall through to ``py_type_for`` (bare ``str``).
+    """
+    if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
+        return None
+    values = type_map.effective_enum_values(field)
+    if not values:
+        pt = py_type_for(field)
+        return pt.expr, set(pt.imports)
+    sup = _shared_enum_super(field)
+    if sup is None:
+        # Inline enum — let py_type_for emit the inline Literal[...] (+ the import).
+        pt = py_type_for(field)
+        return pt.expr, set(pt.imports)
+    alias = _pascal(sup.name)
+    if alias not in enum_aliases:
+        members = ", ".join(type_map._py_str_literal(v) for v in values)
+        enum_aliases[alias] = f"Literal[{members}]"
+    ref = f"list[{alias}]" if type_map.field_is_array(field) else alias
+    return ref, {"from typing import Literal"}
+
+
 def _find_origin_child(field: MetaField) -> MetaOrigin | None:
     """First ``origin.*`` child of *field* (own children only — origins are
     declared inline; there's no inheritance contract for them today)."""
@@ -323,6 +373,7 @@ def _resolve_field_type(
     root: MetaData,
     nested_emit_queue: list[tuple[MetaObject, str]],
     emitted_nested_fqns: set[str],
+    enum_aliases: dict[str, str],
 ) -> tuple[str, set[str]]:
     """Resolve the Python annotation for one payload-VO field, honoring any
     ``origin.*`` child. Falls back to ``type_map.py_type_for`` when none.
@@ -345,6 +396,10 @@ def _resolve_field_type(
             return _resolve_object_field_type(
                 field, root, nested_emit_queue, emitted_nested_fqns
             )
+        # A ``field.enum`` → Literal[...] (inline) or a named module alias (shared).
+        enum_type = _enum_field_type(field, enum_aliases)
+        if enum_type is not None:
+            return enum_type
         pt = py_type_for(field)
         return pt.expr, set(pt.imports)
     if origin.sub_type == "passthrough":
@@ -370,6 +425,7 @@ def _emit_payload_class(
     nested_emit_queue: list[tuple[MetaObject, str]],
     emitted_nested_fqns: set[str],
     extra_imports: set[str],
+    enum_aliases: dict[str, str],
     docstring: str,
 ) -> list[str]:
     """Build the source lines for one Pydantic ``BaseModel`` subclass."""
@@ -379,7 +435,7 @@ def _emit_payload_class(
         if not isinstance(field, MetaField):
             continue
         annotation, imports = _resolve_field_type(
-            field, root, nested_emit_queue, emitted_nested_fqns
+            field, root, nested_emit_queue, emitted_nested_fqns, enum_aliases
         )
         extra_imports.update(imports)
         # Optionality mirrors the cross-port (TS) payload-codegen: a ``@required``
@@ -425,6 +481,9 @@ def render_payload_vo(
     class_name = payload_class_name(template.name)
     extra_imports: set[str] = set()
     nested_emit_queue: list[tuple[MetaObject, str]] = []
+    # Shared-enum aliases (``<Pascal(super.name)> = Literal[...]``), deduped by name and
+    # emitted once at module scope before the classes that reference them.
+    enum_aliases: dict[str, str] = {}
 
     # The PRIMARY class (the one named after the template). Its docstring
     # mirrors Kotlin's KDoc.
@@ -435,6 +494,7 @@ def render_payload_vo(
         nested_emit_queue=nested_emit_queue,
         emitted_nested_fqns=emitted_nested_fqns,
         extra_imports=extra_imports,
+        enum_aliases=enum_aliases,
         docstring=(
             f"GENERATED payload for template ``{template.name}``.\n\n"
             f"    Field shape derived from the ``{payload.name}`` object.value."
@@ -455,6 +515,7 @@ def render_payload_vo(
             nested_emit_queue=nested_emit_queue,
             emitted_nested_fqns=emitted_nested_fqns,
             extra_imports=extra_imports,
+            enum_aliases=enum_aliases,
             docstring=(
                 f"GENERATED nested payload for collection target ``{target.name}``."
             ),
@@ -473,6 +534,13 @@ def render_payload_vo(
     lines.append("from pydantic import BaseModel")
     lines.append("")
     lines.append("")
+    # Shared-enum aliases (module scope, deduped, sorted for deterministic output).
+    # Referenced by one OR MORE payload fields that extend the same abstract field.enum.
+    if enum_aliases:
+        for alias in sorted(enum_aliases):
+            lines.append(f"{alias} = {enum_aliases[alias]}")
+        lines.append("")
+        lines.append("")
     # Emit nested classes FIRST. Pydantic v2 with `from __future__ import
     # annotations` evaluates field annotations lazily, but it needs every
     # referenced class to be defined in the module namespace at model-build

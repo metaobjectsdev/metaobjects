@@ -138,13 +138,17 @@ public class ExtractSchemaEmitterTest extends SharedRegistryTestBase {
 
     @Test
     public void emitsConstructorArgsUsingExtractMap() throws Exception {
-        String a = ExtractSchemaEmitter.constructorArgs(vo());
+        String a = ExtractSchemaEmitter.constructorArgs(vo(), "AnswerOutputPayload");
 
         assertTrue("expected asString for text; saw:\n" + a,
             a.contains("ExtractMap.asString(d, \"text\")"));
 
-        assertTrue("expected asString for confidence (enum); saw:\n" + a,
-            a.contains("ExtractMap.asString(d, \"confidence\")"));
+        // Enum (confidence): the STRICT payload component is the generated nested enum, so the
+        // ctor-arg coerces the engine-validated member string via <Payload>.<Enum>.valueOf(...),
+        // null-safe so an absent enum stays null rather than NPE-ing.
+        assertTrue("expected null-safe valueOf coercion for confidence (enum); saw:\n" + a,
+            a.contains("java.util.Optional.ofNullable(ExtractMap.asString(d, \"confidence\"))"
+                + ".map(AnswerOutputPayload.AnswerOutputPayloadConfidence::valueOf).orElse(null)"));
 
         assertTrue("expected asString for note; saw:\n" + a,
             a.contains("ExtractMap.asString(d, \"note\")"));

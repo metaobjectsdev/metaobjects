@@ -195,7 +195,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("    }\n");
         if (emitExtractLenient) {
             String schemaLit = ExtractSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass);
-            String ctorArgs = ExtractSchemaEmitter.constructorArgs(payloadVo);
+            String ctorArgs = ExtractSchemaEmitter.constructorArgs(payloadVo, payloadClass);
             String formatEnum = TemplateConstants.FORMAT_XML.equalsIgnoreCase(format)
                 ? "Format.XML" : "Format.JSON";
             String payloadFqn = payloadVo.getName();
@@ -307,7 +307,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         List<MetaField> fields = new ArrayList<>(vo.getMetaFields());
         for (int i = 0; i < fields.size(); i++) {
             MetaField<?> field = fields.get(i);
-            String arg = mapperArgForField(field, loader, nestedVos);
+            String arg = mapperArgForField(field, vo, payloadClass, loader, nestedVos);
             body.append("                ").append(arg);
             if (i < fields.size() - 1) body.append(',');
             body.append('\n');
@@ -330,8 +330,8 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * Records the discovered nested VO(s) into {@code nestedVos} so the caller emits their mappers.
      */
     @SuppressWarnings("rawtypes")
-    private String mapperArgForField(MetaField<?> field, MetaDataLoader loader,
-                                     List<MetaObject> nestedVos) {
+    private String mapperArgForField(MetaField<?> field, MetaObject owner, String payloadClass,
+                                     MetaDataLoader loader, List<MetaObject> nestedVos) {
         String name = field.getName();
 
         // Nested object / array-of-objects (but NOT enum, which is a string-backed scalar).
@@ -353,10 +353,25 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             return "null";
         }
 
-        // Enum fields: string-backed on the wire.
-        if (field instanceof EnumField) {
-            if (field.isArrayType()) return "ExtractMap.asStringList(d, \"" + name + "\")";
-            return "ExtractMap.asString(d, \"" + name + "\")";
+        // Enum fields: the assembled value is a validated member string; the STRICT payload
+        // component is the generated nested Java enum. Bridge string → enum via
+        // `<Payload>.<Enum>.valueOf(s)` (per-element for arrays, dropping nulls). Checked BEFORE
+        // the generic scalar-array branch (enum-before-isArray). Safe: @values == the generated
+        // constants and the engine validated the member.
+        if (field instanceof EnumField ef) {
+            String enumType = payloadClass + "." + SpringTypeMapper.enumTypeName(owner, ef);
+            if (field.isArrayType()) {
+                // asStringList returns null when the array is absent/malformed — guard with an
+                // empty list so the stream never NPEs.
+                return "java.util.Optional.ofNullable(ExtractMap.asStringList(d, \"" + name + "\"))"
+                    + ".orElseGet(java.util.List::of).stream()"
+                    + ".filter(java.util.Objects::nonNull).map(" + enumType + "::valueOf)"
+                    + ".collect(java.util.stream.Collectors.toList())";
+            }
+            // Scalar enum: null-safe valueOf — an absent/lost enum stays null in the (never-throws)
+            // lenient payload rather than NPE-ing on Enum.valueOf(null).
+            return "java.util.Optional.ofNullable(ExtractMap.asString(d, \"" + name + "\"))"
+                + ".map(" + enumType + "::valueOf).orElse(null)";
         }
 
         // Scalar arrays.

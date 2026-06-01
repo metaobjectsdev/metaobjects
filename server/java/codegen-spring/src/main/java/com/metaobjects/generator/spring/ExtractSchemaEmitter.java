@@ -77,14 +77,20 @@ final class ExtractSchemaEmitter {
      * Emit the comma-separated constructor arguments for {@code new <Payload>(...)},
      * reading each field from a {@code Map<String,Object> d} via {@code ExtractMap}.
      *
-     * @param vo the payload value-object
+     * <p>{@code payloadClass} qualifies a {@code field.enum} component's generated nested enum
+     * (typed by {@link SpringPayloadGenerator} as {@code <PayloadClass>.<EnumType>}): an enum
+     * scalar is coerced {@code <PayloadClass>.<EnumType>.valueOf(s)} and an enum array per-element,
+     * bridging the engine's validated string to the value-constrained payload type.</p>
+     *
+     * @param vo           the payload value-object
+     * @param payloadClass the generated record's simple name (nested-enum qualifier)
      * @return Java source snippet, e.g.
-     *         {@code ExtractMap.asString(d, "text"), ExtractMap.asString(d, "confidence")}
+     *         {@code ExtractMap.asString(d, "text"), AnswerPayload.Confidence.valueOf(ExtractMap.asString(d, "confidence"))}
      */
-    static String constructorArgs(MetaObject vo) {
+    static String constructorArgs(MetaObject vo, String payloadClass) {
         List<String> args = new ArrayList<>();
         for (MetaField<?> field : vo.getMetaFields()) {
-            args.add(constructorArgForField(field));
+            args.add(constructorArgForField(field, vo, payloadClass));
         }
         return String.join(", ", args);
     }
@@ -249,17 +255,36 @@ final class ExtractSchemaEmitter {
 
     /**
      * Build the {@code ExtractMap.*} call for a single field's constructor argument.
+     *
+     * @param owner        the field's owning value-object (for the nested-enum type name)
+     * @param payloadClass the generated record's simple name (nested-enum qualifier)
      */
     @SuppressWarnings("rawtypes")
-    private static String constructorArgForField(MetaField<?> field) {
+    private static String constructorArgForField(MetaField<?> field, MetaObject owner, String payloadClass) {
         String name = field.getName();
 
-        // Enum fields: string-backed on the wire.
-        if (field instanceof EnumField) {
-            // enum-array is List<String> on the wire; scalar enum is a String.
-            return field.isArray()
-                ? "ExtractMap.asStringList(d, \"" + name + "\")"
-                : "ExtractMap.asString(d, \"" + name + "\")";
+        // Enum fields: the engine produces a validated member string; the STRICT payload component
+        // is the generated nested Java enum. Bridge string → enum via `<Payload>.<Enum>.valueOf(s)`
+        // (valueOf RETURNS the enum, so no cast). Enum array → per-element valueOf, dropping nulls.
+        // Safe: @values are valid identifiers == the generated constants, and the engine validated
+        // the member. The enum-subtype check is BEFORE the generic isArray() branch (the cross-port
+        // enum-before-isArray ordering).
+        if (field instanceof EnumField ef) {
+            String enumType = payloadClass + "." + SpringTypeMapper.enumTypeName(owner, ef);
+            if (field.isArray()) {
+                // asStringList returns null when the array is absent/malformed — guard with an
+                // empty list so the stream never NPEs (the strict component then maps to an empty
+                // list rather than crashing; absence is already classified in the report).
+                return "java.util.Optional.ofNullable(ExtractMap.asStringList(d, \"" + name + "\"))"
+                    + ".orElseGet(java.util.List::of).stream()"
+                    + ".filter(java.util.Objects::nonNull).map(" + enumType + "::valueOf)"
+                    + ".collect(java.util.stream.Collectors.toList())";
+            }
+            // Scalar enum: null-safe valueOf — an absent/lost enum stays null in the (never-throws)
+            // lenient payload rather than NPE-ing on Enum.valueOf(null). The lost-required gate is
+            // enforced separately by the report, not by this mapper.
+            return "java.util.Optional.ofNullable(ExtractMap.asString(d, \"" + name + "\"))"
+                + ".map(" + enumType + "::valueOf).orElse(null)";
         }
 
         // Nested object / array-of-objects: deferred in the self-contained path (the

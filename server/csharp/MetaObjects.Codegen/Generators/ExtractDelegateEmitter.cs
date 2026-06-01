@@ -281,12 +281,15 @@ internal static class ExtractDelegateEmitter
         // Enum / scalar / scalar-array: the runtime already coerced; read + light-coerce via Dlg*.
         // A scalar ARRAY maps each element through the SAME per-kind Dlg* reader the single scalar
         // uses, so the produced element type matches the kind-typed mirror list (int?/long?/...).
-        if (field.SubType == FIELD_SUBTYPE_ENUM) return $"DlgString(ReadProp(o, {key}))";
+        // IsArray is checked BEFORE the single-scalar enum return so an ENUM array routes through the
+        // string-LIST reader (DlgList(..., DlgString)), matching its IReadOnlyList<string?>? mirror —
+        // NOT the single DlgString reader (the enum-before-isArray ordering fix).
         if (Fr010FieldMapping.IsArray(field))
         {
             string elemReader = field.SubType == FIELD_SUBTYPE_ENUM ? "DlgString" : ScalarReader(field.SubType);
             return $"DlgList(ReadProp(o, {key}), {elemReader})";
         }
+        if (field.SubType == FIELD_SUBTYPE_ENUM) return $"DlgString(ReadProp(o, {key}))";
         return $"{ScalarReader(field.SubType)}(ReadProp(o, {key}))";
     }
 

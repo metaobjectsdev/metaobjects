@@ -146,9 +146,16 @@ public class GeneratedExtractLenientCompileRunTest extends SharedRegistryTestBas
             Object note       = payload.getClass().getMethod("note").invoke(payload);
 
             assertEquals("text component", "hi", text);
-            assertEquals("confidence component — medium should be aliased to OK", "OK", confidence);
+            // confidence/priority are now value-constrained generated enums (the typed-enums change);
+            // assert the coerced enum CONSTANT name (runtime value identical to the prior String).
+            assertTrue("confidence component must be a generated enum instance; was " + confidence,
+                    confidence != null && confidence.getClass().isEnum());
+            assertEquals("confidence component — medium should be aliased to OK",
+                    "OK", ((Enum<?>) confidence).name());
+            assertTrue("priority component must be a generated enum instance; was " + priority,
+                    priority != null && priority.getClass().isEnum());
             assertEquals("priority component — off-vocab 'banana' should fold to @coerceDefault 'LOW'",
-                    "LOW", priority);
+                    "LOW", ((Enum<?>) priority).name());
             assertNull("note component — absent optional field should be null", note);
 
             // Assert report: no required fields were lost (priority is DEFAULTED, which satisfies required)

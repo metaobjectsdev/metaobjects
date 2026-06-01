@@ -13,10 +13,78 @@
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderExtractor } from "../src/templates/extractor.js";
 import { generatePayloadInterfaces } from "../src/payload-codegen.js";
+
+// ---------------------------------------------------------------------------
+// tsc --strict compile gate (mirrors fr004-verify-demo.test.ts's `compile()`).
+//
+// Type-checks the EMITTED payload + output-parser + extractor sources with the
+// real TS compiler API under `{ strict: true, noEmit: true }`. This is what
+// proves the union-typed enum payload is genuinely value-constrained AND that
+// the generated mapper compiles: a bare `m.priority!` (string) assigned into the
+// `OrderPriority` union field is a TS2322 error — the gate fails unless the
+// extractor CASTS the mirror string to the union alias. Ambient `.d.ts` stubs
+// stand in for the engine packages so the program is hermetic (no workspace
+// self-link noise); `skipLibCheck` keeps the check focused on the emitted graph.
+// ---------------------------------------------------------------------------
+
+function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
+  const program = ts.createProgram(
+    files.map((f) => join(dir, f)),
+    {
+      strict: true,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      skipLibCheck: true,
+    },
+  );
+  return ts.getPreEmitDiagnostics(program);
+}
+
+// Just-enough ambient surface for the engine packages the emitted output imports.
+// The point of the gate is the cross-module mirror→strict mapping (enum casts);
+// these stubs keep the resolver happy without pulling the real (workspace-linked)
+// type surface in.
+// `z` is used as BOTH a value (z.object(...)) and a type namespace (z.infer<...>) in the
+// emitted parser, so it is declared as an importable namespace whose every member is `any`.
+// The render/runtime surfaces are intentionally permissive (`any`) — the engine itself is a
+// real, separately-compiled package; the gate's job is the EMITTED extractor's enum casts +
+// the mirror→strict payload mapping, NOT re-type-checking the engine.
+const ENGINE_STUBS = `declare module "zod" {
+  export namespace z {
+    export type infer<T> = any;
+    export type ZodType = any;
+    export type ZodError = any;
+  }
+  export const z: any;
+}
+declare module "@metaobjectsdev/metadata" {
+  export type MetaRoot = any;
+}
+declare module "@metaobjectsdev/runtime-ts" {
+  export function extractObject(...args: any[]): any;
+}
+declare module "@metaobjectsdev/render" {
+  // data is nullable in the real engine surface; the emitted extractor reads \`r.data!\`.
+  export interface ExtractionResult<T> { data: T | null; report: any; }
+  export const extract: any;
+  export const extractSchema: any;
+  export const Format: any;
+  export const scalar: any;
+  export const enumField: any;
+  export const FieldKind: any;
+  export type ExtractSchema = any;
+  export type ExtractOptions = any;
+  export function asString(...args: any[]): any;
+  export function asStringList(...args: any[]): any;
+}
+`;
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
@@ -61,6 +129,10 @@ const MODEL = [
         { "field.string": { name: "tags", isArray: true, "@required": true } },
         { "field.string": { name: "flags", isArray: true } },
         { "field.object": { name: "shipTo", "@objectRef": "Customer" } },
+        // REQUIRED single enum `priority` (-> union "LOW" | "HIGH"),
+        // REQUIRED enum ARRAY `labels` (-> union "A" | "B", as OrderLabels[]).
+        { "field.enum": { name: "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
+        { "field.enum": { name: "labels", isArray: true, "@required": true, "@values": ["A", "B"] } },
       ],
     },
   },
@@ -101,6 +173,94 @@ describe("Extractor codegen — source shape", () => {
     // optional single nested object → null-guarded recurse into its mapper
     expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : null");
   });
+
+  test("payload typing: field.enum is a value-constrained union alias (not unknown), single + array", async () => {
+    const root = await loadRoot(MODEL);
+    const payloadSrc = generatePayloadInterfaces(root, "Order");
+
+    // Inline enum naming = <Entity><FieldPascal> (reused from renderEnumTypeAliases).
+    expect(payloadSrc).toContain(`export type OrderPriority = "LOW" | "HIGH";`);
+    expect(payloadSrc).toContain(`export type OrderLabels = "A" | "B";`);
+    // Field typed as the union alias — NOT `unknown`, NOT bare `string`.
+    expect(payloadSrc).toContain("priority: OrderPriority;");
+    expect(payloadSrc).toContain("labels: OrderLabels[];");
+    expect(payloadSrc).not.toContain("priority: unknown");
+    expect(payloadSrc).not.toContain("labels: unknown");
+  });
+
+  test("shared abstract field.enum on the payload path → ONE union alias (super-named), both fields typed it", async () => {
+    // Cross-port parity (mirrors the Python/C#/Kotlin/Java extractor shared-enum
+    // dedup proof): an abstract `field.enum` `Priority` with two PAYLOAD fields
+    // (`priority` REQUIRED + `escalation` OPTIONAL) that BOTH `extends` it and carry
+    // no own values. The union alias must be named for the SUPER (`Priority`, not
+    // `SharedOrderPriority`/`SharedOrderEscalation`) and emitted exactly ONCE; both
+    // fields must be typed `Priority` (the effective `@values` resolve through `extends`).
+    const sharedRoot = await loadRoot([
+      // Abstract enum declared at root so `extends: "Priority"` resolves the super + its @values.
+      { "field.enum": { name: "Priority", abstract: true, "@values": ["LOW", "HIGH"] } },
+      {
+        "object.value": {
+          name: "SharedOrder",
+          children: [
+            // priority: REQUIRED, extends the abstract → inherits @values, no own values.
+            { "field.enum": { name: "priority", "@required": true, extends: "Priority" } },
+            // escalation: OPTIONAL, also extends the SAME abstract → must collapse to one alias.
+            { "field.enum": { name: "escalation", extends: "Priority" } },
+          ],
+        },
+      },
+    ]);
+    const payloadSrc = generatePayloadInterfaces(sharedRoot, "SharedOrder");
+
+    // Exactly ONE union alias, named for the SUPER (`Priority`) — not per-field, not duplicated.
+    expect(payloadSrc).toContain(`export type Priority = "LOW" | "HIGH";`);
+    expect(payloadSrc.match(/export type Priority =/g)?.length).toBe(1);
+    // The per-field/per-owner naming (`<Owner><FieldPascal>`) must NOT appear.
+    expect(payloadSrc).not.toContain("SharedOrderPriority");
+    expect(payloadSrc).not.toContain("SharedOrderEscalation");
+    // BOTH fields typed as the shared `Priority` alias (REQUIRED bare; OPTIONAL `| null`).
+    expect(payloadSrc).toContain("priority: Priority;");
+    expect(payloadSrc).toContain("escalation?: Priority | null;");
+
+    // tsc --strict gate: the shared alias + both field typings compile cleanly.
+    const dir = mkdtempSync(join(import.meta.dir, "shared-enum-tsc-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
+    const diagnostics = compile(dir, ["payloads.ts", "engine.d.ts"]);
+    expect(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
+  });
+
+  test("tsc --strict gate: emitted payload + parser + extractor type-check with ZERO diagnostics", async () => {
+    const root = await loadRoot(MODEL);
+    const payloadSrc = generatePayloadInterfaces(root, "Order");
+    const parserSrc = renderOutputParser(root, "OrderOut");
+    const extractorSrc = renderExtractor(root, "OrderOut");
+
+    // Sanity: the extractor CASTS the enum mirror-string to the union alias (the fix under test).
+    // Scalar enum → `m.priority! as OrderPriority`; enum array → `... as OrderLabels[]`.
+    expect(extractorSrc).toContain("m.priority! as OrderPriority");
+    expect(extractorSrc).toContain(") as OrderLabels[]");
+    // The union aliases are imported from the payload module so the cast target resolves.
+    expect(extractorSrc).toContain("OrderPriority, OrderLabels");
+
+    const dir = mkdtempSync(join(import.meta.dir, "extractor-tsc-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
+    writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
+    writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
+
+    const diagnostics = compile(dir, [
+      "payloads.ts",
+      "OrderOut.output.ts",
+      "OrderOut.extractor.ts",
+      "engine.d.ts",
+    ]);
+
+    // ZERO diagnostics: the union-typed enum payload AND the strict mapper both compile.
+    expect(diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
+  });
 });
 
 describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () => {
@@ -123,7 +283,7 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     const dirty = [
       "Here you go:",
       "```json",
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush", "tags": ["urgent", "vip"], "flags": ["fragile"] }',
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 }, { "sku": "B", "qty": 1 }, ], "note": "rush", "tags": ["urgent", "vip"], "flags": ["fragile"], "priority": "HIGH", "labels": ["A", "B"] }',
       "```",
     ].join("\n");
 
@@ -139,20 +299,24 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(order.tags.every((t: unknown) => typeof t === "string")).toBe(true);
     // optional scalar array present → null-filtered string[]
     expect(order.flags).toEqual(["fragile"]);
+    // enum scalar: identity-mapped validated member, typed as the OrderPriority union.
+    expect(order.priority).toBe("HIGH");
+    // enum array: null-filtered, typed as OrderLabels[].
+    expect(order.labels).toEqual(["A", "B"]);
     // optional single nested object `shipTo` ABSENT in this input → the `m.shipTo ? toStrictCustomer(...) : null`
     // branch produces null at runtime (not undefined, not a partial object).
     expect(order.shipTo).toBeNull();
 
     // optional single nested object PRESENT → the null-guard recurses into toStrictCustomer and populates.
     const withShipTo =
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "shipTo": { "name": "Grace" } }';
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"], "shipTo": { "name": "Grace" } }';
     const shipped = ex.extractOrderOut(root, withShipTo);
     expect(shipped.shipTo).not.toBeNull();
     expect(shipped.shipTo.name).toBe("Grace");
     // and when shipTo is genuinely absent on a separate clean input, it is null (re-confirm the branch)
     const noShipTo = ex.extractOrderOut(
       root,
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }',
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }',
     );
     expect(noShipTo.shipTo).toBeNull();
 
@@ -161,8 +325,15 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
 
     // extract re-exposed (nested-capable): clean JSON → no lost-required
     const clean =
-      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"] }';
+      '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }';
     const r = ex.extractLenientOrderOut(root, clean);
     expect(r.report.hasLostRequired()).toBe(false);
+
+    // The lenient `<Name>Extracted` mirror leaf is UNCHANGED — enum stays a plain string.
+    // Assert it works on DIRTY input and returns priority as a raw string (not narrowed).
+    const lenientDirty = ex.extractLenientOrderOut(root, dirty);
+    expect(lenientDirty.report.hasLostRequired()).toBe(false);
+    expect(lenientDirty.data.priority).toBe("HIGH");
+    expect(typeof lenientDirty.data.priority).toBe("string");
   });
 });

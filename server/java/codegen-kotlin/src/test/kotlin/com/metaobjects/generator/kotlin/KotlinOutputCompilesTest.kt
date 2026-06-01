@@ -102,10 +102,18 @@ class KotlinOutputCompilesTest {
                 gen.execute(loader)
             }
 
-            // Collect all emitted .kt files — expect 3: OpinionPayload, OpinionParser, OpinionPrompt.
+            // Collect all emitted .kt files — expect 5: OpinionPayload, OpinionParser, OpinionPrompt,
+            // plus one typed enum-class file per `field.enum` payload field (confidence, priority).
+            // The strict payload types those fields as the generated enum class (the lenient mirror
+            // leaf stays String — asserted below), so the enum files must be emitted + compile.
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
-            assertEquals(3, emitted.size,
-                "expected 3 generated files; got: ${emitted.map { it.fileName }}")
+            assertEquals(5, emitted.size,
+                "expected 5 generated files (3 + 2 enum classes); got: ${emitted.map { it.fileName }}")
+            val emittedNames = emitted.map { it.fileName.toString() }.toSet()
+            assertTrue("OpinionOutputPayloadConfidence.kt" in emittedNames,
+                "typed enum class for `confidence` must be emitted; got $emittedNames")
+            assertTrue("OpinionOutputPayloadPriority.kt" in emittedNames,
+                "typed enum class for `priority` must be emitted; got $emittedNames")
 
             // Name sources with unique keys (the parser + payload share no class names, but kotlin-compile-testing
             // requires uniquely named SourceFile entries).

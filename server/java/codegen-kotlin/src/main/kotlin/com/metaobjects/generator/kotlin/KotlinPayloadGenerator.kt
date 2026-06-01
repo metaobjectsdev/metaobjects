@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
@@ -56,9 +57,13 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // templates in this run. Key = FQN of the source view-object (or entity) the
         // nested payload was generated from.
         val emittedNestedFqns = mutableSetOf<String>()
+        // Run-level dedupe of emitted enum-class files by enum FQN. A `field.enum` payload field is
+        // typed as its generated enum class (reusing the entity enum scheme); two fields sharing an
+        // abstract enum super collapse onto ONE emitted file.
+        val emittedEnumFqns = mutableSetOf<String>()
         for (md in loader.root.children) {
             if (md !is MetaTemplate) continue
-            emit(md, loader, outRoot, emittedNestedFqns)
+            emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns)
         }
     }
 
@@ -67,6 +72,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         loader: MetaDataLoader,
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
+        emittedEnumFqns: MutableSet<String>,
     ) {
         val payloadRef = template.payloadRef ?: return
         val payloadVo = resolveViewObject(loader, payloadRef) ?: return
@@ -83,6 +89,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             loader = loader,
             outRoot = outRoot,
             emittedNestedFqns = emittedNestedFqns,
+            emittedEnumFqns = emittedEnumFqns,
         )
     }
 
@@ -100,6 +107,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         loader: MetaDataLoader,
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
+        emittedEnumFqns: MutableSet<String>,
     ) {
         val serializable = ClassName("kotlinx.serialization", "Serializable")
 
@@ -110,7 +118,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in voObject.metaFields) {
-            val type = resolveFieldType(field, loader, outPkg, outRoot, emittedNestedFqns)
+            val type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, emittedEnumFqns)
             ctorBuilder.addParameter(ParameterSpec.builder(field.name, type).build())
             typeBuilder.addProperty(
                 PropertySpec.builder(field.name, type).initializer(field.name).build()
@@ -130,10 +138,12 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     private fun resolveFieldType(
         field: MetaField<*>,
+        owner: MetaObject,
         loader: MetaDataLoader,
         nestedPkg: String,
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
+        emittedEnumFqns: MutableSet<String>,
     ): TypeName {
         val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
 
@@ -142,9 +152,26 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 is PassthroughOrigin -> resolvePassthroughType(origin, loader, field)
                 is AggregateOrigin -> resolveAggregateType(origin, loader, field)
                 is CollectionOrigin -> resolveCollectionType(
-                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, field
+                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field
                 )
                 else -> KotlinTypeMapper.kotlinTypeName(field)
+            }
+        }
+
+        // field.enum (incl. array-of-enum): type the strict payload field as the generated enum
+        // class (the same `<EntityShort><FieldPascal>` / shared-super scheme the entity generator
+        // uses), and emit that enum file (deduped per run). Single → `<Enum>`; array → `List<<Enum>>`.
+        // The lenient `<Name>Extracted` mirror is UNCHANGED (String / List<String?>) — only the
+        // strict payload is enum-typed; the extract mapper bridges String → enum via `valueOf`.
+        if (field is EnumField) {
+            val enumType = KotlinTypeMapper.enumTypeName(field, owner)
+            if (enumType != null) {
+                KotlinEnumEmitter.emitEnumFile(owner, field, outRoot, emittedEnumFqns)
+                return if (field.isArrayType()) {
+                    ClassName("kotlin.collections", "List").parameterizedBy(enumType)
+                } else {
+                    enumType
+                }
             }
         }
 
@@ -152,12 +179,12 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // and return its type (single, or List<TargetPayload> when isArray). Mirrors the
         // Spring port's resolveObjectFieldType — needed so a nested-object payload compiles.
         if (field is ObjectField) {
-            return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns)
+            return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns)
         }
 
-        // Scalar array (`isArray: true` on a non-object field, incl. array-of-enum): model as
-        // List<ElementType> in the strict payload (matching the cross-port payload shape). Without
-        // this, `kotlinTypeName` returns the bare element type and the array semantics are lost.
+        // Scalar array (`isArray: true` on a non-object field): model as List<ElementType> in the
+        // strict payload (matching the cross-port payload shape). Without this, `kotlinTypeName`
+        // returns the bare element type and the array semantics are lost.
         val scalarType = KotlinTypeMapper.kotlinTypeName(field)
         if (field.isArrayType()) {
             return ClassName("kotlin.collections", "List").parameterizedBy(scalarType)
@@ -178,6 +205,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         nestedPkg: String,
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
+        emittedEnumFqns: MutableSet<String>,
     ): TypeName {
         val fallbackType = { KotlinTypeMapper.kotlinTypeName(field) }
         val target = try {
@@ -197,6 +225,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 loader = loader,
                 outRoot = outRoot,
                 emittedNestedFqns = emittedNestedFqns,
+                emittedEnumFqns = emittedEnumFqns,
             )
         }
 
@@ -261,6 +290,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         nestedPkg: String,
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
+        emittedEnumFqns: MutableSet<String>,
         fallbackField: MetaField<*>,
     ): TypeName {
         val fallbackType = { KotlinTypeMapper.kotlinTypeName(fallbackField) }
@@ -284,6 +314,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 loader = loader,
                 outRoot = outRoot,
                 emittedNestedFqns = emittedNestedFqns,
+                emittedEnumFqns = emittedEnumFqns,
             )
         }
 

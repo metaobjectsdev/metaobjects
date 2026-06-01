@@ -1,6 +1,7 @@
 package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.GeneratorException;
@@ -190,10 +191,16 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         // previous scalarFields() filter dropped ObjectField entirely; mirror
         // KotlinPayloadGenerator's no-filter iteration. getMetaFields()
         // returns Collection, so go through the iterator directly.
+        // Nested `public enum <Name> { <members> }` declarations for this record's enum fields,
+        // deduped by enum-type name (two fields extending one abstract enum emit ONE decl). These
+        // are emitted INSIDE the record body so a strict component can reference the value-
+        // constrained type (the typed-enums payload-VO change).
+        List<String> enumDecls = collectEnumDecls(voObject);
+
         Iterator<MetaField> it = voObject.getMetaFields().iterator();
         while (it.hasNext()) {
             MetaField field = it.next();
-            String type = resolveFieldType(field, loader, outPkg, outRoot, emittedNestedFqns);
+            String type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns);
             src.append("    ").append(type).append(' ').append(field.getName());
             if (it.hasNext()) src.append(',');
             src.append('\n');
@@ -219,10 +226,14 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 helpers.add(new String[] { name, helperBody });
             }
         }
-        if (helpers.isEmpty()) {
+        if (helpers.isEmpty() && enumDecls.isEmpty()) {
             src.append(") {}\n");
         } else {
             src.append(") {\n");
+            // Nested enum types first (a strict component above already references them).
+            for (String decl : enumDecls) {
+                src.append("    ").append(decl).append('\n');
+            }
             for (String[] h : helpers) {
                 String methodName = "has" + capitalizeFirst(h[0]);
                 src.append("    public boolean ").append(methodName).append("() { ")
@@ -248,6 +259,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * otherwise the scalar fallback via {@link SpringTypeMapper#javaTypeName}.
      */
     private String resolveFieldType(MetaField<?> field,
+                                    MetaObject owner,
                                     MetaDataLoader loader,
                                     String nestedPkg,
                                     Path outRoot,
@@ -261,6 +273,15 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         }
         if (origin instanceof CollectionOrigin co) {
             return resolveCollectionType(co, loader, nestedPkg, outRoot, emittedNestedFqns, field);
+        }
+        // field.enum (scalar or array): type the STRICT payload component as the generated
+        // Java enum nested in this record. The enum name is unqualified here because the record
+        // references its own nested type; the sibling parser/mapper qualifies it as
+        // `<Record>.<Enum>`. Single → `<Enum>`; array → `java.util.List<<Enum>>`. The lenient
+        // mirror + engine schema stay String (SpringTypeMapper.javaTypeName). The nested enum
+        // DECLARATION is emitted by emitPayloadRecord (deduped by name).
+        if (field instanceof EnumField) {
+            return SpringTypeMapper.payloadJavaTypeName(field, owner, "");
         }
         if (field instanceof ObjectField of) {
             return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns);
@@ -412,6 +433,27 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     // resolution is payload-specific. If a second generator needs them, lift
     // them up the same way KotlinGenUtil holds its share.)
     // -------------------------------------------------------------------------
+
+    /**
+     * Collect the nested {@code public enum <Name> { <members> }} declarations for the enum
+     * fields of {@code vo}, deduped by enum-type name (two fields extending one abstract enum
+     * emit ONE declaration). Members are the EFFECTIVE {@code @values}, verbatim. Mirrors the
+     * C# {@code PayloadCodegen.CollectEnumDecls} pattern; the type name + super-resolution come
+     * from {@link SpringTypeMapper}.
+     */
+    private static List<String> collectEnumDecls(MetaObject vo) {
+        Set<String> seen = new HashSet<>();
+        List<String> decls = new ArrayList<>();
+        for (MetaField<?> field : vo.getMetaFields()) {
+            if (!(field instanceof EnumField ef)) continue;
+            List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
+            if (values.isEmpty()) continue;
+            String typeName = SpringTypeMapper.enumTypeName(vo, ef);
+            if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
+            decls.add("public enum " + typeName + " { " + String.join(", ", values) + " }");
+        }
+        return decls;
+    }
 
     /** First {@link MetaOrigin} child of {@code field}, or {@code null} when absent. */
     private static MetaOrigin firstOriginChild(MetaField<?> field) {

@@ -248,10 +248,13 @@ def _mapper_arg(field: MetaData, root: MetaData) -> str:
 
     # Enum / scalar / scalar-array: the runtime already coerced; read + light-coerce to
     # the mirror's nullable shape via the locally-defined _dlg_* readers.
-    if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
-        return f"_dlg_str(_read_prop(o, {key}))"
+    # ARRAY is checked BEFORE the scalar-enum branch: an enum ARRAY must route through
+    # the string-LIST reader, not the scalar enum reader — otherwise the list collapses
+    # to a single stringified scalar (the cross-port "enum-before-isArray" ordering bug).
     if fm.is_array(field):
         return f"_dlg_str_list(_read_prop(o, {key}))"
+    if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
+        return f"_dlg_str(_read_prop(o, {key}))"
     kind = fm.scalar_kind(field.sub_type)
     if kind in ("INT", "LONG"):
         return f"_dlg_int(_read_prop(o, {key}))"
@@ -277,10 +280,12 @@ def used_helpers(vo: MetaData, root: MetaData) -> set[str]:
                 if fm.is_array(f):
                     used.add("_map_object_list")
                 continue
-            if f.sub_type == fc.FIELD_SUBTYPE_ENUM:
-                used.add("_dlg_str")
-            elif fm.is_array(f):
+            if fm.is_array(f):
+                # ARRAY before scalar-enum — an enum array uses the string-LIST reader
+                # (mirrors the _mapper_arg ordering; avoids the collapse-to-scalar bug).
                 used.add("_dlg_str_list")
+            elif f.sub_type == fc.FIELD_SUBTYPE_ENUM:
+                used.add("_dlg_str")
             else:
                 kind = fm.scalar_kind(f.sub_type)
                 if kind in ("INT", "LONG"):

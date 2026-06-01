@@ -1,5 +1,6 @@
 package acme.ai.prompts
 
+import acme.ai.OpinionOutputPayloadConfidence
 import kotlin.String
 import kotlinx.serialization.Serializable
 
@@ -9,6 +10,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 public data class OpinionPayload(
   public val text: String,
-  public val confidence: String,
+  public val confidence: OpinionOutputPayloadConfidence,
   public val note: String,
 )
