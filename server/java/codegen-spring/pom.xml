@@ -27,6 +27,14 @@
             <artifactId>metaobjects-metadata</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- compile scope: SpringRenderHelperGenerator runs the mustache-VO drift
+             gate (Verify.check + FilesystemProvider + PayloadField) at CODEGEN time,
+             so codegen-spring genuinely compiles against the render engine. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-render</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- test -->
         <dependency>
@@ -44,13 +52,6 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- compile-and-run test: generated parser uses metaobjects-render extract engine -->
-        <dependency>
-            <groupId>com.metaobjects</groupId>
-            <artifactId>metaobjects-render</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
 
         <!-- compile-and-run test: the runtime-delegating extractLenient(MetaDataLoader, String)
              overload delegates to com.metaobjects.object.extract.MetaObjectExtractor (om).
