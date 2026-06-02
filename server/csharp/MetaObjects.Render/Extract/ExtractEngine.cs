@@ -53,7 +53,11 @@ public static class ExtractEngine
         foreach (FieldSpec f in fields)
         {
             string path = prefix.Length == 0 ? f.Name : prefix + "." + f.Name;
-            object? present = Lookup(raw, f.Name, ci);
+            // A @xmlText field reads the element's text body (carried under the #text sentinel when
+            // the element also has attributes), not a same-named child element.
+            object? present = f.TextContent
+                ? (raw.TryGetValue(XmlForgivingReader.TextKey, out object? txt) ? txt : null)
+                : Lookup(raw, f.Name, ci);
 
             if (present == null)
             {
@@ -182,6 +186,14 @@ public static class ExtractEngine
             }
             // object expected but scalar/non-map present
             return Coerce.Malformed;
+        }
+
+        // A text element that also carried XML attributes is represented by XmlForgivingReader
+        // as a dictionary with the body under TextKey. A scalar field reads that text (attributes
+        // ignored for scalars — preserving pre-attribute-support behaviour).
+        if (present is Dictionary<string, object?> mp && mp.ContainsKey(XmlForgivingReader.TextKey))
+        {
+            present = mp[XmlForgivingReader.TextKey];
         }
 
         string rawStr = present is string s ? s : Convert.ToString(present) ?? "";

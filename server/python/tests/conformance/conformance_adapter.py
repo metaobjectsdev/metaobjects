@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from metaobjects import LoadResult, MetaDataLoader
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_provider, core_providers
 from metaobjects.documentation import doc_provider
+from metaobjects.meta.persistence.db.db_provider import db_provider
+from metaobjects.meta.template.template_provider import template_provider
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template.meta_template import MetaTemplate
@@ -69,13 +71,12 @@ def _noop_provider(provider_id: str, *deps: str) -> Provider:
 _PROVIDER_MAP: dict[str, Provider] = {
     core_provider.id: core_provider,                # "metaobjects-core-types"
     doc_provider.id: doc_provider,                  # "metaobjects-documentation"
-    # The DB-domain provider id. Python keeps the DB-domain physical attrs
-    # (@column / @dbColumnType) on the core field defs (until a full Python
-    # db-codegen port lands), and the @dbColumnType pairing validation runs
-    # unconditionally as a loader pass — so this maps to a no-op provider whose
-    # only job is to satisfy a fixture's providers.json gate (mirrors the C#
-    # ConformanceAdapter, which also maps "metaobjects-db" to a no-op).
-    "metaobjects-db": _noop_provider("metaobjects-db", "metaobjects-core-types"),
+    # The DB-domain provider — registers the physical field attrs (@column /
+    # @dbColumnType) by extending the core field types (mirrors the TS adapter,
+    # which maps "metaobjects-db" to the real dbProvider).
+    db_provider.id: db_provider,                    # "metaobjects-db"
+    # The template/output domain provider — registers the @xmlText field marker.
+    template_provider.id: template_provider,        # "metaobjects-template"
     # Test-only — provider-extension-* fixtures.
     "example-template-briefing": _example_template_briefing_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
@@ -90,12 +91,12 @@ _PROVIDER_MAP: dict[str, Provider] = {
 def _resolve_providers(provider_ids: Optional[Iterable[str]]) -> list[Provider]:
     """Map fixture-declared provider ids to provider objects.
 
-    When ``provider_ids`` is None, falls back to the legacy default
-    (``[core_provider, doc_provider]``) — pre-rc.3 behavior. An unknown id
-    raises (parity with the TS / C# adapters).
+    When ``provider_ids`` is None, falls back to the full default provider set
+    (``core_providers`` — core types + DB-domain + documentation + template/output
+    domain). An unknown id raises (parity with the TS / C# adapters).
     """
     if provider_ids is None:
-        return [core_provider, doc_provider]
+        return list(core_providers)
     resolved: list[Provider] = []
     for pid in provider_ids:
         p = _PROVIDER_MAP.get(pid)

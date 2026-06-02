@@ -188,6 +188,7 @@ export function ${safeParseName}(
   // source actually references, so the file has no unused imports (tsc noUnusedLocals-safe).
   const renderImports = ["extract", "extractSchema", "Format"];
   if (schemaLit.includes("scalar(")) renderImports.push("scalar");
+  if (schemaLit.includes("textContentField(")) renderImports.push("textContentField");
   if (schemaLit.includes("enumField(")) renderImports.push("enumField");
   if (schemaLit.includes("FieldKind.")) renderImports.push("FieldKind");
   renderImports.push("type ExtractSchema", "type ExtractOptions", "type ExtractionResult");

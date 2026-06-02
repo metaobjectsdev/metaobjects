@@ -1,0 +1,2 @@
+{ "format": "XML", "rootName": "doc", "fields": [
+  { "name": "status", "kind": "STRING", "required": true } ] }

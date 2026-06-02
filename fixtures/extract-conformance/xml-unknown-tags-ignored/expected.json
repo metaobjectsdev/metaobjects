@@ -1,0 +1,3 @@
+{ "empty": false,
+  "states": { "status": "EXTRACTED", "meta": "EXTRACTED", "meta.id": "EXTRACTED" },
+  "data": { "status": "ok", "meta.id": "M-1" } }

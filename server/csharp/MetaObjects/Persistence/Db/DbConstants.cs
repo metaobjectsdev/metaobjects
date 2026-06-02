@@ -2,11 +2,11 @@
 //
 // Colocated per ADR-0003. Mirrors typescript/packages/metadata/src/persistence/db/db-constants.ts.
 //
-// NOTE: these attrs are DB-domain. In TS they are registered onto fields by a
-// separate dbProvider; the C# loader+conformance milestone composes the core
-// provider only (no fixture exercises a db provider), so these constants are
-// consumed today by the loader's drift checks (@db.indexed) and downstream
-// tooling, not by an attr schema. Kept here as the cross-language home.
+// NOTE: these attrs are DB-domain. As in TS (dbProvider) and Java (CoreDBMetaDataProvider),
+// they are registered onto every field subtype by DbMetaDataProvider (DbProvider.cs) via
+// TypeRegistry.Extend — NOT on core field schema. The default loader registry composes that
+// provider; the schemas themselves live in DbSchema.cs. These constants remain the
+// cross-language home for the attr keys + the @dbColumnType value set.
 
 using System.Collections.Generic;
 

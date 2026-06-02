@@ -12,7 +12,7 @@ import { ExtractionReport } from "./types.js";
 import { strip } from "./strip.js";
 import { locateJson, locateXml } from "./locate.js";
 import { readJson, TRUNCATED } from "./json-forgiving-reader.js";
-import { readXml } from "./xml-forgiving-reader.js";
+import { readXml, TEXT_KEY } from "./xml-forgiving-reader.js";
 import { coerceValue, scalarCoerce, MALFORMED } from "./coerce.js";
 
 /** The forgiving entry point: extract dirty `text` against `schema`. Never throws. */
@@ -59,7 +59,9 @@ function extractFields(
 ): void {
   for (const f of fields) {
     const path = prefix.length === 0 ? f.name : `${prefix}.${f.name}`;
-    const present = lookup(raw, f.name, ci);
+    // A @xmlText field reads the element's text body (carried under the #text sentinel when the
+    // element also has attributes), not a same-named child element.
+    const present = f.textContent === true ? raw[TEXT_KEY] : lookup(raw, f.name, ci);
     if (present === undefined) {
       // FR-011 / Phase B: an absent field with a declared @default fills the value → DEFAULTED
       // (which satisfies a @required field). Generalized to all field kinds: an enum default is
@@ -158,6 +160,12 @@ function extractValue(
       return nestedData;
     }
     return MALFORMED; // object expected but scalar/non-map present
+  }
+  // A text element that also carried XML attributes is represented by readXml as a record with
+  // the body under TEXT_KEY. A scalar field reads that text (attributes ignored for scalars —
+  // preserving pre-attribute-support behaviour).
+  if (isPlainObject(present) && Object.prototype.hasOwnProperty.call(present, TEXT_KEY)) {
+    present = (present as Record<string, unknown>)[TEXT_KEY];
   }
   const rawStr = typeof present === "string" ? present : stringifyScalar(present);
   return coerceValue(rawStr, f, o, path, report);

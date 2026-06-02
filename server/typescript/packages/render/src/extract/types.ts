@@ -85,6 +85,13 @@ export interface FieldSpec {
   readonly defaultValue: string | null;
   /** FR-011: resolved enum normalization mode (from `@normalize`; default `"strip"`). */
   readonly normalize: NormalizeMode;
+  /**
+   * `@xmlText`: this field receives its element's TEXT CONTENT (analogous to JAXB `@XmlValue` /
+   * Jackson `@JacksonXmlText` / .NET `[XmlText]`). The extract engine reads it from the
+   * `#text` sentinel the lenient XML reader carries when an element has both attributes and a
+   * text body, instead of a same-named child. Absent/false for normal fields and for JSON.
+   */
+  readonly textContent?: boolean;
 }
 
 /**
@@ -113,6 +120,14 @@ export function scalar(
     defaultValue: defaultValue ?? null,
     normalize: "strip",
   };
+}
+
+/**
+ * A field that receives its element's TEXT CONTENT — the `@xmlText` marker (see
+ * {@link FieldSpec.textContent}). A scalar with the `textContent` flag set; coerced to `kind`.
+ */
+export function textContentField(name: string, kind: FieldKind, required: boolean): FieldSpec {
+  return { ...scalar(name, kind, required), textContent: true };
 }
 
 export function enumField(

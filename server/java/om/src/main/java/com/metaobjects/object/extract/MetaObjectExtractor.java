@@ -201,6 +201,10 @@ public final class MetaObjectExtractor {
         if (field.isArrayType()) {
             return FieldSpec.scalarArray(name, kind, required, defaultValue);
         }
+        // @xmlText: a (non-array) scalar field marked to receive its element's XML text content.
+        if ("true".equalsIgnoreCase(ownAttrString(field, com.metaobjects.template.TemplateConstants.ATTR_XML_TEXT))) {
+            return FieldSpec.textContentField(name, kind, required);
+        }
         return FieldSpec.scalar(name, kind, required, defaultValue);
     }
 

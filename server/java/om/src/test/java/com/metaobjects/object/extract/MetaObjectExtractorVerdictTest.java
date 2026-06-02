@@ -183,6 +183,80 @@ public class MetaObjectExtractorVerdictTest {
     }
 
     // -----------------------------------------------------------------------
+    // Attribute-bearing XML + @xmlText: attributes map to fields; a field marked
+    // @xmlText reads its element's text body (the prompt/output domain marker).
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void attributeXmlAndXmlTextExtractIntoTypedGraph() {
+        String pkg = "com::example::vibe";
+        // Vibe.text is marked @xmlText → it receives the <vibes> element's text body, while
+        // thread_id comes from the attribute. Check.{id,resolved} come from attributes on a
+        // self-closing element. Leaf types declared before the doc that @objectRef's them.
+        String meta = "{ \"metadata.root\": {"
+            + "  \"package\": \"" + pkg + "\","
+            + "  \"children\": ["
+            + "    { \"object.value\": { \"name\": \"Vibe\", \"children\": ["
+            + "      { \"field.string\": { \"name\": \"thread_id\" } },"
+            + "      { \"field.string\": { \"name\": \"text\", \"@xmlText\": true } }"
+            + "    ]}},"
+            + "    { \"object.value\": { \"name\": \"Check\", \"children\": ["
+            + "      { \"field.string\": { \"name\": \"id\" } },"
+            + "      { \"field.enum\":   { \"name\": \"resolved\", \"@values\": [\"yes\", \"no\"] } }"
+            + "    ]}},"
+            + "    { \"object.value\": { \"name\": \"Doc\", \"children\": ["
+            + "      { \"field.object\": { \"name\": \"vibes\",  \"isArray\": true, \"@objectRef\": \"" + pkg + "::Vibe\" } },"
+            + "      { \"field.object\": { \"name\": \"checks\", \"isArray\": true, \"@objectRef\": \"" + pkg + "::Check\" } }"
+            + "    ]}}"
+            + "  ]"
+            + "}}";
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "verdict-extract-vibe");
+        loader.init();
+        loader.load(List.of(new InMemoryStringSource(meta, "verdict-extract/vibe.json")));
+        MetaObject docMo = loader.getMetaObjectByName(pkg + "::Doc");
+        assertNotNull("Doc MetaObject must load (with @xmlText on Vibe.text)", docMo);
+
+        // Attribute-heavy XML: vibes carry a thread_id ATTRIBUTE + a text BODY (mixed content);
+        // checks are self-closing all-attribute elements.
+        String xml =
+            "<Doc>\n" +
+            "  <vibes thread_id=\"TH-001\">Durk staggers but still blocks the trail.</vibes>\n" +
+            "  <vibes thread_id=\"TH-002\">Skett's bow arm trembles.</vibes>\n" +
+            "  <checks id=\"T1\" resolved=\"yes\"/>\n" +
+            "  <checks id=\"T2\" resolved=\"no\"/>\n" +
+            "</Doc>";
+
+        ExtractionResult<Object> result =
+                MetaObjectExtractor.extract(docMo, xml, Format.XML, ExtractOptions.defaults());
+        Object doc = result.data();
+        assertNotNull("extract must produce a Doc", doc);
+
+        // ---- @xmlText: attribute → thread_id field; element text body → text field ----
+        MetaObject vibeMo = loader.getMetaObjectByName(pkg + "::Vibe");
+        List<Object> vibes = docMo.getMetaField("vibes").getObjectArray(doc);
+        assertNotNull("vibes must be populated", vibes);
+        assertEquals("two vibe records", 2, vibes.size());
+        Object v0 = vibes.get(0);
+        assertEquals("attribute → thread_id", "TH-001", vibeMo.getMetaField("thread_id").getString(v0));
+        assertEquals("@xmlText → element text body",
+                "Durk staggers but still blocks the trail.", vibeMo.getMetaField("text").getString(v0));
+        assertEquals("Skett's bow arm trembles.",
+                vibeMo.getMetaField("text").getString(vibes.get(1)));
+
+        // ---- attribute-only self-closing elements → attributes mapped to fields ----
+        MetaObject checkMo = loader.getMetaObjectByName(pkg + "::Check");
+        List<Object> checks = docMo.getMetaField("checks").getObjectArray(doc);
+        assertEquals("two check records", 2, checks.size());
+        assertEquals("T1", checkMo.getMetaField("id").getString(checks.get(0)));
+        assertEquals("yes", checkMo.getMetaField("resolved").getString(checks.get(0)));
+        assertEquals("no", checkMo.getMetaField("resolved").getString(checks.get(1)));
+
+        assertFalse("no required field lost", result.report().hasLostRequired());
+    }
+
+    // -----------------------------------------------------------------------
     // orThrow() — the strict opt-in gate throws iff a required field was lost.
     // -----------------------------------------------------------------------
 

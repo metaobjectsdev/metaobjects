@@ -142,6 +142,81 @@ public class ExtractObjectVerdictTests
     }
 
     // -----------------------------------------------------------------------
+    // Attribute-bearing XML + @xmlText: attributes map to fields; a field marked
+    // @xmlText reads its element's text body (the prompt/output domain marker).
+    // Mirrors the Java MetaObjectExtractorVerdictTest.attributeXmlAndXmlTextExtractIntoTypedGraph
+    // and the TS extract-object-verdict "@xmlText" test.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public void AttributeXmlAndXmlTextExtractIntoTypedGraph()
+    {
+        // Vibe.text is marked @xmlText → it receives the <vibes> element's text body, while
+        // thread_id comes from the attribute. Check.{id,resolved} come from attributes on a
+        // self-closing element. Leaf types declared before the Doc that @objectRef's them.
+        const string meta = """
+        { "metadata.root": {
+            "package": "com::example::vibe",
+            "children": [
+              { "object.value": { "name": "Vibe", "children": [
+                { "field.string": { "name": "thread_id" } },
+                { "field.string": { "name": "text", "@xmlText": true } }
+              ]}},
+              { "object.value": { "name": "Check", "children": [
+                { "field.string": { "name": "id" } },
+                { "field.enum":   { "name": "resolved", "@values": ["yes", "no"] } }
+              ]}},
+              { "object.value": { "name": "Doc", "children": [
+                { "field.object": { "name": "vibes",  "isArray": true, "@objectRef": "com::example::vibe::Vibe" } },
+                { "field.object": { "name": "checks", "isArray": true, "@objectRef": "com::example::vibe::Check" } }
+              ]}}
+            ]
+          } }
+        """;
+
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(meta, id: "vibe.json")]);
+        Assert.Empty(r.Errors);
+        MetaRoot root = r.Root;
+        MetaObject docMo = root.FindObject("Doc")!;
+        Assert.NotNull(docMo);
+
+        // Attribute-heavy XML: vibes carry a thread_id ATTRIBUTE + a text BODY (mixed content);
+        // checks are self-closing all-attribute elements.
+        const string xml =
+            "<Doc>\n" +
+            "  <vibes thread_id=\"TH-001\">Durk staggers but still blocks the trail.</vibes>\n" +
+            "  <vibes thread_id=\"TH-002\">Skett's bow arm trembles.</vibes>\n" +
+            "  <checks id=\"T1\" resolved=\"yes\"/>\n" +
+            "  <checks id=\"T2\" resolved=\"no\"/>\n" +
+            "</Doc>";
+
+        ExtractionResult<object> result = ExtractObject.Extract(docMo, xml, Format.Xml);
+        object doc = result.Data;
+        Assert.NotNull(doc);
+
+        // ---- @xmlText: attribute → thread_id field; element text body → text field ----
+        MetaObject vibeMo = root.FindObject("Vibe")!;
+        var vibes = (IReadOnlyList<object>)docMo.GetField("vibes")!.GetValue(doc)!;
+        Assert.NotNull(vibes);
+        Assert.Equal(2, vibes.Count);
+
+        object v0 = vibes[0];
+        Assert.Equal("TH-001", vibeMo.GetField("thread_id")!.GetValue(v0));
+        Assert.Equal("Durk staggers but still blocks the trail.", vibeMo.GetField("text")!.GetValue(v0));
+        Assert.Equal("Skett's bow arm trembles.", vibeMo.GetField("text")!.GetValue(vibes[1]));
+
+        // ---- attribute-only self-closing elements → attributes mapped to fields ----
+        MetaObject checkMo = root.FindObject("Check")!;
+        var checks = (IReadOnlyList<object>)docMo.GetField("checks")!.GetValue(doc)!;
+        Assert.Equal(2, checks.Count);
+        Assert.Equal("T1", checkMo.GetField("id")!.GetValue(checks[0]));
+        Assert.Equal("yes", checkMo.GetField("resolved")!.GetValue(checks[0]));
+        Assert.Equal("no", checkMo.GetField("resolved")!.GetValue(checks[1]));
+
+        Assert.False(result.Report.HasLostRequired());
+    }
+
+    // -----------------------------------------------------------------------
     // OrThrow() — the strict opt-in gate throws iff a required field was lost.
     // -----------------------------------------------------------------------
 

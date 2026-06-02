@@ -10,6 +10,7 @@ import {
   enumArray,
   range,
   object,
+  textContentField,
   type FieldSpec,
   type ExtractSchema,
 } from "../../src/extract/types.js";
@@ -86,6 +87,8 @@ interface RawFieldJson {
   default?: string;
   min?: number;
   max?: number;
+  // @xmlText: scalar field that receives its element's text content (the #text sentinel).
+  textContent?: boolean;
   // FR-011: nested-object sub-fields (present only for kind === "OBJECT").
   fields?: RawFieldJson[];
 }
@@ -130,6 +133,8 @@ function parseField(f: RawFieldJson): FieldSpec {
   if (f.min !== undefined || f.max !== undefined) {
     return range(name, kind, required, f.min ?? null, f.max ?? null);
   }
+  // @xmlText: a scalar field that receives its element's text content (the #text sentinel).
+  if (f.textContent === true) return textContentField(name, kind, required);
   // Phase B (generalized @default): a scalar `default` key fills an absent field, coerced to kind.
   return scalar(name, kind, required, f.default ?? null);
 }
@@ -176,7 +181,7 @@ describe("extract-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(22);
+  expect(cases.length).toBe(27);
 
   for (const caseName of cases) {
     test(caseName, () => {

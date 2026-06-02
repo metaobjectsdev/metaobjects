@@ -1,0 +1,3 @@
+{ "empty": false,
+  "states": { "check": "EXTRACTED", "check[0].id": "EXTRACTED", "check[0].resolved": "EXTRACTED", "check[1].id": "EXTRACTED", "check[1].resolved": "EXTRACTED" },
+  "data": { "check[0].id": "TH-001", "check[0].resolved": "no", "check[1].id": "TH-002", "check[1].resolved": "yes" } }

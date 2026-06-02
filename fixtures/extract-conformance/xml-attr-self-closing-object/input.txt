@@ -1,0 +1,1 @@
+<doc><check id="A" status="ok"/></doc>

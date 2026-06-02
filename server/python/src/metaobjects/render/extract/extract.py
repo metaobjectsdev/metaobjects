@@ -21,7 +21,7 @@ from metaobjects.render.extract.types import (
     ExtractionReport,
     Tolerance,
 )
-from metaobjects.render.extract.xml_forgiving_reader import XmlForgivingReader
+from metaobjects.render.extract.xml_forgiving_reader import TEXT_KEY, XmlForgivingReader
 
 
 def extract(
@@ -68,7 +68,9 @@ def _extract(
 ) -> None:
     for f in fields:
         path = f.name if prefix == "" else prefix + "." + f.name
-        present = _lookup(raw, f.name, ci)
+        # A @xmlText field reads the element's text body (carried under the #text sentinel when
+        # the element also has attributes), not a same-named child element.
+        present = raw.get(TEXT_KEY) if f.text_content else _lookup(raw, f.name, ci)
         if present is None:
             # FR-011 / Phase B: an absent field with a declared @default fills the
             # value → DEFAULTED (which satisfies a @required field). Generalized to
@@ -171,6 +173,11 @@ def _extract_value(
             _extract(f.nested.fields, present, path, nested_data, report, o, ci)
             return nested_data
         return MALFORMED  # object expected but scalar/non-map present
+    # A text element that also carried XML attributes is represented by XmlForgivingReader
+    # as a dict with the body under TEXT_KEY. A scalar field reads that text (attributes
+    # ignored for scalars — preserving pre-attribute-support behaviour).
+    if isinstance(present, dict) and TEXT_KEY in present:
+        present = present[TEXT_KEY]
     raw_str = present if isinstance(present, str) else str(present)
     return _coerce.value(raw_str, f, o, path, report)
 

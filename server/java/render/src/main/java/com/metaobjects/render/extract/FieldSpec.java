@@ -16,6 +16,10 @@ import java.util.Map;
  *   <li>{@code normalize} — the resolved {@code @normalize} mode string
  *       ({@code none|collapse|strip}); defaults to {@link Normalize#DEFAULT} ("strip").</li>
  * </ul>
+ *
+ * <p>{@code textContent} marks the field that receives its element's TEXT CONTENT (the
+ * {@code @xmlText} marker — see {@link #textContentField}); the extract engine reads it from
+ * the {@link XmlForgivingReader#TEXT_KEY} sentinel rather than a same-named child.</p>
  */
 public record FieldSpec(
         String name,
@@ -29,7 +33,8 @@ public record FieldSpec(
         ExtractSchema nested,
         String coerceDefault,
         String defaultValue,
-        String normalize) {
+        String normalize,
+        boolean textContent) {
 
     public static FieldSpec scalar(String name, FieldKind kind, boolean required) {
         return scalar(name, kind, required, null);
@@ -44,7 +49,21 @@ public record FieldSpec(
      */
     public static FieldSpec scalar(String name, FieldKind kind, boolean required, String defaultValue) {
         return new FieldSpec(name, kind, required, false, null, null, null, null, null,
-                null, defaultValue, Normalize.DEFAULT);
+                null, defaultValue, Normalize.DEFAULT, false);
+    }
+
+    /**
+     * A field that receives its element's TEXT CONTENT — the {@code @xmlText} marker, analogous
+     * to JAXB {@code @XmlValue} / Jackson {@code @JacksonXmlText} / .NET {@code [XmlText]}. When the
+     * source element carries attributes (and/or children) AND a text body, the lenient XML reader
+     * represents it as a map of the attributes plus the body under {@link XmlForgivingReader#TEXT_KEY};
+     * a field marked {@code textContent} reads that body (by the {@code #text} sentinel) instead of a
+     * same-named child, and the result is stored under the field's own name. Scalar coercion to
+     * {@code kind} applies as for a normal scalar. (Meaningless for JSON — never set there.)
+     */
+    public static FieldSpec textContentField(String name, FieldKind kind, boolean required) {
+        return new FieldSpec(name, kind, required, false, null, null, null, null, null,
+                null, null, Normalize.DEFAULT, true);
     }
 
     /**
@@ -56,7 +75,7 @@ public record FieldSpec(
      */
     public static FieldSpec scalarArray(String name, FieldKind kind, boolean required, String defaultValue) {
         return new FieldSpec(name, kind, required, true, null, null, null, null, null,
-                null, defaultValue, Normalize.DEFAULT);
+                null, defaultValue, Normalize.DEFAULT, false);
     }
 
     /**
@@ -85,7 +104,7 @@ public record FieldSpec(
                 null, null, null,
                 coerceDefault,
                 defaultValue,
-                normalize == null ? Normalize.DEFAULT : normalize);
+                normalize == null ? Normalize.DEFAULT : normalize, false);
     }
 
     /**
@@ -109,17 +128,17 @@ public record FieldSpec(
                 null, null, null,
                 coerceDefault,
                 defaultValue,
-                normalize == null ? Normalize.DEFAULT : normalize);
+                normalize == null ? Normalize.DEFAULT : normalize, false);
     }
 
     public static FieldSpec range(String name, FieldKind kind, boolean required,
                                   Double min, Double max) {
         return new FieldSpec(name, kind, required, false, null, null, min, max, null,
-                null, null, Normalize.DEFAULT);
+                null, null, Normalize.DEFAULT, false);
     }
 
     public static FieldSpec object(String name, boolean required, boolean array, ExtractSchema nested) {
         return new FieldSpec(name, FieldKind.OBJECT, required, array, null, null, null, null, nested,
-                null, null, Normalize.DEFAULT);
+                null, null, Normalize.DEFAULT, false);
     }
 }

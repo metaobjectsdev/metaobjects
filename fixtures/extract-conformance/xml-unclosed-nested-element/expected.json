@@ -1,0 +1,3 @@
+{ "empty": false,
+  "states": { "check": "EXTRACTED", "check.id": "EXTRACTED", "check.resolved": "EXTRACTED", "check.payoff": "EXTRACTED" },
+  "data": { "check.id": "A", "check.resolved": "yes", "check.payoff": "The gate swings wide and the path is clear." } }

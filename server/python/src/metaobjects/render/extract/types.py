@@ -110,6 +110,11 @@ class FieldSpec:
     default_value: str | None = None
     # FR-011: resolved enum normalization mode (from ``@normalize``; default ``"strip"``).
     normalize: str = _NORMALIZE_DEFAULT
+    # ``@xmlText``: this field receives its element's TEXT CONTENT (analogous to JAXB
+    # ``@XmlValue`` / Jackson ``@JacksonXmlText`` / .NET ``[XmlText]``). The extract engine
+    # reads it from the ``#text`` sentinel the lenient XML reader carries when an element has
+    # both attributes and a text body, instead of a same-named child. False for normal/JSON.
+    text_content: bool = False
 
     @staticmethod
     def scalar(
@@ -126,6 +131,12 @@ class FieldSpec:
         return FieldSpec(
             name=name, kind=kind, required=required, default_value=default_value
         )
+
+    @staticmethod
+    def text_content_field(name: str, kind: FieldKind, required: bool) -> "FieldSpec":
+        """A field that receives its element's TEXT CONTENT — the ``@xmlText`` marker
+        (see ``text_content``). A scalar with the flag set; coerced to ``kind``."""
+        return FieldSpec(name=name, kind=kind, required=required, text_content=True)
 
     @staticmethod
     def scalar_array(name: str, kind: FieldKind, required: bool) -> "FieldSpec":

@@ -59,7 +59,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 22
+    assert len(_cases()) == 27
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
@@ -114,6 +114,10 @@ def _parse_field(f: dict[str, object]) -> FieldSpec:
         min_v = float(f["min"]) if "min" in f else None  # type: ignore[arg-type]
         max_v = float(f["max"]) if "max" in f else None  # type: ignore[arg-type]
         return FieldSpec.range_(name, kind, required, min_v, max_v)
+
+    # @xmlText: a scalar field that receives its element's text content (the #text sentinel).
+    if bool(f.get("textContent", False)):
+        return FieldSpec.text_content_field(name, kind, required)
 
     # Phase B (generalized @default): a scalar field may carry an absent-fill @default.
     default_value = str(f["default"]) if "default" in f else None

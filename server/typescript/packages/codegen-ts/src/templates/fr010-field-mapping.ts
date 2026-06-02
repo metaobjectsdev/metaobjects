@@ -34,6 +34,7 @@ import {
   FIELD_ATTR_COERCE_DEFAULT,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_NORMALIZE,
+  FIELD_ATTR_XML_TEXT,
   NORMALIZE_DEFAULT,
   type NormalizeMode,
 } from "@metaobjectsdev/metadata";
@@ -82,6 +83,13 @@ export function isArray(field: MetaData): boolean {
 /** True iff the field's @required is explicitly true (or the string "true"). */
 export function isRequired(field: MetaData): boolean {
   const v = field.ownAttr(FIELD_ATTR_REQUIRED);
+  if (v === true) return true;
+  return typeof v === "string" && v.toLowerCase() === "true";
+}
+
+/** True iff the field's @xmlText is explicitly true (the XML text-content extract marker). */
+export function xmlText(field: MetaData): boolean {
+  const v = field.ownAttr(FIELD_ATTR_XML_TEXT);
   if (v === true) return true;
   return typeof v === "string" && v.toLowerCase() === "true";
 }

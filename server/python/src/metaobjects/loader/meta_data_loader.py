@@ -18,7 +18,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core_types import core_provider
+from ..core_types import core_providers
 from ..errors import ErrorCode, MetaError, ParseError
 from ..meta.meta_data import MetaData
 from ..meta.meta_root import MetaRoot
@@ -72,14 +72,15 @@ class LoadResult:
 class MetaDataLoader:
     """Source-polymorphic metadata loader.
 
-    Construct once with a provider list (defaults to ``[core_provider]``);
+    Construct once with a provider list (defaults to ``core_providers`` —
+    core types + DB-domain + documentation + template/output domain);
     call ``.load(sources)`` for arbitrary source combinations, or use the
     ``from_*`` class-method factories for the common cases.
     """
 
     def __init__(self, providers: list[Provider] | None = None) -> None:
         self._registry: TypeRegistry = compose_registry(
-            providers if providers is not None else [core_provider]
+            providers if providers is not None else list(core_providers)
         )
 
     @property

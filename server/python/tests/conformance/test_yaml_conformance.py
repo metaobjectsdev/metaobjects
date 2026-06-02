@@ -19,8 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from metaobjects.core_types import core_provider
-from metaobjects.documentation import doc_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import MetaError
 from metaobjects.loader.merge import merge_roots
 from metaobjects.parser_yaml import parse_yaml
@@ -36,7 +35,11 @@ from metaobjects.source.error_source import (
 from metaobjects.super_resolve import resolve_supers
 from metaobjects.loader.validation_passes import run_validations
 
-_PROVIDERS = [core_provider, doc_provider]
+# Full default provider set: core types + DB-domain (@column / @dbColumnType) +
+# documentation + template/output domain (@xmlText). The coerced-in-string fixtures
+# exercise the YAML coercion guard on the DB-domain @column attr, which only declares
+# its value_type when db_provider is composed.
+_PROVIDERS = list(core_providers)
 
 
 def _build_yaml_envelope(err: MetaError) -> tuple[str, str, tuple[str, ...], object]:

@@ -201,6 +201,12 @@ internal static class Fr010FieldMapping
         field.OwnAttr(FIELD_ATTR_REQUIRED) is true ||
         (field.OwnAttr(FIELD_ATTR_REQUIRED) is string s && s.Equals("true", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>True iff the field's <c>@xmlText</c> is explicitly true (the XML text-content extract marker).</summary>
+    public static bool HasXmlText(MetaData field) =>
+        field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is true ||
+        (field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is string s &&
+         s.Equals("true", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Escape a value for embedding inside a C# double-quoted string literal.</summary>
     public static string CSharpStringLiteral(string value)
     {

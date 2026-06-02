@@ -124,7 +124,18 @@ final class ExtractSchemaEmitter {
             return "FieldSpec.scalar(\"" + name + "\", FieldKind.STRING, " + required
                 + ") /* FR-010: unsupported field type, defaulting to STRING */";
         }
+        // @xmlText: a scalar field marked to receive its element's XML text content.
+        if (isXmlText(field)) {
+            return "FieldSpec.textContentField(\"" + name + "\", FieldKind." + kindName + ", " + required + ")";
+        }
         return "FieldSpec.scalar(\"" + name + "\", FieldKind." + kindName + ", " + required + ")";
+    }
+
+    /** True iff the field carries {@code @xmlText: true} (the XML text-content extract marker). */
+    private static boolean isXmlText(MetaField<?> field) {
+        return field.hasMetaAttr(com.metaobjects.template.TemplateConstants.ATTR_XML_TEXT, false)
+                && "true".equalsIgnoreCase(
+                        field.getMetaAttr(com.metaobjects.template.TemplateConstants.ATTR_XML_TEXT, false).getValueAsString());
     }
 
     /**

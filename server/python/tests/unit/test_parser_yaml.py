@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.parser_yaml import parse_yaml
 from metaobjects.provider import compose_registry
@@ -16,7 +16,9 @@ from metaobjects.registry import TypeRegistry
 
 
 def _registry() -> TypeRegistry:
-    return compose_registry([core_provider])
+    # Full default provider set — the DB-domain @column attr (exercised by the
+    # coercion-guard test below) is declared by db_provider, not core.
+    return compose_registry(list(core_providers))
 
 
 def test_happy_path_yaml_loads_to_metadata_root() -> None:

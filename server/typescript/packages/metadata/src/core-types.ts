@@ -3,6 +3,7 @@ import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegis
 import type { MetaDataTypeProvider } from "./provider.js";
 import { dbProvider } from "./persistence/db/db-provider.js";
 import { docProvider } from "./core/documentation/doc-provider.js";
+import { templateProvider } from "./template/template-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -356,7 +357,7 @@ export const coreTypesProvider: MetaDataTypeProvider = {
 
 /** The default provider bundle — core metamodel types plus DB-domain attrs.
  *  Spread it to add more: `[...coreProviders, mine]`. */
-export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider];
+export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider, templateProvider];
 
 /**
  * Register the core metamodel into an existing registry. Thin convenience

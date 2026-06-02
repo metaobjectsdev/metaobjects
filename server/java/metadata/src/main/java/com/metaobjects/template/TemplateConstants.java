@@ -36,6 +36,17 @@ public final class TemplateConstants {
     public static final String ATTR_SINCE = "since";
     public static final String ATTR_REQUIRED_TAGS = "requiredTags";
 
+    /**
+     * {@code @xmlText} — a FIELD-level marker (boolean) for the tolerant extract engine: this
+     * field receives its element's TEXT CONTENT when a {@code template.output} response is parsed
+     * from XML (analogous to JAXB {@code @XmlValue} / Jackson {@code @JacksonXmlText} / .NET
+     * {@code [XmlText]}). On an element that also carries attributes, a marked field reads the text
+     * body rather than a same-named child. Registered on {@code field.base} by
+     * {@link TemplateTypesMetaDataProvider} (the prompt/output domain owns this extract concern —
+     * it is NOT a core field property). No effect for {@code @format: json}.
+     */
+    public static final String ATTR_XML_TEXT = "xmlText";
+
     // --- @kind + email part-refs (template.output only) ---
     //
     // A template.output is either a plain document (renders @textRef in @format →

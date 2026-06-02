@@ -14,7 +14,12 @@ class Provider:
         self.id = provider_id
         self.dependencies = dependencies
         self._defs: list[TypeDefinition] = []
-        self._on_register: Callable[[], None] | None = None
+        # Post-register hook. Receives the composed registry so a DOMAIN provider
+        # can call ``registry.extend(...)`` to enrich types another (already-ordered)
+        # provider registered — mirroring TS's ``registerTypes(registry)`` and the
+        # ``dbProvider`` / ``templateProvider`` ``registry.extend`` loops. Set via
+        # ``on_register`` or by overriding ``register_types``.
+        self._on_register: Callable[[TypeRegistry], None] | None = None
 
     def add(self, definition: TypeDefinition) -> None:
         self._defs.append(definition)
@@ -40,11 +45,21 @@ class Provider:
         )
         return cls
 
+    def on_register(self, hook: Callable[[TypeRegistry], None]) -> None:
+        """Register a post-register hook that receives the composed registry.
+
+        Runs AFTER this provider's own ``add``-ed definitions are registered (so
+        a provider can both register and extend). The hook is the ergonomic way
+        for a DOMAIN provider to call ``registry.extend(...)`` without subclassing
+        ``Provider``. Mirrors the TS provider's ``registerTypes(registry)`` body.
+        """
+        self._on_register = hook
+
     def register_types(self, registry: TypeRegistry) -> None:
-        if self._on_register is not None:
-            self._on_register()
         for definition in self._defs:
             registry.register(definition)
+        if self._on_register is not None:
+            self._on_register(registry)
 
 
 def compose_registry(providers: list[Provider]) -> TypeRegistry:

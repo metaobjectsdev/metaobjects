@@ -1,5 +1,7 @@
 package com.metaobjects.template;
 
+import com.metaobjects.attr.BooleanAttribute;
+import com.metaobjects.field.MetaField;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
@@ -34,6 +36,14 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
         // Root-level acceptance for template.* is declared on metadata.root in
         // MetaRoot's static initializer alongside object/field/attr/validator/view/
         // identity/relationship — templates are a top-level metadata type.
+
+        // FR-004 extract: the prompt/output domain EXTENDS field.base with the @xmlText marker
+        // (a field receives its element's XML text content — see TemplateConstants#ATTR_XML_TEXT).
+        // This is an output/extract concern, NOT a core field property, so it is registered here
+        // (the prompt domain provider) rather than on the core field type — mirroring how
+        // CoreDBMetaDataProvider extends field.base with @dbColumn etc. from the database domain.
+        registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
+                .optionalAttribute(TemplateConstants.ATTR_XML_TEXT, BooleanAttribute.SUBTYPE_BOOLEAN);
     }
 
     @Override
@@ -43,7 +53,9 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        return new String[]{"core-types"};
+        // core-types for metadata.base inheritance; field-types because we extend field.base
+        // with the @xmlText extract marker (registered above).
+        return new String[]{"core-types", "field-types"};
     }
 
     @Override

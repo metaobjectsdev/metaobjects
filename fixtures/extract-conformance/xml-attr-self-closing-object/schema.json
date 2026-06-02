@@ -1,0 +1,4 @@
+{ "format": "XML", "rootName": "doc", "fields": [
+  { "name": "check", "kind": "OBJECT", "required": true, "fields": [
+    { "name": "id", "kind": "STRING", "required": true },
+    { "name": "status", "kind": "STRING", "required": true } ] } ] }

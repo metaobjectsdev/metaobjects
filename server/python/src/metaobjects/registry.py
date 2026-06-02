@@ -54,7 +54,20 @@ class TypeRegistry:
         self._default_sub_types: dict[str, str] = {}
 
     def register(self, definition: TypeDefinition) -> None:
-        self._defs[definition.key] = definition
+        # Store a per-registry COPY of the definition's mutable lists. Providers
+        # hold their TypeDefinition objects as long-lived singletons (re-used across
+        # every compose_registry call); a later provider's extend() does
+        # definition.attrs.append(...). Without copying here, that append would mutate
+        # the provider's SHARED list and accumulate duplicates across composes. Copying
+        # makes extend() scoped to the registry being composed. The factory is shared
+        # (a type's identity belongs to whoever registered it — see extend()).
+        self._defs[definition.key] = TypeDefinition(
+            type=definition.type,
+            sub_type=definition.sub_type,
+            factory=definition.factory,
+            attrs=list(definition.attrs),
+            child_rules=list(definition.child_rules),
+        )
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:
         return self._defs.get((type_, sub_type))

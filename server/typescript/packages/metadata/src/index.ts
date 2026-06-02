@@ -125,6 +125,8 @@ export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-type
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
+export { templateProvider, xmlTextSchema } from "./template/template-provider.js";
+export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 
 // Type provider model
 export { composeRegistry } from "./provider.js";

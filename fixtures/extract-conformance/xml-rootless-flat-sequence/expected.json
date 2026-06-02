@@ -1,0 +1,3 @@
+{ "empty": false,
+  "states": { "objective_status": "EXTRACTED", "objective_complete": "EXTRACTED" },
+  "data": { "objective_status": "still fighting", "objective_complete": false } }

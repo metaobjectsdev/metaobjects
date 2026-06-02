@@ -250,4 +250,65 @@ describe("extractObject — verdict oracle (dirty XML → typed object graph)", 
     // sanity: double stays DOUBLE — only decimal moved.
     expect(byName.get("rate")!.kind).toBe(FieldKind.DOUBLE);
   });
+
+  // @xmlText: attributes map to fields; a field marked @xmlText reads its element's text body.
+  test("attribute XML + @xmlText extract into a typed object graph", async () => {
+    const meta = {
+      "metadata.root": {
+        package: "com::example::vibe",
+        children: [
+          { "object.value": { name: "Vibe", children: [
+            { "field.string": { name: "thread_id" } },
+            { "field.string": { name: "text", "@xmlText": true } },
+          ] } },
+          { "object.value": { name: "Check", children: [
+            { "field.string": { name: "id" } },
+            { "field.enum": { name: "resolved", "@values": ["yes", "no"] } },
+          ] } },
+          { "object.value": { name: "Doc", children: [
+            { "field.object": { name: "vibes", isArray: true, "@objectRef": "com::example::vibe::Vibe" } },
+            { "field.object": { name: "checks", isArray: true, "@objectRef": "com::example::vibe::Check" } },
+          ] } },
+        ],
+      },
+    };
+    const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(meta))]);
+    expect(res.errors).toEqual([]);
+    const docMo = res.root.findObject("Doc")!;
+    const vibeMo = res.root.findObject("Vibe")!;
+    const checkMo = res.root.findObject("Check")!;
+
+    // @xmlText schema check: Vibe.text carries the textContent flag.
+    const vibeSchema = extractSchemaFor(vibeMo, Format.XML);
+    const textSpec = vibeSchema.fields.find((f) => f.name === "text")!;
+    expect(textSpec.textContent).toBe(true);
+
+    const xml =
+      "<Doc>\n" +
+      '  <vibes thread_id="TH-001">Durk staggers but still blocks the trail.</vibes>\n' +
+      '  <vibes thread_id="TH-002">Skett\'s bow arm trembles.</vibes>\n' +
+      '  <checks id="T1" resolved="yes"/>\n' +
+      '  <checks id="T2" resolved="no"/>\n' +
+      "</Doc>";
+
+    const result = extractObject(docMo, xml, Format.XML);
+    const doc = result.data as ValueObject;
+    expect(doc).not.toBeNull();
+
+    const vibes = field(docMo, "vibes").getValue(doc) as ValueObject[];
+    expect(vibes.length).toBe(2);
+    expect(field(vibeMo, "thread_id").getValue(vibes[0])).toBe("TH-001");
+    expect(field(vibeMo, "text").getValue(vibes[0])).toBe(
+      "Durk staggers but still blocks the trail.",
+    );
+    expect(field(vibeMo, "text").getValue(vibes[1])).toBe("Skett's bow arm trembles.");
+
+    const checks = field(docMo, "checks").getValue(doc) as ValueObject[];
+    expect(checks.length).toBe(2);
+    expect(field(checkMo, "id").getValue(checks[0])).toBe("T1");
+    expect(field(checkMo, "resolved").getValue(checks[0])).toBe("yes");
+    expect(field(checkMo, "resolved").getValue(checks[1])).toBe("no");
+
+    expect(result.report.hasLostRequired()).toBe(false);
+  });
 });

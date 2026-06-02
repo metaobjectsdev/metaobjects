@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { readXml } from "../../src/extract/xml-forgiving-reader.js";
+import { readXml, TEXT_KEY } from "../../src/extract/xml-forgiving-reader.js";
 
 // Mirrors Java XmlForgivingReaderTest / C# XmlForgivingReaderTests (FR-010 stage 4 — XML).
 describe("xml forgiving reader", () => {
@@ -20,9 +20,43 @@ describe("xml forgiving reader", () => {
     expect(m["x"]).toEqual(["a", "b"]);
   });
 
-  test("attributes ignored for value", () => {
+  test("attributes parsed alongside text", () => {
     const m = readXml("<answer><t lang='en' n=2>hi</t></answer>", false);
-    expect(m["t"]).toBe("hi");
+    const t = m["t"] as Record<string, unknown>;
+    expect(t["lang"]).toBe("en");
+    expect(t["n"]).toBe("2");
+    expect(t[TEXT_KEY]).toBe("hi");
+  });
+
+  test("self-closing all attributes", () => {
+    const m = readXml('<answer><check id="A" status="ok"/></answer>', false);
+    const check = m["check"] as Record<string, unknown>;
+    expect(check["id"]).toBe("A");
+    expect(check["status"]).toBe("ok");
+  });
+
+  test("attributes merge with child elements", () => {
+    const m = readXml(
+      '<answer><correction id="NPC-004"><reason>r</reason><area>a</area></correction></answer>',
+      false,
+    );
+    const c = m["correction"] as Record<string, unknown>;
+    expect(c["id"]).toBe("NPC-004");
+    expect(c["reason"]).toBe("r");
+    expect(c["area"]).toBe("a");
+  });
+
+  test("self-closing no attributes no space", () => {
+    const m = readXml("<answer><br/></answer>", false);
+    expect(m["br"]).toBe("");
+  });
+
+  test("repeated self-closing collapse to list of records", () => {
+    const m = readXml('<answer><x a="1"/><x a="2"/></answer>', false);
+    const list = m["x"] as Array<Record<string, unknown>>;
+    expect(list.length).toBe(2);
+    expect(list[0]["a"]).toBe("1");
+    expect(list[1]["a"]).toBe("2");
   });
 
   test("unclosed child extracts inner text", () => {

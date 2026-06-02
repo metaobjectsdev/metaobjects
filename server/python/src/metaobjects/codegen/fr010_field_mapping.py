@@ -20,6 +20,7 @@ from collections.abc import Iterable
 
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.meta.template.template_constants import TEMPLATE_ATTR_XML_TEXT
 from metaobjects.shared.base_types import TYPE_FIELD
 from metaobjects.shared.structural import KEY_IS_ARRAY
 
@@ -39,6 +40,16 @@ def is_array(field: MetaData) -> bool:
 def is_required(field: MetaData) -> bool:
     """``@required`` — accepts a bool ``True`` or the string ``"true"``."""
     v = field.attr(fc.FIELD_ATTR_REQUIRED)
+    if v is True:
+        return True
+    return isinstance(v, str) and v.lower() == "true"
+
+
+def xml_text(field: MetaData) -> bool:
+    """``@xmlText`` — the XML text-content extract marker (accepts a bool ``True`` or the
+    string ``"true"``). When set, codegen bakes a ``FieldSpec.text_content_field(...)``.
+    Mirrors the TS ``xmlText(field)`` helper."""
+    v = field.attr(TEMPLATE_ATTR_XML_TEXT)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"
