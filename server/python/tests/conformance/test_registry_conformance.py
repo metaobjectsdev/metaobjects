@@ -1,0 +1,47 @@
+"""SP-G registry-conformance: Python emits the byte-identical canonical manifest.
+
+Walks the assembled core ``TypeRegistry`` (the same ``[core_provider,
+doc_provider]`` set the metamodel conformance runner uses by default) and
+asserts the emitted manifest is byte-identical to the single committed
+canonical, ``fixtures/registry-conformance/expected-registry.json`` — the
+cross-port logical-vocabulary contract (see that file's README).
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from metaobjects.core_types import core_provider
+from metaobjects.documentation import doc_provider
+from metaobjects.provider import compose_registry
+from metaobjects.registry_manifest import emit_registry_manifest
+
+
+def _registry_conformance_canonical() -> Path:
+    """Locate fixtures/registry-conformance/expected-registry.json (no hardcoded paths)."""
+    here = Path(__file__).resolve()
+    for parent in [here, *here.parents]:
+        candidate = parent / "fixtures" / "registry-conformance" / "expected-registry.json"
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(
+        "could not locate fixtures/registry-conformance/expected-registry.json from "
+        + str(here)
+    )
+
+
+def test_python_registry_matches_canonical() -> None:
+    # The core registry — the same provider set the metamodel conformance runner
+    # composes by default (see tests/conformance/conformance_adapter.py).
+    registry = compose_registry([core_provider, doc_provider])
+    actual = emit_registry_manifest(registry)
+    expected = _registry_conformance_canonical().read_text(encoding="utf-8")
+
+    # Newline-normalize (guard against CRLF on the committed canonical) — the
+    # contract is otherwise byte-exact, including the single trailing newline.
+    assert actual.replace("\r\n", "\n") == expected.replace("\r\n", "\n"), (
+        "SP-G registry-conformance: Python's emitted metamodel registry manifest "
+        "diverges from the cross-port canonical "
+        "(fixtures/registry-conformance/expected-registry.json). "
+        "Fix the Python registration to match the cross-port contract "
+        "(canonical/TS is the source of truth), or escalate if TS is wrong."
+    )

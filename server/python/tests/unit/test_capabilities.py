@@ -24,7 +24,7 @@ def _make_tree() -> tuple[MetaRoot, MetaObject, MetaObject]:
     id_field = MetaField(TYPE_FIELD, "long", "id")
     created_field = MetaField(TYPE_FIELD, "string", "createdAt")
     identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "")
-    identity.set_attr("fields", ["id"], sub_type="stringArray")
+    identity.set_attr("fields", ["id"], sub_type="stringarray")
 
     base.add_child(id_field)
     base.add_child(created_field)

@@ -20,6 +20,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_AUTO_SET,
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_COLUMN,
+    FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_ENUM_ALIAS,
     FIELD_ATTR_ENUM_DOC,
@@ -30,6 +31,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_NORMALIZE,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_PRECISION,
+    FIELD_ATTR_READ_ONLY,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SCALE,
     FIELD_ATTR_SORTABLE,
@@ -46,11 +48,13 @@ from .meta.core.field.field_constants import (
 from .meta.core.field.meta_field import MetaField
 from .meta.persistence.db.db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
+    FIELD_ATTR_DB_INDEXED,
 )
 from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
     IDENTITY_ATTR_FIELDS,
     IDENTITY_ATTR_GENERATION,
+    IDENTITY_ATTR_UNIQUE,
     IDENTITY_REFERENCE_ATTR_ENFORCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_PRIMARY,
@@ -60,6 +64,8 @@ from .meta.core.identity.identity_constants import (
 from .meta.core.identity.meta_identity import MetaIdentity
 from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
+    OBJECT_ATTR_DISCRIMINATOR,
+    OBJECT_ATTR_DISCRIMINATOR_VALUE,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_VALUE,
     OBJECT_SUBTYPES,
@@ -67,6 +73,10 @@ from .meta.core.object.object_constants import (
 from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import (
     REFERENTIAL_ACTIONS,
+    RELATIONSHIP_ATTR_CARDINALITY,
+    RELATIONSHIP_ATTR_JOIN_ENTITY,
+    RELATIONSHIP_ATTR_JOIN_FIELDS,
+    RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_ON_DELETE,
     RELATIONSHIP_ATTR_ON_UPDATE,
     RELATIONSHIP_SUBTYPES,
@@ -90,6 +100,7 @@ from .meta.persistence.source.source_constants import (
     SOURCE_ATTR_FUNCTION,
     SOURCE_ATTR_KIND,
     SOURCE_ATTR_MATERIALIZED_VIEW,
+    SOURCE_ATTR_PARAMETER_REF,
     SOURCE_ATTR_PROC,
     SOURCE_ATTR_ROLE,
     SOURCE_ATTR_SCHEMA,
@@ -103,13 +114,19 @@ from .meta.presentation.layout.layout_constants import (
     LAYOUT_ATTR_COLUMNS,
     LAYOUT_ATTR_DEFAULT_SORT_FIELD,
     LAYOUT_ATTR_DEFAULT_SORT_ORDER,
+    LAYOUT_ATTR_FILTER,
+    LAYOUT_ATTR_FILTERABLE,
     LAYOUT_ATTR_PAGE_SIZE,
     LAYOUT_SUBTYPES,
     LAYOUT_SUBTYPE_DATA_GRID,
 )
 from .meta.presentation.layout.meta_layout import MetaLayout
 from .meta.presentation.view.meta_view import MetaView
-from .meta.presentation.view.view_constants import VIEW_SUBTYPES
+from .meta.presentation.view.view_constants import (
+    VIEW_ATTR_LOCALE,
+    VIEW_SUBTYPE_CURRENCY,
+    VIEW_SUBTYPES,
+)
 from .provider import Provider
 from .registry import AttrSchema, ChildRule, NodeFactory, TypeDefinition, TypeRegistry
 from .shared.base_types import (
@@ -193,11 +210,21 @@ _OBJECT_CHILD_RULES = [
     ChildRule(TYPE_RELATIONSHIP, "*"),
     ChildRule(TYPE_LAYOUT, "*"),
 ]
+# FR-014: @discriminator / @discriminatorValue (TPH single-table inheritance) are
+# registered on EVERY object subtype (base/entity/value) — cross-port contract.
+_OBJECT_COMMON_ATTRS = [
+    AttrSchema(name=OBJECT_ATTR_DISCRIMINATOR, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(
+        name=OBJECT_ATTR_DISCRIMINATOR_VALUE,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+    ),
+]
 # FR-011: @normalize is an object-level default for the enum fields of a payload
 # value-object — registered on object.value ONLY (not entity/base). Closed enum
 # (none|collapse|strip, default strip); resolved at codegen time when a field
 # omits its own @normalize.
-_OBJECT_VALUE_ATTRS = [
+_OBJECT_VALUE_ATTRS = list(_OBJECT_COMMON_ATTRS) + [
     AttrSchema(
         name=FIELD_ATTR_NORMALIZE,
         value_type=ATTR_SUBTYPE_STRING,
@@ -216,7 +243,7 @@ for _obj_sub in OBJECT_SUBTYPES:
             attrs=(
                 list(_OBJECT_VALUE_ATTRS)
                 if _obj_sub == OBJECT_SUBTYPE_VALUE
-                else []
+                else list(_OBJECT_COMMON_ATTRS)
             ),
         )
     )
@@ -254,7 +281,15 @@ _FIELD_COMMON_ATTRS = [
         allowed_values=STORAGE_VALUES,
     ),
     AttrSchema(name=FIELD_ATTR_REQUIRED, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    # @readOnly — field exposed read-only (omitted from create/update input DTOs).
+    # Cross-port logical field attr (every field subtype). Mirrors TS commonFieldAttrs.
+    AttrSchema(name=FIELD_ATTR_READ_ONLY, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
     AttrSchema(name=FIELD_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    # @db.indexed — DB-domain index-intent flag on every field subtype. The TS
+    # port registers it through a dedicated metaobjects-db provider; Python keeps
+    # the DB-domain physical attrs (@column / @dbColumnType / @db.indexed) on the
+    # core field defs (same rationale as @column / @dbColumnType below).
+    AttrSchema(name=FIELD_ATTR_DB_INDEXED, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
     # @default is polymorphic: its value type follows the OWNING field's
     # subtype. No single fixed valueType can capture that, so value_type is
     # intentionally None (declared-but-untyped). The YAML coercion guard
@@ -305,6 +340,17 @@ _register_subtypes(
     child_rules=_FIELD_CHILD_RULES,
     attrs=_FIELD_COMMON_ATTRS,
 )
+
+# field.currency carries the @currency attr (ISO 4217) IN ADDITION to the common
+# field attrs. The bulk loop above registered field.currency with the common
+# attrs; append @currency to that definition (mirrors TS, where field.currency's
+# attr set = commonFieldAttrs + currencyFieldAttr).
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_FIELD and _def.sub_type == fc.FIELD_SUBTYPE_CURRENCY:
+        _def.attrs.append(
+            AttrSchema(name=FIELD_ATTR_CURRENCY, value_type=ATTR_SUBTYPE_STRING, required=False)
+        )
+        break
 
 # field.enum — dedicated registration with required @values attr.
 # Inherits every common field attr (column / required / unique / default /
@@ -385,13 +431,17 @@ core_provider.add(
     )
 )
 
-# identity.secondary — @fields required stringArray
+# identity.secondary — @fields required stringArray; @unique optional boolean
+# (true → UNIQUE index, false → plain index). Cross-port; mirrors TS secondaryIdentityAttrs.
 core_provider.add(
     TypeDefinition(
         type=TYPE_IDENTITY,
         sub_type=IDENTITY_SUBTYPE_SECONDARY,
         factory=MetaIdentity,
-        attrs=[AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True)],
+        attrs=[
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(name=IDENTITY_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+        ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )
@@ -416,6 +466,17 @@ core_provider.add(
 # values (cascade / set-null / restrict / no-action). Defaults derive from the
 # relationship subtype at consumption time, not at validation time.
 _RELATIONSHIP_ATTRS = [
+    # Logical relationship attrs (cross-port; on every relationship subtype incl. base).
+    # @cardinality is an open string at the metamodel level (no allowed_values) — the
+    # legal-value check is a downstream concern, matching TS.
+    AttrSchema(name=RELATIONSHIP_ATTR_CARDINALITY, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=RELATIONSHIP_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=RELATIONSHIP_ATTR_JOIN_ENTITY, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(
+        name=RELATIONSHIP_ATTR_JOIN_FIELDS,
+        value_type=ATTR_SUBTYPE_STRINGARRAY,
+        required=False,
+    ),
     AttrSchema(
         name=RELATIONSHIP_ATTR_ON_DELETE,
         value_type=ATTR_SUBTYPE_STRING,
@@ -479,6 +540,12 @@ core_provider.add(
                 allowed_values=SOURCE_ROLES,
             ),
             AttrSchema(name=SOURCE_ATTR_SCHEMA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            # FR-015 — @parameterRef: input-shape object.value for proc/table-function sources.
+            AttrSchema(
+                name=SOURCE_ATTR_PARAMETER_REF,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+            ),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -544,14 +611,23 @@ core_provider.add(
     )
 )
 
-# view.* (base, text, textarea, date, currency); @locale flows through as a base attr
-_register_subtypes(
-    core_provider,
-    TYPE_VIEW,
-    VIEW_SUBTYPES,
-    factory=MetaView,
-    child_rules=[ChildRule(TYPE_ATTR, "*")],
-)
+# view.* (base + 13 control kinds). Only view.currency carries a documented attr
+# (@locale); all other subtypes have none. Mirrors TS core-types view registration.
+for _view_sub in VIEW_SUBTYPES:
+    _view_attrs = (
+        [AttrSchema(name=VIEW_ATTR_LOCALE, value_type=ATTR_SUBTYPE_STRING, required=False)]
+        if _view_sub == VIEW_SUBTYPE_CURRENCY
+        else []
+    )
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_VIEW,
+            sub_type=_view_sub,
+            factory=MetaView,
+            attrs=_view_attrs,
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
 
 # layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array;
 # @filter is a FilterAttr — shorthand values desugar to op-objects
@@ -564,7 +640,9 @@ _layout_datagrid_attrs = [
         allowed_values=("asc", "desc"),
     ),
     AttrSchema(name=LAYOUT_ATTR_PAGE_SIZE, value_type=ATTR_SUBTYPE_INT),
-    AttrSchema(name="filter", value_type=ATTR_SUBTYPE_FILTER),
+    # @filterable — boolean; the generated grid exposes column-filtering UI. Cross-port.
+    AttrSchema(name=LAYOUT_ATTR_FILTERABLE, value_type=ATTR_SUBTYPE_BOOLEAN),
+    AttrSchema(name=LAYOUT_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER),
 ]
 for _sub in LAYOUT_SUBTYPES:
     _attrs = list(_layout_datagrid_attrs) if _sub == LAYOUT_SUBTYPE_DATA_GRID else []
@@ -616,7 +694,10 @@ for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():
 # requirement: a tool-call has no renderable text body.
 # Validation in validation_passes.py.
 _TEMPLATE_SHARED_ATTRS = [
-    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING),
+    # @payloadRef is required on the concrete subtypes (output/prompt). The generic
+    # required-attr schema check (validation_passes Check 1) enforces it — there is
+    # no separate manual pass (matches TS). template.base gets NO shared attrs.
+    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
     AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(
         name=tc.TEMPLATE_ATTR_FORMAT,
@@ -665,12 +746,14 @@ _TEMPLATE_TOOLCALL_ATTRS = [
     AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
 ]
+# template.base — abstract anchor; carries NO attrs (the shared attrs live only on
+# the concrete subtypes prompt/output, matching TS TEMPLATE_ATTRS_MAP[base] = []).
 core_provider.add(
     TypeDefinition(
         type=TYPE_TEMPLATE,
         sub_type=SUBTYPE_BASE,
         factory=MetaTemplate,
-        attrs=list(_TEMPLATE_SHARED_ATTRS),
+        attrs=[],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )

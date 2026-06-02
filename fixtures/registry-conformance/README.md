@@ -142,8 +142,24 @@ divergence:
 
 - **TypeScript** — reference emitter; green (produces the canonical).
 - **C#** — green, byte-identical.
-- **Python** — registry carries the cross-port vocabulary (verified by inspection;
-  runner tracked with the other ports).
+- **Python** — green, byte-identical (`emit_registry_manifest` in
+  `server/python/src/metaobjects/registry_manifest.py`; runner
+  `tests/conformance/test_registry_conformance.py`). Running the gate surfaced
+  targeted drift (now reconciled at source): the attr value-type / `attr.*`
+  subtype spelled `stringArray` instead of the cross-port `stringarray`; missing
+  field attrs `db.indexed` / `readOnly` (and `currency` on `field.currency`);
+  missing subtypes `field.base|byte|short`, `object.base`, `template.base`, and
+  9 `view.*` control kinds; missing attrs `discriminator`/`discriminatorValue`
+  on `object.*`, `cardinality`/`joinEntity`/`joinFields`/`objectRef` on
+  `relationship.*`, `parameterRef` on `source.rdb`, `unique` on
+  `identity.secondary`, `filterable` on `layout.dataGrid`, `locale` on
+  `view.currency`; and `template.*` `payloadRef` declared optional + carried on
+  `template.base` (the shared attrs now live only on the concrete subtypes with
+  `payloadRef` required, matching TS — the manual prompt-payloadRef check was
+  removed in favor of the generic required-attr schema check). Two dead,
+  never-registered constants (`RELATIONSHIP_ATTR_FK_FIELD` / `_PARENT_FIELD`)
+  were removed. No structural (Java-class) divergence — Python uses the same attr
+  vocabulary and registry model.
 - **Java + Kotlin (shared JVM registry)** — emitter (`RegistryManifest.emit`,
   `metadata` module) + runners (`RegistryManifestConformanceTest` in `metadata`
   and `codegen-kotlin`) are wired and functional, but the assertions are

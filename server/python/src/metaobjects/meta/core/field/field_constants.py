@@ -1,7 +1,10 @@
 """Field subtype vocabulary (colocated)."""
+from ....shared.base_types import SUBTYPE_BASE
 
 FIELD_SUBTYPE_STRING = "string"
 FIELD_SUBTYPE_INT = "int"
+FIELD_SUBTYPE_SHORT = "short"
+FIELD_SUBTYPE_BYTE = "byte"
 FIELD_SUBTYPE_LONG = "long"
 FIELD_SUBTYPE_DOUBLE = "double"
 FIELD_SUBTYPE_FLOAT = "float"
@@ -21,8 +24,11 @@ FIELD_SUBTYPE_ENUM = "enum"
 FIELD_SUBTYPE_UUID = "uuid"
 
 FIELD_SUBTYPES = (
+    SUBTYPE_BASE,
     FIELD_SUBTYPE_STRING,
     FIELD_SUBTYPE_INT,
+    FIELD_SUBTYPE_SHORT,
+    FIELD_SUBTYPE_BYTE,
     FIELD_SUBTYPE_LONG,
     FIELD_SUBTYPE_DOUBLE,
     FIELD_SUBTYPE_FLOAT,
@@ -42,7 +48,13 @@ FIELD_SUBTYPES = (
 # Reserved field attribute names (read by codegen; open attrs at load time).
 # Mirrors server/typescript/packages/metadata/src/core/field/field-constants.ts.
 FIELD_ATTR_REQUIRED = "required"
+# @readOnly — boolean; the field is exposed read-only (omitted from create/update
+# input DTOs). On every field subtype. Mirrors TS FIELD_ATTR_READ_ONLY.
+FIELD_ATTR_READ_ONLY = "readOnly"
 FIELD_ATTR_UNIQUE = "unique"
+# @currency — ISO 4217 code on a field.currency. Storage is integer minor units;
+# defaults to "USD" when omitted. Only on field.currency. Mirrors TS FIELD_ATTR_CURRENCY.
+FIELD_ATTR_CURRENCY = "currency"
 FIELD_ATTR_DEFAULT = "default"
 FIELD_ATTR_MAX_LENGTH = "maxLength"
 FIELD_ATTR_PRECISION = "precision"

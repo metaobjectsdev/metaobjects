@@ -32,5 +32,5 @@ def test_identity_primary_declares_fields_as_stringarray_required() -> None:
     reg = compose_registry([core_provider])
     schema = reg.attr_schema("identity", "primary", "fields")
     assert schema is not None
-    assert schema.value_type == "stringArray"
+    assert schema.value_type == "stringarray"
     assert schema.required is True

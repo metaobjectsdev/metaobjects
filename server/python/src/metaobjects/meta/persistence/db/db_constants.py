@@ -21,6 +21,11 @@ from __future__ import annotations
 # DB_COLUMN_TYPE_UUID / DB_COLUMN_TYPE_JSONB / DB_COLUMN_TYPE_TIMESTAMP_TZ.
 FIELD_ATTR_DB_COLUMN_TYPE = "dbColumnType"
 
+# @db.indexed — boolean DB-domain attr on every field subtype. Suppresses the
+# @filterable-without-index warning by declaring an explicit index intent.
+# Mirrors TS persistence/db/db-constants.ts FIELD_ATTR_DB_INDEXED.
+FIELD_ATTR_DB_INDEXED = "db.indexed"
+
 # @dbColumnType: uuid — native Postgres uuid column (legal on field.string).
 DB_COLUMN_TYPE_UUID = "uuid"
 # @dbColumnType: jsonb — genuinely-open JSON column (legal on field.string).

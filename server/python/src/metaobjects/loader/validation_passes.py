@@ -150,7 +150,7 @@ def _type_ok(value: object, value_type: str) -> bool:
         return isinstance(value, bool)
     if value_type == "string":
         return isinstance(value, str)
-    if value_type == "stringArray":
+    if value_type == "stringarray":
         return isinstance(value, list)
     if value_type in ("filter", "properties"):
         # Object-typed attrs must be a dict (not a string, not an array).
@@ -1186,15 +1186,10 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                     envelope=tpl.source,
                 ))
 
-        # R1 — prompt requires @payloadRef
-        if is_prompt and not has_payload_ref:
-            errors.append(MetaError(
-                code=ErrorCode.ERR_MISSING_REQUIRED_ATTR,
-                message=f"template.prompt '{tpl.name}' is missing required @payloadRef",
-                envelope=tpl.source,
-            ))
-            continue
-
+        # @payloadRef required-ness is enforced by the generic required-attr schema
+        # check (Check 1) — payloadRef is declared required on the concrete template
+        # subtypes. No separate manual emit here (matches TS). If absent, the
+        # reference-resolution checks below simply skip.
         if not has_payload_ref:
             continue
 
