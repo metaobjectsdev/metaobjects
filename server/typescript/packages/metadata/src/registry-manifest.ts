@@ -20,6 +20,10 @@
 
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
+import {
+  EXCLUDED_PER_TYPE_ATTR_NAMES,
+  isExcludedTypeSubType,
+} from "./registry-manifest-exclusions.js";
 
 /** One attribute in the manifest — the logical, cross-port-identical facet. */
 interface ManifestAttr {
@@ -84,6 +88,18 @@ function sortedAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
 }
 
 /**
+ * Sort PER-TYPE attrs, filtering out the excluded per-type attr names
+ * (structural keywords `isArray`/`isAbstract` + the `description` commonAttr —
+ * see registry-manifest-exclusions). The filter is a no-op for TS (which never
+ * registers them as per-type attrs); it is applied uniformly so the cross-port
+ * contract is explicit. NOTE: `description` is filtered ONLY here — it remains
+ * in the `commonAttrs` block (built via `sortedAttrs`, unfiltered).
+ */
+function sortedPerTypeAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
+  return sortedAttrs(attrs.filter((a) => !EXCLUDED_PER_TYPE_ATTR_NAMES.has(a.name)));
+}
+
+/**
  * Build the canonical registry manifest object from an assembled registry.
  *
  * The registry must already be composed (e.g. `composeRegistry(coreProviders)`)
@@ -94,10 +110,13 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
   // `attrsOf` gives each one's declared attribute schemas.
   const types: ManifestType[] = registry
     .allTypes()
+    // Skip excluded (type, subType) rows: the `metadata.base` inheritance
+    // anchor (C-5) + the generic TS-presentation `view.*` controls (B-2).
+    .filter((typeId) => !isExcludedTypeSubType(typeId.type, typeId.subType))
     .map((typeId) => ({
       type: typeId.type,
       subType: typeId.subType,
-      attrs: sortedAttrs(registry.attrsOf(typeId.type, typeId.subType)),
+      attrs: sortedPerTypeAttrs(registry.attrsOf(typeId.type, typeId.subType)),
     }))
     // Sort by the full "type.subType" key for a stable, port-independent order.
     .sort((a, b) =>

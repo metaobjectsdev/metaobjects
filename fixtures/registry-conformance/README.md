@@ -108,6 +108,32 @@ deferral.
 - Codegen targets/options.
 - The TS-only `D1` dialect and any other documented port-unique surface.
 - Ordering (we sort everything).
+- **Structural keywords as per-type attrs (`isArray`, `isAbstract`)** — these are
+  bare structural body keywords (peers of `name`/`extends`/`children`), not
+  attributes. Java additionally registers them as ordinary per-type attrs
+  (inherited everywhere); the other ports do not. The emitter filters them by
+  name from each type's `attrs` list (uniform across all four emitters; a no-op
+  for TS/C#/Python). See SP-G analysis C-2/C-3.
+- **`description` as a per-type attr** — `description` is a `commonAttr` (emitted
+  in the `commonAttrs` block), not a per-type attribute. Java registers it
+  per-type too (a duplicate); the emitter filters the per-type occurrence by
+  name (it stays in `commonAttrs`). See SP-G analysis C-3.
+- **The `metadata.base` inheritance anchor** — Java registers an internal
+  abstract anchor (`metadata.base`) that all types inherit from; the other ports
+  register only the concrete tree root (`metadata.root`). It is the
+  not-universally-tracked `inheritsFrom` anchor this manifest already defers, so
+  the `(metadata, base)` row is skipped by the emitter. See SP-G analysis C-5.
+- **The 11 generic `view.*` controls** (`checkbox`, `date`, `dropdown`,
+  `hidden`, `hotlink`, `month`, `number`, `password`, `radio`, `text`,
+  `textarea`, `web`) — a TS-web-PRESENTATION facet, like the TS-only `D1`
+  dialect. They have zero backend / codegen / render consumers; only the TS web
+  client (`client/web/packages/{tanstack,angular}/src/`) + TS form codegen
+  (`server/typescript/packages/codegen-ts/src/templates/field-meta.ts`) consume
+  them. They stay **registered in TypeScript** (the loader must accept an
+  authored `view.dropdown`) but are **deregistered in C# + Python** (dead vocab
+  there) and **excluded from the manifest** by all four emitters. Only
+  `view.base` + `view.currency` (the cross-port currency `@locale` wire
+  contract) remain. See SP-G analysis B-2.
 
 ### EXCLUDED from v1 — deferred follow-ons (documented, not silent)
 
@@ -180,13 +206,16 @@ divergence:
   vocabulary and registry model.
 - **Java + Kotlin (shared JVM registry)** — emitter (`RegistryManifest.emit`,
   `metadata` module) + runners (`RegistryManifestConformanceTest` in `metadata`
-  and `codegen-kotlin`) are wired and functional, but the assertions are
-  **`@Ignore`/`@Disabled` — ESCALATED**. Running the gate surfaced a pervasive,
-  *structural* divergence between Java's registry and the cross-port logical
-  vocabulary that TS, C#, and Python agree on — not the targeted attr-level drift
-  this gate was scoped to catch. Java models the structural reserved keywords
-  `abstract`/`isArray` and the `description` commonAttr as ordinary per-type
-  attrs; carries a parallel physical-DB attr vocabulary
+  and `codegen-kotlin`) are wired and functional, but the assertions remain
+  **`@Ignore`/`@Disabled` — ESCALATED** (Phase-2 divergences below remain).
+  SP-G Phase 1 (Units 2-3) settled three of the divergences cross-port via the
+  uniform emitter exclusions documented in "EXCLUDED" above (no Java behavior
+  change): the structural keywords `isArray`/`isAbstract` + the `description`
+  per-type duplicate are filtered from the `attrs` list, the `metadata.base`
+  anchor row is skipped, and the 11 generic `view.*` controls are cut (Java
+  never registered them). The REMAINING (Phase 2) divergence between Java's
+  registry and the cross-port logical vocabulary that TS, C#, and Python agree
+  on: Java carries a parallel physical-DB attr vocabulary
   (`dbType`/`dbIndex`/`dbLength`/`dbNullable`/`dbForeignKey`/`dbPrecision`/
   `dbScale`/`dbUnique`/`previousName`/`dbSequenceName`/`dbIndexName`/
   `dbTablespace`) instead of `column`/`db.indexed`/`dbColumnType` +
@@ -197,9 +226,9 @@ divergence:
   `minDate`/`defaultView`, validator `msg`/`mask`/`maxSize`/`minSize`); models
   `object.*` with Java OO attrs (`extends`/`implements`/`object`/`objectAdapter`/
   `isInterface`/`value*`/`data*`) instead of `discriminator`/`discriminatorValue`;
-  and has subtype gaps/extras (missing `field.byte`, `field.short`,
-  `attr.stringarray`, the 11 generic `view.*` subtypes; extra `metadata.base`,
-  Java's inheritance anchor). Reconciling this at source means rewriting Java's
+  and has subtype gaps (missing `field.byte`, `field.short`). (The structural
+  keyword / `description` / `metadata.base` / generic `view.*` divergences were
+  settled in Phase 1 — see above.) Reconciling this at source means rewriting Java's
   metamodel attribute layer to the cross-port vocabulary — a change that ripples
   through the loader's validation, OMDB, `codegen-spring`, and `codegen-kotlin`
   (all consume the current Java attrs). It is tracked as a dedicated follow-on,

@@ -17,6 +17,9 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using MetaObjects.Core.Attr;
+using MetaObjects.Core.Documentation;
+using MetaObjects.Presentation.View;
+using MetaObjects.Shared;
 
 namespace MetaObjects;
 
@@ -27,6 +30,46 @@ namespace MetaObjects;
 /// </summary>
 public static class RegistryManifest
 {
+    // ------------------------------------------------------------------
+    // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform
+    // across all four ports; see fixtures/registry-conformance/README.md
+    // "EXCLUDED" list + the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
+    //  - structural keywords (`isArray`/`isAbstract`) + the `description`
+    //    commonAttr are NOT per-type attrs (no-op for C#, which never registers
+    //    them as such; `description` stays in commonAttrs);
+    //  - `metadata.base` is a per-port inheritance anchor (Java's), not in the
+    //    cross-port contract — other ports register only `metadata.root`;
+    //  - the 11 generic `view.*` controls are a TS-web-presentation facet (cut
+    //    cross-port; C#/Python deregister them, TS keeps them registered).
+    // ------------------------------------------------------------------
+
+    /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
+    private const string AttrNameIsAbstract = "isAbstract";
+
+    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural keywords + the description commonAttr).</summary>
+    private static readonly HashSet<string> ExcludedPerTypeAttrNames = new(StringComparer.Ordinal)
+    {
+        Structural.RESERVED_KEY_IS_ARRAY,
+        AttrNameIsAbstract,
+        DocumentationConstants.DOC_ATTR_DESCRIPTION,
+    };
+
+    /// <summary>True if a <c>(type, subType)</c> row is excluded: the metadata.base anchor + the generic view.* controls.</summary>
+    private static bool IsExcludedTypeSubType(string type, string subType)
+    {
+        if (type == BaseTypes.TYPE_METADATA && subType == BaseTypes.SUBTYPE_BASE)
+        {
+            return true; // C-5 — Java's internal inheritance anchor
+        }
+        if (type == BaseTypes.TYPE_VIEW
+            && subType != BaseTypes.SUBTYPE_BASE
+            && subType != ViewConstants.VIEW_SUBTYPE_CURRENCY)
+        {
+            return true; // B-2 — TS-web-presentation-only generic view controls
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------
     // Manifest shape — explicit ordered structures so JSON property order is
     // fixed by construction (insertion order), never reflection-dependent.
@@ -52,10 +95,11 @@ public static class RegistryManifest
     {
         List<ManifestType> types = registry
             .AllTypes()
+            .Where(typeId => !IsExcludedTypeSubType(typeId.Type, typeId.SubType))
             .Select(typeId => new ManifestType(
                 typeId.Type,
                 typeId.SubType,
-                SortedAttrs(registry.AttrsOf(typeId.Type, typeId.SubType))))
+                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType))))
             .OrderBy(t => $"{t.Type}.{t.SubType}", StringComparer.Ordinal)
             .ToList();
 
@@ -87,6 +131,14 @@ public static class RegistryManifest
             .Select(ToManifestAttr)
             .OrderBy(a => a.Name, StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>
+    /// As <see cref="SortedAttrs"/>, but filtering the excluded per-type attr
+    /// names (structural keywords + the <c>description</c> commonAttr). Applied
+    /// ONLY to per-type attrs — <c>description</c> stays in the commonAttrs block.
+    /// </summary>
+    private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs) =>
+        SortedAttrs(attrs.Where(a => !ExcludedPerTypeAttrNames.Contains(a.Name)).ToList());
 
     private static ManifestAttr ToManifestAttr(AttrSchema a)
     {

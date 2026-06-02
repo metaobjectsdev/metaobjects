@@ -23,11 +23,46 @@ from __future__ import annotations
 
 import json
 
+from .documentation.doc_constants import DOC_ATTR_DESCRIPTION
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPE_STRINGARRAY,
 )
+from .meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
 from .registry import AttrSchema, TypeRegistry
+from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW
+from .shared.structural import KEY_IS_ARRAY
+
+# SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform across
+# all four ports; see fixtures/registry-conformance/README.md "EXCLUDED" list +
+# the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
+#  - structural keywords (``isArray``/``isAbstract``) + the ``description``
+#    commonAttr are NOT per-type attrs (no-op for Python, which never registers
+#    them as such; ``description`` stays in commonAttrs);
+#  - ``metadata.base`` is a per-port inheritance anchor (Java's), not in the
+#    cross-port contract — other ports register only ``metadata.root``;
+#  - the 11 generic ``view.*`` controls are a TS-web-presentation facet (cut
+#    cross-port; C#/Python deregister them, TS keeps them registered).
+
+# ``isAbstract`` as the per-type attr name (the contract's bare ``abstract`` keyword).
+_ATTR_NAME_IS_ABSTRACT = "isAbstract"
+
+# Per-type attr names filtered from a type's ``attrs`` list (structural keywords
+# + the description commonAttr). ``description`` is filtered ONLY per-type — it
+# stays in the commonAttrs block.
+_EXCLUDED_PER_TYPE_ATTR_NAMES = frozenset(
+    {KEY_IS_ARRAY, _ATTR_NAME_IS_ABSTRACT, DOC_ATTR_DESCRIPTION}
+)
+
+
+def _is_excluded_type_subtype(type_name: str, sub_type: str) -> bool:
+    """``(type, subType)`` rows excluded: the metadata.base anchor (C-5) + the
+    generic ``view.*`` controls (B-2; every view subtype except base/currency)."""
+    if type_name == TYPE_METADATA and sub_type == SUBTYPE_BASE:
+        return True  # C-5 — Java's internal inheritance anchor
+    if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
+        return True  # B-2 — TS-web-presentation-only generic view controls
+    return False
 
 
 def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
@@ -59,6 +94,15 @@ def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
     return [_to_manifest_attr(a) for a in sorted(attrs, key=lambda a: a.name)]
 
 
+def _sorted_per_type_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
+    """As ``_sorted_attrs``, but filtering the excluded per-type attr names
+    (structural keywords + the ``description`` commonAttr). Applied ONLY to
+    per-type attrs — ``description`` stays in the commonAttrs block."""
+    return _sorted_attrs(
+        [a for a in attrs if a.name not in _EXCLUDED_PER_TYPE_ATTR_NAMES]
+    )
+
+
 def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     """Build the canonical registry-manifest object from an assembled registry.
 
@@ -74,11 +118,13 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     # Iterate every registered (type, subType). Sorting is applied after the
     # walk, so dict iteration order is irrelevant.
     for definition in registry._defs.values():  # noqa: SLF001 (no public iterator)
+        if _is_excluded_type_subtype(definition.type, definition.sub_type):
+            continue  # metadata.base anchor (C-5) / generic view.* controls (B-2)
         types.append(
             {
                 "type": definition.type,
                 "subType": definition.sub_type,
-                "attrs": _sorted_attrs(definition.attrs),
+                "attrs": _sorted_per_type_attrs(definition.attrs),
             }
         )
     types.sort(key=lambda t: f"{t['type']}.{t['subType']}")

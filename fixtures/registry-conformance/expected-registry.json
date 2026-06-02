@@ -2908,11 +2908,6 @@
     },
     {
       "type": "view",
-      "subType": "checkbox",
-      "attrs": []
-    },
-    {
-      "type": "view",
       "subType": "currency",
       "attrs": [
         {
@@ -2922,61 +2917,6 @@
           "required": false
         }
       ]
-    },
-    {
-      "type": "view",
-      "subType": "date",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "dropdown",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "hidden",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "hotlink",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "month",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "number",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "password",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "radio",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "text",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "textarea",
-      "attrs": []
-    },
-    {
-      "type": "view",
-      "subType": "web",
-      "attrs": []
     }
   ],
   "commonAttrs": [

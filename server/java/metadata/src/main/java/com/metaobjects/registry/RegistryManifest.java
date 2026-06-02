@@ -6,10 +6,13 @@
  */
 package com.metaobjects.registry;
 
+import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataTypeId;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.constraint.Constraint;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.view.CurrencyView;
+import com.metaobjects.view.MetaView;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -68,6 +71,50 @@ public final class RegistryManifest {
     /** Wildcard token used by Java's {@link ChildRequirement} for "any name / any type". */
     private static final String WILDCARD = "*";
 
+    // ------------------------------------------------------------------
+    // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform
+    // across all four ports; see fixtures/registry-conformance/README.md
+    // "EXCLUDED" list + the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
+    //  - structural keywords (isArray/isAbstract) + the `description` commonAttr
+    //    are NOT per-type attrs. Java DOES register all three as ordinary
+    //    per-type attrs (on metadata.base / field.base, inherited everywhere) —
+    //    so this filter is what drops them from Java's emitter output. They are
+    //    no-ops for TS/C#/Python. `description` stays in the commonAttrs block.
+    //  - metadata.base is Java's internal inheritance anchor — other ports
+    //    register only metadata.root (the deferred inheritsFrom anchor).
+    //  - the 11 generic view.* controls are a TS-web-presentation facet (Java
+    //    never registered them anyway; the filter keeps the contract explicit).
+    // ------------------------------------------------------------------
+
+    /**
+     * Per-type attr names filtered from a type's {@code attrs} list: the
+     * structural keywords {@code isArray}/{@code isAbstract} + the
+     * {@code description} commonAttr. Filtered ONLY per-type — {@code description}
+     * remains in the {@code commonAttrs} block.
+     */
+    private static final Set<String> EXCLUDED_PER_TYPE_ATTR_NAMES = Set.of(
+            MetaField.ATTR_IS_ARRAY,
+            MetaData.ATTR_IS_ABSTRACT,
+            MetaData.ATTR_DESCRIPTION);
+
+    /**
+     * True if a {@code (type, subType)} row is excluded from the manifest: the
+     * {@code metadata.base} inheritance anchor (C-5) + the generic
+     * presentation-only {@code view.*} controls (B-2; every view subtype except
+     * {@code base} and {@code currency}).
+     */
+    private static boolean isExcludedTypeSubType(String type, String subType) {
+        if (MetaData.TYPE_METADATA.equals(type) && MetaData.SUBTYPE_BASE.equals(subType)) {
+            return true; // C-5 — Java's internal inheritance anchor
+        }
+        if (MetaView.TYPE_VIEW.equals(type)
+                && !MetaData.SUBTYPE_BASE.equals(subType)
+                && !CurrencyView.SUBTYPE_CURRENCY.equals(subType)) {
+            return true; // B-2 — TS-web-presentation-only generic view controls
+        }
+        return false;
+    }
+
     /**
      * Suffix of the auto-generated array CustomConstraint id (see
      * {@code AttributeConstraintBuilder.generateArrayConstraint} and
@@ -117,6 +164,9 @@ public final class RegistryManifest {
             String name = req.getName();
             if (name == null || WILDCARD.equals(name)) {
                 continue; // wildcard "any attr" rule (deferred childRules)
+            }
+            if (EXCLUDED_PER_TYPE_ATTR_NAMES.contains(name)) {
+                continue; // structural keyword / description commonAttr (C-2/C-3)
             }
             String valueType = valueTypeOf(name, req.getExpectedSubType());
             // Array-ness is the orthogonal axis: a StringAttribute requirement
@@ -212,6 +262,9 @@ public final class RegistryManifest {
         // types: sorted by "type.subType"
         List<ManifestType> types = new ArrayList<>();
         for (MetaDataTypeId id : registry.getRegisteredTypes()) {
+            if (isExcludedTypeSubType(id.type(), id.subType())) {
+                continue; // metadata.base anchor (C-5) / generic view.* controls (B-2)
+            }
             types.add(new ManifestType(id.type(), id.subType(),
                 attrsOf(registry, id.type(), id.subType(), arrayAttrNames)));
         }

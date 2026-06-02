@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 70,
+  "registeredSubTypeCount": 58,
   "exercisedSubTypeCount": 32,
   "untestedSubTypes": [
     "attr.base",
@@ -27,19 +27,7 @@
     "validator.length",
     "validator.numeric",
     "validator.regex",
-    "view.base",
-    "view.checkbox",
-    "view.date",
-    "view.dropdown",
-    "view.hidden",
-    "view.hotlink",
-    "view.month",
-    "view.number",
-    "view.password",
-    "view.radio",
-    "view.text",
-    "view.textarea",
-    "view.web"
+    "view.base"
   ],
   "untestedAttrsByExercisedSubType": [
     {
