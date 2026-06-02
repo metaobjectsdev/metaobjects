@@ -1,6 +1,10 @@
 package com.metaobjects.integration.kotlin
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.metaobjects.MetaRoot
+import com.metaobjects.loader.MetaDataLoader
+import com.metaobjects.`object`.MetaObject
+import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
@@ -60,18 +64,27 @@ object QueryScenarioRunner {
     fun run(scenario: QueryScenario, pg: PostgresContainer) {
         val db = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
 
+        val corpus = ScenarioLoader.findCorpusRoot()
+
         // 1. Provision the schema from the committed canonical DDL (base tables +
         //    projection views). Executed verbatim on a direct JDBC connection —
         //    schema authority is the TS-produced artifact, not Exposed.
-        val schemaDdl = ScenarioLoader.readCanonicalSchema(ScenarioLoader.findCorpusRoot())
+        val schemaDdl = ScenarioLoader.readCanonicalSchema(corpus)
         execSql(pg, schemaDdl)
 
         // 2. Seed via the YAML's raw SQL.
         scenario.seedData?.takeIf { it.isNotBlank() }?.let { sql -> execSql(pg, sql) }
 
-        // 3. Run queries; each gets its own Exposed transaction.
+        // 3. Load the canonical metadata root once per scenario — op:relate derives
+        //    the M:N junction FK fields + physical table/column names from it (the
+        //    cross-port SSOT via M2MFields.derive). Tagged uniquely so registry
+        //    state can't leak across scenarios. Non-relate ops never touch it.
+        val loaderTag = "ktx-query-" + java.util.UUID.randomUUID().toString().substring(0, 8)
+        val root: MetaRoot = MetaDataLoader.fromDirectory(loaderTag, corpus.resolve("canonical")).root
+
+        // 4. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
-            val actual = transaction(db) { dispatch(spec) }
+            val actual = transaction(db) { dispatch(spec, root) }
             assertResult(scenario.sourcePath, spec, actual)
         }
     }
@@ -92,7 +105,11 @@ object QueryScenarioRunner {
     // Dispatch
     // -----------------------------------------------------------------------
 
-    private fun dispatch(spec: QuerySpec): Any? {
+    private fun dispatch(spec: QuerySpec, root: MetaRoot): Any? {
+        // op:relate is metadata-driven (M:N junction traversal) — it does NOT go
+        // through the Exposed Table map; resolve it before tableFor() is consulted.
+        if (spec.op == "relate") return dispatchRelate(spec, root)
+
         val table = tableFor(spec.entity)
         return when (spec.op) {
             "count" -> {
@@ -116,6 +133,38 @@ object QueryScenarioRunner {
             else -> error("Unsupported op '${spec.op}' for ${spec.name}")
         }
     }
+
+    /**
+     * op:relate — traverse an M:N relationship from a single source entity to its
+     * related target rows. The source id comes straight from the scenario `by:`
+     * block (e.g. `{ id: 1 }`); the named `relation` is located on the source
+     * entity's metadata; the junction traversal + target load is delegated to the
+     * generic metadata-driven [M2MResolver] (which derives the junction FK fields
+     * via the shared `M2MFields.derive` SSOT). The `relate` verb is order-
+     * independent (the runner sorts both sides before comparing).
+     */
+    private fun dispatchRelate(spec: QuerySpec, root: MetaRoot): List<Map<String, Any?>> {
+        val sourceMeta = mustGetEntity(root, spec.entity)
+        val sourceId = (spec.by ?: emptyMap())["id"]
+            ?: error("op:relate / ${spec.name}: a `by: { id: ... }` source key is required")
+        val relationName = spec.relation
+            ?: error("op:relate / ${spec.name}: a `relation` (M:N relationship name) is required")
+        val rel: MetaRelationship = sourceMeta.relationships.firstOrNull { it.shortName == relationName }
+            ?: error(
+                "op:relate / ${spec.name}: no relationship named '$relationName' on entity " +
+                    "'${sourceMeta.shortName}'"
+            )
+
+        // The underlying java.sql.Connection of the current Exposed transaction.
+        val jdbc = org.jetbrains.exposed.sql.transactions.TransactionManager
+            .current().connection.connection as java.sql.Connection
+
+        return M2MResolver.resolve(jdbc, sourceMeta, sourceId, rel, root)
+    }
+
+    private fun mustGetEntity(root: MetaRoot, name: String): MetaObject =
+        root.getChildren(MetaObject::class.java, false).firstOrNull { it.shortName == name }
+            ?: error("Entity '$name' not found in canonical metadata root")
 
     private fun tableFor(entity: String): Table = when (entity) {
         "Program" -> ProgramTable
@@ -332,6 +381,11 @@ object QueryScenarioRunner {
             val n = (expect as? Number)?.toLong() ?: expect.toString().toLong()
             return n.toString()
         }
+        // op:relate is an ORDER-INDEPENDENT set (M:N navigation) — sort both sides.
+        if (op == "relate") {
+            if (expect == null) return "[]"
+            return Normalization.canonicalRowSet(expect as List<Map<String, Any?>>)
+        }
         if (op == "get") {
             if (expect == null) return "null"
             // Strip the surrounding [] off canonicalRowsJson — get returns the bare object.
@@ -347,6 +401,10 @@ object QueryScenarioRunner {
         if (op == "count") {
             val n = (actual as? Number)?.toLong() ?: 0L
             return n.toString()
+        }
+        if (op == "relate") {
+            if (actual == null) return "[]"
+            return Normalization.canonicalRowSet(actual as List<Map<String, Any?>>)
         }
         if (actual == null) return "null"
         if (op == "get") {
