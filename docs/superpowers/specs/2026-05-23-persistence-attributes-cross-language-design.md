@@ -74,9 +74,9 @@ Subtypes carry **default** lifecycle; explicit attrs **override**:
 | **`@onUpdate`** | (same `FkAction` set) | `cascade` | **referential action on key update (NEW)** |
 | `@enforce` | bool | `true` | physical FK constraint vs logical-only |
 | `@fetch` | `eager` \| `lazy` | `lazy` | load strategy (codegen/runtime hint) |
-| `@through` | object name | — | M:N junction/through entity (FR-017; declares two `identity.reference` children — FK fields are derived, not restated). Replaces the removed `@joinEntity`/`@joinFields`. |
-| `@sourceRefField` | string | — | M:N directed self-join: names the source-side FK field on the junction (FR-017) |
-| `@symmetric` | bool | `false` | M:N undirected self-join, union-on-read; self-join-only + mutually exclusive with `@sourceRefField` (FR-017) |
+| `@through` | object name | — | M:N junction/through entity (FR-018; declares two `identity.reference` children — FK fields are derived, not restated). Replaces the removed `@joinEntity`/`@joinFields`. |
+| `@sourceRefField` | string | — | M:N directed self-join: names the source-side FK field on the junction (FR-018) |
+| `@symmetric` | bool | `false` | M:N undirected self-join, union-on-read; self-join-only + mutually exclusive with `@sourceRefField` (FR-018) |
 
 **The value set is the existing `FkAction` union — `cascade | set-null | restrict | no-action`** ([migrate-ts `types.ts:65`](../../../server/typescript/packages/migrate-ts/src/types.ts)), kebab-case, **no `setDefault`** (the emitters don't carry it; MySQL doesn't support it). The authoring value === the `FkDescriptor` value, so it threads straight through with no translation layer.
 

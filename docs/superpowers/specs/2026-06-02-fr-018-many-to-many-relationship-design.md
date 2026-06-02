@@ -1,7 +1,8 @@
-# FR-017 — Many-to-Many Relationship: slim vocabulary (`through`/`symmetric`) + cross-port codegen + conformance
+# FR-018 — Many-to-Many Relationship: slim vocabulary (`through`/`symmetric`) + cross-port codegen + conformance
 
 **Date:** 2026-06-02
-**Status:** Designed (direction approved interactively; awaiting spec review)
+**Renumber note:** originally drafted + Phase 1/2 merged as **FR-017**; renumbered to **FR-018** on 2026-06-02 (a sibling session had a prior claim on FR-017 for TPH polymorphic codegen, reserved in the 2026-05-31 metamodel-batch plan). The merged Phase-1/Phase-2 commits keep their immutable `FR-017` labels; all work from Phase 3 onward uses **FR-018**.
+**Status:** Phase 1 (vocab) + Phase 2 (runtime resolvers) MERGED to main (`f1e44b7a`); Phase 3 (codegen/REST/docs) + Phase 4 pending.
 **Relates to:** the SP-G registry-conformance finding that `joinEntity`/`joinFields` is TS-runtime-only, has zero codegen + zero conformance coverage, and is largely redundant with `identity.reference` (the cross-port SSOT for FK direction). Supersedes the original SP-G Java-reconciliation Unit-4 "Java adopts joinEntity/joinFields" step.
 
 ## Problem
@@ -87,7 +88,7 @@ This changes shipped cross-port vocabulary. Per the project's **no-backwards-com
 
 - Rename `@joinEntity` → `@through`; remove `@joinFields` (derive); add `@sourceRefField` + `@symmetric`. Update TS/C#/Python registration + the TS runtime resolver + the SP-G registry canonical (`fixtures/registry-conformance/expected-registry.json`).
 - Java/Kotlin register the **final** slim vocabulary (never the interim `joinEntity`/`joinFields`) — this replaces the SP-G Java-reconciliation Unit-4 join-vocab step.
-- Coordinate with the SP-G canonical: land FR-017's relationship-vocabulary change **before** SP-G merges (or as a coordinated canonical update), so the registry gate reflects the slim vocabulary.
+- Coordinate with the SP-G canonical: land FR-018's relationship-vocabulary change **before** SP-G merges (or as a coordinated canonical update), so the registry gate reflects the slim vocabulary.
 - Update the one authored M:N fixture (`n2m-shape.json`) + any docs naming `joinEntity`/`joinFields` (CLAUDE.md cross-language-porting section, spec/metamodel docs).
 
 ## Out of scope / non-goals
