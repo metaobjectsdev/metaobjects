@@ -54,7 +54,7 @@ import {
   FIELD_SUBTYPE_ENUM,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
-import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
+import { IDENTITY_ATTR_FIELDS, IDENTITY_SUBTYPE_REFERENCE } from "../core/identity/identity-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -71,7 +71,6 @@ import {
   RELATIONSHIP_ATTR_SYMMETRIC,
   CARDINALITY_MANY,
 } from "../core/relationship/relationship-constants.js";
-import { IDENTITY_SUBTYPE_REFERENCE } from "../core/identity/identity-constants.js";
 import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,

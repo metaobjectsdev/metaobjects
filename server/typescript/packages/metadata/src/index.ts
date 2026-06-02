@@ -129,21 +129,12 @@ export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-type
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
 export { buildRegistryManifest, emitRegistryManifest } from "./registry-manifest.js";
 
-// Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs fixture corpora).
-export {
-  computeCoverage,
-  scanFixtureUsage,
-  toSnapshot,
-  emitSnapshot,
-} from "./registry-coverage.js";
-export type {
-  RegistryManifest as CoverageManifest,
-  ManifestType as CoverageManifestType,
-  ManifestAttr as CoverageManifestAttr,
-  CoverageReport,
-  CoverageSnapshot,
-  UntestedAttrs,
-} from "./registry-coverage.js";
+// Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs
+// fixture corpora). NODE-ONLY: registry-coverage.ts statically imports node:fs
+// to scan the fixture corpora, so it must NOT be re-exported from this
+// browser-facing barrel (it would drag node:fs into the root entry, breaking
+// browser-safety.test.ts). It is a build-time tooling module — consumers (and
+// its test) import it directly by path: `@metaobjectsdev/metadata/src/registry-coverage`.
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";

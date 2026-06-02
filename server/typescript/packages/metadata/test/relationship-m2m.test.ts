@@ -15,7 +15,10 @@ async function loadDoc(doc: unknown) {
 }
 const codesOf = (errors: readonly Error[]) => errors.map((e) => (e as { code?: string }).code);
 
-function findObj(root: { ownChildren(): { type: string; name: string }[] }, name: string): MetaObject {
+function findObj(
+  root: { ownChildren(): readonly { type: string; name: string }[] },
+  name: string,
+): MetaObject {
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name) as unknown as MetaObject;
 }
 
