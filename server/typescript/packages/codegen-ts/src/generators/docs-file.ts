@@ -21,6 +21,7 @@
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
 import { render } from "@metaobjectsdev/render";
+import type { Provider } from "@metaobjectsdev/render";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import {
   docPageOutputPath,
@@ -52,6 +53,20 @@ const TEMPLATE_REF = "docs/entity-page.md";
 // The NEUTRAL render-contract page emitted per `template.output` node — a
 // sibling artifact, distinct from the entity page (Task 3).
 const TEMPLATE_PAGE_REF = "docs/template-page.md";
+
+/** Render one docs page, wrapping any engine error with the page ref + output
+ *  path so a template failure points at the exact page (shared by the entity
+ *  and template.output emission paths — identical error contract). */
+function renderDocPage(ref: string, payload: unknown, provider: Provider, path: string): string {
+  try {
+    return render({ ref, payload, provider, format: "markdown" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`docs-file: failed rendering '${ref}' for '${path}': ${msg}`, {
+      cause: err instanceof Error ? err : undefined,
+    });
+  }
+}
 
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
@@ -87,22 +102,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
             }),
             loadedRoot: rc.loadedRoot,
           });
-          let content: string;
-          try {
-            content = render({
-              ref: TEMPLATE_REF,
-              payload,
-              provider,
-              format: "markdown",
-            });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            throw new Error(
-              `docs-file: failed rendering '${TEMPLATE_REF}' for '${path}': ${msg}`,
-              { cause: err instanceof Error ? err : undefined },
-            );
-          }
-          return { path, content };
+          return { path, content: renderDocPage(TEMPLATE_REF, payload, provider, path) };
         });
 
       // ALSO emit one NEUTRAL render-contract page per `template.output` node —
@@ -115,22 +115,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
         const path = docPageOutputPath(layout, node);
         placements.push({ path, fqn: child.resolutionKey() });
         const payload = buildTemplateDocData(child, { layout, loadedRoot: ctx.loadedRoot });
-        let content: string;
-        try {
-          content = render({
-            ref: TEMPLATE_PAGE_REF,
-            payload,
-            provider,
-            format: "markdown",
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          throw new Error(
-            `docs-file: failed rendering '${TEMPLATE_PAGE_REF}' for '${path}': ${msg}`,
-            { cause: err instanceof Error ? err : undefined },
-          );
-        }
-        files.push({ path, content });
+        files.push({ path, content: renderDocPage(TEMPLATE_PAGE_REF, payload, provider, path) });
       }
 
       // Emit the neutral OVERVIEW/index page (README.md) at the docs root: the
