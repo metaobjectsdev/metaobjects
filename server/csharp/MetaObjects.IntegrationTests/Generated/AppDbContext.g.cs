@@ -10,10 +10,16 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Asset> Assets { get; set; } = default!;
+    public DbSet<Follow> Follows { get; set; } = default!;
+    public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
+    public DbSet<Person> Persons { get; set; } = default!;
+    public DbSet<Post> Posts { get; set; } = default!;
+    public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;
+    public DbSet<Tag> Tags { get; set; } = default!;
     public DbSet<Week> Weeks { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
