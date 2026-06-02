@@ -19,6 +19,10 @@ export interface ExpectBody {
   length?: number;
   ids?: number[];
   names?: string[];
+  /** Like `names`, but order-insensitive — both sides sorted before compare.
+   *  Used by M:N traversal scenarios where the related-row order through a
+   *  junction is not contractually fixed (FR-018). */
+  namesUnordered?: string[];
   row?: Record<string, unknown>;
   hasId?: boolean;
   envelope?: boolean;
@@ -135,6 +139,13 @@ export function assertResponse(
     const actualNames = (body as Array<Record<string, unknown>>).map((r) => r["name"]);
     if (stringify(actualNames) !== stringify(want.names))
       throw new Error(`${scenarioName} / ${request.id}: expected names ${stringify(want.names)}, got ${stringify(actualNames)}`);
+  }
+  if (want.namesUnordered) {
+    if (!Array.isArray(body)) throw new Error(`${scenarioName} / ${request.id}: expected array, got: ${stringify(body)}`);
+    const actual = (body as Array<Record<string, unknown>>).map((r) => String(r["name"])).sort();
+    const wanted = [...want.namesUnordered].map(String).sort();
+    if (stringify(actual) !== stringify(wanted))
+      throw new Error(`${scenarioName} / ${request.id}: expected names (unordered) ${stringify(wanted)}, got ${stringify(actual)}`);
   }
   if (want.row) {
     const row = body as Record<string, unknown>;

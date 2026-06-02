@@ -17,5 +17,10 @@ export const QUERIES_DIR = resolve(CORPUS_DIR, "queries");
 export const API_CONTRACT_DIR = resolve(repoRoot, "fixtures", "api-contract-conformance");
 export const API_CONTRACT_SCENARIOS_DIR = resolve(API_CONTRACT_DIR, "scenarios");
 
+// fixtures/api-contract-conformance/m2m/ — FR-018 many-to-many traversal corpus
+// (hetero / directed-self-join / symmetric over HTTP, both lanes).
+export const API_CONTRACT_M2M_DIR = resolve(API_CONTRACT_DIR, "m2m");
+export const API_CONTRACT_M2M_SCENARIOS_DIR = resolve(API_CONTRACT_M2M_DIR, "scenarios");
+
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

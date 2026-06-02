@@ -15,13 +15,15 @@
 // the existing queries-file template). The entity's Drizzle table const is
 // imported alongside the Zod schemas + constants from the sibling Entity.ts.
 
-import { code, imp } from "ts-poet";
+import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { TYPE_FIELD, resolveColumnName } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
+import type { RelationEntry } from "../relation-resolver.js";
 
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
@@ -113,6 +115,19 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
 
+  // FR-018 M:N traversal: for each many-to-many navigation declared on this
+  // entity, emit a mountM2mRoute(...) that traverses the junction. The junction
+  // FK columns were derived from the junction's identity.reference children (the
+  // SSOT) by the relation-resolver pre-pass; here we resolve them to physical
+  // column names for the Drizzle two-stage join.
+  const m2mEntries = (ctx.relationMap.get(entityName) ?? []).filter(
+    (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
+  );
+  // Two fastify-scope variants: under an apiPrefix the mounts live inside the
+  // register-block (`instance`); otherwise they bind directly to `fastify`.
+  const m2mMountsPrefixed = renderM2mMounts(m2mEntries, entity, ctx, "instance");
+  const m2mMountsFlat = renderM2mMounts(m2mEntries, entity, ctx, "fastify");
+
   const literalImports = code`
 import { db } from ${JSON.stringify(dbImportSpec)};
 import {
@@ -148,7 +163,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       sortAllowlist: ${entityName}SortAllowlist,
       dialect: ${JSON.stringify(ctx.dialect)},
     });
-  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
+${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
 `
     : code`
@@ -172,8 +187,93 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     sortAllowlist: ${entityName}SortAllowlist,
     dialect: ${JSON.stringify(ctx.dialect)},
   });
-}
+${m2mMountsFlat}}
 `;
 
   return header + literalImports.toString() + body.toString();
+}
+
+/**
+ * Render the M:N traversal mounts for an entity as a single Code fragment to
+ * interpolate INTO the handler-body code template (so the junction/target table
+ * + mountM2mRoute imports hoist with the rest of the body's imports, not inline
+ * mid-function). `fastifyVar` is the in-scope Fastify reference (`instance`
+ * under an apiPrefix register-block, else `fastify`). Returns "" when the entity
+ * has no M:N relationships — CRUD-only output stays byte-identical to before.
+ */
+function renderM2mMounts(
+  entries: ReadonlyArray<RelationEntry & { junctionEntity: string }>,
+  source: MetaObject,
+  ctx: RenderContext,
+  fastifyVar: string,
+): Code | string {
+  if (entries.length === 0) return "";
+  const mounts = entries.map((e) => renderM2mMount(e, source, ctx, fastifyVar));
+  return code`${joinCode(mounts, { on: "\n", trim: false })}
+`;
+}
+
+/**
+ * Render one M:N traversal mount. The junction + target Drizzle table consts are
+ * imported from their sibling entity files (imp() lets ts-poet track + emit the
+ * import). The source/target FK columns + the target PK are resolved to PHYSICAL
+ * column names via resolveColumnName (the runtime two-stage join queries by
+ * column). mountM2mRoute appends `/:id/<relationName>` to the source $path.
+ */
+function renderM2mMount(
+  entry: RelationEntry & { junctionEntity: string },
+  source: MetaObject,
+  ctx: RenderContext,
+  fastifyVar: string,
+): Code {
+  const junctionVarSym = imp(
+    `${variableNameFromEntity(entry.junctionEntity)}@${crossEntitySpecifier(
+      ctx.outputLayout,
+      source.package,
+      ctx.packageOf.get(entry.junctionEntity),
+      entry.junctionEntity,
+      ctx.extStyle,
+    )}`,
+  );
+  const targetVarSym = imp(
+    `${variableNameFromEntity(entry.targetEntity)}@${crossEntitySpecifier(
+      ctx.outputLayout,
+      source.package,
+      ctx.packageOf.get(entry.targetEntity),
+      entry.targetEntity,
+      ctx.extStyle,
+    )}`,
+  );
+  const mountM2mRouteSym = imp("mountM2mRoute@@metaobjectsdev/runtime-ts/drizzle-fastify");
+  const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
+  const target = ctx.loadedRoot.findObject(entry.targetEntity);
+  const sourceColumn = junction
+    ? resolveJunctionColumn(junction, entry.sourceJoinField!, ctx)
+    : entry.sourceJoinField!;
+  const targetColumn = junction
+    ? resolveJunctionColumn(junction, entry.targetJoinField!, ctx)
+    : entry.targetJoinField!;
+  const targetPkColumn = target
+    ? resolveJunctionColumn(target, ctx.pkMap.get(entry.targetEntity)?.fieldName ?? "id", ctx)
+    : "id";
+
+  return code`  ${mountM2mRouteSym}({
+    fastify: ${fastifyVar},
+    path: ${source.name}.$path,
+    relationName: ${JSON.stringify(entry.name)},
+    db,
+    junctionTable: ${junctionVarSym},
+    targetTable: ${targetVarSym},
+    sourceColumn: ${JSON.stringify(sourceColumn)},
+    targetColumn: ${JSON.stringify(targetColumn)},
+    targetPkColumn: ${JSON.stringify(targetPkColumn)},
+    symmetric: ${entry.symmetric ? "true" : "false"},
+  });`;
+}
+
+/** Resolve a field's physical column name on an entity (defaults if missing). */
+function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): string {
+  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  if (!field) return fieldName;
+  return resolveColumnName(field, ctx.columnNamingStrategy);
 }

@@ -21,8 +21,8 @@ import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
-import { isTruthyFlag, contractErrorCode } from "./util.js";
-export { isTruthyFlag, contractErrorCode } from "./util.js";
+import { isTruthyFlag, contractErrorCode, parseId } from "./util.js";
+export { isTruthyFlag, contractErrorCode, parseId } from "./util.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -240,9 +240,5 @@ function extractRowCount(result: unknown): number {
   return 0;
 }
 
-export function parseId(raw: string): number | string {
-  const n = Number(raw);
-  return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
-}
-
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";
+export { mountM2mRoute, type M2mRouteOptions } from "./mount-m2m.js";
