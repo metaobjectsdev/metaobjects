@@ -42,15 +42,16 @@
       <version>1.18.1</version>
     </dependency>
 
-    <!-- test -->
-    <!-- Shared JVM render engine (OutputFormatRenderer + Extract): the FR-010 output-prompt
-         conformance runner drives these Java classes directly, proving the corpus loads/runs
-         in the Kotlin module. Brings jackson-databind transitively for spec.json parsing. -->
+    <!-- Shared JVM render engine. KotlinRenderHelperGenerator uses Verify/FilesystemProvider/
+         PayloadField at BUILD time (the mustache↔VO drift gate) and emits Kotlin that calls
+         Renderer/RenderRequest/EmailDocument at runtime — so render must be a COMPILE-scope
+         dependency of the generator (mirrors codegen-spring's render dependency). The FR-010
+         output-prompt conformance runner also drives these classes directly. Brings
+         jackson-databind transitively for spec.json parsing. -->
     <dependency>
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-render</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
     <!-- spec.json parsing for the output-prompt-conformance runner (jackson is test-scoped in
          render, so it is not transitive — declare it directly). -->
