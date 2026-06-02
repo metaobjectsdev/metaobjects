@@ -154,6 +154,57 @@ function sqlColumnExpr(spec: ReturnType<typeof mapColumnType>): string {
   return `${spec.fnName}(${dbName})`;
 }
 
+/** The raw validator/limit facts shared by both constraint walks. Walks the
+ *  field's validators ONCE, bucketed by subtype, plus the `@maxLength` attr.
+ *  Both `constraintsCell()` (Storage cell) and `buildConstraintRow()`
+ *  (Constraints row) consume these — the SINGLE source of truth for the
+ *  validator emission, so the two presentations can't DRIFT. Each caller
+ *  arranges the parts into its own layout (one cell vs. limits/rules columns)
+ *  but the emission ORDER and exact strings come from here:
+ *    regex pattern → maxLength-from-@maxLength → length-validator (min/max) →
+ *    numeric-validator (min/max). */
+interface ValidatorParts {
+  /** `@maxLength` attr value if a finite number, else undefined. */
+  maxLenAttr: number | undefined;
+  /** "pattern `...`" entries from regex validators. */
+  regexParts: string[];
+  /** "minLength: N" / "maxLength: N" entries from length validators. */
+  lengthParts: string[];
+  /** "min: N" / "max: N" entries from numeric validators. */
+  numericParts: string[];
+}
+
+function collectValidatorParts(field: MetaField): ValidatorParts {
+  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const regexParts: string[] = [];
+  const lengthParts: string[] = [];
+  const numericParts: string[] = [];
+  for (const v of field.validators()) {
+    if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
+      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      if (typeof pattern === "string" && pattern.length > 0) {
+        regexParts.push(`pattern \`${pattern}\``);
+      }
+    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
+      if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
+    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") numericParts.push(`min: ${min}`);
+      if (typeof max === "number") numericParts.push(`max: ${max}`);
+    }
+  }
+  return {
+    maxLenAttr: typeof maxLenAttr === "number" ? maxLenAttr : undefined,
+    regexParts,
+    lengthParts,
+    numericParts,
+  };
+}
+
 function constraintsCell(
   entity: MetaObject,
   field: MetaField,
@@ -191,34 +242,9 @@ function constraintsCell(
     }
   }
 
-  // Walk validators once, bucket by subtype. We re-emit in the original
-  // emission order to preserve byte-identity with the docs-file-basic
-  // conformance fixture: regex pattern → maxLength-from-@maxLength →
-  // length-validator (min/max) → numeric-validator (min/max).
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
-  const regexParts: string[] = [];
-  const lengthParts: string[] = [];
-  const numericParts: string[] = [];
-  for (const v of field.validators()) {
-    if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
-      if (typeof pattern === "string" && pattern.length > 0) {
-        regexParts.push(`pattern \`${pattern}\``);
-      }
-    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
-      if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
-    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") numericParts.push(`min: ${min}`);
-      if (typeof max === "number") numericParts.push(`max: ${max}`);
-    }
-  }
+  const { maxLenAttr, regexParts, lengthParts, numericParts } = collectValidatorParts(field);
   parts.push(...regexParts);
-  if (typeof maxLenAttr === "number") {
+  if (maxLenAttr !== undefined) {
     parts.push(`maxLength: ${maxLenAttr}`);
   }
   parts.push(...lengthParts, ...numericParts);
@@ -285,33 +311,11 @@ function buildConstraintRow(
     }
   }
 
-  // Same emission order as constraintsCell(): regex pattern →
-  // maxLength-from-@maxLength → length-validator (min/max) →
-  // numeric-validator (min/max).
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
-  const regexParts: string[] = [];
-  const lengthParts: string[] = [];
-  const numericParts: string[] = [];
-  for (const v of field.validators()) {
-    if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
-      if (typeof pattern === "string" && pattern.length > 0) {
-        regexParts.push(`pattern \`${pattern}\``);
-      }
-    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
-      if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
-    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
-      if (typeof min === "number") numericParts.push(`min: ${min}`);
-      if (typeof max === "number") numericParts.push(`max: ${max}`);
-    }
-  }
+  // Same validator facts as constraintsCell() (shared walk), arranged across
+  // the Limits / Rules columns instead of one cell.
+  const { maxLenAttr, regexParts, lengthParts, numericParts } = collectValidatorParts(field);
   rules.push(...regexParts);
-  if (typeof maxLenAttr === "number") limits.push(`maxLength: ${maxLenAttr}`);
+  if (maxLenAttr !== undefined) limits.push(`maxLength: ${maxLenAttr}`);
   limits.push(...lengthParts, ...numericParts);
 
   const fk = fkMap.get(field.name);
