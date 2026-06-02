@@ -110,6 +110,89 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         }
         """;
 
+    // Packaged nested payload: package acme::ai, Order { customer: Customer{name} }
+    // where the nested @objectRef is the BARE short name "Customer" (NOT an FQN /
+    // relative ref). The cross-port render-helper consensus resolves a nested
+    // @objectRef by bare short-name — so this MUST resolve the Customer field-tree
+    // even though both VOs live under a package. (With the JVM package-folding
+    // resolver, bare "Customer" would expand to "acme::ai::Customer" — which DOES
+    // exist here — so to actually exercise the divergence the sibling VO's short
+    // name must differ from what package-folding would yield; instead we rely on
+    // the semantics: the render-helper must match TS's bare-name lookup exactly.)
+    private static final String PACKAGED_ORDER_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "Customer", "children": [
+                { "field.string": { "name": "name" } }
+            ] } },
+            { "object.value": { "name": "Order", "children": [
+                { "field.object": { "name": "customer", "@objectRef": "Customer" } }
+            ] } },
+            { "template.output": {
+                "name": "OrderDoc",
+                "@kind": "document",
+                "@payloadRef": "Order",
+                "@textRef": "pages/order",
+                "@format": "html"
+            } }
+          ] }
+        }
+        """;
+
+    // -------------------------------------------------------------------------
+    // Test 0 — PACKAGED nested @objectRef resolves by BARE short-name (cross-port
+    // codegen consensus). Clean {{customer.name}} passes; drifted {{customer.bogus}}
+    // fails with ERR_VAR_NOT_ON_PAYLOAD. With a package-FOLDING nested resolver the
+    // bare "Customer" ref would not resolve under the package the same way the other
+    // ports do → nested field-tree empty → {{customer.name}} would itself drift.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void packagedNestedObjectRefResolvesByBareShortName() throws Exception {
+        Path gen = tmp.newFolder("pkg-nested-gen").toPath();
+        Path ws  = tmp.newFolder("pkg-nested-ws").toPath();
+        Path templates = tmp.newFolder("pkg-nested-templates").toPath();
+        // Clean: {{customer.name}} — name IS on the nested Customer VO.
+        writeTemplate(templates, "pages/order.mustache", "Order for {{customer.name}}");
+
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "pkg-nested", PACKAGED_ORDER_FIXTURE);
+
+        // Drive ONLY the render-helper generator — this task scopes the nested
+        // @objectRef bare-name resolution to the render-helper's own field-tree
+        // walk. (SpringPayloadGenerator independently package-folds nested refs and
+        // is out of scope here; the render-helper's build-time drift gate derives
+        // its OWN field-tree and is fully self-contained.)
+        // Clean nested-section template must NOT throw — the bare "Customer" ref
+        // must resolve so {{customer.name}} is recognized as on-payload.
+        generateRenderHelperOnly(loader, gen, templates);
+        assertTrue("packaged nested codegen must emit the render helper",
+            collectSources(gen).stream()
+                .anyMatch(f -> f.getName().equals("OrderDocRenderHelper.java")));
+    }
+
+    @Test
+    public void packagedNestedObjectRefDriftFailsCodegen() throws Exception {
+        Path gen = tmp.newFolder("pkg-nested-drift-gen").toPath();
+        Path ws  = tmp.newFolder("pkg-nested-drift-ws").toPath();
+        Path templates = tmp.newFolder("pkg-nested-drift-templates").toPath();
+        // {{customer.bogus}} — bogus is NOT on the nested Customer VO. Only resolves
+        // as a drift IF the nested field-tree was built (bare-name resolution worked).
+        writeTemplate(templates, "pages/order.mustache", "Order for {{customer.bogus}}");
+
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "pkg-nested-drift", PACKAGED_ORDER_FIXTURE);
+
+        GeneratorException ex = assertThrows(GeneratorException.class,
+            () -> generateRenderHelperOnly(loader, gen, templates));
+
+        String msg = ex.getMessage();
+        assertTrue("nested-drift message must name ERR_VAR_NOT_ON_PAYLOAD; got: " + msg,
+            msg.contains("ERR_VAR_NOT_ON_PAYLOAD"));
+        assertTrue("nested-drift message must name the offending field 'bogus'; got: " + msg,
+            msg.contains("bogus"));
+        assertTrue("nested-drift message must name the template 'OrderDoc'; got: " + msg,
+            msg.contains("OrderDoc"));
+    }
+
     // -------------------------------------------------------------------------
     // Test 1 — document → String
     // -------------------------------------------------------------------------
@@ -305,6 +388,23 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
         SpringPayloadGenerator payloadGen = new SpringPayloadGenerator();
         payloadGen.setArgs(args);
         payloadGen.execute(loader);
+
+        SpringRenderHelperGenerator helperGen = new SpringRenderHelperGenerator();
+        helperGen.setArgs(args);
+        helperGen.execute(loader);
+    }
+
+    /**
+     * Drive ONLY {@link SpringRenderHelperGenerator} (no payload generator). Used
+     * by the packaged-nested {@code @objectRef} cases, which assert the render
+     * helper's OWN build-time drift gate (bare short-name nested resolution) in
+     * isolation — {@code SpringPayloadGenerator}'s independent package-folding
+     * nested-ref resolution is out of scope for this task.
+     */
+    private static void generateRenderHelperOnly(MetaDataLoader loader, Path gen, Path templates) {
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+        args.put("templateRoot", templates.toString());
 
         SpringRenderHelperGenerator helperGen = new SpringRenderHelperGenerator();
         helperGen.setArgs(args);

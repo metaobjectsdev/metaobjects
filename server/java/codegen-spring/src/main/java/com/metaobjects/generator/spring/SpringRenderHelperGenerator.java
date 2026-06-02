@@ -284,7 +284,15 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         List<PayloadField> fields = new ArrayList<>();
         for (MetaField<?> field : vo.getMetaFields()) {
             if (field instanceof ObjectField of) {
-                MetaObject target = of.getObjectRef();
+                // Resolve the nested @objectRef by BARE short-name — the cross-port
+                // render-helper consensus (TS findObject: c.type === OBJECT &&
+                // c.name === ref). Do NOT use of.getObjectRef() here: that runs the
+                // JVM package-FOLDING resolver, which expands a bare ref relative to
+                // the FIELD's package and diverges from TS/C#/Python/Kotlin for a
+                // PACKAGED payload VO. The render-helper field-tree must resolve
+                // identically across all five ports; only this walk changes —
+                // MetaDataUtil.getObjectRef and other generators are untouched.
+                MetaObject target = resolveNestedObjectRef(loader, of);
                 if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                     List<PayloadField> children =
                         derivePayloadFieldTree(loader, target, new LinkedHashSet<>(seen));
@@ -295,6 +303,27 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
             fields.add(PayloadField.scalar(field.getName()));
         }
         return fields;
+    }
+
+    /**
+     * Resolve a {@code field.object}'s {@code @objectRef} to its target
+     * {@code object.value} by BARE short-name — mirroring the TS render-helper's
+     * {@code findObject(root, ref)} ({@code c.type === OBJECT && c.name === ref}).
+     * The raw {@code @objectRef} attr value is read directly (NOT package-folded);
+     * if it carries a package, only the last {@code ::} segment is compared, against
+     * each {@code object.value}'s own short name. Returns {@code null} if the field
+     * has no {@code @objectRef} or no matching {@code object.value} is found.
+     */
+    private static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
+        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
+        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
+        if (ref == null || ref.isEmpty()) return null;
+        String refShort = SpringNaming.splitFqn(ref)[1];
+        for (MetaObject obj : loader.getMetaObjects()) {
+            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
+            if (SpringNaming.splitFqn(obj.getName())[1].equals(refShort)) return obj;
+        }
+        return null;
     }
 
     /**
