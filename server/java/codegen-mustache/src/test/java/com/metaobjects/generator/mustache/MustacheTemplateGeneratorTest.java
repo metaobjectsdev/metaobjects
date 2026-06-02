@@ -20,7 +20,12 @@ import java.util.Arrays;
 /**
  * Integration test for MustacheTemplateGenerator.
  * Tests the complete code generation workflow.
+ *
+ * Intentionally exercises the deprecated legacy {@link MustacheTemplateGenerator}
+ * (see ADR-0021 D4) to guarantee back-compat continues to hold; deprecation
+ * warnings are suppressed accordingly.
  */
+@SuppressWarnings("deprecation")
 public class MustacheTemplateGeneratorTest extends GeneratorTestBase {
     
     @Rule

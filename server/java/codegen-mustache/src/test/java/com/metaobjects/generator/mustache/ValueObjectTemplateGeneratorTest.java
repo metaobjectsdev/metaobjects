@@ -21,7 +21,12 @@ import java.util.Arrays;
  * metaobjects-dynamic-core module — its CoreObjectsMetaDataProvider
  * (registering DataObject/ValueObject attribute extensions) now lives
  * in metaobjects-metadata, and its mustache-aware tests live here.
+ *
+ * Intentionally exercises the deprecated legacy {@link MustacheTemplateGenerator}
+ * (see ADR-0021 D4) to guarantee back-compat continues to hold; deprecation
+ * warnings are suppressed accordingly.
  */
+@SuppressWarnings("deprecation")
 public class ValueObjectTemplateGeneratorTest extends SharedRegistryTestBase {
 
     @Rule
