@@ -41,6 +41,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
+import type { OutputLayout } from "../import-path.js";
+import { docPageHref, docPageNode } from "../docs-paths.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -57,6 +59,8 @@ export interface BuildDocDataOpts {
   dialect: Dialect;
   columnNamingStrategy?: ColumnNamingStrategy;
   loadedRoot: MetaRoot;
+  /** Page-placement layout. Defaults to "flat" (back-compat: same-dir links). */
+  layout?: OutputLayout;
 }
 
 function isFieldRequired(field: MetaField): boolean {
@@ -288,6 +292,7 @@ export function buildEntityDocData(
   opts: BuildDocDataOpts,
 ): EntityDocData {
   const root = opts.loadedRoot;
+  const layout = opts.layout ?? "flat";
   const primary = entity.primaryIdentity();
   const pkFields = primary?.fields ?? [];
   const pkFieldNames = new Set<string>(pkFields);
@@ -362,11 +367,13 @@ export function buildEntityDocData(
     const ref = child.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof ref !== "string") continue;
     if (stripPackage(ref) !== entity.name) continue;
-    // Link to the template's own doc page. Task 3 emits the template page as
-    // `<TemplateName>.md` using the RAW node name (same convention as entity
-    // pages), so the href MUST use the raw name to resolve.
+    // Link to the template's own doc page. The href is derived from the SAME
+    // page-placement function used to write the template page, so it resolves
+    // in BOTH layouts (flat → `./<Tmpl>.md`; package → a correct relative path
+    // like `../comms/OrderEmail.md`).
+    const href = docPageHref(layout, docPageNode(entity), docPageNode(child));
     usedByMatches.push({
-      bullet: `[\`template.${child.subType} ${child.name}\`](./${child.name}.md) — uses \`${entity.name}\` as \`@payloadRef\``,
+      bullet: `[\`template.${child.subType} ${child.name}\`](${href}) — uses \`${entity.name}\` as \`@payloadRef\``,
     });
   }
   const usedBy = usedByMatches.length > 0 ? usedByMatches : undefined;

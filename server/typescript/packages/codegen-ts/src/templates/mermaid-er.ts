@@ -8,17 +8,20 @@ import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { DOC_ATTR_DESCRIPTION } from "@metaobjectsdev/metadata";
 import { readDocAttrs } from "./jsdoc.js";
 
-/** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. Abstract
- *  entities are excluded — they have no physical table to put in a diagram
- *  (matches migrate-ts/expected-schema.ts's same filter). */
-export function renderMermaidModel(root: MetaRoot): string {
+/** Render JUST the fenced ```mermaid erDiagram``` block for the whole model
+ *  (entities + identity.reference relationships) — NO per-entity prose. This is
+ *  the single neutral ER-diagram builder; both `renderMermaidModel()` (the
+ *  standalone model.md body) AND the neutral docs OVERVIEW page (`README.md`,
+ *  emitted by the Tier-2 `meta docs` engine) consume it, so there is exactly
+ *  ONE place ER topology is computed — no duplicate graph logic (ADR-0020).
+ *
+ *  Abstract entities are excluded — they have no physical table to put in a
+ *  diagram (matches migrate-ts/expected-schema.ts's same filter). */
+export function renderMermaidErBlock(root: MetaRoot): string {
   const entities = root
     .objects()
     .filter((o) => o.isEntity() && !o.isAbstract);
   const parts: string[] = [];
-
-  parts.push("# Data Model");
-  parts.push("");
   parts.push("```mermaid");
   parts.push("erDiagram");
   for (const line of renderRelationships(entities)) parts.push(`    ${line}`);
@@ -27,6 +30,22 @@ export function renderMermaidModel(root: MetaRoot): string {
     for (const line of renderEntityBlock(entity)) parts.push(`    ${line}`);
   }
   parts.push("```");
+  return parts.join("\n");
+}
+
+/** Render a docs/model.md body: Mermaid erDiagram + per-entity prose. Abstract
+ *  entities are excluded — they have no physical table to put in a diagram
+ *  (matches migrate-ts/expected-schema.ts's same filter). Reuses the shared
+ *  `renderMermaidErBlock()` for the diagram so the ER logic is never duplicated. */
+export function renderMermaidModel(root: MetaRoot): string {
+  const entities = root
+    .objects()
+    .filter((o) => o.isEntity() && !o.isAbstract);
+  const parts: string[] = [];
+
+  parts.push("# Data Model");
+  parts.push("");
+  parts.push(renderMermaidErBlock(root));
   parts.push("");
 
   for (const entity of entities) {

@@ -26,20 +26,35 @@ import {
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
 import { docsFile } from "@metaobjectsdev/codegen-ts/generators";
 
+type DocsLayout = "flat" | "package";
+
 interface DocsFlags {
   /** Project root holding `metaobjects/` (the metadata to document). */
   metadata: string;
   /** Output directory for the rendered pages. */
   out: string;
+  /** Page-placement layout. `flat` (default) writes `<Name>.md` at the out
+   *  root; `package` folds pages under package-path subdirs (collision-proof
+   *  for multi-package models with repeated short names). */
+  layout: DocsLayout;
   /** Optional override for the project root used to resolve adopter
    *  `templates/` overrides. Defaults to the metadata root. */
   templates?: string;
+}
+
+function parseLayout(v: string | undefined, flag: string): DocsLayout {
+  if (v === undefined) throw new Error(`${flag} requires flat|package`);
+  if (v !== "flat" && v !== "package") {
+    throw new Error(`${flag} must be "flat" or "package" (got "${v}")`);
+  }
+  return v;
 }
 
 function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let metadata: string | undefined;
   let out: string | undefined;
   let templates: string | undefined;
+  let layout: DocsLayout | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--out" || a === "-o") {
@@ -48,6 +63,10 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       out = v;
     } else if (a.startsWith("--out=")) {
       out = a.slice("--out=".length);
+    } else if (a === "--layout") {
+      layout = parseLayout(argv[++i], a);
+    } else if (a.startsWith("--layout=")) {
+      layout = parseLayout(a.slice("--layout=".length), "--layout");
     } else if (a === "--templates") {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${a} requires a directory argument`);
@@ -68,6 +87,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     metadata: metadata ?? cwd,
     // Default out dir, resolved against the metadata root below.
     out: out ?? "./docs",
+    // Default flat preserves today's single-package output (+ existing goldens).
+    layout: layout ?? "flat",
     ...(templates !== undefined ? { templates } : {}),
   };
 }
@@ -148,7 +169,13 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     entities: root.objects(),
     loadedRoot: root,
     matches: () => true,
-    config: { outDir, extStyle: "none", dbImport: "", dialect: "sqlite" } as never,
+    config: {
+      outDir,
+      extStyle: "none",
+      dbImport: "",
+      dialect: "sqlite",
+      outputLayout: flags.layout,
+    } as never,
     renderContext,
     projectRoot,
     warn: (msg) => log.warn(`docs: ${msg}`),
@@ -159,6 +186,13 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     files = await docsFile().generate(ctx);
   } catch (err) {
     const msg = (err as Error).message;
+    // Duplicate output path (silent-overwrite backstop): the generator already
+    // names both colliding FQNs + the path and starts with "docs:". Surface it
+    // verbatim as a clean non-zero exit (no double prefix, no stack trace).
+    if (msg.startsWith("docs: duplicate output path")) {
+      log.error(msg);
+      return 1;
+    }
     // The framework templates resolve from disk; inside the compiled `meta`
     // binary they live on a virtual fs the provider cannot read. Surface that
     // as an actionable message rather than a cryptic render failure.
@@ -187,13 +221,14 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     return 1;
   }
 
-  // Summary: docsFile() emits one page per entity first, then one per
-  // template.output. The entity count is the matched object count; the rest
-  // are template pages.
+  // Summary: docsFile() emits ONE overview/index page (README.md) plus one page
+  // per entity and one per template.output. The entity count is the matched
+  // object count; the remaining non-overview pages are template pages.
   const entityCount = root.objects().filter(ctx.matches).length;
-  const templateCount = files.length - entityCount;
+  const overviewCount = files.filter((f) => f.path === "README.md").length;
+  const templateCount = files.length - entityCount - overviewCount;
   log.info(
-    `meta docs — wrote ${entityCount} entity page(s) + ${templateCount} template page(s) → ${outDir}`,
+    `meta docs — wrote ${overviewCount} overview + ${entityCount} entity page(s) + ${templateCount} template page(s) → ${outDir}`,
   );
   return 0;
 }

@@ -113,6 +113,47 @@ async function customTypeProject(): Promise<string> {
   return root;
 }
 
+// TWO-package metadata with a SHORT-NAME collision across packages: an
+// `object.value acme::sales::Order` and a `template.output acme::comms::Order`.
+// In flat layout both want `Order.md` (collision → hard error); in package
+// layout they fold under distinct subdirs.
+const COLLIDING_META = {
+  "metadata.root": {
+    children: [
+      {
+        "object.value": {
+          name: "Order",
+          package: "acme::sales",
+          children: [{ "field.string": { name: "sku" } }],
+        },
+      },
+      {
+        "template.output": {
+          name: "Order",
+          package: "acme::comms",
+          "@kind": "document",
+          "@payloadRef": "Order",
+          "@textRef": "comms/order",
+          "@format": "html",
+        },
+      },
+    ],
+  },
+};
+
+/** Project root holding the cross-package short-name collision metadata. */
+async function collidingProject(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-docs-collide-"));
+  dirs.push(root);
+  await mkdir(join(root, "metaobjects"), { recursive: true });
+  await writeFile(
+    join(root, "metaobjects", "meta.json"),
+    JSON.stringify(COLLIDING_META),
+    "utf8",
+  );
+  return root;
+}
+
 afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
@@ -175,10 +216,33 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(await docsCommand([root, "--out", out], root)).toBe(0);
 
     const summary = logged.join("\n");
-    // Mentions counts + destination.
+    // Mentions counts + destination, including the overview/index page.
+    expect(summary).toMatch(/1 overview/);
     expect(summary).toMatch(/1 entity/);
     expect(summary).toMatch(/1 template/);
     expect(summary).toContain(out);
+  });
+
+  test("emits a neutral README.md overview with an embedded Mermaid ER diagram", async () => {
+    const root = await project();
+    const out = join(root, "out-overview");
+    expect(await docsCommand([root, "--out", out], root)).toBe(0);
+
+    // The overview/index page lands at the docs root as README.md.
+    expect(existsSync(join(out, "README.md"))).toBe(true);
+    const readme = await readFile(join(out, "README.md"), "utf8");
+
+    // Carries the fenced Mermaid ER diagram + links to the model's pages.
+    expect(readme).toContain("```mermaid");
+    expect(readme).toContain("erDiagram");
+    // Links every entity + template page emitted in the same run.
+    expect(readme).toContain("(./Welcome.md)");
+    expect(readme).toContain("(./WelcomePage.md)");
+
+    // Neutral — no language/toolchain leakage (".md" links allowed).
+    expect(readme.replace(/\.md\b/g, "")).not.toMatch(/\.ts\b/);
+    expect(readme).not.toContain("Zod");
+    expect(readme).not.toContain("## Generated code");
   });
 
   test("loads metaobjects.config.ts providers so custom types resolve", async () => {
@@ -252,5 +316,55 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(await run(["--help"])).toBe(0);
     const help = logged.join("\n");
     expect(help).toContain("docs");
+  });
+
+  test("default (flat) on a cross-package short-name collision → non-zero, no overwrite", async () => {
+    const root = await collidingProject();
+    const out = join(root, "out-collide-flat");
+
+    const errLogged: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => errLogged.push(args.map(String).join(" "));
+    let code: number;
+    try {
+      code = await docsCommand([root, "--out", out], root);
+    } finally {
+      console.error = origErr;
+    }
+
+    expect(code).not.toBe(0); // hard error, not a silent overwrite
+    const stderr = errLogged.join("\n");
+    expect(stderr).toContain("duplicate output path");
+    expect(stderr).toContain("Order.md");
+    expect(stderr).toContain("acme::sales::Order");
+    expect(stderr).toContain("acme::comms::Order");
+  });
+
+  test("--layout package: distinct nested files, exit 0", async () => {
+    const root = await collidingProject();
+    const out = join(root, "out-collide-pkg");
+
+    const code = await docsCommand([root, "--out", out, "--layout", "package"], root);
+    expect(code).toBe(0);
+
+    // Both pages survive under package-folded subdirs.
+    expect(existsSync(join(out, "acme", "sales", "Order.md"))).toBe(true);
+    expect(existsSync(join(out, "acme", "comms", "Order.md"))).toBe(true);
+  });
+
+  test("--layout package preserves single-package output as nested (no flat regression)", async () => {
+    // The default-flat single-package fixture still emits flat <name>.md.
+    const root = await project();
+    const out = join(root, "out-flat-default");
+    expect(await docsCommand([root, "--out", out], root)).toBe(0);
+    expect(existsSync(join(out, "Welcome.md"))).toBe(true);
+    expect(existsSync(join(out, "WelcomePage.md"))).toBe(true);
+  });
+
+  test("--layout rejects an invalid value", async () => {
+    const root = await project();
+    const out = join(root, "out-badlayout");
+    const code = await docsCommand([root, "--out", out, "--layout", "nested"], root);
+    expect(code).toBe(2); // arg parse error
   });
 });

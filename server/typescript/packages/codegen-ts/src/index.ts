@@ -42,6 +42,14 @@ export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjec
 
 export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
 export type { OutputLayout, ResolvedTarget } from "./import-path.js";
+export {
+  docPageOutputPath,
+  docPageHref,
+  docPageNode,
+  effectivePackage,
+  assertNoDuplicateDocPaths,
+} from "./docs-paths.js";
+export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
