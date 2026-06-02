@@ -1,0 +1,23 @@
+{
+  "metadata.root": {
+    "package": "verify::templates",
+    "children": [
+      {
+        "object.value": {
+          "name": "MessagePayload",
+          "children": [
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.string": { "name": "body" } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "Greeting",
+          "@payloadRef": "MessagePayload",
+          "@textRef": "ai/greeting"
+        }
+      }
+    ]
+  }
+}

@@ -28,7 +28,7 @@ command surface splits in two:
 | TS codegen | Node `meta` | `meta gen` | TS projects |
 | C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`) |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`meta:gen`) | Kotlin generators run through the same goal — see below |
-| Java/Kotlin codegen drift | Maven plugin | `mvn metaobjects:verify` (`meta:verify`) | regenerate + fail on drift vs committed output (generator-neutral) |
+| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`meta:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): `codegen` (default, back-compat — regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
 | Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2) |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
@@ -72,10 +72,15 @@ historical template/prompt drift gate, the C# back-compat default), `verify
 --codegen` (regenerate the default generator suite to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` keeps `--templates` and prints the subverb
-note. The remaining port (Java/Kotlin `mvn meta:verify`) converges on the same
-subverb vocabulary in staged, conformance-gated follow-on slices; it keeps its
-current behavior as the bare-`verify` default until it adopts the explicit
-subverbs. (Schema `--db` remains Node-only by the ADR-0015 design — see below.)
+note. The **Java/Kotlin `mvn meta:verify`** port expresses the same vocabulary as a
+`mode` parameter (Maven goals are parameter-driven, not flag-driven): `-Dmeta.verify.mode=codegen`
+(default, byte-identical to the historical goal — regen-to-temp + diff vs committed
+output) and `-Dmeta.verify.mode=templates` (each `template.*` node's `{{field}}`↔payload-VO
+field tree via the render `Verify` engine, resolving refs through a filesystem provider rooted
+at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
+(`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
+migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
+Node-only by the ADR-0015 design — see below.)
 
 ## Schema is Node-only — by design
 
