@@ -184,6 +184,20 @@ divergence:
 
 ## Per-port status
 
+| Port | Status | Runner | Runs in CI via |
+|---|---|---|---|
+| TypeScript | **live + green** (reference emitter; produces the canonical) | `packages/metadata/test/registry-conformance.test.ts` | `conformance` job, `typescript` matrix leg (scoped `bun test`) |
+| C# | **live + green** (byte-identical) | `MetaObjects.Conformance.Tests/RegistryManifestConformanceTests.cs` | `conformance` job, `csharp` matrix leg (whole `MetaObjects.Conformance.Tests` project) |
+| Python | **live + green** (byte-identical) | `tests/conformance/test_registry_conformance.py` | `conformance` job, `python` matrix leg (whole `tests/conformance` dir) |
+| Java | **gated (`@Ignore`)** — Phase-2 vocabulary divergence | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | n/a — intentionally NOT in the scoped `-Dtest=` list while gated |
+| Kotlin | **gated (`@Disabled`)** — shares the Java JVM registry | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | n/a — intentionally NOT in the scoped `-Dtest=` list while gated |
+
+The three live ports (TS / C# / Python) genuinely run on every CI build (`.github/workflows/conformance.yml`, `conformance` job). The Java + Kotlin runners are wired and compile, but their assertions are `@Ignore`/`@Disabled` pending the Java metamodel-vocabulary reconciliation (tracked as a dedicated follow-on; see the **divergence analysis**:
+[`docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md`](../../docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md) and the
+[reconciliation plan](../../docs/superpowers/plans/2026-06-02-sp-g-java-reconciliation-plan.md)). They are left out of the Java/Kotlin scoped `-Dtest=` lists so they neither run nor error — re-add them (and drop the annotation) once the reconciliation lands.
+
+Detail per port:
+
 - **TypeScript** — reference emitter; green (produces the canonical).
 - **C#** — green, byte-identical.
 - **Python** — green, byte-identical (`emit_registry_manifest` in
