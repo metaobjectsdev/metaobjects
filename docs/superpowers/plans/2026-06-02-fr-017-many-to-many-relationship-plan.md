@@ -117,13 +117,17 @@ For EACH port (one unit each): study the port's existing relation codegen, emit 
 - [ ] **Unit 13 — Kotlin codegen.** Exposed many-to-many + controller. Corpora green. Review + simplify. Commit `feat(codegen-kotlin): FR-017 Unit13 — Kotlin M:N codegen`
 - [ ] **Unit 14 — Python codegen.** SQLAlchemy `secondary=<junction>` + Pydantic nested + FastAPI traversal. Corpora green. Review + simplify. Commit `feat(python-codegen): FR-017 Unit14 — Python M:N codegen`
 
-### Unit 15: Documentation generation (M:N edge, incl. symmetric)
+### Unit 15: Documentation (M:N edge, incl. symmetric) — respect ADR-0020 tiering
 
-**Files:** the doc-gen providers per port (JSDoc / XML-doc / Postgres `COMMENT ON` / Mermaid) + render/doc-conformance fixtures.
+**ADR-0020 (codegen tiering, shipped 2026-06-02):** language-neutral artifacts are ONE shared TS engine (Tier 2) — **do NOT port the docs builder per-port.** So M:N documentation splits:
+- **Standalone doc pages / Mermaid (Tier 2):** the shared TS `meta docs` engine (root `templates/`) gains the M:N edge (through the junction; symmetric marked). One engine → output is inherently identical; gated by the existing docs byte-identity gate. NOT emitted per-port.
+- **Inline code-doc (Tier 1, per-port):** JSDoc / XML-doc / Postgres `COMMENT ON` emitted *into generated code* describing the M:N navigation — this is part of each port's native codegen (folded into Units 10–14), not a separate per-port doc builder.
 
-- [ ] **Step 1 — Author the doc-conformance M:N fixture** (the M:N edge through the junction; symmetric marked); `notes` stays internal-only.
-- [ ] **Step 2 — Emit M:N doc** in each port that ships doc-gen; byte-identical across those ports.
-- [ ] **Step 3 — Review + simplify gate. Commit.** `feat(render): FR-017 Unit15 — M:N documentation generation`
+**Files:** `server/typescript/packages/` shared docs engine + root `templates/` (Tier 2 M:N page edge); doc-conformance / docs byte-identity fixtures.
+
+- [ ] **Step 1 — Author the M:N docs fixture** for the shared docs engine (the M:N edge + symmetric); `notes` stays internal-only per the documentation-provider contract.
+- [ ] **Step 2 — Add the M:N edge to the shared TS `meta docs` engine** (Tier 2). Docs byte-identity gate green. Confirm inline code-doc for M:N nav was handled in the per-port codegen units (10–14), not duplicated here.
+- [ ] **Step 3 — Review + simplify gate. Commit.** `feat(docs): FR-017 Unit15 — M:N documentation in shared docs engine (Tier 2, ADR-0020)`
 
 **End of Phase 3:** every port emits M:N codegen + REST + docs; FR-007 + api-contract + doc corpora green cross-port.
 
