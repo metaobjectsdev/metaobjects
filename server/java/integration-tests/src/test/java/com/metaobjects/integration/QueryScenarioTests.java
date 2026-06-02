@@ -70,14 +70,21 @@ final class QueryScenarioTests {
         // conflicting bindings, so we only set when none is set or the bindings
         // already include ours).
         ObjectClassRegistry reg = new ObjectClassRegistry();
-        reg.register(() -> Map.of(
-            "fitness::Program",     ValueObject.class,
-            "fitness::Week",        ValueObject.class,
-            "fitness::Measurement", ValueObject.class,
-            "fitness::Asset",       ValueObject.class,
-            "fitness::ProgramView", ValueObject.class,
-            "fitness::ProgramStat", ValueObject.class
-        ));
+        Map<String, Class<?>> bindings = new java.util.HashMap<>();
+        bindings.put("fitness::Program",     ValueObject.class);
+        bindings.put("fitness::Week",        ValueObject.class);
+        bindings.put("fitness::Measurement", ValueObject.class);
+        bindings.put("fitness::Asset",       ValueObject.class);
+        bindings.put("fitness::ProgramView", ValueObject.class);
+        bindings.put("fitness::ProgramStat", ValueObject.class);
+        // FR-017 M:N corpus entities (hetero + self-join junctions + targets).
+        bindings.put("fitness::Post",        ValueObject.class);
+        bindings.put("fitness::Tag",         ValueObject.class);
+        bindings.put("fitness::PostTag",     ValueObject.class);
+        bindings.put("fitness::Person",      ValueObject.class);
+        bindings.put("fitness::Follow",      ValueObject.class);
+        bindings.put("fitness::Friendship",  ValueObject.class);
+        reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
     }
 

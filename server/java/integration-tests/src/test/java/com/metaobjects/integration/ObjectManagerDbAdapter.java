@@ -1,18 +1,21 @@
 package com.metaobjects.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.MetaRoot;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.integration.Scenarios.SortSpec;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.QueryOptions;
+import com.metaobjects.manager.db.M2MResolver;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.manager.exp.Range;
 import com.metaobjects.manager.exp.SortOrder;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.value.ValueObject;
+import com.metaobjects.relationship.MetaRelationship;
 
 import java.sql.Types;
 import java.time.ZoneOffset;
@@ -38,13 +41,24 @@ final class ObjectManagerDbAdapter {
     /**
      * Execute one {@link QuerySpec} against an open connection. Returns:
      * <ul>
-     *   <li>{@code op:list}  → {@code List<Map<String,Object>>} of normalized rows</li>
-     *   <li>{@code op:get}   → {@code Map<String,Object>} or {@code null}</li>
-     *   <li>{@code op:count} → {@code Long}</li>
+     *   <li>{@code op:list}   → {@code List<Map<String,Object>>} of normalized rows</li>
+     *   <li>{@code op:get}    → {@code Map<String,Object>} or {@code null}</li>
+     *   <li>{@code op:count}  → {@code Long}</li>
+     *   <li>{@code op:relate} → {@code List<Map<String,Object>>} of related target
+     *       rows (order-independent — see {@link Normalization}); traverses an M:N
+     *       relationship via {@link M2MResolver}.</li>
      * </ul>
+     *
+     * @param root the loaded model root (needed by op:relate to find the junction +
+     *             target entities); other ops ignore it.
      */
     static Object execute(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc, QuerySpec spec,
-                          Map<String, Integer> columnSqlTypes) throws Exception {
+                          Map<String, Integer> columnSqlTypes, MetaRoot root,
+                          ColumnTypeProbe columnTypeProbe) throws Exception {
+        if ("relate".equals(spec.op())) {
+            return executeRelate(omdb, conn, mc, spec, root, columnTypeProbe);
+        }
+
         Expression filter = buildFilter(spec.by(), spec.filter());
 
         if ("count".equals(spec.op())) {
@@ -62,6 +76,66 @@ final class ObjectManagerDbAdapter {
 
         if ("get".equals(spec.op())) return rows.isEmpty() ? null : rows.get(0);
         return rows; // op:list
+    }
+
+    /** Probes the actual SQL column types for a target entity's relation, on demand. */
+    @FunctionalInterface
+    interface ColumnTypeProbe {
+        Map<String, Integer> probe(MetaObject mc);
+    }
+
+    /**
+     * op:relate — traverse an M:N relationship from a single source object to its
+     * related target rows. Loads the source by {@code by:{...}}, locates the named
+     * {@code relation}, delegates the junction traversal + target load to the
+     * generic {@link M2MResolver}, then normalizes the target rows. The {@code relate}
+     * verb is order-independent (the runner sorts both sides before comparing).
+     */
+    private static Object executeRelate(ObjectManagerDB omdb, ObjectConnection conn, MetaObject sourceMeta,
+                                        QuerySpec spec, MetaRoot root, ColumnTypeProbe columnTypeProbe) throws Exception {
+        // 1. Load the single source object identified by `by`.
+        Expression byFilter = buildFilter(spec.by(), null);
+        QueryOptions opts = new QueryOptions();
+        if (byFilter != null) opts.setExpression(byFilter);
+        Collection<?> sources = omdb.getObjects(conn, sourceMeta, opts);
+        if (sources.isEmpty()) return List.of(); // unknown source → no related rows
+
+        Object source = sources.iterator().next();
+
+        // 2. Find the named M:N relationship on the source entity.
+        MetaRelationship rel = findRelationship(sourceMeta, spec.relation());
+        if (rel == null) {
+            throw new AssertionError("op:relate / " + spec.name() + ": no relationship named '"
+                + spec.relation() + "' on entity '" + sourceMeta.getShortName() + "'");
+        }
+
+        // 3. Resolve the related targets via the generic OMDB M:N resolver.
+        Collection<?> related = new M2MResolver(omdb).resolve(conn, source, sourceMeta, rel, root);
+
+        // 4. Normalize the target rows (keyed by the TARGET entity's metadata).
+        MetaObject targetMeta = mustGetEntity(root, rel.getObjectRef());
+        Map<String, Integer> targetColumnSqlTypes = columnTypeProbe.probe(targetMeta);
+        List<Map<String, Object>> rows = new ArrayList<>(related.size());
+        for (Object o : related) rows.add(toRowMap(targetMeta, o, targetColumnSqlTypes));
+        return rows;
+    }
+
+    private static MetaRelationship findRelationship(MetaObject mc, String relationName) {
+        if (relationName == null) return null;
+        for (MetaRelationship rel : mc.getRelationships()) {
+            if (relationName.equals(rel.getShortName())) return rel;
+        }
+        return null;
+    }
+
+    private static MetaObject mustGetEntity(MetaRoot root, String name) {
+        String bare = name;
+        int idx = name.lastIndexOf(com.metaobjects.MetaData.PKG_SEPARATOR);
+        if (idx >= 0) bare = name.substring(idx + com.metaobjects.MetaData.PKG_SEPARATOR.length());
+        for (MetaObject mc : root.getChildren(MetaObject.class, false)) {
+            if (bare.equals(mc.getShortName())) return mc;
+        }
+        throw new IllegalStateException("Entity '" + name + "' not found in model root");
     }
 
     // -----------------------------------------------------------------------

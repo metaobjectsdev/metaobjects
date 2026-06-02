@@ -77,7 +77,13 @@ public final class QueryScenarioRunner {
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
                 Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
                     mc, m -> probeColumnSqlTypes(pg, m));
-                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec, columnSqlTypes);
+                // op:relate normalizes the TARGET entity's rows, so the adapter needs
+                // to probe column types for an entity other than `mc`; hand it a probe
+                // that hits the same per-scenario cache.
+                ObjectManagerDbAdapter.ColumnTypeProbe probe =
+                    m -> columnTypeCache.computeIfAbsent(m, x -> probeColumnSqlTypes(pg, x));
+                Object actual = ObjectManagerDbAdapter.execute(
+                    omdb, oc, mc, spec, columnSqlTypes, loader.getRoot(), probe);
                 assertResult(scenario.sourcePath(), spec, actual);
             }
         } finally {
@@ -147,6 +153,11 @@ public final class QueryScenarioRunner {
                 : Long.parseLong(String.valueOf(expect));
             return Long.toString(n);
         }
+        // op:relate is an ORDER-INDEPENDENT set (M:N navigation) — sort both sides.
+        if ("relate".equals(op)) {
+            if (expect == null) return "[]";
+            return Normalization.canonicalRowSet((List<Map<String, Object>>) expect);
+        }
         if ("get".equals(op)) {
             if (expect == null) return "null";
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) expect))
@@ -161,6 +172,10 @@ public final class QueryScenarioRunner {
     @SuppressWarnings("unchecked")
     private static String canonicalizeActual(Object actual, String op) {
         if ("count".equals(op)) return Long.toString(actual instanceof Number n ? n.longValue() : 0L);
+        if ("relate".equals(op)) {
+            if (actual == null) return "[]";
+            return Normalization.canonicalRowSet((List<Map<String, Object>>) actual);
+        }
         if (actual == null) return "null";
         if ("get".equals(op)) {
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) actual))

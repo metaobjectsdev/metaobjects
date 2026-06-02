@@ -159,4 +159,25 @@ public final class Normalization {
             throw new RuntimeException(e);
         }
     }
+
+    /**
+     * Canonical JSON for an ORDER-INDEPENDENT row set ({@code op:relate} — M:N
+     * navigation). Mirrors the TS runner's {@code canonicalRowSet}: each row is
+     * normalized + serialized, then the per-row JSON strings are sorted so the
+     * comparison is port-agnostic regardless of the order the resolver returns
+     * the related rows. ({@code op:list} keeps its order — the scenario pins it
+     * via {@code sort:}.)
+     */
+    public static String canonicalRowSet(List<Map<String, Object>> rows) {
+        List<String> each = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            try {
+                each.add(new String(MAPPER.writeValueAsBytes(normalizeRow(row)), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        each.sort(null);
+        return "[" + String.join(",", each) + "]";
+    }
 }

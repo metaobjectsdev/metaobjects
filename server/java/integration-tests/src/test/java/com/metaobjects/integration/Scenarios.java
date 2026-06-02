@@ -14,13 +14,14 @@ public final class Scenarios {
 
     public record QuerySpec(
         String name,
-        String op,                                // list | get | count
+        String op,                                // list | get | count | relate
         String entity,
         Map<String, Object> by,
         Map<String, Object> filter,
         List<SortSpec> sort,
         Integer limit,
         Integer offset,
+        String relation,                          // op:relate — the M:N relationship name to traverse
         Object expect
     ) {}
 
