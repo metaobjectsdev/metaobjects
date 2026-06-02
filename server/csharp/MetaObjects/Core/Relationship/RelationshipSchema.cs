@@ -29,18 +29,6 @@ public static class RelationshipSchema
             Description: "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_FK_FIELD,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description: "Name of the foreign-key field on the source entity (for one-to-many / many-to-one relationships)."),
-
-        new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_PARENT_FIELD,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description: "Field name on the parent entity that the FK references. Defaults to the parent's primary identity field."),
-
-        new AttrSchema(
             Name: RelationshipConstants.RELATIONSHIP_ATTR_JOIN_ENTITY,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,

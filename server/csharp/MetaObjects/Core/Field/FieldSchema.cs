@@ -50,6 +50,38 @@ public static class FieldSchema
             Required: false,
             Description: "When true, the field gets a column-level UNIQUE constraint."),
 
+        // FR-013: read-only field. Codegen emits no setter; persistence skips the
+        // column on INSERT/UPDATE; input schemas mark it read-only. Cross-port attr.
+        new AttrSchema(
+            Name: FieldConstants.FIELD_ATTR_READ_ONLY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description:
+                "FR-013: when true, the field is read-only — codegen emits no setter / " +
+                "writable property, the persistence layer skips the column on INSERT/UPDATE, " +
+                "and Zod/Pydantic/class-validator schemas mark it read-only on input variants. " +
+                "The value is populated by the database (computed column, default expression, " +
+                "trigger), by replication, or by another external owner."),
+
+        // DB-domain attrs — registered on every field subtype (mirror TS dbProvider:
+        // @column is above; @db.indexed and @dbColumnType complete the trio).
+        new AttrSchema(
+            Name: DbConstants.FIELD_ATTR_DB_INDEXED,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description:
+                "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."),
+
+        new AttrSchema(
+            Name: DbConstants.FIELD_ATTR_DB_COLUMN_TYPE,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description:
+                "Physical DB column-type override (ADR-0013 escape hatch). Legal values are " +
+                "uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field " +
+                "subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
+                "The logical field type and its native binding are unchanged."),
+
         // @default is polymorphic: its value type follows the OWNING field's
         // subtype. No single fixed valueType can capture that, so ValueType is
         // intentionally null (declared-but-untyped). The parser stores the raw

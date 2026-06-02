@@ -74,5 +74,17 @@ public static class SourceSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Optional database schema name (e.g. 'catalog', 'public'). Postgres defaults to 'public'; SQLite rejects any non-default value."),
+
+        // FR-015: typed-input shape for a callable source (storedProc / tableFunction).
+        // Symmetric with template.@payloadRef — reuses object.value as the parameter shape.
+        new AttrSchema(
+            Name: SourceConstants.SOURCE_ATTR_PARAMETER_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "FR-015: name or FQN of an object.value describing the input shape of " +
+                "this source's callable interface. Permitted on @kind: \"storedProc\" / " +
+                "\"tableFunction\"; rejected on non-callable kinds (table / view / materializedView). " +
+                "Field children of the referenced object.value become the call-site parameter list " +
+                "in declaration order. Symmetric with template.@payloadRef in FR-004."),
     ];
 }

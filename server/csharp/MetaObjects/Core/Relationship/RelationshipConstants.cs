@@ -28,9 +28,6 @@ public static class RelationshipConstants
     // Relationship attrs
     public const string RELATIONSHIP_ATTR_CARDINALITY  = "cardinality";
     public const string RELATIONSHIP_ATTR_OBJECT_REF   = "objectRef";
-    public const string RELATIONSHIP_ATTR_FK_FIELD     = "fkField";
-    /// <summary>The field name on the PARENT entity that the FK references. Defaults to the parent's primary identity field.</summary>
-    public const string RELATIONSHIP_ATTR_PARENT_FIELD = "parentField";
     /// <summary>N:M cardinality.</summary>
     public const string RELATIONSHIP_ATTR_JOIN_ENTITY  = "joinEntity";
     /// <summary>N:M cardinality.</summary>

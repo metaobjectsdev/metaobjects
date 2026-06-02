@@ -72,6 +72,13 @@ public static class FieldConstants
 
     public const string FIELD_ATTR_REQUIRED              = "required";
     public const string FIELD_ATTR_UNIQUE                = "unique";
+    /// <summary>
+    /// FR-013: when true, the field is read-only — codegen emits no setter, the
+    /// persistence layer skips the column on INSERT/UPDATE, and input schemas mark
+    /// it read-only. The value is populated by the database, replication, or an
+    /// external owner.
+    /// </summary>
+    public const string FIELD_ATTR_READ_ONLY            = "readOnly";
     public const string FIELD_ATTR_DEFAULT               = "default";
     public const string FIELD_ATTR_MAX_LENGTH            = "maxLength";
     public const string FIELD_ATTR_PRECISION             = "precision";

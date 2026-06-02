@@ -30,16 +30,6 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
         }
     }
 
-    /// <summary>Name of the FK field on the source entity (for one-to-many / many-to-one).</summary>
-    public string? FkField
-    {
-        get
-        {
-            var v = OwnAttr(RELATIONSHIP_ATTR_FK_FIELD);
-            return v is string s ? s : null;
-        }
-    }
-
     /// <summary>Join-table entity name for N:M relationships.</summary>
     public string? JoinEntity
     {
