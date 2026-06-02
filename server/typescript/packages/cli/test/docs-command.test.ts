@@ -216,10 +216,33 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(await docsCommand([root, "--out", out], root)).toBe(0);
 
     const summary = logged.join("\n");
-    // Mentions counts + destination.
+    // Mentions counts + destination, including the overview/index page.
+    expect(summary).toMatch(/1 overview/);
     expect(summary).toMatch(/1 entity/);
     expect(summary).toMatch(/1 template/);
     expect(summary).toContain(out);
+  });
+
+  test("emits a neutral README.md overview with an embedded Mermaid ER diagram", async () => {
+    const root = await project();
+    const out = join(root, "out-overview");
+    expect(await docsCommand([root, "--out", out], root)).toBe(0);
+
+    // The overview/index page lands at the docs root as README.md.
+    expect(existsSync(join(out, "README.md"))).toBe(true);
+    const readme = await readFile(join(out, "README.md"), "utf8");
+
+    // Carries the fenced Mermaid ER diagram + links to the model's pages.
+    expect(readme).toContain("```mermaid");
+    expect(readme).toContain("erDiagram");
+    // Links every entity + template page emitted in the same run.
+    expect(readme).toContain("(./Welcome.md)");
+    expect(readme).toContain("(./WelcomePage.md)");
+
+    // Neutral — no language/toolchain leakage (".md" links allowed).
+    expect(readme.replace(/\.md\b/g, "")).not.toMatch(/\.ts\b/);
+    expect(readme).not.toContain("Zod");
+    expect(readme).not.toContain("## Generated code");
   });
 
   test("loads metaobjects.config.ts providers so custom types resolve", async () => {

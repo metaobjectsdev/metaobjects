@@ -221,13 +221,14 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     return 1;
   }
 
-  // Summary: docsFile() emits one page per entity first, then one per
-  // template.output. The entity count is the matched object count; the rest
-  // are template pages.
+  // Summary: docsFile() emits ONE overview/index page (README.md) plus one page
+  // per entity and one per template.output. The entity count is the matched
+  // object count; the remaining non-overview pages are template pages.
   const entityCount = root.objects().filter(ctx.matches).length;
-  const templateCount = files.length - entityCount;
+  const overviewCount = files.filter((f) => f.path === "README.md").length;
+  const templateCount = files.length - entityCount - overviewCount;
   log.info(
-    `meta docs — wrote ${entityCount} entity page(s) + ${templateCount} template page(s) → ${outDir}`,
+    `meta docs — wrote ${overviewCount} overview + ${entityCount} entity page(s) + ${templateCount} template page(s) → ${outDir}`,
   );
   return 0;
 }

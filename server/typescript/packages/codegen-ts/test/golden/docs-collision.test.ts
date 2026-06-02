@@ -171,7 +171,11 @@ describe("docsFile() — cross-package short-name collision safety", () => {
       .filter((c) => c.type === "template").length;
     const docCount = root.objects().length + templateNodes;
     expect(docCount).toBe(3);
-    expect(out.length).toBe(docCount);
+    // docsFile() ALSO emits one neutral overview/index page (README.md) at the
+    // docs root in addition to the per-node pages.
+    const OVERVIEW_PAGES = 1;
+    expect(out.length).toBe(docCount + OVERVIEW_PAGES);
+    expect(out.filter((f) => f.path === "README.md").length).toBe(OVERVIEW_PAGES);
     expect(new Set(out.map((f) => f.path)).size).toBe(out.length);
   });
 
@@ -196,7 +200,12 @@ describe("docsFile() — cross-package short-name collision safety", () => {
     const root = await loadRoot([single]);
     const out = await docsFile().generate(makeCtx(root)); // flat default
     const paths = out.map((f) => f.path).sort();
-    expect(paths).toEqual(["Cart.md", "CartEmail.md"]);
+    // Per-node pages + the additive neutral overview/index (README.md).
+    expect(paths).toEqual(["Cart.md", "CartEmail.md", "README.md"]);
+    // The overview links both pages with same-dir ./<name>.md hrefs in flat.
+    const readme = out.find((f) => f.path === "README.md")!;
+    expect(readme.content).toContain("](./Cart.md)");
+    expect(readme.content).toContain("](./CartEmail.md)");
     // Cross-links are same-dir ./<name>.md in flat.
     const cart = out.find((f) => f.path === "Cart.md")!;
     const tpl = out.find((f) => f.path === "CartEmail.md")!;
