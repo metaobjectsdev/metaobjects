@@ -28,7 +28,7 @@ Multipart email — rendered as the following parts:
 
 - Payload: [`{{payload.name}}`]({{payload.link}})
 {{#hasRequiredTags}}
-- Required fields: {{#requiredTags}}`{{.}}` {{/requiredTags}}
+- Required fields:{{#requiredTags}} `{{.}}`{{/requiredTags}}
 {{/hasRequiredTags}}
 
 ## Render contract
@@ -38,7 +38,7 @@ Multipart email — rendered as the following parts:
 - Maximum length: {{.}} characters (rendering longer output fails).
 {{/maxChars}}
 {{#hasRequiredTags}}
-- Required tags must be present: {{#requiredTags}}`{{.}}` {{/requiredTags}}
+- Required tags must be present:{{#requiredTags}} `{{.}}`{{/requiredTags}}
 {{/hasRequiredTags}}
 
 ## Source

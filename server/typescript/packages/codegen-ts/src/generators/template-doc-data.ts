@@ -53,12 +53,6 @@ export interface TemplateDocData {
    *  entity-page filename + the entity's Used-by back-link). */
   payload: { name: string; link: string };
 
-  /** Best-effort list of fields the template references. Sourced from
-   *  @requiredTags (the only declared field-level contract on a template.output
-   *  node); the full mustache-referenced field set is a build-time drift gate,
-   *  not declared metadata. Empty when none. */
-  referencedFields: string[];
-
   /** @requiredTags, if declared. Drives both the Input "Required fields" line
    *  and the Render-contract "Required tags" bullet. */
   requiredTags?: string[];

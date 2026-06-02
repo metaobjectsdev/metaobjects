@@ -111,7 +111,6 @@ export function buildTemplateDocData(template: MetaData): TemplateDocData {
     isEmail,
     format,
     payload: { name: payloadName, link: `./${payloadName}.md` },
-    referencedFields: requiredTags,
     sourceRefs,
     capability: isEmail ? CAPABILITY_EMAIL : CAPABILITY_DOCUMENT,
   };
