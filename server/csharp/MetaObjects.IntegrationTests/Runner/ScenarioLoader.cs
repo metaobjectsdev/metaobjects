@@ -93,6 +93,7 @@ public static class ScenarioLoader
                 Sort: q.Sort?.Select(s => new SortSpec(s.Field ?? "", s.Dir ?? "asc")).ToList(),
                 Limit: q.Limit,
                 Offset: q.Offset,
+                Relation: q.Relation,
                 Expect: q.Expect)).ToList());
     }
 
@@ -109,6 +110,9 @@ public static class ScenarioLoader
     private sealed class QuerySpecYaml
     {
         public string? Name { get; set; }
+        // A per-query `description:` is documentation only (used by some relate
+        // scenarios to annotate the union-on-read direction); captured but unused.
+        public string? Description { get; set; }
         public string? Op { get; set; }
         public string? Entity { get; set; }
         public Dictionary<string, object?>? By { get; set; }
@@ -116,6 +120,7 @@ public static class ScenarioLoader
         public List<SortYaml>? Sort { get; set; }
         public int? Limit { get; set; }
         public int? Offset { get; set; }
+        public string? Relation { get; set; }
         public YamlNode? Expect { get; set; }
     }
 
