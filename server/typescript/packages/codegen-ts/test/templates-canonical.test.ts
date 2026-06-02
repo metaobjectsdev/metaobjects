@@ -7,7 +7,7 @@
 // copy can never silently fork from the canonical source.
 
 import { describe, it, expect } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // Walk UP from this test file's dir until we find a dir containing BOTH
@@ -28,24 +28,27 @@ function findRepoRoot(start: string): string {
 }
 
 describe("doc templates — root canonical / package copy byte-identity", () => {
-  it("package entity-page.md.mustache is byte-identical to repo-root canonical", () => {
-    const repoRoot = findRepoRoot(import.meta.dir);
+  const repoRoot = findRepoRoot(import.meta.dir);
+  const rootDir = join(repoRoot, "templates", "docs");
+  const pkgDir = join(
+    repoRoot,
+    "server",
+    "typescript",
+    "packages",
+    "codegen-ts",
+    "templates",
+    "docs",
+  );
 
-    const rootPath = join(repoRoot, "templates", "docs", "entity-page.md.mustache");
-    const pkgPath = join(
-      repoRoot,
-      "server",
-      "typescript",
-      "packages",
-      "codegen-ts",
-      "templates",
-      "docs",
-      "entity-page.md.mustache",
-    );
+  // EVERY canonical *.mustache (entity-page, template-page, future pages) must
+  // have a byte-identical bundled copy reproduced by scripts/sync-doc-templates.sh.
+  const canonicalTemplates = readdirSync(rootDir).filter((f) => f.endsWith(".mustache"));
 
-    const root = readFileSync(rootPath, "utf-8");
-    const pkg = readFileSync(pkgPath, "utf-8");
-
-    expect(pkg).toEqual(root);
-  });
+  for (const file of canonicalTemplates) {
+    it(`package ${file} is byte-identical to repo-root canonical`, () => {
+      const root = readFileSync(join(rootDir, file), "utf-8");
+      const pkg = readFileSync(join(pkgDir, file), "utf-8");
+      expect(pkg).toEqual(root);
+    });
+  }
 });

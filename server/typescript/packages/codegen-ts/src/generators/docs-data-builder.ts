@@ -473,10 +473,11 @@ export function buildEntityDocData(
     const ref = child.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof ref !== "string") continue;
     if (stripPackage(ref) !== entity.name) continue;
-    // Link to the template's own doc page (Task 3 emits `<TemplateName>.md`).
-    const pageName = toPascalCase(child.name);
+    // Link to the template's own doc page. Task 3 emits the template page as
+    // `<TemplateName>.md` using the RAW node name (same convention as entity
+    // pages), so the href MUST use the raw name to resolve.
     usedByMatches.push({
-      bullet: `[\`template.${child.subType} ${child.name}\`](./${pageName}.md) — uses \`${entity.name}\` as \`@payloadRef\``,
+      bullet: `[\`template.${child.subType} ${child.name}\`](./${child.name}.md) — uses \`${entity.name}\` as \`@payloadRef\``,
     });
   }
   const usedBy = usedByMatches.length > 0 ? usedByMatches : undefined;

@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "acme::site",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name" } },
+            { "field.string": { "name": "headline" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomePage",
+          "@kind": "document",
+          "@payloadRef": "Welcome",
+          "@textRef": "site/welcome",
+          "@format": "html",
+          "@maxChars": 5000,
+          "@requiredTags": ["section"]
+        }
+      }
+    ]
+  }
+}

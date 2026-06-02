@@ -1,0 +1,52 @@
+{{{generatedMarker}}}
+
+# {{name}}
+{{#descriptionQuote}}
+
+{{{.}}}
+{{/descriptionQuote}}
+
+**Kind:** {{kind}}
+
+## Output
+{{^isEmail}}
+
+- Format: `{{format}}`
+{{/isEmail}}
+{{#isEmail}}
+
+Multipart email — rendered as the following parts:
+
+| Part | Source | Format | Escaping |
+|---|---|---|---|
+{{#parts}}
+| {{label}} | `{{ref}}` | `{{format}}` | {{#escaped}}escaped{{/escaped}}{{^escaped}}raw{{/escaped}} |
+{{/parts}}
+{{/isEmail}}
+
+## Input
+
+- Payload: [`{{payload.name}}`]({{payload.link}})
+{{#hasRequiredTags}}
+- Required fields: {{#requiredTags}}`{{.}}` {{/requiredTags}}
+{{/hasRequiredTags}}
+
+## Render contract
+
+- Every field referenced by the template is validated against the payload at generation time; an unknown field fails generation.
+{{#maxChars}}
+- Maximum length: {{.}} characters (rendering longer output fails).
+{{/maxChars}}
+{{#hasRequiredTags}}
+- Required tags must be present: {{#requiredTags}}`{{.}}` {{/requiredTags}}
+{{/hasRequiredTags}}
+
+## Source
+
+{{#sourceRefs}}
+- `{{.}}`
+{{/sourceRefs}}
+
+## Capability
+
+{{capability}}

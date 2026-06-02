@@ -77,3 +77,5 @@ export type {
   ConstraintRow,
 } from "./generators/docs-data.js";
 export { buildEntityDocData } from "./generators/docs-data-builder.js";
+export type { TemplateDocData, TemplateOutputPart } from "./generators/template-doc-data.js";
+export { buildTemplateDocData } from "./generators/template-doc-builder.js";
