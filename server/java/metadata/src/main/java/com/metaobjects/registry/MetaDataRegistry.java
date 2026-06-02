@@ -643,6 +643,18 @@ public class MetaDataRegistry {
     }
 
     /**
+     * Return every registered common attribute definition. Used by the SP-G
+     * registry-conformance manifest emitter (the cross-port {@code commonAttrs}
+     * facet). The order is unspecified — callers that need byte-stability sort
+     * by {@link CommonAttributeDef#name()}.
+     *
+     * @return an unmodifiable snapshot of all registered common attributes
+     */
+    public Collection<CommonAttributeDef> getCommonAttributes() {
+        return List.copyOf(commonAttributes.values());
+    }
+
+    /**
      * Lightweight array-shape predicate for common-array-attr validation. Mirrors
      * the per-type {@code AttributeConstraintBuilder.isArrayValue} contract:
      * {@code null} is permitted (optional), bracketed or comma-delimited string
