@@ -125,6 +125,22 @@ export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-type
 
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
 export { buildRegistryManifest, emitRegistryManifest } from "./registry-manifest.js";
+
+// Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs fixture corpora).
+export {
+  computeCoverage,
+  scanFixtureUsage,
+  toSnapshot,
+  emitSnapshot,
+} from "./registry-coverage.js";
+export type {
+  RegistryManifest as CoverageManifest,
+  ManifestType as CoverageManifestType,
+  ManifestAttr as CoverageManifestAttr,
+  CoverageReport,
+  CoverageSnapshot,
+  UntestedAttrs,
+} from "./registry-coverage.js";
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";

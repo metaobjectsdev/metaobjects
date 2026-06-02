@@ -1,0 +1,390 @@
+{
+  "registeredSubTypeCount": 71,
+  "exercisedSubTypeCount": 32,
+  "untestedSubTypes": [
+    "attr.base",
+    "attr.boolean",
+    "attr.class",
+    "attr.double",
+    "attr.filter",
+    "attr.int",
+    "attr.long",
+    "attr.string",
+    "attr.stringarray",
+    "field.base",
+    "field.byte",
+    "field.class",
+    "field.short",
+    "layout.base",
+    "object.base",
+    "origin.base",
+    "relationship.aggregation",
+    "relationship.base",
+    "source.base",
+    "template.base",
+    "template.toolcall",
+    "validator.array",
+    "validator.base",
+    "validator.length",
+    "validator.numeric",
+    "validator.regex",
+    "view.base",
+    "view.checkbox",
+    "view.date",
+    "view.dropdown",
+    "view.hidden",
+    "view.hotlink",
+    "view.month",
+    "view.number",
+    "view.password",
+    "view.radio",
+    "view.text",
+    "view.textarea",
+    "view.web"
+  ],
+  "untestedAttrsByExercisedSubType": [
+    {
+      "key": "field.boolean",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "example",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "required",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.currency",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.date",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.decimal",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "readOnly",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.double",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.enum",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.float",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.int",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.long",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "example",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "scale",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.object",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "precision",
+        "readOnly",
+        "required",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.string",
+      "untestedAttrs": [
+        "objectRef",
+        "precision",
+        "scale",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.time",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.timestamp",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "default",
+        "example",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "scale",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "field.uuid",
+      "untestedAttrs": [
+        "autoSet",
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "maxLength",
+        "objectRef",
+        "precision",
+        "readOnly",
+        "scale",
+        "sortable",
+        "sortableDefaultOrder",
+        "storage",
+        "unique"
+      ]
+    },
+    {
+      "key": "object.value",
+      "untestedAttrs": [
+        "discriminator",
+        "discriminatorValue",
+        "normalize"
+      ]
+    },
+    {
+      "key": "origin.passthrough",
+      "untestedAttrs": [
+        "via"
+      ]
+    },
+    {
+      "key": "relationship.association",
+      "untestedAttrs": [
+        "cardinality",
+        "joinEntity",
+        "joinFields",
+        "onDelete",
+        "onUpdate"
+      ]
+    },
+    {
+      "key": "relationship.composition",
+      "untestedAttrs": [
+        "joinEntity",
+        "joinFields"
+      ]
+    },
+    {
+      "key": "source.rdb",
+      "untestedAttrs": [
+        "materializedView"
+      ]
+    },
+    {
+      "key": "template.output",
+      "untestedAttrs": [
+        "htmlBodyRef",
+        "kind",
+        "maxChars",
+        "owner",
+        "requiredTags",
+        "since",
+        "subjectRef",
+        "textBodyRef"
+      ]
+    },
+    {
+      "key": "template.prompt",
+      "untestedAttrs": [
+        "maxChars",
+        "maxTokens",
+        "model",
+        "owner",
+        "requiredTags",
+        "since"
+      ]
+    }
+  ]
+}

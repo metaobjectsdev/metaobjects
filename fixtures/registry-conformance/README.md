@@ -200,3 +200,47 @@ process.stdout.write(emitRegistryManifest(composeRegistry(coreProviders)));
 (write the output to `fixtures/registry-conformance/expected-registry.json`),
 then run every port's registry-conformance runner to confirm they still
 byte-match — reconciling any newly-surfaced divergence at the source.
+
+## Untested-vocabulary coverage report (`coverage-report.json`)
+
+The registry-conformance gate above proves the vocabulary is **identical across
+ports**. It does NOT prove the vocabulary is **exercised** at all — a registered
+`(type, subType)` or attr that no fixture ever uses is only caught incidentally,
+which is exactly the meta-gap that let the SP-C drift hide for weeks (a drifted
+member was invisible because no behavioral fixture happened to touch it).
+
+The coverage report closes that gap. It cross-references the registered
+vocabulary (this manifest) against the conformance **fixture corpora** and
+surfaces every registered `(type, subType)` — and each declared attr on an
+exercised subtype — that NO fixture exercises.
+
+- **Module:** `server/typescript/packages/metadata/src/registry-coverage.ts`
+  (pure + testable: `computeCoverage(manifest, corpusRoots)`).
+- **Test:** `server/typescript/packages/metadata/test/registry-coverage.test.ts`
+  — scans `fixtures/conformance/` (the primary vocabulary exerciser) unioned
+  with the render / persistence / api-contract / output-prompt / extract corpora
+  (so a member exercised in any corpus is not falsely flagged untested). A
+  fixture node keyed `"<type>.<subType>"` exercises that subtype; an `@attr` (or
+  reserved bare key) set on it exercises that attr; `children` are walked
+  recursively.
+- **Snapshot:** [`coverage-report.json`](./coverage-report.json) — a sorted,
+  deterministic, committed snapshot of the untested sets + counts.
+
+**Report, not hard-fail (by design).** The untested set today is a legitimate
+**pre-existing backlog** — many subtypes (`view.*` controls, `field.byte` /
+`field.short`, the `validator.*` family, the abstract `*.base` anchors, the
+`attr.*` value-type subtypes) and many attrs are not yet exercised by a fixture.
+Hard-failing CI on that backlog would block everything for no gain. So the test
+ALWAYS prints the coverage summary AND asserts the committed snapshot is
+unchanged — a **newly** untested subtype shows up as a visible git diff (a
+regression to investigate); a newly exercised one is progress. Regenerate the
+snapshot after an intended vocabulary/fixture change:
+
+```
+cd server/typescript
+MO_UPDATE_COVERAGE_SNAPSHOT=1 bun test packages/metadata/test/registry-coverage.test.ts
+```
+
+**Ratchet later.** Once the backlog is burned down (the untested-subtype set
+empties), this can be tightened to hard-fail on any untested subtype — turning
+the report into a gate that forces a fixture for every new vocabulary member.
