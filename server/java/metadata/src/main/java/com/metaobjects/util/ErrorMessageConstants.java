@@ -56,6 +56,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN";
 
     /**
+     * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
+     * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
+     * does not match one of them, or a M:N-only attr ({@code @through}/{@code @sourceRefField}/
+     * {@code @symmetric}) is set on a non-M:N (1:N / {@code @cardinality:one}) relationship.
+     * Cross-language contract: {@code ERR_INVALID_RELATIONSHIP}.
+     */
+    public static final String ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP";
+
+    /**
      * Error code emitted when an object declares one or more sources but none has
      * role {@code "primary"}.
      * Cross-language contract: {@code ERR_SOURCE_NO_PRIMARY}.

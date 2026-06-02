@@ -100,6 +100,13 @@ public enum ErrorCode {
     /** A field origin (passthrough/aggregate) declares an invalid path or attribute. */
     ERR_INVALID_ORIGIN,
 
+    /**
+     * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
+     * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
+     * does not match one of them, or a M:N-only attr is set on a non-M:N relationship.
+     */
+    ERR_INVALID_RELATIONSHIP,
+
     /** A template declares a @payloadRef that does not resolve, or @requiredSlots that are not fields. */
     ERR_INVALID_TEMPLATE,
 

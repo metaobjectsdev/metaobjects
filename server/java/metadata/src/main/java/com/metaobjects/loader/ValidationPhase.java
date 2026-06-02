@@ -119,6 +119,7 @@ public final class ValidationPhase {
         validateSourcePhysicalNames(root, loader);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
+        validateRelationshipsM2M(root);
         validateOrigins(root);
         validateObjectFieldStorage(root);
         validateIdentityFieldsAndGeneration(root);
@@ -906,6 +907,191 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
+    }
+
+    // =========================================================================
+    // FR-017 — M:N relationship validation (slim vocabulary)
+    //
+    // Deferred-resolution validation (runs after all files load + extends:
+    // resolution, like origin paths), enforcing the cross-port M:N contract.
+    // Mirrors the TS validateRelationships pass exactly:
+    //
+    //   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+    //       entity). Otherwise ERR_BAD_ATTR_VALUE.
+    //   (b) @symmetric and @sourceRefField are mutually exclusive → ERR_BAD_ATTR_VALUE.
+    //   (c) When @through is present (M:N): the named entity must exist and declare
+    //       exactly two identity.reference children; @sourceRefField (if present)
+    //       must match one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
+    //   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+    //       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+    //
+    // Own-relationships only: a relationship is validated on the entity that
+    // declares it (matching the own-attrs policy of the other passes). Eager-throw
+    // on the first violation, like the rest of this phase. The thrown source is the
+    // relationship node's own JsonSource, so the cross-port envelope jsonPath points
+    // at the relationship node — matching the shared error fixtures.
+    // =========================================================================
+
+    static void validateRelationshipsM2M(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            walkRelationshipsM2M(root, rootChild);
+        }
+    }
+
+    private static void walkRelationshipsM2M(MetaRoot root, MetaData node) {
+        if (node instanceof MetaObject) {
+            validateObjectRelationshipsM2M(root, (MetaObject) node);
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRelationshipsM2M(root, child);
+        }
+    }
+
+    private static void validateObjectRelationshipsM2M(MetaRoot root, MetaObject obj) {
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaRelationship)) continue;
+            MetaRelationship rel = (MetaRelationship) child;
+            validateRelationshipM2MNode(root, obj, rel);
+        }
+    }
+
+    private static void validateRelationshipM2MNode(MetaRoot root, MetaObject obj,
+                                                    MetaRelationship rel) {
+        String through = rel.hasMetaAttr(MetaRelationship.ATTR_THROUGH, false)
+            ? rel.getMetaAttr(MetaRelationship.ATTR_THROUGH, false).getValueAsString() : null;
+        String sourceRefField = rel.hasMetaAttr(MetaRelationship.ATTR_SOURCE_REF_FIELD, false)
+            ? rel.getMetaAttr(MetaRelationship.ATTR_SOURCE_REF_FIELD, false).getValueAsString() : null;
+        boolean symmetric = rel.isSymmetric();
+        String objectRef = rel.getObjectRef();
+        // getCardinality() defaults to "one" when absent — matches the TS isMany check.
+        String cardinality = rel.getCardinality();
+
+        boolean hasThrough = through != null && !through.isEmpty();
+        boolean hasSourceRefField = sourceRefField != null && !sourceRefField.isEmpty();
+        boolean isMany = MetaRelationship.CARDINALITY_MANY.equals(cardinality);
+        boolean isM2M = hasThrough && isMany;
+
+        // Rule (d): M:N-only attrs on a non-M:N relationship.
+        if (!isM2M) {
+            if (hasThrough) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + "\" sets @" + MetaRelationship.ATTR_THROUGH
+                        + " but is not a M:N relationship (requires @"
+                        + MetaRelationship.ATTR_CARDINALITY + ": \""
+                        + MetaRelationship.CARDINALITY_MANY + "\").",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+            }
+            if (hasSourceRefField) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + "\" sets @" + MetaRelationship.ATTR_SOURCE_REF_FIELD
+                        + " but is not a M:N relationship.",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+            }
+            if (symmetric) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + "\" sets @" + MetaRelationship.ATTR_SYMMETRIC
+                        + " but is not a M:N relationship.",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+            }
+            return;
+        }
+
+        // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+        if (symmetric && hasSourceRefField) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + "\" sets both @" + MetaRelationship.ATTR_SYMMETRIC + " and @"
+                    + MetaRelationship.ATTR_SOURCE_REF_FIELD + "; they are mutually exclusive.",
+                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource());
+        }
+
+        // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+        boolean isSelfJoin = objectRef != null
+            && stripPackageName(objectRef).equals(obj.getShortName());
+        if (symmetric && !isSelfJoin) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + "\" sets @" + MetaRelationship.ATTR_SYMMETRIC + " but @"
+                    + MetaRelationship.ATTR_OBJECT_REF + " \"" + objectRef
+                    + "\" is not the declaring entity \"" + obj.getShortName()
+                    + "\"; @" + MetaRelationship.ATTR_SYMMETRIC + " is self-join-only.",
+                ErrorCode.ERR_BAD_ATTR_VALUE, rel.getSource());
+        }
+
+        // Rule (c): @through must name an entity declaring exactly two identity.reference children.
+        MetaObject junction = findRootObject(root, through);
+        if (junction == null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
+                    + "\" does not resolve to an entity.",
+                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+        }
+        int refCount = countJunctionReferences(junction);
+        if (refCount != 2) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
+                    + "\" must declare exactly two identity.reference children"
+                    + " (one per FK side); found " + refCount + ".",
+                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+        }
+        // @sourceRefField (if present) must match one of the junction's reference FK fields.
+        if (hasSourceRefField) {
+            List<String> fkFields = junctionReferenceFkFields(junction);
+            if (!fkFields.contains(sourceRefField)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                        + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                        + "\" @" + MetaRelationship.ATTR_SOURCE_REF_FIELD + " \"" + sourceRefField
+                        + "\" does not match any identity.reference FK field on junction \""
+                        + through + "\". Available: "
+                        + (fkFields.isEmpty() ? "(none)" : String.join(", ", fkFields)) + ".",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+            }
+        }
+    }
+
+    /** Count an entity's own {@code identity.reference} children. */
+    private static int countJunctionReferences(MetaObject junction) {
+        int n = 0;
+        for (MetaData child : junction.getChildren(MetaData.class, false)) {
+            if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
+                    && MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** The first {@code @fields} entry of each {@code identity.reference} child
+     *  (the physical FK column on the junction), in declaration order. */
+    private static List<String> junctionReferenceFkFields(MetaObject junction) {
+        List<String> out = new java.util.ArrayList<>();
+        for (MetaData child : junction.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaIdentity)) continue;
+            if (!MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) continue;
+            List<String> fields = ((MetaIdentity) child).getFields();
+            if (!fields.isEmpty()) out.add(fields.get(0));
+        }
+        return out;
+    }
+
+    /** Bare name for an {@code @objectRef} value: tail segment after the last {@code "::"}. */
+    private static String stripPackageName(String name) {
+        if (name == null) return null;
+        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
+        return (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
     }
 
     // =========================================================================
