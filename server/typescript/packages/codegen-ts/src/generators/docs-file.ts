@@ -127,7 +127,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // produces nothing (no orphan landing page with an empty diagram).
       if (files.length > 0) {
         const indexContent = renderIndexPage(ctx.loadedRoot, layout, entityNodes, templateNodes);
-        placements.push({ path: INDEX_FILENAME, fqn: "<overview>" });
+        placements.push({ path: INDEX_FILENAME, fqn: "<the auto-generated overview/index page>" });
         files.unshift({ path: INDEX_FILENAME, content: indexContent });
       }
 
