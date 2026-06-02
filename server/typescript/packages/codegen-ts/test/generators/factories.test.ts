@@ -149,8 +149,10 @@ describe("docsFile()", () => {
     expect(f!.content).toContain("# Post\n");
     expect(f!.content).toContain("**Type:** `object.entity`");
     expect(f!.content).toContain("## Storage");
-    expect(f!.content).toContain("## Validation");
-    expect(f!.content).toContain("## Generated code");
+    // Neutral Constraints replaces the old language-specific sections.
+    expect(f!.content).toContain("## Constraints");
+    expect(f!.content).not.toContain("## Generated code");
+    expect(f!.content).not.toContain("Zod");
   });
 
   test("respects user-provided filter", async () => {

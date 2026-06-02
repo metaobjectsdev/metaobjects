@@ -19,28 +19,23 @@
 // breaks, the refactor is the bug, not the fixture.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
 import { render } from "@metaobjectsdev/render";
-import type { Generator, GeneratorFactory } from "../generator.js";
+import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import { entityOutputPath } from "../import-path.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
+import { buildTemplateDocData } from "./template-doc-builder.js";
 
 export interface DocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
 }
 
-/** The names of the generators that may emit sibling files for an entity.
- *  We always list them in the "Generated code" section — adopters cross-
- *  reference their own metaobjects.config.ts to confirm which are wired in.
- *  Matches the rc.11 behavior. */
-const KNOWN_SIBLING_GENERATORS = new Set([
-  "queries-file",
-  "routes-file",
-  "routes-file-hono",
-]);
-
 const TEMPLATE_REF = "docs/entity-page.md";
+// The NEUTRAL render-contract page emitted per `template.output` node — a
+// sibling artifact, distinct from the entity page (Task 3).
+const TEMPLATE_PAGE_REF = "docs/template-page.md";
 
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
@@ -52,20 +47,47 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       const rc = ctx.renderContext;
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
-      return ctx.loadedRoot.objects().filter(ctx.matches).map((entity: MetaObject) => {
-        const path = entityOutputPath(layout, entity.package, `${entity.name}.md`);
-        const payload = buildEntityDocData(entity, {
-          dialect: rc.dialect,
-          ...(rc.columnNamingStrategy !== undefined && {
-            columnNamingStrategy: rc.columnNamingStrategy,
-          }),
-          loadedRoot: rc.loadedRoot,
-          generatorNames: KNOWN_SIBLING_GENERATORS,
+      const files: EmittedFile[] = ctx.loadedRoot
+        .objects()
+        .filter(ctx.matches)
+        .map((entity: MetaObject) => {
+          const path = entityOutputPath(layout, entity.package, `${entity.name}.md`);
+          const payload = buildEntityDocData(entity, {
+            dialect: rc.dialect,
+            ...(rc.columnNamingStrategy !== undefined && {
+              columnNamingStrategy: rc.columnNamingStrategy,
+            }),
+            loadedRoot: rc.loadedRoot,
+          });
+          let content: string;
+          try {
+            content = render({
+              ref: TEMPLATE_REF,
+              payload,
+              provider,
+              format: "markdown",
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new Error(
+              `docs-file: failed rendering '${TEMPLATE_REF}' for '${path}': ${msg}`,
+              { cause: err instanceof Error ? err : undefined },
+            );
+          }
+          return { path, content };
         });
+
+      // ALSO emit one NEUTRAL render-contract page per `template.output` node —
+      // a sibling artifact, distinct from the entity page. Raw node name → file
+      // (`<name>.md`), agreeing with the entity Used-by back-link target.
+      for (const child of ctx.loadedRoot.ownChildren()) {
+        if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
+        const path = entityOutputPath(layout, child.package, `${child.name}.md`);
+        const payload = buildTemplateDocData(child);
         let content: string;
         try {
           content = render({
-            ref: TEMPLATE_REF,
+            ref: TEMPLATE_PAGE_REF,
             payload,
             provider,
             format: "markdown",
@@ -73,12 +95,14 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(
-            `docs-file: failed rendering '${TEMPLATE_REF}' for '${path}': ${msg}`,
+            `docs-file: failed rendering '${TEMPLATE_PAGE_REF}' for '${path}': ${msg}`,
             { cause: err instanceof Error ? err : undefined },
           );
         }
-        return { path, content };
-      });
+        files.push({ path, content });
+      }
+
+      return files;
     },
   };
   if (opts?.filter) generator.filter = opts.filter;

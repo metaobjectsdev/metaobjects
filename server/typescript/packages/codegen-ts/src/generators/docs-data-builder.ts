@@ -23,21 +23,6 @@ import {
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
-  FIELD_SUBTYPE_UUID,
-  FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
-  FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_DOUBLE,
-  FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_DECIMAL,
-  FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_BOOLEAN,
-  FIELD_SUBTYPE_DATE,
-  FIELD_SUBTYPE_TIME,
-  FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_OBJECT_REF,
@@ -51,11 +36,11 @@ import {
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
   DOC_ATTR_DESCRIPTION,
+  FIELD_ATTR_DB_COLUMN_TYPE,
   stripPackage,
 } from "@metaobjectsdev/metadata";
-import { mapColumnType, type Dialect } from "../column-mapper.js";
+import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
-import { toPascalCase } from "../naming.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -65,42 +50,13 @@ import type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
+  ConstraintRow,
 } from "./docs-data.js";
 
 export interface BuildDocDataOpts {
   dialect: Dialect;
   columnNamingStrategy?: ColumnNamingStrategy;
   loadedRoot: MetaRoot;
-  /** Set of generator names present in the pipeline; drives "Generated code". */
-  generatorNames?: ReadonlySet<string>;
-}
-
-const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
-  [FIELD_SUBTYPE_STRING]: "string",
-  [FIELD_SUBTYPE_CLASS]: "string",
-  [FIELD_SUBTYPE_UUID]: "string",
-  [FIELD_SUBTYPE_INT]: "number",
-  [FIELD_SUBTYPE_SHORT]: "number",
-  [FIELD_SUBTYPE_BYTE]: "number",
-  [FIELD_SUBTYPE_LONG]: "number",
-  [FIELD_SUBTYPE_DOUBLE]: "number",
-  [FIELD_SUBTYPE_FLOAT]: "number",
-  // field.decimal is precision-exact: surfaced as a TS `string` (Drizzle pg
-  // `numeric` infers `string`). Keep the docs scalar mapping in lockstep.
-  [FIELD_SUBTYPE_DECIMAL]: "string",
-  [FIELD_SUBTYPE_CURRENCY]: "number",
-  [FIELD_SUBTYPE_BOOLEAN]: "boolean",
-  [FIELD_SUBTYPE_DATE]: "string",
-  [FIELD_SUBTYPE_TIME]: "string",
-  [FIELD_SUBTYPE_TIMESTAMP]: "string",
-};
-
-function enumTypeAliasName(entity: MetaObject, field: MetaField): string {
-  const superField = field.resolveSuper();
-  return superField !== undefined
-    ? toPascalCase(superField.name)
-    : `${entity.name}${toPascalCase(field.name)}`;
 }
 
 function isFieldRequired(field: MetaField): boolean {
@@ -108,95 +64,24 @@ function isFieldRequired(field: MetaField): boolean {
   return field.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
-function tsTypeForStorage(
-  entity: MetaObject,
-  field: MetaField,
-  pkFieldNames: ReadonlySet<string>,
-): string {
-  let base: string;
-
-  if (field.subType === FIELD_SUBTYPE_ENUM) {
-    const values = enumValues(field);
-    if (values !== undefined && values.length > 0) {
-      if (field.isArray) {
-        base = `${enumTypeAliasName(entity, field)}[]`;
-      } else {
-        base = values.map((v) => JSON.stringify(v)).join(" | ");
-      }
-    } else {
-      base = field.isArray ? "string[]" : "string";
-    }
-  } else if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
-    const refName = typeof ref === "string" && ref.length > 0 ? ref : "unknown";
-    base = field.isArray ? `${refName}[]` : refName;
-  } else {
-    const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
-    base = field.isArray ? `${scalar}[]` : scalar;
-  }
-
-  const required = pkFieldNames.has(field.name) || isFieldRequired(field);
-  return required ? base : `${base} | null`;
+/** The raw validator/limit facts for the Constraints table. Walks the field's
+ *  validators ONCE, bucketed by subtype, plus the `@maxLength` attr.
+ *  `buildConstraintRow()` consumes these — the SINGLE source of truth for the
+ *  validator emission. The emission ORDER and exact strings come from here:
+ *    regex pattern → maxLength-from-@maxLength → length-validator (min/max) →
+ *    numeric-validator (min/max). */
+interface ValidatorParts {
+  /** `@maxLength` attr value if a finite number, else undefined. */
+  maxLenAttr: number | undefined;
+  /** "pattern `...`" entries from regex validators. */
+  regexParts: string[];
+  /** "minLength: N" / "maxLength: N" entries from length validators. */
+  lengthParts: string[];
+  /** "min: N" / "max: N" entries from numeric validators. */
+  numericParts: string[];
 }
 
-function sqlColumnExpr(spec: ReturnType<typeof mapColumnType>): string {
-  const dbName = JSON.stringify(spec.dbName);
-  if (spec.fnOptions !== undefined && Object.keys(spec.fnOptions).length > 0) {
-    const parts: string[] = [];
-    for (const [k, v] of Object.entries(spec.fnOptions)) {
-      const lit = JSON.stringify(v);
-      if (Array.isArray(v)) {
-        parts.push(`${k}: ${lit} as const`);
-      } else {
-        parts.push(`${k}: ${lit}`);
-      }
-    }
-    return `${spec.fnName}(${dbName}, { ${parts.join(", ")} })`;
-  }
-  return `${spec.fnName}(${dbName})`;
-}
-
-function constraintsCell(
-  entity: MetaObject,
-  field: MetaField,
-  pkFieldNames: Set<string>,
-  fkMap: Map<string, { targetEntity: string; targetField: string }>,
-): string {
-  const parts: string[] = [];
-
-  if (pkFieldNames.has(field.name)) {
-    parts.push("primary key");
-    const primary = entity.primaryIdentity();
-    const gen = primary?.ownAttr(IDENTITY_ATTR_GENERATION);
-    if (typeof gen === "string") {
-      parts.push(`generation: \`${gen}\``);
-    }
-  } else if (isFieldRequired(field)) {
-    parts.push("required");
-  } else {
-    parts.push("optional");
-  }
-
-  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) {
-    parts.push("unique");
-  }
-
-  if (field.isArray) {
-    parts.push("JSON column");
-  }
-
-  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
-    const values = enumValues(field);
-    if (values !== undefined && values.length > 0) {
-      const list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
-      parts.push(`CHECK \`${field.column ?? field.name} IN (${list})\``);
-    }
-  }
-
-  // Walk validators once, bucket by subtype. We re-emit in the original
-  // emission order to preserve byte-identity with the docs-file-basic
-  // conformance fixture: regex pattern → maxLength-from-@maxLength →
-  // length-validator (min/max) → numeric-validator (min/max).
+function collectValidatorParts(field: MetaField): ValidatorParts {
   const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
   const regexParts: string[] = [];
   const lengthParts: string[] = [];
@@ -219,28 +104,105 @@ function constraintsCell(
       if (typeof max === "number") numericParts.push(`max: ${max}`);
     }
   }
-  parts.push(...regexParts);
-  if (typeof maxLenAttr === "number") {
-    parts.push(`maxLength: ${maxLenAttr}`);
+  return {
+    maxLenAttr: typeof maxLenAttr === "number" ? maxLenAttr : undefined,
+    regexParts,
+    lengthParts,
+    numericParts,
+  };
+}
+
+/** The NEUTRAL logical type string (no backticks): the field's logical
+ *  subtype (e.g. `string`, `enum`, `decimal`), suffixed `[]` for arrays, and
+ *  the referenced object name for `field.object`. Language-agnostic — built
+ *  from declared metadata, never re-derived into ANSI/ORM SQL. Shared by the
+ *  Constraints table (`neutralTypeCell`) and the Storage table's physical-type
+ *  fallback (`storageTypeCell`). */
+function neutralTypeStr(field: MetaField): string {
+  let base: string;
+  if (field.subType === FIELD_SUBTYPE_OBJECT) {
+    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    base = typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : "object";
+  } else {
+    base = field.subType;
   }
-  parts.push(...lengthParts, ...numericParts);
+  if (field.isArray) base = `${base}[]`;
+  return base;
+}
+
+/** Neutral logical type cell for the Constraints table — `neutralTypeStr`
+ *  wrapped in backticks. */
+function neutralTypeCell(field: MetaField): string {
+  return `\`${neutralTypeStr(field)}\``;
+}
+
+/** Neutral PHYSICAL type cell for the Storage table. Metadata-driven, no DDL
+ *  re-derivation (ADR-0020): if the field declares a `@dbColumnType` physical
+ *  override (e.g. `uuid`, `jsonb`, `timestamp_with_tz`) show it UPPERCASED;
+ *  otherwise fall back to the same neutral LOGICAL type the Constraints table
+ *  uses. Deliberately does NOT derive ANSI/ORM SQL so it can't drift vs the
+ *  migrate engine or re-introduce language-specific DDL. Wrapped in backticks. */
+function storageTypeCell(field: MetaField): string {
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  if (typeof dbColumnType === "string" && dbColumnType.length > 0) {
+    return `\`${dbColumnType.toUpperCase()}\``;
+  }
+  return `\`${neutralTypeStr(field)}\``;
+}
+
+/** Build one neutral Constraints-table row for a field. Reuses the same
+ *  per-field constraint logic as `constraintsCell()` (required-ness, maxLength,
+ *  enum CHECK-sets, validators, default, unique, references), but splits the
+ *  facts across the Required / Limits / Rules columns instead of one cell.
+ *  Renders for every field, with or without storage. */
+function buildConstraintRow(
+  entity: MetaObject,
+  field: MetaField,
+  pkFieldNames: Set<string>,
+  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+): ConstraintRow {
+  const isPk = pkFieldNames.has(field.name);
+  const required = isPk || isFieldRequired(field);
+
+  const limits: string[] = [];
+  const rules: string[] = [];
+
+  if (isPk) rules.push("primary key");
+  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
+
+  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      const list = values.map((v) => `\`${v}\``).join(", ");
+      rules.push(`one of ${list}`);
+    }
+  }
+
+  // Same validator facts as constraintsCell() (shared walk), arranged across
+  // the Limits / Rules columns instead of one cell.
+  const { maxLenAttr, regexParts, lengthParts, numericParts } = collectValidatorParts(field);
+  rules.push(...regexParts);
+  if (maxLenAttr !== undefined) limits.push(`maxLength: ${maxLenAttr}`);
+  limits.push(...lengthParts, ...numericParts);
 
   const fk = fkMap.get(field.name);
   if (fk !== undefined) {
-    parts.push(`references \`${fk.targetEntity}.${fk.targetField}\``);
+    rules.push(`references \`${fk.targetEntity}.${fk.targetField}\``);
   }
 
   const def = field.ownAttr(FIELD_ATTR_DEFAULT);
-  if (def !== undefined) {
-    parts.push(`default: \`${String(def)}\``);
-  }
+  if (def !== undefined) rules.push(`default: \`${String(def)}\``);
 
   const sup = field.resolveSuper();
-  if (sup !== undefined) {
-    parts.push(`extends \`${sup.name}\``);
-  }
+  if (sup !== undefined) rules.push(`extends \`${sup.name}\``);
 
-  return parts.join(", ");
+  return {
+    field: `\`${field.name}\``,
+    required: required ? "yes" : "",
+    type: neutralTypeCell(field),
+    limits: limits.join(", "),
+    rules: rules.join(", "),
+  };
 }
 
 function buildFkMap(
@@ -325,28 +287,46 @@ export function buildEntityDocData(
   entity: MetaObject,
   opts: BuildDocDataOpts,
 ): EntityDocData {
-  const strategy = opts.columnNamingStrategy ?? "snake_case";
   const root = opts.loadedRoot;
   const primary = entity.primaryIdentity();
   const pkFields = primary?.fields ?? [];
   const pkFieldNames = new Set<string>(pkFields);
   const fkMap = buildFkMap(entity, root);
 
-  // ---- Storage rows
+  // ---- Storage rows — NEUTRAL physical persistence MAPPING (ADR-0020): the
+  // physical column name, a neutral physical type (declared `@dbColumnType`
+  // override else the logical type), nullability, and the key role. NO
+  // TypeScript type, NO ORM DDL, NO ANSI re-derivation — declared metadata
+  // facts only. The value-add over the Constraints table is the field→column
+  // mapping + physical-type override + key role.
   const storageRows: StorageFieldDoc[] = entity.fields().map((field) => {
-    const spec = mapColumnType(field, opts.dialect, strategy);
-    const tsType = tsTypeForStorage(entity, field, pkFieldNames);
-    const tsTypeCell = tsType.split("|").map((s) => s.trim()).join(" \\| ");
-    const sqlExpr = sqlColumnExpr(spec);
-    const cons = constraintsCell(entity, field, pkFieldNames, fkMap);
-    const tsTypeCellStr = `\`${tsTypeCell}\``;
-    const sqlExprCellStr = `\`${sqlExpr}\``;
+    const isPk = pkFieldNames.has(field.name);
+    // Physical column name: the field's `@column` override if set, else the
+    // field name. (The Storage section shows the RAW declared mapping; column
+    // naming-strategy folding stays a codegen concern, not a docs fact.)
+    const columnName = field.column ?? field.name;
+    const columnCell = `\`${columnName}\``;
+    const typeCell = storageTypeCell(field);
+    // Nullable iff not required and not the PK (matches the Constraints table's
+    // required-ness rule).
+    const nullable = !(isPk || isFieldRequired(field));
+    const nullableCell = nullable ? "yes" : "no";
+
+    let keyCell = "";
+    if (isPk) {
+      keyCell = "primary key";
+    } else {
+      const fk = fkMap.get(field.name);
+      if (fk !== undefined) keyCell = `foreign key → \`${fk.targetEntity}\``;
+    }
+
     return {
       name: field.name,
-      tsTypeCell: tsTypeCellStr,
-      sqlExprCell: sqlExprCellStr,
-      constraintsCell: cons,
-      rowLine: `| \`${field.name}\` | ${tsTypeCellStr} | ${sqlExprCellStr} | ${cons} |`,
+      columnCell,
+      typeCell,
+      nullableCell,
+      keyCell,
+      rowLine: `| ${columnCell} | ${typeCell} | ${nullableCell} | ${keyCell} |`,
     };
   });
 
@@ -365,13 +345,14 @@ export function buildEntityDocData(
     ? rels.map((r) => ({ bullet: relationshipBullet(r) }))
     : undefined;
 
-  // ---- Validation
-  const lower = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
-  const validation = {
-    insertSchema: `${entity.name}InsertSchema`,
-    updateSchema: `${entity.name}UpdateSchema`,
-    entityFile: `${entity.name}.ts`,
-    lower,
+  // ---- Constraints (NEUTRAL — built from the object's OWN field metadata, so
+  // it renders for every object including value objects with no storage).
+  const constraintRows: ConstraintRow[] = entity
+    .fields()
+    .map((field) => buildConstraintRow(entity, field, pkFieldNames, fkMap));
+  const constraints = {
+    hasConstraints: constraintRows.length > 0,
+    rows: constraintRows,
   };
 
   // ---- UsedBy
@@ -381,38 +362,14 @@ export function buildEntityDocData(
     const ref = child.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof ref !== "string") continue;
     if (stripPackage(ref) !== entity.name) continue;
+    // Link to the template's own doc page. Task 3 emits the template page as
+    // `<TemplateName>.md` using the RAW node name (same convention as entity
+    // pages), so the href MUST use the raw name to resolve.
     usedByMatches.push({
-      bullet: `\`template.${child.subType} ${child.name}\` — uses \`${entity.name}\` as \`@payloadRef\``,
+      bullet: `[\`template.${child.subType} ${child.name}\`](./${child.name}.md) — uses \`${entity.name}\` as \`@payloadRef\``,
     });
   }
   const usedBy = usedByMatches.length > 0 ? usedByMatches : undefined;
-
-  // ---- Generated
-  const gens = opts.generatorNames ?? new Set<string>();
-  const generated: GeneratedFileDoc[] = [];
-  generated.push({
-    filename: `${entity.name}.ts`,
-    description: "Drizzle table, Zod schemas, type aliases, enum literal unions.",
-  });
-  if (gens.has("queries-file") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.queries.ts`,
-      description:
-        "typed CRUD helpers (find / list / create / update / delete; takes `db` as first param per ADR-0008).",
-    });
-  }
-  if (gens.has("routes-file") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.routes.ts`,
-      description: `Fastify CRUD-5 route registration (\`register${entity.name}Routes\`).`,
-    });
-  }
-  if (gens.has("routes-file-hono") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.routes.hono.ts`,
-      description: `Hono CRUD-5 route registration (\`register${entity.name}Routes\`).`,
-    });
-  }
 
   // Preamble header — built up exactly as the legacy emitter did.
   const preambleLines: string[] = [];
@@ -439,8 +396,7 @@ export function buildEntityDocData(
       type: typeStr,
     },
     preambleHeader,
-    validation,
-    generated,
+    constraints,
   };
 
   if (desc !== undefined) data.entity.description = desc;
@@ -452,7 +408,7 @@ export function buildEntityDocData(
 
   if (hasStorage) {
     data.storage = {
-      tableHeader: "| Field | TypeScript type | SQL column | Constraints |\n|---|---|---|---|",
+      tableHeader: "| Column | Type | Nullable | Key |\n|---|---|---|---|",
       rows: storageRows,
     };
     data.hasStorage = true;
