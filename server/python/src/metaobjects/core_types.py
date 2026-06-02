@@ -74,11 +74,12 @@ from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.relationship.relationship_constants import (
     REFERENTIAL_ACTIONS,
     RELATIONSHIP_ATTR_CARDINALITY,
-    RELATIONSHIP_ATTR_JOIN_ENTITY,
-    RELATIONSHIP_ATTR_JOIN_FIELDS,
     RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_ON_DELETE,
     RELATIONSHIP_ATTR_ON_UPDATE,
+    RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+    RELATIONSHIP_ATTR_SYMMETRIC,
+    RELATIONSHIP_ATTR_THROUGH,
     RELATIONSHIP_SUBTYPES,
 )
 from .meta.meta_data import MetaData
@@ -471,12 +472,13 @@ _RELATIONSHIP_ATTRS = [
     # legal-value check is a downstream concern, matching TS.
     AttrSchema(name=RELATIONSHIP_ATTR_CARDINALITY, value_type=ATTR_SUBTYPE_STRING, required=False),
     AttrSchema(name=RELATIONSHIP_ATTR_OBJECT_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=RELATIONSHIP_ATTR_JOIN_ENTITY, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(
-        name=RELATIONSHIP_ATTR_JOIN_FIELDS,
-        value_type=ATTR_SUBTYPE_STRINGARRAY,
-        required=False,
-    ),
+    # FR-017 slim M:N vocabulary — @through (junction entity), @sourceRefField
+    # (directed-self-join disambiguator), @symmetric (undirected-self-join flag).
+    # The pre-FR-017 @joinEntity/@joinFields attrs are REMOVED (FK fields derive
+    # from the junction's two identity.reference children).
+    AttrSchema(name=RELATIONSHIP_ATTR_THROUGH, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=RELATIONSHIP_ATTR_SOURCE_REF_FIELD, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=RELATIONSHIP_ATTR_SYMMETRIC, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
     AttrSchema(
         name=RELATIONSHIP_ATTR_ON_DELETE,
         value_type=ATTR_SUBTYPE_STRING,

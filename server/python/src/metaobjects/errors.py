@@ -36,6 +36,10 @@ class ErrorCode(str, Enum):
     # declared attr valueType (ADR-0006 D2). Authors should quote the value.
     ERR_YAML_COERCION = "ERR_YAML_COERCION"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
+    # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
+    # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
+    # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.
+    ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
     # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).
     ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR"

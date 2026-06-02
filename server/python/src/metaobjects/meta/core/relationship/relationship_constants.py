@@ -14,8 +14,22 @@ RELATIONSHIP_SUBTYPES = (
 
 RELATIONSHIP_ATTR_OBJECT_REF = "objectRef"
 RELATIONSHIP_ATTR_CARDINALITY = "cardinality"
-RELATIONSHIP_ATTR_JOIN_ENTITY = "joinEntity"
-RELATIONSHIP_ATTR_JOIN_FIELDS = "joinFields"
+# M:N junction (through) entity — a third entity declaring two identity.reference
+# children, one per FK side. The relationship's FK fields are DERIVED from those
+# references (the identity.reference SSOT for FK direction), never restated.
+RELATIONSHIP_ATTR_THROUGH = "through"
+# M:N directed-self-join disambiguator — names the source-side FK field on the
+# junction (the other reference is the target side). Mutually exclusive with
+# @symmetric.
+RELATIONSHIP_ATTR_SOURCE_REF_FIELD = "sourceRefField"
+# M:N undirected-self-join flag — union-on-read; valid only when @objectRef ==
+# the declaring entity. Mutually exclusive with @sourceRefField.
+RELATIONSHIP_ATTR_SYMMETRIC = "symmetric"
+
+# Cardinality values (for @cardinality). Open string at the metamodel level; the
+# CARDINALITY_MANY constant gates M:N validation/derivation.
+CARDINALITY_ONE = "one"
+CARDINALITY_MANY = "many"
 
 # --- Referential action attrs (@onDelete / @onUpdate) ----------------------
 

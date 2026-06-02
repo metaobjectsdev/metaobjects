@@ -67,7 +67,16 @@ from ..meta.persistence.origin.origin_constants import (
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
-from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
+from ..meta.core.relationship.relationship_constants import (
+    CARDINALITY_MANY,
+    RELATIONSHIP_ATTR_CARDINALITY,
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+    RELATIONSHIP_ATTR_SYMMETRIC,
+    RELATIONSHIP_ATTR_THROUGH,
+)
+from ..meta.core.identity.identity_constants import IDENTITY_SUBTYPE_REFERENCE
+from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..source import resolved_source
@@ -101,6 +110,7 @@ def run_validations(
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
+    _validate_relationships(root, errors)
     _validate_one_primary_source(root, errors)
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
@@ -946,6 +956,162 @@ def _validate_origin_paths(
                     )
                 else:
                     _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+
+
+# ---------------------------------------------------------------------------
+# Pass: M:N relationship validation (FR-017 slim vocabulary)
+# ---------------------------------------------------------------------------
+# Deferred-resolution validation (runs after all files load + super-resolution,
+# like origin paths), enforcing the cross-port M:N contract:
+#
+#   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+#       entity). Otherwise ERR_BAD_ATTR_VALUE.
+#   (b) @symmetric and @sourceRefField are mutually exclusive → ERR_BAD_ATTR_VALUE.
+#   (c) When @through is present: the named entity must exist and declare exactly
+#       two identity.reference children; @sourceRefField (if present) must match
+#       one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
+#   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+#       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+#
+# Own-relationships only: a relationship is validated on the entity that declares
+# it (matching the own-attrs policy of the other passes). Mirrors the TS
+# reference (validation-passes.ts validateRelationships).
+
+
+def _strip_package(name: str) -> str:
+    idx = name.rfind(PACKAGE_SEP)
+    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
+
+
+def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
+    """FK field names declared by an entity's identity.reference children."""
+    out: list[str] = []
+    for child in junction.own_children():
+        if child.type != TYPE_IDENTITY or child.sub_type != IDENTITY_SUBTYPE_REFERENCE:
+            continue
+        fields = child.attr(IDENTITY_ATTR_FIELDS)
+        if isinstance(fields, str):
+            first = fields.split(",")[0].strip()
+            if first:
+                out.append(first)
+        elif isinstance(fields, (list, tuple)) and fields and isinstance(fields[0], str):
+            out.append(fields[0])
+    return out
+
+
+def _count_junction_references(junction: MetaData) -> int:
+    return sum(
+        1
+        for c in junction.own_children()
+        if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE
+    )
+
+
+def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
+    object_index = _build_object_index(root)
+
+    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
+        for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
+            through = rel.attr(RELATIONSHIP_ATTR_THROUGH)
+            source_ref_field = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+            symmetric = rel.attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
+            cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY)
+            object_ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)
+
+            has_through = isinstance(through, str) and through != ""
+            has_source_ref_field = (
+                isinstance(source_ref_field, str) and source_ref_field != ""
+            )
+            is_many = cardinality == CARDINALITY_MANY
+            is_m2m = has_through and is_many
+
+            # Rule (d): M:N-only attrs on a non-M:N relationship.
+            if not is_m2m:
+                if has_through:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_THROUGH} but is not a M:N relationship '
+                        f'(requires @{RELATIONSHIP_ATTR_CARDINALITY}: "{CARDINALITY_MANY}").',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                if has_source_ref_field:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                if symmetric:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                continue
+
+            # Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+            if symmetric and has_source_ref_field:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" sets both '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} and '
+                    f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.',
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=rel.source,
+                ))
+
+            # Rule (a): @symmetric valid only on a self-join (@objectRef == declaring entity).
+            is_self_join = (
+                isinstance(object_ref, str) and _strip_package(object_ref) == obj.name
+            )
+            if symmetric and not is_self_join:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" sets '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} '
+                    f'"{object_ref}" is not the declaring entity "{obj.name}"; '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.',
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=rel.source,
+                ))
+
+            # Rule (c): @through must name an entity declaring exactly two
+            # identity.reference children.
+            junction = object_index.get(_strip_package(through))  # type: ignore[arg-type]
+            if junction is None:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" '
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" does not resolve to an entity.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=resolved_source(
+                        rel.source, f"{obj.fqn()}::{rel.name}", str(through)
+                    ),
+                ))
+                continue
+            ref_count = _count_junction_references(junction)
+            if ref_count != 2:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" '
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" must declare exactly two '
+                    f'identity.reference children (one per FK side); found {ref_count}.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=rel.source,
+                ))
+                continue
+            # @sourceRefField (if present) must match one of the junction's
+            # reference FK fields.
+            if has_source_ref_field:
+                fk_fields = _junction_reference_fk_fields(junction)
+                if source_ref_field not in fk_fields:
+                    available = ", ".join(fk_fields) or "(none)"
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" '
+                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "{source_ref_field}" '
+                        f'does not match any identity.reference FK field on junction '
+                        f'"{through}". Available: {available}.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
 
 
 # ---------------------------------------------------------------------------
