@@ -148,16 +148,11 @@ public sealed class RenderHelperGenerator : IGenerator
             sb.AppendLine("        new global::MetaObjects.Render.EmailDocument(");
             sb.AppendLine($"            global::MetaObjects.Render.Renderer.Render(new global::MetaObjects.Render.RenderRequest {{ Ref = {Quote(subjectRef)}, Payload = payload, Provider = provider, Format = \"text\", Verify = {ft} }}),");
             sb.Append($"            global::MetaObjects.Render.Renderer.Render(new global::MetaObjects.Render.RenderRequest {{ Ref = {Quote(htmlBodyRef)}, Payload = payload, Provider = provider, Format = \"html\", Verify = {ft} }})");
+            sb.AppendLine(",");
             if (textBodyRef is not null)
-            {
-                sb.AppendLine(",");
                 sb.AppendLine($"            global::MetaObjects.Render.Renderer.Render(new global::MetaObjects.Render.RenderRequest {{ Ref = {Quote(textBodyRef)}, Payload = payload, Provider = provider, Format = \"text\", Verify = {ft} }}));");
-            }
             else
-            {
-                sb.AppendLine(",");
                 sb.AppendLine("            null);");
-            }
         }
         else
         {
