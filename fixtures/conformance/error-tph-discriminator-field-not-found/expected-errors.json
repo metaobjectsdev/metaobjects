@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DISCRIMINATOR_FIELD_NOT_FOUND",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+      }
+    }
+  ],
+  "warnings": []
+}

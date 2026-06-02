@@ -29,6 +29,7 @@ from .error_source import (
     ResolvedSource,
     WARN_DUPLICATE_DECLARATION,
     WARN_LEGACY,
+    WARN_LEGACY_PHYSICAL_NAME_ALIAS,
     YamlPosition,
     YamlSource,
     resolved_source,
@@ -63,6 +64,7 @@ __all__ = [
     # FR5c — warning code constants
     "WARN_DUPLICATE_DECLARATION",
     "WARN_LEGACY",
+    "WARN_LEGACY_PHYSICAL_NAME_ALIAS",
     # JSONPath
     "JsonPathBuilder",
     "JsonPath",

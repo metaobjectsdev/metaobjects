@@ -1,0 +1,34 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomePage",
+          "@kind": "document",
+          "@payloadRef": "Welcome",
+          "@textRef": "pages/welcome",
+          "@format": "html"
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomeEmail",
+          "@kind": "email",
+          "@payloadRef": "Welcome",
+          "@subjectRef": "emails/welcome.subject",
+          "@htmlBodyRef": "emails/welcome.html",
+          "@textBodyRef": "emails/welcome.txt"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Customer",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Item",
+          "children": [
+            { "field.string": { "name": "sku", "@required": true } },
+            { "field.int": { "name": "qty", "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Order",
+          "children": [
+            { "field.object": { "name": "customer", "@objectRef": "Customer" } },
+            { "field.object": { "name": "items", "isArray": true, "@objectRef": "Item" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "OrderEmail",
+          "@kind": "email",
+          "@payloadRef": "Order",
+          "@subjectRef": "emails/order.subject",
+          "@htmlBodyRef": "emails/order.html",
+          "@textBodyRef": "emails/order.txt"
+        }
+      }
+    ]
+  }
+}

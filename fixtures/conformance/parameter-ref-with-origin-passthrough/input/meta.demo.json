@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            { "source.rdb": { "@table": "cases" } },
+            { "field.int": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "PhaseSummaryArgs",
+          "children": [
+            {
+              "field.int": {
+                "name": "caseId",
+                "@required": true,
+                "children": [
+                  { "origin.passthrough": { "@from": "Case.id" } }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PhaseSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@proc": "fn_get_phase_summary",
+                "@parameterRef": "PhaseSummaryArgs"
+              }
+            },
+            { "field.long": { "name": "phaseId" } },
+            { "identity.primary": { "@fields": "phaseId" } }
+          ]
+        }
+      }
+    ]
+  }
+}

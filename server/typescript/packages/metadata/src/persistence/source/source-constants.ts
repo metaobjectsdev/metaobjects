@@ -57,6 +57,13 @@ export const SOURCE_ATTR_KIND = "kind";
 /** Multi-source role; exactly one primary per object. */
 export const SOURCE_ATTR_ROLE = "role";
 
+/** FR-015: reference to an object.value describing the input shape of a callable
+ *  source. Required for @kind: "storedProc" | "tableFunction" that take args;
+ *  ignored for non-callable kinds. Wire-format symmetric with template.@payloadRef
+ *  (FR-004) — the typed-input pattern reuses object.value rather than minting a
+ *  new parameter.* node type. */
+export const SOURCE_ATTR_PARAMETER_REF = "parameterRef";
+
 export const SOURCE_KIND_TABLE              = "table";
 export const SOURCE_KIND_VIEW               = "view";
 export const SOURCE_KIND_MATERIALIZED_VIEW  = "materializedView";

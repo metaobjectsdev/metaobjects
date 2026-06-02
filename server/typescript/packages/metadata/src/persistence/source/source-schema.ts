@@ -12,6 +12,7 @@ import {
   SOURCE_ATTR_KIND,
   SOURCE_ATTR_ROLE,
   SOURCE_ATTR_SCHEMA,
+  SOURCE_ATTR_PARAMETER_REF,
   SOURCE_RDB_KINDS,
   SOURCE_ROLES,
 } from "./source-constants.js";
@@ -96,6 +97,24 @@ const schemaSchema: AttrSchema = {
     "Optional database schema name (e.g. 'catalog', 'public'). Postgres defaults to 'public'; SQLite rejects any non-default value.",
 };
 
+/** `@parameterRef` — name or FQN of an object.value describing the input shape
+ *  of a callable source (FR-015). Required when @kind is "storedProc" or
+ *  "tableFunction" and the proc takes args; ignored for non-callable kinds.
+ *  Mirrors template.@payloadRef from FR-004. */
+const parameterRefSchema: AttrSchema = {
+  name: SOURCE_ATTR_PARAMETER_REF,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  description:
+    "FR-015: name or FQN of an object.value describing the input shape of " +
+    "this source's callable interface. Permitted on @kind: \"storedProc\" / " +
+    "\"tableFunction\"; rejected on non-callable kinds (table / view / " +
+    "materializedView). Field children of the referenced object.value become " +
+    "the call-site parameter list in declaration order. Symmetric with " +
+    "template.@payloadRef in FR-004 — the typed-input pattern reuses " +
+    "object.value rather than minting a new parameter.* node type.",
+};
+
 /** All attr schemas for source.rdb, to be registered via registry.extend. */
 export const sourceRdbAttrs: AttrSchema[] = [
   tableSchema,
@@ -106,4 +125,5 @@ export const sourceRdbAttrs: AttrSchema[] = [
   kindSchema,
   roleSchema,
   schemaSchema,
+  parameterRefSchema,
 ];

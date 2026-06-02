@@ -151,4 +151,50 @@ describe("rename-heuristic — table", () => {
     });
     expect(r.changes.find((c) => c.kind === "rename-column")).toBeUndefined();
   });
+
+  // Build a table whose columns are all text + nullable, so the column-set
+  // signature (name|kind|nullable) is driven purely by the column NAMES — which
+  // lets us dial the Jaccard overlap precisely for the threshold boundary.
+  function tableNamed(name: string, colNames: string[]) {
+    return {
+      name,
+      columns: colNames.map((n) => ({ name: n, sqlType: { kind: "text" as const }, nullable: true })),
+      indexes: [], foreignKeys: [], primaryKey: [], checks: [],
+    };
+  }
+
+  test("Jaccard overlap == 0.8 (boundary, inclusive) → rename candidate", async () => {
+    // drop posts {a,b,c,d} vs create articles {a,b,c,d,e}: |∩|=4, |∪|=5 → 0.8.
+    const expected = { tables: [tableNamed("articles", ["a", "b", "c", "d", "e"])], views: [] };
+    const actual = { tables: [tableNamed("posts", ["a", "b", "c", "d"])], views: [] };
+    const calls: AmbiguousChange[] = [];
+    const r = await diff({
+      expected, actual,
+      onAmbiguous: async (q) => { calls.push(q); return "rename"; },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ kind: "possible-table-rename", columnOverlap: 0.8 });
+    expect(r.changes.find((c) => c.kind === "rename-table")).toMatchObject({ from: "posts", to: "articles" });
+  });
+
+  test("Jaccard overlap just below 0.8 → NOT a candidate (no callback)", async () => {
+    // drop posts {a,b,c} vs create articles {a,b,c,d}: |∩|=3, |∪|=4 → 0.75 < 0.8.
+    const expected = { tables: [tableNamed("articles", ["a", "b", "c", "d"])], views: [] };
+    const actual = { tables: [tableNamed("posts", ["a", "b", "c"])], views: [] };
+    const calls: AmbiguousChange[] = [];
+    await diff({
+      expected, actual, allow: { dropTable: true },
+      onAmbiguous: async (q) => { calls.push(q); return "rename"; },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  test("table candidate with 'abort' resolution throws", async () => {
+    const expected = { tables: [table("articles")], views: [] };
+    const actual = { tables: [table("posts")], views: [] };
+    await expect(diff({
+      expected, actual,
+      onAmbiguous: async () => "abort",
+    })).rejects.toThrow(/possible rename posts → articles/);
+  });
 });

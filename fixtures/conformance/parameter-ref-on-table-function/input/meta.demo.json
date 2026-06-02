@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "ListArgs",
+          "children": [
+            { "field.int": { "name": "limit", "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Listing",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "tableFunction",
+                "@function": "fn_listing",
+                "@parameterRef": "ListArgs"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

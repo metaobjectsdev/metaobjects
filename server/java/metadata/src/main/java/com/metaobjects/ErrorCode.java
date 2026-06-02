@@ -134,6 +134,59 @@ public enum ErrorCode {
     ERR_SOURCE_MULTIPLE_PRIMARY,
 
     /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
+     * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
+     * {@code @function}) that does not match its {@code @kind}. The legacy
+     * {@code @table}-for-non-table case warns rather than errors.
+     */
+    ERR_PHYSICAL_NAME_KIND_MISMATCH,
+
+    /**
+     * FR-016 / ADR-0018: a {@code source.rdb} declares two or more kind-aware
+     * physical-name aliases at once (e.g. both {@code @table} and {@code @view}).
+     * Exactly one is permitted.
+     */
+    ERR_PHYSICAL_NAME_MULTIPLE,
+
+    /**
+     * FR-013: a field with {@code @readOnly: true} is the target of an
+     * {@code identity.primary} with {@code @generation: "assigned"}. The
+     * application has no path to populate the identity value.
+     */
+    ERR_READONLY_ASSIGNED_PRIMARY,
+
+    /**
+     * FR-013: a concrete entity declares {@code @readOnly: false} on a field
+     * whose extends-chain parent declares {@code @readOnly: true}. Read-only-ness
+     * can only be upgraded, never downgraded.
+     */
+    ERR_READONLY_DOWNGRADE,
+
+    /** FR-015: source.rdb @parameterRef names an object that does not exist. */
+    ERR_PARAMETER_REF_UNRESOLVED,
+
+    /** FR-015: source.rdb @parameterRef references an object.entity (not object.value). */
+    ERR_PARAMETER_REF_NOT_VALUE_OBJECT,
+
+    /** FR-015: source.rdb @parameterRef set on a non-callable kind (table/view/materializedView). */
+    ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
+
+    /** FR-015: a parameter field's origin.passthrough @from references a field with a mismatched subtype. */
+    ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+
+    /** FR-014: object.entity @discriminator names a field that does not exist on the entity. */
+    ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
+
+    /** FR-014: two subtypes of the same root claim the same @discriminatorValue. */
+    ERR_DISCRIMINATOR_VALUE_DUPLICATE,
+
+    /** FR-014: a concrete subtype of a @discriminator-bearing root is missing @discriminatorValue. */
+    ERR_DISCRIMINATOR_VALUE_MISSING,
+
+    /** FR-014: @discriminatorValue is not a member of an enum discriminator's @values, or fails the field's coercion. */
+    ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+
+    /**
      * Two contributing files set the same {@code @attr} on the same node to
      * different non-empty values during overlay merge (FR5c). Envelope is
      * {@code format: "merged"} with both contributors listed.

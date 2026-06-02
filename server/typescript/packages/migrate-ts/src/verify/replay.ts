@@ -35,7 +35,7 @@ export async function verifyReplay(args: VerifyReplayArgs): Promise<VerifyReplay
     ...introspected,
     tables: introspected.tables.filter((t) => t.name !== MIGRATIONS_TABLE),
   };
-  const classification = await driftAgainstSnapshot(args.snapshot, actual);
+  const classification = await driftAgainstSnapshot(args.snapshot, actual, args.dialect);
   return {
     ...classification,
     ok: classification.drift.length === 0 && classification.unmanaged.length === 0,

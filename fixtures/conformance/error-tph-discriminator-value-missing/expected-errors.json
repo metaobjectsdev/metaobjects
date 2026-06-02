@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DISCRIMINATOR_VALUE_MISSING",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity']"
+      }
+    }
+  ],
+  "warnings": []
+}

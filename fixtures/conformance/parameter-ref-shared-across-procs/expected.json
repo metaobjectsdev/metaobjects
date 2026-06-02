@@ -1,0 +1,76 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "PagedArgs",
+          "children": [
+            {
+              "field.int": {
+                "name": "page"
+              }
+            },
+            {
+              "field.int": {
+                "name": "size"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ProcA",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@parameterRef": "PagedArgs",
+                "@proc": "fn_a"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ProcB",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@parameterRef": "PagedArgs",
+                "@proc": "fn_b"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

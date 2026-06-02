@@ -20,7 +20,9 @@ import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
+import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
 import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
+import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
@@ -456,6 +458,13 @@ export class MetaDataLoader {
       const readOnlyResult = validateFieldReadOnly(root);
       errors.push(...readOnlyResult.errors);
       envelopeWarnings.push(...readOnlyResult.warnings);
+
+      // FR-015 — source.rdb @parameterRef typed-input validation.
+      errors.push(...validateSourceParameterRef(root));
+
+      // FR-014 — TPH discriminator (@discriminator / @discriminatorValue)
+      // cross-attribute validation.
+      errors.push(...validateDiscriminator(root));
 
       // Eleventh pass: per-type @default coercibility — a field's @default value
       // must coerce to the field's type (int/long → integer, double/float/decimal →

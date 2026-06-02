@@ -64,6 +64,44 @@ public class TemplateValidationTest extends SharedRegistryTestBase {
         "      \"@textRef\": \"x/y\", \"@format\": \"yaml\" } }" +
         "] } }";
 
+    // ---- @kind (document|email) + email part-refs (Task 1) -----------------
+
+    private static final String PAYLOAD_VO =
+        "  { \"object.value\": { \"name\": \"P\", \"children\": [" +
+        "    { \"field.string\": { \"name\": \"x\" } }" +
+        "  ] } },";
+
+    private static final String EMAIL_OK =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        PAYLOAD_VO +
+        "  { \"template.output\": { \"name\": \"Welcome\", \"@payloadRef\": \"P\"," +
+        "      \"@kind\": \"email\", \"@format\": \"html\"," +
+        "      \"@subjectRef\": \"email/welcome-subject\"," +
+        "      \"@htmlBodyRef\": \"email/welcome-html\" } }" +
+        "] } }";
+
+    private static final String EMAIL_MISSING_SUBJECT =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        PAYLOAD_VO +
+        "  { \"template.output\": { \"name\": \"Welcome\", \"@payloadRef\": \"P\"," +
+        "      \"@kind\": \"email\"," +
+        "      \"@htmlBodyRef\": \"email/welcome-html\" } }" +
+        "] } }";
+
+    private static final String DOCUMENT_MISSING_TEXTREF =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        PAYLOAD_VO +
+        "  { \"template.output\": { \"name\": \"Report\", \"@payloadRef\": \"P\"," +
+        "      \"@format\": \"html\" } }" +
+        "] } }";
+
+    private static final String UNKNOWN_KIND_VALUE =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        PAYLOAD_VO +
+        "  { \"template.output\": { \"name\": \"T\", \"@payloadRef\": \"P\"," +
+        "      \"@textRef\": \"x/y\", \"@kind\": \"carrier-pigeon\" } }" +
+        "] } }";
+
     // ---- helpers -----------------------------------------------------------
 
     private MetaDataLoader newTestLoader() {
@@ -101,6 +139,45 @@ public class TemplateValidationTest extends SharedRegistryTestBase {
         assertEquals(
             ErrorCode.ERR_INVALID_TEMPLATE,
             loadAndExpectError(REQUIRED_SLOT_MISSING, "required-slot-missing.json"));
+    }
+
+    @Test
+    public void emailWithSubjectAndHtmlBodyLoadsOk() {
+        // @kind=email with both @subjectRef and @htmlBodyRef present → no error.
+        newTestLoader().load(List.of(new InMemoryStringSource(EMAIL_OK, "email-ok.json")));
+    }
+
+    @Test
+    public void emailMissingSubjectRefRaisesInvalidTemplate() {
+        assertEquals(
+            ErrorCode.ERR_INVALID_TEMPLATE,
+            loadAndExpectError(EMAIL_MISSING_SUBJECT, "email-missing-subject.json"));
+    }
+
+    @Test
+    public void documentMissingTextRefRaisesInvalidTemplate() {
+        // @kind absent ⇒ document ⇒ @textRef required.
+        assertEquals(
+            ErrorCode.ERR_INVALID_TEMPLATE,
+            loadAndExpectError(DOCUMENT_MISSING_TEXTREF, "document-missing-textref.json"));
+    }
+
+    @Test
+    public void rejectsUnknownKindValue() {
+        // @kind is a closed-set enum (document|email); an unknown value must be rejected.
+        try {
+            newTestLoader().load(List.of(new InMemoryStringSource(
+                UNKNOWN_KIND_VALUE, "unknown-kind-value.json")));
+            fail("Expected MetaDataException for unknown @kind value 'carrier-pigeon'");
+        } catch (MetaDataException e) {
+            boolean codeMatches = e.getCode()
+                .map(c -> c == ErrorCode.ERR_BAD_ATTR_VALUE)
+                .orElse(false);
+            boolean messageMatches = e.getMessage() != null
+                && e.getMessage().contains("ERR_BAD_ATTR_VALUE");
+            assertTrue("Exception must signal ERR_BAD_ATTR_VALUE (via code or message): "
+                + e.getMessage(), codeMatches || messageMatches);
+        }
     }
 
     @Test

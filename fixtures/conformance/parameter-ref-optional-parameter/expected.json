@@ -1,0 +1,56 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "SearchArgs",
+          "children": [
+            {
+              "field.string": {
+                "name": "query",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "limit"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Search",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@parameterRef": "SearchArgs",
+                "@proc": "fn_search"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

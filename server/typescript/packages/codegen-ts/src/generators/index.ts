@@ -1,5 +1,6 @@
 export { entityFile, type EntityFileOpts } from "./entity-file.js";
 export { queriesFile, type QueriesFileOpts } from "./queries-file.js";
+export { callableFile, type CallableFileOpts } from "./callable-file.js";
 export { routesFile, type RoutesFileOpts } from "./routes-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
 export { barrel, type BarrelOpts } from "./barrel.js";
@@ -8,6 +9,7 @@ export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";
 export { outputPrompt, type OutputPromptOpts } from "./output-prompt-file.js";
+export { renderHelper, type RenderHelperOpts } from "./render-helper-file.js";
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
 export {
   templateGenerator,

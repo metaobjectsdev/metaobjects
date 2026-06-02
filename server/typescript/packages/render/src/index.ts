@@ -56,3 +56,6 @@ export {
 } from "./prompt/prompt-overrides.js";
 export type { OutputFormatSpec } from "./prompt/output-format-spec.js";
 export type { PromptField } from "./prompt/prompt-field.js";
+
+// template.output render-helper result shape (shared per port).
+export type { EmailDocument } from "./email-document.js";

@@ -195,11 +195,14 @@ class ObjectManager:
         return e
 
     def _table_name(self, entity: MetaObject) -> str:
+        # FR-016 / ADR-0018 — physical_name implements the four-step rule
+        # (kind-matching alias → legacy @table → source.name → entity-name
+        # fallback), so this just delegates to the primary source.
         for c in entity.own_children():
             if isinstance(c, MetaSource) and c.role() == sc.SOURCE_ROLE_PRIMARY:
-                tn = c.table_name()
-                if tn:
-                    return tn
+                pn = c.physical_name()
+                if pn:
+                    return pn
         return entity.name
 
     def _primary_pk_field(self, entity: MetaObject) -> str:

@@ -36,6 +36,32 @@ public final class TemplateConstants {
     public static final String ATTR_SINCE = "since";
     public static final String ATTR_REQUIRED_TAGS = "requiredTags";
 
+    // --- @kind + email part-refs (template.output only) ---
+    //
+    // A template.output is either a plain document (renders @textRef in @format →
+    // one string) or an email (renders subject + html + optional text → a
+    // structured EmailDocument). @kind is a closed enum; the email part-refs are
+    // 2-layer logical (group/source) textRefs resolved by a provider at render
+    // time. Cross-field rules are enforced in ValidationPhase#validateTemplates:
+    //   - @kind="email"            → require @subjectRef AND @htmlBodyRef (textRef unused; @textBodyRef optional)
+    //   - @kind="document"/absent  → require @textRef
+    // Must match TS (packages/metadata/src/template/) exactly (Tier-1 invariant).
+    public static final String ATTR_KIND = "kind";
+    public static final String KIND_DOCUMENT = "document";
+    public static final String KIND_EMAIL = "email";
+    public static final String KIND_DEFAULT = KIND_DOCUMENT;
+
+    /**
+     * Closed set of valid {@code @kind} values (template.output). Enforced by
+     * {@code ValidationPhase#validateTemplates} in the same post-load pass that
+     * enforces {@code @format} / {@code @promptStyle}.
+     */
+    public static final Set<String> ALLOWED_KINDS = Set.of(KIND_DOCUMENT, KIND_EMAIL);
+
+    public static final String ATTR_SUBJECT_REF = "subjectRef";
+    public static final String ATTR_HTML_BODY_REF = "htmlBodyRef";
+    public static final String ATTR_TEXT_BODY_REF = "textBodyRef";
+
     // --- Prompt-overlay attributes (template.prompt only) ---
     public static final String ATTR_MAX_TOKENS = "maxTokens";
     public static final String ATTR_REQUIRED_SLOTS = "requiredSlots";

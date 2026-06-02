@@ -1,5 +1,16 @@
 {
   "language": "python",
-  "fixtures": [],
-  "notes": "FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target; the cross-port fixtures now encode the resolved envelope and all four ports load byte-identically. No interim known-gaps."
+  "fixtures": [
+    "error-field-readonly-assigned-primary",
+    "error-field-readonly-downgrade",
+    "error-parameter-ref-unresolved",
+    "error-parameter-ref-not-value-object",
+    "error-parameter-ref-on-table-kind",
+    "error-parameter-ref-passthrough-type-mismatch",
+    "error-tph-discriminator-field-not-found",
+    "error-tph-discriminator-value-duplicate",
+    "error-tph-discriminator-value-missing",
+    "error-tph-discriminator-value-type-mismatch"
+  ],
+  "notes": "FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) are implemented in the TS reference but the Python port has not yet shipped them. These fixtures are deferred until each per-port fan-out lands."
 }

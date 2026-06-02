@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "Args",
+          "children": [
+            { "field.int": { "name": "x" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "RegularTable",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "regular_table",
+                "@parameterRef": "Args"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

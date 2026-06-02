@@ -43,6 +43,25 @@ public enum ErrorCode
     // that does not match its @kind. The legacy @table-for-non-table case warns
     // rather than errors (WARN_LEGACY_PHYSICAL_NAME_ALIAS).
     ERR_PHYSICAL_NAME_KIND_MISMATCH,
+    // FR-013 — field-level @readOnly cross-attribute validation (TS reference
+    // commits e255c631 / 13cf4f8e). C# port has not yet shipped FR-013; codes
+    // are listed here for cross-port enum parity, and the deferred fixtures
+    // are tracked in conformance-expected-failures.json.
+    ERR_READONLY_ASSIGNED_PRIMARY,
+    ERR_READONLY_DOWNGRADE,
+    // FR-015 — source.rdb @parameterRef typed-input validation (TS reference).
+    // C# port has not yet shipped FR-015; the cross-port vocabulary is registered
+    // here, deferred fixtures listed in conformance-expected-failures.json.
+    ERR_PARAMETER_REF_UNRESOLVED,
+    ERR_PARAMETER_REF_NOT_VALUE_OBJECT,
+    ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
+    ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+    // FR-014 — TPH discriminator cross-attribute validation (TS reference).
+    // C# port has not yet shipped FR-014.
+    ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
+    ERR_DISCRIMINATOR_VALUE_DUPLICATE,
+    ERR_DISCRIMINATOR_VALUE_MISSING,
+    ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
     ERR_UNKNOWN,
 }
 

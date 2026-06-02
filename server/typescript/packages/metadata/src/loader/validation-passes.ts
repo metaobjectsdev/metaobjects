@@ -24,6 +24,13 @@ import {
 import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
+  TEMPLATE_ATTR_TEXT_REF,
+  TEMPLATE_ATTR_KIND,
+  TEMPLATE_KIND_EMAIL,
+  TEMPLATE_ATTR_SUBJECT_REF,
+  TEMPLATE_ATTR_HTML_BODY_REF,
+  TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_PROMPT,
 } from "../template/template-constants.js";
 import { OBJECT_SUBTYPE_VALUE } from "../core/object/object-constants.js";
 import {
@@ -106,6 +113,56 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
 export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const tmpl of root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE)) {
+    // --- @kind / textRef / email part-ref cross-field rules ---
+    // template.output is either a document (@kind absent/"document" → @textRef
+    // required) or an email (@kind="email" → @subjectRef + @htmlBodyRef required,
+    // @textRef unused). template.prompt always requires @textRef (the renderable
+    // body). The closed-enum membership of @kind is handled by validateAttrSchema
+    // (allowedValues) — here we only enforce the conditional ref presence.
+    if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
+      const kind = tmpl.ownAttr(TEMPLATE_ATTR_KIND);
+      if (kind === TEMPLATE_KIND_EMAIL) {
+        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_SUBJECT_REF) !== "string") {
+          errors.push(
+            new ParseError(
+              `template "${tmpl.name}" @kind "email" requires @subjectRef`,
+              { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+            ),
+          );
+        }
+        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_HTML_BODY_REF) !== "string") {
+          errors.push(
+            new ParseError(
+              `template "${tmpl.name}" @kind "email" requires @htmlBodyRef`,
+              { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+            ),
+          );
+        }
+      } else {
+        // @kind absent or "document" → require @textRef. (An out-of-enum @kind is
+        // separately reported by validateAttrSchema; we still require @textRef so a
+        // document is never bodyless.)
+        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
+          errors.push(
+            new ParseError(
+              `template "${tmpl.name}" @kind "document" requires @textRef`,
+              { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+            ),
+          );
+        }
+      }
+    } else if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
+      // template.prompt always carries a renderable body via @textRef.
+      if (typeof tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
+        errors.push(
+          new ParseError(
+            `template "${tmpl.name}" requires @textRef`,
+            { code: "ERR_INVALID_TEMPLATE", source: tmpl.source },
+          ),
+        );
+      }
+    }
+
     const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
     const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);

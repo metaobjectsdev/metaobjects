@@ -33,6 +33,24 @@ public final class OutputTemplate extends MetaTemplate {
             // applicability doesn't fire for concrete subtypes at addChild time).
             def.optionalAttributeWithConstraints(ATTR_PROMPT_STYLE)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @kind — closed enum (document|email), default "document". Closed-set
+            // membership is enforced in ValidationPhase#validateTemplates (same
+            // pattern/reason as @format / @promptStyle). The conditional ref
+            // requirements (email → @subjectRef + @htmlBodyRef; document → @textRef)
+            // are likewise enforced there.
+            def.optionalAttributeWithConstraints(ATTR_KIND)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // Email part-refs (template.output @kind="email"). Optional 2-layer
+            // logical (group/source) textRefs; conditional presence enforced in
+            // ValidationPhase#validateTemplates.
+            def.optionalAttributeWithConstraints(ATTR_SUBJECT_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_HTML_BODY_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_TEXT_BODY_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
 

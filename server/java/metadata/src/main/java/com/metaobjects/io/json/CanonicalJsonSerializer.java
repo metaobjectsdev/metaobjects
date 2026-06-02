@@ -12,6 +12,8 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.loader.parser.BaseMetaDataParser;
+import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.RdbSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -123,6 +125,10 @@ public final class CanonicalJsonSerializer {
      */
     public static String canonicalSerialize(MetaData node) {
         JsonElement tree = serializeNode(node, /*effective=*/false, /*parentPackage=*/null);
+        // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on
+        // source.rdb wrappers so canonical output pins per-kind naming
+        // regardless of which spelling was on input.
+        rewriteSourceRdbPhysicalNames(tree);
         return toCanonicalString(tree);
     }
 
@@ -138,7 +144,96 @@ public final class CanonicalJsonSerializer {
      */
     public static String canonicalSerializeEffective(MetaData node) {
         JsonElement tree = serializeNode(node, /*effective=*/true, /*parentPackage=*/null);
+        rewriteSourceRdbPhysicalNames(tree);
         return toCanonicalString(tree);
+    }
+
+    // ---------------------------------------------------------------------------
+    // FR-016 / ADR-0018 — canonical per-kind physical-name rewrite
+    // ---------------------------------------------------------------------------
+
+    /** Fused-key for source.rdb wrappers, e.g. {@code "source.rdb"}. */
+    private static final String SOURCE_RDB_FUSED_KEY =
+        MetaSource.TYPE_SOURCE + TYPE_SUBTYPE_SEPARATOR + RdbSource.SUBTYPE_RDB;
+
+    /**
+     * FR-016 / ADR-0018 — when a source.rdb wrapper carries {@code @table} with
+     * a non-table {@code @kind} (the pre-1.0 legacy spelling), rewrite the attr
+     * key in place to the kind-matching alias ({@code @view} / {@code @materializedView}
+     * / {@code @proc} / {@code @function}). Mutates the JsonElement tree in
+     * place; idempotent and a no-op for canonical inputs.
+     *
+     * <p>Must run before the body's @-attrs are emitted sorted; we run it here
+     * on the fully-built JsonElement tree because Gson's pretty-printer
+     * preserves the insertion order of {@link JsonObject} keys — the body
+     * builder already emits attrs in alphabetical order via {@link TreeMap},
+     * and the in-place key swap below keeps that ordering invariant when the
+     * rewritten key sorts at the same position.</p>
+     */
+    private static void rewriteSourceRdbPhysicalNames(JsonElement value) {
+        if (value == null) return;
+        if (value.isJsonArray()) {
+            for (JsonElement item : value.getAsJsonArray()) {
+                rewriteSourceRdbPhysicalNames(item);
+            }
+            return;
+        }
+        if (!value.isJsonObject()) return;
+
+        JsonObject obj = value.getAsJsonObject();
+        JsonElement rdbBodyEl = obj.get(SOURCE_RDB_FUSED_KEY);
+        if (rdbBodyEl != null && rdbBodyEl.isJsonObject()) {
+            JsonObject body = rdbBodyEl.getAsJsonObject();
+            String kind = MetaSource.DEFAULT_KIND;
+            JsonElement kindEl = body.get(ATTR_PREFIX + MetaSource.ATTR_KIND);
+            if (kindEl != null && kindEl.isJsonPrimitive() && kindEl.getAsJsonPrimitive().isString()) {
+                String k = kindEl.getAsString();
+                if (!k.isEmpty()) kind = k;
+            }
+            String canonical = MetaSource.PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
+            if (canonical != null && !MetaSource.ATTR_TABLE.equals(canonical)) {
+                String legacyKey = ATTR_PREFIX + MetaSource.ATTR_TABLE;
+                String canonicalKey = ATTR_PREFIX + canonical;
+                JsonElement legacyValue = body.get(legacyKey);
+                if (legacyValue != null && !body.has(canonicalKey)) {
+                    // Rebuild the body preserving key order so the rewritten key
+                    // sorts in its canonical alphabetical position with the rest.
+                    JsonObject rebuilt = new JsonObject();
+                    TreeMap<String, JsonElement> sortedAttrs = new TreeMap<>();
+                    for (Map.Entry<String, JsonElement> e : body.entrySet()) {
+                        String k = e.getKey();
+                        if (legacyKey.equals(k)) {
+                            sortedAttrs.put(canonicalKey, e.getValue());
+                        } else if (k.startsWith(ATTR_PREFIX)) {
+                            sortedAttrs.put(k, e.getValue());
+                        }
+                    }
+                    // Emit non-attr keys (name/package/extends/abstract/isArray/children)
+                    // in their original positional order, with the @-attrs slotted in
+                    // alphabetically between the structural prefix and the children
+                    // tail. The original body already emitted them in canonical order;
+                    // we just splice the rewritten attr key in via the TreeMap above.
+                    for (Map.Entry<String, JsonElement> e : body.entrySet()) {
+                        String k = e.getKey();
+                        if (!k.startsWith(ATTR_PREFIX) && !k.equals(KEY_CHILDREN)) {
+                            rebuilt.add(k, e.getValue());
+                        }
+                    }
+                    for (Map.Entry<String, JsonElement> e : sortedAttrs.entrySet()) {
+                        rebuilt.add(e.getKey(), e.getValue());
+                    }
+                    if (body.has(KEY_CHILDREN)) {
+                        rebuilt.add(KEY_CHILDREN, body.get(KEY_CHILDREN));
+                    }
+                    obj.add(SOURCE_RDB_FUSED_KEY, rebuilt);
+                }
+            }
+        }
+
+        // Recurse through every value (in particular `children`).
+        for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
+            rewriteSourceRdbPhysicalNames(e.getValue());
+        }
     }
 
     // ---------------------------------------------------------------------------

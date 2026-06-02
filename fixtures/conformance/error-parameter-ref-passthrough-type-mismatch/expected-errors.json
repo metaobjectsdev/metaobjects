@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.int']"
+      }
+    }
+  ],
+  "warnings": []
+}

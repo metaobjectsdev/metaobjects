@@ -111,4 +111,25 @@ describe("rollbackTo — down.sql, reverse order, ledger unrecord (sqlite)", () 
     const result = await rollbackTo(db, migDir, null, {});
     expect(result.rolledBack).toEqual([]);
   });
+
+  test("a failing down statement rolls back that migration's tx and STOPS the chain", async () => {
+    // Each down runs in its own transaction (down SQL + ledger delete together).
+    // Rolling back to "a" processes c (succeeds) then b (fails). b's down drops b
+    // then hits a bad statement → the WHOLE tx rolls back: b is NOT dropped and
+    // its ledger row survives, and the error stops the chain (a is never touched).
+    writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY);", "DROP TABLE a;");
+    writeMig(migDir, "20260102000000-b", "CREATE TABLE b (id INTEGER PRIMARY KEY);", "DROP TABLE b;\nDROP TABLE nonexistent_xyz;");
+    writeMig(migDir, "20260103000000-c", "CREATE TABLE c (id INTEGER PRIMARY KEY);", "DROP TABLE c;");
+    await applyPending(db, migDir, { dryRun: false });
+
+    await expect(rollbackTo(db, migDir, "20260101000000-a", {})).rejects.toThrow();
+
+    // c rolled back fully (its tx committed before b's failed).
+    expect(await tableExists(db, "c")).toBe(false);
+    // b's tx rolled back atomically: the table survives and the ledger keeps it.
+    expect(await tableExists(db, "b")).toBe(true);
+    // a was never reached.
+    expect(await tableExists(db, "a")).toBe(true);
+    expect([...(await appliedNames(db))].sort()).toEqual(["20260101000000-a", "20260102000000-b"]);
+  });
 });

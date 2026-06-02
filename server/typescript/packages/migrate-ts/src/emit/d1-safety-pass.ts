@@ -1,3 +1,5 @@
+import { splitSqlStatements } from "../sql/split-statements.js";
+
 const MAX_STATEMENT_BYTES = 1 * 1024 * 1024; // 1 MB — D1 batch API per-statement limit (path used by `wrangler d1 migrations apply --file`).
 
 export class D1UnsupportedStatementError extends Error {
@@ -22,71 +24,40 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
     return collect ? { sql: "", warnings } : "";
   }
 
-  const statements = splitStatements(sql);
+  // splitSqlStatements already returns trimmed, non-empty statements.
+  const statements = splitSqlStatements(sql);
   const kept: string[] = [];
 
   for (const stmt of statements) {
-    const trimmed = stmt.trim();
-    if (trimmed.length === 0) continue;
-
     // Reject hard failures up front.
-    if (/^\s*(ATTACH|DETACH)\b/i.test(trimmed)) {
-      throw new D1UnsupportedStatementError(trimmed, "ATTACH/DETACH DATABASE");
+    if (/^\s*(ATTACH|DETACH)\b/i.test(stmt)) {
+      throw new D1UnsupportedStatementError(stmt, "ATTACH/DETACH DATABASE");
     }
-    if (/^\s*VACUUM\b/i.test(trimmed)) {
-      throw new D1UnsupportedStatementError(trimmed, "VACUUM");
+    if (/^\s*VACUUM\b/i.test(stmt)) {
+      throw new D1UnsupportedStatementError(stmt, "VACUUM");
     }
 
     // Strip explicit transaction control + savepoints.
-    if (/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.test(trimmed)) {
+    if (/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i.test(stmt)) {
       continue;
     }
 
-    const byteLen = byteLength(trimmed);
+    const byteLen = byteLength(stmt);
     if (byteLen > MAX_STATEMENT_BYTES) {
       warnings.push(
         `statement exceeds D1's 1 MB per-statement limit (${byteLen} bytes); ` +
-        `may be rejected by D1 at apply time: ${trimmed.slice(0, 80)}...`,
+        `may be rejected by D1 at apply time: ${stmt.slice(0, 80)}...`,
       );
     }
 
-    kept.push(trimmed);
+    kept.push(stmt);
   }
 
-  // Re-join: each statement on its own line, blank line between top-level
-  // DDL statements (matches sqlite emit's output style).
-  const out = kept.join("\n\n");
+  // Re-join: each statement on its own line, blank line between top-level DDL
+  // statements (matches sqlite emit's output style). splitSqlStatements strips
+  // the `;` separators, so re-add exactly one terminator per kept statement.
+  const out = kept.map((s) => `${s};`).join("\n\n");
   return collect ? { sql: out, warnings } : out;
-}
-
-/**
- * Split SQL on `;` boundaries, respecting single-quoted strings (SQL uses
- * '' to escape a single quote inside a literal — two consecutive quotes toggle
- * inString twice, net zero, which is exactly what we want).
- * Sufficient for our DDL output; we don't generate dollar-quoted blocks or
- * other exotic SQLite literals.
- */
-function splitStatements(sql: string): string[] {
-  const out: string[] = [];
-  let buf = "";
-  let inString = false;
-  for (let i = 0; i < sql.length; i++) {
-    const c = sql[i]!;
-    if (c === "'") {
-      buf += c;
-      inString = !inString;
-      continue;
-    }
-    if (c === ";" && !inString) {
-      buf += ";";
-      out.push(buf);
-      buf = "";
-      continue;
-    }
-    buf += c;
-  }
-  if (buf.trim().length > 0) out.push(buf);
-  return out;
 }
 
 function byteLength(s: string): number {

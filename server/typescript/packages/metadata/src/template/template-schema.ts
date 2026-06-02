@@ -32,6 +32,12 @@ import {
   TEMPLATE_ATTR_PROMPT_STYLE,
   PROMPT_STYLE_DEFAULT,
   PROMPT_STYLES,
+  TEMPLATE_ATTR_KIND,
+  TEMPLATE_KINDS,
+  TEMPLATE_KIND_DEFAULT,
+  TEMPLATE_ATTR_SUBJECT_REF,
+  TEMPLATE_ATTR_HTML_BODY_REF,
+  TEMPLATE_ATTR_TEXT_BODY_REF,
 } from "./template-constants.js";
 
 // Generic attrs shared by template.prompt and template.output.
@@ -45,7 +51,12 @@ const genericAttrs: AttrSchema[] = [
   {
     name: TEMPLATE_ATTR_TEXT_REF,
     valueType: ATTR_SUBTYPE_STRING,
-    required: true,
+    // Relaxed to optional at the schema level: a template.output with @kind="email"
+    // renders subject/html/text parts and carries NO @textRef. The presence rule is
+    // enforced conditionally in the loader (validateTemplatePayloadRefs): document /
+    // prompt require @textRef; email does not. template.prompt's @textRef requirement
+    // is likewise enforced there.
+    required: false,
     description: "2-layer logical reference (group/source) to the body text, resolved by a provider at render time.",
   },
   {
@@ -93,6 +104,42 @@ const promptStyleAttr: AttrSchema = {
   description:
     "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.",
 };
+
+// @kind + email part-refs (template.output only).
+//
+// @kind is a closed enum (document|email), default "document", enforced via
+// allowedValues exactly like @format / @promptStyle. The 3 part-refs are optional
+// 2-layer logical (group/source) textRefs; their conditional presence (email needs
+// @subjectRef + @htmlBodyRef) is enforced in the loader validation pass.
+const outputKindAttrs: AttrSchema[] = [
+  {
+    name: TEMPLATE_ATTR_KIND,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    default: TEMPLATE_KIND_DEFAULT,
+    allowedValues: [...TEMPLATE_KINDS],
+    description:
+      "Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument).",
+  },
+  {
+    name: TEMPLATE_ATTR_SUBJECT_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind=\"email\".",
+  },
+  {
+    name: TEMPLATE_ATTR_HTML_BODY_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind=\"email\".",
+  },
+  {
+    name: TEMPLATE_ATTR_TEXT_BODY_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body.",
+  },
+];
 
 // LLM-overlay attrs (template.prompt only).
 const promptOverlayAttrs: AttrSchema[] = [
@@ -159,6 +206,6 @@ const toolcallAttrs: AttrSchema[] = [
 export const TEMPLATE_ATTRS_MAP = new Map<string, AttrSchema[]>([
   [SUBTYPE_BASE, []],
   [TEMPLATE_SUBTYPE_PROMPT, [...genericAttrs, ...promptOverlayAttrs]],
-  [TEMPLATE_SUBTYPE_OUTPUT, [...genericAttrs, promptStyleAttr]],
+  [TEMPLATE_SUBTYPE_OUTPUT, [...genericAttrs, promptStyleAttr, ...outputKindAttrs]],
   [TEMPLATE_SUBTYPE_TOOLCALL, [...toolcallAttrs]],
 ]);
