@@ -8,6 +8,7 @@
 
 import {
   type MetaData,
+  type MetaRoot,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -24,7 +25,17 @@ import {
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
+import type { OutputLayout } from "../import-path.js";
+import { docPageHref, docPageNode, type DocPageNode } from "../docs-paths.js";
 import type { TemplateDocData, TemplateOutputPart } from "./template-doc-data.js";
+
+export interface BuildTemplateDocDataOpts {
+  /** Page-placement layout. Defaults to "flat" (back-compat: same-dir links). */
+  layout?: OutputLayout;
+  /** Root used to resolve the @payloadRef target's package for a correct
+   *  cross-link in package layout. Optional: flat layout never needs it. */
+  loadedRoot?: MetaRoot;
+}
 
 // FIXED, language-NEUTRAL capability sentences. NO type names, NO signatures.
 const CAPABILITY_DOCUMENT =
@@ -62,7 +73,12 @@ function templateDescription(t: MetaData): string | undefined {
 }
 
 /** Build the TemplateDocData for one `template.output` node. */
-export function buildTemplateDocData(template: MetaData): TemplateDocData {
+export function buildTemplateDocData(
+  template: MetaData,
+  opts?: BuildTemplateDocDataOpts,
+): TemplateDocData {
+  const layout = opts?.layout ?? "flat";
+  const root = opts?.loadedRoot;
   const kindRaw = ((template.ownAttr(TEMPLATE_ATTR_KIND) as string | undefined) ??
     TEMPLATE_KIND_DEFAULT).toLowerCase();
   const isEmail = kindRaw === TEMPLATE_KIND_EMAIL;
@@ -104,13 +120,23 @@ export function buildTemplateDocData(template: MetaData): TemplateDocData {
     if (typeof textRef === "string") sourceRefs.push(textRef);
   }
 
+  // Cross-link to the payload entity's page. The href is derived from the SAME
+  // page-placement function used to write that entity page, so it resolves in
+  // BOTH layouts. Resolve the payload's package from the root (by short name)
+  // so package layout can fold the correct relative path; fall back to a
+  // package-less node (root-level) when it can't be resolved.
+  const payloadObj = root?.findObject(payloadName);
+  const payloadTarget: DocPageNode =
+    payloadObj !== undefined ? docPageNode(payloadObj) : { name: payloadName };
+  const payloadLink = docPageHref(layout, docPageNode(template), payloadTarget);
+
   const data: TemplateDocData = {
     generatedMarker: `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`,
     name: template.name,
     kind,
     isEmail,
     format,
-    payload: { name: payloadName, link: `./${payloadName}.md` },
+    payload: { name: payloadName, link: payloadLink },
     sourceRefs,
     capability: isEmail ? CAPABILITY_EMAIL : CAPABILITY_DOCUMENT,
   };

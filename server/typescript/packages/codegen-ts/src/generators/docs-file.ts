@@ -22,7 +22,12 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
 import { render } from "@metaobjectsdev/render";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
-import { entityOutputPath } from "../import-path.js";
+import {
+  docPageOutputPath,
+  docPageNode,
+  assertNoDuplicateDocPaths,
+  type DocPagePlacement,
+} from "../docs-paths.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
 import { buildTemplateDocData } from "./template-doc-builder.js";
@@ -47,13 +52,18 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       const rc = ctx.renderContext;
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
+      // Track every (path, fqn) so we can hard-error on a collision (defense
+      // against silent doc-page overwrite) AFTER all pages are placed.
+      const placements: DocPagePlacement[] = [];
       const files: EmittedFile[] = ctx.loadedRoot
         .objects()
         .filter(ctx.matches)
         .map((entity: MetaObject) => {
-          const path = entityOutputPath(layout, entity.package, `${entity.name}.md`);
+          const path = docPageOutputPath(layout, docPageNode(entity));
+          placements.push({ path, fqn: entity.resolutionKey() });
           const payload = buildEntityDocData(entity, {
             dialect: rc.dialect,
+            layout,
             ...(rc.columnNamingStrategy !== undefined && {
               columnNamingStrategy: rc.columnNamingStrategy,
             }),
@@ -82,8 +92,9 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // (`<name>.md`), agreeing with the entity Used-by back-link target.
       for (const child of ctx.loadedRoot.ownChildren()) {
         if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
-        const path = entityOutputPath(layout, child.package, `${child.name}.md`);
-        const payload = buildTemplateDocData(child);
+        const path = docPageOutputPath(layout, docPageNode(child));
+        placements.push({ path, fqn: child.resolutionKey() });
+        const payload = buildTemplateDocData(child, { layout, loadedRoot: ctx.loadedRoot });
         let content: string;
         try {
           content = render({
@@ -101,6 +112,10 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
         }
         files.push({ path, content });
       }
+
+      // Hard backstop against silent overwrite (ALL layouts): two nodes that
+      // resolve to the same output path → throw naming both FQNs + the path.
+      assertNoDuplicateDocPaths(placements);
 
       return files;
     },
