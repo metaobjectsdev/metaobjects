@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shutil
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -48,9 +50,6 @@ def _find_author_entity(meta_json: Path) -> MetaObject:
     """Load the corpus metadata and return the ``Author`` MetaObject."""
     # Load just meta.json (copied into its own dir) so the loader doesn't try to
     # parse the sibling seed.json / scenario yaml as metadata.
-    import shutil
-    import tempfile
-
     tmp = Path(tempfile.mkdtemp(prefix="apic-meta-"))
     shutil.copy(meta_json, tmp / "meta.json")
     result = MetaDataLoader.from_directory(str(tmp))
@@ -82,8 +81,6 @@ def build_generated_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryAuthorRepo
     # Emit into a uniquely-named temp package so the router's relative import
     # `from .author_filter_allowlist import ...` resolves, and repeated imports
     # don't collide in sys.modules.
-    import tempfile
-
     pkg_name = f"genapi_{uuid.uuid4().hex[:8]}"
     tmp = Path(tempfile.mkdtemp(prefix="apic-gen-"))
     pkg_dir = tmp / pkg_name
