@@ -6,7 +6,7 @@ import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
-import { runGen } from "@metaobjectsdev/codegen-ts";
+import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
 function mapStatus(s: WriteStatus): GenFileStatus {
@@ -25,6 +25,12 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
   let flags;
   try { flags = parseGenArgs(args); }
   catch (err) { log.error((err as Error).message); return 2; }
+
+  // ADR-0021 D3 — `meta gen --list`: print the stable-name generator registry
+  // and exit 0 WITHOUT running codegen (no config/metadata required).
+  if (flags.list) {
+    return listGeneratorsCommand();
+  }
 
   const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);
@@ -111,4 +117,37 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
   return hasFailure ? 1 : 0;
+}
+
+/**
+ * `meta gen --list` — print the stable-name generator registry (ADR-0021 D3).
+ *
+ * Generators are grouped by tier: the recommended native `meta gen` suite
+ * first, then neutral artifacts (owned by `meta docs` per D1). Each line is
+ * `<stable-name>  —  <description>` plus an options summary and, for neutral
+ * entries, a note pointing at the canonical door. Exits 0; no codegen runs.
+ */
+function listGeneratorsCommand(): number {
+  const entries = listGenerators();
+  const native = entries.filter((e) => e.tier === "native");
+  const neutral = entries.filter((e) => e.tier === "neutral");
+  const width = Math.max(...entries.map((e) => e.name.length));
+
+  const lines: string[] = [];
+  lines.push("Available generators (select by stable name):");
+  lines.push("");
+  lines.push("Native (recommended `meta gen` suite):");
+  for (const e of native) {
+    lines.push(`  ${e.name.padEnd(width)}  —  ${e.description}`);
+    if (e.options) lines.push(`  ${" ".repeat(width)}     options: ${e.options}`);
+  }
+  lines.push("");
+  lines.push("Neutral (owned by `meta docs`; not part of the native suite):");
+  for (const e of neutral) {
+    lines.push(`  ${e.name.padEnd(width)}  —  ${e.description}`);
+    if (e.note) lines.push(`  ${" ".repeat(width)}     ${e.note}`);
+  }
+
+  log.info(lines.join("\n"));
+  return 0;
 }

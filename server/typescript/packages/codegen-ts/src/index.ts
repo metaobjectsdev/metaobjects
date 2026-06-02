@@ -9,6 +9,14 @@ export type { RunGenOpts, RunGenResult } from "./runner.js";
 export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
 export { perEntity, oncePerRun } from "./generator.js";
 
+// ADR-0021 D3 — stable-name generator registry + discoverability surface.
+export {
+  generatorRegistry,
+  listGenerators,
+  getGenerator,
+} from "./generator-registry.js";
+export type { GeneratorRegistryEntry, GeneratorTier } from "./generator-registry.js";
+
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider } from "./metaobjects-config.js";
 export { defineConfig, normalizeConfig } from "./metaobjects-config.js";
 

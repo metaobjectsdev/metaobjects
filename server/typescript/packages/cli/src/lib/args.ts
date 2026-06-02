@@ -45,6 +45,9 @@ export interface GenFlags {
    *  (existing content becomes the canonical baseline). "fresh" → overwrite
    *  and re-baseline. */
   baseline: "default" | "fresh";
+  /** ADR-0021 D3 — print the stable-name generator registry and exit without
+   *  running codegen. */
+  list: boolean;
 }
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -53,6 +56,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     options: {
       "dry-run": { type: "boolean", default: false },
       "baseline": { type: "string" },
+      "list": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: true,
@@ -67,6 +71,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     dryRun: !!values["dry-run"],
     entities: positionals,
     baseline: (baselineRaw as "default" | "fresh" | undefined) ?? "default",
+    list: !!values.list,
   };
 }
 
