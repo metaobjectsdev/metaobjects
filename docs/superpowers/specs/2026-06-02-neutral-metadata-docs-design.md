@@ -50,7 +50,7 @@ language?) to the current entity page:
 
 | Section | Neutral? | Decision |
 |---|---|---|
-| Storage (table, columns, SQL types, DDL) | **Yes** — the persistence mapping is declared in metadata and is identical across ports | Keep |
+| Storage (column name, **TypeScript type**, **Drizzle ORM DDL**) | **No** — the "TypeScript type" column and the `integer("id")` / `text(..., { enum: [...] as const })` cells are TS-codegen output, not metadata facts | **Neutralized** → keep the section (physical persistence mapping IS neutral) but render declared facts only: **Column / Type / Nullable / Key** (`@column` name, `@dbColumnType` override else logical type, nullability, PK/FK role). No TS type, no DDL, no ANSI re-derivation. |
 | Identity (primary/secondary/reference keys) | **Yes** | Keep |
 | Relationships (cardinality, composition) | **Yes** | Keep |
 | Validation (`OrderInsertSchema` / `OrderUpdateSchema` — **Zod**) | **No** — names a TS artifact | **Neutralize** → document the constraint metadata (required, maxLength, ranges, enum membership, validators) |
@@ -96,7 +96,16 @@ language-agnostic location and add a conformance gate.
   **Rendering: a table** (matches the Storage section style; scannable for
   many-field entities) with columns: field | required | type |
   limits (maxLength/min/max/pattern) | enum/validators.
-- Keep Storage / Identity / Relationships / Used by unchanged (already neutral).
+- **Neutralize Storage**: keep the section (the physical persistence MAPPING is
+  neutral, useful metadata) but drop the language-specific **TypeScript type**
+  column and the **Drizzle ORM DDL** cell. Render declared physical facts only —
+  columns: **Column** (`@column` override else field name) | **Type**
+  (`@dbColumnType` override uppercased, else the same neutral logical type the
+  Constraints table uses — no ANSI/ORM SQL re-derivation) | **Nullable** | **Key**
+  (PK / `foreign key → <Target>`). This is distinct from (not duplicative of) the
+  Constraints table, whose value is validation rules; Storage's value is the
+  physical field→column mapping + physical-type override + key role.
+- Keep Identity / Relationships / Used by unchanged (already neutral).
 - Make **Used by** bullets link to the new template page (`./<Template>.md`).
 - The TS golden (`test/golden/docs-file-conformance.test.ts`) updates to the
   neutralized output — this is an intentional improvement, not a regression.

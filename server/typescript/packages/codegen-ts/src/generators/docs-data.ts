@@ -40,20 +40,30 @@
 // `{{#identities.0}}` for the same effect, at which point the flag fields
 // can be deprecated.
 
-/** One row in the Storage table — fully-rendered as a single Markdown table
- *  row. The escaping rules for pipe-inside-cell are non-trivial and live in
- *  the data builder, not the template, so templates stay trivial and the
- *  cross-port walk functions don't have to re-derive the rules. */
+/** One row in the NEUTRAL Storage table — the physical persistence MAPPING,
+ *  fully-rendered as a single Markdown table row. ADR-0020: the Storage
+ *  section documents declared physical facts only (column name → neutral
+ *  physical type → nullable → key) and makes NO language assumption — it does
+ *  NOT carry a TypeScript type or any ORM DDL. Its value-add over the
+ *  Constraints table is the field→column name mapping + any physical
+ *  `@dbColumnType` override + the key role. The pre-rendered `rowLine` keeps
+ *  templates trivial and means cross-port walk functions don't re-derive the
+ *  Markdown escaping. */
 export interface StorageFieldDoc {
   name: string;                  // raw field name (without backticks)
-  /** @markdown — already escaped TS type, with backticks. */
-  tsTypeCell: string;
-  /** @markdown — already escaped SQL expression, wrapped in backticks. */
-  sqlExprCell: string;
-  /** @markdown — already-formatted constraints text. */
-  constraintsCell: string;
+  /** @markdown — physical column name (field's `@column` if set, else the
+   *  field name), wrapped in backticks. */
+  columnCell: string;
+  /** @markdown — neutral physical type (declared `@dbColumnType` override
+   *  uppercased, else the field's logical type), wrapped in backticks. */
+  typeCell: string;
+  /** @markdown — "yes" if the field is nullable (not required, not a PK),
+   *  else "no". */
+  nullableCell: string;
+  /** @markdown — key role: "primary key", "foreign key → `Target`", or "". */
+  keyCell: string;
   /** @markdown — pre-rendered full Markdown table row, e.g.
-   *    "| `id` | `number` | `integer(\"id\")` | primary key |"
+   *    "| `id` | `long` | no | primary key |"
    *  Templates emit this verbatim via `{{{rowLine}}}`. */
   rowLine: string;
 }
@@ -124,11 +134,13 @@ export interface EntityDocData {
    *  present. */
   preambleHeader: string;
 
-  /** Storage section. Present iff the entity has a writable rdb source and
-   *  is NOT object.value. */
+  /** Storage section — the NEUTRAL physical persistence mapping (column name,
+   *  physical type, nullable, key). Present iff the entity has a writable rdb
+   *  source and is NOT object.value. Carries NO language-specific type or DDL
+   *  (ADR-0020). */
   storage?: {
-    /** @markdown — pre-rendered "| Field | ... |\n|---|---|---|---|" header
-     *  pair. */
+    /** @markdown — pre-rendered "| Column | Type | Nullable | Key |\n|---|...|"
+     *  header pair. */
     tableHeader: string;
     rows: StorageFieldDoc[];
   };

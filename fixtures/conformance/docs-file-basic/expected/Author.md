@@ -10,12 +10,12 @@
 
 ## Storage
 
-| Field | TypeScript type | SQL column | Constraints |
+| Column | Type | Nullable | Key |
 |---|---|---|---|
-| `id` | `number` | `integer("id")` | primary key, generation: `increment` |
-| `name` | `string` | `text("name")` | required, maxLength: 200 |
-| `status` | `"active" \| "suspended" \| "archived"` | `text("status", { enum: ["active","suspended","archived"] as const })` | required, CHECK `status IN ('active', 'suspended', 'archived')` |
-| `tags` | `string[] \| null` | `text("tags", { mode: "json" })` | optional, JSON column |
+| `id` | `long` | no | primary key |
+| `name` | `string` | no |  |
+| `status` | `enum` | no |  |
+| `tags` | `string[]` | yes |  |
 
 ## Identity
 
