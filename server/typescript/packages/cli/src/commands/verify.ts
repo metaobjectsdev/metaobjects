@@ -13,6 +13,8 @@ import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import { computeDrift, type Change } from "@metaobjectsdev/migrate-ts";
@@ -46,18 +48,35 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     return 2;
   }
 
-  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
-  // providers (e.g. a project's `template.toolcall` subtype). verify doesn't
-  // require codegen config; if it's absent or invalid, fall back to defaults
-  // — the loader will surface a stable ERR_UNKNOWN_SUBTYPE if the metadata
-  // actually uses a non-default subtype.
-  let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
-  try {
-    const forgeConfig = await loadMetaobjectsConfig(cwd);
-    configProviders = forgeConfig.providers;
-  } catch {
-    configProviders = undefined;
+  // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
+  // any combination runs each and the overall exit code is the MAX (non-zero on
+  // any drift). A bare `verify` (no explicit subverb) keeps its documented
+  // back-compat default: the template/prompt drift gate — plus a one-line note
+  // advertising the explicit subverbs.
+  const runTemplates = flags.templates || !flags.anyExplicit;
+  // The schema (--db) gate is selected by the presence of --db; that check lives
+  // inside runSchemaVerify (where `flags.db === undefined` also narrows the type).
+  const runCodegen = flags.codegen;
+  if (!flags.anyExplicit) {
+    log.info(
+      "meta verify — running --templates (default). Explicit subverbs: " +
+        "--templates (prompt drift), --db (schema drift), --codegen (codegen drift).",
+    );
   }
+
+  // Best-effort load of metaobjects.config.ts. Two consumers:
+  //  1) consumer-supplied providers (e.g. a `template.toolcall` subtype) threaded
+  //     into loadMemory — verify doesn't REQUIRE codegen config for templates/db;
+  //  2) the full config object, which `--codegen` needs to locate outDir/targets.
+  // If absent/invalid we fall back to defaults; `--codegen` then reports a clear
+  // error (it can't diff without knowing where the committed output lives).
+  let forgeConfig: MetaobjectsGenConfig | undefined;
+  try {
+    forgeConfig = await loadMetaobjectsConfig(cwd);
+  } catch {
+    forgeConfig = undefined;
+  }
+  const configProviders = forgeConfig?.providers;
 
   let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
@@ -77,13 +96,13 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
-  // Exit-code composition: the overall result is max(templateExit, schemaExit)
-  // so either kind of drift fails CI. The schema path only runs when --db is
-  // present (and not --skip-schema); with no --db it is skipped entirely and
-  // the exit reflects the template path alone (unchanged behavior).
-  const templateExit = runTemplateVerify();
+  // Exit-code composition: the overall result is the MAX across every selected
+  // subverb so ANY kind of drift fails CI. Each gate only runs when its mode is
+  // selected; an unselected gate contributes 0.
+  const templateExit = runTemplates ? runTemplateVerify() : 0;
   const schemaExit = await runSchemaVerify();
-  return Math.max(templateExit, schemaExit);
+  const codegenExit = runCodegen ? await runCodegenVerify() : 0;
+  return Math.max(templateExit, schemaExit, codegenExit);
 
   // -- template (prompt / output) drift --------------------------------------
   function runTemplateVerify(): number {
@@ -168,6 +187,8 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   // Gated on --db. With no --db (or --skip-schema), this is a no-op returning 0
   // — the DB-free default behavior is unchanged.
   async function runSchemaVerify(): Promise<number> {
+    // `flags.db === undefined` is exactly `!runDb`; written this way so TS
+    // narrows flags.db to `string` for buildKyselyFromUrl below.
     if (flags.db === undefined || flags.skipSchema) return 0;
 
     // d1 has no Kysely-driver introspection path, so the schema-drift gate
@@ -215,6 +236,47 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
         log.warn(`verify: failed to close DB cleanly: ${(err as Error).message}`);
       }
     }
+  }
+
+  // -- codegen drift (ADR-0021 D2) -------------------------------------------
+  // Gated on --codegen. Regenerates to a temp dir and diffs against the
+  // committed output (config outDir / per-target outDirs). Requires a config:
+  // without one, there's no committed-output location to diff against, so it
+  // errors clearly (exit 2 — a usage/configuration problem, not a drift result).
+  async function runCodegenVerify(): Promise<number> {
+    if (forgeConfig === undefined) {
+      log.error(
+        "verify --codegen: no metaobjects.config.ts found (or it is invalid) — " +
+          "cannot locate the committed generated output to diff against. " +
+          "Run 'meta init' to scaffold one, or run without --codegen.",
+      );
+      return 2;
+    }
+
+    let result;
+    try {
+      result = await computeCodegenDrift(forgeConfig, root, cwd);
+    } catch (err) {
+      log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
+      return 1;
+    }
+
+    if (result.error !== undefined) {
+      log.error(result.error);
+      return 2;
+    }
+
+    if (result.clean) {
+      log.info("meta verify — generated output is in sync with the metadata (no codegen drift).");
+      return 0;
+    }
+
+    log.error(
+      `meta verify — codegen drift (${result.driftedFiles.length} file(s) differ from a fresh regen):`,
+    );
+    for (const line of result.lines) log.error(`  ${line}`);
+    log.error("Run 'meta gen' to regenerate, then commit the result.");
+    return 1;
   }
 }
 

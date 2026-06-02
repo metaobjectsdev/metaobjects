@@ -20,6 +20,12 @@ export interface MermaidErOptions {
  * retained ONLY as a thin back-compat wrapper for adopters that already have
  * `mermaidErDiagram` in their `meta gen` config; it adds NO ER logic of its own
  * (no duplication) — it delegates to the shared `renderMermaidModel()` builder.
+ *
+ * @deprecated ADR-0021 D1: the ER diagram is a Tier-2 neutral artifact owned by
+ * the docs engine (ADR-0020). Use `meta docs` — it embeds the same ER block.
+ * This standalone `meta gen` generator is flagged neutral in the registry
+ * (`--list`) and is no longer part of the recommended native suite. Kept for
+ * back-compat; do not add to new gen configs.
  */
 export const mermaidErDiagram = function mermaidErDiagram(
   opts?: MermaidErOptions,

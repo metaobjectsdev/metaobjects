@@ -7,7 +7,12 @@ describe("parseGenArgs", () => {
       dryRun: false,
       entities: [],
       baseline: "default",
+      list: false,
     });
+  });
+
+  test("--list", () => {
+    expect(parseGenArgs(["--list"]).list).toBe(true);
   });
 
   test("--baseline=fresh", () => {

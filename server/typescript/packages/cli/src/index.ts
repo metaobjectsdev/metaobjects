@@ -40,7 +40,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
-  verify                Check template.* text against its payload (drift gate)
+  verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
@@ -62,10 +62,13 @@ DOCS FLAGS:
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
 
-VERIFY FLAGS:
-  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
-  --db <url>            Live DB URL — enables the schema-drift gate (exit 1 on drift).
+VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drift):
+  --templates           Template/prompt {{field}}↔payload drift (the bare-verify default)
+  --codegen             Codegen drift — regenerate to a temp dir and diff the committed
+                        output (config outDir/targets). Needs metaobjects.config.ts; exit 2 if absent.
+  --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
   --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
                         verify drift gate (the gate fails on ANY detected change)

@@ -68,6 +68,13 @@ function renderDocPage(ref: string, payload: unknown, provider: Provider, path: 
   }
 }
 
+/**
+ * @deprecated ADR-0021 D1: `meta docs` is the single door for documentation.
+ * `docsFile()` stays as the INTERNAL engine that `meta docs` calls — do NOT add
+ * it to a `meta gen` config / the public generator surface. It is flagged
+ * neutral in the generator registry (`--list`) and is not part of the
+ * recommended native `meta gen` suite. Use `meta docs` instead.
+ */
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
     name: "docs-file",
