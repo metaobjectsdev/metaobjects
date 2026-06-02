@@ -74,6 +74,6 @@ export type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
+  ConstraintRow,
 } from "./generators/docs-data.js";
 export { buildEntityDocData } from "./generators/docs-data-builder.js";

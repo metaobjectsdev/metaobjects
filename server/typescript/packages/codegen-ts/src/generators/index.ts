@@ -23,6 +23,6 @@ export type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
+  ConstraintRow,
 } from "./docs-data.js";
 export { buildEntityDocData } from "./docs-data-builder.js";

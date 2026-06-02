@@ -22,15 +22,11 @@ export interface DocsRenderOpts {
   dialect: Dialect;
   columnNamingStrategy?: ColumnNamingStrategy;
   loadedRoot: MetaRoot;
-  /** Names of generators present in the pipeline — drives the "Generated code"
-   *  section. Always includes "entity-file" implicitly. Recognized names:
-   *  "queries-file", "routes-file", "routes-file-hono". */
-  generatorNames?: ReadonlySet<string>;
 }
 
 /** Backward-compatible entry point: builds the EntityDocData payload and
- *  renders it via the framework template. Byte-identical to the hand-coded
- *  rc.11 output (gated by `docs-file-conformance.test.ts`). */
+ *  renders it via the framework template. Output is gated by
+ *  `docs-file-conformance.test.ts`. */
 export function renderDocsFile(entity: MetaObject, opts: DocsRenderOpts): string {
   const data = buildEntityDocData(entity, {
     dialect: opts.dialect,
@@ -38,9 +34,6 @@ export function renderDocsFile(entity: MetaObject, opts: DocsRenderOpts): string
       ? { columnNamingStrategy: opts.columnNamingStrategy }
       : {}),
     loadedRoot: opts.loadedRoot,
-    ...(opts.generatorNames !== undefined
-      ? { generatorNames: opts.generatorNames }
-      : {}),
   });
   return render({
     ref: "docs/entity-page.md",

@@ -8,7 +8,7 @@
 // for `docs/entity-page.md` (or any of the partials) reference these keys.
 //
 // `EntityDocData` is the **Markdown-flavored** data shape — it intentionally
-// mixes raw structural fields (entity, validation, generated) with
+// mixes raw structural fields (entity, constraints) with
 // **pre-rendered Markdown fragments** so cross-port walk functions (TS,
 // Python, C#, Java, Kotlin) don't have to re-derive the same escaping rules
 // (pipe-inside-cell escapes, backtick wrapping, identity bullets,
@@ -77,9 +77,24 @@ export interface UsedByDoc {
   bullet: string;
 }
 
-export interface GeneratedFileDoc {
-  filename: string;              // "Author.ts"
-  description: string;           // "Drizzle table, Zod schemas, ..."
+/** One row in the neutral Constraints table — fully pre-rendered cells, so
+ *  templates stay trivial and cross-port walk functions don't re-derive the
+ *  escaping. Each cell is plain Markdown text; an empty cell is "". Unlike the
+ *  language-specific Storage table, this is built from the field metadata's OWN
+ *  declared constraints and renders for every object (including value objects
+ *  with no storage). */
+export interface ConstraintRow {
+  field: string;                 // raw field name (without backticks)
+  /** @markdown — "yes" / "" — whether the field is required (or a PK). */
+  required: string;
+  /** @markdown — neutral logical type cell, e.g. "`string`", "`enum`",
+   *  "`Address[]`". */
+  type: string;
+  /** @markdown — size/range limits, e.g. "maxLength: 200" — "" if none. */
+  limits: string;
+  /** @markdown — declared rules: enum value sets, patterns, validators,
+   *  uniqueness, default — "" if none. */
+  rules: string;
 }
 
 export interface EntityDocData {
@@ -131,13 +146,15 @@ export interface EntityDocData {
   /** Present-and-non-empty flag for the relationships section. */
   hasRelationships?: boolean;
 
-  /** Validation section — RAW (not Markdown-flavored). Always emitted.
-   *  Custom non-Markdown templates can rely on these fields. */
-  validation: {
-    insertSchema: string;        // "AuthorInsertSchema"
-    updateSchema: string;        // "AuthorUpdateSchema"
-    entityFile: string;          // "Author.ts"
-    lower: string;               // "author" (lowercased first letter)
+  /** Constraints section — the NEUTRAL replacement for the old language-
+   *  specific Validation/Generated-code sections (ADR-0020). Built from the
+   *  object's OWN field metadata, so it renders for every object including
+   *  value objects with no storage. Always emitted. */
+  constraints: {
+    /** True iff there is at least one row to render (objects always have
+     *  fields, so this is generally true; gates the section header). */
+    hasConstraints: boolean;
+    rows: ConstraintRow[];
   };
 
   /** "Used by" — present iff any templates declare `@payloadRef` → this
@@ -148,7 +165,4 @@ export interface EntityDocData {
 
   /** Present flag for the storage section. */
   hasStorage?: boolean;
-
-  /** Generated-code section — always emitted (at minimum the entity file). */
-  generated: GeneratedFileDoc[];
 }

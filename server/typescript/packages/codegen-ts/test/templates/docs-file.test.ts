@@ -271,8 +271,8 @@ describe("renderDocsFile — Identity section", () => {
   });
 });
 
-describe("renderDocsFile — Validation + Generated code", () => {
-  test("always emits Validation pointers and Generated code list", () => {
+describe("renderDocsFile — Constraints", () => {
+  test("always emits a neutral Constraints table (no language-specific sections)", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     attachRdbSource(post, "posts");
@@ -289,11 +289,13 @@ describe("renderDocsFile — Validation + Generated code", () => {
       loadedRoot: root,
     });
 
-    expect(out).toContain("## Validation");
-    expect(out).toContain("`PostInsertSchema` (Zod)");
-    expect(out).toContain("`PostUpdateSchema` (Zod)");
-    expect(out).toContain("## Generated code");
-    expect(out).toContain("`Post.ts`");
+    expect(out).toContain("## Constraints");
+    expect(out).toContain("| Field | Required | Type | Limits | Rules |");
+    expect(out).toContain("| `id` |");
+    // No language-specific leakage.
+    expect(out).not.toContain("Zod");
+    expect(out).not.toContain("## Generated code");
+    expect(out).not.toMatch(/\.ts\b/);
   });
 });
 
@@ -316,13 +318,12 @@ describe("renderDocsFile — object.value", () => {
     expect(out).not.toContain("## Storage");
     expect(out).not.toContain("## Identity");
     expect(out).not.toContain("## Relationships");
-    expect(out).toContain("## Validation");
-    expect(out).toContain("## Generated code");
-    // The Generated code section should NOT mention queries / routes for value
-    // objects — they're never produced for object.value.
-    const generatedCode = out.split("## Generated code")[1] ?? "";
-    expect(generatedCode).not.toContain(".queries.ts");
-    expect(generatedCode).not.toContain(".routes.ts");
-    expect(generatedCode).toContain("`Lens.ts`");
+    // The neutral Constraints table renders even for value objects with no
+    // storage — built from the object's own field metadata.
+    expect(out).toContain("## Constraints");
+    expect(out).toContain("| `name` | yes | `string` |");
+    // No language-specific leakage.
+    expect(out).not.toContain("## Generated code");
+    expect(out).not.toMatch(/\.ts\b/);
   });
 });

@@ -148,10 +148,14 @@ describe("buildEntityDocData() — public contract", () => {
     expect(data.entity.name).toBe("Post");
     expect(data.entity.type).toBe("object.entity");
     expect(data.generatedMarker).toContain("@generated");
-    expect(data.validation.insertSchema).toBe("PostInsertSchema");
-    expect(data.validation.updateSchema).toBe("PostUpdateSchema");
     expect(data.preambleHeader).toContain("**Type:** `object.entity`");
-    expect(data.generated.length).toBeGreaterThan(0);
-    expect(data.generated[0]?.filename).toBe("Post.ts");
+    // Neutral Constraints replaces the old language-specific Validation/Generated
+    // sections (ADR-0020): one row per field, built from the field metadata.
+    expect(data.constraints.hasConstraints).toBe(true);
+    expect(data.constraints.rows.map((r) => r.field)).toEqual(["`id`", "`title`"]);
+    const idRow = data.constraints.rows.find((r) => r.field === "`id`")!;
+    expect(idRow.type).toBe("`long`");
+    expect(idRow.required).toBe("yes");
+    expect(idRow.rules).toContain("primary key");
   });
 });

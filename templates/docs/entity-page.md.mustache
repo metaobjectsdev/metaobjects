@@ -32,12 +32,16 @@
 - {{{bullet}}}
 {{/relationships}}
 {{/hasRelationships}}
+{{#constraints.hasConstraints}}
 
-## Validation
+## Constraints
 
-- `{{validation.insertSchema}}` (Zod) — for creating new {{validation.lower}}s.
-- `{{validation.updateSchema}}` (Zod) — for partial updates.
-- See `{{validation.entityFile}}` for the exported schemas.
+| Field | Required | Type | Limits | Rules |
+|---|---|---|---|---|
+{{#constraints.rows}}
+| {{{field}}} | {{required}} | {{{type}}} | {{limits}} | {{{rules}}} |
+{{/constraints.rows}}
+{{/constraints.hasConstraints}}
 {{#hasUsedBy}}
 
 ## Used by
@@ -46,9 +50,3 @@
 - {{{bullet}}}
 {{/usedBy}}
 {{/hasUsedBy}}
-
-## Generated code
-
-{{#generated}}
-- `{{filename}}` — {{{description}}}
-{{/generated}}

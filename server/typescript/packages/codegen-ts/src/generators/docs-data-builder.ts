@@ -65,15 +65,13 @@ import type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
+  ConstraintRow,
 } from "./docs-data.js";
 
 export interface BuildDocDataOpts {
   dialect: Dialect;
   columnNamingStrategy?: ColumnNamingStrategy;
   loadedRoot: MetaRoot;
-  /** Set of generator names present in the pipeline; drives "Generated code". */
-  generatorNames?: ReadonlySet<string>;
 }
 
 const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
@@ -243,6 +241,99 @@ function constraintsCell(
   return parts.join(", ");
 }
 
+/** Neutral logical type cell for the Constraints table. Unlike the Storage
+ *  table's TypeScript type, this is language-agnostic: the field's logical
+ *  subtype (e.g. `string`, `enum`, `decimal`), suffixed `[]` for arrays, and
+ *  the referenced object name for `field.object`. Wrapped in backticks. */
+function neutralTypeCell(field: MetaField): string {
+  let base: string;
+  if (field.subType === FIELD_SUBTYPE_OBJECT) {
+    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    base = typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : "object";
+  } else {
+    base = field.subType;
+  }
+  if (field.isArray) base = `${base}[]`;
+  return `\`${base}\``;
+}
+
+/** Build one neutral Constraints-table row for a field. Reuses the same
+ *  per-field constraint logic as `constraintsCell()` (required-ness, maxLength,
+ *  enum CHECK-sets, validators, default, unique, references), but splits the
+ *  facts across the Required / Limits / Rules columns instead of one cell.
+ *  Renders for every field, with or without storage. */
+function buildConstraintRow(
+  entity: MetaObject,
+  field: MetaField,
+  pkFieldNames: Set<string>,
+  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+): ConstraintRow {
+  const isPk = pkFieldNames.has(field.name);
+  const required = isPk || isFieldRequired(field);
+
+  const limits: string[] = [];
+  const rules: string[] = [];
+
+  if (isPk) rules.push("primary key");
+  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
+
+  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      const list = values.map((v) => `\`${v}\``).join(", ");
+      rules.push(`one of ${list}`);
+    }
+  }
+
+  // Same emission order as constraintsCell(): regex pattern →
+  // maxLength-from-@maxLength → length-validator (min/max) →
+  // numeric-validator (min/max).
+  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const regexParts: string[] = [];
+  const lengthParts: string[] = [];
+  const numericParts: string[] = [];
+  for (const v of field.validators()) {
+    if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
+      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      if (typeof pattern === "string" && pattern.length > 0) {
+        regexParts.push(`pattern \`${pattern}\``);
+      }
+    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
+      if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
+    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      if (typeof min === "number") numericParts.push(`min: ${min}`);
+      if (typeof max === "number") numericParts.push(`max: ${max}`);
+    }
+  }
+  rules.push(...regexParts);
+  if (typeof maxLenAttr === "number") limits.push(`maxLength: ${maxLenAttr}`);
+  limits.push(...lengthParts, ...numericParts);
+
+  const fk = fkMap.get(field.name);
+  if (fk !== undefined) {
+    rules.push(`references \`${fk.targetEntity}.${fk.targetField}\``);
+  }
+
+  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  if (def !== undefined) rules.push(`default: \`${String(def)}\``);
+
+  const sup = field.resolveSuper();
+  if (sup !== undefined) rules.push(`extends \`${sup.name}\``);
+
+  return {
+    field: `\`${field.name}\``,
+    required: required ? "yes" : "",
+    type: neutralTypeCell(field),
+    limits: limits.join(", "),
+    rules: rules.join(", "),
+  };
+}
+
 function buildFkMap(
   entity: MetaObject,
   root: MetaRoot,
@@ -365,13 +456,14 @@ export function buildEntityDocData(
     ? rels.map((r) => ({ bullet: relationshipBullet(r) }))
     : undefined;
 
-  // ---- Validation
-  const lower = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
-  const validation = {
-    insertSchema: `${entity.name}InsertSchema`,
-    updateSchema: `${entity.name}UpdateSchema`,
-    entityFile: `${entity.name}.ts`,
-    lower,
+  // ---- Constraints (NEUTRAL — built from the object's OWN field metadata, so
+  // it renders for every object including value objects with no storage).
+  const constraintRows: ConstraintRow[] = entity
+    .fields()
+    .map((field) => buildConstraintRow(entity, field, pkFieldNames, fkMap));
+  const constraints = {
+    hasConstraints: constraintRows.length > 0,
+    rows: constraintRows,
   };
 
   // ---- UsedBy
@@ -381,38 +473,13 @@ export function buildEntityDocData(
     const ref = child.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof ref !== "string") continue;
     if (stripPackage(ref) !== entity.name) continue;
+    // Link to the template's own doc page (Task 3 emits `<TemplateName>.md`).
+    const pageName = toPascalCase(child.name);
     usedByMatches.push({
-      bullet: `\`template.${child.subType} ${child.name}\` — uses \`${entity.name}\` as \`@payloadRef\``,
+      bullet: `[\`template.${child.subType} ${child.name}\`](./${pageName}.md) — uses \`${entity.name}\` as \`@payloadRef\``,
     });
   }
   const usedBy = usedByMatches.length > 0 ? usedByMatches : undefined;
-
-  // ---- Generated
-  const gens = opts.generatorNames ?? new Set<string>();
-  const generated: GeneratedFileDoc[] = [];
-  generated.push({
-    filename: `${entity.name}.ts`,
-    description: "Drizzle table, Zod schemas, type aliases, enum literal unions.",
-  });
-  if (gens.has("queries-file") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.queries.ts`,
-      description:
-        "typed CRUD helpers (find / list / create / update / delete; takes `db` as first param per ADR-0008).",
-    });
-  }
-  if (gens.has("routes-file") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.routes.ts`,
-      description: `Fastify CRUD-5 route registration (\`register${entity.name}Routes\`).`,
-    });
-  }
-  if (gens.has("routes-file-hono") && !isValue) {
-    generated.push({
-      filename: `${entity.name}.routes.hono.ts`,
-      description: `Hono CRUD-5 route registration (\`register${entity.name}Routes\`).`,
-    });
-  }
 
   // Preamble header — built up exactly as the legacy emitter did.
   const preambleLines: string[] = [];
@@ -439,8 +506,7 @@ export function buildEntityDocData(
       type: typeStr,
     },
     preambleHeader,
-    validation,
-    generated,
+    constraints,
   };
 
   if (desc !== undefined) data.entity.description = desc;

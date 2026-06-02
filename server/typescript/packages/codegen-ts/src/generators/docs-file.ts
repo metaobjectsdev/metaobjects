@@ -30,16 +30,6 @@ export interface DocsFileOpts {
   target?: string;
 }
 
-/** The names of the generators that may emit sibling files for an entity.
- *  We always list them in the "Generated code" section — adopters cross-
- *  reference their own metaobjects.config.ts to confirm which are wired in.
- *  Matches the rc.11 behavior. */
-const KNOWN_SIBLING_GENERATORS = new Set([
-  "queries-file",
-  "routes-file",
-  "routes-file-hono",
-]);
-
 const TEMPLATE_REF = "docs/entity-page.md";
 
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
@@ -60,7 +50,6 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
             columnNamingStrategy: rc.columnNamingStrategy,
           }),
           loadedRoot: rc.loadedRoot,
-          generatorNames: KNOWN_SIBLING_GENERATORS,
         });
         let content: string;
         try {

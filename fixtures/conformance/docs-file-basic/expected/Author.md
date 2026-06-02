@@ -22,15 +22,11 @@
 - **Primary key:** `id` — generation: `increment`
 - **Secondary index:** `name` — unique
 
-## Validation
+## Constraints
 
-- `AuthorInsertSchema` (Zod) — for creating new authors.
-- `AuthorUpdateSchema` (Zod) — for partial updates.
-- See `Author.ts` for the exported schemas.
-
-## Generated code
-
-- `Author.ts` — Drizzle table, Zod schemas, type aliases, enum literal unions.
-- `Author.queries.ts` — typed CRUD helpers (find / list / create / update / delete; takes `db` as first param per ADR-0008).
-- `Author.routes.ts` — Fastify CRUD-5 route registration (`registerAuthorRoutes`).
-- `Author.routes.hono.ts` — Hono CRUD-5 route registration (`registerAuthorRoutes`).
+| Field | Required | Type | Limits | Rules |
+|---|---|---|---|---|
+| `id` | yes | `long` |  | primary key |
+| `name` | yes | `string` | maxLength: 200 |  |
+| `status` | yes | `enum` |  | one of `active`, `suspended`, `archived` |
+| `tags` |  | `string[]` |  |  |
