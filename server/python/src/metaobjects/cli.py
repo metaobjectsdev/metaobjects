@@ -43,6 +43,11 @@ from metaobjects.codegen.generators.output_prompt_generator import (
 )
 from metaobjects.codegen.generators.payload_vo_generator import payload_vo_generator
 from metaobjects.codegen.generators.router_generator import router_generator
+from metaobjects.codegen.generator_registry import (
+    GENERATOR_REGISTRY,
+    get_generator,
+    list_generators,
+)
 from metaobjects.codegen.runner import run_gen
 
 
@@ -72,23 +77,78 @@ def _load_root(metadata_dir: str) -> tuple[MetaData | None, list[str]]:
     return result.root, []
 
 
-def _generate(metadata_dir: str, out_dir: str) -> tuple[list[str], list[str]]:
+def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
+    """Resolve a comma-separated list of STABLE generator names via the registry.
+
+    Returns ``(generators, errors)``. An unknown name produces a clear error and
+    no generators (so the caller can fail with exit code != 0).
+    """
+    requested = [n.strip() for n in names.split(",") if n.strip()]
+    gens: list[Generator] = []
+    errors: list[str] = []
+    for n in requested:
+        entry = get_generator(n)
+        if entry is None:
+            known = ", ".join(sorted(GENERATOR_REGISTRY))
+            errors.append(f"unknown generator {n!r}; known: {known}")
+            continue
+        gens.append(entry.factory())
+    if not errors and not gens:
+        errors.append("no generators selected (empty --generators list)")
+    return gens, errors
+
+
+def _generate(
+    metadata_dir: str, out_dir: str, generators: list[Generator] | None = None
+) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
-    Returns ``(written_paths, errors)``. On a load error, ``errors`` is
-    non-empty and no files are written.
+    ``generators`` defaults to the zero-config default suite; pass a registry-
+    resolved subset for ``--generators``. Returns ``(written_paths, errors)``. On
+    a load error, ``errors`` is non-empty and no files are written.
     """
     root, errors = _load_root(metadata_dir)
     if root is None:
         return [], errors
     config = GenConfig(out_dir=out_dir)
-    result = run_gen(config, root, generators=_default_generators())
+    suite = generators if generators is not None else _default_generators()
+    result = run_gen(config, root, generators=suite)
     written = [path for path, status in result.files if status != "refused"]
     return written, []
 
 
+def _cmd_list(_args: argparse.Namespace) -> int:
+    """Print each registered generator ``<stable-name> — <description>`` and exit 0.
+
+    Does NOT run codegen — pure discoverability (ADR-0021 D3).
+    """
+    for entry in list_generators():
+        print(f"{entry.name} — {entry.description}")
+    return 0
+
+
 def _cmd_gen(args: argparse.Namespace) -> int:
-    written, errors = _generate(args.metadata_dir, args.out)
+    # `--list` is a pure discoverability path: print the registry and exit, no codegen.
+    if getattr(args, "list", False):
+        return _cmd_list(args)
+
+    if args.metadata_dir is None or args.out is None:
+        print(
+            "error: gen requires <metadata_dir> and --out (or use --list).",
+            file=sys.stderr,
+        )
+        return 2
+
+    generators: list[Generator] | None = None
+    if args.generators:
+        generators, gen_errors = _resolve_generators(args.generators)
+        if gen_errors:
+            print("error: invalid --generators selection:", file=sys.stderr)
+            for msg in gen_errors:
+                print(f"  {msg}", file=sys.stderr)
+            return 1
+
+    written, errors = _generate(args.metadata_dir, args.out, generators)
     if errors:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -164,8 +224,30 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     gen = sub.add_parser("gen", help="run codegen, writing files under --out")
-    gen.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
-    gen.add_argument("--out", required=True, help="output directory for generated code")
+    # metadata_dir / --out are optional so `gen --list` works without them.
+    gen.add_argument(
+        "metadata_dir",
+        nargs="?",
+        default=None,
+        help="directory of metadata JSON/YAML files",
+    )
+    gen.add_argument(
+        "--out", default=None, help="output directory for generated code"
+    )
+    gen.add_argument(
+        "--generators",
+        default=None,
+        help=(
+            "comma-separated STABLE generator names to run (e.g. entity,routes). "
+            "Resolved via the registry; omit to run the default suite. "
+            "See `gen --list`."
+        ),
+    )
+    gen.add_argument(
+        "--list",
+        action="store_true",
+        help="list registered generators (stable name + description) and exit",
+    )
     gen.add_argument(
         "--package",
         default=None,
