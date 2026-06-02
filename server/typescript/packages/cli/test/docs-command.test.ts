@@ -52,6 +52,67 @@ async function project(): Promise<string> {
   return root;
 }
 
+// Metadata using a CUSTOM field subtype (`field.geopoint`) that only a
+// consumer-supplied provider in metaobjects.config.ts can resolve.
+const CUSTOM_META = {
+  "metadata.root": {
+    package: "acme::geo",
+    children: [
+      {
+        "object.value": {
+          name: "Place",
+          children: [
+            { "field.string": { name: "name" } },
+            // Resolves ONLY when the config's geopoint provider is loaded.
+            { "field.geopoint": { name: "location" } },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+// A metaobjects.config.ts that registers the `field.geopoint` subtype via a
+// consumer provider (mirrors how an adopter ships custom types to gen/migrate).
+const CUSTOM_CONFIG = [
+  `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
+  `import { TypeId, TYPE_FIELD, MetaField } from "@metaobjectsdev/metadata";`,
+  `const geoProvider = {`,
+  `  id: "test-geo",`,
+  `  dependencies: ["metaobjects-core-types"],`,
+  `  registerTypes(registry) {`,
+  `    registry.register({`,
+  `      typeId: new TypeId(TYPE_FIELD, "geopoint"),`,
+  `      description: "A geographic point field",`,
+  `      factory: (typeId, name) => new MetaField(typeId, name),`,
+  `      childRules: [],`,
+  `      attributes: [],`,
+  `    });`,
+  `  },`,
+  `};`,
+  `export default defineConfig({`,
+  `  outDir: "out",`,
+  `  dialect: "sqlite",`,
+  `  generators: [entityFile()],`,
+  `  providers: [geoProvider],`,
+  `});`,
+].join("\n");
+
+/** Project root with metadata using a custom type + a config that provides it. */
+async function customTypeProject(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-docs-custom-"));
+  dirs.push(root);
+  await mkdir(join(root, "metaobjects"), { recursive: true });
+  await writeFile(
+    join(root, "metaobjects", "meta.json"),
+    JSON.stringify(CUSTOM_META),
+    "utf8",
+  );
+  await writeFile(join(root, "metaobjects.config.ts"), CUSTOM_CONFIG, "utf8");
+  return root;
+}
+
 afterAll(async () => {
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
@@ -118,6 +179,21 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(summary).toMatch(/1 entity/);
     expect(summary).toMatch(/1 template/);
     expect(summary).toContain(out);
+  });
+
+  test("loads metaobjects.config.ts providers so custom types resolve", async () => {
+    const root = await customTypeProject();
+    const out = join(root, "out-custom");
+
+    // The metadata uses field.geopoint, which is NOT a core subtype — it only
+    // resolves via the provider declared in metaobjects.config.ts. Before docs
+    // loaded the config providers, this load failed with an unknown-subtype
+    // error and docs returned non-zero.
+    const code = await docsCommand([root, "--out", out], root);
+    expect(code).toBe(0);
+
+    const files = await readdir(out);
+    expect(files).toContain("Place.md");
   });
 
   test("exits non-zero with a clear message when metadata is missing", async () => {
