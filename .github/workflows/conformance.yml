@@ -66,6 +66,8 @@ jobs:
           dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet
           # Validator-parity corpus (generated DataAnnotations input validation).
           dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ValidationConformance" --nologo --verbosity quiet
+          # Generator stable-name registry conformance (ADR-0021 D3).
+          dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~GeneratorRegistryConformance" --nologo --verbosity quiet
 
       - name: Java conformance
         if: matrix.language == 'java'
@@ -79,8 +81,9 @@ jobs:
           mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest' -q
           # Byte-exact render / verify / extract / output-prompt corpora (render module).
           mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q
-          # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module).
-          mvn -pl codegen-spring test -Dtest='ValidationConformanceTest' -q
+          # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module)
+          # + generator stable-name registry conformance (ADR-0021 D3).
+          mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
 
       - name: Python conformance
         if: matrix.language == 'python'
@@ -116,8 +119,9 @@ jobs:
           # SNAPSHOT-resolution race when the test module references freshly-built
           # artifacts.
           mvn -pl codegen-kotlin -am install -DskipTests -q
-          # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has).
-          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest' -q
+          # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has)
+          # + generator stable-name registry conformance (ADR-0021 D3).
+          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]
