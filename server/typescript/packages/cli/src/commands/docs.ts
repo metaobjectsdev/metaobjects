@@ -14,6 +14,7 @@
 import { resolve as resolvePath } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
+import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -88,10 +89,40 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     : metaRoot;
   const outDir = resolvePath(metaRoot, flags.out);
 
-  // Load metadata standalone — same loader path as migrate/gen, NO gen config.
+  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
+  // providers (e.g. a project's custom field/object subtypes). Unlike `gen`,
+  // docs does NOT require a config — the Tier-2 "metadata alone" promise must
+  // hold for config-less projects. If the config is absent or invalid, fall
+  // back to defaults; the loader still surfaces a stable unknown-subtype error
+  // if the metadata genuinely uses an unregistered type.
+  let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
+  // The config lives alongside metaobjects/ at the metadata root (metaRoot);
+  // projectRoot only diverges when --templates overrides the template lookup.
+  // Only attempt the load when the file is actually present: absence is the
+  // expected config-less case (stay silent), but a config that EXISTS yet fails
+  // to load is surfaced as a warning rather than silently degrading to
+  // provider-less docs — otherwise a custom-type project would later fail with a
+  // cryptic unknown-subtype error instead of the real config error.
+  if (existsSync(join(metaRoot, "metaobjects.config.ts"))) {
+    try {
+      const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+      configProviders = forgeConfig.providers;
+    } catch (err) {
+      log.warn(
+        `docs: metaobjects.config.ts failed to load (${(err as Error).message}); ` +
+          `generating docs without its providers`,
+      );
+      configProviders = undefined;
+    }
+  }
+
+  // Load metadata standalone — same loader path as migrate/gen. Threads any
+  // consumer providers from the config so custom types resolve.
   let root;
   try {
-    root = await loadMemory(metaRoot);
+    root = await loadMemory(metaRoot, {
+      ...(configProviders !== undefined ? { providers: configProviders } : {}),
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (!existsSync(join(metaRoot, DEFAULT_METADATA_DIR))) {
