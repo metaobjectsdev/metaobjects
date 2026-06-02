@@ -35,6 +35,13 @@ public sealed record RenderRequest
     /// variant throws — instead of silently rendering nothing.
     /// </summary>
     public IReadOnlyList<PayloadField>? Verify { get; init; }
+    /// <summary>
+    /// Output budget in characters. Rendered length is data-dependent (only knowable
+    /// after rendering), so this is a render-time guard: a result longer than
+    /// <see cref="MaxChars"/> throws. Null = no guard. (Token budgets are out of
+    /// scope — model-specific tokenizer.) Mirrors TS <c>RenderOptions.maxChars</c>.
+    /// </summary>
+    public int? MaxChars { get; init; }
 }
 
 /// <summary>The logic-less, deterministic MetaObjects render engine.</summary>
@@ -93,6 +100,12 @@ public static partial class Renderer
             .Configure(settings => settings.SetEncodingFunction(v => escaper(v)))
             .Build();
 
-        return stubble.Render(expanded, request.Payload);
+        string result = stubble.Render(expanded, request.Payload);
+
+        if (request.MaxChars is int cap && result.Length > cap)
+            throw new RenderException(
+                $"render exceeded maxChars budget: {result.Length} > {cap}");
+
+        return result;
     }
 }

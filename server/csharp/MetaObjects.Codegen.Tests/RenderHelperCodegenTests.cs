@@ -86,6 +86,49 @@ public sealed class RenderHelperCodegenTests
         Assert.Equal("Hello Ada", outText);
     }
 
+    [Fact]
+    public void Document_with_maxChars_emits_compiles_and_enforces_budget_at_runtime()
+    {
+        // @maxChars emits `MaxChars = {n}` into the RenderRequest. Before the engine
+        // gained the MaxChars property this was dead-on-arrival (CS0117). Prove it now
+        // (a) compiles via Roslyn and (b) enforces the TS-parity throw-on-over-budget.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Welcome", "children": [ { "field.string": { "name": "name" } } ] } },
+          { "template.output": { "name": "WelcomePage", "@kind": "document", "@format": "html",
+                                  "@textRef": "pages/welcome", "@payloadRef": "Welcome", "@maxChars": 8 } }
+        ]}}
+        """;
+        var root = Load(m);
+        var templateRoot = TemplateRoot(("pages/welcome", "Hello {{name}}"));
+
+        var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
+        // The named init must be emitted exactly as the engine property name.
+        Assert.Contains("MaxChars = 8", file.Content);
+
+        var payloadSrc = "namespace Acme.Generated;\n" + PayloadCodegen.GeneratePayloadRecords(root, "Welcome");
+        var asm = CompileToAssembly(file.Content, payloadSrc);
+
+        var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
+        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var render = helper.GetMethod("Render")!;
+        var provider = new FilesystemProvider(templateRoot);
+
+        // Under budget: "Hello Ada" is 9 chars > 8 → over budget; "Hello Al" is 8 → within.
+        var underPayload = Activator.CreateInstance(payloadType)!;
+        payloadType.GetProperty("name")!.SetValue(underPayload, "Al"); // "Hello Al" = 8 chars
+        var outText = (string)render.Invoke(null, new object[] { underPayload, provider })!;
+        Assert.Equal("Hello Al", outText);
+
+        // Over budget: "Hello Ada" = 9 chars > 8 → the engine throws (unwrapped from reflection).
+        var overPayload = Activator.CreateInstance(payloadType)!;
+        payloadType.GetProperty("name")!.SetValue(overPayload, "Ada"); // "Hello Ada" = 9 chars
+        var ex = Assert.Throws<TargetInvocationException>(() =>
+            render.Invoke(null, new object[] { overPayload, provider }));
+        Assert.IsType<RenderException>(ex.InnerException);
+        Assert.Contains("maxChars", ex.InnerException!.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ---------------------------------------------------------------------
     // Email kind — emit shape + Roslyn compile-run → EmailDocument
     // ---------------------------------------------------------------------
