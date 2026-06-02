@@ -35,6 +35,7 @@ class QuerySpec:
     limit: int | None
     offset: int | None
     expect: Any
+    relation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ def _parse_query(path: Path) -> QueryScenario:
             limit=q.get("limit"),
             offset=q.get("offset"),
             expect=q.get("expect"),
+            relation=q.get("relation"),
         ))
     return QueryScenario(
         name=raw["name"],

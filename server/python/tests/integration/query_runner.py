@@ -11,7 +11,7 @@ import pg8000.dbapi as pg8000
 from metaobjects import load_directory
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
-from .normalization import canonical_rows_json, normalize_row
+from .normalization import canonical_row_set_json, canonical_rows_json, normalize_row
 from .postgres_container import PostgresContainer
 from .scenarios import QueryScenario, QuerySpec
 
@@ -63,6 +63,12 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
         return om.find_by_id(spec.entity, first_value)
     if spec.op == "count":
         return om.count(spec.entity, spec.filter)
+    if spec.op == "relate":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:relate requires 'by' (source record key)")
+        if not spec.relation:
+            raise ValueError(f"{spec.name}: op:relate requires 'relation'")
+        return om.relate(spec.entity, spec.by, spec.relation)
     # op:list
     sort = [(s.field, s.dir) for s in spec.sort] if spec.sort else None
     return om.find_many(
@@ -150,6 +156,11 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
         if expect is None:
             return "null"
         return json.dumps(normalize_row(expect), sort_keys=True, separators=(",", ":"))
+    # `relate` (M:N navigation) is a SET — order is not part of the contract, so
+    # both sides sort by per-row canonical JSON for a deterministic, port-agnostic
+    # comparison. `list` keeps its order (the scenario pins it via `sort:`).
+    if op == "relate":
+        return canonical_row_set_json(expect or [])
     # op:list
     if expect is None:
         return "[]"
@@ -160,9 +171,12 @@ def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> s
     if op == "count":
         return str(int(actual) if actual is not None else 0)
     if actual is None:
-        return "null"
+        return "null" if op != "relate" else "[]"
     if op == "get":
         return json.dumps(
             normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
         )
+    if op == "relate":
+        rows = actual if isinstance(actual, list) else [actual]
+        return canonical_row_set_json(rows, column_oids)
     return canonical_rows_json(actual, column_oids)

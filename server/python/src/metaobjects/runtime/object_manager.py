@@ -35,6 +35,12 @@ from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
+from .n2m_resolver import (
+    N2mDescriptor,
+    collect_column_ids,
+    collect_symmetric_target_ids,
+    resolve_n2m_descriptor,
+)
 
 
 # Filter shape:
@@ -186,6 +192,79 @@ class ObjectManager:
         n = self._driver.scalar(sql, tuple(params))
         return int(n) if n is not None else 0
 
+    def relate(
+        self, entity_name: str, record: dict[str, Any], relation_name: str
+    ) -> list[dict[str, Any]] | dict[str, Any] | None:
+        """Traverse a relationship from a source *record* to its related rows.
+
+        M:N (FR-017) is resolved generically from metadata: derive the junction
+        FK fields from the junction's two ``identity.reference`` children, query
+        the junction, then load the target rows. Three modes — hetero, directed
+        self-join (``@sourceRefField``), symmetric self-join (``@symmetric``) —
+        mirror the TS reference resolver. ``record`` is a source-key dict (e.g.
+        ``{"id": 1}``); only the source PK is read from it.
+        """
+        entity = self._require_entity(entity_name)
+        desc = resolve_n2m_descriptor(entity, relation_name, self._entity_by_name)
+        if desc is None:
+            raise ValueError(
+                f"Relationship '{relation_name}' on '{entity_name}' is not a "
+                f"resolvable M:N relationship (only M:N traversal is supported "
+                f"by relate() today)"
+            )
+        return self._relate_n2m(entity, desc, record)
+
+    def _relate_n2m(
+        self, entity: MetaObject, desc: N2mDescriptor, record: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        junction = self._require_entity(desc.junction_entity_name)
+        target = self._require_entity(desc.target_entity_name)
+
+        # Source PK value from the in-process record (the relate `by` key).
+        source_pk_field = self._primary_pk_field(entity)
+        source_id = record.get(source_pk_field)
+        if source_id is None:
+            return []
+
+        # Physical junction columns for the derived FK fields.
+        source_col = self._junction_column(junction, desc.source_field)
+        target_col = self._junction_column(junction, desc.target_field)
+
+        # Query the junction. Symmetric unions both FK columns; directed/hetero
+        # filter only the source side.
+        join_table = self._table_name(junction)
+        select_cols = f"{_q(source_col)}, {_q(target_col)}"
+        if desc.symmetric:
+            sql = (
+                f"SELECT {select_cols} FROM {_q(join_table)} "
+                f"WHERE {_q(source_col)} = %s OR {_q(target_col)} = %s"
+            )
+            params: tuple[Any, ...] = (source_id, source_id)
+        else:
+            sql = (
+                f"SELECT {select_cols} FROM {_q(join_table)} "
+                f"WHERE {_q(source_col)} = %s"
+            )
+            params = (source_id,)
+        join_rows = self._driver.select(sql, params).rows
+
+        # Collect the related (target) ids.
+        if desc.symmetric:
+            target_ids = collect_symmetric_target_ids(
+                join_rows, source_col, target_col, {source_id}
+            )
+        else:
+            target_ids = collect_column_ids(join_rows, target_col)
+        if not target_ids:
+            return []
+
+        # Load the target rows by PK. Reuse find_many so the row shape (metadata
+        # field names) + last_column_oids match every other read path.
+        target_pk_field = self._primary_pk_field(target)
+        return self.find_many(
+            desc.target_entity_name, {target_pk_field: {"in": target_ids}}
+        )
+
     # --- Helpers -------------------------------------------------------------
 
     def _require_entity(self, name: str) -> MetaObject:
@@ -204,6 +283,15 @@ class ObjectManager:
                 if pn:
                     return pn
         return entity.name
+
+    def _junction_column(self, junction: MetaObject, field_name: str) -> str:
+        """Physical column for a junction FK field (metadata field name → column)."""
+        f = junction.find_field(field_name)
+        if f is None:
+            raise ValueError(
+                f"Junction '{junction.name}' has no field '{field_name}'"
+            )
+        return _column_of(f)
 
     def _primary_pk_field(self, entity: MetaObject) -> str:
         pi = entity.primary_identity()
