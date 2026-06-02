@@ -218,4 +218,28 @@ describe("symmetric self-join — User.friends via Friendship (union on read)", 
       ],
     });
   });
+
+  // Regression: two mutually-related records queried in the SAME batch. Row
+  // (1,2) makes 1↔2 friends. The fetch set must include BOTH endpoints, else
+  // the eager-include grouping can attach 1→2 but drops 2→1 (target row 1 was
+  // never fetched).
+  test("batch: mutual friends in one batch fetch BOTH endpoints", async () => {
+    const root = await load(SYMMETRIC);
+    const user = root.ownChildByName("User")!;
+    const desc = resolveN2mDescriptor(user, "friends", root)!;
+    const { makeTargetSpec } = buildN2mBatchSpecs(desc, [{ id: 1 }, { id: 2 }], root);
+    // Row (1,2): both 1 and 2 are sources — each is the other's friend.
+    const targetSpec = makeTargetSpec([{ user_a_id: 1, user_b_id: 2 }]);
+    expect((targetSpec!.where as { values: unknown[] }).values.sort()).toEqual([1, 2]);
+  });
+
+  // Self-loop (a,a) with a in the batch yields a once (not twice).
+  test("batch: self-loop row fetches the id once", async () => {
+    const root = await load(SYMMETRIC);
+    const user = root.ownChildByName("User")!;
+    const desc = resolveN2mDescriptor(user, "friends", root)!;
+    const { makeTargetSpec } = buildN2mBatchSpecs(desc, [{ id: 5 }], root);
+    const targetSpec = makeTargetSpec([{ user_a_id: 5, user_b_id: 5 }]);
+    expect((targetSpec!.where as { values: unknown[] }).values).toEqual([5]);
+  });
 });

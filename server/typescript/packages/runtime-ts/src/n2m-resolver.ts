@@ -193,9 +193,13 @@ function collectColumnIds(joinRows: Row[], dbColumn: string): PrimitiveValue[] {
 }
 
 /**
- * Symmetric union-on-read: for each junction row, the related id is whichever
- * of (sourceCol, targetCol) is NOT one of the source ids. A self-loop row
- * (both columns are the source id) yields the source id itself.
+ * Symmetric union-on-read: this gathers the set of related ids to FETCH for the
+ * second-stage query. For each junction row (a,b) that surfaced via the
+ * `a IN ids OR b IN ids` join filter, the related endpoint is the column that is
+ * NOT a source — EXCEPT when BOTH columns are sources (two mutually-related
+ * records queried in the same batch), where both must be fetched so the
+ * eager-include grouping can attach a→b AND b→a. A self-loop row (a==b, a a
+ * source) yields a itself.
  *
  * Membership is compared by string-coerced key: the source ids come from the
  * in-process source record (e.g. a JS number) while the junction FK values come
@@ -207,13 +211,27 @@ function collectSymmetricTargetIds(
 ): PrimitiveValue[] {
   const sourceKeys = new Set<string>([...sourceIds].map(String));
   const seen = new Set<PrimitiveValue>();
+  const add = (v: PrimitiveValue | null | undefined): void => {
+    if (v === null || v === undefined) return;
+    seen.add(v);
+  };
   for (const r of joinRows) {
-    const a = r[sourceCol];
-    const b = r[targetCol];
+    const a = r[sourceCol] as PrimitiveValue | null | undefined;
+    const b = r[targetCol] as PrimitiveValue | null | undefined;
     const aIsSource = a !== null && a !== undefined && sourceKeys.has(String(a));
-    const other = aIsSource ? b : a;
-    if (other === null || other === undefined) continue;
-    seen.add(other as PrimitiveValue);
+    const bIsSource = b !== null && b !== undefined && sourceKeys.has(String(b));
+    // When a is a source, b is its related id; when b is a source, a is its
+    // related id. Both can hold at once (mutually-related batch members) — fetch
+    // both endpoints then. Falls back to "the non-matched column" when only one
+    // side matched (the common single-source-lookup case).
+    if (aIsSource) add(b);
+    if (bIsSource) add(a);
+    if (!aIsSource && !bIsSource) {
+      // Row surfaced via the join filter but neither column string-matches a
+      // source id (e.g. number/string skew not bridged here) — keep prior
+      // behavior: take whichever side is present.
+      add(a ?? b);
+    }
   }
   return [...seen];
 }
