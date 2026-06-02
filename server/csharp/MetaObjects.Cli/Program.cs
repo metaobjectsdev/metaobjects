@@ -14,7 +14,9 @@ if (args.Length == 0)
         "usage: dotnet meta <command> [options]\n" +
         "  commands:\n" +
         "    gen <metadataDir> --out <dir> --namespace <ns> [--emit-abstract-shapes]\n" +
+        "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
+        "    gen --list                                       list available generators (stable names) and exit\n" +
         "    verify <metadataDir> --templates <root>          drift-check templates against their payloads");
     return 2;
 }
@@ -32,20 +34,39 @@ static int RunGen(string[] rest)
     string? outDir = null;
     string ns = "Generated";
     bool emitAbstractShapes = false;
+    bool list = false;
+    string? generatorsCsv = null;
+    string? templateRoot = null;
     for (int i = 0; i < rest.Length; i++)
     {
-        if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
+        if (rest[i] == "--list") list = true;
+        else if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
+        else if (rest[i] == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
+        else if (rest[i] == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
         else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
+
+    // `--list` — discoverability surface (ADR-0021 D3). Print and exit 0, no codegen.
+    if (list)
+    {
+        Console.WriteLine("available generators (select with --generators <name,...>):");
+        foreach (var line in GenCommand.ListLines()) Console.WriteLine(line);
+        return 0;
+    }
+
     if (metadataDir is null || outDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]");
+        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes]");
+        Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
 
-    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes);
+    var generatorNames = generatorsCsv
+        ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes, generatorNames, templateRoot);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
