@@ -68,15 +68,18 @@ generated TS schema.
 Move the canonical doc templates out of the TS package into one shared,
 language-agnostic location and add a conformance gate.
 
-- **Canonical location:** `fixtures/doc-templates/` (sibling to the existing
-  `fixtures/render-conformance/`, `fixtures/verify-conformance/` — same
-  shared-fixture discipline). Holds:
-  - `docs/entity-page.md.mustache` (moved + neutralized)
-  - `docs/template-page.md.mustache` (new)
+- **Canonical location:** a new root **`templates/`** directory. Rationale:
+  `fixtures/` is specifically for **conformance corpora** (shared *test inputs*:
+  render-conformance, verify-conformance, extract-conformance, …). Doc templates
+  are shipped **product assets** that merely carry a byte-identity gate — not
+  test inputs — so they get their own canonical home. Holds:
+  - `templates/docs/entity-page.md.mustache` (moved + neutralized)
+  - `templates/docs/template-page.md.mustache` (new)
 - **Each consuming port** ships its framework-default copy in its own package
   resources (as today for TS), but a **byte-identity conformance test** asserts
-  the shipped copy equals the canonical fixture byte-for-byte. Only TS consumes
-  today; the gate exists so a future consumer cannot fork the template.
+  the shipped copy equals the canonical `templates/` source byte-for-byte. Only
+  TS consumes today; the gate exists so a future consumer cannot fork the
+  template.
 - This mirrors how `render-conformance` pins byte-identical engine behavior —
   here it pins byte-identical *template source*.
 
@@ -89,10 +92,10 @@ language-agnostic location and add a conformance gate.
 - **Drop** the `generated` section and field from `EntityDocData` + the
   `## Generated code` block from the template.
 - **Replace** the `validation` section: instead of `insertSchema`/`updateSchema`
-  Zod names, emit a neutral **Constraints** view derived from field metadata —
-  per field, the declared constraints (required, maxLength/min/max, pattern,
-  enum membership, declared `validator.*` rules). Exact rendering: a bullet or a
-  small table per constrained field.
+  Zod names, emit a neutral **Constraints** view derived from field metadata.
+  **Rendering: a table** (matches the Storage section style; scannable for
+  many-field entities) with columns: field | required | type |
+  limits (maxLength/min/max/pattern) | enum/validators.
 - Keep Storage / Identity / Relationships / Used by unchanged (already neutral).
 - Make **Used by** bullets link to the new template page (`./<Template>.md`).
 - The TS golden (`test/golden/docs-file-conformance.test.ts`) updates to the
@@ -172,13 +175,13 @@ types):
   resolve Used-by links
 - CLI: ensure `meta docs` emits both page types
 
-## Open questions for review
+## Decisions (resolved 2026-06-02)
 
-1. **Canonical location** — `fixtures/doc-templates/` proposed (alongside the
-   other shared conformance fixtures). Acceptable, or prefer a root
-   `templates/` / different path?
-2. **Constraints rendering** — per-field bullets vs. a compact table. (Lean:
-   table, matching the Storage section's style.)
-3. **`meta docs` command** — confirmed: none exists; this design wires a new
-   standalone `meta docs` command (above). Confirm that's in scope for this pass
-   vs. keeping docs as a codegen-pipeline byproduct for now.
+1. **Canonical location** — root **`templates/`** (not `fixtures/`, which is for
+   conformance corpora / test inputs; doc templates are shipped product assets).
+2. **Constraints rendering** — **table** (Storage-section style).
+3. **`meta docs` command** — **in scope this pass**: wire a standalone
+   `meta docs <metadata> --out <dir>` into the CLI + binary.
+4. **Overall scope** — **neutral metadata docs only**. Native per-port code
+   generators untouched; docs builder NOT ported to other languages; SDK/API
+   docs (Tier 1) deferred.
