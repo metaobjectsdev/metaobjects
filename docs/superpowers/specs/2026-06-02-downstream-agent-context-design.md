@@ -111,25 +111,37 @@ philosophy).
 Proposed location: **`agent-context/`** at the monorepo root (peer of `spec/` and
 `fixtures/`), so it is obviously cross-port and not TS-owned.
 
+The `core/` section list below was validated against an audit of all 21 ADRs,
+the `docs/features/*` + `spec/*` corpus, and the legacy `metaobjects-core` concept
+docs (see *Design-information coverage* appendix). It is the full concept corpus;
+the always-on Markdown is a slim digest of it and each skill bundles the relevant
+subset.
+
 ```
 agent-context/
-├── core/                      # PORT-AGNOSTIC, AI-facing, self-contained
-│   ├── overview.md            # what MetaObjects is; the metamodel-is-the-spine framing
-│   ├── principles.md          # the working principles (codegen-not-hand-code, etc.)
-│   ├── metamodel.md           # 8 base types, the two violation rules, package paths
-│   ├── authoring.md           # YAML/JSON, fields, entities, relationships, sources, abstracts, enums
-│   ├── filters.md             # filter grammar + operators by field subtype
-│   └── glossary.md            # terms an assistant needs (source.rdb, projection, payload, …)
-├── ports/                     # THIN per-port overlays (install + invoke + packages)
+├── core/                          # PORT-AGNOSTIC, AI-facing, self-contained
+│   ├── overview.md                # what MetaObjects is; metamodel-is-the-spine; local-first; no-runtime-dep; the four pillars; the "metadata loader ≈ ClassLoader" mental model (load-once, permanent, cached reads, deferred extends resolution)
+│   ├── principles.md              # working principles: pattern-derivable = codegen / never hand-write; never hand-edit generated files (regen + three-way merge); use the generated constants block for any metadata string
+│   ├── metamodel.md               # base types (authority = constants.ts; ~11 + `template`); FUSED-KEY node encoding `{"<type>.<subType>": {...}}`; reserved structural keys + canonical body-key order; the two violation rules (attr uniqueness; `@attr` inline/child duality); package paths (`::`, `..::`); extends vs overlay vs abstract + DEFERRED extends resolution; object subtypes entity/value/base
+│   ├── authoring.md               # YAML sigil-free desugar + the coercion footgun (quote any bool/number/date scalar; ERR_YAML_COERCION); canonical JSON; field subtypes (string/int/long/double/boolean/date/timestamp/decimal/currency/enum/uuid/object); identities (primary/secondary/reference + @generation); relationships (composition + @cardinality; @onDelete/@onUpdate); validators (field-layer vs view-layer); views + layout.dataGrid; documentation common attrs (`notes` is internal-only)
+│   ├── sources-and-storage.md     # source.rdb + @kind (read-only derives from kind); @table/@column (NOT @name/@dbColumn); @schema; multi-source @role (exactly one primary); LOGICAL field subtype vs PHYSICAL @dbColumnType; @storage flattened|jsonb|subdocument; origins (passthrough/aggregate/collection) → projections
+│   ├── runtime-and-api.md         # runtime return-type contract (native in-process types, not wire strings; TS decimal = string); param-passing generated repo helpers (no module `db` singleton); the REST contract — URL grammar, filter operators + bracketed-qs grammar gated by subtype, sort, limit/offset pagination, withCount, currency = integer minor units on the wire, UUID canonical hex, error envelope; the EntityFetcher browser contract
+│   ├── prompt-construction.md     # the fourth pillar: template.prompt/output (@payloadRef/@textRef/@format); payload = object.value projection (origin.* fields); provider-resolved external text; render() determinism; verify --templates drift gate; parser-on-receipt for template.output
+│   ├── verify-and-migrations.md   # the drift sources; verify subverbs --db/--codegen/--templates; schema migrations are the shared TS engine for EVERY port (meta migrate / verify --db are Node-only); the @generated header + never-hand-edit rule
+│   ├── invariants.md              # the deduped cross-language contracts an assistant must NEVER violate (currency minor units; native runtime return types; TS-only migrations; source.rdb + @table/@column; logical-vs-physical; object entity/value only; sigil-free YAML; structured error codes; …)
+│   ├── extending.md               # (advanced) adding subtypes/attrs via a MetaDataTypeProvider; register vs registry.extend vs abstract+extends — default to the lightest; never edit core
+│   └── glossary.md                # terms (source.rdb, projection, payload, origin, overlay, extends, ValueObject, ObjectManager, recover/extract, …) + the stable ERR_*/WARN_* loader codes
+├── ports/                         # THIN per-port overlays (install + invoke + packages)
 │   ├── typescript.md
-│   ├── java.md                # also serves Kotlin via metadata-ktx note
+│   ├── java.md                    # also serves Kotlin via metadata-ktx note
 │   ├── kotlin.md
 │   ├── csharp.md
 │   └── python.md
-├── skills/                    # SKILL.md bodies (core text + {{port}} injection points)
+├── skills/                        # SKILL.md bodies (core text + {{port}} injection points)
 │   ├── metaobjects-authoring/SKILL.md
 │   ├── metaobjects-codegen/SKILL.md
 │   ├── metaobjects-runtime-ui/SKILL.md
+│   ├── metaobjects-prompts/SKILL.md
 │   └── metaobjects-verify/SKILL.md
 └── templates/
     ├── always-on.md.mustache  # the slim AGENTS.md/CLAUDE.md assembled from core+overlay
@@ -137,14 +149,26 @@ agent-context/
     └── llms-full.txt.mustache   # the full corpus
 ```
 
-**Source-of-truth decision.** `agent-context/core/` is the **AI-facing distilled
-source**. `docs/features/*` stays the **human long-form** reference. We do **not**
-try to keep the two byte-equal (that would be brittle). Instead:
-- Cross-language vocabulary used in `core/` (subtype names, filter operators, attr
-  names) is asserted against the canonical constants by a small drift test, so the
-  *facts* can't diverge even though the prose differs.
-- The conformance gate (below) pins the **assembled scaffolded output**, not
-  doc-to-doc equivalence.
+**Source-of-truth decision (and a critical caveat).** `agent-context/core/` is the
+**AI-facing distilled source**, authored **fresh from the canonical sources**:
+`docs/features/*`, `spec/wire-format.md`, `spec/yaml-house-style.md`, and
+`packages/metadata/src/constants.ts` (the canonical vocabulary). `docs/features/*`
+stays the **human long-form** reference. We do **not** keep the two byte-equal
+(brittle); instead the cross-language vocabulary in `core/` (subtype names, filter
+operators, attr names) is asserted against `constants.ts` by a small drift test,
+and the conformance gate (below) pins the **assembled scaffolded output**.
+
+> ⚠️ **Do NOT port the current scaffolded body verbatim.** The audit found three
+> sources that are **stale on the metamodel encoding** and would actively mislead
+> an assistant: the existing scaffolded `sdk/src/agent-docs/body.ts` (uses the
+> pre-v2 expanded `{object:{subType:entity}}` form, "8 base types", `merge:true`),
+> `packages/metadata/METAMODEL.md`, and parts of `spec/metamodel.md`
+> (lists retired `source.dbTable`/`dbView`). Their **prose** (working principles,
+> currency, projections, filtering) is sound and reusable; their **encoding
+> examples** are wrong vs. the fused-key canonical form. P0 authors `core/` from
+> the canonical sources above; P1 *replaces* the stale body rather than evolving
+> it. Fixing `METAMODEL.md` and `spec/metamodel.md` is a recommended side-fix
+> (tracked in *Open questions*).
 
 ## Surface 1 — the always-on Markdown (portable)
 
@@ -166,7 +190,7 @@ exists; it never auto-edits without consent and never clobbers. A `--wire-root`
 
 ## Surface 2 — the skills (Claude Code)
 
-Four narrow skills, scaffolded into `.claude/skills/metaobjects-<x>/SKILL.md`,
+Five narrow skills, scaffolded into `.claude/skills/metaobjects-<x>/SKILL.md`,
 self-contained (bundle the reference excerpts they need — downstream has no
 `docs/`), ≤ ~500 lines each, with sharp `description`s:
 
@@ -175,7 +199,13 @@ self-contained (bundle the reference excerpts they need — downstream has no
 | `metaobjects-authoring` | "Use when authoring or modifying MetaObjects metadata — fields, entities, relationships, sources, enums, abstracts/inheritance — in YAML or canonical JSON." |
 | `metaobjects-codegen` | "Use when configuring or running MetaObjects code generation: generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration." |
 | `metaobjects-runtime-ui` | "Use when wiring MetaObjects generated code into an app: runtime queries/CRUD, REST routes, and the web client (forms, grids, filters)." |
-| `metaobjects-verify` | "Use when verifying MetaObjects: drift checks, schema migrations, and interpreting conformance/test failures." |
+| `metaobjects-prompts` | "Use when declaring or using MetaObjects prompt construction: `template.prompt`/`template.output`, typed payload projections, provider-resolved text, deterministic render, prompt-drift verify, and parser-on-receipt." |
+| `metaobjects-verify` | "Use when verifying MetaObjects: drift checks (`verify --db/--codegen/--templates`), schema migrations, and interpreting conformance/test failures." |
+
+`metaobjects-prompts` is the most opt-in (many adopters use only the entity/CRUD
+path) — but skills are zero-cost until triggered, so a dedicated skill keeps the
+other four focused on the common case. P1 dogfoods the five-way split before the
+per-port fan-out locks it.
 
 - **Superpowers stance:** independent. `metaobjects-authoring` *optionally* says
   "for non-trivial schema design, use `/superpowers:brainstorming` if installed;
@@ -214,7 +244,7 @@ consumer side.
 ## Conformance gate
 
 `fixtures/agent-context-conformance/` (mirrors `render-conformance/`): the golden is
-the **assembled always-on Markdown + the four SKILL.md files** for each port. Each
+the **assembled always-on Markdown + the five SKILL.md files** for each port. Each
 port's emit command must reproduce the golden byte-for-byte for the shared core
 (port overlays legitimately differ per port). This is what guarantees cross-port
 equivalence and catches drift whenever the source or a refresh changes output.
@@ -225,8 +255,9 @@ equivalence and catches drift whenever the source or a refresh changes output.
   bodies + templates), the assembler, the vocabulary drift test, and the
   `agent-context-conformance` golden + runner.
 - **P1 — TS pilot.** Evolve `meta init` to scaffold the slim always-on Markdown +
-  the four skills (replacing the single blob); opt-in root wiring; `--no-skills`;
-  conformance green for TS. Dogfood the skill granularity here before fan-out.
+  the five skills, **replacing** (not porting) the stale single blob; opt-in root
+  wiring; `--no-skills`; conformance green for TS. Dogfood the skill granularity
+  here before fan-out.
 - **P2 — per-port fan-out.** Java/Kotlin (`meta:agent-docs`), Python, C# emit
   commands consuming the shared content; conformance green for all five.
 - **P3 — website coupling.** Monorepo assembles canonical `llms.txt` +
@@ -251,3 +282,50 @@ equivalence and catches drift whenever the source or a refresh changes output.
 - **Two AI-facing vs human-facing doc sources** (`agent-context/core` vs
   `docs/features`) — accepted, bounded by the vocabulary drift test rather than full
   content sync.
+- **Recommended side-fixes (out of scope but adjacent):** `packages/metadata/METAMODEL.md`
+  and `spec/metamodel.md` are stale on the fused-key encoding / retired source
+  subtypes. They are not part of this work, but since P0 reads the canonical
+  sources anyway, flag/fix them opportunistically so they stop misleading
+  assistants that read the repo directly.
+- **ADR status caveats to encode in `core/`:** ADR-0018 (per-kind physical-name
+  attrs like `@view`/`@proc`) is *Proposed/unimplemented* — present `@table` as
+  current, per-kind aliases as forthcoming. ADR-0015/0016/0020/0021 (migrate
+  engine, codegen surface, verify subverbs) are TS-reference-shipped with per-port
+  fan-out staged — state the contract, caveat per-port availability. The
+  `recover`→`extract` rename is queued — method names may shift.
+
+## Appendix — Design-information coverage
+
+Validates that the content model covers the downstream-relevant design knowledge
+surfaced by auditing all 21 ADRs, the `docs/features/*` + `spec/*` corpus, and the
+legacy `metaobjects-core` concepts. Each row: a knowledge area an adopter's
+assistant must be aware of → where it lives.
+
+| Design knowledge (source) | Covered by |
+|---|---|
+| Metamodel-is-spine, local-first, no-runtime-dep, four pillars (philosophy) | `core/overview.md` |
+| "Loader ≈ ClassLoader" mental model: load-once, cached, deferred `extends` resolution (legacy concept, still true) | `core/overview.md` + `core/metamodel.md` |
+| Pattern-derivable = codegen; never hand-edit generated files; use generated constants | `core/principles.md` |
+| Fused-key node encoding; base types (constants.ts); reserved keys + body-key order; the two violation rules; package paths; extends/overlay/abstract | `core/metamodel.md` |
+| Object subtypes = entity/value/base only; no representation attr (ADR-0005) | `core/metamodel.md` + `core/invariants.md` |
+| Sigil-free YAML desugar + coercion footgun; canonical JSON `@`-interchange (ADR-0006) | `core/authoring.md` |
+| Field subtypes incl. currency/enum/uuid/object; identities; relationships + `@onDelete`/`@onUpdate`; validators (field vs view); views; layout.dataGrid; documentation attrs (`notes` internal) | `core/authoring.md` |
+| `source.rdb` + `@kind`; `@table`/`@column`; `@schema`; `@role` one-primary (ADR-0007/0018) | `core/sources-and-storage.md` + `core/invariants.md` |
+| Logical field type vs physical `@dbColumnType`; `@storage` flattened/jsonb/subdocument (ADR-0013) | `core/sources-and-storage.md` |
+| Origins (passthrough/aggregate/collection) → projections | `core/sources-and-storage.md` |
+| Codegen config/generators/targets/dialects (D1 = TS-only)/naming-strategy; three-way-merge regen; stable generator names + `--list` (ADR-0020/0021) | `core/verify-and-migrations.md` + `metaobjects-codegen` skill |
+| Param-passing generated repo helpers — no `db` singleton (ADR-0008) | `core/runtime-and-api.md` + `core/invariants.md` |
+| Runtime return-type contract — native in-process types, decimal exact, TS decimal = string (ADR-0019); `newInstance`/get-set/ValueObject (ADR-0017) | `core/runtime-and-api.md` + `core/invariants.md` |
+| REST contract: URL grammar, filter operators + bracketed-qs grammar by subtype, sort, limit/offset, withCount, error envelope; EntityFetcher | `core/runtime-and-api.md` + `metaobjects-runtime-ui` skill |
+| Currency = integer minor units on the wire; UUID canonical hex (wire invariants) | `core/runtime-and-api.md` + `core/invariants.md` |
+| Prompt pillar: `template.prompt`/`output` (`@payloadRef`/`@textRef`/`@format`), payload projections, provider text, render determinism, parser-on-receipt (ADR-0010/0011) | `core/prompt-construction.md` + `metaobjects-prompts` skill |
+| Drift sources; `verify --db/--codegen/--templates` (ADR-0021); migrations TS-engine-only for every port (ADR-0015/0016) | `core/verify-and-migrations.md` + `metaobjects-verify` skill + `core/invariants.md` |
+| Structured loader error envelope; stable `ERR_*`/`WARN_*` codes (ADR-0009) | `core/glossary.md` |
+| Extending the metamodel: provider; register vs `registry.extend` vs abstract+extends (ADR-0004/0011) | `core/extending.md` |
+| Java/Kotlin = plain Maven JARs, no OSGi (ADR-0012) | `ports/java.md` + `ports/kotlin.md` |
+| Per-port install + codegen invocation + runtime packages | `ports/*.md` |
+
+**Classified INTERNAL (not surfaced to adopters):** ADR-0001 (build-time type
+binding mechanism), 0002 (open-closed nodes), 0003 (constants colocation), 0014
+(loader-scoped registry) — contributor/porter concerns with no authoring, wire, or
+observable runtime/codegen effect on an adopter.
