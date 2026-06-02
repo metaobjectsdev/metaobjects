@@ -35,7 +35,7 @@
     "template": {
       "concept": "Generic Mustache template primitive (walk + template -> files).",
       "tier": "native",
-      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+      "ports": ["typescript", "csharp", "java", "python"]
     },
     "filter-allowlist": {
       "concept": "Per-entity REST filter allowlist (queryable-field guard).",
