@@ -122,6 +122,9 @@ export type AnyMeta =
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
+
+// Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
+export { buildRegistryManifest, emitRegistryManifest } from "./registry-manifest.js";
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
