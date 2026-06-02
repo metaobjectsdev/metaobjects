@@ -71,9 +71,15 @@ object KotlinTypeMapper {
      * - `jsonb` (on [StringField]) — emit Exposed `jsonb("col", { it }, { it })` (a real
      *   Postgres `JSONB` column). The property stays a raw-JSON `String`; the identity
      *   encode/decode functions pass the JSON text straight through.
-     * - `timestamp_with_tz` (on [TimestampField]) — emit Exposed `timestampWithTimeZone("col")`
-     *   (Postgres `timestamp with time zone`). Opt-in: the default for `field.timestamp` is
-     *   plain `timestamp("col")` (Postgres `timestamp without time zone`).
+     * - `timestamp_with_tz` (on [TimestampField]) — emit the generated, file-local
+     *   `instantWithTimeZone("col")` extension (a `Column<java.time.Instant>` whose DDL is
+     *   Postgres `timestamp with time zone`). Opt-in: the default for `field.timestamp` is
+     *   plain `datetime("col")` (Postgres `timestamp without time zone`, `LocalDateTime`).
+     *   NOTE: Exposed 0.55's native `timestampWithTimeZone(...)` is a `Column<OffsetDateTime>`,
+     *   which would MISMATCH the `Instant` data-class property emitted by [kotlinTypeName] and
+     *   force callers to hand-coerce `Instant`↔`OffsetDateTime`. We therefore emit a custom
+     *   `Column<Instant>` column whose `sqlType()` is `TIMESTAMP WITH TIME ZONE` (the helper is
+     *   emitted file-locally by [KotlinExposedTableGenerator] — see [EXPOSED_INSTANT_TZ_FN]).
      *
      * Unknown values fall through to the default mapping for the field type.
      */
@@ -100,6 +106,19 @@ object KotlinTypeMapper {
 
     /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
     private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
+
+    /**
+     * Name of the generated, file-local Exposed extension function emitted for a
+     * `@dbColumnType=timestamp_with_tz` [TimestampField]. It returns a
+     * `Column<java.time.Instant>` whose `sqlType()` is `TIMESTAMP WITH TIME ZONE` — so the
+     * column type MATCHES the `Instant` data-class property (zero `Instant`↔`OffsetDateTime`
+     * coercion) while keeping the TZ-aware Postgres column (offset→UTC normalization, the
+     * persistence-conformance contract). [KotlinExposedTableGenerator] emits the supporting
+     * `ColumnType<Instant>` + this extension once per generated table file that needs it; it
+     * lives in the table's own package, so no cross-file import is required (the column
+     * function returns `null` from [exposedColumnImport]).
+     */
+    const val EXPOSED_INSTANT_TZ_FN = "instantWithTimeZone"
 
     /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
@@ -232,14 +251,15 @@ object KotlinTypeMapper {
         is TimeField      -> "org.jetbrains.exposed.sql.javatime.time"
         // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
         // time zone`, mapped by exposed-java-time to `java.time.LocalDateTime` (the
-        // zone-less wall-clock shape carried on the cross-port wire). Opt-in
-        // `@dbColumnType=timestamp_with_tz` switches to `timestampWithTimeZone(...)`
-        // (Postgres `timestamp with time zone`, `java.time.Instant`).
+        // zone-less wall-clock shape carried on the cross-port wire) — needs the javatime
+        // `datetime` import. Opt-in `@dbColumnType=timestamp_with_tz` emits the file-local
+        // `instantWithTimeZone(...)` extension instead (a `Column<java.time.Instant>` with
+        // `TIMESTAMP WITH TIME ZONE` DDL — see [EXPOSED_INSTANT_TZ_FN]). That helper is
+        // emitted into the table's own file by [KotlinExposedTableGenerator], so it needs
+        // NO external import — return null for the opt-in branch.
         is TimestampField -> {
-            if (timestampWithTzOptIn(field))
-                "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone"
-            else
-                "org.jetbrains.exposed.sql.javatime.datetime"
+            if (timestampWithTzOptIn(field)) null
+            else "org.jetbrains.exposed.sql.javatime.datetime"
         }
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
         // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
@@ -300,9 +320,12 @@ object KotlinTypeMapper {
         is TimeField      -> "time(\"$colName\")"
         // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
         // time zone` (`java.time.LocalDateTime`), the zone-less wall-clock wire shape.
-        // Opt in to TZ-aware (`java.time.Instant`) via `@dbColumnType=timestamp_with_tz`.
+        // Opt in to TZ-aware (`java.time.Instant`) via `@dbColumnType=timestamp_with_tz`,
+        // which emits the file-local `instantWithTimeZone(...)` extension — a
+        // `Column<java.time.Instant>` (matches the Instant data class) whose DDL is
+        // `TIMESTAMP WITH TIME ZONE` (see [EXPOSED_INSTANT_TZ_FN]).
         is TimestampField -> {
-            if (timestampWithTzOptIn(field)) "timestampWithTimeZone(\"$colName\")"
+            if (timestampWithTzOptIn(field)) "$EXPOSED_INSTANT_TZ_FN(\"$colName\")"
             else "datetime(\"$colName\")"
         }
         // Currency stored as BIGINT minor units — same as Long. Separate arm for
@@ -333,6 +356,16 @@ object KotlinTypeMapper {
      */
     private fun timestampWithTzOptIn(field: MetaField<*>): Boolean =
         dbColumnType(field) == DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ
+
+    /**
+     * True iff [field] is a [TimestampField] that opted in to the TZ-aware
+     * `@dbColumnType=timestamp_with_tz` column. [KotlinExposedTableGenerator] uses this to
+     * decide whether a table file must carry the file-local `instantWithTimeZone(...)`
+     * support helper (the custom `Column<java.time.Instant>` / `TIMESTAMP WITH TIME ZONE`
+     * column type). Non-timestamp fields are always false.
+     */
+    fun usesInstantWithTimeZone(field: MetaField<*>): Boolean =
+        field is TimestampField && timestampWithTzOptIn(field)
 
     /**
      * Best-effort read of a named string attribute (own-only) on [field]. Returns null when

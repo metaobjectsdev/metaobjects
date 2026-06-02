@@ -709,11 +709,15 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects the
-     * Postgres `timestamp with time zone` variant — emits `timestampWithTimeZone("col")`
-     * with the matching javatime.timestampWithTimeZone import.
+     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects a
+     * `Column<java.time.Instant>` column whose Postgres DDL is `timestamp with time zone`.
+     * The emitted column function is the file-local `instantWithTimeZone("col")` extension
+     * (a custom `ColumnType<Instant>`), NOT Exposed's native `timestampWithTimeZone(...)`
+     * (which is `Column<OffsetDateTime>` and would mismatch the `Instant` data class). The
+     * supporting helper (`MetaInstantWithTimeZoneColumnType` + the extension) is emitted
+     * into the SAME file, so no `javatime.timestampWithTimeZone` import is needed.
      */
-    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant() {
+    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsInstantColumn() {
         val tzFixture = """{
           "metadata.root": { "package": "x", "children": [
             { "object.entity": { "name": "Event", "children": [
@@ -731,10 +735,22 @@ class KotlinExposedTableGeneratorTest {
             gen.execute(loadString("jt-tz", tzFixture))
 
             val src = Files.readString(outDir.resolve("x/EventTable.kt"))
-            assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" in src,
-                "expected javatime.timestampWithTimeZone import for opt-in TZ-aware; saw:\n$src")
-            assertTrue("val occurredAt = timestampWithTimeZone(\"occurred_at\")" in src,
-                "expected timestampWithTimeZone column for opt-in TZ-aware; saw:\n$src")
+            // The column is the file-local `instantWithTimeZone(...)` extension, NOT the native
+            // Exposed `timestampWithTimeZone(...)` (Column<OffsetDateTime>).
+            assertTrue("val occurredAt = instantWithTimeZone(\"occurred_at\")" in src,
+                "expected instantWithTimeZone column for opt-in TZ-aware; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" !in src,
+                "must NOT import native timestampWithTimeZone (it is Column<OffsetDateTime>); saw:\n$src")
+            // The file carries the self-contained support helper + needed imports.
+            assertTrue("private class MetaInstantWithTimeZoneColumnType" in src,
+                "expected the file-local custom ColumnType<Instant> support block; saw:\n$src")
+            assertTrue("private fun org.jetbrains.exposed.sql.Table.instantWithTimeZone(name: String): Column<Instant>" in src,
+                "expected the file-local instantWithTimeZone extension; saw:\n$src")
+            assertTrue("import java.time.Instant" in src && "import org.jetbrains.exposed.sql.Column" in src,
+                "expected Instant + Column imports for the support helper; saw:\n$src")
+            // The custom type overrides sqlType() to the dialect's TIMESTAMP WITH TIME ZONE.
+            assertTrue("timestampWithTimeZoneType()" in src,
+                "custom ColumnType must produce TIMESTAMP WITH TIME ZONE DDL; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

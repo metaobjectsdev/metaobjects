@@ -157,6 +157,27 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
 
+        // Does any column on this table use the TZ-aware `@dbColumnType=timestamp_with_tz`
+        // opt-in? If so the file must carry the file-local `instantWithTimeZone(...)` support
+        // helper (a custom `Column<java.time.Instant>` whose DDL is `TIMESTAMP WITH TIME
+        // ZONE`). Walk direct fields AND flattened object sub-fields (same surfaces that
+        // contribute columns / imports above).
+        var needsInstantTzHelper = entity.metaFields.any {
+            it !is ObjectField && KotlinTypeMapper.usesInstantWithTimeZone(it)
+        }
+        if (!needsInstantTzHelper) {
+            for (field in entity.metaFields) {
+                if (field !is ObjectField) continue
+                if (readStorage(field) != STORAGE_FLATTENED) continue
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                if (target.metaFields.any { KotlinTypeMapper.usesInstantWithTimeZone(it) }) {
+                    needsInstantTzHelper = true
+                    break
+                }
+            }
+        }
+
         // Walk every field that will actually become a Table column and collect the
         // imports its column function requires. Member functions on Table (varchar,
         // integer, long, etc.) return null and are skipped; extension functions from
@@ -231,6 +252,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("import org.jetbrains.exposed.sql.CustomFunction\n")
                 append("import org.jetbrains.exposed.sql.UUIDColumnType\n")
             }
+            // @dbColumnType=timestamp_with_tz emits a file-local `instantWithTimeZone(...)`
+            // extension + custom `ColumnType<Instant>`; those need Column + Instant on import.
+            if (needsInstantTzHelper) {
+                append("import java.time.Instant\n")
+                append("import org.jetbrains.exposed.sql.Column\n")
+            }
             append("\n")
             if (isView) {
                 append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
@@ -302,6 +329,17 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("    }\n")
             }
             append("}\n")
+
+            // File-local support for `@dbColumnType=timestamp_with_tz`: a custom Exposed
+            // column type that is a `Column<java.time.Instant>` (matches the Instant data
+            // class — zero coercion) whose DDL is `TIMESTAMP WITH TIME ZONE` (preserves the
+            // offset→UTC normalization persistence contract). Delegates ALL value / JDBC
+            // handling to Exposed's tested `JavaInstantColumnType` and overrides only
+            // `sqlType()`. Declared `private` (file-scoped) so multiple tables in one package
+            // each carry their own copy without clashing.
+            if (needsInstantTzHelper) {
+                append(INSTANT_TZ_SUPPORT_BLOCK)
+            }
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
@@ -402,6 +440,62 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         @JvmStatic
         val LOG = LoggerFactory.getLogger(KotlinExposedTableGenerator::class.java)
+
+        /**
+         * File-local support emitted into a generated table file that has at least one
+         * `@dbColumnType=timestamp_with_tz` column. Defines:
+         *
+         *  - `MetaInstantWithTimeZoneColumnType` — a `ColumnType<Instant>` that delegates ALL
+         *    value/JDBC handling (read, bind, normalize, millisecond-truncate, wire string) to
+         *    Exposed's tested `JavaInstantColumnType`, overriding ONLY `sqlType()` to return the
+         *    dialect's `TIMESTAMP WITH TIME ZONE` (Postgres: `timestamp with time zone`). This
+         *    yields a `Column<Instant>` — matching the `Instant` data-class property (no
+         *    `Instant`↔`OffsetDateTime` coercion) — while keeping the TZ-aware column so the
+         *    seeded-offset → read-back-UTC normalization contract holds.
+         *  - `Table.instantWithTimeZone(name)` — the column-builder extension the generated
+         *    table calls (`val createdAt = instantWithTimeZone("created_at")`).
+         *
+         * Declared `private` (file-scoped) so two tables in the same package each carry their
+         * own copy without a top-level name clash. Note: the GENERATED `$` lines below have no
+         * Kotlin string templates, so this trimMargin block is emitted verbatim.
+         */
+        val INSTANT_TZ_SUPPORT_BLOCK: String = """
+
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `@dbColumnType=timestamp_with_tz`: a
+            | * `Column<java.time.Instant>` whose SQL DDL is `TIMESTAMP WITH TIME ZONE`.
+            | * Delegates all value/JDBC handling to Exposed's `JavaInstantColumnType` and
+            | * overrides only `sqlType()`, so the column type matches the `Instant` data-class
+            | * property (no Instant↔OffsetDateTime coercion) while staying timezone-aware.
+            | */
+            |private class MetaInstantWithTimeZoneColumnType :
+            |    org.jetbrains.exposed.sql.ColumnType<Instant>(),
+            |    org.jetbrains.exposed.sql.IDateColumnType {
+            |    private val delegate = org.jetbrains.exposed.sql.javatime.JavaInstantColumnType()
+            |    override val hasTimePart: Boolean get() = delegate.hasTimePart
+            |    override fun sqlType(): String =
+            |        org.jetbrains.exposed.sql.vendors.currentDialect.dataTypeProvider.timestampWithTimeZoneType()
+            |    override fun valueFromDB(value: Any): Instant? = delegate.valueFromDB(value)
+            |    override fun notNullValueToDB(value: Instant): Any = delegate.notNullValueToDB(value)
+            |    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
+            |    override fun nonNullValueAsDefaultString(value: Instant): String =
+            |        delegate.nonNullValueAsDefaultString(value)
+            |    override fun readObject(rs: java.sql.ResultSet, index: Int): Any? = delegate.readObject(rs, index)
+            |    override fun setParameter(
+            |        stmt: org.jetbrains.exposed.sql.statements.api.PreparedStatementApi,
+            |        index: Int,
+            |        value: Any?,
+            |    ) = delegate.setParameter(stmt, index, value)
+            |}
+            |
+            |/**
+            | * Column builder for `@dbColumnType=timestamp_with_tz`: a `Column<Instant>` backed by
+            | * a `TIMESTAMP WITH TIME ZONE` Postgres column (see [MetaInstantWithTimeZoneColumnType]).
+            | */
+            |private fun org.jetbrains.exposed.sql.Table.instantWithTimeZone(name: String): Column<Instant> =
+            |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
+            |""".trimMargin()
     }
 
     // === FK column emission from relationship.composition ====================

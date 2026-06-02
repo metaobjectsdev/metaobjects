@@ -15,9 +15,9 @@ import kotlin.test.fail
  *
  * Why structural (not byte-equal): the generator currently emits some columns
  * with subtly different surface syntax than this module's reference Tables
- * (e.g. `timestampWithTimeZone(...)` vs `timestamp(...)`, with-imports vs
+ * (e.g. `instantWithTimeZone(...)` vs `datetime(...)`, with-imports vs
  * without-imports). Asserting on column NAME + base type FAMILY (`long`,
- * `varchar`, `timestamp*`) catches the regressions worth catching here
+ * `varchar`, `datetime`/`instantWithTimeZone`) catches the regressions worth catching here
  * (a missing column, a wrong PK, a renamed table) without coupling to those
  * intentional codegen choices. Snapshot-byte equality for the generator's
  * exact output lives in `codegen-kotlin`'s own KotlinCodegenSnapshotTest.
@@ -32,7 +32,10 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("title", families = setOf("varchar")),
                 ExpectedColumn("priceCents", families = setOf("long")),
                 ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
-                ExpectedColumn("createdAt", families = setOf("timestamp", "timestampWithTimeZone")),
+                // Plain `field.timestamp` (no @dbColumnType) → Exposed `datetime(...)` (Postgres
+                // `timestamp without time zone`, LocalDateTime). The TZ-aware opt-in is covered by
+                // Asset.recordedAt below.
+                ExpectedColumn("createdAt", families = setOf("datetime")),
             ),
         ),
         "Week" to EntityExpectation(
@@ -76,15 +79,16 @@ internal class KotlinCodegenMatchesReferenceTest {
         // R6 Plan 2a/2b native physical column types: field.uuid → Exposed `uuid(...)`,
         // field.string + @dbColumnType:uuid → `uuid(...)`, field.string + @dbColumnType:jsonb
         // → `jsonb(...)` (NOT text), field.timestamp + @dbColumnType:timestamp_with_tz →
-        // `timestampWithTimeZone(...)`. Verifies the generator emits the native families the
-        // hand-written reference AssetTable carries.
+        // `instantWithTimeZone(...)` (a file-local Column<Instant> with TIMESTAMP WITH TIME ZONE
+        // DDL — matches the Instant data class, NOT the native OffsetDateTime variant). Verifies
+        // the generator emits the native families the hand-written reference AssetTable carries.
         "Asset" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("id", families = setOf("uuid")),
                 ExpectedColumn("ownerId", families = setOf("uuid")),
                 ExpectedColumn("externalId", families = setOf("uuid")),
                 ExpectedColumn("payload", families = setOf("jsonb")),
-                ExpectedColumn("recordedAt", families = setOf("timestampWithTimeZone")),
+                ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
             ),
         ),
     )

@@ -24,9 +24,6 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.sql.DriverManager
 import java.sql.Timestamp
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -285,18 +282,20 @@ object QueryScenarioRunner {
             // OffsetDateTime (re-anchored to UTC there) and NO suffix for a plain TIMESTAMP
             // (LocalDateTime). See fixtures/persistence-conformance/normalization.md.
             //
-            //  - `timestamp with time zone` (TIMESTAMPTZ) → java.time.OffsetDateTime: pass
-            //    through UNCHANGED. Normalization re-anchors to UTC and appends `Z`, so a
-            //    non-UTC stored offset (e.g. -05:00) reads back canonically as the UTC instant.
+            //  - `timestamp with time zone` (TIMESTAMPTZ) → java.time.Instant (the metaobjects
+            //    `instantWithTimeZone` Column<Instant> path) OR java.time.OffsetDateTime (native
+            //    Exposed variant): BOTH pass through UNCHANGED. Normalization re-anchors to UTC
+            //    and appends `Z`, so a non-UTC stored offset (e.g. -05:00) reads back canonically
+            //    as the UTC instant. An Instant is already a UTC point in time, so it must NOT be
+            //    collapsed to LocalDateTime here — that would strip the `Z` discriminator.
             //  - plain `timestamp` (no tz) → java.time.LocalDateTime: pass through unchanged
             //    (Normalization formats it with no `Z`).
             //  - `date` → java.time.LocalDate, `time` → java.time.LocalTime: pass through; the
             //    DATE / TIME normalization branches handle them.
             //
-            // (The legacy JDBC Instant/Timestamp shapes are still bridged for any driver path
-            // that surfaces them; OffsetDateTime is deliberately NOT collapsed to LocalDateTime
-            // anymore — doing so destroyed the TZ discriminator.)
-            if (v is Instant) v = LocalDateTime.ofInstant(v, ZoneOffset.UTC)
+            // A raw java.sql.Timestamp (a plain-TIMESTAMP JDBC shape with no zone) is bridged to
+            // LocalDateTime so it lands on the no-`Z` branch. Instant (the TZ-aware shape) is left
+            // as-is for Normalization's Instant branch.
             if (v is Timestamp) v = v.toLocalDateTime()
             // `@dbColumnType:jsonb` open-JSON column round-trips as a raw JSON String
             // (identity decode). Parse it to a Map so Normalization sorts the keys and
