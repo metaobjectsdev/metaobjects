@@ -630,6 +630,13 @@ _TEMPLATE_SHARED_ATTRS = [
 ]
 # template.output also carries the FR-010 @promptStyle presentation attr — a
 # closed enum (allowed_values), default "guide". NOT on prompt/toolcall.
+#
+# It also carries @kind (closed enum document|email, default "document") + the
+# email part-refs (@subjectRef / @htmlBodyRef / @textBodyRef). @kind closed-enum
+# membership is enforced via allowed_values (ERR_BAD_ATTR_VALUE), exactly like
+# @format / @promptStyle; the conditional ref requirements live in
+# validation_passes._validate_templates. @textRef is left non-required here (it is
+# conditionally required by kind), matching TS/Java. NOT on prompt/toolcall.
 _TEMPLATE_OUTPUT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(
         name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
@@ -637,6 +644,15 @@ _TEMPLATE_OUTPUT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
         allowed_values=tc.PROMPT_STYLES,
         default=tc.PROMPT_STYLE_DEFAULT,
     ),
+    AttrSchema(
+        name=tc.TEMPLATE_ATTR_KIND,
+        value_type=ATTR_SUBTYPE_STRING,
+        allowed_values=tc.ALLOWED_KINDS,
+        default=tc.TEMPLATE_KIND_DEFAULT,
+    ),
+    AttrSchema(name=tc.TEMPLATE_ATTR_SUBJECT_REF, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_HTML_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
 ]
 _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),

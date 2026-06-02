@@ -13,7 +13,7 @@ public class RenderTests
         new(m ?? new Dictionary<string, string>(StringComparer.Ordinal));
 
     private static string Render(string format, object? payload, IProvider provider,
-        string? template = null, string? @ref = null) =>
+        string? template = null, string? @ref = null, int? maxChars = null) =>
         Renderer.Render(new RenderRequest
         {
             Template = template,
@@ -21,6 +21,7 @@ public class RenderTests
             Payload = payload,
             Provider = provider,
             Format = format,
+            MaxChars = maxChars,
         });
 
     private static Dictionary<string, object> Obj(params (string k, object? v)[] kv)
@@ -99,6 +100,28 @@ public class RenderTests
         var ex = Assert.Throws<RenderException>(() => Render("text", Obj(), P(), @ref: "g/missing"));
         Assert.Contains("unresolved", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void MaxChars_within_budget_returns_normally() =>
+        // "Hi Ada." is 7 chars; a budget of 7 is exactly within budget.
+        Assert.Equal("Hi Ada.", Render("text", Obj(("name", "Ada")), P(),
+            template: "Hi {{name}}.", maxChars: 7));
+
+    [Fact]
+    public void MaxChars_over_budget_throws()
+    {
+        // "Hi Ada." is 7 chars; a budget of 6 is over budget → throw (TS parity).
+        var ex = Assert.Throws<RenderException>(() =>
+            Render("text", Obj(("name", "Ada")), P(), template: "Hi {{name}}.", maxChars: 6));
+        Assert.Contains("maxChars", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("7 > 6", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MaxChars_null_no_guard() =>
+        // No budget set → long output renders without throwing.
+        Assert.Equal("Hi Ada.", Render("text", Obj(("name", "Ada")), P(),
+            template: "Hi {{name}}.", maxChars: null));
 
     [Fact]
     public void Deterministic_same_inputs_identical_output()

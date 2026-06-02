@@ -3,7 +3,8 @@
 Pipeline: resolve template text (inline or via provider) → pre-expand partials
 by recursive inlining (cycle-guarded, MAX_DEPTH=32) → execute a small
 purpose-built Mustache interpreter that applies the format-keyed
-:mod:`escapers` per variable substitution → truncate to ``maxChars`` if set.
+:mod:`escapers` per variable substitution → fail-closed if the result exceeds
+``maxChars`` (RAISES, never truncates).
 
 Pre-expanding partials before interpretation guarantees deterministic
 cross-port whitespace and lets the engine own cycle detection. The Mustache
@@ -42,7 +43,8 @@ class RenderRequest:
     object the Mustache interpreter walks. ``provider`` resolves
     ``{{> partial}}`` references and (when ``ref`` is set) the top-level
     template body. ``format`` defaults to ``"text"`` (no escaping). ``max_chars``
-    optionally truncates the final output.
+    is an optional fail-closed budget: if the final output exceeds it, render
+    RAISES (never truncates).
     """
 
     payload: Any
@@ -58,8 +60,11 @@ def render(req: RenderRequest) -> str:
     body = req.template if req.template is not None else _resolve_or_raise(req.provider, req.ref)
     expanded = _pre_expand_partials(body, req.provider, [])
     out = _interpret(expanded, req.payload, req.format)
+    # @maxChars is a fail-closed render budget: over-budget output RAISES (never
+    # silently truncates). Canonical cross-port behavior — message shape matches
+    # TS/C#/Java: "render exceeded maxChars budget: <len> > <cap>".
     if req.max_chars is not None and len(out) > req.max_chars:
-        out = out[: req.max_chars]
+        raise RenderError(f"render exceeded maxChars budget: {len(out)} > {req.max_chars}")
     return out
 
 

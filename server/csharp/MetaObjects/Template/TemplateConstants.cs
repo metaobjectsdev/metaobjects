@@ -54,6 +54,32 @@ public static class TemplateConstants
     // carry a tag contract a downstream parser depends on.
     public const string TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags";
 
+    // --- @kind + email part-refs (template.output only) ---
+    //
+    // A template.output is either a plain document (renders @textRef in @format →
+    // one string) or an email (renders subject + html + optional text → a
+    // structured EmailDocument). @kind is a closed enum; the email part-refs are
+    // 2-layer logical (group/source) textRefs resolved by a provider at render
+    // time. Cross-field rules live in ValidateTemplatePayloadRefs:
+    //   - @kind="email"            → require @subjectRef AND @htmlBodyRef (textRef unused; @textBodyRef optional)
+    //   - @kind="document"/absent  → require @textRef
+    // Must match TS / Java exactly (Tier-1 invariant).
+    public const string TEMPLATE_ATTR_KIND     = "kind";
+    public const string TEMPLATE_KIND_DOCUMENT = "document";
+    public const string TEMPLATE_KIND_EMAIL    = "email";
+    public const string TEMPLATE_KIND_DEFAULT  = TEMPLATE_KIND_DOCUMENT;
+
+    /// <summary>Closed set of valid @kind values (template.output).</summary>
+    public static readonly string[] TEMPLATE_KINDS =
+    [
+        TEMPLATE_KIND_DOCUMENT,
+        TEMPLATE_KIND_EMAIL,
+    ];
+
+    public const string TEMPLATE_ATTR_SUBJECT_REF   = "subjectRef";
+    public const string TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef";
+    public const string TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef";
+
     // Prompt-overlay attrs (template.prompt only).
     public const string TEMPLATE_ATTR_MAX_TOKENS     = "maxTokens";
     public const string TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";

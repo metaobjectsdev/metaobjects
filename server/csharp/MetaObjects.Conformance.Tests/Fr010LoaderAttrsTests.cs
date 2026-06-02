@@ -118,6 +118,147 @@ public class Fr010LoaderAttrsTests
     }
 
     // ------------------------------------------------------------------------
+    // @kind + email part-refs (template.output only) — closed enum (document|email),
+    // conditional ref requirements (email→subjectRef+htmlBodyRef; document/absent→textRef).
+    // ------------------------------------------------------------------------
+
+    [Fact]
+    public void Template_output_registers_kind_closed_enum_and_email_refs()
+    {
+        var def = Registry().Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
+        Assert.NotNull(def);
+        var byName = def!.Attributes.ToDictionary(a => a.Name);
+
+        Assert.True(byName.ContainsKey(TEMPLATE_ATTR_KIND));
+        var kind = byName[TEMPLATE_ATTR_KIND];
+        Assert.False(kind.Required);
+        Assert.Equal(TEMPLATE_KIND_DEFAULT, kind.Default);
+        Assert.NotNull(kind.AllowedValues);
+        Assert.Equal(
+            new HashSet<string> { TEMPLATE_KIND_DOCUMENT, TEMPLATE_KIND_EMAIL },
+            kind.AllowedValues!.Select(v => v?.ToString()).ToHashSet());
+
+        Assert.True(byName.ContainsKey(TEMPLATE_ATTR_SUBJECT_REF));
+        Assert.True(byName.ContainsKey(TEMPLATE_ATTR_HTML_BODY_REF));
+        Assert.True(byName.ContainsKey(TEMPLATE_ATTR_TEXT_BODY_REF));
+        Assert.False(byName[TEMPLATE_ATTR_SUBJECT_REF].Required);
+        Assert.False(byName[TEMPLATE_ATTR_HTML_BODY_REF].Required);
+        Assert.False(byName[TEMPLATE_ATTR_TEXT_BODY_REF].Required);
+        // @textRef is relaxed to non-required (conditionally enforced in validation).
+        Assert.False(byName[TEMPLATE_ATTR_TEXT_REF].Required);
+    }
+
+    [Fact]
+    public void Template_output_email_with_subject_and_html_loads_ok()
+    {
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "MailPayload",
+                  "children": [ { "field.string": { "name": "name" } } ]
+              } },
+              { "template.output": {
+                  "name": "welcome",
+                  "@payloadRef": "MailPayload",
+                  "@kind": "email",
+                  "@subjectRef": "mail/welcome.subject",
+                  "@htmlBodyRef": "mail/welcome.html"
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.mail.json");
+
+        Assert.Empty(res.Errors);
+        var tmpl = res.Root.Children()
+            .Single(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT);
+        Assert.Equal(TEMPLATE_KIND_EMAIL, tmpl.OwnAttr(TEMPLATE_ATTR_KIND));
+    }
+
+    [Fact]
+    public void Template_output_email_missing_subject_emits_err_invalid_template()
+    {
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "MailPayload",
+                  "children": [ { "field.string": { "name": "name" } } ]
+              } },
+              { "template.output": {
+                  "name": "welcome",
+                  "@payloadRef": "MailPayload",
+                  "@kind": "email",
+                  "@htmlBodyRef": "mail/welcome.html"
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.mail.json");
+
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_INVALID_TEMPLATE && e.Message.Contains("subjectRef"));
+        Assert.NotNull(err);
+    }
+
+    [Fact]
+    public void Template_output_document_missing_text_ref_emits_err_invalid_template()
+    {
+        // @kind absent → defaults to document → @textRef required.
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "DocPayload",
+                  "children": [ { "field.string": { "name": "body" } } ]
+              } },
+              { "template.output": {
+                  "name": "report",
+                  "@payloadRef": "DocPayload",
+                  "@format": "markdown"
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.doc.json");
+
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_INVALID_TEMPLATE && e.Message.Contains("textRef"));
+        Assert.NotNull(err);
+    }
+
+    [Fact]
+    public void Template_output_bad_kind_emits_err_bad_attr_value()
+    {
+        const string json = """
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "DocPayload",
+                  "children": [ { "field.string": { "name": "body" } } ]
+              } },
+              { "template.output": {
+                  "name": "report",
+                  "@payloadRef": "DocPayload",
+                  "@textRef": "ai/report",
+                  "@kind": "bogus"
+              } }
+            ]
+          } }
+        """;
+        var res = LoadJson(json, "meta.doc.json");
+
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("kind"));
+        Assert.NotNull(err);
+    }
+
+    // ------------------------------------------------------------------------
     // @enumAlias / @enumDoc — properties maps on field.enum.
     // @example / @instruction — strings on any field.
     // ------------------------------------------------------------------------

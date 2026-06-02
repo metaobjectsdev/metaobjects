@@ -1147,6 +1147,45 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         payload_ref = tpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
         has_payload_ref = isinstance(payload_ref, str) and payload_ref
 
+        # --- @kind / textRef / email part-ref cross-field rules ---
+        # template.output is either a document (@kind absent/"document" -> @textRef
+        # required) or an email (@kind="email" -> @subjectRef + @htmlBodyRef required,
+        # @textRef unused). template.prompt always requires @textRef. Closed-enum
+        # membership of @kind is enforced by allowed_values (ERR_BAD_ATTR_VALUE);
+        # here we enforce only conditional ref presence. Mirrors TS/Java.
+        if tpl.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT:
+            if tpl.attr(tc.TEMPLATE_ATTR_KIND) == tc.TEMPLATE_KIND_EMAIL:
+                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_SUBJECT_REF), str):
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_INVALID_TEMPLATE,
+                        message=f'template "{tpl.name}" @kind "email" requires @subjectRef',
+                        envelope=tpl.source,
+                    ))
+                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_HTML_BODY_REF), str):
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_INVALID_TEMPLATE,
+                        message=f'template "{tpl.name}" @kind "email" requires @htmlBodyRef',
+                        envelope=tpl.source,
+                    ))
+            else:
+                # @kind absent or "document" -> require @textRef so a document is
+                # never bodyless. (An out-of-enum @kind is flagged separately by
+                # the allowed_values schema check.)
+                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_INVALID_TEMPLATE,
+                        message=f'template "{tpl.name}" @kind "document" requires @textRef',
+                        envelope=tpl.source,
+                    ))
+        elif is_prompt:
+            # template.prompt always carries a renderable body via @textRef.
+            if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_TEMPLATE,
+                    message=f'template "{tpl.name}" requires @textRef',
+                    envelope=tpl.source,
+                ))
+
         # R1 — prompt requires @payloadRef
         if is_prompt and not has_payload_ref:
             errors.append(MetaError(
