@@ -49,4 +49,10 @@ for dest in "${DESTS[@]}"; do
   done
 done
 
+# Regenerate the embedded-string TS module so the framework doc templates also
+# resolve inside the `bun build --compile` standalone `meta` binary (where the
+# on-disk templates/ dir is unavailable). Keeps the bundled package copy AND the
+# embedded module in sync with canonical from a single command. Idempotent.
+bun run "${SCRIPT_DIR}/generate-embedded-templates.ts"
+
 echo "doc templates synced from canonical root: ${SRC_DIR}"
