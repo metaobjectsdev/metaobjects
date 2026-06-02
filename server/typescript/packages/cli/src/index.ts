@@ -39,6 +39,7 @@ COMMANDS:
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   export                Flatten loaded metadata to one canonical JSON artifact
+  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
   verify                Check template.* text against its payload (drift gate)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -55,6 +56,11 @@ GEN FLAGS:
 
 EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
+
+DOCS FLAGS:
+  <metadata>            Project root holding metaobjects/ (default: current directory)
+  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
 
 VERIFY FLAGS:
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
@@ -139,6 +145,10 @@ export async function run(argv: string[]): Promise<number> {
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
       return exportCommand(rest, cwd);
+    }
+    case "docs": {
+      const { docsCommand } = await import("./commands/docs.js");
+      return docsCommand(rest, cwd);
     }
     case "verify": {
       const { verifyCommand } = await import("./commands/verify.js");
