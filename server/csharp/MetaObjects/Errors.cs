@@ -27,6 +27,11 @@ public enum ErrorCode
     ERR_YAML_COERCION,
     ERR_RESERVED_ATTR,
     ERR_INVALID_ORIGIN,
+    // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
+    // name a junction declaring two identity.reference children, @sourceRefField
+    // does not match one of them, or a M:N-only attr (@through/@sourceRefField/
+    // @symmetric) is set on a non-M:N (1:N / @cardinality:one) relationship.
+    ERR_INVALID_RELATIONSHIP,
     ERR_BAD_ATTR_FILTER,
     ERR_STORAGE_WITHOUT_OBJECT_REF,
     ERR_STORAGE_FLATTENED_ARRAY,

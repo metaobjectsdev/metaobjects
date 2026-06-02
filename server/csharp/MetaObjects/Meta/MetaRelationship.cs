@@ -30,25 +30,28 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
         }
     }
 
-    /// <summary>Join-table entity name for N:M relationships.</summary>
-    public string? JoinEntity
+    /// <summary>Junction (through) entity name for M:N relationships.</summary>
+    public string? Through
     {
         get
         {
-            var v = OwnAttr(RELATIONSHIP_ATTR_JOIN_ENTITY);
+            var v = OwnAttr(RELATIONSHIP_ATTR_THROUGH);
             return v is string s ? s : null;
         }
     }
 
-    /// <summary>Join-table column names for N:M relationships.</summary>
-    public IReadOnlyList<string> JoinFields
+    /// <summary>Source-side FK field on the junction (directed self-join disambiguator).</summary>
+    public string? SourceRefField
     {
         get
         {
-            var f = OwnAttr(RELATIONSHIP_ATTR_JOIN_FIELDS);
-            return f is IReadOnlyList<string> list ? list : [];
+            var v = OwnAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+            return v is string s ? s : null;
         }
     }
+
+    /// <summary>Whether this M:N relationship is an undirected (symmetric) self-join.</summary>
+    public bool Symmetric => OwnAttr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
 
     /// <summary>
     /// The effective FK referential action on parent delete — the explicit

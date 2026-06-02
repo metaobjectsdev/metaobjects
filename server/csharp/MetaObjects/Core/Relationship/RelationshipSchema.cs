@@ -29,16 +29,22 @@ public static class RelationshipSchema
             Description: "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_JOIN_ENTITY,
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_THROUGH,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Join-table entity name for N:M relationships."),
+            Description: "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_JOIN_FIELDS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Join-table column names for N:M relationships."),
+            Description: "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."),
+
+        new AttrSchema(
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_SYMMETRIC,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description: "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."),
 
         new AttrSchema(
             Name: RelationshipConstants.RELATIONSHIP_ATTR_ON_DELETE,

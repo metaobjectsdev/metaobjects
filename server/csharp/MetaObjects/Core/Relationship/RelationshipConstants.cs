@@ -28,10 +28,12 @@ public static class RelationshipConstants
     // Relationship attrs
     public const string RELATIONSHIP_ATTR_CARDINALITY  = "cardinality";
     public const string RELATIONSHIP_ATTR_OBJECT_REF   = "objectRef";
-    /// <summary>N:M cardinality.</summary>
-    public const string RELATIONSHIP_ATTR_JOIN_ENTITY  = "joinEntity";
-    /// <summary>N:M cardinality.</summary>
-    public const string RELATIONSHIP_ATTR_JOIN_FIELDS  = "joinFields";
+    /// <summary>M:N junction (through) entity — a third entity declaring two identity.reference children.</summary>
+    public const string RELATIONSHIP_ATTR_THROUGH = "through";
+    /// <summary>M:N directed-self-join disambiguator — names the source-side FK field on the junction.</summary>
+    public const string RELATIONSHIP_ATTR_SOURCE_REF_FIELD = "sourceRefField";
+    /// <summary>M:N undirected-self-join flag — union-on-read; valid only when objectRef == the declaring entity.</summary>
+    public const string RELATIONSHIP_ATTR_SYMMETRIC = "symmetric";
 
     // Relationship cardinality values (for RELATIONSHIP_ATTR_CARDINALITY)
     public const string CARDINALITY_ONE  = "one";

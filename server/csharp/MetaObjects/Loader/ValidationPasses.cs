@@ -1220,6 +1220,169 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 14 (FR-017): ValidateRelationships — M:N slim-vocabulary rules.
+    //
+    // Deferred-resolution validation (runs after all files load + extends:
+    // resolution, like origin paths), enforcing the cross-port M:N contract.
+    // Own-relationships only (matches the own-attrs policy of the other passes):
+    //
+    //   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+    //       entity). Otherwise ERR_BAD_ATTR_VALUE.
+    //   (b) @symmetric and @sourceRefField are mutually exclusive -> ERR_BAD_ATTR_VALUE.
+    //   (c) When @through is present (and the relationship is M:N): the named entity
+    //       must exist and declare exactly two identity.reference children;
+    //       @sourceRefField (if present) must match one of those references' FK
+    //       fields -> ERR_INVALID_RELATIONSHIP.
+    //   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+    //       relationship (@cardinality != "many", or no @through) -> ERR_INVALID_RELATIONSHIP.
+    //
+    // Ported from validateRelationships in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    /// <summary>FK field names declared by an entity's identity.reference children.</summary>
+    private static List<string> JunctionReferenceFkFields(MetaData junction)
+    {
+        var output = new List<string>();
+        foreach (var id in junction.OwnChildren())
+        {
+            if (id.Type != TYPE_IDENTITY || id.SubType != IDENTITY_SUBTYPE_REFERENCE) continue;
+            var fields = id.OwnAttr(IDENTITY_ATTR_FIELDS);
+            if (fields is string s)
+            {
+                var first = s.Split(',')[0].Trim();
+                if (first.Length > 0) output.Add(first);
+            }
+            else if (fields is IReadOnlyList<string> list && list.Count > 0)
+            {
+                output.Add(list[0]);
+            }
+            else if (fields is IReadOnlyList<object?> objList && objList.Count > 0 && objList[0] is string os)
+            {
+                output.Add(os);
+            }
+        }
+        return output;
+    }
+
+    private static int CountJunctionReferences(MetaData junction) =>
+        junction.OwnChildren().Count(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_REFERENCE);
+
+    /// <summary>Last <c>::</c>-segment of a (possibly package-qualified) name.</summary>
+    private static string StripPackage(string name)
+    {
+        int idx = name.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        return idx < 0 ? name : name[(idx + PACKAGE_SEPARATOR.Length)..];
+    }
+
+    public static IReadOnlyList<MetaError> ValidateRelationships(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var rel in obj.OwnChildren().Where(c => c.Type == TYPE_RELATIONSHIP))
+            {
+                var through = rel.OwnAttr(RELATIONSHIP_ATTR_THROUGH);
+                var sourceRefField = rel.OwnAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+                bool symmetric = rel.OwnAttr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
+                var cardinality = rel.OwnAttr(RELATIONSHIP_ATTR_CARDINALITY);
+                var objectRef = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+
+                bool hasThrough = through is string ts && ts.Length > 0;
+                bool hasSourceRefField = sourceRefField is string srs && srs.Length > 0;
+                bool isMany = cardinality is string cs && cs == CARDINALITY_MANY;
+                bool isM2M = hasThrough && isMany;
+
+                // Rule (d): M:N-only attrs on a non-M:N relationship.
+                if (!isM2M)
+                {
+                    if (hasThrough)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_THROUGH} but is not a M:N " +
+                            $"relationship (requires @{RELATIONSHIP_ATTR_CARDINALITY}: \"{CARDINALITY_MANY}\").",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    if (hasSourceRefField)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    if (symmetric)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    continue;
+                }
+
+                // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+                if (symmetric && hasSourceRefField)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" sets both @{RELATIONSHIP_ATTR_SYMMETRIC} and " +
+                        $"@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: rel.Source));
+                }
+
+                // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+                bool isSelfJoin = objectRef is string objRefStr && StripPackage(objRefStr) == obj.Name;
+                if (symmetric && !isSelfJoin)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} " +
+                        $"\"{objectRef}\" is not the declaring entity \"{obj.Name}\"; @{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: rel.Source));
+                }
+
+                // Rule (c): @through must name an entity declaring exactly two identity.reference children.
+                var junction = FindObject(root, (string)through!);
+                if (junction is null)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" does not resolve to an entity.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: ResolvedSource.From(rel.Source, $"{obj.Fqn()}::{rel.Name}", (string)through!)));
+                    continue;
+                }
+                int refCount = CountJunctionReferences(junction);
+                if (refCount != 2)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" must declare exactly two " +
+                        $"identity.reference children (one per FK side); found {refCount}.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: rel.Source));
+                    continue;
+                }
+                // @sourceRefField (if present) must match one of the junction's reference FK fields.
+                if (hasSourceRefField)
+                {
+                    var fkFields = JunctionReferenceFkFields(junction);
+                    if (!fkFields.Contains((string)sourceRefField!, StringComparer.Ordinal))
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} \"{sourceRefField}\" does not match " +
+                            $"any identity.reference FK field on junction \"{through}\". Available: {(fkFields.Count > 0 ? string.Join(", ", fkFields) : "(none)")}.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
     // Pass 9: ValidateTemplatePayloadRefs
     //   - @payloadRef must resolve to a known object in the model -> ERR_INVALID_TEMPLATE
     //   - every @requiredSlots entry must be a field on that payload -> ERR_INVALID_TEMPLATE

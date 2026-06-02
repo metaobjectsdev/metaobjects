@@ -376,6 +376,12 @@ public class MetaDataLoader
                     warnings.Add(w.Message);
                 }
             }
+
+            // Pass 14 (FR-017): M:N relationship slim-vocabulary validation —
+            // symmetric-self-join-only / symmetric⊕sourceRefField (ERR_BAD_ATTR_VALUE);
+            // junction-two-references / sourceRefField-match / M:N-attr-on-1:N
+            // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
+            errors.AddRange(ValidationPasses.ValidateRelationships(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers
