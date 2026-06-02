@@ -2,6 +2,19 @@ import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy, type MetaDat
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
+import { generatorRegistry } from "./generator-registry.js";
+
+/**
+ * A config `generators` entry. Either a typed generator (the primary, fully
+ * typed form — `entityFile()`) OR a STABLE-NAME STRING resolved via the
+ * {@link generatorRegistry} (e.g. `"entity"`). The string form is the
+ * cross-port-consistent selection mechanism (matches C#/Python
+ * `--generators entity,routes`); it always uses the generator's DEFAULT
+ * options. Adopters needing options use the factory form.
+ *
+ * ADR-0021 #1 (TS parity).
+ */
+export type GeneratorSpec = Generator | string;
 
 export type Dialect = "sqlite" | "postgres";
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
@@ -32,7 +45,13 @@ export interface ResolvedGenConfig {
 }
 
 export interface MetaobjectsGenConfig extends ResolvedGenConfig {
-  generators: Generator[];
+  /**
+   * Generators to run. Each entry is either a typed generator factory result
+   * (`entityFile()`) or a stable-name string (`"entity"`) resolved via the
+   * registry. Mixed arrays are allowed (`["entity", routesFile()]`). String
+   * entries use the generator's default options. ADR-0021 #1.
+   */
+  generators: GeneratorSpec[];
   /** How field names map to DB column names when @dbColumn is omitted. Defaults to "snake_case". */
   columnNamingStrategy?: ColumnNamingStrategy;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
@@ -63,7 +82,9 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
  *  `targets` is Omitted from the base so it can narrow from the user-facing
  *  TargetConfig to the fully-resolved ResolvedTarget (incompatible under
  *  exactOptionalPropertyTypes otherwise). */
-export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets"> {
+export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets" | "generators"> {
+  /** Fully resolved — every string spec has been mapped to its factory result. */
+  generators: Generator[];
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
   emitAbstractShapes: boolean;
@@ -102,10 +123,44 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
   return out;
 }
 
+/**
+ * Materialize the config `generators` array: pass typed generators through
+ * untouched and resolve each stable-name string via the {@link generatorRegistry}
+ * to its factory result (default options). ADR-0021 #1.
+ *
+ * Errors:
+ *  - a NEUTRAL name (`docs`, `mermaid-er`) is owned by `meta docs` (ADR-0021 D1)
+ *    and is not selectable in the gen suite.
+ *  - an UNKNOWN name throws listing the available NATIVE names.
+ */
+export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
+  return specs.map((spec) => {
+    if (typeof spec !== "string") return spec;
+    const entry = generatorRegistry[spec];
+    if (entry === undefined) {
+      const native = Object.values(generatorRegistry)
+        .filter((e) => e.tier === "native")
+        .map((e) => e.name)
+        .sort();
+      throw new Error(
+        `unknown generator "${spec}". Available native generators: ${native.join(", ")}.`,
+      );
+    }
+    if (entry.tier !== "native") {
+      throw new Error(
+        `generator "${spec}" is neutral (owned by 'meta docs'); ` +
+        `not selectable in the gen suite.`,
+      );
+    }
+    return entry.factory();
+  });
+}
+
 /** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   return {
     ...config,
+    generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,
