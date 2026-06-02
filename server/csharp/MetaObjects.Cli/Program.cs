@@ -17,7 +17,13 @@ if (args.Length == 0)
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
-        "    verify <metadataDir> --templates <root>          drift-check templates against their payloads");
+        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]\n" +
+        "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
+        "                                                       --templates  template/prompt drift (default)\n" +
+        "                                                       --codegen    regen-to-temp vs committed --out\n" +
+        "                                                       --namespace  codegen regen namespace; inferred\n" +
+        "                                                                    from the committed --out when omitted\n" +
+        "                                                       --db         NOT supported in C# (migrate engine)");
     return 2;
 }
 
@@ -85,32 +91,119 @@ static int Unknown(string cmd)
     return 2;
 }
 
+// `dotnet meta verify` — ADR-0021 D2 explicit subverbs. Parses --templates /
+// --codegen / --db, dispatches each requested gate via VerifyCommand.RunSubverbs
+// (pure logic), and aggregates the exit code (max; non-zero on any drift). A bare
+// `verify` keeps the historical default = templates + prints a one-line note.
 static int RunVerify(string[] rest)
 {
     string? metadataDir = null;
     string? templatesRoot = null;
+    string? outDir = null;
+    string ns = "Generated";
+    bool nsExplicit = false;
+    string? generatorsCsv = null;
+    string? templateRoot = null;
+    bool templates = false, codegen = false, db = false;
+
     for (int i = 0; i < rest.Length; i++)
     {
-        if (rest[i] == "--templates" && i + 1 < rest.Length) templatesRoot = rest[++i];
-        else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+        var a = rest[i];
+        if (a == "--templates")
+        {
+            templates = true;
+            // --templates may take an inline root, or fall back to a default below.
+            if (i + 1 < rest.Length && !rest[i + 1].StartsWith('-')) templatesRoot = rest[++i];
+        }
+        else if (a == "--codegen") codegen = true;
+        else if (a == "--db") db = true;
+        else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
+        else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
+        else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
+        else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
+        else if (a.StartsWith('-'))
+        {
+            Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
+            return 2;
+        }
+        else if (metadataDir is null) metadataDir = a;
+        // A second positional is the templates root for a BARE verify
+        // (`verify <metadataDir> <templatesRoot>`) — keeps the historical default
+        // reachable without an explicit subverb (so the subverb note prints).
+        else templatesRoot ??= a;
     }
-    if (metadataDir is null || templatesRoot is null)
+
+    if (metadataDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> --templates <templatesRoot>");
+        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
         return 2;
     }
 
-    var outcome = VerifyCommand.Run(metadataDir, templatesRoot);
-    foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-    foreach (var u in outcome.UnresolvedText) Console.Error.WriteLine($"  {u}");
-    foreach (var d in outcome.Errors) Console.Error.WriteLine($"  drift {d.Template}: {d.Code} ({d.Path})");
-    foreach (var w in outcome.Warnings) Console.WriteLine($"  warning {w.Template}: {w.Code} ({w.Path})");
-
-    if (outcome.Ok)
+    // The templates gate needs a root. Bare verify (defaults to templates) and an
+    // explicit --templates both require it; surface a clear usage error if absent.
+    var wantsTemplates = templates || (!codegen && !db);
+    if (wantsTemplates && templatesRoot is null)
     {
-        Console.WriteLine("dotnet meta verify: OK");
-        return 0;
+        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> --templates <templatesRoot>");
+        Console.Error.WriteLine("  (the templates gate is the default; pass --codegen --out <dir> for codegen drift —");
+        Console.Error.WriteLine("   --namespace is inferred from the committed output when omitted)");
+        return 2;
     }
-    Console.Error.WriteLine("dotnet meta verify: FAILED");
-    return 1;
+
+    var generators = generatorsCsv
+        ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    var opts = new VerifyCommand.Options
+    {
+        MetadataDir = metadataDir,
+        TemplatesRoot = templatesRoot,
+        OutDir = outDir,
+        Namespace = ns,
+        NamespaceExplicit = nsExplicit,
+        Generators = generators,
+        TemplateRoot = templateRoot,
+        Templates = templates,
+        Codegen = codegen,
+        Db = db,
+    };
+
+    var result = VerifyCommand.RunSubverbs(opts);
+
+    if (result.EmittedDefaultNote) Console.WriteLine(VerifyCommand.SUBVERB_NOTE);
+
+    // -- templates gate output --
+    if (result.RanTemplates && result.Templates is { } t)
+    {
+        foreach (var e in t.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+        foreach (var u in t.UnresolvedText) Console.Error.WriteLine($"  {u}");
+        foreach (var d in t.Errors) Console.Error.WriteLine($"  drift {d.Template}: {d.Code} ({d.Path})");
+        foreach (var w in t.Warnings) Console.WriteLine($"  warning {w.Template}: {w.Code} ({w.Path})");
+        Console.WriteLine(t.Ok ? "dotnet meta verify --templates: OK" : "dotnet meta verify --templates: FAILED");
+    }
+
+    // -- codegen gate output --
+    if (result.RanCodegen && result.Codegen is { } c)
+    {
+        if (c.Error is not null)
+        {
+            Console.Error.WriteLine($"  {c.Error}");
+        }
+        else if (c.Clean)
+        {
+            Console.WriteLine("dotnet meta verify --codegen: OK (generated output is in sync)");
+        }
+        else
+        {
+            Console.Error.WriteLine($"dotnet meta verify --codegen: drift ({c.DriftedFiles.Count} file(s) differ from a fresh regen):");
+            foreach (var line in c.Lines) Console.Error.WriteLine($"  {line}");
+            Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");
+        }
+    }
+
+    // -- db gate (rejected in C#) --
+    if (result.DbRejectionMessage is not null)
+        Console.Error.WriteLine($"  {result.DbRejectionMessage}");
+
+    return result.ExitCode;
 }

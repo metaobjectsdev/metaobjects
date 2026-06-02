@@ -22,6 +22,16 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- Render engine — reused (NOT reimplemented) by the shared, Maven-free
+             TemplateVerify helper: the {{field}}<->payload field-tree drift check
+             (com.metaobjects.render.Verify) + FilesystemProvider ref resolution.
+             render is a leaf module (no metaobjects dependency), so this adds no cycle. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-render</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
 
         <!-- JSON Dependencies for Code Generation -->
         <dependency>
