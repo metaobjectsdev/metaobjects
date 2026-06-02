@@ -1,6 +1,8 @@
 """Render-tier engine: the build-time template drift-check ``verify`` (FR-004), the
 FR-010 tolerant ``extract`` parser, and the FR-010 output-format prompt renderer."""
 
+from metaobjects.render.email_document import EmailDocument
+from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.prompt import (
     PROMPT_OVERRIDES_NONE,
     OutputFormatSpec,
@@ -43,6 +45,7 @@ __all__ = [
     "ERR_REQUIRED_SLOT_UNUSED",
     "ERR_VAR_NOT_ON_PAYLOAD",
     "PROMPT_OVERRIDES_NONE",
+    "EmailDocument",
     "FieldKind",
     "FieldExtraction",
     "FieldSpec",
@@ -59,6 +62,7 @@ __all__ = [
     "ExtractSchema",
     "ExtractionReport",
     "ExtractionResult",
+    "FilesystemProvider",
     "Tolerance",
     "VerifyError",
     "no_overrides",
