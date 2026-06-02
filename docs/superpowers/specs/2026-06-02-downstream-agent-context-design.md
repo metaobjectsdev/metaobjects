@@ -87,7 +87,7 @@ Grounded in current (2026) Claude Code guidance
 One shared source of truth → many thin per-port deliveries → conformance-gated.
 
 ```
-MONOREPO  agent-context/  ← single AI-facing source (core + port overlays + skill bodies)
+MONOREPO  agent-context/  ← single AI-facing source (universal core + tooling + per-language fragments + skill bodies)
    │            │
    │            ├──► assemble → llms.txt + llms-full.txt (canonical, version-pinned)
    │            │                     └─ consumed/copied by → metaobjects.dev repo (REMOTE pre-install)
@@ -105,6 +105,60 @@ command* → init scaffolds the **version-matched** local `AGENTS.md` + skills t
 assistant then uses. `llms.txt` stays a concise pointer; the deep how-to lives in
 the scaffolded context (matching the site's "signpost, not encyclopedia"
 philosophy).
+
+## Layering & context optimization
+
+The content must not put every language in one file — a polyglot project should
+carry only what it uses, and an assistant should load language detail only when a
+task needs it. Variation collapses to **four axes** (the client side is always
+TypeScript — the browser is TS-native; a Java or Python backend serving React still
+uses the `@metaobjectsdev/react`/`tanstack` packages):
+
+| Axis | Values | Cardinality per project |
+|---|---|---|
+| **Universal** | metamodel, authoring, YAML, prompt-pillar concepts, verify, invariants | always (one copy) |
+| **TS migration / schema tooling** | the Node `meta migrate` / `migrate-ts` engine | always — universal *because* ADR-0015 makes migrations TS-owned for **every** port |
+| **Server language** | ts · java · kotlin · csharp · python | one (or more in a polyglot monorepo) |
+| **Client framework** (always TS) | react · tanstack · angular | zero-or-more, independent of server |
+
+A concrete project resolves to **universal + TS-migration + one server overlay +
+0..n (TS) client overlays**. The common "polyglot" case is literally *non-TS server
++ TS client* (e.g. a Java backend + React frontend).
+
+**Worked example — a "Java server + React client" project scaffolds only what it
+uses:**
+
+```
+consumer-project/
+├── .metaobjects/AGENTS.md + CLAUDE.md      # slim always-on: universal essentials
+│                                           #  + "Stack: java server, react client; migrations are TS"
+│                                           #  + skill pointers   (NO language bodies inlined)
+└── .claude/skills/
+    ├── metaobjects-authoring/SKILL.md                       # universal
+    ├── metaobjects-codegen/{SKILL.md, references/java.md}    # ONLY java — not the other 4 servers
+    ├── metaobjects-runtime-ui/{SKILL.md, references/{java.md, react.md}}
+    ├── metaobjects-prompts/{SKILL.md, references/java.md}
+    └── metaobjects-verify/{SKILL.md, references/migration.md}  # TS migration tooling (universal)
+```
+
+A Python+TanStack project gets `python` + `tanstack` instead. Nothing carries the
+languages it doesn't use.
+
+**Context is optimized at two levels:**
+1. **Scaffold-time selection** — the init command detects the stack (`package.json`
+   deps → react/tanstack/angular; `pom.xml`/Gradle → java/kotlin; `*.csproj` → C#;
+   `pyproject` → python) or takes `--server`/`--client` flags, and writes **only**
+   the matching `references/<lang>.md` fragments. Fragments are per-language-named
+   and **additive** (idempotent, hash-tracked) — in a true polyglot monorepo you can
+   run each port's init and they accumulate without clobbering.
+2. **Load-time progressive disclosure** — the always-on Markdown stays tiny (it just
+   *names* the stack). A `SKILL.md` body (universal) loads only when its task is
+   triggered; a `references/<lang>.md` fragment loads only when the body sends Claude
+   into language-specific detail (a second-level, on-demand read).
+
+Net: universal concepts written once; migration tooling shared; **each language is
+its own file** (never concatenated), installed only if used and loaded only when
+needed.
 
 ## Content model — the shared source
 
@@ -131,20 +185,35 @@ agent-context/
 │   ├── invariants.md              # the deduped cross-language contracts an assistant must NEVER violate (currency minor units; native runtime return types; TS-only migrations; source.rdb + @table/@column; logical-vs-physical; object entity/value only; sigil-free YAML; structured error codes; …)
 │   ├── extending.md               # (advanced) adding subtypes/attrs via a MetaDataTypeProvider; register vs registry.extend vs abstract+extends — default to the lightest; never edit core
 │   └── glossary.md                # terms (source.rdb, projection, payload, origin, overlay, extends, ValueObject, ObjectManager, recover/extract, …) + the stable ERR_*/WARN_* loader codes
-├── ports/                         # THIN per-port overlays (install + invoke + packages)
-│   ├── typescript.md
-│   ├── java.md                    # also serves Kotlin via metadata-ktx note
-│   ├── kotlin.md
-│   ├── csharp.md
-│   └── python.md
-├── skills/                        # SKILL.md bodies (core text + {{port}} injection points)
-│   ├── metaobjects-authoring/SKILL.md
-│   ├── metaobjects-codegen/SKILL.md
-│   ├── metaobjects-runtime-ui/SKILL.md
-│   ├── metaobjects-prompts/SKILL.md
-│   └── metaobjects-verify/SKILL.md
+├── tooling/
+│   └── migration.md               # UNIVERSAL TS-owned schema tooling (meta migrate / migrate-ts) — every project, any server language (ADR-0015)
+├── lang/
+│   ├── server/                    # pick ONE (or more for a polyglot monorepo)
+│   │   ├── typescript.md          # Drizzle/Zod/Fastify(+Hono) codegen + runtime-ts; npm install
+│   │   ├── java.md                # Spring codegen + OMDB runtime; Maven coords; meta:gen / meta:agent-docs
+│   │   ├── kotlin.md              # KotlinPoet/Exposed/Spring; Maven coords (+ metadata-ktx)
+│   │   ├── csharp.md              # EF Core/ASP.NET; dotnet meta
+│   │   └── python.md              # Pydantic/FastAPI; metaobjects console-script
+│   └── client/                    # ALWAYS TypeScript — pick 0..n, independent of server
+│       ├── react.md               # @metaobjectsdev/react (useEntityForm, CurrencyInput) + codegen-ts-react
+│       ├── tanstack.md            # @metaobjectsdev/tanstack (EntityGrid, fetcher) + codegen-ts-tanstack
+│       └── angular.md             # @metaobjectsdev/angular + codegen-ts-angular
+├── skills/                        # SHARED SKILL.md body + per-language reference FRAGMENTS
+│   ├── metaobjects-authoring/SKILL.md             # universal (no language fragment needed)
+│   ├── metaobjects-codegen/
+│   │   ├── SKILL.md                               # universal codegen concepts + "see references/<server>.md"
+│   │   └── references/                            # assembled from lang/server/* — only the project's server(s)
+│   ├── metaobjects-runtime-ui/
+│   │   ├── SKILL.md                               # universal runtime+API + "see references/<server>.md and <client>.md"
+│   │   └── references/                            # server + client fragments (only the project's)
+│   ├── metaobjects-prompts/
+│   │   ├── SKILL.md                               # universal prompt-pillar concepts
+│   │   └── references/                            # per-server parser-on-receipt specifics (only the project's)
+│   └── metaobjects-verify/
+│       ├── SKILL.md                               # universal verify/drift
+│       └── references/migration.md                # the TS migration tooling fragment (universal)
 └── templates/
-    ├── always-on.md.mustache  # the slim AGENTS.md/CLAUDE.md assembled from core+overlay
+    ├── always-on.md.mustache  # the slim AGENTS.md/CLAUDE.md (core digest + the project's stack line)
     ├── llms.txt.mustache       # the website index (incl. the AI-bootstrap section)
     └── llms-full.txt.mustache   # the full corpus
 ```
@@ -174,12 +243,16 @@ and the conformance gate (below) pins the **assembled scaffolded output**.
 
 Slim. Scaffolded as **both** `.metaobjects/AGENTS.md` and `.metaobjects/CLAUDE.md`
 (AGENTS.md = the emerging cross-tool convention; CLAUDE.md for Claude). Contents:
+- A **stack line** naming the resolved axes — e.g. "Stack: java server, react
+  client; migrations are TS" — so an assistant knows the project shape without
+  loading any language fragment.
 - The working principles (≤ ~5 bullets).
-- "Metadata lives in `metaobjects/`; here is how to regenerate" — the **port's**
-  one-line codegen command.
+- "Metadata lives in `metaobjects/`; here is how to regenerate" — the **project's
+  server-language** one-line codegen command.
 - The two violation rules + package-path notation.
-- A **pointer**: "For deep authoring / codegen / runtime / verify work, use the
-  matching `metaobjects-*` skill (Claude Code) or read this file's linked sections."
+- A **pointer**: "For deep authoring / codegen / runtime / prompts / verify work,
+  use the matching `metaobjects-*` skill (Claude Code), whose body links the
+  installed `references/<lang>.md` fragment for this stack."
 
 Target ≤ ~120 lines so importing it whole into a root `CLAUDE.md` stays cheap.
 
@@ -190,9 +263,12 @@ exists; it never auto-edits without consent and never clobbers. A `--wire-root`
 
 ## Surface 2 — the skills (Claude Code)
 
-Five narrow skills, scaffolded into `.claude/skills/metaobjects-<x>/SKILL.md`,
-self-contained (bundle the reference excerpts they need — downstream has no
-`docs/`), ≤ ~500 lines each, with sharp `description`s:
+Five narrow skills, scaffolded into `.claude/skills/metaobjects-<x>/`. Each has a
+**universal `SKILL.md` body** (≤ ~500 lines, sharp `description`) plus, where the
+task is language-specific, **`references/<lang>.md` fragments** the body links to.
+Only the project's resolved server/client fragments are written (per *Layering &
+context optimization*) — downstream has no `docs/`, so the body + installed
+fragments are self-contained. Descriptions:
 
 | Skill | `description` (triggering text) |
 |---|---|
@@ -237,29 +313,51 @@ per-port fan-out locks it.
 | Python | `metaobjects` package | `metaobjects init` / `metaobjects agent-docs` |
 | C# | `dotnet meta` tool | `dotnet meta agent-docs` |
 
-Each port bundles the *assembled* content (its overlay already merged) in its
-published artifact; the command is a file-copy + hash-track, not a re-render on the
-consumer side.
+Each port bundles the *assembled* content (universal core + **all** `lang/`
+fragments + tooling) in its published artifact; the command is a select + copy +
+hash-track, not a re-render on the consumer side.
+
+**Stack resolution.** Each init command resolves the project's axes (detect from
+manifests, or `--server`/`--client` flags) and writes **only** the matching
+fragments. Because the **client overlays are always TypeScript**, every port's init
+can install a client fragment (a Java backend serving React gets `react.md`) — the
+client fragments are not TS-port-specific. The universal `tooling/migration.md`
+fragment is always installed regardless of server language (migrations are TS-owned,
+ADR-0015). Fragments are per-language-named and additive, so in a polyglot monorepo
+running two ports' init commands accumulates fragments without clobbering.
 
 ## Conformance gate
 
-`fixtures/agent-context-conformance/` (mirrors `render-conformance/`): the golden is
-the **assembled always-on Markdown + the five SKILL.md files** for each port. Each
-port's emit command must reproduce the golden byte-for-byte for the shared core
-(port overlays legitimately differ per port). This is what guarantees cross-port
-equivalence and catches drift whenever the source or a refresh changes output.
+`fixtures/agent-context-conformance/` (mirrors `render-conformance/`). Two golden
+tiers:
+- **Universal golden** — the assembled always-on Markdown core + the five
+  `SKILL.md` bodies + `tooling/migration.md`. Identical regardless of which port
+  emits it; every port's emit command must reproduce it byte-for-byte.
+- **Per-language fragment goldens** — one golden per `lang/server/<lang>.md` and
+  `lang/client/<framework>.md` (and each `references/<lang>.md`). A fragment's
+  golden is the same no matter which port's init writes it (the `react.md` a Java
+  init emits == the `react.md` a TS init emits).
+
+This guarantees cross-port equivalence of the shared content AND that a given
+language fragment is identical across the init commands that can emit it, and it
+catches drift whenever the source or a `--refresh-docs` changes output.
 
 ## Phasing (decomposition; each independently shippable)
 
-- **P0 — shared source + gate.** Create `agent-context/` (core + overlays + skill
-  bodies + templates), the assembler, the vocabulary drift test, and the
-  `agent-context-conformance` golden + runner.
-- **P1 — TS pilot.** Evolve `meta init` to scaffold the slim always-on Markdown +
-  the five skills, **replacing** (not porting) the stale single blob; opt-in root
-  wiring; `--no-skills`; conformance green for TS. Dogfood the skill granularity
-  here before fan-out.
+- **P0 — shared source + gate.** Create `agent-context/` (core + `tooling/migration.md`
+  + `lang/server/*` + `lang/client/*` + skill bodies/references + templates), the
+  assembler + stack-resolver, the vocabulary drift test, and the
+  `agent-context-conformance` universal + per-fragment goldens + runner.
+- **P1 — TS pilot.** Evolve `meta init` to resolve the stack and scaffold the slim
+  always-on Markdown (with the stack line) + the five skills, **replacing** (not
+  porting) the stale single blob, installing the `typescript` server fragment +
+  detected client fragments (`react`/`tanstack`) + `migration`; opt-in root wiring;
+  `--no-skills`; `--server`/`--client` overrides; conformance green for TS +
+  react/tanstack. Dogfood the granularity here before fan-out.
 - **P2 — per-port fan-out.** Java/Kotlin (`meta:agent-docs`), Python, C# emit
-  commands consuming the shared content; conformance green for all five.
+  commands consuming the shared content + their server fragment + (TS) client
+  fragments + migration; add the `angular` client fragment; conformance green for
+  all five servers × all client fragments.
 - **P3 — website coupling.** Monorepo assembles canonical `llms.txt` +
   `llms-full.txt` (fresh corpus + the AI-bootstrap section); `metaobjects.dev`
   consumes them. Cross-repo.
@@ -269,8 +367,12 @@ equivalence and catches drift whenever the source or a refresh changes output.
 
 ## Risks & open questions
 
-- **Granularity of the four skills** may need tuning — P1 dogfooding validates
+- **Granularity of the five skills** may need tuning — P1 dogfooding validates
   before the per-port fan-out locks it in.
+- **Stack mis-detection** — manifest sniffing can misread a project (monorepo with
+  several manifests, unusual layout). Mitigation: detection is a *suggestion* the
+  init command shows and confirms, always overridable by `--server`/`--client`; a
+  wrong guess writes an extra fragment, never a wrong one.
 - **Writing into the consumer's `.claude/`** must stay polite: namespaced
   (`metaobjects-*`), hash-tracked, never clobber, `--no-skills` escape hatch. Same
   discipline already proven for the scaffolded AGENTS.md.
@@ -322,8 +424,10 @@ assistant must be aware of → where it lives.
 | Drift sources; `verify --db/--codegen/--templates` (ADR-0021); migrations TS-engine-only for every port (ADR-0015/0016) | `core/verify-and-migrations.md` + `metaobjects-verify` skill + `core/invariants.md` |
 | Structured loader error envelope; stable `ERR_*`/`WARN_*` codes (ADR-0009) | `core/glossary.md` |
 | Extending the metamodel: provider; register vs `registry.extend` vs abstract+extends (ADR-0004/0011) | `core/extending.md` |
-| Java/Kotlin = plain Maven JARs, no OSGi (ADR-0012) | `ports/java.md` + `ports/kotlin.md` |
-| Per-port install + codegen invocation + runtime packages | `ports/*.md` |
+| Java/Kotlin = plain Maven JARs, no OSGi (ADR-0012) | `lang/server/java.md` + `lang/server/kotlin.md` |
+| Per-server-language install + codegen invocation + runtime packages | `lang/server/*.md` |
+| Client framework packages (always TS): react/tanstack/angular | `lang/client/*.md` |
+| TS-owned migration tooling for every port (ADR-0015) | `tooling/migration.md` |
 
 **Classified INTERNAL (not surfaced to adopters):** ADR-0001 (build-time type
 binding mechanism), 0002 (open-closed nodes), 0003 (constants colocation), 0014
