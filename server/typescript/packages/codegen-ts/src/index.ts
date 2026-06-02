@@ -17,8 +17,8 @@ export {
 } from "./generator-registry.js";
 export type { GeneratorRegistryEntry, GeneratorTier } from "./generator-registry.js";
 
-export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig } from "./metaobjects-config.js";
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators } from "./metaobjects-config.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";
 export { mapColumnType } from "./column-mapper.js";

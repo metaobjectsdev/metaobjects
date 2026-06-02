@@ -59,11 +59,12 @@ describe("defineConfig", () => {
       generators: [stub],
     });
     expect(cfg.outDir).toBe("out");
-    expect(cfg.generators[0]!.name).toBe("stub");
+    // generators is now (Generator | string)[]; this entry is the typed stub.
+    expect((cfg.generators[0] as Generator).name).toBe("stub");
   });
 
-  test("type-level: MetaobjectsGenConfig.generators is Generator[]", () => {
-    expectTypeOf<MetaobjectsGenConfig["generators"]>().toEqualTypeOf<Generator[]>();
+  test("type-level: MetaobjectsGenConfig.generators is (Generator | string)[] (ADR-0021 #1 — stable-name strings allowed alongside factories)", () => {
+    expectTypeOf<MetaobjectsGenConfig["generators"]>().toEqualTypeOf<(Generator | string)[]>();
   });
 
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig (all required fields present, types exact)", () => {
