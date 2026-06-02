@@ -63,7 +63,8 @@ M:N is currently skipped by all codegen; this FR makes every port emit idiomatic
   - Java `codegen-spring`: the junction navigation + a repository finder that joins through the junction (and DTO field). JPA `@ManyToMany`/`@JoinTable` where the Spring/JPA layer applies, else a repository query.
   - Kotlin `codegen-kotlin`: Exposed many-to-many through the junction table + a query helper.
   - Python: SQLAlchemy relationship `secondary=<junction>` + Pydantic nested.
-- **Filter/sort + API contract.** If M:N navigation participates in the generated REST contract, the api-contract corpus covers it; otherwise out of scope for v1 (note explicitly).
+- **Filter/sort + API contract.** M:N navigation IS exposed in the generated REST contract (v1 decision) — traversal of the join over HTTP, covered by the api-contract corpus in both lanes.
+- **Runtime resolver (every port).** A generic, metadata-driven M:N query resolver in each runtime layer (TS `runtime-ts` — update existing; Java OMDB; Kotlin Exposed; Python ObjectManager; C# EF), so M:N traversal works at runtime without generated code. The generated repository join is emitted in addition.
 - **Documentation.** Doc-gen (JSDoc / XML-doc / Postgres `COMMENT ON` / Mermaid) describes the M:N edge through the junction (and marks symmetric). `notes` stays internal-only per the documentation-provider contract.
 
 The per-port output is idiomatic and **not** byte-identical; FR-007's semantic manifest asserts parity (the navigation member exists, points at the right target through the right junction, with the right cardinality + symmetry).
@@ -99,13 +100,13 @@ This changes shipped cross-port vocabulary. Per the project's **no-backwards-com
 ## Definition of done
 
 - Slim vocabulary (`through`/`sourceRefField`/`symmetric`, no `joinFields`) registered + validated identically in all five ports; SP-G registry canonical updated + green.
-- Resolution implemented for all three modes (TS runtime; other ports' runtime where they have a M:N query path).
-- M:N codegen emitted by every port (entity navigation + ORM wiring + docs), FR-007 semantic-parity-gated.
-- Conformance: hetero + directed-self-join + symmetric scenarios green across metamodel/registry, persistence, api-contract (if exposed), codegen, and doc corpora; the validation `error-*` fixtures green.
+- Resolution implemented for all three modes via a generic runtime M:N resolver in every port (TS/Java/Kotlin/Python/C#).
+- M:N codegen emitted by every port (entity navigation + ORM wiring + repository join + REST traversal + docs), FR-007 semantic-parity-gated.
+- Conformance: hetero + directed-self-join + symmetric scenarios green across metamodel/registry, persistence, api-contract (both lanes), codegen, and doc corpora; the validation `error-*` fixtures green.
 - Docs updated (CLAUDE.md, metamodel spec); no `joinEntity`/`joinFields` references remain.
 
-## Open questions for spec review
+## Resolved scope decisions (2026-06-02 review)
 
-1. **API exposure of M:N navigation** — is M:N traversal part of the generated REST contract in v1 (api-contract corpus), or runtime/codegen-only with REST exposure deferred? (Leaning: codegen + runtime + docs in v1; REST exposure of the join only if it already falls out of the existing contract.)
-2. **Java/Kotlin runtime M:N** — do OMDB (Java) / Exposed (Kotlin) get a runtime M:N *query resolver* (like TS's n2m-resolver) in v1, or codegen-only (the generated repository does the join) with runtime resolution deferred? (Leaning: codegen-emitted repository join in v1; a generic runtime resolver only where it's cheap.)
-3. **`@through` vs `@junction` naming** — `through` (Rails) chosen; confirm over `junction`/`associationEntity`.
+1. **REST exposure — IN v1.** M:N traversal is part of the generated REST contract. The api-contract-conformance corpus gets M:N scenarios in BOTH lanes (reference-server + generated-artifact-over-HTTP) for all three resolution modes.
+2. **Runtime M:N resolvers — IN v1, all ports.** Every port with a runtime query layer gets a generic, metadata-driven M:N resolver mirroring TS's `n2m-resolver`: TS (`runtime-ts`, update existing), Java (OMDB), Kotlin (Exposed), Python (ObjectManager), C# (EF). M:N traversal works at runtime without generated code; the generated repository join is ALSO emitted. Persistence-conformance exercises the runtime resolver on every port against Testcontainers Postgres.
+3. **Naming — `@through`** (Rails-style) confirmed.
