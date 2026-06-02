@@ -14,6 +14,9 @@ const UNMANAGED_KINDS = new Set<string>([
   "drop-index",
   "drop-fk",
   "drop-view",
+  // A CHECK present in the DB but not the snapshot is a DB-only object, same as
+  // a hand-authored index/fk/view — never actionable drift, never auto-dropped.
+  "drop-check",
 ]);
 
 export interface DriftClassification {

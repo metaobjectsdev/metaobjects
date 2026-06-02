@@ -105,4 +105,39 @@ describe("introspectD1", () => {
     expect(snap.tables).toHaveLength(1);
     expect(snap.tables[0]!.name).toBe(injectedName);
   });
+
+  test("synthesizes a stable FK name from table + columns; folds multi-column rows by id", async () => {
+    // SQLite's pragma_foreign_key_list exposes no constraint NAME, so the
+    // introspector synthesizes `<table>_<cols joined by _>_fk`, groups multi-
+    // column FKs by `id`, and omits a NO-ACTION referential action.
+    const runner = mockRunner({
+      "sqlite_version": [{ v: "3.44.2" }],
+      "type='table'": [
+        { name: "posts", sql: "CREATE TABLE posts (org_id INTEGER, slug TEXT)" },
+      ],
+      'pragma_table_info("posts")': [
+        { cid: 0, name: "org_id", type: "INTEGER", notnull: 0, dflt_value: null, pk: 0 },
+        { cid: 1, name: "slug",   type: "TEXT",    notnull: 0, dflt_value: null, pk: 0 },
+      ],
+      'pragma_index_list("posts")': [],
+      // One 2-column FK (org_id, slug) → articles(org_id, slug); two rows, same id.
+      'pragma_foreign_key_list("posts")': [
+        { id: 0, seq: 0, table: "articles", from: "org_id", to: "org_id", on_delete: "CASCADE", on_update: "NO ACTION" },
+        { id: 0, seq: 1, table: "articles", from: "slug",   to: "slug",   on_delete: "CASCADE", on_update: "NO ACTION" },
+      ],
+      "type='view'": [],
+    });
+    const snap = await introspectD1({ runner, binding: "DB", remote: false, configPath: undefined });
+    expect(snap.tables[0]!.foreignKeys).toHaveLength(1);
+    const fk = snap.tables[0]!.foreignKeys[0]!;
+    expect(fk).toMatchObject({
+      name: "posts_org_id_slug_fk",
+      columns: ["org_id", "slug"],
+      refTable: "articles",
+      refColumns: ["org_id", "slug"],
+      onDelete: "cascade",
+    });
+    // NO ACTION on update is the default → omitted, not emitted.
+    expect("onUpdate" in fk).toBe(false);
+  });
 });

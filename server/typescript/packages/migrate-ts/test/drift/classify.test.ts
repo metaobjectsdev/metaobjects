@@ -31,6 +31,15 @@ describe("classifyDrift", () => {
     ]);
   });
 
+  test("CHECK changes: add-check is drift, drop-check is unmanaged", () => {
+    // add-check = snapshot has a CHECK the DB lacks → actionable drift.
+    // drop-check = DB has a CHECK the snapshot lacks → DB-only object, same as a
+    // hand-authored drop-index/drop-fk → unmanaged (never auto-dropped).
+    const { drift, unmanaged } = classifyDrift([mk("add-check"), mk("drop-check")]);
+    expect(drift.map((c) => c.kind)).toEqual(["add-check"]);
+    expect(unmanaged.map((c) => c.kind)).toEqual(["drop-check"]);
+  });
+
   test("empty input yields empty partitions", () => {
     const { drift, unmanaged } = classifyDrift([]);
     expect(drift).toEqual([]);
