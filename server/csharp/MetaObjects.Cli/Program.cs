@@ -17,10 +17,12 @@ if (args.Length == 0)
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
-        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir>] [--db]\n" +
+        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
         "                                                       --templates  template/prompt drift (default)\n" +
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
+        "                                                       --namespace  codegen regen namespace; inferred\n" +
+        "                                                                    from the committed --out when omitted\n" +
         "                                                       --db         NOT supported in C# (migrate engine)");
     return 2;
 }
@@ -99,6 +101,7 @@ static int RunVerify(string[] rest)
     string? templatesRoot = null;
     string? outDir = null;
     string ns = "Generated";
+    bool nsExplicit = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
     bool templates = false, codegen = false, db = false;
@@ -115,13 +118,13 @@ static int RunVerify(string[] rest)
         else if (a == "--codegen") codegen = true;
         else if (a == "--db") db = true;
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-        else if (a == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
+        else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
         else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
         else if (a.StartsWith('-'))
         {
             Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir>] [--db]");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
             return 2;
         }
         else if (metadataDir is null) metadataDir = a;
@@ -133,7 +136,7 @@ static int RunVerify(string[] rest)
 
     if (metadataDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir>] [--db]");
+        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
         return 2;
     }
 
@@ -143,7 +146,8 @@ static int RunVerify(string[] rest)
     if (wantsTemplates && templatesRoot is null)
     {
         Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> --templates <templatesRoot>");
-        Console.Error.WriteLine("  (the templates gate is the default; pass --codegen --out <dir> for codegen drift)");
+        Console.Error.WriteLine("  (the templates gate is the default; pass --codegen --out <dir> for codegen drift —");
+        Console.Error.WriteLine("   --namespace is inferred from the committed output when omitted)");
         return 2;
     }
 
@@ -156,6 +160,7 @@ static int RunVerify(string[] rest)
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
+        NamespaceExplicit = nsExplicit,
         Generators = generators,
         TemplateRoot = templateRoot,
         Templates = templates,

@@ -174,6 +174,68 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.NotNull(r.Codegen!.Error);
     }
 
+    // -------------------- the namespace-inference footgun --------------------
+    // gen used a CUSTOM namespace; verify --codegen WITHOUT --namespace must infer
+    // it from the committed output (else every file would spuriously drift on the
+    // embedded `namespace {ns};`). Build the Options with NO explicit namespace.
+
+    /// <summary>Codegen opts with NO explicit namespace (the footgun scenario).</summary>
+    private VerifyCommand.Options CodegenOptsNoNamespace() =>
+        new()
+        {
+            MetadataDir = MetaDir,
+            OutDir = OutDir,
+            Codegen = true,
+            // Namespace intentionally NOT set + NamespaceExplicit defaults to false.
+        };
+
+    [Fact]
+    public void Codegen_infers_custom_namespace_from_committed_output_no_flag()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        // Committed output generated with a CUSTOM namespace.
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+
+        // verify --codegen WITHOUT --namespace → must infer "Acme.Generated" from the
+        // committed files and produce a byte-identical regen → exit 0 (no spurious drift).
+        var r = VerifyCommand.RunSubverbs(CodegenOptsNoNamespace());
+        Assert.Equal(0, r.ExitCode);
+        Assert.True(r.Codegen!.Clean, string.Join("; ", r.Codegen!.Lines));
+    }
+
+    [Fact]
+    public void Codegen_inference_still_detects_real_drift_with_custom_namespace()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+        // A real hand-edit on top of the custom namespace must still be drift.
+        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// real drift\n");
+
+        var r = VerifyCommand.RunSubverbs(CodegenOptsNoNamespace());
+        Assert.NotEqual(0, r.ExitCode);
+        Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("Subscriber.g.cs"));
+    }
+
+    [Fact]
+    public void Codegen_explicit_namespace_still_wins_over_inference()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        GenCommand.Run(MetaDir, OutDir, "Acme.Generated");
+
+        // Explicit namespace set (matching) → wins, byte-identical regen → exit 0.
+        var opts = new VerifyCommand.Options
+        {
+            MetadataDir = MetaDir,
+            OutDir = OutDir,
+            Namespace = "Acme.Generated",
+            NamespaceExplicit = true,
+            Codegen = true,
+        };
+        var r = VerifyCommand.RunSubverbs(opts);
+        Assert.Equal(0, r.ExitCode);
+        Assert.True(r.Codegen!.Clean, string.Join("; ", r.Codegen!.Lines));
+    }
+
     // -------------------- combining flags aggregates exit --------------------
 
     [Fact]
