@@ -23,6 +23,29 @@ TEMPLATE_ATTR_OWNER = "owner"
 TEMPLATE_ATTR_SINCE = "since"
 TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags"
 
+# --- @kind + email part-refs (template.output only) ---
+#
+# A template.output is either a plain document (renders @textRef in @format ->
+# one string) or an email (renders subject + html + optional text -> a
+# structured EmailDocument). @kind is a closed enum; the email part-refs are
+# 2-layer logical (group/source) textRefs resolved by a provider at render time.
+# Cross-field rules live in validation_passes._validate_templates:
+#   - @kind="email"            -> require @subjectRef AND @htmlBodyRef (textRef unused; @textBodyRef optional)
+#   - @kind="document"/absent  -> require @textRef
+# Must match TS / Java exactly (Tier-1 invariant).
+TEMPLATE_ATTR_KIND = "kind"
+TEMPLATE_KIND_DOCUMENT = "document"
+TEMPLATE_KIND_EMAIL = "email"
+TEMPLATE_KIND_DEFAULT = TEMPLATE_KIND_DOCUMENT
+ALLOWED_KINDS = (
+    TEMPLATE_KIND_DOCUMENT,
+    TEMPLATE_KIND_EMAIL,
+)
+
+TEMPLATE_ATTR_SUBJECT_REF = "subjectRef"
+TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef"
+TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef"
+
 # Prompt-overlay attrs (template.prompt only).
 TEMPLATE_ATTR_MAX_TOKENS = "maxTokens"
 TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots"

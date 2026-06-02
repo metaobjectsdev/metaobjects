@@ -25,10 +25,14 @@ public static class TemplateSchema
             Required: true,
             Description: "Reference to the payload (a view-object / projection) this template renders against."),
 
+        // Conditionally required — enforced in ValidateTemplatePayloadRefs, NOT a
+        // hard schema requirement. template.prompt always needs it; template.output
+        // needs it only for @kind="document"/absent (an email renders subject+html
+        // instead). Relaxed from Required:true so an email output is not bodyless-rejected.
         new AttrSchema(
             Name: TemplateConstants.TEMPLATE_ATTR_TEXT_REF,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: true,
+            Required: false,
             Description: "2-layer logical reference (group/source) to the body text, resolved by a provider at render time."),
 
         new AttrSchema(
@@ -74,6 +78,40 @@ public static class TemplateSchema
         Default: TemplateConstants.PROMPT_STYLE_DEFAULT,
         AllowedValues: [.. TemplateConstants.TEMPLATE_PROMPT_STYLES],
         Description: "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.");
+
+    // @kind + email part-refs (template.output only). @kind is a closed enum
+    // (document|email) enforced via AllowedValues exactly like @format / @promptStyle.
+    // The email part-refs are 2-layer logical (group/source) textRefs resolved by a
+    // provider at render time; their conditional requirement (subjectRef + htmlBodyRef
+    // when @kind="email") lives in ValidateTemplatePayloadRefs.
+    private static readonly IReadOnlyList<AttrSchema> EmailAttrs =
+    [
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_KIND,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Default: TemplateConstants.TEMPLATE_KIND_DEFAULT,
+            AllowedValues: [.. TemplateConstants.TEMPLATE_KINDS],
+            Description: "Output kind: 'document' (renders @textRef -> one string) or 'email' (renders subject + html + optional text -> a structured EmailDocument)."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_SUBJECT_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Email only: 2-layer logical reference to the subject text, resolved by a provider at render time."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_HTML_BODY_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Email only: 2-layer logical reference to the HTML body, resolved by a provider at render time."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_TEXT_BODY_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Email only (optional): 2-layer logical reference to the plain-text body, resolved by a provider at render time."),
+    ];
 
     // LLM-overlay attrs (template.prompt only).
     private static readonly IReadOnlyList<AttrSchema> PromptOverlayAttrs =
@@ -148,7 +186,7 @@ public static class TemplateSchema
         {
             [BaseTypes.SUBTYPE_BASE]                       = [],
             [TemplateConstants.TEMPLATE_SUBTYPE_PROMPT]    = [.. GenericAttrs, .. PromptOverlayAttrs],
-            [TemplateConstants.TEMPLATE_SUBTYPE_OUTPUT]    = [.. GenericAttrs, PromptStyleAttr],
+            [TemplateConstants.TEMPLATE_SUBTYPE_OUTPUT]    = [.. GenericAttrs, PromptStyleAttr, .. EmailAttrs],
             [TemplateConstants.TEMPLATE_SUBTYPE_TOOLCALL]  = [.. ToolcallAttrs],
         };
 }

@@ -1235,6 +1235,46 @@ public static class ValidationPasses
 
         foreach (var tmpl in root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
+            // --- @kind / textRef / email part-ref cross-field rules ---
+            // template.output is either a document (@kind absent/"document" → @textRef
+            // required) or an email (@kind="email" → @subjectRef + @htmlBodyRef required,
+            // @textRef unused). template.prompt always requires @textRef (the renderable
+            // body). Closed-enum membership of @kind is enforced by the AllowedValues
+            // schema pass (ERR_BAD_ATTR_VALUE); here we only enforce conditional ref
+            // presence. Mirrors TS validateTemplatePayloadRefs / Java validateTemplateNode.
+            if (tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+            {
+                if (tmpl.OwnAttr(TEMPLATE_ATTR_KIND) as string == TEMPLATE_KIND_EMAIL)
+                {
+                    if (tmpl.OwnAttr(TEMPLATE_ATTR_SUBJECT_REF) is not string)
+                        errors.Add(new MetaError(
+                            $"template \"{tmpl.Name}\" @kind \"email\" requires @subjectRef",
+                            ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
+                    if (tmpl.OwnAttr(TEMPLATE_ATTR_HTML_BODY_REF) is not string)
+                        errors.Add(new MetaError(
+                            $"template \"{tmpl.Name}\" @kind \"email\" requires @htmlBodyRef",
+                            ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
+                }
+                else
+                {
+                    // @kind absent or "document" → require @textRef so a document is
+                    // never bodyless. (An out-of-enum @kind is separately flagged by
+                    // the AllowedValues schema pass.)
+                    if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string)
+                        errors.Add(new MetaError(
+                            $"template \"{tmpl.Name}\" @kind \"document\" requires @textRef",
+                            ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
+                }
+            }
+            else if (tmpl.SubType == TEMPLATE_SUBTYPE_PROMPT)
+            {
+                // template.prompt always carries a renderable body via @textRef.
+                if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string)
+                    errors.Add(new MetaError(
+                        $"template \"{tmpl.Name}\" requires @textRef",
+                        ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
+            }
+
             if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
 
             var payload = root.OwnChildren()
