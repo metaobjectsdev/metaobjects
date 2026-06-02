@@ -95,6 +95,8 @@ jobs:
           uv run pytest tests/render -q
           # Validator-parity corpus (generated Pydantic input validation).
           uv run pytest tests/codegen/test_validation_conformance.py -q
+          # Generator registry CLI ergonomics (gen --list / --generators selection, ADR-0021 D3).
+          uv run pytest tests/codegen/test_cli_registry.py -q
 
   conformance-kotlin:
     # Kotlin (codegen-kotlin, KotlinPoet on the JVM) ships no loader / YAML /
