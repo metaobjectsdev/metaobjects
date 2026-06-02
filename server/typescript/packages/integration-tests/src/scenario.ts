@@ -35,9 +35,14 @@ export interface QueryScenario {
 
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count";
+  readonly op: "list" | "get" | "count" | "relate";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
+  /**
+   * For `op: relate`: the relationship name to traverse from the `by` source
+   * record (e.g. an M:N navigation). The result is the related rows.
+   */
+  readonly relation: string | null;
   /**
    * Either `{ field: { op: value } }` (each top-level key is a field name) or
    * `{ and: [filter, filter, ...] }` (compose by AND). Mixed forms are
@@ -102,6 +107,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
       op: required(q.op, yamlPath, "query.op") as QuerySpec["op"],
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
+      relation: q.relation ?? null,
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
       sort: q.sort
         ? q.sort.map((s) => ({ field: s.field ?? "", dir: (s.dir as "asc" | "desc") ?? "asc" }))
@@ -157,6 +163,7 @@ interface QueryYaml {
     op?: string;
     entity?: string;
     by?: unknown;
+    relation?: string;
     filter?: unknown;
     sort?: { field?: string; dir?: string }[];
     limit?: number;

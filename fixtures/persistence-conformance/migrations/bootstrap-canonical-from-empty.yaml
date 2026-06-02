@@ -48,6 +48,12 @@ expect:
        ORDER BY table_name
     rows:
       - { table_name: "assets" }
+      - { table_name: "follows" }
+      - { table_name: "friendships" }
       - { table_name: "measurements" }
+      - { table_name: "people" }
+      - { table_name: "post_tags" }
+      - { table_name: "posts" }
       - { table_name: "programs" }
+      - { table_name: "tags" }
       - { table_name: "weeks" }

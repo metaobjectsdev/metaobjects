@@ -160,6 +160,7 @@ function buildExpression(eb: AnyExprBuilder, w: WhereClause): Expression<SqlBool
     case "in": return eb(w.column, "in", w.values);
     case "isNull": return w.not ? eb(w.column, "is not", null) : eb(w.column, "is", null);
     case "and": return eb.and(w.clauses.map((c: WhereClause) => buildExpression(eb, c)));
+    case "or": return eb.or(w.clauses.map((c: WhereClause) => buildExpression(eb, c)));
     default: {
       const exhaustive: never = w;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);

@@ -12,7 +12,8 @@ export type WhereClause =
   | { kind: "in"; column: string; values: PrimitiveValue[] }
   | { kind: "like"; column: string; pattern: string }
   | { kind: "isNull"; column: string; not: boolean }
-  | { kind: "and"; clauses: WhereClause[] };
+  | { kind: "and"; clauses: WhereClause[] }
+  | { kind: "or"; clauses: WhereClause[] };
 
 export interface OrderBy {
   column: string;

@@ -1,0 +1,41 @@
+name: m2n-hetero
+description: |
+  FR-017 hetero M:N: Post —tags→ Tag through the PostTag junction. The junction
+  declares two identity.reference children (postId→Post, tagId→Tag); the runtime
+  resolver derives the FK fields from those references (no @joinFields). The
+  `relate` op traverses the junction and returns the related Tag rows.
+
+  PORT STATUS: TS resolves this today (FR-017 Unit 5). Java/Kotlin/Python/C#
+  runtime M:N resolvers land in Units 6–9; until then those ports skip the
+  m2n-*.yaml scenarios (see queries/README note below / corpus README).
+seed-data: |
+  INSERT INTO "posts" ("id", "title") VALUES
+    (1, 'Hello'), (2, 'World'), (3, 'Orphan');
+  INSERT INTO "tags" ("id", "name") VALUES
+    (10, 'red'), (20, 'green'), (30, 'blue');
+  INSERT INTO "post_tags" ("postId", "tagId") VALUES
+    (1, 10), (1, 20), (2, 30);
+queries:
+  - name: post1-has-red-and-green
+    op: relate
+    entity: Post
+    by: { id: 1 }
+    relation: tags
+    expect:
+      - { id: "10", name: "red" }
+      - { id: "20", name: "green" }
+
+  - name: post2-has-blue
+    op: relate
+    entity: Post
+    by: { id: 2 }
+    relation: tags
+    expect:
+      - { id: "30", name: "blue" }
+
+  - name: post3-has-no-tags
+    op: relate
+    entity: Post
+    by: { id: 3 }
+    relation: tags
+    expect: []

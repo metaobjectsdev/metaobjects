@@ -10,6 +10,8 @@
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
 import type { MetaData } from "../shared/meta-data.js";
+import type { MetaObject } from "../core/object/meta-object.js";
+import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { ParseError } from "../errors.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
@@ -54,7 +56,7 @@ import {
   FIELD_SUBTYPE_ENUM,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
-import { IDENTITY_ATTR_FIELDS, IDENTITY_SUBTYPE_REFERENCE } from "../core/identity/identity-constants.js";
+import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -673,26 +675,27 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
 // it (matching the own-attrs policy of the other passes).
 // ---------------------------------------------------------------------------
 
-/** FK field names declared by an entity's identity.reference children. */
+// The junction's reference view: the validator and the runtime/codegen FK
+// derivation (deriveM2MFields) MUST agree on which references count. Both use
+// the EFFECTIVE view (own + inherited via extends) via referenceIdentities(),
+// so a junction defined through `extends` is treated identically here and at
+// resolution time. (For a junction with no extends, effective == own.)
+function _junctionReferences(junction: MetaData): MetaReferenceIdentity[] {
+  return (junction as MetaObject).referenceIdentities();
+}
+
+/** FK field names declared by a junction's effective identity.reference children. */
 function _junctionReferenceFkFields(junction: MetaData): string[] {
   const out: string[] = [];
-  for (const id of junction.ownChildren()) {
-    if (id.type !== TYPE_IDENTITY || id.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
-    const fields = id.ownAttr(IDENTITY_ATTR_FIELDS);
-    if (typeof fields === "string") {
-      const first = fields.split(",")[0]?.trim();
-      if (first) out.push(first);
-    } else if (Array.isArray(fields) && typeof fields[0] === "string") {
-      out.push(fields[0]);
-    }
+  for (const ref of _junctionReferences(junction)) {
+    const first = ref.fields[0];
+    if (first) out.push(first);
   }
   return out;
 }
 
 function _countJunctionReferences(junction: MetaData): number {
-  return junction
-    .ownChildren()
-    .filter((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE).length;
+  return _junctionReferences(junction).length;
 }
 
 export function validateRelationships(root: MetaData): ParseError[] {

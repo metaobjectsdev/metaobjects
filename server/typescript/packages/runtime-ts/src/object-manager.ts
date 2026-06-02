@@ -334,16 +334,33 @@ export class ObjectManager {
         const sourceJoinDbCol = resolveJoinColumnName(joinEntity, n2m.sourceJoinField, this.columnNamingStrategy);
         const targetJoinDbCol = resolveJoinColumnName(joinEntity, n2m.targetJoinField, this.columnNamingStrategy);
         const targetPk = resolvePkFields(target)[0]!;
-        const targetById = new Map(targetRows.map((r) => [r[targetPk], r]));
-        const grouped = new Map<unknown, Row[]>();
+        // Key everything by String(): the join rows are raw (a BIGINT FK arrives
+        // as a string from the driver) while the JS rows' keys are coerced, so a
+        // number↔string mismatch would silently drop matches.
+        const key = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+        const targetById = new Map(targetRows.map((r) => [key(r[targetPk]), r]));
+        const sourceKeys = new Set(records.map((r) => key(r[sourcePk])));
+        const grouped = new Map<string, Row[]>();
+        const attach = (ownerKey: string | null, relatedKey: string | null): void => {
+          if (ownerKey === null) return;
+          const t = relatedKey === null ? undefined : targetById.get(relatedKey);
+          if (!t) return;
+          if (!grouped.has(ownerKey)) grouped.set(ownerKey, []);
+          grouped.get(ownerKey)!.push(t);
+        };
         for (const j of joinRows) {
-          const sk = j[sourceJoinDbCol];
-          const tk = j[targetJoinDbCol];
-          if (!grouped.has(sk)) grouped.set(sk, []);
-          const t = targetById.get(tk);
-          if (t) grouped.get(sk)!.push(t);
+          const a = key(j[sourceJoinDbCol]);
+          const b = key(j[targetJoinDbCol]);
+          if (n2m.symmetric) {
+            // Union-on-read: a row (a,b) relates a↔b. Attach to whichever
+            // endpoint(s) are in this batch; the related id is the OTHER one.
+            if (a !== null && sourceKeys.has(a)) attach(a, b);
+            if (b !== null && a !== b && sourceKeys.has(b)) attach(b, a);
+          } else {
+            attach(a, b);
+          }
         }
-        for (const r of records) r[inc] = grouped.get(r[sourcePk]) ?? [];
+        for (const r of records) r[inc] = grouped.get(key(r[sourcePk]) ?? "\0") ?? [];
         continue;
       }
 

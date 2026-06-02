@@ -13,6 +13,7 @@
 
 import {
   and as drzAnd,
+  or as drzOr,
   eq as drzEq,
   ne as drzNe,
   gt as drzGt,
@@ -409,6 +410,10 @@ function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>): unknown 
       // structurally compatible but typed as unknown. Cast at the boundary.
       const parts = w.clauses.map((c) => buildExpression(c, cols)) as SQL[];
       return drzAnd(...parts);
+    }
+    case "or": {
+      const parts = w.clauses.map((c) => buildExpression(c, cols)) as SQL[];
+      return drzOr(...parts);
     }
     default: {
       const exhaustive: never = w;

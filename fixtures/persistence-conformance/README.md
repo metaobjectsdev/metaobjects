@@ -136,16 +136,38 @@ The DSL is intentionally small. Each port translates it to the most idiomatic
 call into its persistence layer (C#: `_db.Set<T>().Where(...).ToListAsync()`;
 TS: `om.findMany(entityName, filter, opts)`).
 
-| field      | type                        | notes |
-|------------|-----------------------------|-------|
-| `op`       | `list \| get \| count`      | required |
-| `entity`   | string                      | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`            | required for `op: get` |
-| `filter`   | filter object (below)       | optional; same vocabulary as Project D |
-| `sort`     | `[{ field, dir }]`          | optional; `dir` ∈ `asc | desc` |
-| `limit`    | integer                     | optional |
-| `offset`   | integer                     | optional |
-| `expect`   | row or row[] or integer     | required; the normalized expected result |
+| field      | type                            | notes |
+|------------|---------------------------------|-------|
+| `op`       | `list \| get \| count \| relate`| required |
+| `entity`   | string                          | metadata name (Program, ProgramStat, …) |
+| `by`       | `{ id: scalar }`                | required for `op: get` and `op: relate` (the source record key) |
+| `relation` | string                          | required for `op: relate`; the relationship name to traverse |
+| `filter`   | filter object (below)           | optional; same vocabulary as Project D |
+| `sort`     | `[{ field, dir }]`              | optional; `dir` ∈ `asc | desc` |
+| `limit`    | integer                         | optional |
+| `offset`   | integer                         | optional |
+| `expect`   | row or row[] or integer         | required; the normalized expected result |
+
+### `op: relate` — relationship traversal (M:N)
+
+`relate` traverses a relationship from a single source record (`by`) and returns
+the **related rows**. It is how the corpus exercises **many-to-many (FR-017)**
+navigation through a junction: the port's runtime resolver derives the junction
+FK fields from the junction entity's two `identity.reference` children (no
+`@joinFields`) and handles all three modes — hetero, directed self-join
+(`@sourceRefField`), and symmetric self-join (`@symmetric`, union-on-read).
+
+Because M:N membership is a **set**, the runner compares `relate` results
+**order-independently** (rows sorted by canonical JSON on both sides) — a
+`relate` scenario does not need (or honor) `sort:`.
+
+> **M:N scenarios are TS-only until Units 6–9 land.** The `queries/m2n-*.yaml`
+> scenarios (`m2n-hetero`, `m2n-directed-self-join`, `m2n-symmetric-self-join`)
+> require the per-port runtime M:N resolver. **TypeScript** ships it (FR-017
+> Unit 5); the **Java / Kotlin / Python / C#** runtime resolvers land in Units
+> 6–9. Those ports' integration runners will FAIL the `m2n-*` scenarios until
+> their unit is implemented — expected on the FR-017 branch. When porting,
+> implement the resolver, then run these scenarios green; do not delete them.
 
 ### Filter operators
 

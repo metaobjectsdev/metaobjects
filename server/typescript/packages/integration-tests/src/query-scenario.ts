@@ -95,6 +95,11 @@ async function execute(om: ObjectManager, spec: QuerySpec): Promise<unknown> {
   if (spec.op === "count") {
     return await om.count(spec.entity, filter);
   }
+  if (spec.op === "relate") {
+    if (!spec.by) throw new Error(`${spec.name}: op:relate requires 'by' (the source record key)`);
+    if (!spec.relation) throw new Error(`${spec.name}: op:relate requires 'relation'`);
+    return await om.relate(spec.entity, spec.by, spec.relation);
+  }
   // op: list
   const opts: { orderBy?: [string, "asc" | "desc"][]; limit?: number; offset?: number } = {};
   if (sort && sort.length > 0) opts.orderBy = sort;
@@ -141,14 +146,28 @@ function canonicalizeExpected(expect: unknown, op: QuerySpec["op"]): string {
     if (Number.isNaN(n)) throw new Error(`op:count expects an integer, got: ${expect}`);
     return String(n);
   }
+  // `relate` (M:N navigation) is a SET — order is not part of the contract, so
+  // sort both sides for a deterministic, port-agnostic comparison. `list` keeps
+  // its order (the scenario pins it via `sort:`).
+  if (op === "relate") return canonicalRowSet((expect ?? []) as Record<string, unknown>[]);
   return canonicalJson(expect);
 }
 
 function canonicalizeActual(actual: unknown, op: QuerySpec["op"]): string {
   if (op === "count") return String(actual);
+  if (op === "relate") {
+    const rows = (Array.isArray(actual) ? actual : actual == null ? [] : [actual]) as Record<string, unknown>[];
+    return canonicalRowSet(rows.map(normalizeRow));
+  }
   if (actual === null || actual === undefined) return "null";
   if (op === "get") return canonicalJson(normalizeRow(actual as Record<string, unknown>));
   // op: list
   const rows = actual as Record<string, unknown>[];
   return canonicalJson(rows.map(normalizeRow));
+}
+
+/** Canonicalize a row collection as an order-independent set (sorted by row JSON). */
+function canonicalRowSet(rows: Record<string, unknown>[]): string {
+  const each = rows.map((r) => canonicalJson(r)).sort();
+  return `[${each.join(",")}]`;
 }
