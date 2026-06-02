@@ -51,6 +51,11 @@ jobs:
           cd ../render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts
           # Validator-parity corpus (generated input validation). No Docker.
           cd ../integration-tests && bun test test/validation-conformance.test.ts
+          # Doc-template + CLI suites: byte-identity template gate, embedded-template
+          # gate, neutrality / collision guards, and the docs golden corpus +
+          # `meta docs` command. Whole-package so future tests auto-run. No Docker.
+          cd ../codegen-ts && bun test
+          cd ../cli && bun test
 
       - name: C# conformance
         if: matrix.language == 'csharp'
@@ -122,3 +127,19 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: cd server/typescript/packages/metadata && bun run conformance:mutation
+
+  doc-template-drift:
+    # Fails if the bundled package copy of the canonical doc templates, or the
+    # embedded-templates TS module (used by the standalone `meta` binary), is
+    # stale. sync-doc-templates.sh reproduces both from the canonical root
+    # templates/docs/ source; a non-empty diff means a dev forgot to run it.
+    needs: fixture-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Regenerate bundled + embedded doc templates from canonical
+        run: bash scripts/sync-doc-templates.sh
+      - name: Fail if synced/generated doc-template artifacts are stale
+        run: git diff --exit-code -- server/typescript/packages/codegen-ts/templates server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
