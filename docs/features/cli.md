@@ -26,10 +26,10 @@ command surface splits in two:
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; the bare-`verify` default |
 | TS codegen | Node `meta` | `meta gen` | TS projects |
-| C# codegen | `dotnet meta` | `dotnet meta gen` / `verify` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta` |
+| C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`) |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`meta:gen`) | Kotlin generators run through the same goal — see below |
 | Java/Kotlin codegen drift | Maven plugin | `mvn metaobjects:verify` (`meta:verify`) | regenerate + fail on drift vs committed output (generator-neutral) |
-| Python codegen | console-script | `metaobjects gen` / `verify` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI) |
+| Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2) |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
 
@@ -50,8 +50,9 @@ Rules of the contract:
 - **Combinations aggregate.** Pass any mix (`verify --db --codegen --templates`);
   each selected mode runs and the **exit code is non-zero if *any* mode reports
   drift**.
-- **Bare `verify` = `--templates`** (documented back-compat default). It also
-  prints a one-line note advertising the explicit subverbs.
+- **Bare `verify` = the port's documented back-compat default.** TS/C# default to
+  `--templates`; Java/Python default to `--codegen`. In every case bare `verify`
+  also prints a one-line note advertising the explicit subverbs.
 - **`--codegen` needs to know where the committed output lives.** It diffs
   against the configured `outDir` (and any per-target `outDir`) from
   `metaobjects.config.ts`. With no config it errors clearly (exit 2) rather than
@@ -59,12 +60,22 @@ Rules of the contract:
 - **Unknown/invalid flag → exit 2** with usage.
 
 **Port status (staged per ADR-0021):** the **TypeScript Node `meta` is the
-reference** and implements all three subverbs today. The other ports (C#
-`dotnet meta`, Java/Kotlin `mvn meta:verify`, Python `metaobjects`) converge on
-the same subverb vocabulary in staged, conformance-gated follow-on slices; each
-keeps its current behavior as the bare-`verify` default until it adopts the
-explicit subverbs. (Schema `--db` remains Node-only by the ADR-0015 design — see
-below.)
+reference** and implements all three subverbs today. **Python `metaobjects`
+ships the subverbs**: `verify --codegen` (regen-to-temp + diff vs `--out`, the
+historical default), `verify --templates` (each `template.*` node's `{{field}}`
+↔ payload-VO field tree via the render `verify()` gate, resolving refs through a
+filesystem provider rooted at `--templates-root`), and `verify --db` which is
+**cleanly rejected with exit 2** ("schema verify is the migrate engine,
+ADR-0015"). Bare `verify` stays `--codegen` for back-compat. The **C# `dotnet
+meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
+historical template/prompt drift gate, the C# back-compat default), `verify
+--codegen` (regenerate the default generator suite to a temp dir and diff against
+the committed `--out` tree, never touching it), and a **clean `--db` rejection
+(exit 2)** — bare `dotnet meta verify` keeps `--templates` and prints the subverb
+note. The remaining port (Java/Kotlin `mvn meta:verify`) converges on the same
+subverb vocabulary in staged, conformance-gated follow-on slices; it keeps its
+current behavior as the bare-`verify` default until it adopts the explicit
+subverbs. (Schema `--db` remains Node-only by the ADR-0015 design — see below.)
 
 ## Schema is Node-only — by design
 
