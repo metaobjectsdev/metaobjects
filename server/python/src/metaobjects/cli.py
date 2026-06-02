@@ -324,9 +324,9 @@ def _verify_templates(args: argparse.Namespace) -> int:
         fields: list[PayloadField] = _derive_payload_field_tree(root, vo, frozenset())
 
         refs = [
-            tmpl.attr(a)
+            val
             for a in _TEMPLATE_TEXT_REF_ATTRS
-            if isinstance(tmpl.attr(a), str) and tmpl.attr(a)
+            if isinstance(val := tmpl.attr(a), str) and val
         ]
         if not refs:
             print(
