@@ -96,13 +96,24 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // back to defaults; the loader still surfaces a stable unknown-subtype error
   // if the metadata genuinely uses an unregistered type.
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
-  try {
-    // The config lives alongside metaobjects/ at the metadata root (metaRoot);
-    // projectRoot only diverges when --templates overrides the template lookup.
-    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
-    configProviders = forgeConfig.providers;
-  } catch {
-    configProviders = undefined;
+  // The config lives alongside metaobjects/ at the metadata root (metaRoot);
+  // projectRoot only diverges when --templates overrides the template lookup.
+  // Only attempt the load when the file is actually present: absence is the
+  // expected config-less case (stay silent), but a config that EXISTS yet fails
+  // to load is surfaced as a warning rather than silently degrading to
+  // provider-less docs — otherwise a custom-type project would later fail with a
+  // cryptic unknown-subtype error instead of the real config error.
+  if (existsSync(join(metaRoot, "metaobjects.config.ts"))) {
+    try {
+      const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+      configProviders = forgeConfig.providers;
+    } catch (err) {
+      log.warn(
+        `docs: metaobjects.config.ts failed to load (${(err as Error).message}); ` +
+          `generating docs without its providers`,
+      );
+      configProviders = undefined;
+    }
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any

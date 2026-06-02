@@ -196,6 +196,40 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(files).toContain("Place.md");
   });
 
+  test("a broken metaobjects.config.ts is surfaced (not silently swallowed), docs still generate", async () => {
+    // Basic metadata (no custom types) + a config that THROWS on load. Docs must
+    // still succeed config-less, but the real config error must be surfaced as a
+    // warning rather than silently degrading to provider-less docs.
+    const root = await project();
+    await writeFile(
+      join(root, "metaobjects.config.ts"),
+      "throw new Error('broken config boom');\n",
+      "utf8",
+    );
+    const out = join(root, "out-brokencfg");
+
+    const errLogged: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => {
+      errLogged.push(args.map(String).join(" "));
+    };
+    let code: number;
+    try {
+      code = await docsCommand([root, "--out", out], root);
+    } finally {
+      console.error = origErr;
+    }
+
+    expect(code).toBe(0); // config-less generation still works
+    const files = await readdir(out);
+    expect(files.length).toBeGreaterThan(0);
+    // The config failure is SURFACED (warning on stderr), not silently swallowed,
+    // and carries the loader's real diagnostic so the user can fix it.
+    const stderr = errLogged.join("\n");
+    expect(stderr).toContain("metaobjects.config.ts failed to load");
+    expect(stderr).toContain("generating docs without its providers");
+  });
+
   test("exits non-zero with a clear message when metadata is missing", async () => {
     const empty = await mkdtemp(join(tmpdir(), "meta-docs-empty-"));
     dirs.push(empty);
