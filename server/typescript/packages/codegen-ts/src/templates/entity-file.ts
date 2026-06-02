@@ -15,6 +15,7 @@ import { renderZodValidators } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
+import { renderTphDiscriminatorUnion } from "./tph-discriminator.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
@@ -77,6 +78,11 @@ export function renderEntityFile(
 
   // --- Vanilla / write-through entity path ---
   const enumAliases = renderEnumTypeAliases(entity);
+  // FR-017 Tier 1: when this entity carries @discriminator AND has concrete
+  // subtypes, append the discriminated-union type alias, type guards, and
+  // the parse<Base>(row) dispatcher. Returns null otherwise (no subtypes, or
+  // not a discriminator-bearing entity); the section is suppressed cleanly.
+  const tphBlock = renderTphDiscriminatorUnion(entity, ctx.loadedRoot);
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
     renderInferredTypes(entity),
@@ -85,6 +91,7 @@ export function renderEntityFile(
     renderEntityConstants(entity, ctx.apiPrefix),
     ...(allowlists ? [renderFilterAllowlist(entity), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),
+    ...(tphBlock !== null ? [tphBlock] : []),
   ];
 
   // Render ts-poet body first (ts-poet hoists imp()-tracked imports to the top),

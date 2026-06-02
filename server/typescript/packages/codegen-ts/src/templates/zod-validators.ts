@@ -24,9 +24,33 @@ import {
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
+  OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
+
+/**
+ * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
+ * and an ancestor carries @discriminator), return the discriminator-field-name
+ * → pinned-literal-value pair. Subtypes emit `<field>: z.literal("<value>")`
+ * instead of the inherited field's normal type expression. Returns undefined
+ * when the object is not a TPH subtype.
+ */
+function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
+  const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
+  if (typeof value !== "string" || value === "") return undefined;
+
+  // Walk the extends chain to find the root carrying @discriminator.
+  let cursor = obj.superResolved;
+  while (cursor !== undefined) {
+    const fieldName = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+    if (typeof fieldName === "string" && fieldName !== "") {
+      return { fieldName, value };
+    }
+    cursor = cursor.superResolved;
+  }
+  return undefined;
+}
 
 /** Auto-generated PK field names that should be omitted from InsertSchema. */
 function autoGenPkFieldNames(obj: MetaObject): Set<string> {
@@ -55,6 +79,7 @@ function autoGenPkFieldNames(obj: MetaObject): Set<string> {
 export function renderInsertSchemaOnly(obj: MetaObject): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
   for (const child of obj.fields()) {
@@ -63,6 +88,14 @@ export function renderInsertSchemaOnly(obj: MetaObject): Code {
     // owner; the application has no path to write them. Exclude from the
     // create-shape schema entirely.
     if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+
+    // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      insertFieldLines.push(
+        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
+      );
+      continue;
+    }
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
@@ -89,6 +122,7 @@ ${joinCode(insertFieldLines, { on: ",\n" })}
 export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
   const updateFieldLines: Code[] = [];
@@ -99,6 +133,17 @@ export function renderZodValidators(obj: MetaObject): Code {
     // pass these values in POST/PATCH bodies (routesFile enforces the same
     // contract at the boundary with a 400 response).
     if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+
+    // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
+    // The discriminator is implicit on subtype rows (controlled by URL / insert
+    // path) — the app never writes it via the body and never updates it.
+    // Insert: pinned literal. Update: omitted entirely (clients can't change subtype).
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      insertFieldLines.push(
+        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
+      );
+      continue;
+    }
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
