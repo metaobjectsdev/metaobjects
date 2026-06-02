@@ -449,10 +449,12 @@ describe("registerCoreTypes", () => {
     expect(def!.childRules).toHaveLength(0);
   });
 
-  it("attr.stringarray has no child rules", () => {
-    const def = registry.find(TYPE_ATTR, ATTR_SUBTYPE_STRINGARRAY);
-    expect(def).toBeDefined();
-    expect(def!.childRules).toHaveLength(0);
+  it("attr.stringarray is NOT a registered subtype (retired — array-ness is the isArray flag)", () => {
+    // The `stringarray` array subtype was retired cross-port: array-valued attrs
+    // are now a `string` attr with the orthogonal isArray flag (matching Java's
+    // StringAttribute + @isArray). The constant survives only as the coercion
+    // class-map key, never as a registered (attr, subType).
+    expect(registry.find(TYPE_ATTR, ATTR_SUBTYPE_STRINGARRAY)).toBeUndefined();
   });
 
   // 7. Factory works

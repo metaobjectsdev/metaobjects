@@ -43,6 +43,7 @@ from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
+from ..meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY
 from ..registry import AttrSchema, TypeRegistry
 from ..shared.base_types import (
     TYPE_FIELD,
@@ -261,13 +262,21 @@ def _validate_attr_schema(
             if raw_value is None:
                 continue
 
-            # Check 2: type validation
-            if schema.value_type is not None:
-                if not _type_ok(raw_value, schema.value_type):
+            # Check 2: type validation. An array-valued attr (the `string` +
+            # is_array model that replaced the `stringarray` subtype) is validated
+            # as a string array.
+            effective_value_type = (
+                ATTR_SUBTYPE_STRINGARRAY
+                if schema.value_type is not None
+                and (schema.is_array or schema.value_type == ATTR_SUBTYPE_STRINGARRAY)
+                else schema.value_type
+            )
+            if effective_value_type is not None:
+                if not _type_ok(raw_value, effective_value_type):
                     errors.append(
                         MetaError(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
-                            f"{raw_value!r} which does not match expected type '{schema.value_type}'",
+                            f"{raw_value!r} which does not match expected type '{effective_value_type}'",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
                             envelope=node.source,
                         )

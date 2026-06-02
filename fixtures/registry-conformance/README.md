@@ -34,14 +34,25 @@ vocabulary must have **zero** per-port divergence by contract.
       "type": "validator",
       "subType": "regex",
       "attrs": [                             // sorted by name
-        { "name": "max",     "valueType": "int",    "required": false },
-        { "name": "min",     "valueType": "int",    "required": false },
-        { "name": "pattern", "valueType": "string", "required": false }
+        { "name": "max",     "valueType": "int",    "isArray": false, "required": false },
+        { "name": "min",     "valueType": "int",    "isArray": false, "required": false },
+        { "name": "pattern", "valueType": "string", "isArray": false, "required": false }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "enum",
+      "attrs": [
+        // An array-valued attr: the SCALAR value-type plus an explicit isArray
+        // flag. There is NO "stringarray" valueType token and NO attr.stringarray
+        // subtype — array-ness is a single orthogonal axis (the isArray flag),
+        // matching Java's `StringAttribute + @isArray` model.
+        { "name": "values", "valueType": "string", "isArray": true, "required": true }
       ]
     }
   ],
   "commonAttrs": [                           // sorted by name — the registerCommonAttribute set
-    { "name": "description", "valueType": "string", "required": false }
+    { "name": "description", "valueType": "string", "isArray": false, "required": false }
   ],
   "defaultSubTypes": { "metadata": "root", "object": "entity" }  // sorted keys
 }
@@ -52,12 +63,17 @@ vocabulary must have **zero** per-port divergence by contract.
 - 2-space indentation.
 - Object key order is fixed by construction: `types`, `commonAttrs`,
   `defaultSubTypes`; each type as `type`, `subType`, `attrs`; each attr as
-  `name`, `valueType`, `required`.
+  `name`, `valueType`, `isArray`, `required`.
 - **Everything sorted** (locale-independent, ASCII codepoint compare):
   `types` by `"<type>.<subType>"`; each `attrs` array by `name`; `commonAttrs`
   by `name`; `defaultSubTypes` keys sorted.
-- `valueType` is `null` (literal) for polymorphic/untyped attrs (e.g. `@default`,
-  whose value type follows its owning field's subtype).
+- `valueType` is the attr's **scalar** value-type (`string`/`int`/`boolean`/…),
+  or `null` (literal) for polymorphic/untyped attrs (e.g. `@default`, whose value
+  type follows its owning field's subtype).
+- `isArray` is a boolean: `true` for an array-valued attr (a list of the scalar
+  `valueType`), `false` otherwise. Array-ness is modeled as a single orthogonal
+  axis — there is no `stringarray` value-type token and no `attr.stringarray`
+  subtype. A polymorphic attr (`valueType: null`) is `isArray: false`.
 - A single trailing newline.
 
 The TS emitter (`server/typescript/packages/metadata/src/registry-manifest.ts`,
@@ -74,8 +90,10 @@ deferral.
 ### INCLUDED (v1 — the logical vocabulary, must be identical)
 
 - Every registered `(type, subType)`.
-- Each type's declared attrs as `{ name, valueType, required }` (`valueType:
-  null` for polymorphic/untyped attrs).
+- Each type's declared attrs as `{ name, valueType, isArray, required }`
+  (`valueType: null` for polymorphic/untyped attrs; `isArray: true` for
+  array-valued attrs — the scalar `valueType` plus the orthogonal array flag,
+  NOT a conflated `stringarray` token, and NO `attr.stringarray` subtype).
 - `commonAttrs` — the `registerCommonAttribute` / `registerCommonAttrs` set
   (the doc attrs: `aliases`, `deprecated`, `description`, `notes`, `replacedBy`,
   `seeAlso`, `title`).

@@ -365,8 +365,9 @@ core_provider.add(
         attrs=list(_FIELD_COMMON_ATTRS) + [
             AttrSchema(
                 name=FIELD_ATTR_VALUES,
-                value_type=ATTR_SUBTYPE_STRINGARRAY,
+                value_type=ATTR_SUBTYPE_STRING,
                 required=True,
+                is_array=True,
             ),
             # FR-010: properties-shaped maps, field.enum only.
             # @enumAlias: off-vocabulary token -> canonical member (extract alias-fold).
@@ -420,7 +421,7 @@ core_provider.add(
         sub_type=IDENTITY_SUBTYPE_PRIMARY,
         factory=MetaIdentity,
         attrs=[
-            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(
                 name=IDENTITY_ATTR_GENERATION,
                 value_type=ATTR_SUBTYPE_STRING,
@@ -440,7 +441,7 @@ core_provider.add(
         sub_type=IDENTITY_SUBTYPE_SECONDARY,
         factory=MetaIdentity,
         attrs=[
-            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=IDENTITY_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
@@ -454,7 +455,7 @@ core_provider.add(
         sub_type=IDENTITY_SUBTYPE_REFERENCE,
         factory=MetaIdentity,
         attrs=[
-            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRINGARRAY, required=True),
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=IDENTITY_REFERENCE_ATTR_REFERENCES, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=IDENTITY_REFERENCE_ATTR_ENFORCE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
         ],
@@ -634,7 +635,7 @@ for _view_sub in VIEW_SUBTYPES:
 # layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array;
 # @filter is a FilterAttr — shorthand values desugar to op-objects
 _layout_datagrid_attrs = [
-    AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
     AttrSchema(name=LAYOUT_ATTR_DEFAULT_SORT_FIELD, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(
         name=LAYOUT_ATTR_DEFAULT_SORT_ORDER,
@@ -709,7 +710,7 @@ _TEMPLATE_SHARED_ATTRS = [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
     AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
 ]
 # template.output also carries the FR-010 @promptStyle presentation attr — a
 # closed enum (allowed_values), default "guide". NOT on prompt/toolcall.
@@ -739,7 +740,7 @@ _TEMPLATE_OUTPUT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
 ]
 _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
-    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRINGARRAY),
+    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
     AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
 ]
 _TEMPLATE_TOOLCALL_ATTRS = [

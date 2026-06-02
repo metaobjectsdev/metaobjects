@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 71,
+  "registeredSubTypeCount": 70,
   "exercisedSubTypeCount": 32,
   "untestedSubTypes": [
     "attr.base",
@@ -10,7 +10,6 @@
     "attr.int",
     "attr.long",
     "attr.string",
-    "attr.stringarray",
     "field.base",
     "field.byte",
     "field.class",

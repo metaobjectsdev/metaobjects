@@ -1,8 +1,5 @@
 import { type AttrSchema } from "../../registry.js";
-import {
-  ATTR_SUBTYPE_STRING,
-  ATTR_SUBTYPE_STRINGARRAY,
-} from "../attr/attr-constants.js";
+import { ATTR_SUBTYPE_STRING } from "../attr/attr-constants.js";
 import {
   DOC_ATTR_ALIASES,
   DOC_ATTR_DEPRECATED,
@@ -51,13 +48,15 @@ export const commonDocAttrs: AttrSchema[] = [
   },
   {
     name: DOC_ATTR_SEE_ALSO,
-    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    valueType: ATTR_SUBTYPE_STRING,
+    isArray: true,
     required: false,
     description: "External documentation URLs. Codegen emits @see / <seealso href=...>.",
   },
   {
     name: DOC_ATTR_ALIASES,
-    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    valueType: ATTR_SUBTYPE_STRING,
+    isArray: true,
     required: false,
     description: "Alternate names for this element. Aids AI authoring disambiguation, search, migration.",
   },

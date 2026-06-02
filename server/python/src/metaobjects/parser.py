@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from .errors import ErrorCode, MetaError
+from .meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY
 from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
 from .registry import TypeRegistry
@@ -249,7 +250,16 @@ def _build(
                 )
                 continue
             schema = registry.attr_schema(type_, sub_type, attr_name)
-            node.set_attr(attr_name, value, sub_type=schema.value_type if schema else None)
+            # Array-valued attrs (the `string` + is_array model that replaced the
+            # `stringarray` subtype) coerce through the array string-attr class
+            # (bare-string → one-element list), keyed off the retired-as-a-subtype-
+            # but-kept-as-a-coercion `stringarray` class-map entry.
+            attr_sub_type = (
+                ATTR_SUBTYPE_STRINGARRAY
+                if schema is not None and schema.is_array
+                else (schema.value_type if schema else None)
+            )
+            node.set_attr(attr_name, value, sub_type=attr_sub_type)
             # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with
             # its origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource).
             # The attr's JsonPath points at the @-key on the parent body.

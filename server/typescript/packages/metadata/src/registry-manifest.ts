@@ -19,12 +19,15 @@
 // follow-on rather than guessed).
 
 import type { AttrSchema, TypeRegistry } from "./registry.js";
+import { ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
 
 /** One attribute in the manifest — the logical, cross-port-identical facet. */
 interface ManifestAttr {
   name: string;
-  /** The attr's value-type subtype, or null for a polymorphic/untyped attr (e.g. @default). */
+  /** The attr's SCALAR value-type subtype, or null for a polymorphic/untyped attr (e.g. @default). */
   valueType: string | null;
+  /** True for an array-valued attr (a list of the scalar `valueType`); the orthogonal array axis. */
+  isArray: boolean;
   required: boolean;
 }
 
@@ -47,13 +50,28 @@ function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Normalize one AttrSchema to the manifest's logical attr shape. */
+/**
+ * Normalize one AttrSchema to the manifest's logical attr shape — decomposing
+ * array-ness into a scalar `valueType` + an orthogonal `isArray` flag.
+ *
+ * An attr is array-valued when its schema sets `isArray: true` (the cross-port
+ * model). For resilience, a legacy `valueType: "stringarray"` token is also
+ * decomposed to `{ valueType: "string", isArray: true }` — so no `stringarray`
+ * token ever reaches the manifest. A polymorphic attr (no valueType) is `null` +
+ * non-array.
+ */
 function toManifestAttr(attr: AttrSchema): ManifestAttr {
+  const isLegacyStringArray = attr.valueType === ATTR_SUBTYPE_STRINGARRAY;
+  const isArray = attr.isArray === true || isLegacyStringArray;
+  // The scalar value-type: a legacy stringarray token collapses to "string";
+  // otherwise the declared valueType (omitted → null for polymorphic attrs).
+  const valueType = isLegacyStringArray
+    ? ATTR_SUBTYPE_STRING
+    : (attr.valueType ?? null);
   return {
     name: attr.name,
-    // `valueType` is omitted on the AttrSchema for polymorphic/untyped attrs;
-    // the manifest renders that as an explicit `null` literal.
-    valueType: attr.valueType ?? null,
+    valueType,
+    isArray,
     required: attr.required,
   };
 }
@@ -112,8 +130,8 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
  *  - 2-space indentation (JSON.stringify(_, _, 2)).
  *  - Object keys in a fixed order: the manifest is built with `types`,
  *    `commonAttrs`, `defaultSubTypes` (and each attr with `name`, `valueType`,
- *    `required`; each type with `type`, `subType`, `attrs`); JSON.stringify
- *    preserves insertion order.
+ *    `isArray`, `required`; each type with `type`, `subType`, `attrs`);
+ *    JSON.stringify preserves insertion order.
  *  - All arrays sorted: `types` by "type.subType"; each `attrs` by name;
  *    `commonAttrs` by name; `defaultSubTypes` keys sorted.
  *  - `valueType: null` literal for polymorphic/untyped attrs.

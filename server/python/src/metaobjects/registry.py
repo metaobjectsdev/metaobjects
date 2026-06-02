@@ -19,6 +19,12 @@ class AttrSchema:
     required: bool = False
     allowed_values: tuple[str, ...] | None = None
     default: object | None = None
+    # True for an array-valued attr (a list of the scalar value_type) — the
+    # single orthogonal array axis that replaced the retired "stringarray"
+    # subtype, mirroring Java's StringAttribute + @isArray. The loader coerces an
+    # array-flagged attr through the array string-attr coercion (bare-string →
+    # one-element list).
+    is_array: bool = False
 
 
 @dataclass(frozen=True)

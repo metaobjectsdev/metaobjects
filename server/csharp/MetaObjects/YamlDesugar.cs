@@ -562,9 +562,14 @@ public static class YamlDesugar
         if (schemaIndex is null) return;
         if (!schemaIndex.TryGetValue(attrName, out AttrSchema? spec)) return;
         if (spec.ValueType is null) return;
-        string declared = spec.ValueType;
+        // Array-valued attrs (the `string` + IsArray model that replaced the
+        // `stringarray` subtype): validate as a string-array regardless of the
+        // scalar valueType token. Also tolerate a legacy stringarray token.
+        string declared = (spec.IsArray || spec.ValueType == ATTR_SUBTYPE_STRINGARRAY)
+            ? ATTR_SUBTYPE_STRINGARRAY
+            : spec.ValueType;
 
-        // Stringarray-typed attrs: bare-string-as-one-element shorthand is allowed.
+        // Array attrs: bare-string-as-one-element shorthand is allowed.
         if (declared == ATTR_SUBTYPE_STRINGARRAY)
         {
             CheckArrayCoercion(attrName, rawNode, errors, path);

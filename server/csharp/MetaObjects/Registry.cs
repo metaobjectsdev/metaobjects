@@ -37,6 +37,13 @@ public sealed record ChildRule(string ChildType, string ChildSubType, string Chi
 /// ("base"). Polymorphic attrs (e.g. <c>@default</c>) must omit
 /// <paramref name="ValueType"/> (pass <see langword="null"/>).
 /// </para>
+/// <para>
+/// <paramref name="IsArray"/> marks an array-valued attr (a list of the scalar
+/// <paramref name="ValueType"/>) — the single orthogonal array axis that replaced
+/// the retired <c>stringarray</c> subtype, mirroring Java's
+/// <c>StringAttribute + @isArray</c>. The loader coerces an array-flagged attr
+/// through the array string-attr coercion (bare-string → one-element array).
+/// </para>
 /// </summary>
 public sealed record AttrSchema(
     string Name,
@@ -44,7 +51,8 @@ public sealed record AttrSchema(
     bool Required,
     object? Default = null,
     IReadOnlyList<object>? AllowedValues = null,
-    string Description = "");
+    string Description = "",
+    bool IsArray = false);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition

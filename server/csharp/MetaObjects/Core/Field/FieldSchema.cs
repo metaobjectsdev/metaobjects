@@ -171,8 +171,9 @@ public static class FieldSchema
     /// <summary>The @values attr — only on field.enum. Required string array.</summary>
     public static readonly AttrSchema EnumValuesAttr = new AttrSchema(
         Name: FieldConstants.FIELD_ATTR_VALUES,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true,
+        IsArray: true,
         Description: "Member symbols of an enum-subtype field; declaration order significant.");
 
     /// <summary>

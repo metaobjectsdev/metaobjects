@@ -45,6 +45,16 @@ export interface AttrSchema {
    * attrs. Attempting to register an AttrSchema with `valueType: "base"` throws.
    */
   valueType?: AttrSubType;
+  /**
+   * Whether this attribute is array-valued (a list of the scalar `valueType`).
+   *
+   * Array-ness is a single orthogonal axis — a `string` attr with `isArray: true`
+   * is what was formerly the `stringarray` subtype. The loader coerces an
+   * array-flagged attr through the array string-attr coercion (bare-string →
+   * one-element array). Mirrors Java's `StringAttribute + @isArray` model.
+   * Absent/false = scalar.
+   */
+  isArray?: boolean;
   /** Whether this attribute must be present on the node. */
   required: boolean;
   /** Default value applied when the attribute is absent. Optional. */

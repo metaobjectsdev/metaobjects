@@ -8,13 +8,16 @@ package com.metaobjects.registry;
 
 import com.metaobjects.MetaDataTypeId;
 import com.metaobjects.attr.MetaAttribute;
+import com.metaobjects.constraint.Constraint;
 import com.metaobjects.field.MetaField;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
@@ -65,8 +68,19 @@ public final class RegistryManifest {
     /** Wildcard token used by Java's {@link ChildRequirement} for "any name / any type". */
     private static final String WILDCARD = "*";
 
+    /**
+     * Suffix of the auto-generated array CustomConstraint id (see
+     * {@code AttributeConstraintBuilder.generateArrayConstraint} and
+     * {@code MetaDataRegistry} common-attr registration). Java models an
+     * array-valued attr as a {@code StringAttribute} child requirement (subType
+     * {@code string}) PLUS this constraint — its presence is the {@code .asArray()}
+     * / {@code @isArray} marker the emitter reads to decompose array-ness into the
+     * orthogonal {@code isArray} flag (the retired {@code stringarray} subtype).
+     */
+    private static final String ARRAY_CONSTRAINT_SUFFIX = ".array";
+
     /** One attribute in the manifest — the logical, cross-port-identical facet. */
-    private record ManifestAttr(String name, String valueType, boolean required) {}
+    private record ManifestAttr(String name, String valueType, boolean isArray, boolean required) {}
 
     /** One registered (type, subType) with its declared attrs. */
     private record ManifestType(String type, String subType, List<ManifestAttr> attrs) {}
@@ -85,7 +99,8 @@ public final class RegistryManifest {
      * requirement overriding an inherited one with the same name is collapsed —
      * the cross-port manifest has exactly one entry per attr name).</p>
      */
-    private static List<ManifestAttr> attrsOf(MetaDataRegistry registry, String type, String subType) {
+    private static List<ManifestAttr> attrsOf(MetaDataRegistry registry, String type, String subType,
+                                              Set<String> arrayAttrNames) {
         TypeDefinition def = registry.getTypeDefinition(type, subType);
         if (def == null) {
             return List.of();
@@ -104,9 +119,13 @@ public final class RegistryManifest {
                 continue; // wildcard "any attr" rule (deferred childRules)
             }
             String valueType = valueTypeOf(name, req.getExpectedSubType());
+            // Array-ness is the orthogonal axis: a StringAttribute requirement
+            // marked .asArray() emits valueType "string" + isArray true (the
+            // retired stringarray subtype). Detected via the array-constraint set.
+            boolean isArray = arrayAttrNames.contains(name);
             ManifestAttr existing = byName.get(name);
             boolean required = req.isRequired() || (existing != null && existing.required());
-            byName.put(name, new ManifestAttr(name, valueType, required));
+            byName.put(name, new ManifestAttr(name, valueType, isArray, required));
         }
 
         List<ManifestAttr> attrs = new ArrayList<>(byName.values());
@@ -115,13 +134,40 @@ public final class RegistryManifest {
     }
 
     /**
+     * Build the set of attr names that are array-valued, by scanning the
+     * registry's constraints for the auto-generated array CustomConstraint
+     * (id {@code <type>.<subType>.<attr>.array} for per-type attrs, or
+     * {@code *.*.<attr>.array} for common attrs). The attr name is the
+     * second-to-last dotted segment (immediately before the {@code .array}
+     * suffix). This is the {@code .asArray()} / {@code @isArray} marker —
+     * Java's array attrs carry no flag on the {@link ChildRequirement} itself.
+     */
+    private static Set<String> arrayAttrNames(MetaDataRegistry registry) {
+        Set<String> names = new HashSet<>();
+        for (Constraint c : registry.getAllValidationConstraints()) {
+            String id = c.getConstraintId();
+            if (id == null || !id.endsWith(ARRAY_CONSTRAINT_SUFFIX)) {
+                continue;
+            }
+            String withoutSuffix = id.substring(0, id.length() - ARRAY_CONSTRAINT_SUFFIX.length());
+            int lastDot = withoutSuffix.lastIndexOf('.');
+            String attrName = lastDot >= 0 ? withoutSuffix.substring(lastDot + 1) : withoutSuffix;
+            if (!attrName.isEmpty()) {
+                names.add(attrName);
+            }
+        }
+        return names;
+    }
+
+    /**
      * Map a Java attr requirement to the cross-port manifest value-type vocabulary.
      * The polymorphic {@code @default} attr is rendered as {@code null}; every
      * other attr carries its {@code expectedSubType} verbatim (the attr subtype
      * names — {@code string}, {@code int}, {@code boolean}, {@code long},
-     * {@code double}, {@code stringarray}, {@code properties}, {@code filter} —
-     * are already the cross-port value-type vocabulary). A wildcard subtype is
-     * rendered as {@code null} (untyped).
+     * {@code double}, {@code properties}, {@code filter} — are already the
+     * cross-port value-type vocabulary; an array attr's requirement subType is
+     * {@code string}, with array-ness carried by the separate {@code isArray}
+     * flag). A wildcard subtype is rendered as {@code null} (untyped).
      */
     private static String valueTypeOf(String attrName, String expectedSubType) {
         if (POLYMORPHIC_DEFAULT_ATTR.equals(attrName)) {
@@ -146,7 +192,7 @@ public final class RegistryManifest {
      *   <li>Object key order fixed by construction: {@code types}, {@code commonAttrs},
      *       {@code defaultSubTypes}; each type as {@code type}, {@code subType},
      *       {@code attrs}; each attr as {@code name}, {@code valueType},
-     *       {@code required}.</li>
+     *       {@code isArray}, {@code required}.</li>
      *   <li>All arrays sorted (ASCII/codepoint compare): {@code types} by
      *       "type.subType"; {@code attrs} by name; {@code commonAttrs} by name;
      *       {@code defaultSubTypes} keys sorted.</li>
@@ -160,22 +206,23 @@ public final class RegistryManifest {
      * compare.</p>
      */
     public static String emit(MetaDataRegistry registry) {
+        // The set of array-valued attr names (the .asArray() / @isArray marker).
+        Set<String> arrayAttrNames = arrayAttrNames(registry);
+
         // types: sorted by "type.subType"
         List<ManifestType> types = new ArrayList<>();
         for (MetaDataTypeId id : registry.getRegisteredTypes()) {
             types.add(new ManifestType(id.type(), id.subType(),
-                attrsOf(registry, id.type(), id.subType())));
+                attrsOf(registry, id.type(), id.subType(), arrayAttrNames)));
         }
         types.sort(Comparator.comparing(t -> t.type() + "." + t.subType()));
 
-        // commonAttrs: sorted by name. An array-shaped common attr maps to the
-        // "stringarray" value-type (the cross-port vocabulary for an array attr).
+        // commonAttrs: sorted by name. An array-shaped common attr is the scalar
+        // value-type plus the orthogonal isArray flag (the retired stringarray
+        // subtype) — matching the cross-port {valueType, isArray} contract.
         List<ManifestAttr> commonAttrs = new ArrayList<>();
         for (CommonAttributeDef def : registry.getCommonAttributes()) {
-            String valueType = def.isArray()
-                ? com.metaobjects.attr.StringArrayAttribute.SUBTYPE_STRING_ARRAY
-                : def.valueType();
-            commonAttrs.add(new ManifestAttr(def.name(), valueType, false));
+            commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 
@@ -268,6 +315,7 @@ public final class RegistryManifest {
             sb.append(fieldIndent).append("\"name\": ").append(jsonString(a.name())).append(",\n");
             sb.append(fieldIndent).append("\"valueType\": ")
               .append(a.valueType() == null ? "null" : jsonString(a.valueType())).append(",\n");
+            sb.append(fieldIndent).append("\"isArray\": ").append(a.isArray() ? "true" : "false").append(",\n");
             sb.append(fieldIndent).append("\"required\": ").append(a.required() ? "true" : "false").append('\n');
             sb.append(itemIndent).append('}');
             sb.append(i + 1 < attrs.size() ? ",\n" : "\n");

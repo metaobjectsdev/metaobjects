@@ -63,8 +63,9 @@ public static class TemplateSchema
 
         new AttrSchema(
             Name: TemplateConstants.TEMPLATE_ATTR_REQUIRED_TAGS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
+            IsArray: true,
             Description: "Output tags the rendered text must contain (drives the verify output-tag check)."),
     ];
 
@@ -124,8 +125,9 @@ public static class TemplateSchema
 
         new AttrSchema(
             Name: TemplateConstants.TEMPLATE_ATTR_REQUIRED_SLOTS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
+            IsArray: true,
             Description: "Slots that must resolve at render time (drives the verify check)."),
 
         new AttrSchema(

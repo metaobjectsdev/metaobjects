@@ -6,7 +6,6 @@ import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_STRINGARRAY,
   ATTR_SUBTYPE_PROPERTIES,
 } from "../attr/attr-constants.js";
 import { SORT_ORDER_VALUES } from "../query/query-constants.js";
@@ -176,7 +175,8 @@ export const currencyFieldAttr: AttrSchema = {
 /** The @values attr — only on field.enum. Required string array. */
 export const enumFieldAttr: AttrSchema = {
   name: FIELD_ATTR_VALUES,
-  valueType: ATTR_SUBTYPE_STRINGARRAY,
+  valueType: ATTR_SUBTYPE_STRING,
+  isArray: true,
   required: true,
   description:
     "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.",

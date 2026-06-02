@@ -218,11 +218,17 @@ def test_doc_attr_names_tuple() -> None:
 
 
 def test_common_doc_attrs_schema() -> None:
-    """common_doc_attrs has 7 entries; seeAlso and aliases are stringArray."""
+    """common_doc_attrs has 7 entries; seeAlso and aliases are string arrays.
+
+    Array attrs are now `string` + the orthogonal is_array flag (the retired
+    `stringarray` subtype), matching Java's StringAttribute + @isArray.
+    """
     assert len(common_doc_attrs) == 7
     by_name = {a.name: a for a in common_doc_attrs}
-    assert by_name[DOC_ATTR_SEE_ALSO].value_type  == ATTR_SUBTYPE_STRINGARRAY
-    assert by_name[DOC_ATTR_ALIASES].value_type   == ATTR_SUBTYPE_STRINGARRAY
+    assert by_name[DOC_ATTR_SEE_ALSO].value_type  == ATTR_SUBTYPE_STRING
+    assert by_name[DOC_ATTR_SEE_ALSO].is_array is True
+    assert by_name[DOC_ATTR_ALIASES].value_type   == ATTR_SUBTYPE_STRING
+    assert by_name[DOC_ATTR_ALIASES].is_array is True
     assert by_name[DOC_ATTR_DESCRIPTION].value_type == ATTR_SUBTYPE_STRING
     for a in common_doc_attrs:
         assert a.required is False

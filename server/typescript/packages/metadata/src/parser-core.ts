@@ -56,7 +56,8 @@ import {
   TYPE_SUBTYPE_SEPARATOR,
   PACKAGE_SEPARATOR,
 } from "./shared/structural.js";
-import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
+import { ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
+import { attrClassFor } from "./attr-class-map.js";
 import type { AttrValue } from "./shared/meta-data.js";
 
 // ---------------------------------------------------------------------------
@@ -1004,16 +1005,27 @@ function materializeAttr(
   const perTypeSpec = registry.attrsOf(owner.type, owner.subType).find((s) => s.name === attrName);
   const attrSpec = perTypeSpec ?? registry.getCommonAttrs().find((s) => s.name === attrName);
   let subType: string;
-  if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
+  if (attrSpec !== undefined && attrSpec.isArray === true) {
+    // An array-flagged attr (`string` + `isArray`): array-ness is the orthogonal
+    // axis the `stringarray` subtype was retired in favor of. Coerce through the
+    // array string-attr class (bare-string → one-element array) keyed off the
+    // retired-as-a-subtype-but-kept-as-a-coercion `stringarray` class-map entry.
+    subType = ATTR_SUBTYPE_STRINGARRAY;
+  } else if (attrSpec !== undefined && attrSpec.valueType !== undefined) {
     subType = attrSpec.valueType;
   } else {
     // Undeclared or declared-but-untyped (@default): preserve the author's shape.
     subType = inferUndeclaredAttrSubType(rawVal);
   }
-  const def = registry.find(TYPE_ATTR, subType);
-  const node = (def !== undefined
-    ? def.factory(def.typeId, attrName)
-    : new MetaAttr(new TypeId(TYPE_ATTR, subType), attrName)) as MetaAttr;
+  // The array-coercion class is no longer a registered (attr, subType); resolve
+  // it through the dependency-free attr-class-map (which still carries it).
+  const def = subType === ATTR_SUBTYPE_STRINGARRAY ? undefined : registry.find(TYPE_ATTR, subType);
+  const Ctor = subType === ATTR_SUBTYPE_STRINGARRAY ? attrClassFor(subType) : undefined;
+  const node = (Ctor !== undefined
+    ? new Ctor(new TypeId(TYPE_ATTR, subType), attrName)
+    : def !== undefined
+      ? def.factory(def.typeId, attrName)
+      : new MetaAttr(new TypeId(TYPE_ATTR, subType), attrName)) as MetaAttr;
   const coerced = node.coerce(rawVal);
   const desugared = node.desugar(coerced);
   node.setAttr(RESERVED_KEY_VALUE, desugared);

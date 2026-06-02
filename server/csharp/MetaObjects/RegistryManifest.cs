@@ -16,6 +16,7 @@
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using MetaObjects.Core.Attr;
 
 namespace MetaObjects;
 
@@ -32,7 +33,7 @@ public static class RegistryManifest
     // ------------------------------------------------------------------
 
     /// <summary>One attribute in the manifest — the logical, cross-port-identical facet.</summary>
-    private sealed record ManifestAttr(string Name, string? ValueType, bool Required);
+    private sealed record ManifestAttr(string Name, string? ValueType, bool IsArray, bool Required);
 
     /// <summary>One registered (type, subType) with its declared attrs.</summary>
     private sealed record ManifestType(string Type, string SubType, IReadOnlyList<ManifestAttr> Attrs);
@@ -75,12 +76,25 @@ public static class RegistryManifest
         return (types, commonAttrs, defaultSubTypes);
     }
 
-    /// <summary>Normalize + sort attr schemas to the manifest's logical attr shape (by name, ordinal).</summary>
+    /// <summary>
+    /// Normalize + sort attr schemas to the manifest's logical attr shape (by name, ordinal),
+    /// decomposing array-ness into a scalar <c>valueType</c> + an orthogonal <c>isArray</c> flag.
+    /// A legacy <c>stringarray</c> valueType token is also decomposed to
+    /// <c>{ valueType: "string", isArray: true }</c> so no <c>stringarray</c> token reaches the manifest.
+    /// </summary>
     private static List<ManifestAttr> SortedAttrs(IReadOnlyList<AttrSchema> attrs) =>
         attrs
-            .Select(a => new ManifestAttr(a.Name, a.ValueType, a.Required))
+            .Select(ToManifestAttr)
             .OrderBy(a => a.Name, StringComparer.Ordinal)
             .ToList();
+
+    private static ManifestAttr ToManifestAttr(AttrSchema a)
+    {
+        bool isLegacyStringArray = a.ValueType == AttrConstants.ATTR_SUBTYPE_STRINGARRAY;
+        bool isArray = a.IsArray || isLegacyStringArray;
+        string? valueType = isLegacyStringArray ? AttrConstants.ATTR_SUBTYPE_STRING : a.ValueType;
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required);
+    }
 
     // ------------------------------------------------------------------
     // Emit
@@ -93,7 +107,7 @@ public static class RegistryManifest
     ///  - 2-space indentation.
     ///  - Object key order fixed by construction: <c>types</c>, <c>commonAttrs</c>,
     ///    <c>defaultSubTypes</c>; each type as <c>type</c>, <c>subType</c>, <c>attrs</c>;
-    ///    each attr as <c>name</c>, <c>valueType</c>, <c>required</c>.
+    ///    each attr as <c>name</c>, <c>valueType</c>, <c>isArray</c>, <c>required</c>.
     ///  - All arrays sorted (ordinal/ASCII): types by "type.subType"; attrs by name;
     ///    commonAttrs by name; defaultSubTypes keys sorted.
     ///  - <c>valueType: null</c> literal for polymorphic/untyped attrs.
@@ -173,6 +187,7 @@ public static class RegistryManifest
         {
             writer.WriteString("valueType", a.ValueType);
         }
+        writer.WriteBoolean("isArray", a.IsArray);
         writer.WriteBoolean("required", a.Required);
         writer.WriteEndObject();
     }

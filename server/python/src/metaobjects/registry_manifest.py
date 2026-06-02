@@ -23,21 +23,33 @@ from __future__ import annotations
 
 import json
 
+from .meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_STRING,
+    ATTR_SUBTYPE_STRINGARRAY,
+)
 from .registry import AttrSchema, TypeRegistry
 
 
 def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     """Normalize one AttrSchema to the manifest's logical attr shape.
 
-    Emits only ``{name, valueType, required}`` — ``allowed_values`` / ``default``
-    are intentionally dropped (deferred per the v1 boundary). ``value_type`` is
-    ``None`` for polymorphic/untyped attrs (e.g. ``@default``); the manifest
-    renders that as an explicit JSON ``null``.
+    Emits ``{name, valueType, isArray, required}`` — decomposing array-ness into
+    a scalar ``valueType`` + an orthogonal ``isArray`` flag (``allowed_values`` /
+    ``default`` are intentionally dropped, deferred per the v1 boundary).
+    ``value_type`` is ``None`` for polymorphic/untyped attrs (e.g. ``@default``);
+    the manifest renders that as an explicit JSON ``null``. A legacy
+    ``stringarray`` value_type token is decomposed to
+    ``{valueType: "string", isArray: true}`` so no ``stringarray`` token reaches
+    the manifest.
     """
-    # Fixed key order: name, valueType, required.
+    is_legacy_string_array = attr.value_type == ATTR_SUBTYPE_STRINGARRAY
+    is_array = attr.is_array or is_legacy_string_array
+    value_type = ATTR_SUBTYPE_STRING if is_legacy_string_array else attr.value_type
+    # Fixed key order: name, valueType, isArray, required.
     return {
         "name": attr.name,
-        "valueType": attr.value_type,
+        "valueType": value_type,
+        "isArray": is_array,
         "required": attr.required,
     }
 
@@ -96,7 +108,7 @@ def emit_registry_manifest(registry: TypeRegistry) -> str:
      - 2-space indentation.
      - Object keys in a fixed order (``types`` / ``commonAttrs`` /
        ``defaultSubTypes``; each type ``type`` / ``subType`` / ``attrs``; each
-       attr ``name`` / ``valueType`` / ``required``).
+       attr ``name`` / ``valueType`` / ``isArray`` / ``required``).
      - All arrays sorted: ``types`` by ``"type.subType"``; each ``attrs`` by
        name; ``commonAttrs`` by name; ``defaultSubTypes`` keys sorted.
      - ``valueType: null`` literal for polymorphic/untyped attrs.

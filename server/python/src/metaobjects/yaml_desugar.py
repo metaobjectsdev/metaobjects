@@ -358,6 +358,24 @@ def _check_coercion(
     if spec is None or spec.value_type is None:
         return
 
+    # Array-valued attrs (the `string` + is_array model that replaced the
+    # `stringarray` subtype): validate as a string array regardless of the scalar
+    # value_type token. Also tolerate a legacy stringarray token.
+    if spec.is_array or spec.value_type == ATTR_SUBTYPE_STRINGARRAY:
+        if isinstance(raw, str):
+            return
+        if not isinstance(raw, list):
+            _emit_coercion(
+                attr_name, raw, "string-array (or single string)", errors, path,
+            )
+            return
+        for i, elem in enumerate(raw):
+            if not isinstance(elem, str):
+                _emit_coercion(
+                    f"{attr_name}[{i}]", elem, "string (in string-array)", errors, path,
+                )
+        return
+
     if spec.value_type in (ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_CLASS):
         if not isinstance(raw, str):
             _emit_coercion(attr_name, raw, "string", errors, path)

@@ -930,7 +930,11 @@ public static class Parser
         if (value is not string s) return value;
         // Per-type wins, common attrs (e.g. doc attrs) fill the rest.
         AttrSchema? spec = registry.FindAttrSchema(type, subType, attrName);
-        if (spec is null || spec.ValueType != ATTR_SUBTYPE_STRINGARRAY) return value;
+        // Array-ness is the orthogonal IsArray flag (the retired `stringarray`
+        // subtype); also tolerate a legacy stringarray valueType token.
+        bool isArray = spec is not null
+            && (spec.IsArray || spec.ValueType == ATTR_SUBTYPE_STRINGARRAY);
+        if (!isArray) return value;
         return new List<string> { s }.AsReadOnly();
     }
 

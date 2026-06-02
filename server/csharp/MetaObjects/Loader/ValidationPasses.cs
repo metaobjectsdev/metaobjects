@@ -655,11 +655,17 @@ public static class ValidationPasses
 
             // Check 2: value runtime type matches the declared valueType.
             // When valueType is absent (declared-but-untyped, e.g. @default), skip type check.
-            if (spec.ValueType is not null && !ValueMatchesType(value, spec.ValueType))
+            // An array-valued attr (the `string` + IsArray model that replaced the
+            // `stringarray` subtype) is validated as a string array.
+            string? effectiveValueType = spec.ValueType is not null
+                && (spec.IsArray || spec.ValueType == ATTR_SUBTYPE_STRINGARRAY)
+                ? ATTR_SUBTYPE_STRINGARRAY
+                : spec.ValueType;
+            if (effectiveValueType is not null && !ValueMatchesType(value, effectiveValueType))
             {
                 errors.Add(new MetaError(
                     $"{NodeLabel(node)} attribute '@{attrName}' must be of type " +
-                    $"'{spec.ValueType}' but got {RuntimeTypeName(value)}",
+                    $"'{effectiveValueType}' but got {RuntimeTypeName(value)}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     Envelope: node.Source));
                 // Skip allowedValues check when type is already wrong.

@@ -46,8 +46,9 @@ public static class LayoutSchema
 
         new AttrSchema(
             Name: LayoutConstants.LAYOUT_DATA_GRID_ATTR_COLUMNS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
+            IsArray: true,
             Description: "Flat ordered list of field names to display as grid columns."),
     ];
 }
