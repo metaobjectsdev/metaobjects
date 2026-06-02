@@ -129,6 +129,16 @@ export interface VerifyFlags {
   allow: AllowToken[];
   /** Skip the schema-drift gate even when --db is present. */
   skipSchema: boolean;
+  // ADR-0021 D2 — explicit verify subverbs. Each selects one drift mode; any
+  // combination may be passed and the exit code aggregates (non-zero on any
+  // drift). The boolean flags record which modes were explicitly requested; the
+  // command layer applies the bare-verify default (= --templates) when none are.
+  /** Run the template/prompt {{field}}↔payload drift gate. */
+  templates: boolean;
+  /** Run the codegen-drift gate (regenerate-to-temp and diff committed output). */
+  codegen: boolean;
+  /** Whether ANY explicit subverb flag (--templates/--db/--codegen) was passed. */
+  anyExplicit: boolean;
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
@@ -140,6 +150,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       dialect: { type: "string" },
       allow: { type: "string" },
       "skip-schema": { type: "boolean", default: false },
+      templates: { type: "boolean", default: false },
+      codegen: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -162,12 +174,21 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     }
   }
 
+  const templates = !!values.templates;
+  const codegen = !!values.codegen;
+  // --db is itself an explicit subverb selector: passing a connection URL means
+  // "run the schema-drift mode". So "any explicit subverb" is templates|codegen|db.
+  const anyExplicit = templates || codegen || values.db !== undefined;
+
   return {
     prompts: values.prompts,
     db: values.db as string | undefined,
     dialect: dialect as Dialect | undefined,
     allow: allowTokens as AllowToken[],
     skipSchema: !!values["skip-schema"],
+    templates,
+    codegen,
+    anyExplicit,
   };
 }
 
