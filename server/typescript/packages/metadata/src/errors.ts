@@ -38,6 +38,10 @@ export const ERROR_CODES = [
   "ERR_MALFORMED_YAML",
   "ERR_INVALID_ORIGIN",
   "ERR_INVALID_TEMPLATE",
+  // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
+  // junction declaring two identity.reference children; @sourceRefField must match
+  // one of them; M:N attrs are invalid on a 1:N (@cardinality:one / no @through).
+  "ERR_INVALID_RELATIONSHIP",
   "ERR_VAR_NOT_ON_PAYLOAD",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",

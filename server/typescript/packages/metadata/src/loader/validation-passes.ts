@@ -63,7 +63,16 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
 } from "../persistence/origin/origin-constants.js";
-import { RELATIONSHIP_ATTR_OBJECT_REF } from "../core/relationship/relationship-constants.js";
+import {
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  RELATIONSHIP_ATTR_SYMMETRIC,
+  CARDINALITY_MANY,
+} from "../core/relationship/relationship-constants.js";
+import { IDENTITY_SUBTYPE_REFERENCE } from "../core/identity/identity-constants.js";
+import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
@@ -641,6 +650,155 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
       // Type errors (e.g. legacy string form) are reported by validateAttrSchema.
       if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
       checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, layout.source, errors);
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// FR-017 — M:N relationship validation (slim vocabulary)
+//
+// Deferred-resolution validation (runs after all files load + extends:
+// resolution, like origin paths), enforcing the cross-port M:N contract:
+//
+//   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+//       entity). Otherwise ERR_BAD_ATTR_VALUE.
+//   (b) @symmetric and @sourceRefField are mutually exclusive → ERR_BAD_ATTR_VALUE.
+//   (c) When @through is present: the named entity must exist and declare exactly
+//       two identity.reference children; @sourceRefField (if present) must match
+//       one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
+//   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+//       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+//
+// Own-relationships only: a relationship is validated on the entity that declares
+// it (matching the own-attrs policy of the other passes).
+// ---------------------------------------------------------------------------
+
+/** FK field names declared by an entity's identity.reference children. */
+function _junctionReferenceFkFields(junction: MetaData): string[] {
+  const out: string[] = [];
+  for (const id of junction.ownChildren()) {
+    if (id.type !== TYPE_IDENTITY || id.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
+    const fields = id.ownAttr(IDENTITY_ATTR_FIELDS);
+    if (typeof fields === "string") {
+      const first = fields.split(",")[0]?.trim();
+      if (first) out.push(first);
+    } else if (Array.isArray(fields) && typeof fields[0] === "string") {
+      out.push(fields[0]);
+    }
+  }
+  return out;
+}
+
+function _countJunctionReferences(junction: MetaData): number {
+  return junction
+    .ownChildren()
+    .filter((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE).length;
+}
+
+export function validateRelationships(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
+      const through = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH);
+      const sourceRefField = rel.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      const symmetric = rel.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true;
+      const cardinality = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
+      const objectRef = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+
+      const hasThrough = typeof through === "string" && through !== "";
+      const hasSourceRefField = typeof sourceRefField === "string" && sourceRefField !== "";
+      const isMany = cardinality === CARDINALITY_MANY;
+      const isM2M = hasThrough && isMany;
+
+      // Rule (d): M:N-only attrs on a non-M:N relationship.
+      if (!isM2M) {
+        if (hasThrough) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_THROUGH} but is not a M:N ` +
+                `relationship (requires @${RELATIONSHIP_ATTR_CARDINALITY}: "${CARDINALITY_MANY}").`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        if (hasSourceRefField) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        if (symmetric) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        continue;
+      }
+
+      // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+      if (symmetric && hasSourceRefField) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" sets both @${RELATIONSHIP_ATTR_SYMMETRIC} and ` +
+              `@${RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
+          ),
+        );
+      }
+
+      // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+      const isSelfJoin = typeof objectRef === "string" && stripPackage(objectRef) === obj.name;
+      if (symmetric && !isSelfJoin) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but @${RELATIONSHIP_ATTR_OBJECT_REF} ` +
+              `"${String(objectRef)}" is not the declaring entity "${obj.name}"; @${RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
+          ),
+        );
+      }
+
+      // Rule (c): @through must name an entity declaring exactly two identity.reference children.
+      const junction = _findObject(root, through as string);
+      if (!junction) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: resolvedSource(rel.source, `${obj.fqn()}::${rel.name}`, String(through)) },
+          ),
+        );
+        continue;
+      }
+      const refCount = _countJunctionReferences(junction);
+      if (refCount !== 2) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" must declare exactly two ` +
+              `identity.reference children (one per FK side); found ${refCount}.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+        continue;
+      }
+      // @sourceRefField (if present) must match one of the junction's reference FK fields.
+      if (hasSourceRefField) {
+        const fkFields = _junctionReferenceFkFields(junction);
+        if (!fkFields.includes(sourceRefField as string)) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "${sourceRefField}" does not match ` +
+                `any identity.reference FK field on junction "${through}". Available: ${fkFields.join(", ") || "(none)"}.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+      }
     }
   }
   return errors;

@@ -2023,16 +2023,6 @@
           "required": false
         },
         {
-          "name": "joinEntity",
-          "valueType": "string",
-          "required": false
-        },
-        {
-          "name": "joinFields",
-          "valueType": "stringarray",
-          "required": false
-        },
-        {
           "name": "objectRef",
           "valueType": "string",
           "required": false
@@ -2044,6 +2034,21 @@
         },
         {
           "name": "onUpdate",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "required": false
+        },
+        {
+          "name": "through",
           "valueType": "string",
           "required": false
         }
@@ -2059,16 +2064,6 @@
           "required": false
         },
         {
-          "name": "joinEntity",
-          "valueType": "string",
-          "required": false
-        },
-        {
-          "name": "joinFields",
-          "valueType": "stringarray",
-          "required": false
-        },
-        {
           "name": "objectRef",
           "valueType": "string",
           "required": false
@@ -2080,6 +2075,21 @@
         },
         {
           "name": "onUpdate",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "required": false
+        },
+        {
+          "name": "through",
           "valueType": "string",
           "required": false
         }
@@ -2095,16 +2105,6 @@
           "required": false
         },
         {
-          "name": "joinEntity",
-          "valueType": "string",
-          "required": false
-        },
-        {
-          "name": "joinFields",
-          "valueType": "stringarray",
-          "required": false
-        },
-        {
           "name": "objectRef",
           "valueType": "string",
           "required": false
@@ -2116,6 +2116,21 @@
         },
         {
           "name": "onUpdate",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "required": false
+        },
+        {
+          "name": "through",
           "valueType": "string",
           "required": false
         }
@@ -2131,16 +2146,6 @@
           "required": false
         },
         {
-          "name": "joinEntity",
-          "valueType": "string",
-          "required": false
-        },
-        {
-          "name": "joinFields",
-          "valueType": "stringarray",
-          "required": false
-        },
-        {
           "name": "objectRef",
           "valueType": "string",
           "required": false
@@ -2152,6 +2157,21 @@
         },
         {
           "name": "onUpdate",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "required": false
+        },
+        {
+          "name": "through",
           "valueType": "string",
           "required": false
         }

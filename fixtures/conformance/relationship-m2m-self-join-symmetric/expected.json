@@ -1,0 +1,87 @@
+{
+  "metadata.root": {
+    "package": "acme::social",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "friends",
+                "@cardinality": "many",
+                "@objectRef": "User",
+                "@symmetric": true,
+                "@through": "Friendship"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Friendship",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "userAId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "userBId"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "userARef",
+                "@fields": [
+                  "userAId"
+                ],
+                "@references": "User"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "userBRef",
+                "@fields": [
+                  "userBId"
+                ],
+                "@references": "User"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

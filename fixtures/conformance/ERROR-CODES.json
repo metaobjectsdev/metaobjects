@@ -22,6 +22,7 @@
     "ERR_MALFORMED_YAML": "The YAML metadata input is not valid YAML, or cannot be desugared into canonical metadata.",
     "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute.",
     "ERR_INVALID_TEMPLATE": "A template (prompt/output) declares a @payloadRef that does not resolve, or @requiredSlots that are not fields on its payload.",
+    "ERR_INVALID_RELATIONSHIP": "FR-017: a M:N relationship's slim vocabulary is invalid — @through does not name a junction declaring two identity.reference children, @sourceRefField does not match one of them, or a M:N-only attr (@through/@sourceRefField/@symmetric) is set on a non-M:N (1:N / @cardinality:one) relationship.",
     "ERR_VAR_NOT_ON_PAYLOAD": "Build-time verify: a template variable references a field the (contextual) payload view-object does not declare.",
     "ERR_PARTIAL_UNRESOLVED": "Build-time verify: a template partial ({{> group/source}}) does not resolve in the configured provider.",
     "ERR_REQUIRED_SLOT_UNUSED": "Build-time verify (warning): a template's declared @requiredSlots slot is never referenced by the template text.",

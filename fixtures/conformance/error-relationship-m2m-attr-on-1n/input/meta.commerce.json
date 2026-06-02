@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "relationship.composition": {
+                "name": "program",
+                "@objectRef": "Program",
+                "@cardinality": "one",
+                "@through": "ProgramWeek"
+              }
+            },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

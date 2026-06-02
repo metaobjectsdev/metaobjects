@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -425,6 +425,12 @@ export class MetaDataLoader {
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));
+
+      // FR-017 — M:N relationship validation (deferred-resolution): @through names a
+      // junction declaring two identity.reference children; @sourceRefField matches one;
+      // @symmetric is self-join-only + mutually exclusive with @sourceRefField; M:N attrs
+      // are invalid on a 1:N relationship.
+      errors.push(...validateRelationships(root));
 
       // template.* validation — @payloadRef resolves to a known object;
       // @requiredSlots are real fields on it (FR-004 Plan #3, T2).

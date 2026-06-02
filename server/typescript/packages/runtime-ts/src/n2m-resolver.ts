@@ -5,11 +5,19 @@ import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_JOIN_ENTITY, RELATIONSHIP_ATTR_JOIN_FIELDS,
   CARDINALITY_MANY,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
+
+// FR-017 Phase 2 TODO: this resolver still reads the pre-FR-017 M:N vocabulary
+// (@joinEntity + @joinFields). Phase 1 (Unit 1) removed those from the metadata
+// vocabulary in favor of @through + junction-derived FK fields; the resolver is
+// rewritten in Phase 2 (Unit 5) to derive FK fields from the junction's
+// identity.reference children. These local constants keep runtime-ts compiling
+// until then and are intentionally NOT the metamodel constants.
+const RELATIONSHIP_ATTR_JOIN_ENTITY = "joinEntity";
+const RELATIONSHIP_ATTR_JOIN_FIELDS = "joinFields";
 import { MetadataError } from "./errors.js";
 import { buildSelectSpec, resolvePkFields } from "./query-builder.js";
 import type { SelectSpec, PrimitiveValue, Row } from "./persistence-driver.js";

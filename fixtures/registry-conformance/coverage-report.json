@@ -342,9 +342,6 @@
     {
       "key": "relationship.association",
       "untestedAttrs": [
-        "cardinality",
-        "joinEntity",
-        "joinFields",
         "onDelete",
         "onUpdate"
       ]
@@ -352,8 +349,8 @@
     {
       "key": "relationship.composition",
       "untestedAttrs": [
-        "joinEntity",
-        "joinFields"
+        "sourceRefField",
+        "symmetric"
       ]
     },
     {

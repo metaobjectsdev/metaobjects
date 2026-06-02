@@ -285,14 +285,18 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(registry.attrsOf(TYPE_ORIGIN, SUBTYPE_BASE)).toEqual([]);
   });
 
-  it("relationship.association declares cardinality/objectRef/joinEntity/joinFields", () => {
+  it("relationship.association declares cardinality/objectRef/through/sourceRefField/symmetric (FR-017 slim vocab)", () => {
     const attrs = byName(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION);
-    for (const n of ["cardinality", "objectRef", "joinEntity", "joinFields"]) {
+    for (const n of ["cardinality", "objectRef", "through", "sourceRefField", "symmetric"]) {
       expect(attrs.get(n)).toBeDefined();
       expect(attrs.get(n)!.required).toBe(false);
     }
-    expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
-    // FK direction now lives on identity.reference; legacy attrs are removed.
+    expect(attrs.get("through")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("sourceRefField")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("symmetric")!.valueType).toBe(ATTR_SUBTYPE_BOOLEAN);
+    // FK direction now lives on identity.reference; legacy M:N attrs are removed.
+    expect(attrs.get("joinEntity")).toBeUndefined();
+    expect(attrs.get("joinFields")).toBeUndefined();
     expect(attrs.get("fkField")).toBeUndefined();
     expect(attrs.get("parentField")).toBeUndefined();
   });
