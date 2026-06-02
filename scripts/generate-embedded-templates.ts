@@ -57,9 +57,7 @@ const outFile = join(
   "embedded-templates.generated.ts",
 );
 
-const files = readdirSync(canonicalDir)
-  .filter((f) => f.endsWith(".mustache"))
-  .sort(); // deterministic ordering
+const files = readdirSync(canonicalDir).filter((f) => f.endsWith(".mustache"));
 
 if (files.length === 0) {
   console.error(`error: no *.mustache templates found under ${canonicalDir}`);
@@ -69,6 +67,7 @@ if (files.length === 0) {
 // ref = path under templates/ WITHOUT the .mustache suffix, matching how
 // FrameworkTemplatesProvider.resolve(ref) builds `<dir>/<ref>.mustache`.
 // e.g. templates/docs/entity-page.md.mustache -> "docs/entity-page.md".
+// Sorted by ref for deterministic, byte-stable output.
 const entries = files
   .map((file) => {
     const ref = `docs/${file.slice(0, -".mustache".length)}`;
