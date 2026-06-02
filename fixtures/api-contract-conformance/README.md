@@ -145,9 +145,42 @@ The runner's job is to **map** the cross-port assertion vocabulary
 (`row` / `rows` / `envelope` / `error` / `empty`) onto its own port's
 test-assertion idioms.
 
-## TS: two runner lanes (hand-rolled reference + generated routes)
+## Two runner lanes per port (hand-rolled reference + GENERATED artifact)
 
-On the TypeScript port the corpus is now driven by **two** lanes, both
+**All five ports** now drive the corpus through **two** lanes: a hand-rolled
+reference server (the stable contract reference) **and** the port's **generated**
+API artifact booted over HTTP. The generated lane is what proves the *deployed*
+artifact — not a re-implementation — implements the contract. (Building these
+lanes surfaced and fixed **10 real generated-API bugs** across the ports that
+golden-snapshot tests never caught — e.g. C# filter dispatch throwing 500 on
+every filter, Spring PATCH/PUT route stacking → PUT 405, timestamp binding
+errors, Python error envelopes wrapped as `{"detail": ...}`.)
+
+| Port | Generated artifact | Generated-lane harness | DB |
+|---|---|---|---|
+| TypeScript | `Author.routes.ts` + `drizzle-fastify` | `runGen` → dynamic-import → Fastify `inject` | Testcontainers PG |
+| C# (ASP.NET) | minimal-API routes + `AppDbContext` | Roslyn-compile → Kestrel `WebApplication` + `HttpClient` | Testcontainers PG |
+| Java (Spring) | `@RestController` (`codegen-spring`) | `ToolProvider`-compile → `MockMvc` standaloneSetup + in-memory repo behind the generated repo interface | in-memory |
+| Kotlin (Spring) | `@RestController` (`codegen-kotlin`) | kotlin-compile-testing → `MockMvc` standaloneSetup + in-memory H2 behind the generated `Table` | in-memory |
+| Python (FastAPI) | `APIRouter` (`router_generator`) | `render_router` → import → `TestClient` + in-memory repo behind the generated DI dependency | in-memory |
+
+**Why some ports use a real DB and others in-memory:** TS and C# generate a
+*complete* server (routes + generated persistence — Drizzle / `AppDbContext`), so
+the whole generated stack runs against Testcontainers Postgres. Java / Kotlin /
+Python generate the **controller/router** with a *consumer-supplied* persistence
+seam (a repository interface / DI dependency MetaObjects intentionally leaves the
+consumer to implement) — so the generated controller is the artifact under test,
+hosted with a minimal in-memory repo behind that seam (real DB behavior is owned
+by `persistence-conformance`). Each generated lane hosts the EMITTED
+controller/routes **unmodified**; the in-memory repo (seam ports) is the only
+hand-written piece.
+
+Every generated lane lives beside its port's hand-rolled lane and runs under the
+same per-port `integration-tests.yml` job — no separate opt-in.
+
+### TS lanes (illustrative detail)
+
+On the TypeScript port the corpus is driven by **two** lanes, both
 against a Postgres testcontainer over HTTP:
 
 1. **Hand-rolled reference lane** (`test/api-contract.test.ts`) — a server the
@@ -168,24 +201,11 @@ run by the same `cd server/typescript/packages/integration-tests && bun test`
 invocation, so the `.github/workflows/integration-tests.yml` TS job gates both
 on every PR and push-to-main — no separate opt-in.
 
-### Fan-out follow-on (generated-routes lane currently TS-only)
+### Fan-out — COMPLETE (all 5 ports)
 
-The generated-routes lane — booting each port's **emitted** CRUD routes over
-HTTP against this corpus — currently covers **TypeScript only**. The other four
-ports run the corpus today via their hand-rolled / runtime runners, but their
-*generated* server artifacts are not yet driven over HTTP against the corpus.
-Extending the generated-routes lane to each port needs a per-port harness:
-
-| Port | Generated artifact | Test harness to build |
-|---|---|---|
-| Java (Spring) | generated `@RestController` (`codegen-spring`) | Spring Boot test context (`@SpringBootTest` + `MockMvc` / `WebTestClient`) booting the generated controller |
-| Kotlin (Spring) | generated `@RestController` (`codegen-kotlin`) | Spring Boot test context (`@SpringBootTest` + `MockMvc` / `WebTestClient`) booting the generated controller |
-| C# (ASP.NET) | generated minimal-API routes (`MetaObjects.Codegen`) | `WebApplicationFactory<>` hosting the generated routes |
-| Python (FastAPI) | generated FastAPI router | `TestClient` mounting the generated router |
-
-Until those land, **the generated artifacts of Java / Kotlin / C# / Python are
-not yet verified over HTTP against this corpus** — this is a known, explicit gap
-(not a silent one).
+The generated-artifact lane now covers **all five ports** (see the table above);
+the original TS-only gap is closed. Each port's deployed CRUD artifact is driven
+over HTTP against this corpus alongside its hand-rolled reference lane.
 
 ## Adding a scenario
 

@@ -33,7 +33,7 @@ _Last refreshed 2026-05-30._
 - Metamodel: `fixtures/conformance/` (~90 fixtures). TS / C# / Java / Python all green.
 - Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations).
-- API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20.
+- API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all 20/20 — each port runs **two lanes**: a hand-rolled reference server AND its **generated** API artifact booted over HTTP (the deployed controller/routes; TS+C# full-stack vs Testcontainers PG, Java/Kotlin/Python generated controller + in-memory repo behind the consumer seam). The generated fan-out found 10 real deployment bugs golden snapshots missed.
 - YAML / verify corpora green across the ports that ship those layers.
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + 10 filter operators); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
