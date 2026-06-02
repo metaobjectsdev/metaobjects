@@ -147,9 +147,11 @@ def test_router_list_handler_calls_parse_filter() -> None:
         "parse_filter(request.query_params, AUTHOR_FILTER_FIELDS, AUTHOR_FILTER_OPS_BY_FIELD)"
         in out
     )
-    # On error_envelope -> 400 with the envelope as the detail body.
+    # On error_envelope -> 400 with the envelope as the response body. Uses
+    # JSONResponse (not HTTPException, which FastAPI would wrap as {"detail": ...}
+    # and break the cross-port {"error": ...} envelope contract — see SP-F Unit 4).
     assert "filter_result.error_envelope" in out
-    assert "raise HTTPException(status_code=400, detail=filter_result.error_envelope)" in out
+    assert "return JSONResponse(status_code=400, content=filter_result.error_envelope)" in out
     # Predicates thread through to the repository's list + count.
     assert "predicates = filter_result.predicates" in out
     assert "repo.list(actual_limit, actual_offset, sort_clause, predicates)" in out
