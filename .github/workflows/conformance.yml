@@ -57,6 +57,11 @@ jobs:
           cd ../render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts
           # Validator-parity corpus (generated input validation). No Docker.
           cd ../integration-tests && bun test test/validation-conformance.test.ts
+          # Doc-template + CLI suites: byte-identity template gate, embedded-template
+          # gate, neutrality / collision guards, and the docs golden corpus +
+          # `meta docs` command. Whole-package so future tests auto-run. No Docker.
+          cd ../codegen-ts && bun test
+          cd ../cli && bun test
 
       - name: C# conformance
         if: matrix.language == 'csharp'
@@ -67,6 +72,8 @@ jobs:
           dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet
           # Validator-parity corpus (generated DataAnnotations input validation).
           dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ValidationConformance" --nologo --verbosity quiet
+          # Generator stable-name registry conformance (ADR-0021 D3).
+          dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~GeneratorRegistryConformance" --nologo --verbosity quiet
 
       - name: Java conformance
         if: matrix.language == 'java'
@@ -80,8 +87,9 @@ jobs:
           mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest' -q
           # Byte-exact render / verify / extract / output-prompt corpora (render module).
           mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q
-          # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module).
-          mvn -pl codegen-spring test -Dtest='ValidationConformanceTest' -q
+          # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module)
+          # + generator stable-name registry conformance (ADR-0021 D3).
+          mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
 
       - name: Python conformance
         if: matrix.language == 'python'
@@ -93,6 +101,8 @@ jobs:
           uv run pytest tests/render -q
           # Validator-parity corpus (generated Pydantic input validation).
           uv run pytest tests/codegen/test_validation_conformance.py -q
+          # Generator registry CLI ergonomics (gen --list / --generators selection, ADR-0021 D3).
+          uv run pytest tests/codegen/test_cli_registry.py -q
 
   conformance-kotlin:
     # Kotlin (codegen-kotlin, KotlinPoet on the JVM) ships no loader / YAML /
@@ -117,8 +127,9 @@ jobs:
           # SNAPSHOT-resolution race when the test module references freshly-built
           # artifacts.
           mvn -pl codegen-kotlin -am install -DskipTests -q
-          # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has).
-          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest' -q
+          # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has)
+          # + generator stable-name registry conformance (ADR-0021 D3).
+          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]
@@ -128,3 +139,19 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: cd server/typescript/packages/metadata && bun run conformance:mutation
+
+  doc-template-drift:
+    # Fails if the bundled package copy of the canonical doc templates, or the
+    # embedded-templates TS module (used by the standalone `meta` binary), is
+    # stale. sync-doc-templates.sh reproduces both from the canonical root
+    # templates/docs/ source; a non-empty diff means a dev forgot to run it.
+    needs: fixture-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Regenerate bundled + embedded doc templates from canonical
+        run: bash scripts/sync-doc-templates.sh
+      - name: Fail if synced/generated doc-template artifacts are stale
+        run: git diff --exit-code -- server/typescript/packages/codegen-ts/templates server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts

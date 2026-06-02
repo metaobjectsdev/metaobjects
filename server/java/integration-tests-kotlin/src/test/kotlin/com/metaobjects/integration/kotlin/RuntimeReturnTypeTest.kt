@@ -8,7 +8,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import java.sql.DriverManager
-import java.time.OffsetDateTime
+import java.time.Instant
 import java.time.temporal.Temporal
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -25,7 +25,8 @@ import kotlin.test.assertTrue
  *
  *  - `Measurement.id` (BIGINT)          → [Long]            (a native integer).
  *  - `Measurement.preciseKg` (NUMERIC)  → [BigDecimal]      (exact native decimal).
- *  - `Asset.recordedAt` (TIMESTAMPTZ)   → [OffsetDateTime]  (native temporal, NOT a String).
+ *  - `Asset.recordedAt` (TIMESTAMPTZ)   → [Instant]         (native temporal, NOT a String —
+ *    the metaobjects `instantWithTimeZone` Column<Instant> path matches the `Instant` data class).
  *  - `Asset.payload` (jsonb)            → [String]          (Exposed surfaces the open-JSON
  *    column via identity decode; the parse-to-Map step is a harness concern. We assert what
  *    the runtime genuinely returns — raw JSON text, not a pre-canonicalized/key-sorted string).
@@ -88,9 +89,11 @@ class RuntimeReturnTypeTest {
                 val recordedAt = a[AssetTable.recordedAt]
                 assertNotNull(recordedAt, "Asset.recordedAt should be present")
                 assertTrue(
-                    recordedAt is OffsetDateTime,
-                    "field.timestamp Asset.recordedAt (TIMESTAMPTZ) must be a native temporal " +
-                        "(OffsetDateTime), NOT a String. Got: ${recordedAt::class}",
+                    recordedAt is Instant,
+                    "field.timestamp Asset.recordedAt (TIMESTAMPTZ via @dbColumnType:timestamp_with_tz) " +
+                        "must be a native java.time.Instant — the metaobjects `instantWithTimeZone` " +
+                        "Column<Instant> path matches the Instant data class (NOT OffsetDateTime, NOT a " +
+                        "String). Got: ${recordedAt::class}",
                 )
                 assertTrue(recordedAt is Temporal, "Asset.recordedAt must be a java.time temporal")
                 assertTrue(recordedAt !is String, "Asset.recordedAt must not be a wire-string")

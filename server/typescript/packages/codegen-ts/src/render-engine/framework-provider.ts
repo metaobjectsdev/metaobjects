@@ -16,6 +16,7 @@ import type { Provider } from "@metaobjectsdev/render";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EMBEDDED_FRAMEWORK_TEMPLATES } from "./embedded-templates.generated.js";
 
 /** Canonical shipped template — used to verify a candidate framework
  *  templates directory actually contains our defaults. Without this check a
@@ -31,8 +32,11 @@ const CANONICAL_TEMPLATE_REL = "docs/entity-page.md.mustache";
  *
  *  Returns `undefined` when no on-disk templates dir can be found — e.g. inside
  *  the `bun build --compile` standalone binary, whose `import.meta.url` is a
- *  `/$bunfs/root` virtual path with no real `package.json` alongside it. The
- *  embedded-template fallback (see `FileSystemProvider`) covers that case. */
+ *  `/$bunfs/root` virtual path with no real `package.json` alongside it. In that
+ *  case `FrameworkTemplatesProvider.resolve` falls back to the bundled
+ *  `EMBEDDED_FRAMEWORK_TEMPLATES` (embedded-templates.generated.ts), a plain
+ *  string module generated from the canonical templates/docs/*.mustache and
+ *  compiled into the binary. */
 function findFrameworkTemplatesDir(start: string): string | undefined {
   let dir = start;
   while (true) {
@@ -81,23 +85,33 @@ export class FileSystemProvider implements Provider {
 }
 
 /** The framework defaults provider — resolves refs against codegen-ts's own
- *  on-disk `templates/` directory.
+ *  on-disk `templates/` directory, falling back to the bundled
+ *  `EMBEDDED_FRAMEWORK_TEMPLATES` when no on-disk dir exists.
  *
  *  Resolution is lazy: the directory is located on first `resolve()`, not at
  *  module import. This keeps merely importing this module side-effect-free,
  *  which matters for the `bun build --compile` standalone `meta` binary — its
  *  `import.meta.url` is a `/$bunfs/root` virtual path with no on-disk
- *  `templates/` dir, so eager resolution at import time used to throw before
- *  any command (even `--help` or the schema ops `migrate`/`verify --db`) could
- *  run. Now non-codegen commands import cleanly; only the codegen doc path
- *  (which the standalone binary doesn't target) needs the on-disk dir. */
+ *  `templates/` dir.
+ *
+ *  ON-DISK FIRST, then embedded: the source/install layout (and adopter
+ *  overrides chained ahead of this provider via `projectProvider`) always wins,
+ *  so local edits to the shipped package `templates/` still take effect. Only
+ *  when the on-disk dir is unresolved (the compiled binary) — or a ref the dir
+ *  doesn't contain — do we consult the embedded map, which is generated from
+ *  the same canonical templates and compiled into the binary. Unknown refs are
+ *  `undefined` in the map, which is the correct miss. */
 class FrameworkTemplatesProvider implements Provider {
   resolve(ref: string): string | undefined {
+    // On-disk first: dev/install layout, plus shipped-package edits.
     const dir = frameworkTemplatesDir();
-    if (dir === undefined) return undefined;
-    const path = join(dir, `${ref}.mustache`);
-    if (!existsSync(path)) return undefined;
-    return readFileSync(path, "utf-8");
+    if (dir !== undefined) {
+      const path = join(dir, `${ref}.mustache`);
+      if (existsSync(path)) return readFileSync(path, "utf-8");
+    }
+    // Embedded fallback: the binary case (no on-disk dir) or a ref the on-disk
+    // dir doesn't carry. `undefined` for unknown refs is the correct miss.
+    return EMBEDDED_FRAMEWORK_TEMPLATES[ref];
   }
 }
 

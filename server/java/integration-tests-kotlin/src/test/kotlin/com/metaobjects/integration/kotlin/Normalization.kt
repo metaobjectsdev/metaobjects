@@ -68,6 +68,14 @@ object Normalization {
             val utc = v.withOffsetSameInstant(ZoneOffset.UTC)
             utc.toLocalDateTime().format(timestampFmt) + fractionalSuffix(utc.nano) + "Z"
         }
+        // TIMESTAMPTZ surfaced as a java.time.Instant (the metaobjects-generated
+        // `instantWithTimeZone` Column<Instant> path). An Instant is already a UTC point in
+        // time, so render it at UTC and append "Z" — byte-identical to the OffsetDateTime
+        // branch above (which the hand-written reference / OffsetDateTime columns still hit).
+        is java.time.Instant -> {
+            val ldt = LocalDateTime.ofInstant(v, ZoneOffset.UTC)
+            ldt.format(timestampFmt) + fractionalSuffix(ldt.nano) + "Z"
+        }
         is Timestamp -> { val ldt = v.toLocalDateTime(); ldt.format(timestampFmt) + fractionalSuffix(ldt.nano) }
         is LocalDateTime -> v.format(timestampFmt) + fractionalSuffix(v.nano)
         is java.sql.Date -> v.toLocalDate().toString()

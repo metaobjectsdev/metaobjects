@@ -32,6 +32,13 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/index.ts",
   },
+  // Consumer configs that ship custom MetaDataTypeProviders import the type
+  // primitives (TypeId, MetaField, TYPE_* …) from here. Aliased to the CLI's
+  // own copy so the user's project needn't declare it as a direct dependency.
+  "@metaobjectsdev/metadata": {
+    dist: "node_modules/@metaobjectsdev/metadata/dist/index.js",
+    src: "node_modules/@metaobjectsdev/metadata/src/index.ts",
+  },
   "@metaobjectsdev/codegen-ts/generators": {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/generators/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/generators/index.ts",
@@ -94,6 +101,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     interopDefault: true,
     alias: {
       "@metaobjectsdev/codegen-ts": resolveCliPkg("@metaobjectsdev/codegen-ts"),
+      "@metaobjectsdev/metadata": resolveCliPkg("@metaobjectsdev/metadata"),
       "@metaobjectsdev/codegen-ts/generators": resolveCliPkg("@metaobjectsdev/codegen-ts/generators"),
       "@metaobjectsdev/codegen-ts-react": resolveCliPkg("@metaobjectsdev/codegen-ts-react"),
       "@metaobjectsdev/codegen-ts-tanstack": resolveCliPkg("@metaobjectsdev/codegen-ts-tanstack"),

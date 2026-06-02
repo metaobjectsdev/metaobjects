@@ -709,11 +709,18 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects the
-     * Postgres `timestamp with time zone` variant — emits `timestampWithTimeZone("col")`
-     * with the matching javatime.timestampWithTimeZone import.
+     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects a
+     * `Column<java.time.Instant>` column whose Postgres DDL is `timestamp with time zone`.
+     * The emitted column function is the `instantWithTimeZone("col")` extension (a custom
+     * `ColumnType<Instant>`), NOT Exposed's native `timestampWithTimeZone(...)` (which is
+     * `Column<OffsetDateTime>` and would mismatch the `Instant` data class).
+     *
+     * The supporting helper (`MetaInstantWithTimeZoneColumnType` + the extension) is emitted
+     * ONCE PER PACKAGE into a shared `MetaInstantWithTimeZoneColumnType.kt` file (internal
+     * visibility, same package), so the table file itself carries NEITHER the helper NOR the
+     * Instant/Column/javatime imports — it just calls the same-package internal extension.
      */
-    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant() {
+    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsInstantColumn() {
         val tzFixture = """{
           "metadata.root": { "package": "x", "children": [
             { "object.entity": { "name": "Event", "children": [
@@ -731,10 +738,108 @@ class KotlinExposedTableGeneratorTest {
             gen.execute(loadString("jt-tz", tzFixture))
 
             val src = Files.readString(outDir.resolve("x/EventTable.kt"))
-            assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" in src,
-                "expected javatime.timestampWithTimeZone import for opt-in TZ-aware; saw:\n$src")
-            assertTrue("val occurredAt = timestampWithTimeZone(\"occurred_at\")" in src,
-                "expected timestampWithTimeZone column for opt-in TZ-aware; saw:\n$src")
+            // The column is the `instantWithTimeZone(...)` extension, NOT the native
+            // Exposed `timestampWithTimeZone(...)` (Column<OffsetDateTime>).
+            assertTrue("val occurredAt = instantWithTimeZone(\"occurred_at\")" in src,
+                "expected instantWithTimeZone column for opt-in TZ-aware; saw:\n$src")
+            assertTrue("import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone" !in src,
+                "must NOT import native timestampWithTimeZone (it is Column<OffsetDateTime>); saw:\n$src")
+            // The helper is NO LONGER inlined into the table file — it lives in a shared
+            // per-package support file. The table file must not carry the helper or its imports.
+            assertTrue("class MetaInstantWithTimeZoneColumnType" !in src,
+                "support helper must NOT be inlined into the table file (now per-package); saw:\n$src")
+            assertTrue("import java.time.Instant" !in src && "import org.jetbrains.exposed.sql.Column\n" !in src,
+                "table file must NOT carry Instant/Column imports (helper is per-package); saw:\n$src")
+
+            // The shared per-package support file carries the helper + needed imports + DDL.
+            val support = Files.readString(outDir.resolve("x/MetaInstantWithTimeZoneColumnType.kt"))
+            assertTrue("internal class MetaInstantWithTimeZoneColumnType" in support,
+                "expected the per-package internal custom ColumnType<Instant>; saw:\n$support")
+            assertTrue("internal fun Table.instantWithTimeZone(name: String): Column<Instant>" in support,
+                "expected the per-package internal instantWithTimeZone extension; saw:\n$support")
+            assertTrue("import java.time.Instant" in support && "import org.jetbrains.exposed.sql.Column" in support,
+                "expected Instant + Column imports in the support file; saw:\n$support")
+            // The custom type overrides sqlType() to the dialect's TIMESTAMP WITH TIME ZONE.
+            assertTrue("timestampWithTimeZoneType()" in support,
+                "custom ColumnType must produce TIMESTAMP WITH TIME ZONE DDL; saw:\n$support")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * Regression for the multi-table-per-package redeclaration bug: when TWO entities in the
+     * SAME package each carry a `@dbColumnType=timestamp_with_tz` column, the earlier per-file
+     * inline emission emitted the top-level `MetaInstantWithTimeZoneColumnType` class +
+     * `instantWithTimeZone` extension into BOTH `*Table.kt` files → redeclaration + private-access
+     * compile errors (162 errors in a real consumer). The fix emits the helper ONCE PER PACKAGE
+     * into a shared `MetaInstantWithTimeZoneColumnType.kt` (internal visibility) that both tables
+     * reference.
+     *
+     * Asserts: exactly ONE shared support file; the helper appears ONLY there (not in either
+     * table file); both tables call `instantWithTimeZone(...)`. On the PRE-FIX code this fails —
+     * each table file inlined its own `private class MetaInstantWithTimeZoneColumnType` and no
+     * shared support file existed.
+     */
+    @Test fun twoTimestampTzTablesInSamePackageShareOneSupportFile() {
+        val twoTzTables = """{
+          "metadata.root": { "package": "acme::audit", "children": [
+            { "object.entity": { "name": "Role", "children": [
+                { "field.long":      { "name": "id" } },
+                { "field.timestamp": { "name": "createdAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "source.rdb":      { "@table": "roles" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "UserAuthToken", "children": [
+                { "field.long":      { "name": "id" } },
+                { "field.timestamp": { "name": "issuedAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "field.timestamp": { "name": "expiresAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "source.rdb":      { "@table": "user_auth_tokens" } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-tz-multi-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("tz-multi", twoTzTables))
+
+            val roleSrc = Files.readString(outDir.resolve("acme/audit/RoleTable.kt"))
+            val tokenSrc = Files.readString(outDir.resolve("acme/audit/UserAuthTokenTable.kt"))
+
+            // Both tables call the shared extension…
+            assertTrue("val createdAt = instantWithTimeZone(\"created_at\")" in roleSrc,
+                "RoleTable must call instantWithTimeZone; saw:\n$roleSrc")
+            assertTrue("val issuedAt = instantWithTimeZone(\"issued_at\")" in tokenSrc,
+                "UserAuthTokenTable must call instantWithTimeZone; saw:\n$tokenSrc")
+            assertTrue("val expiresAt = instantWithTimeZone(\"expires_at\")" in tokenSrc,
+                "UserAuthTokenTable must call instantWithTimeZone for expiresAt; saw:\n$tokenSrc")
+
+            // …but NEITHER table file inlines the helper class (the redeclaration root cause).
+            assertTrue("class MetaInstantWithTimeZoneColumnType" !in roleSrc,
+                "RoleTable must NOT inline the helper class; saw:\n$roleSrc")
+            assertTrue("class MetaInstantWithTimeZoneColumnType" !in tokenSrc,
+                "UserAuthTokenTable must NOT inline the helper class; saw:\n$tokenSrc")
+
+            // Exactly ONE shared support file for the package, with the internal helper + extension.
+            val supportFile = outDir.resolve("acme/audit/MetaInstantWithTimeZoneColumnType.kt")
+            assertTrue(Files.exists(supportFile),
+                "expected one shared support file per package; files=${Files.walk(outDir).toList()}")
+            val support = Files.readString(supportFile)
+            assertTrue("package acme.audit" in support,
+                "support file must be in the package; saw:\n$support")
+            assertTrue("internal class MetaInstantWithTimeZoneColumnType" in support,
+                "support helper must be internal (package+module-private); saw:\n$support")
+            assertTrue("internal fun Table.instantWithTimeZone(name: String): Column<Instant>" in support,
+                "support extension must be internal; saw:\n$support")
+            // The helper class is declared exactly once across the whole package output.
+            val allSrc = Files.walk(outDir).filter { Files.isRegularFile(it) }
+                .map { Files.readString(it) }.toList().joinToString("\n")
+            val helperDeclCount =
+                Regex("""\bclass\s+MetaInstantWithTimeZoneColumnType\b""").findAll(allSrc).count()
+            assertTrue(helperDeclCount == 1,
+                "expected the helper class declared exactly once per package, saw $helperDeclCount")
         } finally {
             outDir.toFile().deleteRecursively()
         }

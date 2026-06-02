@@ -24,10 +24,21 @@ import java.util.HashMap;
  * Mustache-based template generator for MetaObjects.
  * Integrates with the existing MetaObjects Maven plugin system to provide
  * cross-language code generation using Mustache templates.
- * 
+ *
  * Based on the cross-language template system architecture documented in
  * .claude/archive/template-system/TEMPLATE_IMPLEMENTATION_GUIDE.md and .claude/archive/template-system/TEMPLATE_SYSTEM_ARCHITECTURE.md
+ *
+ * @since 6.0.0
+ * @deprecated As of ADR-0021 D4, superseded by
+ *             {@link com.metaobjects.render.templategen.TemplateGenerator}, the
+ *             conformance-pinned cross-port Mustache generator whose output is
+ *             byte-pinned against the shared cross-port render conformance corpus.
+ *             This legacy generator is kept for backward compatibility with existing
+ *             Maven {@code pom.xml} configurations that reference it by class name;
+ *             it will be removed in a later major release. New configurations should
+ *             use {@code com.metaobjects.render.templategen.TemplateGenerator}.
  */
+@Deprecated
 public class MustacheTemplateGenerator implements Generator {
     
     private static final Logger log = LoggerFactory.getLogger(MustacheTemplateGenerator.class);

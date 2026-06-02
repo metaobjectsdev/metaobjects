@@ -54,6 +54,14 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // contribute the FK column to PostTable even when Post has no reciprocal.
         val fkMap = buildGlobalFkMap(loader, refDecorationMap)
 
+        // Packages that emit at least one table carrying a
+        // `@dbColumnType=timestamp_with_tz` column. Each such package gets ONE
+        // shared `MetaInstantWithTimeZoneColumnType.kt` support file (emitted in
+        // pass 3 below) instead of inlining the helper into every table file —
+        // multiple timestamp_with_tz tables in one package would otherwise
+        // redeclare the top-level support class/extension and fail to compile.
+        val packagesNeedingInstantTzHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         for (entity in loader.metaObjects) {
@@ -82,8 +90,44 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
                 if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
-            emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            val usedInstantTzHelper = emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            if (usedInstantTzHelper) {
+                packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
+
+        // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
+        // that has at least one `@dbColumnType=timestamp_with_tz` column. The helper
+        // (custom `ColumnType<Instant>` + `Table.instantWithTimeZone(...)` extension) is
+        // `internal`, so every `*Table.kt` in the same package + module shares the single
+        // declaration with no redeclaration / private-access clash.
+        for (pkg in packagesNeedingInstantTzHelper) {
+            emitInstantTzSupportFile(pkg, outRoot)
+        }
+    }
+
+    /**
+     * Emit the per-package `MetaInstantWithTimeZoneColumnType.kt` support file for
+     * `@dbColumnType=timestamp_with_tz` columns: an `internal` custom `ColumnType<Instant>`
+     * (DDL `TIMESTAMP WITH TIME ZONE`) plus the `internal Table.instantWithTimeZone(name)`
+     * column-builder extension that the generated table files call. `internal` keeps it
+     * package+module-private (no leakage) while letting EVERY `*Table.kt` in the package use
+     * the single shared declaration — fixing the multi-table-per-package redeclaration that the
+     * earlier inline-per-file emission caused.
+     */
+    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) {
+        val body = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            append(INSTANT_TZ_SUPPORT_FILE_IMPORTS)
+            append("\n")
+            append(INSTANT_TZ_SUPPORT_BLOCK)
+            append("\n")
+        }
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$INSTANT_TZ_SUPPORT_FILE_NAME.kt")
+        outFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(outFile, body)
     }
 
     /**
@@ -98,6 +142,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         return k == MetaSource.KIND_VIEW || k == MetaSource.KIND_MATERIALIZED_VIEW
     }
 
+    /**
+     * Emit one `*Table.kt` for [entity]. Returns `true` when the table carries at
+     * least one `@dbColumnType=timestamp_with_tz` column — the caller uses that to
+     * record the package as needing the shared `MetaInstantWithTimeZoneColumnType.kt`
+     * support file (emitted once per package, not per table).
+     */
     private fun emit(
         entity: MetaObject,
         sourceRdb: RdbSource,
@@ -105,7 +155,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         loader: MetaDataLoader,
         fkColumns: List<FkColumnSpec>,
         refDecorations: Map<String, RefDecoration>,
-    ) {
+    ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val isView = isViewKind(sourceRdb)
         val tableObjectName = shortName + "Table"
@@ -156,6 +206,29 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
         val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
+
+        // Does any column on this table use the TZ-aware `@dbColumnType=timestamp_with_tz`
+        // opt-in? If so the table calls the `instantWithTimeZone(...)` column-builder
+        // extension, which lives in the package-shared `MetaInstantWithTimeZoneColumnType.kt`
+        // support file (emitted once per package — see emitInstantTzSupportFile). The
+        // extension is `internal` + same-package, so the table needs NO import for it (and the
+        // return value's `Column<Instant>` type is inferred). Walk direct fields AND flattened
+        // object sub-fields (same surfaces that contribute columns / imports above).
+        var needsInstantTzHelper = entity.metaFields.any {
+            it !is ObjectField && KotlinTypeMapper.usesInstantWithTimeZone(it)
+        }
+        if (!needsInstantTzHelper) {
+            for (field in entity.metaFields) {
+                if (field !is ObjectField) continue
+                if (readStorage(field) != STORAGE_FLATTENED) continue
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                if (target.metaFields.any { KotlinTypeMapper.usesInstantWithTimeZone(it) }) {
+                    needsInstantTzHelper = true
+                    break
+                }
+            }
+        }
 
         // Walk every field that will actually become a Table column and collect the
         // imports its column function requires. Member functions on Table (varchar,
@@ -231,6 +304,10 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("import org.jetbrains.exposed.sql.CustomFunction\n")
                 append("import org.jetbrains.exposed.sql.UUIDColumnType\n")
             }
+            // @dbColumnType=timestamp_with_tz calls the `instantWithTimeZone(...)` extension
+            // from the package-shared MetaInstantWithTimeZoneColumnType.kt support file. That
+            // extension is `internal` + same-package, so the table file needs NO import for it
+            // and NO Instant/Column imports (the column's `Column<Instant>` type is inferred).
             append("\n")
             if (isView) {
                 append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
@@ -302,11 +379,17 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("    }\n")
             }
             append("}\n")
+            // NOTE: the `@dbColumnType=timestamp_with_tz` support helper
+            // (MetaInstantWithTimeZoneColumnType + instantWithTimeZone extension) is NO LONGER
+            // inlined here. It is emitted ONCE PER PACKAGE as a shared internal
+            // MetaInstantWithTimeZoneColumnType.kt file (see emitInstantTzSupportFile), so
+            // multiple timestamp_with_tz tables in one package don't redeclare it.
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, source)
+        return needsInstantTzHelper
     }
 
     // === field.object + @storage column emission ============================
@@ -402,6 +485,84 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         @JvmStatic
         val LOG = LoggerFactory.getLogger(KotlinExposedTableGenerator::class.java)
+
+        /**
+         * File name (sans `.kt`) of the per-package shared support file emitted for
+         * `@dbColumnType=timestamp_with_tz` columns. One per package that has ≥1 such column.
+         */
+        const val INSTANT_TZ_SUPPORT_FILE_NAME = "MetaInstantWithTimeZoneColumnType"
+
+        /**
+         * Imports for the per-package [INSTANT_TZ_SUPPORT_BLOCK] support file. Kept here (rather
+         * than FQN-ing every reference inline) so the emitted support file reads idiomatically.
+         */
+        val INSTANT_TZ_SUPPORT_FILE_IMPORTS: String = """
+            |import java.time.Instant
+            |import org.jetbrains.exposed.sql.Column
+            |import org.jetbrains.exposed.sql.ColumnType
+            |import org.jetbrains.exposed.sql.IDateColumnType
+            |import org.jetbrains.exposed.sql.Table
+            |import org.jetbrains.exposed.sql.javatime.JavaInstantColumnType
+            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+            |import org.jetbrains.exposed.sql.vendors.currentDialect
+            |""".trimMargin()
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [INSTANT_TZ_SUPPORT_FILE_NAME].kt)
+         * for any package that has at least one `@dbColumnType=timestamp_with_tz` column. Defines:
+         *
+         *  - `MetaInstantWithTimeZoneColumnType` — a `ColumnType<Instant>` that delegates ALL
+         *    value/JDBC handling (read, bind, normalize, millisecond-truncate, wire string) to
+         *    Exposed's tested `JavaInstantColumnType`, overriding ONLY `sqlType()` to return the
+         *    dialect's `TIMESTAMP WITH TIME ZONE` (Postgres: `timestamp with time zone`). This
+         *    yields a `Column<Instant>` — matching the `Instant` data-class property (no
+         *    `Instant`↔`OffsetDateTime` coercion) — while keeping the TZ-aware column so the
+         *    seeded-offset → read-back-UTC normalization contract holds.
+         *  - `Table.instantWithTimeZone(name)` — the column-builder extension the generated
+         *    tables call (`val createdAt = instantWithTimeZone("created_at")`).
+         *
+         * Both are declared `internal` (package + module-private) so EVERY `*Table.kt` in the
+         * same package shares the ONE declaration — multiple timestamp_with_tz tables per
+         * package no longer redeclare a top-level class/extension (the bug the prior per-file
+         * inline emission caused). Note: the `$` lines below have no Kotlin string templates,
+         * so this trimMargin block is emitted verbatim.
+         */
+        val INSTANT_TZ_SUPPORT_BLOCK: String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `@dbColumnType=timestamp_with_tz`: a
+            | * `Column<java.time.Instant>` whose SQL DDL is `TIMESTAMP WITH TIME ZONE`.
+            | * Delegates all value/JDBC handling to Exposed's `JavaInstantColumnType` and
+            | * overrides only `sqlType()`, so the column type matches the `Instant` data-class
+            | * property (no Instant↔OffsetDateTime coercion) while staying timezone-aware.
+            | */
+            |internal class MetaInstantWithTimeZoneColumnType :
+            |    ColumnType<Instant>(),
+            |    IDateColumnType {
+            |    private val delegate = JavaInstantColumnType()
+            |    override val hasTimePart: Boolean get() = delegate.hasTimePart
+            |    override fun sqlType(): String =
+            |        currentDialect.dataTypeProvider.timestampWithTimeZoneType()
+            |    override fun valueFromDB(value: Any): Instant? = delegate.valueFromDB(value)
+            |    override fun notNullValueToDB(value: Instant): Any = delegate.notNullValueToDB(value)
+            |    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
+            |    override fun nonNullValueAsDefaultString(value: Instant): String =
+            |        delegate.nonNullValueAsDefaultString(value)
+            |    override fun readObject(rs: java.sql.ResultSet, index: Int): Any? = delegate.readObject(rs, index)
+            |    override fun setParameter(
+            |        stmt: PreparedStatementApi,
+            |        index: Int,
+            |        value: Any?,
+            |    ) = delegate.setParameter(stmt, index, value)
+            |}
+            |
+            |/**
+            | * Column builder for `@dbColumnType=timestamp_with_tz`: a `Column<Instant>` backed by
+            | * a `TIMESTAMP WITH TIME ZONE` Postgres column (see [MetaInstantWithTimeZoneColumnType]).
+            | */
+            |internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
+            |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
+            |""".trimMargin()
     }
 
     // === FK column emission from relationship.composition ====================

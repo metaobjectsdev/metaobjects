@@ -2,12 +2,16 @@ package com.metaobjects.mojo;
 
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.verify.TemplateVerify;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+
+import java.nio.file.Paths;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -43,8 +47,22 @@ import java.util.TreeSet;
  * generators (which run through the same {@code meta:gen} SPI) without any per-generator
  * knowledge.</p>
  *
- * <p>This is a codegen-drift gate, NOT the FR-004 prompt/template {@code verify} surface, and
- * there is deliberately no schema/migrate goal — schema is Node-owned (ADR-0015).</p>
+ * <h2>Modes (ADR-0021 D2)</h2>
+ * The cross-port {@code verify} vocabulary is unified to explicit modes. Other ports
+ * expose them as {@code --codegen}/{@code --templates} CLI flags; the Maven goal — which
+ * is parameter-driven — exposes a {@code mode} parameter
+ * ({@code -Dmeta.verify.mode=...}):
+ * <ul>
+ *   <li>{@code codegen} (DEFAULT, back-compat, byte-identical to the historical goal) —
+ *       the regenerate-to-temp + diff-against-committed drift gate described above; covers
+ *       {@code codegen-spring} AND {@code codegen-kotlin} via the shared meta:gen SPI.</li>
+ *   <li>{@code templates} — template/prompt {@code {{field}}}↔payload drift, run via the
+ *       shared {@link TemplateVerify} helper (which reuses the render
+ *       {@link com.metaobjects.render.Verify} engine). Covers BOTH Java and Kotlin
+ *       generation, since they share this one goal.</li>
+ *   <li>{@code db} — NOT supported by the Maven port; schema drift is the migrate engine
+ *       (Node-owned, ADR-0015). A {@code db} value fails clearly.</li>
+ * </ul>
  */
 @Mojo(name = "verify",
         requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
@@ -57,12 +75,100 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** The gen goal to suggest in the failure message ({@code groupId:artifactId:goal}). */
     private static final String GEN_GOAL = "metaobjects:generate";
 
+    /** Verify mode: {@code codegen} (default), {@code templates}. */
+    static final String MODE_CODEGEN = "codegen";
+    static final String MODE_TEMPLATES = "templates";
+    static final String MODE_DB = "db";
+
+    /**
+     * Which verify mode to run (ADR-0021 D2). {@code codegen} (default) = codegen drift;
+     * {@code templates} = template/prompt {@code {{field}}}↔payload drift. {@code db} is
+     * rejected (schema drift is the migrate engine, not the Maven port).
+     */
+    @Parameter(property = "meta.verify.mode", defaultValue = "codegen")
+    private String mode = MODE_CODEGEN;
+
+    public void setMode(String mode) { this.mode = mode; }
+    public String getMode() { return mode; }
+
+    /**
+     * On-disk template root the {@code templates} mode resolves each {@code @textRef}
+     * against (the mustache files referenced by {@code template.prompt} nodes). Required
+     * in {@code templates} mode; ignored in {@code codegen} mode.
+     */
+    @Parameter(property = "meta.verify.templateRoot")
+    private String templateRoot;
+
+    public void setTemplateRoot(String templateRoot) { this.templateRoot = templateRoot; }
+    public String getTemplateRoot() { return templateRoot; }
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         if (getLoader() == null) {
             throw new MojoExecutionException("No <loader> element was defined");
         }
 
+        String m = mode == null ? MODE_CODEGEN : mode.trim();
+        if (MODE_TEMPLATES.equalsIgnoreCase(m)) {
+            verifyTemplates();
+            return;
+        }
+        if (MODE_DB.equalsIgnoreCase(m)) {
+            throw new MojoFailureException(
+                    "meta:verify mode 'db' is not supported by the Maven port; schema verify is the "
+                            + "migrate engine (Node-owned, ADR-0015). Use mode 'codegen' or 'templates'.");
+        }
+        if (!MODE_CODEGEN.equalsIgnoreCase(m)) {
+            throw new MojoFailureException(
+                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen' (default), 'templates'.");
+        }
+
+        verifyCodegen();
+    }
+
+    // ------------------------------------------------------------------------
+    // mode=templates — template/prompt {{field}}<->payload drift (ADR-0021 D2)
+    // ------------------------------------------------------------------------
+
+    private void verifyTemplates() throws MojoExecutionException, MojoFailureException {
+        if (templateRoot == null || templateRoot.isEmpty()) {
+            throw new MojoFailureException(
+                    "meta:verify mode 'templates' requires the 'templateRoot' parameter "
+                            + "(-Dmeta.verify.templateRoot=...): the on-disk dir each @textRef resolves against.");
+        }
+
+        ClassLoader projectClassLoader = createProjectClassLoader();
+        MetaDataLoader loader = createLoader(projectClassLoader);
+
+        TemplateVerify.Outcome outcome = TemplateVerify.run(loader, Paths.get(templateRoot));
+
+        for (TemplateVerify.Drift w : outcome.warnings()) {
+            getLog().warn("MetaData Verify Mojo > template drift (warning) in \"" + w.template()
+                    + "\" — " + w.code() + ": " + w.path());
+        }
+
+        if (!outcome.ok()) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("template drift detected — a {{field}} references a name not on the payload VO, "
+                    + "or a @textRef did not resolve. Findings:");
+            for (TemplateVerify.Drift d : outcome.errors()) {
+                sb.append("\n  template \"").append(d.template()).append("\" — ")
+                        .append(d.code()).append(": {{").append(d.path()).append("}}");
+            }
+            for (String u : outcome.unresolvedText()) {
+                sb.append("\n  ").append(u);
+            }
+            throw new MojoFailureException(sb.toString());
+        }
+
+        getLog().info("MetaData Verify Mojo > No template/prompt drift detected.");
+    }
+
+    // ------------------------------------------------------------------------
+    // mode=codegen (default) — regenerate-to-temp + diff vs committed (UNCHANGED)
+    // ------------------------------------------------------------------------
+
+    private void verifyCodegen() throws MojoExecutionException, MojoFailureException {
         ClassLoader projectClassLoader = createProjectClassLoader();
         MetaDataLoader loader = createLoader(projectClassLoader);
 

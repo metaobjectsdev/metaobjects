@@ -161,16 +161,23 @@ class KotlinTypeMapperTest {
         assertEquals("datetime(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
-    @Test fun `timestamp field with dbColumnType=timestamp_with_tz emits timestampWithTimeZone`() {
-        // Opt-in: `@dbColumnType=timestamp_with_tz` selects Postgres `timestamp with time zone`.
+    @Test fun `timestamp field with dbColumnType=timestamp_with_tz emits instantWithTimeZone`() {
+        // Opt-in: `@dbColumnType=timestamp_with_tz` selects a `Column<Instant>` column whose
+        // Postgres DDL is `timestamp with time zone`. The emitted column function is the
+        // file-local `instantWithTimeZone(...)` extension (a custom ColumnType<Instant>), NOT
+        // Exposed's native `timestampWithTimeZone(...)` — that one is Column<OffsetDateTime>
+        // and would MISMATCH the `Instant` data-class property, forcing Instant↔OffsetDateTime
+        // coercion at every callsite.
         val f = TimestampField("createdAt")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "timestamp_with_tz"))
-        assertEquals("timestampWithTimeZone(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
-        // And the import switches accordingly.
-        assertEquals(
-            "org.jetbrains.exposed.sql.javatime.timestampWithTimeZone",
-            KotlinTypeMapper.exposedColumnImport(f),
-        )
+        assertEquals("instantWithTimeZone(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // The helper is emitted into the table's own file by KotlinExposedTableGenerator, so the
+        // column function needs NO external import (the javatime import is gone).
+        assertEquals(null, KotlinTypeMapper.exposedColumnImport(f))
+        // The data-class property type stays Instant (unchanged — the wire/DTO contract is correct).
+        assertEquals(ClassName("java.time", "Instant"), KotlinTypeMapper.kotlinTypeName(f))
+        // And the table generator is told this field needs the file-local support helper.
+        assertEquals(true, KotlinTypeMapper.usesInstantWithTimeZone(f))
     }
 
     @Test fun `timestamp field default import is javatime datetime`() {

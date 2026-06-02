@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme::site",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name" } },
+            { "field.string": { "name": "headline" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomeEmail",
+          "@kind": "email",
+          "@payloadRef": "Welcome",
+          "@subjectRef": "email/welcome.subject",
+          "@htmlBodyRef": "email/welcome.html",
+          "@textBodyRef": "email/welcome.text"
+        }
+      }
+    ]
+  }
+}

@@ -349,14 +349,8 @@
     {
       "key": "template.output",
       "untestedAttrs": [
-        "htmlBodyRef",
-        "kind",
-        "maxChars",
         "owner",
-        "requiredTags",
-        "since",
-        "subjectRef",
-        "textBodyRef"
+        "since"
       ]
     },
     {

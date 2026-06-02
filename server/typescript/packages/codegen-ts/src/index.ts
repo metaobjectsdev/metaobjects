@@ -9,6 +9,14 @@ export type { RunGenOpts, RunGenResult } from "./runner.js";
 export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
 export { perEntity, oncePerRun } from "./generator.js";
 
+// ADR-0021 D3 — stable-name generator registry + discoverability surface.
+export {
+  generatorRegistry,
+  listGenerators,
+  getGenerator,
+} from "./generator-registry.js";
+export type { GeneratorRegistryEntry, GeneratorTier } from "./generator-registry.js";
+
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider } from "./metaobjects-config.js";
 export { defineConfig, normalizeConfig } from "./metaobjects-config.js";
 
@@ -42,6 +50,14 @@ export { pluralize, columnNameFromField, tableNameFromEntity, viewNameFromProjec
 
 export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
 export type { OutputLayout, ResolvedTarget } from "./import-path.js";
+export {
+  docPageOutputPath,
+  docPageHref,
+  docPageNode,
+  effectivePackage,
+  assertNoDuplicateDocPaths,
+} from "./docs-paths.js";
+export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
@@ -74,6 +90,8 @@ export type {
   IdentityDoc,
   RelationshipDoc,
   UsedByDoc,
-  GeneratedFileDoc,
+  ConstraintRow,
 } from "./generators/docs-data.js";
 export { buildEntityDocData } from "./generators/docs-data-builder.js";
+export type { TemplateDocData, TemplateOutputPart } from "./generators/template-doc-data.js";
+export { buildTemplateDocData } from "./generators/template-doc-builder.js";

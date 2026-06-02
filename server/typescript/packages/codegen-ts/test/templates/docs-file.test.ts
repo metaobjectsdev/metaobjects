@@ -12,7 +12,6 @@ import {
   TYPE_VALIDATOR,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
@@ -95,8 +94,12 @@ describe("renderDocsFile — preamble", () => {
   });
 });
 
-describe("renderDocsFile — Storage table", () => {
-  test("emits one row per field with PK + required + optional shapes", () => {
+describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
+  // The Storage section is the NEUTRAL physical persistence MAPPING (ADR-0020):
+  // Column / Type / Nullable / Key — declared metadata facts only, NO
+  // TypeScript type and NO ORM DDL. Validation facts (CHECK sets, maxLength,
+  // patterns) live in the Constraints table, not here.
+  test("emits one neutral row per field with PK + nullable shapes", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     attachRdbSource(post, "posts");
@@ -124,47 +127,74 @@ describe("renderDocsFile — Storage table", () => {
     });
 
     expect(out).toContain("## Storage");
-    expect(out).toContain("| Field | TypeScript type | SQL column | Constraints |");
-    expect(out).toContain("`id`");
-    expect(out).toContain("primary key");
-    expect(out).toContain("generation: `increment`");
-    expect(out).toContain("`title`");
-    expect(out).toContain("required");
-    expect(out).toContain("maxLength: 200");
-    expect(out).toContain("`body`");
-    // optional appears for body but not for id (primary key)
-    expect(out).toMatch(/`body` \| `string \\\| null` \|.*optional/);
+    expect(out).toContain("| Column | Type | Nullable | Key |");
+    // PK: not nullable, key role = primary key, neutral logical type.
+    expect(out).toContain("| `id` | `long` | no | primary key |");
+    // Required non-PK: not nullable, no key.
+    expect(out).toContain("| `title` | `string` | no |  |");
+    // Optional: nullable.
+    expect(out).toContain("| `body` | `string` | yes |  |");
+
+    // Neutrality: no TypeScript type, no ORM DDL.
+    expect(out).not.toContain("TypeScript type");
+    expect(out).not.toContain("integer(");
+    expect(out).not.toContain("text(");
   });
 
-  test("enum field surfaces literal union + CHECK predicate", () => {
+  test("@column override surfaces as the physical Column name", () => {
     const root = metaRoot();
-    const ticket = metaObject(OBJECT_SUBTYPE_ENTITY, "Ticket");
-    attachRdbSource(ticket, "tickets");
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
 
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
-    ticket.addChild(id);
+    post.addChild(id);
 
-    const status = metaField(FIELD_SUBTYPE_ENUM, "status");
-    status.setAttr("required", true);
-    status.setAttr("values", ["open", "closed", "archived"]);
-    ticket.addChild(status);
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("required", true);
+    title.setAttr("column", "post_title");
+    post.addChild(title);
 
     const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
     primary.setAttr("fields", ["id"]);
     primary.setAttr("generation", "increment");
-    ticket.addChild(primary);
-    root.addChild(ticket);
+    post.addChild(primary);
+    root.addChild(post);
 
-    const out = renderDocsFile(ticket, {
+    const out = renderDocsFile(post, {
       dialect: "sqlite",
       loadedRoot: root,
     });
-
-    expect(out).toContain('"open" \\| "closed" \\| "archived"');
-    expect(out).toContain("CHECK `status IN ('open', 'closed', 'archived')`");
+    // The physical column name (@column) is the value-add of the Storage table.
+    expect(out).toContain("| `post_title` | `string` | no |  |");
   });
 
-  test("isArray field marks JSON column constraint", () => {
+  test("@dbColumnType override surfaces as the physical Type (uppercased)", () => {
+    const root = metaRoot();
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+
+    const ref = metaField(FIELD_SUBTYPE_STRING, "ref");
+    ref.setAttr("dbColumnType", "uuid");
+    post.addChild(ref);
+
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    // The declared physical @dbColumnType override wins over the logical type.
+    expect(out).toContain("| `ref` | `UUID` | yes |  |");
+  });
+
+  test("array field renders neutral [] type, no JSON-column DDL leak", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     attachRdbSource(post, "posts");
@@ -186,8 +216,45 @@ describe("renderDocsFile — Storage table", () => {
       dialect: "sqlite",
       loadedRoot: root,
     });
-    expect(out).toContain("`tags`");
-    expect(out).toContain("JSON column");
+    expect(out).toContain("| `tags` | `string[]` | yes |  |");
+    // The "JSON column" wording was Drizzle-flavored physical detail — gone.
+    expect(out).not.toContain("{ mode:");
+  });
+
+  test("foreign-key field surfaces the Key role", () => {
+    const root = metaRoot();
+    const author = metaObject(OBJECT_SUBTYPE_ENTITY, "Author");
+    attachRdbSource(author, "authors");
+    const aid = metaField(FIELD_SUBTYPE_LONG, "id");
+    author.addChild(aid);
+    const aPrimary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    aPrimary.setAttr("fields", ["id"]);
+    aPrimary.setAttr("generation", "increment");
+    author.addChild(aPrimary);
+    root.addChild(author);
+
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    attachRdbSource(post, "posts");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const authorId = metaField(FIELD_SUBTYPE_LONG, "authorId");
+    authorId.setAttr("required", true);
+    post.addChild(authorId);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+    const reference = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE), "author");
+    reference.setAttr("fields", ["authorId"]);
+    reference.setAttr("references", "Author");
+    post.addChild(reference);
+    root.addChild(post);
+
+    const out = renderDocsFile(post, {
+      dialect: "sqlite",
+      loadedRoot: root,
+    });
+    expect(out).toContain("| `authorId` | `long` | no | foreign key → `Author` |");
   });
 
   test("regex validator surfaces pattern in constraints", () => {
@@ -271,8 +338,8 @@ describe("renderDocsFile — Identity section", () => {
   });
 });
 
-describe("renderDocsFile — Validation + Generated code", () => {
-  test("always emits Validation pointers and Generated code list", () => {
+describe("renderDocsFile — Constraints", () => {
+  test("always emits a neutral Constraints table (no language-specific sections)", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     attachRdbSource(post, "posts");
@@ -289,11 +356,13 @@ describe("renderDocsFile — Validation + Generated code", () => {
       loadedRoot: root,
     });
 
-    expect(out).toContain("## Validation");
-    expect(out).toContain("`PostInsertSchema` (Zod)");
-    expect(out).toContain("`PostUpdateSchema` (Zod)");
-    expect(out).toContain("## Generated code");
-    expect(out).toContain("`Post.ts`");
+    expect(out).toContain("## Constraints");
+    expect(out).toContain("| Field | Required | Type | Limits | Rules |");
+    expect(out).toContain("| `id` |");
+    // No language-specific leakage.
+    expect(out).not.toContain("Zod");
+    expect(out).not.toContain("## Generated code");
+    expect(out).not.toMatch(/\.ts\b/);
   });
 });
 
@@ -316,13 +385,12 @@ describe("renderDocsFile — object.value", () => {
     expect(out).not.toContain("## Storage");
     expect(out).not.toContain("## Identity");
     expect(out).not.toContain("## Relationships");
-    expect(out).toContain("## Validation");
-    expect(out).toContain("## Generated code");
-    // The Generated code section should NOT mention queries / routes for value
-    // objects — they're never produced for object.value.
-    const generatedCode = out.split("## Generated code")[1] ?? "";
-    expect(generatedCode).not.toContain(".queries.ts");
-    expect(generatedCode).not.toContain(".routes.ts");
-    expect(generatedCode).toContain("`Lens.ts`");
+    // The neutral Constraints table renders even for value objects with no
+    // storage — built from the object's own field metadata.
+    expect(out).toContain("## Constraints");
+    expect(out).toContain("| `name` | yes | `string` |");
+    // No language-specific leakage.
+    expect(out).not.toContain("## Generated code");
+    expect(out).not.toMatch(/\.ts\b/);
   });
 });
