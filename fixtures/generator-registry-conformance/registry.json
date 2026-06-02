@@ -1,0 +1,128 @@
+{
+  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
+  "ports": ["typescript", "csharp", "java", "kotlin", "python"],
+  "generators": {
+    "entity": {
+      "concept": "Per-entity model/class — the entity module (table-backed or value object).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "routes": {
+      "concept": "Per-entity REST endpoint surface (controllers / routes / router).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "output-parser": {
+      "concept": "Per-template tolerant output parser (recover-on-receipt).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "output-prompt": {
+      "concept": "Per-template output-format prompt fragment generator.",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "render-helper": {
+      "concept": "Per-template.output render helper (document/email typed wrappers).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "extractor": {
+      "concept": "Per-template strict typed extract<Name> helper (strict payload extraction).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "template": {
+      "concept": "Generic Mustache template primitive (walk + template -> files).",
+      "tier": "native",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
+    "filter-allowlist": {
+      "concept": "Per-entity REST filter allowlist (queryable-field guard).",
+      "tier": "native",
+      "ports": ["csharp", "java", "kotlin", "python"]
+    },
+    "payload": {
+      "concept": "Per-template payload value object (the strict payload type).",
+      "tier": "native",
+      "ports": ["java", "kotlin", "python"]
+    },
+    "queries": {
+      "concept": "Per-entity typed query helpers (findById/create/...).",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+    "callable": {
+      "concept": "Per-entity callable/service surface wrapping the query helpers.",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+    "routes-hono": {
+      "concept": "Per-entity Hono CRUD routes.",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+    "barrel": {
+      "concept": "Single index module re-exporting every generated entity module.",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+    "prompt-render": {
+      "concept": "Per-template prompt-render helper over the render engine.",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
+    "db-context": {
+      "concept": "Single EF Core DbContext binding every generated entity.",
+      "tier": "native",
+      "ports": ["csharp"]
+    },
+    "repository": {
+      "concept": "Per-entity Spring Data repository.",
+      "tier": "native",
+      "ports": ["java"]
+    },
+    "dto": {
+      "concept": "Per-entity Spring DTO.",
+      "tier": "native",
+      "ports": ["java"]
+    },
+    "exposed-table": {
+      "concept": "Per-entity Kotlin Exposed table object.",
+      "tier": "native",
+      "ports": ["kotlin"]
+    },
+    "relations": {
+      "concept": "Cross-entity relationship helpers.",
+      "tier": "native",
+      "ports": ["kotlin"]
+    },
+    "spring-config": {
+      "concept": "Spring wiring/configuration for the generated surface.",
+      "tier": "native",
+      "ports": ["kotlin"]
+    },
+    "stored-proc": {
+      "concept": "Stored-procedure binding helpers.",
+      "tier": "native",
+      "ports": ["kotlin"]
+    },
+    "validator": {
+      "concept": "Per-entity input validator.",
+      "tier": "native",
+      "ports": ["kotlin"]
+    },
+    "docs": {
+      "concept": "Neutral per-entity / per-template Markdown documentation pages.",
+      "tier": "neutral",
+      "note": "Owned by `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended native suite.",
+      "ports": ["typescript"]
+    },
+    "mermaid-er": {
+      "concept": "Neutral Mermaid ER diagram of the entity/relationship model.",
+      "tier": "neutral",
+      "note": "Neutral artifact owned by the docs engine (ADR-0020); surfaced via `meta docs`.",
+      "ports": ["typescript"]
+    }
+  }
+}
