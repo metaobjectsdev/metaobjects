@@ -83,11 +83,36 @@ public class RendererTest {
     }
 
     @Test
-    public void maxCharsTruncates() {
+    public void maxCharsWithinBudgetReturnsNormally() {
+        // 10-char output, budget of 10 — exactly at the budget is allowed.
+        var req = new RenderRequest(
+            "{{x}}", null, Map.of("x", "abcdefghij"),
+            new InMemoryProvider(Map.of()), "text", null, 10);
+        assertEquals("abcdefghij", new Renderer().render(req));
+    }
+
+    @Test
+    public void maxCharsOverBudgetThrows() {
+        // 10-char output, budget of 5 — over budget → THROW (fail-closed, never
+        // truncates). Message shape matches TS/C#/Python.
         var req = new RenderRequest(
             "{{x}}", null, Map.of("x", "abcdefghij"),
             new InMemoryProvider(Map.of()), "text", null, 5);
-        assertEquals("abcde", new Renderer().render(req));
+        try {
+            new Renderer().render(req);
+            org.junit.Assert.fail("expected RenderException for over-budget output");
+        } catch (RenderException e) {
+            assertEquals("render exceeded maxChars budget: 10 > 5", e.getMessage());
+        }
+    }
+
+    @Test
+    public void maxCharsNullNoGuard() {
+        // No budget set → long output renders without throwing.
+        var req = new RenderRequest(
+            "{{x}}", null, Map.of("x", "abcdefghij"),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("abcdefghij", new Renderer().render(req));
     }
 
     @Test

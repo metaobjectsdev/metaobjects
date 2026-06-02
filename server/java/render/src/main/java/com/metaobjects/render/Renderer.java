@@ -21,7 +21,8 @@ import java.util.regex.Pattern;
  * partials by recursive inlining (cycle-guarded, MAX_DEPTH=32) →
  * Mustache.java compile + execute (HTML escaping DISABLED on the factory
  * because the {@link Escapers} layer owns escaping) → apply format-keyed
- * escaper → truncate to {@code maxChars} if set.
+ * escaper → fail-closed if the result exceeds {@code maxChars} (THROWS, never
+ * truncates).
  *
  * <p>Pre-expanding partials before Mustache compile guarantees deterministic
  * cross-port whitespace (matches TS + C#) and lets the engine own cycle
@@ -74,8 +75,12 @@ public final class Renderer {
             throw new RenderException("Mustache compile/execute failed", e);
         }
 
+        // @maxChars is a fail-closed render budget: over-budget output THROWS
+        // (never silently truncates). Canonical cross-port behavior — message
+        // shape matches TS/C#/Python: "render exceeded maxChars budget: <len> > <cap>".
         if (req.maxChars() != null && rendered.length() > req.maxChars()) {
-            rendered = rendered.substring(0, req.maxChars());
+            throw new RenderException(
+                "render exceeded maxChars budget: " + rendered.length() + " > " + req.maxChars());
         }
         return rendered;
     }
