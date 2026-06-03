@@ -9,7 +9,7 @@
 //
 // Operators-per-subtype mapping (FR-009 §5, identical across ports):
 //   string / enum                              → eq, ne, in, like, isNull
-//   int / long / short / byte / float / double /
+//   int / long / float / double /
 //   decimal / currency / date / timestamp / time → eq, ne, gt, gte, lt, lte, in, isNull
 //   boolean                                    → eq, isNull
 //
@@ -125,7 +125,7 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch
     {
         FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM => OpsString,
-        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE
+        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_DECIMAL
             or FIELD_SUBTYPE_CURRENCY
             or FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP or FIELD_SUBTYPE_TIME => OpsNumeric,

@@ -270,8 +270,8 @@ Detail per port:
   (`minLength`/`pattern`/`maxValue`/`minValue`/`format`/`dateFormat`/`maxDate`/
   `minDate`/`defaultView`, validator `msg`/`mask`/`maxSize`/`minSize`); models
   `object.*` with Java OO attrs (`extends`/`implements`/`object`/`objectAdapter`/
-  `isInterface`/`value*`/`data*`) instead of `discriminator`/`discriminatorValue`;
-  and has subtype gaps (missing `field.byte`, `field.short`). (The structural
+  `isInterface`/`value*`/`data*`) instead of `discriminator`/`discriminatorValue`.
+  (The structural
   keyword / `description` / `metadata.base` / generic `view.*` divergences were
   settled in Phase 1 — see above.) Reconciling this at source means rewriting Java's
   metamodel attribute layer to the cross-port vocabulary — a change that ripples
@@ -330,8 +330,8 @@ exercised subtype — that NO fixture exercises.
   deterministic, committed snapshot of the untested sets + counts.
 
 **Report, not hard-fail (by design).** The untested set today is a legitimate
-**pre-existing backlog** — many subtypes (`view.*` controls, `field.byte` /
-`field.short`, the `validator.*` family, the abstract `*.base` anchors, the
+**pre-existing backlog** — many subtypes (`view.*` controls, the `validator.*`
+family, the abstract `*.base` anchors, the
 `attr.*` value-type subtypes) and many attrs are not yet exercised by a fixture.
 Hard-failing CI on that backlog would block everything for no gain. So the test
 ALWAYS prints the coverage summary AND asserts the committed snapshot is

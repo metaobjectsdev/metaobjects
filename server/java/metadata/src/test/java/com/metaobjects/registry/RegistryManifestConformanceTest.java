@@ -100,8 +100,7 @@ import static org.junit.Assert.assertTrue;
  *       ADR-0001/ADR-0005, kept registered but excluded from the manifest) were
  *       reconciled in SP-G Unit 6b/6b-finish; the {@code value*}/{@code data*}
  *       vestigial sets were refactor-dropped (Unit 6b).</li>
- *   <li>Subtype gaps/extras: Java lacks {@code field.byte}, {@code field.short},
- *       {@code attr.stringarray} and the 11 generic {@code view.*} subtypes
+ *   <li>Subtype gaps/extras: Java lacks {@code attr.stringarray} and the 11 generic {@code view.*} subtypes
  *       (checkbox/date/dropdown/hidden/hotlink/month/number/password/radio/text/
  *       textarea/web), and carries an extra {@code metadata.base} (its
  *       inheritance anchor; the other ports register only {@code metadata.root}).</li>

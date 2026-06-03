@@ -8,8 +8,6 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -23,8 +21,6 @@ import { isSortableField } from "./filter-shared.js";
 // matching the entity field representation (exact decimal string, not lossy number).
 const NUMBER_VALUE_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,

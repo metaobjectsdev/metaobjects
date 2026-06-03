@@ -187,7 +187,7 @@ def test_ops_for_subtype_boolean() -> None:
 
 def test_ops_for_subtype_numeric_subtypes() -> None:
     """Numeric and temporal subtypes must return the full numeric/temporal operator set."""
-    numeric_temporal = {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    numeric_temporal = {"int", "long", "double", "float", "decimal", "date", "time", "timestamp"}
     expected = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
     for subtype in numeric_temporal:
         assert ops_for_subtype(subtype) == expected, (

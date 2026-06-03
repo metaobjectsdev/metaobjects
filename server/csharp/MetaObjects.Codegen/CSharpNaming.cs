@@ -34,8 +34,6 @@ public static class CSharpNaming
             [FIELD_SUBTYPE_STRING]    = "string",
             [FIELD_SUBTYPE_CLASS]     = "string",
             [FIELD_SUBTYPE_INT]       = "int",
-            [FIELD_SUBTYPE_SHORT]     = "short",
-            [FIELD_SUBTYPE_BYTE]      = "byte",
             [FIELD_SUBTYPE_LONG]      = "long",
             [FIELD_SUBTYPE_CURRENCY]  = "long",   // integer minor units (wire contract)
             // FIELD_SUBTYPE_ENUM is intentionally absent: enum fields get a nested C# enum
@@ -56,7 +54,7 @@ public static class CSharpNaming
 
     /// <summary>Value types that take a <c>?</c> suffix when nullable (vs. reference types).</summary>
     private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
-        { "int", "short", "byte", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "Guid" };
+        { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "Guid" };
 
     /// <summary>The base C# scalar type for a field subtype (no nullability), or null for object fields.</summary>
     public static string? ScalarFor(string fieldSubType) =>

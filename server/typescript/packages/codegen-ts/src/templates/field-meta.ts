@@ -8,8 +8,6 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
@@ -54,8 +52,6 @@ function defaultViewForSubType(subType: string): string {
       return VIEW_SUBTYPE_CHECKBOX;
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_LONG:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:
     case FIELD_SUBTYPE_DOUBLE:
     case FIELD_SUBTYPE_FLOAT:
     case FIELD_SUBTYPE_DECIMAL:
@@ -92,8 +88,6 @@ export function zodTypeFor(field: MetaField): string {
       return "z.string()";
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_LONG:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:
     case FIELD_SUBTYPE_CURRENCY:
       return "z.number().int()";
     case FIELD_SUBTYPE_DOUBLE:

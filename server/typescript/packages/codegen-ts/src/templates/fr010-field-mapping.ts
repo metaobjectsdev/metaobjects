@@ -19,8 +19,6 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DOUBLE,
@@ -53,8 +51,6 @@ export function scalarKind(subType: string): string | null {
     case FIELD_SUBTYPE_DECIMAL:
       return "STRING";
     case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:
       return "INT";
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:

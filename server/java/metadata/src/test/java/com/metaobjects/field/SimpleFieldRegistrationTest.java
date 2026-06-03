@@ -234,16 +234,6 @@ public class SimpleFieldRegistrationTest {
     }
 
     @Test
-    public void testNarrowIntegerFieldTypes() {
-        // SP-G re-introduced field.byte / field.short (cross-port registry canonical).
-        assertTrue("ByteField should be registered",
-                   registry.isRegistered("field", "byte"));
-
-        assertTrue("ShortField should be registered",
-                   registry.isRegistered("field", "short"));
-    }
-
-    @Test
     public void testAllRegisteredTypes() {
         // Registry types available for assertions - no verbose output needed
         MetaDataRegistry.RegistryStats stats = registry.getStats();

@@ -1,7 +1,7 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD,
-  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjectsdev/metadata";
 import type {
@@ -461,7 +461,7 @@ function formatValidationMessage(entityName: string, errors: { field: string; ru
 }
 
 const NUMERIC_SUBTYPES = new Set([
-  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 ]);
 

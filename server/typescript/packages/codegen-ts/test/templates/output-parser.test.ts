@@ -71,8 +71,6 @@ describe("renderOutputParser()", () => {
             { "field.string": { name: "s" } },
             { "field.int": { name: "i" } },
             { "field.long": { name: "l" } },
-            { "field.short": { name: "sh" } },
-            { "field.byte": { name: "b" } },
             { "field.double": { name: "d" } },
             { "field.float": { name: "f" } },
             { "field.boolean": { name: "bool" } },
@@ -92,8 +90,6 @@ describe("renderOutputParser()", () => {
     expect(out).toContain("s: z.string()");
     expect(out).toContain("i: z.number().int()");
     expect(out).toContain("l: z.number().int()");
-    expect(out).toContain("sh: z.number().int()");
-    expect(out).toContain("b: z.number().int()");
     expect(out).toContain("d: z.number()");
     expect(out).toContain("f: z.number()");
     expect(out).toContain("bool: z.boolean()");

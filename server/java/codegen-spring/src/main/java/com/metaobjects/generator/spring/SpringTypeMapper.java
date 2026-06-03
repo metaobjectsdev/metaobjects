@@ -7,8 +7,6 @@ import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
-import com.metaobjects.field.ByteField;
-import com.metaobjects.field.ShortField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
@@ -71,8 +69,6 @@ public final class SpringTypeMapper {
      */
     public static String javaTypeName(MetaField<?> field) {
         if (field instanceof StringField) return "String";
-        if (field instanceof ByteField) return "Byte";
-        if (field instanceof ShortField) return "Short";
         if (field instanceof IntegerField) return "Integer";
         if (field instanceof LongField) return "Long";
         if (field instanceof DoubleField) return "Double";

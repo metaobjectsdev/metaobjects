@@ -608,7 +608,7 @@ _OPS_BOOLEAN: frozenset[str] = frozenset({"eq", "isNull"})
 _OPS_NUMERIC_TEMPORAL: frozenset[str] = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
 
 _NUMERIC_TEMPORAL_SUBTYPES: frozenset[str] = frozenset(
-    {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    {"int", "long", "double", "float", "decimal", "date", "time", "timestamp"}
 )
 
 

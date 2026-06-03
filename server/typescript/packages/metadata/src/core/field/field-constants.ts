@@ -3,13 +3,11 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// Field subtypes (17)
+// Field subtypes (15)
 // ---------------------------------------------------------------------------
 
 export const FIELD_SUBTYPE_STRING = "string";
 export const FIELD_SUBTYPE_INT = "int";
-export const FIELD_SUBTYPE_SHORT = "short";
-export const FIELD_SUBTYPE_BYTE = "byte";
 export const FIELD_SUBTYPE_LONG = "long";
 export const FIELD_SUBTYPE_DOUBLE = "double";
 export const FIELD_SUBTYPE_FLOAT = "float";
@@ -31,8 +29,6 @@ export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,

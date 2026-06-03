@@ -14,8 +14,6 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
@@ -489,9 +487,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
       const m = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
       return typeof m === "number" ? { kind: "text", maxLength: m } : { kind: "text" };
     }
-    case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };
+    case FIELD_SUBTYPE_INT:       return { kind: "integer", bits: 32 };
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
     case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };

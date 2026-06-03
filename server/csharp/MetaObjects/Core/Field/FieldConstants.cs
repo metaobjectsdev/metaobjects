@@ -16,13 +16,11 @@ namespace MetaObjects.Core.Field;
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (17)
+    // Field subtypes (15)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";
     public const string FIELD_SUBTYPE_INT       = "int";
-    public const string FIELD_SUBTYPE_SHORT     = "short";
-    public const string FIELD_SUBTYPE_BYTE      = "byte";
     public const string FIELD_SUBTYPE_LONG      = "long";
     public const string FIELD_SUBTYPE_DOUBLE    = "double";
     public const string FIELD_SUBTYPE_FLOAT     = "float";
@@ -49,8 +47,6 @@ public static class FieldConstants
         BaseTypes.SUBTYPE_BASE,
         FIELD_SUBTYPE_STRING,
         FIELD_SUBTYPE_INT,
-        FIELD_SUBTYPE_SHORT,
-        FIELD_SUBTYPE_BYTE,
         FIELD_SUBTYPE_LONG,
         FIELD_SUBTYPE_DOUBLE,
         FIELD_SUBTYPE_FLOAT,
