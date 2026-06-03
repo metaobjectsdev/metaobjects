@@ -1,0 +1,95 @@
+{
+  "metadata.root": {
+    "package": "metaobjects::ai",
+    "children": [
+      {
+        "object.entity": {
+          "name": "LlmCallBase",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "traceId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "callType"
+              }
+            },
+            {
+              "field.int": {
+                "name": "inputTokens"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "costMinor",
+                "@currency": "USD"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.string": {
+                "name": "llmRequest",
+                "@dbColumnType": "jsonb"
+              }
+            },
+            {
+              "field.string": {
+                "name": "llmResponse",
+                "@dbColumnType": "jsonb"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "LlmCall",
+          "extends": "metaobjects::ai::LlmCallBase",
+          "children": [
+            {
+              "source.rdb": {
+                "@role": "primary",
+                "@table": "llm_call"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "traceId"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ApiCall",
+          "extends": "metaobjects::ai::LlmCallBase",
+          "children": [
+            {
+              "source.rdb": {
+                "@role": "primary",
+                "@table": "api_call"
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "traceId"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
