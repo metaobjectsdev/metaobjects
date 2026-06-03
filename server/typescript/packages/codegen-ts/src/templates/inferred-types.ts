@@ -32,14 +32,24 @@ import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
 
-export function renderInferredTypes(entity: MetaObject): Code {
+/**
+ * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
+ *
+ * `tphBase` (FR-017): when this entity is a TPH discriminator base, the
+ * discriminated-union type (emitted by the tph-discriminator template) owns the
+ * bare `<Base>` name, so the raw single-table row type is emitted as `<Base>Row`
+ * to avoid a duplicate `export type <Base>`. Insert/Update keep their names
+ * (no collision); they describe the physical TPH table row shape.
+ */
+export function renderInferredTypes(entity: MetaObject, tphBase = false): Code {
   const varName = variableNameFromEntity(entity.name);
   const selectSym = imp("InferSelectModel@drizzle-orm");
   const insertSym = imp("InferInsertModel@drizzle-orm");
   const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
+  const rowName = tphBase ? `${entity.name}Row` : entity.name;
   return code`
-${docsPrefix}export type ${entity.name} = ${selectSym}<typeof ${varName}>;
+${docsPrefix}export type ${rowName} = ${selectSym}<typeof ${varName}>;
 export type ${entity.name}Insert = ${insertSym}<typeof ${varName}>;
 export type ${entity.name}Update = Partial<${entity.name}Insert>;
 `;

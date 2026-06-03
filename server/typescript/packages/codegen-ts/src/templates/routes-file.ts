@@ -20,8 +20,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD,
   resolveColumnName,
-  OBJECT_ATTR_DISCRIMINATOR,
-  OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
@@ -29,7 +27,7 @@ import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
-import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
+import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
   // FR-017 Tier 2 — a TPH discriminator base mounts polymorphic list/get at the
@@ -311,7 +309,9 @@ function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: Rende
 function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
   const baseName = base.name;
   const handlerName = `${baseName.charAt(0).toLowerCase()}${baseName.slice(1)}Routes`;
-  const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
+  // Single source of truth for the discriminator field + subtypes + route segments.
+  const plan = tphPlan(base, ctx.loadedRoot)!;
+  const discField = plan.discriminatorField;
   const tableVar = variableNameFromEntity(baseName);
 
   const baseFileSpec = entityModuleSpecifier(
@@ -346,13 +346,15 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       expose: ["list", "get"],
     });`;
 
-  const subtypeMounts: Code[] = tphConcreteSubtypes(base, ctx.loadedRoot).map((sub) => {
-    const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
-    const segment = value.toLowerCase();
+  const subtypeMounts: Code[] = plan.subtypes.map(({ entity: sub, value, routeSegment: segment }) => {
     const subFileSpec = entityModuleSpecifier(
       ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
     );
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // FR-017 Tier 3: each subtype carries its OWN filter/sort allowlist
+    // (discriminator excluded — it's pinned by this path).
+    const subFilterSym = imp(`${sub.name}FilterAllowlist@${subFileSpec}`);
+    const subSortSym = imp(`${sub.name}SortAllowlist@${subFileSpec}`);
     return code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
@@ -361,8 +363,8 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       table: ${tableSym},
       insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
       updateSchema: ${subInsertSym}.omit({ ${discField}: true }).partial(),
-      filterAllowlist: ${baseFilterSym},
-      sortAllowlist: ${baseSortSym},
+      filterAllowlist: ${subFilterSym},
+      sortAllowlist: ${subSortSym},
       dialect: ${dialectLit},
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },
     });`;

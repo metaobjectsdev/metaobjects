@@ -377,6 +377,24 @@ public class MetaDataLoader
                 }
             }
 
+            // FR-013: field-level @readOnly cross-attribute rules.
+            var roResult = ValidationPasses.ValidateFieldReadOnly(root);
+            errors.AddRange(roResult.Errors);
+            if (roResult.Warnings.Count > 0)
+            {
+                envelopeWarnings.AddRange(roResult.Warnings);
+                foreach (var w in roResult.Warnings)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
+
+            // FR-014: TPH discriminator cross-attribute rules.
+            errors.AddRange(ValidationPasses.ValidateDiscriminator(root));
+
+            // FR-015: source.rdb @parameterRef typed-input rules.
+            errors.AddRange(ValidationPasses.ValidateSourceParameterRef(root));
+
             // Pass 14 (FR-017): M:N relationship slim-vocabulary validation —
             // symmetric-self-join-only / symmetric⊕sourceRefField (ERR_BAD_ATTR_VALUE);
             // junction-two-references / sourceRefField-match / M:N-attr-on-1:N

@@ -8,9 +8,23 @@ import {
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
   LAYOUT_DATA_GRID_ATTR_FILTER,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
+  OBJECT_ATTR_DISCRIMINATOR,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import {
+  GENERATED_HEADER,
+  entityModuleSpecifier,
+  isTphDiscriminatorBase,
+  collectTphSubtypeFields,
+} from "@metaobjectsdev/codegen-ts";
+
+/** FR-017 TPH grid context, threaded into extractGrids when the entity is a
+ *  discriminator base: the discriminator field name (badged in the polymorphic
+ *  grid) and the subtype-only fields folded in as extra columns. */
+interface TphGridInfo {
+  discField: string;
+  subtypeFields: MetaField[];
+}
 
 interface ColumnSpec {
   id:        string;
@@ -57,10 +71,12 @@ function fieldLabel(field: MetaField): string {
  * fall back to all fields on the entity (pre-E-T2 behaviour, kept for
  * backwards compat with metadata not yet migrated by E-T4).
  */
-function extractGrids(entity: MetaObject): GridSpec[] {
+function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
   // fields() and layouts() are both effective (own + inherited via extends:/super:).
+  // For a TPH base, also index the subtype-only fields so they can be folded
+  // into the polymorphic grid's column set.
   const fieldsByName = new Map(
-    entity.fields().map((f) => [f.name, f] as const),
+    [...entity.fields(), ...(tph?.subtypeFields ?? [])].map((f) => [f.name, f] as const),
   );
 
   const grids: GridSpec[] = [];
@@ -74,6 +90,16 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       ? (columnsAttr as unknown[]).filter((x): x is string => typeof x === "string")
       : [...fieldsByName.keys()];
 
+    // FR-017: a polymorphic (TPH base) grid folds in every subtype-only column
+    // so mixed rows can render their subtype fields (the runtime grid renders a
+    // null cell as an em-dash for rows of other subtypes). Appended after the
+    // declared columns, deduped.
+    if (tph) {
+      for (const f of tph.subtypeFields) {
+        if (!columnNames.includes(f.name)) columnNames.push(f.name);
+      }
+    }
+
     const columns: ColumnSpec[] = columnNames.flatMap((name) => {
       const field = fieldsByName.get(name);
       if (!field) return [];     // columns ref that doesn't exist on entity; defensive skip
@@ -82,6 +108,8 @@ function extractGrids(entity: MetaObject): GridSpec[] {
         header:   fieldLabel(field),
         viewKind: fieldViewKind(field),
       };
+      // FR-017: the discriminator column renders as a subtype badge.
+      if (tph && name === tph.discField) spec.renderer = "badge";
       return [spec];
     });
 
@@ -121,7 +149,17 @@ function renderColumnDef(col: ColumnSpec): string {
 export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const grids      = extractGrids(entity);
+  // FR-017: a TPH discriminator base emits a polymorphic grid typed against the
+  // raw single-table row (<Base>Row — all columns, subtype-only nullable),
+  // NOT the discriminated union (whose members lack the other subtypes' fields).
+  const tphBase = isTphDiscriminatorBase(entity, ctx.loadedRoot);
+  const tph: TphGridInfo | undefined = tphBase
+    ? {
+        discField: (entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string) ?? "",
+        subtypeFields: collectTphSubtypeFields(entity, ctx.loadedRoot),
+      }
+    : undefined;
+  const grids      = extractGrids(entity, tph);
 
   const ColumnDefSym = imp("t:ColumnDef@@tanstack/react-table");
 
@@ -179,9 +217,12 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.fil
     ctx.extStyle,
   );
   // Import <Entity>Row always; import <Entity>Filter only when a filter const is emitted.
+  // TPH base: <Base>Row is a distinct export (the all-columns row); import it
+  // directly. Non-TPH: the entity type IS the row, imported under the Row alias.
+  const rowImport = tphBase ? `${entityName}Row` : `${entityName} as ${entityName}Row`;
   const entityImportCode = hasFilterConst
-    ? code`import type { ${entityName} as ${entityName}Row, ${entityName}Filter } from ${JSON.stringify(entityModule)};`
-    : code`import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};`;
+    ? code`import type { ${rowImport}, ${entityName}Filter } from ${JSON.stringify(entityModule)};`
+    : code`import type { ${rowImport} } from ${JSON.stringify(entityModule)};`;
 
   const body: Code = joinCode(sections, { on: "\n" });
   return header + entityImportCode.toString() + "\n" + body.toString();

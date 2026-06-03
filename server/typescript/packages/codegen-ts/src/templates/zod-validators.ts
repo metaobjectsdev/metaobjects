@@ -36,7 +36,7 @@ import { renderDocsFor } from "./jsdoc.js";
  * instead of the inherited field's normal type expression. Returns undefined
  * when the object is not a TPH subtype.
  */
-function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
+export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
   const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
   if (typeof value !== "string" || value === "") return undefined;
 

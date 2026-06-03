@@ -42,7 +42,7 @@ export type {
 export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
-export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR } from "./constants.js";
+export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID, CODEGEN_ATTR_EMIT_FORM, CODEGEN_ATTR_EMIT_ROUTES } from "./constants.js";
 
 export { formatTs } from "./format.js";
 
@@ -61,6 +61,11 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
+// FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,
+// react) to dispatch polymorphic/per-subtype emission and skip subtype files.
+export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
+export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
+export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";

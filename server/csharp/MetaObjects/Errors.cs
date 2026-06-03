@@ -96,6 +96,13 @@ public static class WarningCodes
     /// serializer rewrites the attr key to the kind-matching alias.
     /// </summary>
     public const string WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
+
+    /// <summary>
+    /// FR-013: <c>@readOnly: true</c> on a field child of an <c>object.value</c>.
+    /// Value-objects have no persistence semantics, so the read-only contract is
+    /// advisory (codegen may use it for record/struct treatment).
+    /// </summary>
+    public const string WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
 }
 
 /// <summary>

@@ -1488,4 +1488,355 @@ public static class ValidationPasses
 
         return errors.AsReadOnly();
     }
+
+    // =========================================================================
+    // FR-013 — field-level @readOnly cross-attribute rules.
+    //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
+    // Mirrors TS core/field/validate-field-readonly.ts.
+    // =========================================================================
+
+    /// <summary>Result of the FR-013 @readOnly validation pass.</summary>
+    public sealed record ReadOnlyValidationResult(
+        IReadOnlyList<MetaError> Errors,
+        IReadOnlyList<LoaderWarning> Warnings);
+
+    public static ReadOnlyValidationResult ValidateFieldReadOnly(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var warnings = new List<LoaderWarning>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            bool isValueObject = obj.SubType == OBJECT_SUBTYPE_VALUE;
+            var ownFields = obj.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>().ToList();
+
+            // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
+            if (isValueObject)
+            {
+                foreach (var f in ownFields)
+                {
+                    if (ReadOnlyFlag(f) == true)
+                    {
+                        warnings.Add(new LoaderWarning(
+                            Code: WarningCodes.WARN_READONLY_VALUE_OBJECT,
+                            Message:
+                                $"field \"{f.Name}\" on object.value \"{obj.Name}\" declares " +
+                                "@readOnly: true; value-objects have no persistence semantics so " +
+                                "the read-only contract is advisory (codegen may use it for " +
+                                "record/struct treatment).",
+                            Source: f.Source));
+                    }
+                }
+            }
+
+            // 2) ERR_READONLY_DOWNGRADE — only the explicit own @readOnly: false case.
+            foreach (var ownField in ownFields)
+            {
+                if (ReadOnlyFlag(ownField) != false) continue;
+                var inherited = InheritedReadOnlyField(obj, ownField.Name);
+                if (inherited != null && ReadOnlyFlag(inherited) == true)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{ownField.Name}\" on \"{obj.Name}\" sets @readOnly: false, but the " +
+                        "extends-chain parent declares @readOnly: true. Read-only-ness can only be " +
+                        "upgraded, not downgraded (FR-013).",
+                        ErrorCode.ERR_READONLY_DOWNGRADE,
+                        Envelope: ownField.Source));
+                }
+            }
+
+            // 3) ERR_READONLY_ASSIGNED_PRIMARY — @readOnly: true on a field used in an
+            //    identity.primary with @generation: "assigned" (effective tree).
+            if (!isValueObject)
+            {
+                var assigned = PrimaryAssignedFieldNames(obj);
+                if (assigned.Count > 0)
+                {
+                    foreach (var f in ownFields)
+                    {
+                        if (!assigned.Contains(f.Name)) continue;
+                        if (ReadOnlyFlag(f) != true) continue;
+                        errors.Add(new MetaError(
+                            $"field \"{f.Name}\" on \"{obj.Name}\" is @readOnly: true AND the target " +
+                            "of identity.primary with @generation: \"assigned\"; the application has " +
+                            "no path to populate the identity value (FR-013).",
+                            ErrorCode.ERR_READONLY_ASSIGNED_PRIMARY,
+                            Envelope: f.Source));
+                    }
+                }
+            }
+        }
+
+        return new ReadOnlyValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
+    }
+
+    private static bool? ReadOnlyFlag(MetaField field) => field.OwnAttr(FIELD_ATTR_READ_ONLY) switch
+    {
+        bool b => b,
+        string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase),
+        _ => null,
+    };
+
+    private static MetaField? InheritedReadOnlyField(MetaData obj, string name)
+    {
+        var cursor = obj.SuperData;
+        while (cursor != null)
+        {
+            var f = cursor.OwnChildren()
+                .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+            if (f != null) return f;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    private static HashSet<string> PrimaryAssignedFieldNames(MetaData obj)
+    {
+        var outNames = new HashSet<string>();
+        foreach (var id in obj.Children().OfType<MetaIdentity>())
+        {
+            if (!id.IsPrimary()) continue;
+            if (id.OwnAttr(IDENTITY_ATTR_GENERATION) as string != GENERATION_ASSIGNED) continue;
+            foreach (var fn in id.Fields) outNames.Add(fn);
+        }
+        return outNames;
+    }
+
+    // =========================================================================
+    // FR-014 — TPH discriminator cross-attribute rules.
+    //   ERR_DISCRIMINATOR_FIELD_NOT_FOUND / _VALUE_DUPLICATE / _VALUE_MISSING /
+    //   _VALUE_TYPE_MISMATCH. Mirrors TS core/object/validate-discriminator.ts.
+    // =========================================================================
+
+    private static readonly HashSet<string> NumericDiscriminatorSubtypes = new()
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateDiscriminator(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var entities = root.OwnChildren()
+            .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_ENTITY)
+            .ToList();
+
+        // Pass 1: @discriminator name resolution (own + inherited fields).
+        foreach (var obj in entities)
+        {
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not string disc || disc.Length == 0) continue;
+            if (FindFieldOnEntity(obj, disc) == null)
+            {
+                errors.Add(new MetaError(
+                    $"object.entity \"{obj.Name}\" @discriminator: \"{disc}\" does not name a field on " +
+                    "this entity (checked own children and the extends chain)",
+                    ErrorCode.ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
+                    Envelope: obj.Source));
+            }
+        }
+
+        // Pass 2: @discriminatorValue type-check + collect bindings per root.
+        var bindingsByRoot = new Dictionary<MetaData, List<(MetaData Subtype, string Value)>>();
+        var order = new List<MetaData>();
+        foreach (var obj in entities)
+        {
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string value || value.Length == 0) continue;
+            var discRoot = FindDiscriminatorRoot(obj);
+            if (discRoot == null) continue;
+            if (discRoot.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not string fieldName) continue;
+            var field = FindFieldOnEntity(discRoot, fieldName);
+            if (field == null) continue; // root's own field-not-found already fires
+
+            if (field.SubType == FIELD_SUBTYPE_ENUM)
+            {
+                var members = field.EffectiveEnumValues ?? new List<string>();
+                if (!members.Contains(value))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{obj.Name}\" @discriminatorValue: \"{value}\" is not a member of " +
+                        $"the discriminator enum field \"{fieldName}\" @values [{string.Join(", ", members)}]",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+                        Envelope: obj.Source));
+                }
+            }
+            else if (NumericDiscriminatorSubtypes.Contains(field.SubType))
+            {
+                if (!Regex.IsMatch(value, "^-?\\d+$"))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{obj.Name}\" @discriminatorValue: \"{value}\" does not coerce to " +
+                        $"numeric discriminator field \"{fieldName}\" (field.{field.SubType})",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+                        Envelope: obj.Source));
+                }
+            }
+            // string (and other) discriminator types accept any value.
+
+            if (!bindingsByRoot.TryGetValue(discRoot, out var list))
+            {
+                list = new List<(MetaData, string)>();
+                bindingsByRoot[discRoot] = list;
+                order.Add(discRoot);
+            }
+            list.Add((obj, value));
+        }
+
+        // Pass 3: ERR_DISCRIMINATOR_VALUE_DUPLICATE within each root's subtypes.
+        foreach (var discRoot in order)
+        {
+            var seen = new Dictionary<string, MetaData>();
+            foreach (var (subtype, value) in bindingsByRoot[discRoot])
+            {
+                if (seen.TryGetValue(value, out var prev))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{subtype.Name}\" @discriminatorValue: \"{value}\" duplicates the " +
+                        $"value already claimed by \"{prev.Name}\"",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_DUPLICATE,
+                        Envelope: subtype.Source));
+                }
+                else
+                {
+                    seen[value] = subtype;
+                }
+            }
+        }
+
+        // Pass 4: ERR_DISCRIMINATOR_VALUE_MISSING on concrete subtypes.
+        foreach (var obj in entities)
+        {
+            if (obj.IsAbstract) continue;
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is string) continue;
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string) continue; // a root
+            var discRoot = FindDiscriminatorRoot(obj);
+            if (discRoot == null || ReferenceEquals(discRoot, obj)) continue;
+            errors.Add(new MetaError(
+                $"object.entity \"{obj.Name}\" extends the @discriminator-bearing root \"{discRoot.Name}\" " +
+                "but is missing @discriminatorValue (required on every concrete subtype)",
+                ErrorCode.ERR_DISCRIMINATOR_VALUE_MISSING,
+                Envelope: obj.Source));
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    private static MetaField? FindFieldOnEntity(MetaData entity, string name)
+    {
+        var f = entity.OwnChildren().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+        if (f != null) return f;
+        var cursor = entity.SuperData;
+        while (cursor != null)
+        {
+            f = cursor.OwnChildren().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+            if (f != null) return f;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    private static MetaData? FindDiscriminatorRoot(MetaData entity)
+    {
+        var cursor = entity;
+        while (cursor != null)
+        {
+            if (cursor.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string v && v.Length > 0) return cursor;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // FR-015 — source.rdb @parameterRef typed-input rules.
+    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT /
+    //   _PASSTHROUGH_TYPE_MISMATCH. Mirrors TS persistence/source/validate-source-parameter-ref.ts.
+    // =========================================================================
+
+    private static readonly HashSet<string> CallableKinds = new()
+    {
+        SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateSourceParameterRef(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        // Pre-index every object by name AND fqn.
+        var index = new Dictionary<string, MetaData>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            index[obj.Name] = obj;
+            index[obj.Fqn()] = obj;
+        }
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var source in obj.OwnChildren()
+                .Where(c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_RDB && c is MetaSource)
+                .Cast<MetaSource>())
+            {
+                if (source.OwnAttr(SOURCE_ATTR_PARAMETER_REF) is not string refName || refName.Length == 0) continue;
+
+                // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — before resolution.
+                if (!CallableKinds.Contains(source.EffectiveKind))
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" has @parameterRef but @kind is " +
+                        $"\"{source.EffectiveKind}\"; only \"storedProc\" or \"tableFunction\" accept parameters",
+                        ErrorCode.ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                if (!index.TryGetValue(refName, out var target))
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" @parameterRef = \"{refName}\" does not resolve " +
+                        "to any known object",
+                        ErrorCode.ERR_PARAMETER_REF_UNRESOLVED,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                if (target.SubType != OBJECT_SUBTYPE_VALUE)
+                {
+                    string reason = target.SubType == OBJECT_SUBTYPE_ENTITY
+                        ? "an object.entity (entities have identity; parameter shapes are value-objects)"
+                        : $"an object.{target.SubType}";
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" @parameterRef = \"{refName}\" resolves to " +
+                        $"{reason}; use an object.value",
+                        ErrorCode.ERR_PARAMETER_REF_NOT_VALUE_OBJECT,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
+                foreach (var paramField in target.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>())
+                {
+                    var passthrough = paramField.OwnChildren()
+                        .FirstOrDefault(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH);
+                    if (passthrough == null) continue;
+                    if (passthrough.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) is not string from || from.Length == 0) continue;
+                    int dot = from.IndexOf('.');
+                    if (dot < 0) continue;
+                    string targetEntityName = from.Substring(0, dot);
+                    string targetFieldName = from.Substring(dot + 1);
+                    if (!index.TryGetValue(targetEntityName, out var targetEntity)) continue;
+                    var targetField = targetEntity.OwnChildren()
+                        .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == targetFieldName) as MetaField;
+                    if (targetField == null) continue;
+                    if (paramField.SubType != targetField.SubType)
+                    {
+                        errors.Add(new MetaError(
+                            $"parameter field \"{paramField.Name}\" (field.{paramField.SubType}) on @parameterRef " +
+                            $"\"{refName}\" uses origin.passthrough @from: \"{from}\", but " +
+                            $"{targetEntity.Name}.{targetFieldName} is field.{targetField.SubType}; types must match",
+                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+                            Envelope: paramField.Source));
+                    }
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
 }

@@ -89,6 +89,15 @@ describe("FR-017 Tier 2 — per-subtype full read schema", () => {
     expect(out).toContain('type: z.literal("Bridge")');
   });
 
+  test("subtype file emits its field-metadata constants object (for Tier 3 forms)", async () => {
+    const { root, bridge } = await loadTph();
+    const out = renderEntityFile(bridge, ctxFor(root));
+    // The `<Sub>` constants object (used by the React form generator).
+    expect(out).toContain("export const BridgeAuth = {");
+    expect(out).toContain('$entity: "BridgeAuth"');
+    expect(out).toContain("quantity: {");
+  });
+
   test("read schema KEEPS the auto-generated PK (unlike the insert schema)", async () => {
     const { root, bridge } = await loadTph();
     const out = renderEntityFile(bridge, ctxFor(root));
@@ -105,5 +114,16 @@ describe("FR-017 Tier 2 — per-subtype full read schema", () => {
     const out = renderEntityFile(base, ctxFor(root));
     expect(out).toContain("parseAuth");
     expect(out).toContain("BridgeAuthSchema");
+  });
+
+  test("base file emits the union as the sole `export type Auth` (no collision with the Drizzle row type)", async () => {
+    const { root, base } = await loadTph();
+    const out = renderEntityFile(base, ctxFor(root));
+    // Exactly one `export type Auth =` — the discriminated union.
+    const count = (out.match(/export type Auth =/g) ?? []).length;
+    expect(count).toBe(1);
+    expect(out).toContain("export type Auth = BridgeAuth | CopayAuth");
+    // The raw single-table row type is emitted under the non-colliding `AuthRow`.
+    expect(out).toContain("export type AuthRow =");
   });
 });

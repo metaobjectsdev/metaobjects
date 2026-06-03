@@ -15,7 +15,7 @@ import { renderZodValidators } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { renderTphDiscriminatorUnion } from "./tph-discriminator.js";
+import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discriminator.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
@@ -54,7 +54,7 @@ export function renderEntityFile(
   // it. The entity-file generator suppresses this entirely when
   // emitAbstractShapes is off; here we only guarantee "shape, never table".
   if (isAbstract(entity)) {
-    return renderValueObjectFile(entity);
+    return renderValueObjectFile(entity, ctx.apiPrefix);
   }
 
   // --- Projection path (read-only: view-backed entity with no table source) ---
@@ -73,7 +73,7 @@ export function renderEntityFile(
   // the shape (LLM tool_use input_schema, REST body parsing) use the Zod
   // schema; consumers that need the type use the interface.
   if (!hasWritableRdbSource(entity)) {
-    return renderValueObjectFile(entity);
+    return renderValueObjectFile(entity, ctx.apiPrefix);
   }
 
   // --- Vanilla / write-through entity path ---
@@ -83,9 +83,13 @@ export function renderEntityFile(
   // the parse<Base>(row) dispatcher. Returns null otherwise (no subtypes, or
   // not a discriminator-bearing entity); the section is suppressed cleanly.
   const tphBlock = renderTphDiscriminatorUnion(entity, ctx.loadedRoot);
+  // FR-017: when a discriminator base also has a union block, the union owns the
+  // bare `<Base>` type — so the inferred Drizzle row type is emitted as
+  // `<Base>Row` to avoid a duplicate `export type <Base>`.
+  const tphBase = tphBlock !== null && isTphDiscriminatorBase(entity, ctx.loadedRoot);
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
-    renderInferredTypes(entity),
+    renderInferredTypes(entity, tphBase),
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity),
     renderEntityConstants(entity, ctx.apiPrefix),

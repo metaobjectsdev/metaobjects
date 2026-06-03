@@ -398,5 +398,26 @@ New TPH query scenarios:
     fixtures use a concrete base (which owns the table); an abstract base
     short-circuits the entity-file value-object path before the Drizzle path, so
     its single TPH table is not yet emitted. Revisit when an adopter needs it.
-- **Tiers 3–5:** unimplemented. Pick up as adopter need + per-port fan-out
+- **Tier 3 (TS UI ergonomics):** **shipped** across four slices (+ a prereq fix):
+  - **#0 (prereq) base-type collision fix:** the discriminator base emitted
+    `export type <Base>` twice (Drizzle InferSelectModel row + the Tier-1 union)
+    — a latent non-compiling defect. The union now owns the bare `<Base>` name;
+    the raw single-table row type is emitted as `<Base>Row`.
+  - #1 TanStack hooks: polymorphic `use<Base>` / `use<Plural>` (union) + a
+    query-key factory with polymorphic & per-subtype scopes; per-subtype
+    list/get/create/update/delete hooks (create input `Omit<<Sub>, "<disc>">`);
+    mutations invalidate `<base>Keys.all()`. Subtypes get no standalone hooks
+    file.
+  - #2 polymorphic grid: ONE `<Base>` grid typed against `<Base>Row` (all
+    columns), folding in every subtype-only column, discriminator as a badge.
+    Per-subtype grids opt-in via own `@emitGrid: true`.
+  - #3 per-subtype React forms: base gets NO form; each subtype gets a
+    `<Sub>Form` binding `<Sub>InsertSchema.omit({<disc>: true})` with the
+    discriminator never rendered. Required emitting the `<Sub>` field-metadata
+    constants object on the subtype file.
+  - #4 per-subtype filter/sort allowlists (`<Sub>FilterAllowlist` /
+    `<Sub>SortAllowlist`, discriminator excluded); per-subtype routes wire to
+    them. The base allowlist keeps the discriminator (polymorphic filter).
+  - codegen-ts + codegen-ts-tanstack + codegen-ts-react suites: 652/0.
+- **Tiers 4–5:** unimplemented. Pick up as adopter need + per-port fan-out
   pressure dictates.

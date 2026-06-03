@@ -4,6 +4,7 @@ import { renderRoutesFile } from "../templates/routes-file.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
+import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 
 export interface RoutesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -23,7 +24,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     name: "routes-file",
     // Always set: AND-composes metadata opt-out with optional user filter.
     filter: (e: MetaObject) =>
-      e.ownAttr("emitRoutes") !== false && !isTphSubtype(e) && userFilter(e),
+      e.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

@@ -23,7 +23,7 @@ import {
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER } from "@metaobjectsdev/codegen-ts";
+import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -46,8 +46,10 @@ function isAutoManaged(field: MetaField): boolean {
   return false;
 }
 
-/** Visible form fields = all fields minus PK and DB-auto-defaulted. */
-function visibleFields(entity: MetaObject): string[] {
+/** Visible form fields = all fields minus PK, DB-auto-defaulted, and (for a TPH
+ *  subtype) the discriminator — which is implicit (the form is subtype-specific)
+ *  and injected server-side, never rendered. */
+function visibleFields(entity: MetaObject, discField?: string): string[] {
   const pkNames = primaryFieldNames(entity);
   const names: string[] = [];
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
@@ -55,6 +57,7 @@ function visibleFields(entity: MetaObject): string[] {
     if (child.ownAttr("formExclude") === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
+    if (discField !== undefined && child.name === discField) continue;
     names.push(child.name);
   }
   return names;
@@ -71,7 +74,15 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
     entityName,
     ctx.extStyle,
   );
-  const fields = visibleFields(entity);
+  // FR-017 Tier 3: a TPH subtype's form omits the discriminator field (it's
+  // implicit — the form is subtype-specific — and injected server-side). The
+  // create schema correspondingly drops the pinned literal so RHF validation
+  // doesn't require a field the user never fills.
+  const tphPin = tphDiscriminatorPin(entity);
+  const fields = visibleFields(entity, tphPin?.fieldName);
+  const formSchema = tphPin !== undefined
+    ? `${entityName}InsertSchema.omit({ ${tphPin.fieldName}: true })`
+    : `${entityName}InsertSchema`;
 
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
@@ -124,7 +135,7 @@ export interface ${entityName}FormProps {
 export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElementSym} {
   const form = ${useEntityFormSym}(
     ${entityName},
-    ${entityName}InsertSchema,
+    ${formSchema},
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   return (
