@@ -55,12 +55,21 @@ public class TypeDefinitionInheritanceTest {
         assertTrue("StringField should accept 'defaultValue' attribute (inherited from MetaField)",
                   stringFieldDef.acceptsChild("attr", "string", ATTR_DEFAULT_VALUE));
 
-        // Test that StringField accepts its own specific attributes
+        // Test that StringField accepts its own specific attributes. maxLength is
+        // the one StringField-specific (cross-port canonical) NAMED attr. Pattern/
+        // length validation is expressed via validator CHILD nodes (validator.regex /
+        // validator.length), not a field-level @pattern/@minLength attr — those
+        // redundant field-level registrations were dropped in SP-G Unit 6c. (Note:
+        // acceptsChild still returns true for an arbitrary attr via field.base's
+        // open wildcard attr policy, so absence is asserted on the NAMED requirement.)
         assertTrue("StringField should accept 'maxLength' attribute (StringField-specific)",
                   stringFieldDef.acceptsChild("attr", "int", StringField.ATTR_MAX_LENGTH));
+        assertNotNull("StringField should register a NAMED 'maxLength' requirement",
+                  stringFieldDef.getChildRequirement(StringField.ATTR_MAX_LENGTH));
 
-        assertTrue("StringField should accept 'pattern' attribute (StringField-specific)",
-                  stringFieldDef.acceptsChild("attr", "string", StringField.ATTR_PATTERN));
+        assertNull("StringField should NOT register a NAMED field-level 'pattern' requirement "
+                  + "(validation is expressed via validator.regex children — SP-G Unit 6c)",
+                  stringFieldDef.getChildRequirement(StringField.ATTR_PATTERN));
 
         // Test that StringField accepts inherited child types from MetaField base
         assertTrue("StringField should accept validator children (inherited from MetaField)",

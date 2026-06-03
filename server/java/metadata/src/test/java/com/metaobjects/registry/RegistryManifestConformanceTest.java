@@ -62,14 +62,22 @@ import static org.junit.Assert.assertTrue;
  *       int-typed on {@code base}/{@code length}/{@code numeric}/{@code regex}/
  *       {@code array}, {@code regex} keeps {@code @pattern}, {@code required}
  *       carries none, and the legacy {@code msg}/{@code mask}/{@code maxSize}/
- *       {@code minSize} extras were dropped. The remaining field-validation extras
+ *       {@code minSize} extras were dropped. The field-validation extras
  *       ({@code minLength}/{@code pattern}/{@code maxValue}/{@code minValue}/
- *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}) plus the
- *       physical {@code db*} set are SP-G Unit 6b/7.</li>
- *   <li>{@code object.*} carries Java OO attrs
+ *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}/
+ *       {@code maxTime}/{@code minTime}) and the field {@code locale} were
+ *       reconciled in SP-G Unit 6c — refactor-dropped from the field classes
+ *       (validation is expressed via {@code validator.*} children, the cross-port
+ *       form; the temporal-format / currency-locale attrs were vestigial). The
+ *       physical {@code db*} set remains SP-G Unit 7.</li>
+ *   <li>{@code object.*} carried Java OO attrs
  *       ({@code extends}/{@code implements}/{@code object}/{@code objectAdapter}/
- *       {@code isInterface}/{@code value*}/{@code data*}) instead of the
- *       contract's {@code discriminator}/{@code discriminatorValue}.</li>
+ *       {@code isInterface}/{@code value*}/{@code data*}). The structural keywords
+ *       ({@code extends}/{@code implements}/{@code isInterface}) and the
+ *       per-port type-binding facets ({@code object}/{@code objectAdapter} —
+ *       ADR-0001/ADR-0005, kept registered but excluded from the manifest) were
+ *       reconciled in SP-G Unit 6b/6b-finish; the {@code value*}/{@code data*}
+ *       vestigial sets were refactor-dropped (Unit 6b).</li>
  *   <li>Subtype gaps/extras: Java lacks {@code field.byte}, {@code field.short},
  *       {@code attr.stringarray} and the 11 generic {@code view.*} subtypes
  *       (checkbox/date/dropdown/hidden/hotlink/month/number/password/radio/text/
@@ -86,8 +94,10 @@ import static org.junit.Assert.assertTrue;
  * concrete rows carry exactly the canonical per-subtype set, with the origin
  * cross-leak removed); and stray-attr drops ({@code defaultView} off every field,
  * {@code identity.secondary.generation}, {@code identity.reference.onDelete/onUpdate}).
- * The residual is now ONLY object-OO/{@code value*}/{@code data*}, the field-validation
- * extras, and the physical {@code db*} set (SP-G Unit 6b/7).</p>
+ * The object-OO structural keywords + {@code object}/{@code objectAdapter} binding
+ * facets + {@code value*}/{@code data*} (Unit 6b/6b-finish) and the field-validation
+ * extras + field {@code locale} (Unit 6c) have since been reconciled, so the residual
+ * is now ONLY the physical {@code db*} set (SP-G Unit 7).</p>
  * <p>Reconciling this at source means rewriting Java's metamodel attribute layer
  * to the cross-port vocabulary — a change that ripples through the loader's
  * validation, OMDB, {@code codegen-spring}, and {@code codegen-kotlin} (all of

@@ -51,10 +51,24 @@ const ATTR_NAME_IMPLEMENTS = "implements";
 const ATTR_NAME_IS_INTERFACE = "isInterface";
 
 /**
+ * The two per-port type-BINDING facet attr names: `object` (ADR-0001 class-FQN
+ * type binding for OO ports — the Java runtime resolves an object's native class
+ * from this attr) and `objectAdapter` (ADR-0005 hybrid value-access seam). These
+ * are the same category as the already-excluded native type bindings —
+ * legitimate per-port binding mechanisms, not cross-port logical vocabulary. Java
+ * registers them as per-type attrs on `object.*` and the filter drops them from
+ * its emitter; no-op for TS/C#/Python (which never register them). See SP-G Unit
+ * 6b-finish.
+ */
+const ATTR_NAME_OBJECT = "object";
+const ATTR_NAME_OBJECT_ADAPTER = "objectAdapter";
+
+/**
  * Per-type attr names excluded from the manifest's `attrs` list — structural /
  * OO-shape keywords (`isArray`, `isAbstract`, `extends`, `implements`,
- * `isInterface`) and the `description` commonAttr (emitted in the `commonAttrs`
- * block, never per-type). See C-2/C-3.
+ * `isInterface`), the per-port type-binding facets (`object`, `objectAdapter`),
+ * and the `description` commonAttr (emitted in the `commonAttrs` block, never
+ * per-type). See C-2/C-3 + Unit 6b-finish.
  */
 export const EXCLUDED_PER_TYPE_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   RESERVED_KEY_IS_ARRAY,
@@ -62,6 +76,8 @@ export const EXCLUDED_PER_TYPE_ATTR_NAMES: ReadonlySet<string> = new Set<string>
   RESERVED_KEY_EXTENDS,
   ATTR_NAME_IMPLEMENTS,
   ATTR_NAME_IS_INTERFACE,
+  ATTR_NAME_OBJECT,
+  ATTR_NAME_OBJECT_ADAPTER,
   DOC_ATTR_DESCRIPTION,
 ]);
 

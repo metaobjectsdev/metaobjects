@@ -50,7 +50,11 @@ public static class RegistryManifest
     private const string AttrNameImplements = "implements";
     private const string AttrNameIsInterface = "isInterface";
 
-    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural / OO-shape keywords + the description commonAttr).</summary>
+    /// <summary>The two per-port type-BINDING facet attr names: <c>object</c> (ADR-0001 class-FQN type binding for OO ports) and <c>objectAdapter</c> (ADR-0005 hybrid value-access seam). Same category as the excluded native type bindings — legitimate per-port binding mechanisms, not cross-port logical vocabulary. No-op for C# (never registers them); the filter drops Java's per-type <c>object.*</c> registrations. See SP-G Unit 6b-finish.</summary>
+    private const string AttrNameObject = "object";
+    private const string AttrNameObjectAdapter = "objectAdapter";
+
+    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural / OO-shape keywords + the per-port type-binding facets <c>object</c>/<c>objectAdapter</c> + the description commonAttr).</summary>
     private static readonly HashSet<string> ExcludedPerTypeAttrNames = new(StringComparer.Ordinal)
     {
         Structural.RESERVED_KEY_IS_ARRAY,
@@ -58,6 +62,8 @@ public static class RegistryManifest
         Structural.RESERVED_KEY_EXTENDS,
         AttrNameImplements,
         AttrNameIsInterface,
+        AttrNameObject,
+        AttrNameObjectAdapter,
         DocumentationConstants.DOC_ATTR_DESCRIPTION,
     };
 

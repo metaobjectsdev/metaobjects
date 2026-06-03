@@ -43,14 +43,9 @@ public class FloatField extends PrimitiveField<Float>
                .description("Float field with range validation")
                .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
-            // FLOAT-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-            def.optionalAttributeWithConstraints(ATTR_MIN_VALUE)
-               .ofType(DoubleAttribute.SUBTYPE_DOUBLE)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_MAX_VALUE)
-               .ofType(DoubleAttribute.SUBTYPE_DOUBLE)
-               .asSingle();
+            // Range validation is expressed via a validator.numeric @min/@max
+            // CHILD node (the cross-port form), not field-level @minValue/@maxValue
+            // attrs (dropped SP-G Unit 6c — validation emits from validator children).
         });
     }
 

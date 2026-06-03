@@ -80,18 +80,11 @@ public class TimeField extends PrimitiveField<LocalTime> {
                    // INHERIT FROM BASE FIELD
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
-                // TIME-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_FORMAT)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();     // Time format pattern
-
-                def.optionalAttributeWithConstraints(ATTR_MIN_TIME)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();     // Minimum time constraint
-
-                def.optionalAttributeWithConstraints(ATTR_MAX_TIME)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();     // Maximum time constraint
+                // No time-specific per-field attrs in the cross-port vocabulary: the
+                // field-level @format (presentation) and @minTime/@maxTime (range)
+                // attrs had no canonical peer and no consumer (codegen / runtime /
+                // loader) — vestigial. Range validation is expressed via a validator
+                // child (validator.numeric @min/@max); dropped SP-G Unit 6c.
             });
 
             if (log != null) {

@@ -99,6 +99,16 @@ public final class RegistryManifest {
      * REGISTERED (the loader must accept an authored {@code extends:}). Filtered
      * ONLY per-type — {@code description} remains in the {@code commonAttrs}
      * block. See SP-G analysis C-2/C-3 (Unit 6b).
+     *
+     * <p>Also excludes the two per-port type-BINDING facets {@code object}
+     * (ADR-0001 class-FQN type binding for OO ports — the runtime resolves an
+     * object's native class from this attr) and {@code objectAdapter} (ADR-0005
+     * hybrid value-access seam). These are the same category as the already-
+     * excluded native type bindings — legitimate per-port binding mechanisms, not
+     * cross-port logical vocabulary. They stay REGISTERED in Java (load-bearing
+     * runtime mechanisms read by the value-access representation, IO readers, and
+     * OMDB); the filter only drops them from the manifest. No-op for TS/C#/Python
+     * (which never register them as per-type attrs). See SP-G Unit 6b-finish.
      */
     private static final Set<String> EXCLUDED_PER_TYPE_ATTR_NAMES = Set.of(
             MetaField.ATTR_IS_ARRAY,
@@ -106,6 +116,8 @@ public final class RegistryManifest {
             com.metaobjects.object.MetaObject.ATTR_EXTENDS,
             com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS,
             com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE,
+            com.metaobjects.object.MetaObject.ATTR_OBJECT,
+            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER,
             MetaData.ATTR_DESCRIPTION);
 
     /**

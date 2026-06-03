@@ -70,24 +70,29 @@ public class UnifiedRegistryTest {
         assertNotNull("StringField should be registered", stringDef);
         assertEquals("StringField implementation class", StringField.class, stringDef.getImplementationClass());
         
-        // Check StringField child requirements
-        ChildRequirement patternReq = stringDef.getChildRequirement("pattern");
-        assertNotNull("StringField should accept pattern attribute", patternReq);
-        assertEquals("Pattern attribute type", "attr", patternReq.getExpectedType());
-        assertEquals("Pattern attribute subType", "string", patternReq.getExpectedSubType());
-        assertFalse("Pattern attribute should be optional", patternReq.isRequired());
-        
+        // Check StringField child requirements. maxLength is the StringField-specific
+        // (cross-port canonical) attr. Field-level @pattern was a redundant validation
+        // path dropped in SP-G Unit 6c (validation is expressed via validator.regex
+        // children), so StringField no longer registers a field-level @pattern attr.
+        ChildRequirement maxLengthReq = stringDef.getChildRequirement(StringField.ATTR_MAX_LENGTH);
+        assertNotNull("StringField should accept maxLength attribute", maxLengthReq);
+        assertEquals("MaxLength attribute type", "attr", maxLengthReq.getExpectedType());
+        assertEquals("MaxLength attribute subType", "int", maxLengthReq.getExpectedSubType());
+        assertFalse("MaxLength attribute should be optional", maxLengthReq.isRequired());
+        assertNull("StringField should NOT register a field-level pattern attribute "
+                + "(validation moved to validator.regex children — SP-G Unit 6c)",
+                stringDef.getChildRequirement(StringField.ATTR_PATTERN));
+
         // Verify IntegerField registration
         TypeDefinition intDef = registry.getTypeDefinition("field", "int");
         assertNotNull("IntegerField should be registered", intDef);
         assertEquals("IntegerField implementation class", IntegerField.class, intDef.getImplementationClass());
-        
-        // Check IntegerField child requirements
-        ChildRequirement minValueReq = intDef.getChildRequirement("minValue");
-        assertNotNull("IntegerField should accept minValue attribute", minValueReq);
-        assertEquals("MinValue attribute type", "attr", minValueReq.getExpectedType());
-        assertEquals("MinValue attribute subType", "int", minValueReq.getExpectedSubType());
-        assertFalse("MinValue attribute should be optional", minValueReq.isRequired());
+
+        // IntegerField range validation is expressed via validator.numeric @min/@max
+        // children — the field-level @minValue/@maxValue attrs were dropped (SP-G 6c).
+        assertNull("IntegerField should NOT register a field-level minValue attribute "
+                + "(validation moved to validator.numeric children — SP-G Unit 6c)",
+                intDef.getChildRequirement(IntegerField.ATTR_MIN_VALUE));
     }
     
     /**

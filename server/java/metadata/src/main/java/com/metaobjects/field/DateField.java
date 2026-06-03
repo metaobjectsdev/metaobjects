@@ -44,25 +44,14 @@ public class DateField extends PrimitiveField<Date> {
     public static void registerTypes(MetaDataRegistry registry) {
         registry.registerType(DateField.class, def -> {
             def.type(TYPE_FIELD).subType(SUBTYPE_DATE)
-               .description("Date field with format and range validation")
+               .description("Date field")
                .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
-            // DATE-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-            def.optionalAttributeWithConstraints(ATTR_DATE_FORMAT)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_FORMAT)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_MIN_DATE)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_MAX_DATE)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
+            // No date-specific per-field attrs in the cross-port vocabulary: the
+            // field-level @format/@dateFormat (presentation) and @minDate/@maxDate
+            // (range) attrs had no canonical peer and no consumer (codegen / runtime /
+            // loader) — vestigial. Range validation is expressed via a validator child
+            // (validator.numeric @min/@max); dropped SP-G Unit 6c.
         });
 
         if (log != null) {

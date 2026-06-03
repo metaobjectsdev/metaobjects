@@ -38,16 +38,17 @@ public class CurrencyField extends PrimitiveField<Long> {
         try {
             registry.registerType(CurrencyField.class, def -> {
                 def.type(TYPE_FIELD).subType(SUBTYPE_CURRENCY)
-                   .description("Currency field — integer minor units; carries @currency (ISO 4217) and optional @locale")
+                   .description("Currency field — integer minor units; carries @currency (ISO 4217)")
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
                 def.optionalAttributeWithConstraints(ATTR_CURRENCY)
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asSingle();
 
-                def.optionalAttributeWithConstraints(ATTR_LOCALE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
+                // @currency is the one canonical (cross-port) currency field attr. The
+                // currency presentation @locale (BCP 47) wire contract lives on the
+                // view.currency child, not the field — the field-level @locale had no
+                // canonical peer and no consumer; dropped SP-G Unit 6c.
             });
             if (log != null) log.debug("Registered CurrencyField type with unified registry");
         } catch (Exception e) {

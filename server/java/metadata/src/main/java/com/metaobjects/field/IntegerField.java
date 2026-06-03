@@ -46,14 +46,11 @@ public class IntegerField extends PrimitiveField<Integer> {
                    // INHERIT FROM BASE FIELD
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
-                // INTEGER-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_MIN_VALUE)
-                   .ofType(IntAttribute.SUBTYPE_INT)
-                   .asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_MAX_VALUE)
-                   .ofType(IntAttribute.SUBTYPE_INT)
-                   .asSingle();
+                // Range validation is expressed via a validator.numeric @min/@max
+                // CHILD node (the cross-port form), not field-level @minValue/@maxValue
+                // attrs. The redundant field-level registrations were dropped in
+                // SP-G Unit 6c (validation already emits from validator children per
+                // the SP-C validator-parity work).
             });
 
             if (log != null) {

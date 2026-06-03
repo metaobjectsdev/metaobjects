@@ -59,24 +59,13 @@ public class StringField extends PrimitiveField<String> {
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
                 // STRING-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_PATTERN)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .withCustom(value -> {
-                       if (value == null) return true;
-                       try {
-                           // Validate that the pattern is a valid regex
-                           java.util.regex.Pattern.compile(value.toString());
-                           return true;
-                       } catch (java.util.regex.PatternSyntaxException e) {
-                           return false;
-                       }
-                   });
-
+                // maxLength is the one canonical (cross-port) string attr. Field-level
+                // validation (pattern / min-length) is expressed via validator CHILD
+                // nodes (validator.regex @pattern, validator.length @min/@max) — the
+                // cross-port form. The redundant field-level @pattern / @minLength
+                // registrations were dropped in SP-G Unit 6c (validation already emits
+                // from validator children per the SP-C validator-parity work).
                 def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)
-                   .ofType(IntAttribute.SUBTYPE_INT)
-                   .asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_MIN_LENGTH)
                    .ofType(IntAttribute.SUBTYPE_INT)
                    .asSingle();
             });

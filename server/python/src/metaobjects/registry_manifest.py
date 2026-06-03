@@ -57,9 +57,19 @@ _ATTR_NAME_EXTENDS = "extends"
 _ATTR_NAME_IMPLEMENTS = "implements"
 _ATTR_NAME_IS_INTERFACE = "isInterface"
 
+# The two per-port type-BINDING facet attr names: ``object`` (ADR-0001 class-FQN
+# type binding for OO ports) and ``objectAdapter`` (ADR-0005 hybrid value-access
+# seam). Same category as the excluded native type bindings — legitimate per-port
+# binding mechanisms, not cross-port logical vocabulary. No-op for Python (never
+# registers them); the filter drops Java's per-type ``object.*`` registrations.
+# See SP-G Unit 6b-finish.
+_ATTR_NAME_OBJECT = "object"
+_ATTR_NAME_OBJECT_ADAPTER = "objectAdapter"
+
 # Per-type attr names filtered from a type's ``attrs`` list (structural / OO-shape
-# keywords + the description commonAttr). ``description`` is filtered ONLY
-# per-type — it stays in the commonAttrs block.
+# keywords + the per-port type-binding facets ``object``/``objectAdapter`` + the
+# description commonAttr). ``description`` is filtered ONLY per-type — it stays in
+# the commonAttrs block.
 _EXCLUDED_PER_TYPE_ATTR_NAMES = frozenset(
     {
         KEY_IS_ARRAY,
@@ -67,6 +77,8 @@ _EXCLUDED_PER_TYPE_ATTR_NAMES = frozenset(
         _ATTR_NAME_EXTENDS,
         _ATTR_NAME_IMPLEMENTS,
         _ATTR_NAME_IS_INTERFACE,
+        _ATTR_NAME_OBJECT,
+        _ATTR_NAME_OBJECT_ADAPTER,
         DOC_ATTR_DESCRIPTION,
     }
 )

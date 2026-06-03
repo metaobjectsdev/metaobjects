@@ -105,6 +105,16 @@ deferral.
 - Node factory / `NodeConstructor` / Java `Class` — per-port physical wiring.
 - Native type bindings (Java `DataTypes` value-class, TS native TS-type, EF/CLR
   types, the coarse `DataType` classification) — physical, per-port.
+- **The per-port type-binding facets `@object` + `@objectAdapter`** — `@object`
+  is the ADR-0001 class-FQN type binding for OO ports (the Java runtime resolves
+  an object's native class from this attr) and `@objectAdapter` is the ADR-0005
+  hybrid value-access seam. These are the same category as the native type
+  bindings above — legitimate per-port BINDING mechanisms, not cross-port logical
+  vocabulary. Java registers them as per-type attrs on `object.*` (load-bearing
+  runtime mechanisms read by the value-access representation, IO readers, and
+  OMDB — kept registered in Java); the emitter filters them by name from each
+  type's `attrs` list (uniform across all four emitters; a no-op for
+  TS/C#/Python, which never register them). See SP-G Unit 6b-finish.
 - Codegen targets/options.
 - The TS-only `D1` dialect and any other documented port-unique surface.
 - Ordering (we sort everything).

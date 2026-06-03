@@ -61,13 +61,10 @@ public class DecimalField extends PrimitiveField<BigDecimal> {
                    .ofType(IntAttribute.SUBTYPE_INT)
                    .asSingle();   // Decimal places (e.g., 2)
 
-                def.optionalAttributeWithConstraints(ATTR_MIN_VALUE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();   // String to preserve precision
-
-                def.optionalAttributeWithConstraints(ATTR_MAX_VALUE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();   // String to preserve precision
+                // precision + scale are the canonical (cross-port) decimal attrs.
+                // Range validation is expressed via a validator.numeric @min/@max
+                // CHILD node (the cross-port form), not field-level @minValue/@maxValue
+                // attrs (dropped SP-G Unit 6c — validation emits from validator children).
             });
 
             if (log != null) {
