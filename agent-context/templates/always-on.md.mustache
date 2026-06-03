@@ -11,7 +11,7 @@ spine; generated code is the disposable artifact. Regenerate with `{{codegenComm
 - Use the generated constants for any string that names metadata.
 
 ## Authoring rules you must not violate
-- Nodes are fused-key maps: `{"<type>.<subType>": { ... }}` (e.g. `{"field.string": {"name": "email"}}`). Never `{"field": {"subType": "string"}}`.
+- Nodes are fused-key maps: `{"<type>.<subType>": { ... }}` (e.g. `{"field.string": {"name": "email"}}`) — never split the type and subtype into separate keys.
 - Attribute names are unique within a node; for multi-value use one array attr (`@values: [...]`).
 - An inline `@maxLength: 50` equals an `attr` child of the same name — never write both.
 - Package paths use `::` (`acme::common::id`).
