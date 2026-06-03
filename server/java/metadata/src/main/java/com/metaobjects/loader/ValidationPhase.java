@@ -1103,14 +1103,20 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // field.object @storage validation
+    // field.object + @storage validation
     //
-    // Two rules, matching the cross-port spec:
-    //   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
+    // Rules, matching the cross-port spec (ADR-0013):
+    //   1. A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+    //      A field.object models a typed nested value; without @objectRef it is "an
+    //      oxymoron at the logical layer". Open/untyped JSON uses the physical
+    //      @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //      This rule subsumes the legacy @storage-without-@objectRef check (@storage
+    //      is only meaningful on a field.object), so missing-@objectRef now always
+    //      reports this single, clearer error — one error per node (we skip the
+    //      flattened/array check when @objectRef is absent).
+    //   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
     //      (flattened storage materialises one column-per-field; arrays would
     //       require a side table, which is what @storage="jsonb" is for.)
-    //   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
-    //      (storage shape only makes sense when there IS a referenced object).
     //
     // Only field.object nodes are inspected; @storage on other field subtypes is
     // already rejected by the constraint phase.
@@ -1129,17 +1135,20 @@ public final class ValidationPhase {
 
     private static void validateObjectFieldStorageNode(MetaData node) {
         if (!(node instanceof ObjectField)) return;
-        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
 
         ObjectField field = (ObjectField) node;
 
         if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) {
             throw new MetaDataException(
-                ErrorMessageConstants.ERR_STORAGE_WITHOUT_OBJECT_REF
+                ErrorMessageConstants.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF
                     + ": field.object '" + field.getName()
-                    + "' has @storage but no @objectRef — @storage shape only applies to referenced objects",
-                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF, field.getSource());
+                    + "' has no @objectRef — a field.object requires @objectRef."
+                    + " For an open/untyped JSON map use @dbColumnType: jsonb on a"
+                    + " field.string instead of a bare object.",
+                ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF, field.getSource());
         }
+
+        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
 
         Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
         if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {

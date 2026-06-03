@@ -49,6 +49,9 @@ export const ERROR_CODES = [
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
+  // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
+  // the physical @dbColumnType: jsonb escape hatch on field.string instead).
+  "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF",
   // Source v2 (ADR-0007) error codes — enforcement added during the source-v2 rollout.
   "ERR_RESERVED_ATTR",
   "ERR_SOURCE_NO_PRIMARY",

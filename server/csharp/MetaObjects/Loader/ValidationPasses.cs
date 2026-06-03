@@ -1182,8 +1182,17 @@ public static class ValidationPasses
 
     // =========================================================================
     // Pass 8: ValidateFieldObjectStorage
-    //   Cross-attribute validation for @storage on field.object:
-    //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //   Cross-attribute validation for field.object + @storage (ADR-0013):
+    //     - A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+    //       A field.object models a typed nested value; without @objectRef it is
+    //       "an oxymoron at the logical layer". Open/untyped JSON uses the physical
+    //       @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //       This rule subsumes the legacy @storage-without-@objectRef check
+    //       (@storage is only meaningful on a field.object), so missing-@objectRef
+    //       now always reports this single, clearer error — one error per node
+    //       (the flattened/array check is skipped when @objectRef is absent).
+    //       (Previously C# SILENTLY DROPPED a bare field.object in codegen — it is
+    //       now a clear load-time error.)
     //     - @storage "flattened" requires isArray=false (cannot flatten a
     //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
     //
@@ -1199,17 +1208,22 @@ public static class ValidationPasses
         {
             foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
-                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
-                if (storage is null) continue;
-
                 var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
-                if (objectRef is not string refStr || refStr.Length == 0)
+                var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
+
+                if (field.SubType == FIELD_SUBTYPE_OBJECT && !hasObjectRef)
                 {
                     errors.Add(new MetaError(
-                        $"field \"{obj.Name}.{field.Name}\" sets @storage but has no @objectRef",
-                        ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                        $"field.object \"{obj.Name}.{field.Name}\" has no @objectRef; " +
+                        "a field.object requires @objectRef. For an open/untyped JSON map " +
+                        "use @dbColumnType: jsonb on a field.string instead of a bare object.",
+                        ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                         Envelope: field.Source));
+                    continue;
                 }
+
+                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                if (storage is null) continue;
 
                 if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
                 {

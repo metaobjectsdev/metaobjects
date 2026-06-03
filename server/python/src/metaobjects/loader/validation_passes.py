@@ -1271,30 +1271,37 @@ def _validate_filterable_has_index(
 # ---------------------------------------------------------------------------
 # Pass: field.object @storage validation
 # ---------------------------------------------------------------------------
-# Two cross-port rules:
-#   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
+# Cross-port rules (ADR-0013):
+#   1. A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+#      A field.object models a typed nested value; without @objectRef it is an
+#      oxymoron at the logical layer. Open/untyped JSON uses the physical
+#      @dbColumnType: jsonb escape hatch on field.string, NOT a bare object. This
+#      rule subsumes the legacy @storage-without-@objectRef check (@storage is only
+#      meaningful on a field.object), so missing-@objectRef now always reports this
+#      single, clearer error — one error per node (the flattened/array check is
+#      skipped when @objectRef is absent).
+#   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
 #      materialises one-column-per-field; arrays require @storage="jsonb").
-#   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
-#      (storage shape only applies to referenced objects).
 
 
 def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
     for node in _walk(root):
         if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_OBJECT:
             continue
-        storage = node.attr(FIELD_ATTR_STORAGE)
-        if storage is None:
-            continue
         object_ref = node.attr(FIELD_ATTR_OBJECT_REF)
         if not (isinstance(object_ref, str) and object_ref):
             errors.append(MetaError(
-                code=ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                code=ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                 message=(
-                    f"field.object '{node.name}' has @storage but no @objectRef — "
-                    f"@storage shape only applies to referenced objects"
+                    f"field.object '{node.name}' has no @objectRef — a field.object "
+                    f"requires @objectRef. For an open/untyped JSON map use "
+                    f"@dbColumnType: jsonb on a field.string instead of a bare object."
                 ),
                 envelope=node.source,
             ))
+            continue
+        storage = node.attr(FIELD_ATTR_STORAGE)
+        if storage is None:
             continue
         if storage == "flattened" and getattr(node, "is_array", False):
             errors.append(MetaError(

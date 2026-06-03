@@ -143,6 +143,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF";
 
     /**
+     * Error code emitted when a {@code field.object} declares no {@code @objectRef}
+     * (ADR-0013). A field.object models a typed nested value and REQUIRES @objectRef;
+     * an open/untyped JSON map uses the physical {@code @dbColumnType: jsonb} escape
+     * hatch on a {@code field.string} instead of a bare object.
+     * Cross-language contract: {@code ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF}.
+     */
+    public static final String ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @filter} clause references
      * a field that is not declared filterable, or applies an operator the field's
      * subtype does not support.

@@ -5,7 +5,7 @@
       "source": {
         "format": "json",
         "files": [
-          "meta.storage.json"
+          "meta.object.json"
         ],
         "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.object']"
       }

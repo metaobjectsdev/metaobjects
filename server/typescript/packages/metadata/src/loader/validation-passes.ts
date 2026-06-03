@@ -54,6 +54,7 @@ import {
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_OBJECT,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
@@ -489,34 +490,42 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
 }
 
 // ---------------------------------------------------------------------------
-// @storage cross-attribute validation
+// field.object + @storage cross-attribute validation
 //
-// Rules:
-//   1. @storage requires @objectRef to be present (storage is meaningless
-//      without a referenced object type).
+// Rules (ADR-0013):
+//   1. A field.object ALWAYS requires @objectRef. A field.object models a typed
+//      nested value; without @objectRef it is "an oxymoron at the logical layer".
+//      Genuinely open/untyped JSON uses the physical @dbColumnType: jsonb escape
+//      hatch on field.string, NOT a bare object. → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+//      (This rule subsumes the legacy @storage-without-@objectRef check —
+//      @storage is only meaningful on a field.object, so the missing-@objectRef
+//      situation now always reports this single, clearer error. One error per
+//      node: when @objectRef is absent we skip the flattened/array check below.)
 //   2. @storage "flattened" requires isArray to be absent or false (cannot
 //      flatten a variable-length array into a fixed column set).
-//
-// Only field.object nodes carry @storage in practice, but the check is applied
-// to every field node that has @storage set — matching the permissive "check
-// what's there" model used by the other validation passes.
 // ---------------------------------------------------------------------------
 
 export function validateFieldObjectStorage(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
-      if (storage === undefined || storage === null) continue;
       const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
-      if (typeof objectRef !== "string" || objectRef.length === 0) {
+      const hasObjectRef = typeof objectRef === "string" && objectRef.length > 0;
+
+      if (field.subType === FIELD_SUBTYPE_OBJECT && !hasObjectRef) {
+        // A field.object with no @objectRef is rejected outright; reporting any
+        // further @storage error on the same node would be redundant.
         errors.push(
           new ParseError(
-            `field "${obj.name}.${field.name}" sets @storage but has no @objectRef`,
-            { code: "ERR_STORAGE_WITHOUT_OBJECT_REF", source: field.source },
+            `field.object "${obj.name}.${field.name}" has no @objectRef; a field.object requires @objectRef. For an open/untyped JSON map use @dbColumnType: jsonb on a field.string instead of a bare object.`,
+            { code: "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF", source: field.source },
           ),
         );
+        continue;
       }
+
+      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
+      if (storage === undefined || storage === null) continue;
       if (storage === STORAGE_FLATTENED && field.isArray === true) {
         errors.push(
           new ParseError(
