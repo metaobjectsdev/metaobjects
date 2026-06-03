@@ -17,6 +17,7 @@
 import { code, joinCode, imp, type Code } from "ts-poet";
 import {
   type MetaObject,
+  type MetaField,
   type MetaRoot,
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
@@ -26,6 +27,50 @@ import {
 interface SubtypeBinding {
   subtype: MetaObject;
   value: string;
+}
+
+/** True when this entity is a TPH discriminator base — it carries
+ *  `@discriminator` AND at least one concrete subtype declares
+ *  `@discriminatorValue` extending it. This is the predicate the generator
+ *  stack uses to switch into single-table-inheritance emission. */
+export function isTphDiscriminatorBase(obj: MetaObject, root: MetaRoot): boolean {
+  const discFieldName = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  if (typeof discFieldName !== "string" || discFieldName === "") return false;
+  return collectConcreteSubtypes(obj, root).length > 0;
+}
+
+/** The concrete subtypes bound to this discriminator base, in stable
+ *  (name-sorted) order. Returns `[]` when `base` is not a discriminator base. */
+export function tphConcreteSubtypes(base: MetaObject, root: MetaRoot): MetaObject[] {
+  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  if (typeof discFieldName !== "string" || discFieldName === "") return [];
+  return collectConcreteSubtypes(base, root).map((b) => b.subtype);
+}
+
+/**
+ * The subtype-only fields that must be folded into the base's single TPH table.
+ * For each concrete subtype, every effective field NOT already on the base is
+ * collected (effective, so fields declared on abstract intermediate levels of a
+ * multi-level hierarchy are captured too). Deduplicated by field name across
+ * subtypes — two subtypes sharing a column name contribute one column. The
+ * caller emits each as a nullable column (rows of other subtypes store NULL).
+ */
+export function collectTphSubtypeFields(base: MetaObject, root: MetaRoot): MetaField[] {
+  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  if (typeof discFieldName !== "string" || discFieldName === "") return [];
+
+  const baseFieldNames = new Set(base.fields().map((f) => f.name));
+  const seen = new Set<string>();
+  const out: MetaField[] = [];
+  for (const { subtype } of collectConcreteSubtypes(base, root)) {
+    for (const f of subtype.fields()) {
+      if (baseFieldNames.has(f.name)) continue; // base column — already emitted
+      if (seen.has(f.name)) continue; // shared subtype column — emit once
+      seen.add(f.name);
+      out.push(f);
+    }
+  }
+  return out;
 }
 
 /** Render the TPH union + guards + dispatcher block, or null when the entity

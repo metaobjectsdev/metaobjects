@@ -16,6 +16,7 @@ import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
 import { tableNameFromEntity, variableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { collectTphSubtypeFields } from "./tph-discriminator.js";
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -75,6 +76,29 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
+    if (spec.checkConstraint !== undefined) {
+      checkConstraints.push({
+        name: `chk_${tableName}_${spec.dbName}`,
+        expr: spec.checkConstraint,
+      });
+    }
+  }
+
+  // FR-017 Tier 2 — TPH single-table inheritance. When this entity is a
+  // discriminator base, fold every concrete subtype's own columns into this
+  // one table. Subtype-only columns are ALWAYS nullable (a row of any other
+  // subtype stores NULL there) and never carry a DB default (a default would
+  // stamp onto other-subtype inserts), regardless of the field's @required.
+  // Subtype entities emit no table of their own (the value-object path).
+  for (const child of collectTphSubtypeFields(obj, ctx.loadedRoot)) {
+    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
+    const fieldDocs = renderDocsFor(child);
+    const columnLine = renderColumn(
+      spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, true,
+    );
+    columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
+    // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
+    // (not false), so other-subtype rows with NULL pass the check.
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
         name: `chk_${tableName}_${spec.dbName}`,
@@ -212,6 +236,9 @@ function renderColumn(
   isComposite: boolean,
   isUnique: boolean = false,
   entityPackage: string | undefined = undefined,
+  // FR-017 Tier 2 — TPH subtype-only column: force nullable (drop .notNull())
+  // and suppress any DB default (other-subtype rows must stay NULL here).
+  forceNullable: boolean = false,
 ): Code {
   const fnSym = imp(`${spec.fnName}@${spec.importModule}`);
 
@@ -261,6 +288,9 @@ function renderColumn(
     if (isPk && !isComposite && (m === ".notNull()" || m === ".unique()")) continue;
     // Avoid double-emitting .unique() if it was already appended above.
     if (isUnique && m === ".unique()") continue;
+    // TPH subtype-only column: never .notNull() / .unique() — rows of other
+    // subtypes store NULL, so neither constraint can hold across the table.
+    if (forceNullable && (m === ".notNull()" || m === ".unique()")) continue;
     modifiersStr += m;
   }
 
@@ -268,7 +298,7 @@ function renderColumn(
   // the `sql` import via imp(); a raw `.default(sql`...`)` would leave `sql`
   // unresolved in the generated file.
   let sqlDefaultSegment: Code | null = null;
-  if (spec.defaultExpr !== undefined && !isPk) {
+  if (spec.defaultExpr !== undefined && !isPk && !forceNullable) {
     if (spec.defaultExpr.kind === "now") {
       if (ctx.dialect === "sqlite") {
         const sqlSym = imp("sql@drizzle-orm");
