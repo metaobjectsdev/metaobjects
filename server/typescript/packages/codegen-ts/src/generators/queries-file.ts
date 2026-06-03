@@ -1,6 +1,7 @@
 import { OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderQueriesFile } from "../templates/queries-file.js";
+import { isTphSubtype } from "../templates/zod-validators.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 
@@ -13,13 +14,18 @@ export interface QueriesFileOpts {
 // emits findById/updateById/deleteById against a non-existent column. Skipping
 // value subtypes is unconditional — the user-supplied filter (if any) is applied
 // on top via boolean AND.
-const skipValueTypes = (e: MetaObject): boolean => e.subType !== OBJECT_SUBTYPE_VALUE;
+//
+// FR-017 Tier 2: TPH subtypes are ALSO skipped — they emit no standalone
+// queries file. Their per-subtype CRUD helpers live in the discriminator
+// base's queries file (which targets the single shared table).
+const skipNonQueryable = (e: MetaObject): boolean =>
+  e.subType !== OBJECT_SUBTYPE_VALUE && !isTphSubtype(e);
 
 export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generator {
   const userFilter = opts?.filter;
   const filter: (e: MetaObject) => boolean = userFilter
-    ? (e) => skipValueTypes(e) && userFilter(e)
-    : skipValueTypes;
+    ? (e) => skipNonQueryable(e) && userFilter(e)
+    : skipNonQueryable;
 
   const generator: Generator = {
     name: "queries-file",
