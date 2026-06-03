@@ -2,7 +2,7 @@
 import { test, expect, describe } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { FIELD_SUBTYPES, OBJECT_SUBTYPES, SOURCE_SUBTYPES } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPES, OBJECT_SUBTYPES, SOURCE_SUBTYPES, TEMPLATE_SUBTYPES } from "@metaobjectsdev/metadata";
 
 const CONTENT_ROOT = join(import.meta.dir, "../../../../../../agent-context");
 
@@ -43,13 +43,15 @@ describe("agent-context vocabulary drift", () => {
     expect(bad).toEqual([]);
   });
 
-  test("every `object.<subtype>` and `source.<subtype>` mentioned is real", () => {
+  test("every `object.`, `source.`, and `template.` subtype mentioned is real", () => {
     const objs = new Set<string>(OBJECT_SUBTYPES as readonly string[]);
     const srcs = new Set<string>(SOURCE_SUBTYPES as readonly string[]);
+    const tmpls = new Set<string>(TEMPLATE_SUBTYPES as readonly string[]);
     const bad: string[] = [];
     for (const { f, text } of corpus) {
       for (const m of text.matchAll(/\bobject\.([a-z][a-zA-Z0-9]*)\b/g)) if (!objs.has(m[1]!)) bad.push(`${f} :: object.${m[1]}`);
       for (const m of text.matchAll(/\bsource\.([a-z][a-zA-Z0-9]*)\b/g)) if (!srcs.has(m[1]!)) bad.push(`${f} :: source.${m[1]}`);
+      for (const m of text.matchAll(/\btemplate\.([a-z][a-zA-Z0-9]*)\b/g)) if (!tmpls.has(m[1]!)) bad.push(`${f} :: template.${m[1]}`);
     }
     expect(bad).toEqual([]);
   });
