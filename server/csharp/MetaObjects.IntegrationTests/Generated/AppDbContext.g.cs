@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<AllTypes> AllTypeses { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
@@ -27,6 +28,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProgramStat>().ToView("v_program_stat");
         modelBuilder.Entity<ProgramView>().ToView("v_program");
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
+        modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
+        modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");

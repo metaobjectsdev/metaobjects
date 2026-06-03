@@ -94,6 +94,7 @@ public static class ScenarioLoader
                 Limit: q.Limit,
                 Offset: q.Offset,
                 Relation: q.Relation,
+                Insert: q.Insert,
                 Expect: q.Expect)).ToList());
     }
 
@@ -121,6 +122,11 @@ public static class ScenarioLoader
         public int? Limit { get; set; }
         public int? Offset { get; set; }
         public string? Relation { get; set; }
+        // For op: roundtrip — the field-keyed row to WRITE through the EF runtime.
+        // Captured as a raw YamlNode (scalar style preserved) so the writer can honor
+        // the authoring forms (a quoted decimal/uuid stays a string; a nested object is
+        // a mapping). Mirrors the Expect capture rationale above.
+        public YamlNode? Insert { get; set; }
         public YamlNode? Expect { get; set; }
     }
 

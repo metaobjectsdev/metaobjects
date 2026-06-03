@@ -23,7 +23,7 @@ public sealed record QueryScenario(
 /// <summary>A single query intent: op + entity + filter/sort/by + expected result.</summary>
 public sealed record QuerySpec(
     string Name,
-    string Op,                                // list | get | count | relate
+    string Op,                                // list | get | count | relate | roundtrip
     string Entity,
     IReadOnlyDictionary<string, object?>? By, // for op: get / op: relate (the source record key)
     IReadOnlyDictionary<string, object?>? Filter,
@@ -31,6 +31,7 @@ public sealed record QuerySpec(
     int? Limit,
     int? Offset,
     string? Relation,                         // for op: relate — the relationship name to traverse
+    YamlNode? Insert,                         // for op: roundtrip — the field-keyed row to WRITE (raw YAML, scalar style preserved)
     YamlNode? Expect);                        // raw YAML subtree (scalar style preserved); shape depends on Op
 
 public sealed record SortSpec(string Field, string Dir);   // dir: asc | desc
