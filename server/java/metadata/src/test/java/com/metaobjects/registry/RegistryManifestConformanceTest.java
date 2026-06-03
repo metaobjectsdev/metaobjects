@@ -56,13 +56,16 @@ import static org.junit.Assert.assertTrue;
  *       {@code sortableDefaultOrder}/{@code readOnly}/{@code storage} and carries
  *       Java-specific feature attrs the contract does not
  *       ({@code minLength}/{@code pattern}/{@code maxValue}/{@code minValue}/
- *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}/
- *       {@code defaultView}). The {@code validator.*} family has since been
+ *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}).
+ *       The {@code validator.*} family has since been
  *       reconciled to the canonical (SP-G Unit 5): {@code @min}/{@code @max} are
  *       int-typed on {@code base}/{@code length}/{@code numeric}/{@code regex}/
  *       {@code array}, {@code regex} keeps {@code @pattern}, {@code required}
  *       carries none, and the legacy {@code msg}/{@code mask}/{@code maxSize}/
- *       {@code minSize} extras were dropped.</li>
+ *       {@code minSize} extras were dropped. The remaining field-validation extras
+ *       ({@code minLength}/{@code pattern}/{@code maxValue}/{@code minValue}/
+ *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}) plus the
+ *       physical {@code db*} set are SP-G Unit 6b/7.</li>
  *   <li>{@code object.*} carries Java OO attrs
  *       ({@code extends}/{@code implements}/{@code object}/{@code objectAdapter}/
  *       {@code isInterface}/{@code value*}/{@code data*}) instead of the
@@ -73,6 +76,18 @@ import static org.junit.Assert.assertTrue;
  *       textarea/web), and carries an extra {@code metadata.base} (its
  *       inheritance anchor; the other ports register only {@code metadata.root}).</li>
  * </ul>
+ * <p><strong>SP-G Unit 6a reconciled</strong> (registration-only structural items):
+ * required-ness flips ({@code identity.primary/secondary/reference.fields},
+ * {@code identity.reference.references}, {@code origin.aggregate.agg/of/via},
+ * {@code origin.collection.via}, {@code origin.passthrough.from},
+ * {@code template.output.payloadRef} now {@code required:true}); base→leaf placement
+ * ({@code source.*}/{@code template.*}/{@code origin.*} shared attrs moved off the
+ * abstract base onto the concrete subtypes so each base row is attr-free and the
+ * concrete rows carry exactly the canonical per-subtype set, with the origin
+ * cross-leak removed); and stray-attr drops ({@code defaultView} off every field,
+ * {@code identity.secondary.generation}, {@code identity.reference.onDelete/onUpdate}).
+ * The residual is now ONLY object-OO/{@code value*}/{@code data*}, the field-validation
+ * extras, and the physical {@code db*} set (SP-G Unit 6b/7).</p>
  * <p>Reconciling this at source means rewriting Java's metamodel attribute layer
  * to the cross-port vocabulary — a change that ripples through the loader's
  * validation, OMDB, {@code codegen-spring}, and {@code codegen-kotlin} (all of

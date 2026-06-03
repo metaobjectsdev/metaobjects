@@ -824,8 +824,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 val targetTable = if (child.isEnforced)
                     PackageMapping.splitFqn(target.name).second + "Table" else null
                 val targetFqn = if (child.isEnforced) target.name else null
-                val refSuffix = if (child.isEnforced)
-                    referentialActionSuffix(child.onDeleteRaw, child.onUpdateRaw) else ""
+                // SP-G Unit 6a: @onDelete / @onUpdate are NOT part of identity.reference in
+                // the cross-port canonical (referential actions live only on
+                // relationship.composition). A reference-identity FK therefore emits no
+                // referential-action suffix; declare a composition relationship to drive
+                // ReferenceOption emission (see lines ~700/728, which read the relationship).
+                val refSuffix = ""
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
                     RefDecoration(targetTable, refSuffix, targetFqn)
             }

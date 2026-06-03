@@ -2,7 +2,6 @@ package com.metaobjects.origin;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.attr.MetaAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import java.util.Set;
@@ -114,27 +113,12 @@ public abstract class MetaOrigin extends MetaData {
                // Accept any attr child (for extensibility from service providers)
                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
 
-            // @from — passthrough only; declared optional on the base, required-check
-            // enforced per-subtype in ValidationPhase.
-            def.optionalAttributeWithConstraints(ATTR_FROM)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            // @via — required on aggregate and collection; optional on passthrough.
-            def.optionalAttributeWithConstraints(ATTR_VIA)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            // @agg — aggregate only; enum-constrained, required-check enforced
-            // per-subtype in ValidationPhase.
-            def.optionalAttributeWithConstraints(ATTR_AGG)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .withEnum(AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX);
-
-            // @of — aggregate only; required-check enforced per-subtype in ValidationPhase.
-            def.optionalAttributeWithConstraints(ATTR_OF)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
+            // SP-G Unit 6a: the per-subtype attrs (@from / @via / @agg / @of) are
+            // declared on the CONCRETE subtypes (AggregateOrigin / CollectionOrigin /
+            // PassthroughOrigin), each carrying exactly its own set with the correct
+            // required-ness — matching the cross-port canonical (origin.base is
+            // attr-free; no cross-leak between concrete origins). The dedicated
+            // ValidationPhase#validateOrigins pass continues to enforce path semantics.
         });
     }
 

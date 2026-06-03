@@ -49,8 +49,51 @@ public class RdbSource extends MetaSource {
                .description("Relational-database source — table, view, materialised view, stored proc, or table-valued function")
                .inheritsFrom(TYPE_SOURCE, SUBTYPE_BASE);
 
-            // FR-015: @parameterRef — declared on the concrete rdb subtype (the
-            // abstract source.base stays attr-free for the param concept).
+            // SP-G Unit 6a: the physical / structural source attrs live on source.rdb
+            // (NOT the abstract source.base) — matching the cross-port canonical.
+
+            // @table — physical SQL table name for @kind: "table" (default).
+            // FR-016: one of five kind-aware physical-name aliases; all write to
+            // the same internal slot. Pre-1.0 legacy: also accepted with non-table
+            // @kind (canonical-serializer rewrites; loader emits
+            // WARN_LEGACY_PHYSICAL_NAME_ALIAS).
+            def.optionalAttributeWithConstraints(ATTR_TABLE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @view — physical SQL view name for @kind: "view" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_VIEW)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @materializedView — physical SQL materialized-view name for
+            // @kind: "materializedView" (FR-016 / ADR-0018).
+            def.optionalAttributeWithConstraints(ATTR_MATERIALIZED_VIEW)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @proc — physical SQL stored-procedure name for @kind: "storedProc".
+            def.optionalAttributeWithConstraints(ATTR_PROC)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @function — physical SQL table-function name for @kind: "tableFunction".
+            def.optionalAttributeWithConstraints(ATTR_FUNCTION)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @kind — enum-constrained; withEnum also marks it as single.
+            def.optionalAttributeWithConstraints(ATTR_KIND)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(KIND_TABLE, KIND_VIEW, KIND_MATERIALIZED_VIEW,
+                         KIND_STORED_PROC, KIND_TABLE_FUNCTION);
+
+            // @role — enum-constrained; withEnum also marks it as single.
+            def.optionalAttributeWithConstraints(ATTR_ROLE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(ROLE_PRIMARY, ROLE_REPLICA, ROLE_INDEX,
+                         ROLE_CACHE, ROLE_PUBLISH, ROLE_MIRROR);
+
+            // @schema — optional, string, single value.
+            def.optionalAttributeWithConstraints(ATTR_SCHEMA)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // FR-015: @parameterRef — call-parameters reference for callable sources.
             def.optionalAttributeWithConstraints(ATTR_PARAMETER_REF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });

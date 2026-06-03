@@ -26,6 +26,11 @@ public final class OutputTemplate extends MetaTemplate {
                .description("Template (non-LLM output) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
+            // SP-G Unit 6a: shared template attrs are declared here (not on the
+            // attr-free template.base). @payloadRef is REQUIRED on template.output
+            // (matches TS / C# / Python).
+            registerSharedAttrs(def, true);
+
             // @promptStyle — closed enum (guide|inline|exampleOnly), default "guide".
             // Validation (out-of-set rejection) is enforced in
             // ValidationPhase#validateTemplates in the same post-load pass that

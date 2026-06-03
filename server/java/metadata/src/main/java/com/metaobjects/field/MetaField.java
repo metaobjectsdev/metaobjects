@@ -211,9 +211,11 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                 // Allow flexible attribute types for defaultValue to support value-based detection
                 def.optionalChild(MetaAttribute.TYPE_ATTR, ATTR_DEFAULT_VALUE);
 
-                def.optionalAttributeWithConstraints(ATTR_DEFAULT_VIEW)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
+                // SP-G Unit 6a: @defaultView is NOT in the cross-port canonical field
+                // attr set — its registration on field.base is dropped. The
+                // getDefaultView() accessor keeps its first-view-child fallback; an
+                // authored @defaultView would still load via the wildcard attr child,
+                // but it is no longer a declared schema attr.
 
                 def.optionalAttributeWithConstraints(ATTR_IS_ARRAY)
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)

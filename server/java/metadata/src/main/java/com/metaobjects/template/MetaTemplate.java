@@ -46,29 +46,47 @@ public abstract class MetaTemplate extends MetaData {
                // Accept any attr child (extensibility from service providers)
                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
 
-            // Generic attrs (both subtypes)
+            // SP-G Unit 6a: the shared template attrs (@payloadRef / @textRef / @format /
+            // @maxChars / @owner / @since / @requiredTags) are declared on the CONCRETE
+            // subtypes (PromptTemplate / OutputTemplate), each carrying exactly its own set
+            // with the correct required-ness — matching the cross-port canonical
+            // (template.base is attr-free). template.toolcall does not inherit these at all
+            // (it binds directly to metadata.base; see ToolcallTemplate).
+        });
+    }
+
+    /**
+     * Register the shared template attrs (@payloadRef / @textRef / @format / @maxChars /
+     * @owner / @since / @requiredTags) on a concrete subtype's def. SP-G Unit 6a moved
+     * these off template.base onto the concrete subtypes so the base row is attr-free
+     * (cross-port canonical). {@code payloadRefRequired} promotes @payloadRef to required
+     * (true for both prompt and output per the canonical).
+     */
+    protected static void registerSharedAttrs(
+            com.metaobjects.registry.TypeDefinitionBuilder def, boolean payloadRefRequired) {
+        if (payloadRefRequired) {
+            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        } else {
             def.optionalAttributeWithConstraints(ATTR_PAYLOAD_REF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            // @format — closed-set enum (Tier-1 invariant; see TemplateConstants.FORMAT_*
-            // and TemplateConstants.ALLOWED_FORMATS). Enum-membership is enforced on the
-            // concrete subtype (template.prompt / template.output) in
-            // ValidationPhase#validateTemplates, matching the pattern used for source.rdb
-            // @kind/@role and relationship.* @onDelete/@onUpdate (a withEnum constraint on
-            // the abstract base type does not fire for concrete subtypes — see
-            // CustomConstraint.applicabilityTest in AttributeConstraintBuilder).
-            def.optionalAttributeWithConstraints(ATTR_FORMAT)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
-               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_OWNER)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_SINCE)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
-               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-        });
+        }
+        def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
+           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        // @format — closed-set enum (Tier-1 invariant; see TemplateConstants.FORMAT_*).
+        // Enum-membership is enforced on the concrete subtype in
+        // ValidationPhase#validateTemplates (a withEnum constraint on the abstract base
+        // does not fire for concrete subtypes — see CustomConstraint.applicabilityTest).
+        def.optionalAttributeWithConstraints(ATTR_FORMAT)
+           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
+           .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+        def.optionalAttributeWithConstraints(ATTR_OWNER)
+           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        def.optionalAttributeWithConstraints(ATTR_SINCE)
+           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
+           .ofType(StringAttribute.SUBTYPE_STRING).asArray();
     }
 
     // -----------------------------------------------------------------------

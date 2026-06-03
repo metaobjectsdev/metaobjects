@@ -48,9 +48,14 @@ public class PromptStyleAttrTest extends SharedRegistryTestBase {
             : "";
         // A template.output defaults to @kind="document", which requires @textRef
         // (a document is never bodyless). Include it so these @promptStyle-focused
-        // fixtures satisfy the document/textRef cross-field rule.
+        // fixtures satisfy the document/textRef cross-field rule. @payloadRef is
+        // required on template.output (SP-G Unit 6a — matches the cross-port canonical),
+        // so declare a minimal payload object.value "P" and reference it.
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
-               "  { \"template.output\": { \"name\": \"T\", \"@textRef\": \"out/t\"" + styleAttr + " } }" +
+               "  { \"object.value\": { \"name\": \"P\", \"children\": [" +
+               "      { \"field.string\": { \"name\": \"f\" } }" +
+               "  ] } }," +
+               "  { \"template.output\": { \"name\": \"T\", \"@textRef\": \"out/t\", \"@payloadRef\": \"P\"" + styleAttr + " } }" +
                "] } }";
     }
 

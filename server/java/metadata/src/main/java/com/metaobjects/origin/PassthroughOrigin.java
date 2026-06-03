@@ -1,5 +1,6 @@
 package com.metaobjects.origin;
 
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 /**
@@ -36,10 +37,18 @@ public class PassthroughOrigin extends MetaOrigin {
      * {@link MetaOrigin#registerTypes(MetaDataRegistry)}.
      */
     public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(PassthroughOrigin.class, def -> def
-            .type(TYPE_ORIGIN).subType(SUBTYPE_PASSTHROUGH)
-            .description("Passthrough origin — field value sourced directly from a cross-entity field reference")
-            .inheritsFrom(TYPE_ORIGIN, SUBTYPE_BASE)
-        );
+        registry.registerType(PassthroughOrigin.class, def -> {
+            def.type(TYPE_ORIGIN).subType(SUBTYPE_PASSTHROUGH)
+               .description("Passthrough origin — field value sourced directly from a cross-entity field reference")
+               .inheritsFrom(TYPE_ORIGIN, SUBTYPE_BASE);
+
+            // SP-G Unit 6a: passthrough carries @from (required) + @via (optional) —
+            // cross-port canonical. Path semantics re-validated in
+            // ValidationPhase#validateOrigins.
+            def.requiredAttributeWithConstraints(ATTR_FROM)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_VIA)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
     }
 }
