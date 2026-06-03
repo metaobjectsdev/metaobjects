@@ -76,6 +76,12 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // A composite PK emits a class-level [PrimaryKey(...)] which lives in the
+        // Microsoft.EntityFrameworkCore namespace (not a DataAnnotations attribute) —
+        // import it so the emitted class compiles standalone, without relying on the
+        // host project's ImplicitUsings.
+        if (pkFields.Count > 1)
+            sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -129,6 +135,14 @@ public sealed class EntityGenerator : IGenerator
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
+        // FR-018 M:N navigation collections (entities only; the EF UsingEntity
+        // wiring + the REST traversal route are emitted by the DbContext + routes
+        // generators). One ICollection<Target> per @cardinality:"many" + @through
+        // relationship — for a self-join the member is named after the relationship.
+        if (!isProjection)
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
+                members.Add(M2mNavProperty(nav));
+
         if (enumDecls.Count > 0)
         {
             sb.Append(string.Join("\n", enumDecls));
@@ -138,6 +152,24 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
+    }
+
+    // A M:N navigation collection property on the source entity. The collection is
+    // the relationship name PascalCased; its element type is the target entity.
+    //
+    // Hetero (source != target) is wired as an EF skip-navigation through the
+    // junction (DbContext UsingEntity<Through>). A self-join (directed or symmetric)
+    // is NOT an EF many-to-many: a self-referencing M:N over an explicit junction is
+    // not cleanly expressible, and a symmetric relation is union-on-read (no EF
+    // relationship at all). Those navs are [NotMapped] — the REST route + runtime
+    // resolver traverse the junction explicitly (the cross-port contract is the
+    // route behavior, not EF eager-loading).
+    private static string M2mNavProperty(M2MNavigation nav)
+    {
+        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var prop = CSharpNaming.Pascal(nav.Name);
+        var notMapped = nav.IsSelfJoin ? "    [NotMapped]\n" : "";
+        return $"{notMapped}    public ICollection<{target}> {prop} {{ get; set; }} = new List<{target}>();";
     }
 
     // Standalone shape class for an ABSTRACT entity (emitted only when

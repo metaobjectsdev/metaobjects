@@ -102,6 +102,16 @@ public sealed class DbContextGenerator : IGenerator
             // so the native uuid / jsonb / timestamptz column round-trips into that property.
             foreach (var f in e.Fields().Where(f => !f.IsArray && f.DbColumnType is not null))
                 if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
+
+            // FR-018 M:N — wire a hetero (source != target) navigation as an EF skip
+            // navigation through the explicit junction entity:
+            //   HasMany(x => x.<Nav>).WithMany().UsingEntity<Through>(
+            //       l => l.HasOne<Target>().WithMany().HasForeignKey("<TargetFkProp>"),
+            //       r => r.HasOne<Source>().WithMany().HasForeignKey("<SourceFkProp>"));
+            // Self-joins (directed/symmetric) are [NotMapped] (route-traversed) — see
+            // EntityGenerator.M2mNavProperty — so they are skipped here.
+            foreach (var nav in M2MNavigationBuilder.For(e, ctx.Root).Where(n => !n.IsSelfJoin))
+                modelLines.Add(UsingEntityConfig(nav));
         }
 
         var sb = new StringBuilder();
@@ -166,6 +176,32 @@ public sealed class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"timestamp with time zone\");",
             _ => null,
         };
+    }
+
+    // FR-018 — EF skip-navigation config for a hetero M:N navigation through its
+    // explicit junction entity. The junction's FK PROPERTIES are the PascalCased
+    // junction FK field names (the EntityGenerator emits them as scalar properties on
+    // the junction class), derived from the junction's two identity.reference children.
+    //
+    //   HasMany(x => x.<Nav>).WithMany().UsingEntity<Through>(
+    //       l => l.HasOne<Target>().WithMany().HasForeignKey(nameof(Through.<TargetFkProp>)),
+    //       r => r.HasOne<Source>().WithMany().HasForeignKey(nameof(Through.<SourceFkProp>)));
+    //
+    // `WithMany()` is left inverse-less (no reciprocal collection on the target) — the
+    // contract is one-directional traversal from the source, and the route does the
+    // explicit join regardless.
+    private static string UsingEntityConfig(M2MNavigation nav)
+    {
+        var source = CSharpNaming.Pascal(nav.Source.Name);
+        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var through = CSharpNaming.Pascal(nav.Junction.Name);
+        var navProp = CSharpNaming.Pascal(nav.Name);
+        var sourceFkProp = CSharpNaming.Pascal(nav.SourceField);
+        var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
+        return
+            $"        modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
+            $"l => l.HasOne<{target}>().WithMany().HasForeignKey(nameof({through}.{targetFkProp})), " +
+            $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each

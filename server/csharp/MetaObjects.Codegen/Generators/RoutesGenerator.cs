@@ -183,6 +183,14 @@ public sealed class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        });");
         }
 
+        // FR-018 M:N traversal — GET /<source-plural>/{id}/<relationName> through the
+        // junction. Only on a single-PK source (the route addresses the source by id).
+        // Cross-port contract: source URL segment = pluralized ENTITY name, relation
+        // segment = relationship name.
+        if (hasItem)
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
+                AppendM2mRoute(sb, nav, route, pkType!);
+
         sb.AppendLine();
         sb.AppendLine("        return app;");
         sb.AppendLine("    }");
@@ -204,5 +212,68 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("}");
 
         return new EmittedFile($"{cls}Routes.g.cs", sb.ToString());
+    }
+
+    // Emit the M:N traversal handler for one navigation. The junction + target are
+    // mapped DbSets; the handler does the same two-stage join M2MResolver performs at
+    // runtime, but over the generated DbSets via EF.Property (no metadata at runtime).
+    //
+    //   hetero / directed self-join: junction WHERE <SourceFkProp> = id → <TargetFkProp>,
+    //                                then target WHERE pk IN (...).
+    //   symmetric self-join: junction WHERE <SourceFkProp> = id OR <TargetFkProp> = id;
+    //                        per row the related id is whichever column is NOT the source id.
+    //
+    // Junction FK properties / target PK property are EF.Property<T>(...) lookups, so the
+    // handler stays reflection-free and EF translates the property access to the column.
+    private static void AppendM2mRoute(
+        System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType)
+    {
+        var relSeg = nav.Name;                                    // relationship name segment
+        var targetCls = CSharpNaming.Pascal(nav.Target.Name);
+        var targetDbSet = CSharpNaming.Pluralize(targetCls);
+        var junctionDbSet = CSharpNaming.Pluralize(CSharpNaming.Pascal(nav.Junction.Name));
+        var srcFkProp = CSharpNaming.Pascal(nav.SourceField);
+        var tgtFkProp = CSharpNaming.Pascal(nav.TargetField);
+
+        // The junction FK CLR type (the related-id key type) + the target PK property.
+        var fkType = JunctionFkType(nav);
+        var targetPk = nav.Target.PrimaryIdentity()?.Fields is { Count: 1 } tf
+            ? CSharpNaming.Pascal(tf[0]) : "Id";
+
+        sb.AppendLine();
+        sb.AppendLine("        app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, AppDbContext db) =>");
+        sb.AppendLine("        {");
+        if (nav.Symmetric)
+        {
+            // Union both junction columns; the related id is the column that is NOT the source id.
+            sb.AppendLine($"            var pairs = await db.{junctionDbSet}.AsNoTracking()");
+            sb.AppendLine($"                .Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id) || EF.Property<{fkType}>(j, \"{tgtFkProp}\").Equals(id))");
+            sb.AppendLine($"                .Select(j => new {{ S = EF.Property<{fkType}>(j, \"{srcFkProp}\"), T = EF.Property<{fkType}>(j, \"{tgtFkProp}\") }})");
+            sb.AppendLine("                .ToListAsync();");
+            sb.AppendLine($"            var relatedIds = new System.Collections.Generic.HashSet<{fkType}>();");
+            sb.AppendLine("            foreach (var p in pairs)");
+            sb.AppendLine("                relatedIds.Add(p.S.Equals(id) ? p.T : p.S);");
+        }
+        else
+        {
+            sb.AppendLine($"            var relatedIds = (await db.{junctionDbSet}.AsNoTracking()");
+            sb.AppendLine($"                .Where(j => EF.Property<{fkType}>(j, \"{srcFkProp}\").Equals(id))");
+            sb.AppendLine($"                .Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
+            sb.AppendLine("                .ToListAsync()).ToHashSet();");
+        }
+        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+        sb.AppendLine($"            var rows = await db.{targetDbSet}.AsNoTracking()");
+        sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
+        sb.AppendLine("                .ToListAsync();");
+        sb.AppendLine("            return Results.Ok(rows);");
+        sb.AppendLine("        });");
+    }
+
+    // The CLR type of the junction FK columns (and thus the related-id key). Both
+    // junction references point at same-typed PKs; use the source FK field's subtype.
+    private static string JunctionFkType(M2MNavigation nav)
+    {
+        var fkField = nav.Junction.FindField(nav.SourceField);
+        return fkField is not null ? CSharpNaming.ScalarFor(fkField.SubType) ?? "long" : "long";
     }
 }

@@ -105,6 +105,22 @@ internal static class ApiContractAssertions
                 throw new Xunit.Sdk.XunitException(
                     $"{scenarioName} / {request.Id}: expected names [{string.Join(", ", wantStrs)}], got [{string.Join(", ", actualNames)}]");
         }
+        if (want.TryGetValue("namesUnordered", out var namesUObj) && namesUObj is List<object?> wantNamesU)
+        {
+            // M:N traversal (FR-018): related-row order through a junction is not
+            // contractual, so compare the multiset of `name` fields order-insensitively.
+            if (body is not List<object?> list)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected array, got: {Render(body)}");
+            var actualNames = list.Select(it =>
+                it is Dictionary<string, object?> m && m.TryGetValue("name", out var n) ? n?.ToString() : null)
+                .OrderBy(s => s, StringComparer.Ordinal).ToList();
+            var wantStrs = wantNamesU.Select(it => it?.ToString())
+                .OrderBy(s => s, StringComparer.Ordinal).ToList();
+            if (!actualNames.SequenceEqual(wantStrs))
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected names (unordered) [{string.Join(", ", wantStrs)}], got [{string.Join(", ", actualNames)}]");
+        }
         if (want.TryGetValue("row", out var rowObj) && rowObj is Dictionary<string, object?> wantRow)
         {
             if (body is not Dictionary<string, object?> row)

@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
+        modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(nameof(PostTag.TagId)), r => r.HasOne<Post>().WithMany().HasForeignKey(nameof(PostTag.PostId)));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
     }

@@ -18,4 +18,8 @@ public class Person
     [MaxLength(80)]
     [Required]
     public string Name { get; set; } = default!;
+    [NotMapped]
+    public ICollection<Person> Following { get; set; } = new List<Person>();
+    [NotMapped]
+    public ICollection<Person> Friends { get; set; } = new List<Person>();
 }

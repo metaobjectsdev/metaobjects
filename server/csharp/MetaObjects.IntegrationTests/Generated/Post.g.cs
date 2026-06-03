@@ -18,4 +18,5 @@ public class Post
     [MaxLength(200)]
     [Required]
     public string Title { get; set; } = default!;
+    public ICollection<Tag> Tags { get; set; } = new List<Tag>();
 }
