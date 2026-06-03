@@ -65,9 +65,27 @@ export interface CrudRoutesOptions {
   sortAllowlist?:   SortAllowlist;
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for like/ilike dispatch). */
   dialect?: "sqlite" | "postgres";
+  /**
+   * FR-017 TPH — scope this route set to a single subtype of a single-table-
+   * inheritance base. When set:
+   *   - list/get filter to `eq(table[column], value)`;
+   *   - a get/update/delete targeting a row of another subtype 404s;
+   *   - create injects `{ [column]: value }` AFTER body validation (the body
+   *     omits the discriminator — the URL already names the subtype);
+   *   - update strips `column` from the patch (a row's subtype is immutable).
+   * Absent → ordinary single-table CRUD, behaviour unchanged.
+   */
+  discriminator?: { column: string; value: string };
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
+
+/** The TPH discriminator predicate for this route set, or undefined when the
+ *  routes are not subtype-scoped. */
+function discriminatorCond(opts: VerbOptions) {
+  const d = opts.discriminator;
+  return d ? eq(opts.table[d.column], d.value) : undefined;
+}
 
 export function mountCrudRoutes(opts: CrudRoutesOptions): void {
   const verbs = new Set<CrudVerb>(opts.expose ?? ALL_VERBS);
@@ -96,6 +114,10 @@ export function mountListRoute(opts: VerbOptions): void {
       const qsParsed = qs.parse(rawSearch) as Record<string, unknown>;
       const withCount = isTruthyFlag(qsParsed.withCount);
 
+      // FR-017 TPH: when subtype-scoped, AND the discriminator predicate into
+      // every list query (combined with any allowlist filters).
+      const discCond = discriminatorCond(opts);
+
       let where: ReturnType<typeof parseFilterParams>["where"];
       if (opts.filterAllowlist && opts.sortAllowlist) {
         const parsed = parseFilterParams({
@@ -105,9 +127,12 @@ export function mountListRoute(opts: VerbOptions): void {
           sortAllowlist: opts.sortAllowlist,
           dialect: opts.dialect ?? "sqlite",
         });
-        const combinedWhere = parsed.where && parsed.searchWhere
+        const filterWhere = parsed.where && parsed.searchWhere
           ? and(parsed.where, parsed.searchWhere)
           : (parsed.where ?? parsed.searchWhere);
+        const combinedWhere = filterWhere && discCond
+          ? and(filterWhere, discCond)
+          : (filterWhere ?? discCond);
         if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
         // Default to stable id-ascending order when the caller specifies no
         // sort — the cross-port contract asserts deterministic ordering for
@@ -118,8 +143,10 @@ export function mountListRoute(opts: VerbOptions): void {
         if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
-        // Legacy path — no allowlists configured. Only limit/offset.
+        // Legacy path — no allowlists configured. Only limit/offset (+ the TPH
+        // discriminator predicate when subtype-scoped).
         const { limit, offset } = req.query as { limit?: string; offset?: string };
+        if (discCond) { q = q.where(discCond); where = discCond; }
         if (opts.table.id !== undefined) q = q.orderBy(asc(opts.table.id));
         if (limit  !== undefined) q = q.limit(Number(limit));
         if (offset !== undefined) q = q.offset(Number(offset));
@@ -151,13 +178,15 @@ export function mountListRoute(opts: VerbOptions): void {
 export function mountGetRoute(opts: VerbOptions): void {
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
+    const discCond = discriminatorCond(opts);
+    const idCond = eq(opts.table.id, parseId(id));
     // Await + take the first row rather than `.get()` — `.get()` is a
     // libsql/better-sqlite3-only method; the node-postgres builder is thenable
     // but has no `.get()`. Awaiting works on both dialects.
     const rows = await opts.db
       .select()
       .from(opts.table)
-      .where(eq(opts.table.id, parseId(id)))
+      .where(discCond ? and(idCond, discCond) : idCond)
       .limit(1);
     const row = (rows as unknown[])[0];
     return row ?? reply.code(404).send({ error: "not_found" });
@@ -170,7 +199,12 @@ export function mountCreateRoute(opts: VerbOptions): void {
     if (!parsed.success) {
       return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
     }
-    const result = await opts.db.insert(opts.table).values(parsed.data).returning();
+    // FR-017 TPH: the body omits the discriminator (the URL names the subtype);
+    // inject it server-side so the row lands tagged with the right subtype.
+    const values = opts.discriminator
+      ? { ...(parsed.data as Record<string, unknown>), [opts.discriminator.column]: opts.discriminator.value }
+      : parsed.data;
+    const result = await opts.db.insert(opts.table).values(values).returning();
     const row = (result as unknown[])[0];
     return reply.code(201).send(row);
   });
@@ -186,10 +220,19 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     if (!parsed.success) {
       return reply.code(400).send({ error: "validation", issues: parsed.error.issues });
     }
+    const discCond = discriminatorCond(opts);
+    // FR-017 TPH: a row's subtype is immutable — strip the discriminator from
+    // the patch so a client can't flip a Bridge into a Copay.
+    let data = parsed.data as Record<string, unknown>;
+    if (opts.discriminator) {
+      const { [opts.discriminator.column]: _omit, ...rest } = data;
+      data = rest;
+    }
+    const idCond = eq(opts.table.id, parseId(id));
     const result = await opts.db
       .update(opts.table)
-      .set(parsed.data)
-      .where(eq(opts.table.id, parseId(id)))
+      .set(data)
+      .where(discCond ? and(idCond, discCond) : idCond)
       .returning();
     const row = (result as unknown[])[0];
     return row ?? reply.code(404).send({ error: "not_found" });
@@ -216,9 +259,11 @@ export function mountUpdateRoute(opts: VerbOptions): void {
 export function mountDeleteRoute(opts: VerbOptions): void {
   opts.fastify.delete(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
+    const discCond = discriminatorCond(opts);
+    const idCond = eq(opts.table.id, parseId(id));
     const result = await opts.db
       .delete(opts.table)
-      .where(eq(opts.table.id, parseId(id)));
+      .where(discCond ? and(idCond, discCond) : idCond);
     // Both libsql and pg drivers expose a rows-affected counter, in different
     // shapes. Treat anything > 0 as "found and deleted."
     const affected = extractRowCount(result);
