@@ -106,4 +106,15 @@ describe("FR-017 Tier 2 — per-subtype full read schema", () => {
     expect(out).toContain("parseAuth");
     expect(out).toContain("BridgeAuthSchema");
   });
+
+  test("base file emits the union as the sole `export type Auth` (no collision with the Drizzle row type)", async () => {
+    const { root, base } = await loadTph();
+    const out = renderEntityFile(base, ctxFor(root));
+    // Exactly one `export type Auth =` — the discriminated union.
+    const count = (out.match(/export type Auth =/g) ?? []).length;
+    expect(count).toBe(1);
+    expect(out).toContain("export type Auth = BridgeAuth | CopayAuth");
+    // The raw single-table row type is emitted under the non-colliding `AuthRow`.
+    expect(out).toContain("export type AuthRow =");
+  });
 });
