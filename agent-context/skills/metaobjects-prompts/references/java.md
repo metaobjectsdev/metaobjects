@@ -23,7 +23,7 @@ the payload record it parses into) to the Maven plugin's `<generators>` list:
 
 ## What it emits
 
-Per `template.output`, `mvn meta:gen` writes a `<Name>Parser` class with a static
+Per `template.output`, `mvn metaobjects:generate` writes a `<Name>Parser` class with a static
 `parse` method returning the `@payloadRef` payload record. The strict path throws
 `com.fasterxml.jackson.core.JsonProcessingException` on malformed input:
 
@@ -59,9 +59,16 @@ NpcResponsePayload npc = NpcResponseParser.parse(llmResponse);   // throws on ba
 
 ## Drift gate
 
-The render module's `Verify.verify(loader, provider, options)` walks every
-`template.*` node and checks each `{{...}}` reference resolves against its
-`@payloadRef` — wire it into a JUnit assertion in the Maven `test` phase to fail the
-build on prompt/payload drift. The `meta:verify` codegen-drift goal additionally
-catches a stale committed parser. The emitted parser imports Jackson
-(`com.fasterxml.jackson`), normally already on a Spring Boot classpath.
+The render module's static `Verify.check(String templateText, List<PayloadField> fields, VerifyOptions options)`
+walks a Mustache template's tokens against a payload field tree and returns a
+`List<VerifyError>` — each `{{...}}` reference that doesn't resolve against the
+payload fields yields an error (empty list = no drift). `VerifyOptions.empty()`
+supplies a fully-defaulted options record; `VerifyOptions(provider, requiredSlots,
+requiredTags)` adds partial resolution and required-slot/-tag checks. For the
+output-format fragment specifically, `Verify.checkOutputPrompt(String fragment,
+List<String> requiredFieldNames)` returns a `List<VerifyError>` for every required
+field name absent from the rendered fragment. Assert the returned list is empty in a
+JUnit test in the Maven `test` phase to fail the build on prompt/payload drift. The
+`metaobjects:verify` codegen-drift goal additionally catches a stale committed
+parser. The emitted parser imports Jackson (`com.fasterxml.jackson`), normally
+already on a Spring Boot classpath.

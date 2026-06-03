@@ -195,16 +195,20 @@ The `[]` key-suffix declares an array field: `field.long[]: weekIds` lowers to
 |---|---|---|
 | `identity.primary` | the PK field(s) | `@fields`, `@generation` |
 | `identity.secondary` | a unique secondary index | `@fields` |
-| `identity.reference` | an inbound FK from this entity to another | `@fields`, `@references` |
+| `identity.reference` | an inbound FK from this entity to another | `@fields`, `@references`, `@enforce` |
 
 `@generation` on a primary controls value generation (e.g. `increment`).
 `@fields` accepts a single string in authoring; it normalizes to an array in
-canonical JSON.
+canonical JSON. `@enforce` on a reference (default `true`) controls whether the
+backend physically enforces it (a SQL FK constraint); set `false` for a logical
+reference for navigation/typing/codegen only. Referential actions
+(`@onDelete`/`@onUpdate`) are NOT on `identity.reference` — they live on the
+`relationship.*` node (see Relationships below).
 
 ```json
 { "identity.primary":   { "@fields": ["id"], "@generation": "increment" } }
 { "identity.secondary": { "@fields": ["email"] } }
-{ "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@onDelete": "cascade" } }
+{ "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@enforce": true } }
 ```
 
 ## Relationships
@@ -217,7 +221,7 @@ the two halves of one FK.
 |---|---|---|
 | `@objectRef` | composition | target entity name |
 | `@cardinality` | composition | `one` / `many` |
-| `@onDelete` / `@onUpdate` | both | `cascade` / `restrict` / `setNull` / `noAction` |
+| `@onDelete` / `@onUpdate` | `relationship.*` only | `cascade` / `set-null` / `restrict` / `no-action` |
 
 ```json
 { "relationship.composition": {

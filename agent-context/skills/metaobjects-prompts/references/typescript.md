@@ -38,7 +38,7 @@ import { z } from "zod";
 const NpcResponseOutputSchema = z.object({
   name: z.string(),
   level: z.number().int(),
-  role: z.enum(["merchant", "guard", "elder"]),   // field.enum → z.enum
+  role: z.unknown(),   // field.enum is not value-constrained in the strict parser → z.unknown()
 });
 
 export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
@@ -60,8 +60,12 @@ between the render and parse sides interchangeably.
 
 Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`/`short`/`byte`
 → `z.number().int()`; `field.double`/`float` → `z.number()`; `field.boolean` →
-`z.boolean()`; `field.enum` → `z.enum([...])`; `field.object` (with `@objectRef`) →
-a nested `z.object({...})`; `isArray: true` → wrapped in `z.array(...)`.
+`z.boolean()`; `field.object` (with `@objectRef`) → a nested `z.object({...})`;
+`isArray: true` → wrapped in `z.array(...)`. Any subtype outside this scalar set —
+including `field.enum` — falls through to `z.unknown()` in the strict
+`parse*`/`safeParse*` schema (the value-constrained `z.enum([...])` form is emitted
+in the entity insert/update schemas, not in this output parser; the lenient extract
+path carries the enum-as-string handling).
 
 ## The three-step consumer pattern
 

@@ -66,11 +66,11 @@ want, by fully-qualified class name.
 ## Run
 
 ```bash
-mvn meta:gen      # the codegen goal directly
-mvn compile       # also runs it (the goal is bound to generate-sources)
+mvn metaobjects:generate   # the codegen goal directly (goalPrefix=metaobjects, goal=generate)
+mvn compile                # also runs it (the goal is bound to generate-sources)
 ```
 
-A `meta:verify` Maven goal exists for **codegen-drift** (re-generate and diff vs
+A `metaobjects:verify` Maven goal exists for **codegen-drift** (re-generate and diff vs
 committed output). Schema migration and live-DB drift are NOT Java goals — they run
 through the Node `meta` tool (see the migration reference).
 
