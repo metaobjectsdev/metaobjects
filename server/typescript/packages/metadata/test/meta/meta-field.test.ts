@@ -10,6 +10,7 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_DECIMAL,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VIEW_SUBTYPE_TEXT,
@@ -377,6 +378,40 @@ describe("MetaField.defaultValue()", () => {
     const v = f.defaultValue();
     expect(typeof v).toBe("string");
     expect(v).toBe("active");
+  });
+
+  // SP-H Unit 4: field.decimal is precision-exact (ADR-0019 — native TS binding
+  // is `string`; Drizzle pg `numeric` infers as `string`). A decimal field must
+  // NOT classify as DATA_TYPE_DOUBLE, or its @default/coerce would round-trip
+  // through toDouble() and lose precision on a high-precision value.
+  it("decimal field: dataType is 'string' (not 'double') — precision-exact contract", () => {
+    // Built via the FIELD_DATA_TYPE map (no explicit setDataType) — the real path.
+    const f = makeField("price", FIELD_SUBTYPE_DECIMAL);
+    expect(f.dataType).toBe(DATA_TYPE_STRING);
+  });
+
+  it("decimal field: exact @default '19.99' preserved verbatim (no float rounding)", () => {
+    const f = makeField("price", FIELD_SUBTYPE_DECIMAL);
+    f.setAttr(FIELD_ATTR_DEFAULT, "19.99");
+    f.freeze();
+    const v = f.defaultValue();
+    expect(typeof v).toBe("string");
+    expect(v).toBe("19.99");
+  });
+
+  it("decimal field: high-precision @default preserved exactly (float would round)", () => {
+    const f = makeField("amount", FIELD_SUBTYPE_DECIMAL);
+    f.setAttr(FIELD_ATTR_DEFAULT, "12345678901234.5678");
+    f.freeze();
+    const v = f.defaultValue();
+    // Number("12345678901234.5678") === 12345678901234.568 — lossy. The exact
+    // decimal string must survive coerce()/defaultValue() unchanged.
+    expect(v).toBe("12345678901234.5678");
+  });
+
+  it("decimal field: coerce() of an exact decimal string is the same string", () => {
+    const f = makeField("amount", FIELD_SUBTYPE_DECIMAL);
+    expect(f.coerce("0.10")).toBe("0.10");
   });
 
   it("result is cached — same reference returned on repeat calls after freeze", () => {

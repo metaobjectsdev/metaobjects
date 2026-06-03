@@ -59,7 +59,12 @@ const FIELD_DATA_TYPE: Readonly<Record<string, DataType>> = {
   [FIELD_SUBTYPE_ENUM]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
   [FIELD_SUBTYPE_FLOAT]: DATA_TYPE_DOUBLE,
-  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_DOUBLE,
+  // field.decimal is precision-exact: the native TS binding is `string` (Drizzle
+  // pg `numeric` infers as `string`; SP-H/ADR-0019), the DB column is numeric(p,s),
+  // and the wire form is a STRING. Classifying it DATA_TYPE_DOUBLE would route
+  // @default/coerce through toDouble() and silently round an exact decimal
+  // (e.g. "12345678901234.5678"). DATA_TYPE_STRING keeps it lossless end-to-end.
+  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
   [FIELD_SUBTYPE_DATE]: DATA_TYPE_DATE,
   [FIELD_SUBTYPE_TIME]: DATA_TYPE_DATE,
