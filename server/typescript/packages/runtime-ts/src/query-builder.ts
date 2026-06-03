@@ -38,13 +38,15 @@ export interface QueryOpts {
 }
 
 export function resolvePkFields(entity: MetaData): string[] {
-  const primary = entity.ownChildren().find(
+  // Effective children (own + inherited via super) so a TPH subtype resolves
+  // the discriminator base's primary identity (FR-017).
+  const primary = entity.children().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
   if (!primary) {
     throw new MetadataError(`Entity '${entity.name}' has no primary identity`, { entity: entity.name });
   }
-  const attr = primary.ownAttr(IDENTITY_ATTR_FIELDS);
+  const attr = primary.attr(IDENTITY_ATTR_FIELDS);
   if (!Array.isArray(attr) || attr.length === 0) {
     throw new MetadataError(`Entity '${entity.name}' primary identity has no @fields`, { entity: entity.name });
   }
@@ -53,14 +55,15 @@ export function resolvePkFields(entity: MetaData): string[] {
 
 function listFieldNames(entity: MetaData): string[] {
   const out: string[] = [];
-  for (const child of entity.ownChildren()) {
+  // Effective children so a TPH subtype's column set is base fields + own.
+  for (const child of entity.children()) {
     if (child.type === TYPE_FIELD) out.push(child.name);
   }
   return out;
 }
 
 function getField(entity: MetaData, fieldName: string): MetaData {
-  const f = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  const f = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!f) {
     throw new MetadataError(
       `Unknown field '${fieldName}' on entity '${entity.name}'`,
@@ -208,9 +211,32 @@ export function buildInsertSpec(
   };
 }
 
+/**
+ * A TPH discriminator scope: AND'd into the by-id where so a subtype-scoped
+ * update/delete only matches rows of that subtype (a row of a different
+ * subtype is invisible → not found). `field` is the discriminator FIELD name;
+ * the column is resolved via the entity's naming strategy.
+ */
+export interface DiscriminatorScope {
+  field: string;
+  value: PrimitiveValue;
+}
+
+function byIdWhere(
+  entity: MetaData, id: unknown, scope: DiscriminatorScope | undefined,
+  strategy: ColumnNamingStrategy,
+): WhereClause {
+  const pkColumn = resolveColumnName(getField(entity, resolvePkFields(entity)[0]!), strategy);
+  const pkEq: WhereClause = { kind: "eq", column: pkColumn, value: id as PrimitiveValue };
+  if (scope === undefined) return pkEq;
+  const discColumn = resolveColumnName(getField(entity, scope.field), strategy);
+  return { kind: "and", clauses: [pkEq, { kind: "eq", column: discColumn, value: scope.value }] };
+}
+
 export function buildUpdateSpec(
   entity: MetaData, data: Row, id: unknown,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  scope?: DiscriminatorScope,
 ): UpdateSpec {
   const values = rowToColumns(entity, data, strategy);
   const pkFields = resolvePkFields(entity);
@@ -220,11 +246,10 @@ export function buildUpdateSpec(
       { entity: entity.name },
     );
   }
-  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!), strategy);
   return {
     table: resolveTableName(entity),
     values,
-    where: { kind: "eq", column: pkColumn, value: id as PrimitiveValue },
+    where: byIdWhere(entity, id, scope, strategy),
     returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f), strategy)),
   };
 }
@@ -232,6 +257,7 @@ export function buildUpdateSpec(
 export function buildDeleteSpec(
   entity: MetaData, id: unknown,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  scope?: DiscriminatorScope,
 ): DeleteSpec {
   const pkFields = resolvePkFields(entity);
   if (pkFields.length !== 1) {
@@ -240,9 +266,8 @@ export function buildDeleteSpec(
       { entity: entity.name },
     );
   }
-  const pkColumn = resolveColumnName(getField(entity, pkFields[0]!), strategy);
   return {
     table: resolveTableName(entity),
-    where: { kind: "eq", column: pkColumn, value: id as PrimitiveValue },
+    where: byIdWhere(entity, id, scope, strategy),
   };
 }

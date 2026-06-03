@@ -34,7 +34,8 @@ export function runValidators(
 ): ValidationResult {
   const errors: ValidationFailure[] = [];
 
-  for (const field of entity.ownChildren()) {
+  // Effective children so a TPH subtype validates inherited base fields too.
+  for (const field of entity.children()) {
     if (field.type !== TYPE_FIELD) continue;
     const present = Object.prototype.hasOwnProperty.call(data, field.name);
     const value = data[field.name];

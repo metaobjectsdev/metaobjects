@@ -65,7 +65,13 @@ export function resolveTableName(entity: MetaData): string {
   // so this helper now just delegates. Writability (table vs view/storedProc/
   // tableFunction) only affects write-routing — for SELECT-side name resolution,
   // a read-only primary source is the right answer.
-  const source = entity.ownChildren().find(
+  //
+  // Effective children (own + inherited via the super chain) so a TPH SUBTYPE
+  // — which declares no source of its own and inherits the discriminator base's
+  // single table (FR-017) — resolves to that base table rather than the
+  // entity-name fallback. For an entity declaring its own source, own shadows
+  // inherited, so the result is unchanged.
+  const source = entity.children().find(
     (c): c is MetaSource => c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (source !== undefined) return source.physicalName;
@@ -111,7 +117,9 @@ export function buildNameMap(
 ): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();
-  for (const child of entity.ownChildren()) {
+  // Effective children so a TPH subtype's name map covers inherited base
+  // fields + its own (FR-017); own shadows inherited on a name conflict.
+  for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD) continue;
     const dbCol = resolveColumnName(child, strategy);
     jsToDb.set(child.name, dbCol);

@@ -17,7 +17,8 @@ export type IdentityResolution =
   | { kind: "preset"; values: Record<string, unknown> };
 
 export function resolveIdentity(entity: MetaData, data: Record<string, unknown>): IdentityResolution {
-  const primary = entity.ownChildren().find(
+  // Effective children so a TPH subtype resolves the inherited primary identity.
+  const primary = entity.children().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
   if (!primary) {
