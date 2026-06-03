@@ -1610,7 +1610,7 @@ public static class ValidationPasses
 
     private static readonly HashSet<string> NumericDiscriminatorSubtypes = new()
     {
-        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
     };
 
     public static IReadOnlyList<MetaError> ValidateDiscriminator(MetaData root)

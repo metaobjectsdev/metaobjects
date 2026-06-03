@@ -12,7 +12,6 @@ FIELD_SUBTYPE_TIMESTAMP = "timestamp"
 FIELD_SUBTYPE_TIME = "time"
 FIELD_SUBTYPE_DECIMAL = "decimal"
 FIELD_SUBTYPE_OBJECT = "object"
-FIELD_SUBTYPE_CLASS = "class"
 FIELD_SUBTYPE_CURRENCY = "currency"
 FIELD_SUBTYPE_ENUM = "enum"
 # R6 Plan 2a — field.uuid is a logical identity scalar (ADR-0013). String-backed
@@ -34,7 +33,6 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_TIME,
     FIELD_SUBTYPE_DECIMAL,
     FIELD_SUBTYPE_OBJECT,
-    FIELD_SUBTYPE_CLASS,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_UUID,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered

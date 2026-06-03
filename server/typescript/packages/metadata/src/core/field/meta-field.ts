@@ -19,7 +19,6 @@ import { convertToDataType } from "../../data-converter.js";
 import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../../shared/base-types.js";
 import {
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY,
@@ -52,7 +51,6 @@ import { ValueObject } from "../object/value-object.js";
 const FIELD_DATA_TYPE: Readonly<Record<string, DataType>> = {
   [SUBTYPE_BASE]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_STRING]: DATA_TYPE_STRING,
-  [FIELD_SUBTYPE_CLASS]: DATA_TYPE_STRING,
   // field.uuid binds to TS `string` (no native UUID type) — DATA_TYPE_STRING.
   [FIELD_SUBTYPE_UUID]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,

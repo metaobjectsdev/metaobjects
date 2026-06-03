@@ -33,7 +33,6 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
@@ -265,7 +264,6 @@ function scalarArray(name: string, kind: FieldKind, required: boolean): FieldSpe
 function scalarKind(subType: string): FieldKind {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:

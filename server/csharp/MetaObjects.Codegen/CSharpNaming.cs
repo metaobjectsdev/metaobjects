@@ -32,7 +32,6 @@ public static class CSharpNaming
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [FIELD_SUBTYPE_STRING]    = "string",
-            [FIELD_SUBTYPE_CLASS]     = "string",
             [FIELD_SUBTYPE_INT]       = "int",
             [FIELD_SUBTYPE_LONG]      = "long",
             [FIELD_SUBTYPE_CURRENCY]  = "long",   // integer minor units (wire contract)

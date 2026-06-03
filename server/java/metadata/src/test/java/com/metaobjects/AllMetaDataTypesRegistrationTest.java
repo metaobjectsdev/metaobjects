@@ -41,7 +41,6 @@ public class AllMetaDataTypesRegistrationTest extends SharedRegistryTestBase {
             new FloatField("testFloat");
             new DecimalField("testDecimal");  // High-precision decimal field
             new ObjectField("testObject");
-            new ClassField("testClass");
             
             // Object types
             new EntityMetaObject("testEntity");
@@ -96,8 +95,6 @@ public class AllMetaDataTypesRegistrationTest extends SharedRegistryTestBase {
                   sharedRegistry.isRegistered("field", "decimal"));
         assertTrue("ObjectField should be registered",
                   sharedRegistry.isRegistered("field", "object"));
-        assertTrue("ClassField should be registered",
-                  sharedRegistry.isRegistered("field", "class"));
     }
 
     @Test

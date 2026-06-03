@@ -36,7 +36,7 @@ import java.util.Set;
  *
  * <p>Coverage parallels {@code KotlinTypeMapper}: 7 primitive types +
  * currency + enum + uuid. UUID is matched on metadata subtype name (no
- * {@code UuidField} JVM class today). Object / class / decimal etc. throw
+ * {@code UuidField} JVM class today). Object / decimal etc. throw
  * {@link IllegalArgumentException} with a clear message — add support per
  * real consumer ask.</p>
  */

@@ -104,7 +104,7 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
         var out_ = new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.Ordinal);
         foreach (var field in entity.Fields())
         {
-            if (field.SubType == FIELD_SUBTYPE_OBJECT || field.SubType == FIELD_SUBTYPE_CLASS) continue;
+            if (field.SubType == FIELD_SUBTYPE_OBJECT) continue;
             if (!IsFilterable(field)) continue;
             var ops = OpsForSubtype(field.SubType);
             if (ops.Count == 0) continue;

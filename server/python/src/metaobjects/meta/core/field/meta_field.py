@@ -17,7 +17,6 @@ _FIELD_DATA_TYPE = {
     fc.FIELD_SUBTYPE_TIME: DataType.DATE,
     fc.FIELD_SUBTYPE_DECIMAL: DataType.DECIMAL,
     fc.FIELD_SUBTYPE_OBJECT: DataType.OBJECT,
-    fc.FIELD_SUBTYPE_CLASS: DataType.STRING,
     fc.FIELD_SUBTYPE_CURRENCY: DataType.LONG,
     fc.FIELD_SUBTYPE_ENUM: DataType.STRING,
     # R6 Plan 2a — field.uuid is string-backed on the wire; the native uuid.UUID

@@ -28,7 +28,6 @@ public class SimpleFieldRegistrationTest {
             new FloatField("testFloat");
             new DecimalField("testDecimal");  // New high-precision decimal field
             new ObjectField("testObject");
-            new ClassField("testClass");
         } catch (Exception e) {
             // Ignore
         }

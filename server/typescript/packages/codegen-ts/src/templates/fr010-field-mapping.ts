@@ -13,7 +13,6 @@ import {
   type MetaData,
   TYPE_FIELD,
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
@@ -40,7 +39,6 @@ import {
 export function scalarKind(subType: string): string | null {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:

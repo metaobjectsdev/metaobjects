@@ -15,7 +15,6 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -82,7 +81,6 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
     case FIELD_SUBTYPE_ENUM:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
@@ -248,7 +246,6 @@ export function mapColumnType(
         case FIELD_SUBTYPE_TIMESTAMP:
         case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
-        case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
         case FIELD_SUBTYPE_UUID:
           // SQLite has no native uuid type; store as TEXT (string native binding).
@@ -336,7 +333,6 @@ export function mapColumnType(
           break;
         }
         case FIELD_SUBTYPE_ENUM:
-        case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
         default:
           fnName = "text";

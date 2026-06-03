@@ -23,11 +23,9 @@ from ..errors import ErrorCode, MetaError
 from ..meta.meta_data import MetaData
 from ..meta.core.field.field_constants import (
     FIELD_ATTR_VALUES,
-    FIELD_SUBTYPE_BYTE,
     FIELD_SUBTYPE_ENUM,
     FIELD_SUBTYPE_INT,
     FIELD_SUBTYPE_LONG,
-    FIELD_SUBTYPE_SHORT,
     FIELD_SUBTYPE_STRING,
 )
 from ..meta.core.object.object_constants import (
@@ -38,7 +36,7 @@ from ..meta.core.object.object_constants import (
 from ..shared.base_types import TYPE_FIELD, TYPE_OBJECT
 
 _NUMERIC_DISCRIMINATOR_SUBTYPES = frozenset(
-    {FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE}
+    {FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG}
 )
 _INT_RE = re.compile(r"^-?\d+$")
 

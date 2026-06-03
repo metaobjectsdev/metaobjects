@@ -21,8 +21,6 @@ import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
-import com.metaobjects.field.ShortField;
-import com.metaobjects.field.ByteField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
@@ -2185,8 +2183,7 @@ public final class ValidationPhase {
     // =========================================================================
 
     private static final Set<String> NUMERIC_DISCRIMINATOR_SUBTYPES = Set.of(
-        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG,
-        ShortField.SUBTYPE_SHORT, ByteField.SUBTYPE_BYTE);
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG);
 
     static void validateDiscriminator(MetaRoot root) {
         List<MetaObject> entities = new java.util.ArrayList<>();

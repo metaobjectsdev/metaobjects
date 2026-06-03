@@ -260,7 +260,6 @@ def _scalar_kind(sub_type: str) -> FieldKind:
     back to STRING. Mirrors the cross-port ``scalarKind`` ordering."""
     if sub_type in (
         fc.FIELD_SUBTYPE_STRING,
-        fc.FIELD_SUBTYPE_CLASS,
         fc.FIELD_SUBTYPE_UUID,
         fc.FIELD_SUBTYPE_DATE,
         fc.FIELD_SUBTYPE_TIME,
