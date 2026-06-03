@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype } from "@metaobjectsdev/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
@@ -24,11 +24,16 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     name: "tanstack-grid",
     // Always set: AND-composes the framework instance-artifact guard (skips
     // abstract types), opt-out, user filter, and dataGrid layout presence.
+    // FR-017 Tier 3: a TPH discriminator base emits ONE polymorphic grid. Its
+    // subtypes inherit the base's dataGrid layout via extends, but per-subtype
+    // grids are opt-IN only (own `@emitGrid: true`) — otherwise the polymorphic
+    // grid is the single source of truth.
     filter: (e: MetaObject) =>
       emitsInstanceArtifacts(e)
       && e.ownAttr("emitTanstack") !== false
       && userFilter(e)
-      && hasDataGridLayout(e),
+      && hasDataGridLayout(e)
+      && (!isTphSubtype(e) || e.ownAttr("emitGrid") === true),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("tanstack-grid: renderContext is required (provided by runGen)");
