@@ -35,6 +35,11 @@ from __future__ import annotations
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators.m2m_codegen import (
+    M2mDescriptor,
+    build_object_index,
+    resolve_m2m_descriptors,
+)
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -93,12 +98,22 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
 
 
-def render_router(entity: MetaObject) -> str | None:
+def render_router(
+    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+) -> str | None:
     """Render an entity as a FastAPI ``APIRouter`` module.
 
     Returns ``None`` when the entity has no ``source.rdb`` child or the source
     is not a writable table (view / materializedView / storedProc / tableFunction
     are skipped — read-only kinds need a different shape).
+
+    When *object_index* is supplied, each M:N navigation on the entity
+    (``relationship.* @cardinality:"many" + @through``) also emits a FastAPI
+    traversal route ``GET /<source-plural>/{id}/<relationName>`` returning the
+    related target rows, plus a typed ``find_related_<relation>`` finder on the
+    repository ``Protocol`` seam (the consumer joins through the junction). The
+    source URL segment is the ENTITY name pluralized (cross-port grammar), NOT
+    the physical ``@table``. Without an index, only CRUD is emitted (back-compat).
     """
     if not emits_instance_artifacts(entity):
         return None
@@ -107,6 +122,10 @@ def render_router(entity: MetaObject) -> str | None:
         return None
     if src.effective_kind() != SOURCE_KIND_TABLE:
         return None
+
+    m2m: list[M2mDescriptor] = (
+        resolve_m2m_descriptors(entity, object_index) if object_index is not None else []
+    )
 
     short_name = entity.name
     snake = _snake_case(short_name)
@@ -186,6 +205,10 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append("    def create(self, dto: Any) -> Any: ...")
     parts.append("    def update(self, id: int, dto: Any) -> Any | None: ...")
     parts.append("    def delete(self, id: int) -> bool: ...")
+    for d in m2m:
+        parts.append(
+            f"    def find_related_{d.relation_name}(self, id: int) -> list[Any]: ..."
+        )
     parts.append("")
     parts.append("")
     parts.append(f"def get_repository() -> {repo_class}:")
@@ -266,6 +289,21 @@ def render_router(entity: MetaObject) -> str | None:
     parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
     parts.append("")
 
+    # FR-018 — M:N traversal routes: GET /{id}/<relationName> returns the
+    # related target rows reached through the junction. The repository seam
+    # owns the join (derived source/target FK columns + symmetric union-on-read);
+    # the route is a thin pass-through returning the related collection (empty
+    # array for an orphan source — never a 404).
+    for d in m2m:
+        parts.append("")
+        parts.append(f'@router.get("/{{{pk_param}}}/{d.relation_name}")')
+        parts.append(f"def list_{snake}_{d.relation_name}(")
+        parts.append(f"    {pk_param}: int,")
+        parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+        parts.append(") -> list[Any]:")
+        parts.append(f"    return repo.find_related_{d.relation_name}({pk_param})")
+        parts.append("")
+
     return "\n".join(parts)
 
 
@@ -281,8 +319,10 @@ def router_generator() -> Generator:
         name = "router-generator"
 
         def generate(self, ctx: GenContext) -> list[EmittedFile]:
+            index = build_object_index(ctx.entities)
+
             def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
-                source = render_router(entity)
+                source = render_router(entity, index)
                 if source is None:
                     return []
                 snake = _snake_case(entity.name)

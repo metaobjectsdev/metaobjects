@@ -11,6 +11,10 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.type_map import py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators.m2m_codegen import (
+    build_object_index,
+    resolve_m2m_descriptors,
+)
 
 
 def _is_int(value: object) -> bool:
@@ -124,8 +128,16 @@ def _effective_fqn(entity: MetaObject) -> str:
     return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
 
 
-def render_entity_model(entity: MetaObject) -> str:
-    """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff)."""
+def render_entity_model(
+    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+) -> str:
+    """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff).
+
+    When *object_index* is supplied, M:N navigations (``relationship.*``
+    ``@cardinality:"many" + @through``) are emitted as nested Pydantic
+    collections (``tags: list[Tag] = []``); a self-join uses a forward-ref string
+    (``following: list["Person"] = []``). Without an index, only scalar/object
+    fields are emitted (back-compat)."""
     imports: set[str] = set()
     base_class = "BaseModel"
     if entity.super_data is not None:
@@ -138,6 +150,18 @@ def render_entity_model(entity: MetaObject) -> str:
         line, used = _field_line(f, imports)
         uses_field = uses_field or used
         lines.append(line)
+
+    # M:N nested collections (FR-018). Element type is the target entity; a
+    # self-join element type is a forward-ref string so the model can name itself.
+    if object_index is not None:
+        for d in resolve_m2m_descriptors(entity, object_index):
+            if d.target_entity == entity.name:
+                element = f'"{entity.name}"'
+            else:
+                element = d.target_entity
+                imports.add(f"from .{d.target_entity} import {d.target_entity}")
+            lines.append(f"    {d.relation_name}: list[{element}] = []")
+
     body = lines if lines else ["    pass"]
 
     # Import only the pydantic names actually referenced.
@@ -168,10 +192,11 @@ def entity_model() -> Generator:
         name = "entity-model"
 
         def generate(self, ctx: GenContext) -> list[EmittedFile]:
+            index = build_object_index(ctx.entities)
             return per_entity(
                 lambda e, _c: EmittedFile(
                     path=f"{e.name}.py",
-                    content=ruff_format(render_entity_model(e)),
+                    content=ruff_format(render_entity_model(e, index)),
                 )
             )(ctx)
 

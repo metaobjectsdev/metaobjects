@@ -118,6 +118,23 @@ def assert_response(
                 f"{scenario_name} / {request_id}: expected names {want_names}, got {actual_names}"
             )
 
+    if "namesUnordered" in expect_body:
+        # FR-018 M:N: related-row order through a junction is not contractual;
+        # compare the multiset of `name` fields (order-insensitive).
+        want_names = expect_body["namesUnordered"]
+        if not isinstance(body, list):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected array, got: {body!r}"
+            )
+        actual_names = [row.get("name") if isinstance(row, dict) else None for row in body]
+        if sorted(actual_names, key=lambda v: (v is None, v)) != sorted(
+            want_names, key=lambda v: (v is None, v)
+        ):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected names (unordered) "
+                f"{want_names}, got {actual_names}"
+            )
+
     if "row" in expect_body:
         want_row = expect_body["row"]
         if not isinstance(body, dict):
