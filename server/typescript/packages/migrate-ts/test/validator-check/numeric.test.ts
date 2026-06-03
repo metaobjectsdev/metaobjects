@@ -26,19 +26,19 @@ describe("validator.numeric → CHECK", () => {
     const root = await load(ENTITY(`[{"field.int":{"name":"qty","children":[
       {"validator.numeric":{"name":"r","@min":0,"@max":100}}]}}]`));
     const c = checks(root).find((x) => x.name === "orders_qty_numeric_chk");
-    expect(c?.expression).toBe("qty >= 0 AND qty <= 100");
+    expect(c?.expression).toBe("\"qty\" >= 0 AND \"qty\" <= 100");
   });
   test("@min only → lower-bound check", async () => {
     const root = await load(ENTITY(`[{"field.int":{"name":"price","children":[
       {"validator.numeric":{"name":"r","@min":0}}]}}]`));
     const c = checks(root).find((x) => x.name === "orders_price_numeric_chk");
-    expect(c?.expression).toBe("price >= 0");
+    expect(c?.expression).toBe("\"price\" >= 0");
   });
   test("@max only → upper-bound check", async () => {
     const root = await load(ENTITY(`[{"field.int":{"name":"pct","children":[
       {"validator.numeric":{"name":"r","@max":100}}]}}]`));
     const c = checks(root).find((x) => x.name === "orders_pct_numeric_chk");
-    expect(c?.expression).toBe("pct <= 100");
+    expect(c?.expression).toBe("\"pct\" <= 100");
   });
   test("no validators → no validator check", async () => {
     const root = await load(ENTITY(`[{"field.int":{"name":"plain"}}]`));

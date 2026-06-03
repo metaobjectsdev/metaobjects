@@ -40,7 +40,6 @@
         "objectRef",
         "precision",
         "readOnly",
-        "required",
         "scale",
         "sortable",
         "sortableDefaultOrder",

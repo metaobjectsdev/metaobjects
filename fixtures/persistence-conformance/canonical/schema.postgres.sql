@@ -12,7 +12,7 @@ CREATE TABLE "programs" (
   "status" TEXT NOT NULL,
   "createdAt" TIMESTAMP NOT NULL,
   CONSTRAINT "programs_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "programs_status_chk" CHECK (status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))
+  CONSTRAINT "programs_status_chk" CHECK ("status" IN ('DRAFT', 'PUBLISHED', 'ARCHIVED'))
 );
 
 CREATE TABLE "weeks" (
@@ -77,6 +77,27 @@ CREATE TABLE "friendships" (
   "personAId" BIGINT NOT NULL,
   "personBId" BIGINT NOT NULL,
   CONSTRAINT "friendships_pkey" PRIMARY KEY ("personAId", "personBId")
+);
+
+CREATE TABLE "all_types" (
+  "id" UUID DEFAULT gen_random_uuid() NOT NULL,
+  "sVal" VARCHAR(200) NOT NULL,
+  "iVal" INTEGER NOT NULL,
+  "lVal" BIGINT NOT NULL,
+  "dVal" DOUBLE PRECISION NOT NULL,
+  "fVal" REAL NOT NULL,
+  "decVal" NUMERIC(18,6) NOT NULL,
+  "bVal" BOOLEAN NOT NULL,
+  "dateVal" DATE NOT NULL,
+  "timeVal" TIME NOT NULL,
+  "tsVal" TIMESTAMP NOT NULL,
+  "tsTzVal" TIMESTAMPTZ NOT NULL,
+  "moneyVal" BIGINT NOT NULL,
+  "enumVal" TEXT NOT NULL,
+  "uuidVal" UUID NOT NULL,
+  "settings" JSONB,
+  CONSTRAINT "all_types_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "all_types_enumVal_chk" CHECK ("enumVal" IN ('LOW', 'MEDIUM', 'HIGH'))
 );
 
 CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");

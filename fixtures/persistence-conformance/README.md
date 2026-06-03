@@ -136,17 +136,50 @@ The DSL is intentionally small. Each port translates it to the most idiomatic
 call into its persistence layer (C#: `_db.Set<T>().Where(...).ToListAsync()`;
 TS: `om.findMany(entityName, filter, opts)`).
 
-| field      | type                            | notes |
-|------------|---------------------------------|-------|
-| `op`       | `list \| get \| count \| relate`| required |
-| `entity`   | string                          | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`                | required for `op: get` and `op: relate` (the source record key) |
-| `relation` | string                          | required for `op: relate`; the relationship name to traverse |
-| `filter`   | filter object (below)           | optional; same vocabulary as Project D |
-| `sort`     | `[{ field, dir }]`              | optional; `dir` ∈ `asc | desc` |
-| `limit`    | integer                         | optional |
-| `offset`   | integer                         | optional |
-| `expect`   | row or row[] or integer         | required; the normalized expected result |
+| field      | type                                        | notes |
+|------------|---------------------------------------------|-------|
+| `op`       | `list \| get \| count \| relate \| roundtrip`| required |
+| `entity`   | string                                      | metadata name (Program, ProgramStat, …) |
+| `by`       | `{ id: scalar }`                            | required for `op: get` and `op: relate` (the source record key) |
+| `relation` | string                                      | required for `op: relate`; the relationship name to traverse |
+| `insert`   | row (field → value)                         | required for `op: roundtrip`; the row to WRITE through the runtime |
+| `filter`   | filter object (below)                       | optional; same vocabulary as Project D |
+| `sort`     | `[{ field, dir }]`                          | optional; `dir` ∈ `asc | desc` |
+| `limit`    | integer                                     | optional |
+| `offset`   | integer                                     | optional |
+| `expect`   | row or row[] or integer                     | required; the normalized expected result |
+
+### `op: roundtrip` — runtime WRITE round-trip
+
+Every other op only READS (the corpus seeds via raw SQL). `roundtrip` is the
+**write** gate: the runner INSERTS the `insert:` row through the port's runtime /
+ORM write path (**not** raw SQL), reads the inserted row back **by primary key**,
+normalizes it, and asserts it equals `expect`. It therefore exercises the WRITE
+codec **and** the read path together — the structural complement to the read gate,
+and what would have caught the `field.byte`/`field.short` hole, the Java
+timestamp-write hazard, and native-uuid-write.
+
+- `insert:` carries field values in the runtime's **native authoring forms** (a
+  decimal as a string, a uuid as a string, a `field.object` as an object, a
+  boolean as a bool). `expect:` is the **wire-normalized** read-back (the same
+  per-type rules as every read scenario — BIGINT→string, decimal canonical,
+  uuid→lowercase, temporal→native, jsonb→sorted-keys).
+- The **primary key is excluded** from the comparison: a server-/runtime-generated
+  PK (`gen_random_uuid` / increment) is non-deterministic, so `expect` asserts the
+  written field VALUES, not the identity. (`op: get` covers PK round-trip.)
+- The `AllTypes` entity (`all_types` table) in the canonical model exists to cover
+  **every persistable field subtype** in one row — string / int / long / double /
+  float / decimal / boolean / date / time / timestamp / timestamp(tz) / currency /
+  enum / uuid / object(`@objectRef`, jsonb storage). No read scenario references
+  it, so it is inert for the read runners (it just adds a table to the schema).
+
+> **`roundtrip` is TS-only until the per-port write-codec units land.** The TS
+> runner (`runtime-ts` `ObjectManager.create` → Kysely insert) ships it; the
+> **Java / Kotlin / Python / C#** runners implement the verb in their SP-H units.
+> Those ports' integration runners will FAIL the `roundtrip-*` scenarios until
+> their unit is implemented — expected on the SP-H branch. When porting, implement
+> the verb (insert-via-ORM → read-back-by-PK → normalize → assert, PK excluded),
+> then run these scenarios green; do not delete them.
 
 ### `op: relate` — relationship traversal (M:N)
 
@@ -231,7 +264,10 @@ A runner walks the corpus and, for each scenario:
 3. **Query scenarios (every port):** execute the committed
    `canonical/schema.postgres.sql` to provision the schema, run `seed-data`, then
    for each `queries[*]` execute via the port's persistence layer, normalize,
-   assert.
+   assert. A `read` op (`get`/`list`/`count`/`relate`) queries the seeded rows; an
+   `op: roundtrip` instead INSERTS its `insert:` row through the port's runtime
+   write path, reads it back by PK, and asserts the normalized read-back (PK
+   excluded) — the WRITE gate.
 4. Tear down the container.
 
 Failure reports `(scenario file, query name, row index, expected, actual)`.

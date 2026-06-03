@@ -294,20 +294,20 @@ function buildSecondaryIndexes(
  * column name verbatim (matching the enum-check convention).
  */
 function validatorCheck(
-  v: MetaValidator, col: string, tableName: string, dialect: Dialect | undefined,
+  v: MetaValidator, qcol: string, tableName: string, col: string, dialect: Dialect | undefined,
 ): CheckDescriptor | null {
   switch (v.subType) {
     case VALIDATOR_SUBTYPE_NUMERIC: {
       const parts: string[] = [];
-      if (v.min !== undefined) parts.push(`${col} >= ${v.min}`);
-      if (v.max !== undefined) parts.push(`${col} <= ${v.max}`);
+      if (v.min !== undefined) parts.push(`${qcol} >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`${qcol} <= ${v.max}`);
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_numeric_chk`, expression: parts.join(" AND ") };
     }
     case VALIDATOR_SUBTYPE_LENGTH: {
       const parts: string[] = [];
-      if (v.min !== undefined) parts.push(`length(${col}) >= ${v.min}`);
-      if (v.max !== undefined) parts.push(`length(${col}) <= ${v.max}`);
+      if (v.min !== undefined) parts.push(`length(${qcol}) >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`length(${qcol}) <= ${v.max}`);
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_length_chk`, expression: parts.join(" AND ") };
     }
@@ -318,12 +318,25 @@ function validatorCheck(
       if (typeof pattern !== "string" || pattern.length === 0) return null;
       return {
         name: `${tableName}_${col}_regex_chk`,
-        expression: `${col} ~ '${pattern.replace(/'/g, "''")}'`,
+        expression: `${qcol} ~ '${pattern.replace(/'/g, "''")}'`,
       };
     }
     default:
       return null;
   }
+}
+
+/**
+ * Quote a column identifier for embedding in a CHECK expression. Both Postgres
+ * and SQLite quote identifiers with double-quotes, so the dialect-neutral
+ * expression text can carry a quoted column. Quoting is REQUIRED for a
+ * mixed-case column (e.g. `enumVal`): a bare `enumVal IN (...)` folds to
+ * lowercase `enumval` and references a non-existent column. The check-expression
+ * comparator (`normalizeCheckExpr`) strips quotes so an introspected check still
+ * compares equal.
+ */
+function quoteCheckCol(col: string): string {
+  return `"${col.replace(/"/g, '""')}"`;
 }
 
 function buildChecks(
@@ -332,18 +345,19 @@ function buildChecks(
   const checks: CheckDescriptor[] = [];
   for (const field of entity.fields()) {
     const col = resolveColumnName(field, strategy);
-    // Enum membership check (unchanged).
+    const qcol = quoteCheckCol(col);
+    // Enum membership check.
     if (field.subType === FIELD_SUBTYPE_ENUM) {
       const raw = field.attr(FIELD_ATTR_VALUES);
       if (Array.isArray(raw) && raw.length > 0) {
         const values = raw.map((v) => String(v));
-        const expression = `${col} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+        const expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
         checks.push({ name: `${tableName}_${col}_chk`, expression });
       }
     }
     // Validator-derived checks.
     for (const v of field.validators()) {
-      const check = validatorCheck(v, col, tableName, dialect);
+      const check = validatorCheck(v, qcol, tableName, col, dialect);
       if (check) checks.push(check);
     }
   }

@@ -24,7 +24,7 @@ describe("validator.length → CHECK", () => {
     const root = await load(ENTITY(`[{"field.string":{"name":"code","children":[
       {"validator.length":{"name":"l","@min":3}}]}}]`));
     const c = table(root).checks.find((x) => x.name === "users_code_length_chk");
-    expect(c?.expression).toBe("length(code) >= 3");
+    expect(c?.expression).toBe("length(\"code\") >= 3");
   });
   test("@max → length upper-bound check", async () => {
     const root = await load(ENTITY(`[{"field.string":{"name":"code","children":[
@@ -34,7 +34,7 @@ describe("validator.length → CHECK", () => {
     // map to VARCHAR(n) (only the field-level @maxLength attr drives the column
     // bound), so the string column stays bare text.
     const c = t.checks.find((x) => x.name === "users_code_length_chk");
-    expect(c?.expression).toBe("length(code) <= 10");
+    expect(c?.expression).toBe("length(\"code\") <= 10");
     const col = t.columns.find((c) => c.name === "code")!;
     expect(col.sqlType).toEqual({ kind: "text" });
   });
@@ -42,6 +42,6 @@ describe("validator.length → CHECK", () => {
     const root = await load(ENTITY(`[{"field.string":{"name":"code","children":[
       {"validator.length":{"name":"l","@min":3,"@max":10}}]}}]`));
     const c = table(root).checks.find((x) => x.name === "users_code_length_chk");
-    expect(c?.expression).toBe("length(code) >= 3 AND length(code) <= 10");
+    expect(c?.expression).toBe("length(\"code\") >= 3 AND length(\"code\") <= 10");
   });
 });

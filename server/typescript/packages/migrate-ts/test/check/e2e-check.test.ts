@@ -39,7 +39,7 @@ describe("CHECK constraints — end-to-end (enum → CHECK)", () => {
 
     const checkCount = up.split("CHECK (").length - 1;
     expect(checkCount).toBe(1);
-    expect(up).toContain(`CHECK (status IN ('OPEN', 'CLOSED'))`);
+    expect(up).toContain(`CHECK (\"status\" IN ('OPEN', 'CLOSED'))`);
     expect(up).not.toContain("ADD CONSTRAINT");
   });
 
@@ -55,7 +55,7 @@ describe("CHECK constraints — end-to-end (enum → CHECK)", () => {
 
     const checkCount = up.split("CHECK (").length - 1;
     expect(checkCount).toBe(1);
-    expect(up).toContain(`CHECK (status IN ('OPEN', 'CLOSED'))`);
+    expect(up).toContain(`CHECK (\"status\" IN ('OPEN', 'CLOSED'))`);
     expect(up).not.toContain("not implemented");
   });
 

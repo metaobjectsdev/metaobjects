@@ -35,7 +35,7 @@ export interface QueryScenario {
 
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count" | "relate";
+  readonly op: "list" | "get" | "count" | "relate" | "roundtrip";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
   /**
@@ -43,6 +43,16 @@ export interface QuerySpec {
    * record (e.g. an M:N navigation). The result is the related rows.
    */
   readonly relation: string | null;
+  /**
+   * For `op: roundtrip`: the field-keyed row to INSERT via the port's runtime
+   * write path. The runner inserts it, reads the inserted row back by PK, then
+   * asserts the normalized read-back equals `expect`. This exercises the WRITE
+   * codec + the read path together (the structural complement to the read gate).
+   * Values are the native authoring forms the runtime accepts on write (e.g. a
+   * decimal as a string, a uuid as a string, a jsonb `field.object` as an
+   * object); `expect` is the wire-normalized read-back form.
+   */
+  readonly insert: Record<string, unknown> | null;
   /**
    * Either `{ field: { op: value } }` (each top-level key is a field name) or
    * `{ and: [filter, filter, ...] }` (compose by AND). Mixed forms are
@@ -108,6 +118,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
       relation: q.relation ?? null,
+      insert: (q.insert as Record<string, unknown> | undefined) ?? null,
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
       sort: q.sort
         ? q.sort.map((s) => ({ field: s.field ?? "", dir: (s.dir as "asc" | "desc") ?? "asc" }))
@@ -164,6 +175,7 @@ interface QueryYaml {
     entity?: string;
     by?: unknown;
     relation?: string;
+    insert?: unknown;
     filter?: unknown;
     sort?: { field?: string; dir?: string }[];
     limit?: number;

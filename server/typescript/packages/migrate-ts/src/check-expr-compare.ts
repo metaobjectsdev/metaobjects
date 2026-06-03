@@ -22,6 +22,15 @@ export function normalizeCheckExpr(expr: string): string {
     // (`slug ~ 'a::foo'`) is preserved — otherwise two distinct regex CHECKs would
     // normalize equal and a pattern change would be silently missed.
     .replace(/(?<=')::\s*"?\w+"?/g, "")
+    // Unwrap double-quoted IDENTIFIERS only (`"enumval"` → `enumval`). We emit a
+    // quoted column (`"enumVal" IN (...)`) so a mixed-case column is valid SQL;
+    // PG's introspected definition quotes mixed-case identifiers too. Unwrapping
+    // makes the generated and introspected forms compare equal, and keeps a
+    // legacy unquoted check matching its quoted re-emit. The pattern matches only
+    // a quote-pair wrapping a bare identifier (word chars), so a `"` INSIDE a
+    // single-quoted string/regex literal (`slug ~ 'a"b'`) is preserved — two
+    // distinct patterns must not normalize equal.
+    .replace(/"(\w+)"/g, "$1")
     .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
     .replace(/\s+/g, " ")
     .trim();
