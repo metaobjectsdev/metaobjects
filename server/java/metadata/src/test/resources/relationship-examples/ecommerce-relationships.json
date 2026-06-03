@@ -35,10 +35,23 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "profileRef",
+                "@fields": "profileId",
+                "@references": "UserProfile"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "managerRef",
+                "@fields": "managerId",
+                "@references": "User"
+              }
+            },
+            {
               "relationship.composition": {
                 "name": "profile",
                 "@cardinality": "one",
-                "@referencedBy": "profileId",
                 "@objectRef": "UserProfile"
               }
             },
@@ -46,7 +59,6 @@
               "relationship.composition": {
                 "name": "addresses",
                 "@cardinality": "many",
-                "@referencedBy": "addressIds",
                 "@objectRef": "Address"
               }
             },
@@ -54,7 +66,6 @@
               "relationship.association": {
                 "name": "orders",
                 "@cardinality": "many",
-                "@referencedBy": "orderIds",
                 "@objectRef": "Order"
               }
             },
@@ -62,7 +73,6 @@
               "relationship.association": {
                 "name": "manager",
                 "@cardinality": "one",
-                "@referencedBy": "managerId",
                 "@objectRef": "User"
               }
             }
@@ -211,10 +221,23 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "shippingAddressRef",
+                "@fields": "shippingAddressId",
+                "@references": "Address"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "billingAddressRef",
+                "@fields": "billingAddressId",
+                "@references": "Address"
+              }
+            },
+            {
               "relationship.composition": {
                 "name": "orderItems",
                 "@cardinality": "many",
-                "@referencedBy": "orderItemIds",
                 "@objectRef": "OrderItem"
               }
             },
@@ -222,7 +245,6 @@
               "relationship.association": {
                 "name": "shippingAddress",
                 "@cardinality": "one",
-                "@referencedBy": "shippingAddressId",
                 "@objectRef": "Address"
               }
             },
@@ -230,7 +252,6 @@
               "relationship.association": {
                 "name": "billingAddress",
                 "@cardinality": "one",
-                "@referencedBy": "billingAddressId",
                 "@objectRef": "Address"
               }
             }
@@ -275,10 +296,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "productRef",
+                "@fields": "productId",
+                "@references": "Product"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "product",
                 "@cardinality": "one",
-                "@referencedBy": "productId",
                 "@objectRef": "Product"
               }
             }
@@ -332,10 +359,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "categoryRef",
+                "@fields": "categoryId",
+                "@references": "Category"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "category",
                 "@cardinality": "one",
-                "@referencedBy": "categoryId",
                 "@objectRef": "Category"
               }
             }
@@ -374,10 +407,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "parentCategoryRef",
+                "@fields": "parentCategoryId",
+                "@references": "Category"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "parentCategory",
                 "@cardinality": "one",
-                "@referencedBy": "parentCategoryId",
                 "@objectRef": "Category"
               }
             },
@@ -385,7 +424,6 @@
               "relationship.association": {
                 "name": "subCategories",
                 "@cardinality": "many",
-                "@referencedBy": "subCategoryIds",
                 "@objectRef": "Category"
               }
             }

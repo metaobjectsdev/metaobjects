@@ -5,7 +5,7 @@
 7.1.0 is a cleanup release with three **breaking** packaging changes for consumers already on 7.0.0, plus additive features (full list in [RELEASE_NOTES.md](RELEASE_NOTES.md#version-710-2026-05-28)).
 
 1. **OSGi runtime variant removed.** If you consumed the OSGi bundles or called the OSGi-specific `ServiceRegistry` methods, see [OSGi support removed](#osgi-support-removed) below for the exact API delta and the `bnd` / `pax-url` wrap path.
-2. **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Drop any `com.metaobjects:metaobjects-dynamic-core` dependency — its `CoreObjectsMetaDataProvider` (and the `dataBuilderClass` / `valueObjectType` attribute extensions on `object.base`) now ship inside `metaobjects-metadata`. No change for consumers of those attribute names.
+2. **`metaobjects-dynamic-core` folded into `metaobjects-metadata`.** Drop any `com.metaobjects:metaobjects-dynamic-core` dependency — its `CoreObjectsMetaDataProvider` now ships inside `metaobjects-metadata`. The `value*` / `data*` attribute extensions it used to contribute onto `object.base` (e.g. `valueObjectType`, `dataBuilderClass`, `dataImmutable`) have been **removed** — generated-object flavor is now derived from the codegen generator's configuration, not from metamodel attributes. If you authored any of those attributes in metadata, delete them.
 3. **`archetype` / `examples` directories deleted.** No action unless you referenced them as source.
 
 Additive (opt-in) in 7.1.0: [programmatic provider registration](#programmatic-provider-registration-new-in-710), the `TemplateGenerator` render API in `metaobjects-render`, `codegen-spring` `hasFoo()` presence helpers for nullable record fields, and `codegen-kotlin` `text()` mapping for jsonb-backed string fields.
@@ -46,7 +46,7 @@ Five module additions in 7.0.0 (none required; opt in per stack):
 | `metaobjects-metadata-ktx` | Kotlin facade over the Java metadata core |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
 
-The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaDataProvider` (which contributed `dataBuilderClass`, `valueObjectType`, etc., attribute extensions onto `object.base`) now ships inside `metaobjects-metadata`. Consumers of those attribute names need no change; consumers of the `metaobjects-dynamic-core` artifact coordinate should drop the dependency.
+The `metaobjects-dynamic-core` module from 6.x is gone — its `CoreObjectsMetaDataProvider` now ships inside `metaobjects-metadata`. The `value*` / `data*` attribute extensions it once contributed onto `object.base` (`dataBuilderClass`, `valueObjectType`, `dataImmutable`, etc.) have since been **removed**: generated-object flavor is derived from the codegen generator's configuration rather than from metamodel attributes, so there is nothing for consumers to register or author. Consumers of the `metaobjects-dynamic-core` artifact coordinate should drop the dependency; any of those attributes still present in authored metadata should be deleted.
 
 ### OSGi support removed
 

@@ -4,12 +4,29 @@ This directory contains example metadata JSON files demonstrating the MetaObject
 
 ## Core Relationship Patterns
 
-### Essential Attributes (AI specifies these 4)
+### Essential Attributes (AI specifies these)
 
 1. **`@objectRef`** - The target object this relationship points to
 2. **`@cardinality`** - Either "one" or "many"
 3. **`@ownership`** - Either "owns" or "references"
-4. **`@referencedBy`** - Field name that implements the relationship
+
+### FK direction is declared by `identity.reference`, not on the relationship
+
+A relationship no longer restates the implementing FK field. Foreign-key
+direction is the responsibility of an **`identity.reference`** child on the entity
+that physically holds the FK column:
+
+```json
+{ "identity.reference": { "name": "categoryRef", "@fields": "categoryId", "@references": "Category" } }
+```
+
+- **`@fields`** - the local FK field (or comma-separated fields for a composite key)
+- **`@references`** - the target entity the FK points at
+
+For a `@cardinality: "one"` relationship the FK lives on the declaring entity, so
+that entity carries the `identity.reference`. For `@cardinality: "many"` the FK
+lives on the child (one-to-many) or in a junction entity (many-to-many), so the
+`identity.reference` lives there. The relationship itself stays purely semantic.
 
 ### Derived Properties (automatic)
 
@@ -25,13 +42,16 @@ This directory contains example metadata JSON files demonstrating the MetaObject
     "name": "profile",
     "@objectRef": "UserProfile",
     "@cardinality": "one",
-    "@ownership": "owns",
-    "@referencedBy": "profileId"
+    "@ownership": "owns"
   }
 }
 ```
+FK is on the declaring (parent) entity:
+```json
+{ "identity.reference": { "name": "profileRef", "@fields": "profileId", "@references": "UserProfile" } }
+```
 **Meaning**: Parent object owns exactly one child object. When parent is deleted, child is also deleted.
-**RDB Implementation**: Foreign key in child table, cascade delete
+**RDB Implementation**: Foreign key on the parent row, cascade delete
 **Examples**: User → Profile, Order → PaymentInfo
 
 ### 2. One-to-Many Composition (owns + many)
@@ -41,10 +61,13 @@ This directory contains example metadata JSON files demonstrating the MetaObject
     "name": "addresses",
     "@objectRef": "Address",
     "@cardinality": "many",
-    "@ownership": "owns",
-    "@referencedBy": "addressIds"
+    "@ownership": "owns"
   }
 }
+```
+FK is on the child entity (`Address`), declared there:
+```json
+{ "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "User" } }
 ```
 **Meaning**: Parent object owns multiple child objects. When parent is deleted, all children are deleted.
 **RDB Implementation**: Foreign key in child table, cascade delete
@@ -57,13 +80,16 @@ This directory contains example metadata JSON files demonstrating the MetaObject
     "name": "manager",
     "@objectRef": "User",
     "@cardinality": "one",
-    "@ownership": "references",
-    "@referencedBy": "managerId"
+    "@ownership": "references"
   }
 }
 ```
+FK is on the declaring entity:
+```json
+{ "identity.reference": { "name": "managerRef", "@fields": "managerId", "@references": "User" } }
+```
 **Meaning**: Parent object references exactly one independent object. Lifecycle is independent.
-**RDB Implementation**: Foreign key in parent table, no cascade delete
+**RDB Implementation**: Foreign key on the declaring row, no cascade delete
 **Examples**: Employee → Manager, Order → Customer
 
 ### 4. One-to-Many Association (references + many)
@@ -73,13 +99,12 @@ This directory contains example metadata JSON files demonstrating the MetaObject
     "name": "favoriteProducts",
     "@objectRef": "Product",
     "@cardinality": "many",
-    "@ownership": "references",
-    "@referencedBy": "favoriteProductIds"
+    "@ownership": "references"
   }
 }
 ```
 **Meaning**: Parent object references multiple independent objects. Lifecycle is independent.
-**RDB Implementation**: Junction table or array of foreign keys
+**RDB Implementation**: Junction table; each FK side is declared as an `identity.reference` on the junction entity (see M:N vocabulary)
 **Examples**: User → FavoriteProducts, Category → Products
 
 ## Example Files
@@ -110,7 +135,9 @@ AI only needs to choose:
 1. **Target Object** - What object does this point to?
 2. **Cardinality** - One or many?
 3. **Ownership** - Does parent own the child or just reference it?
-4. **Field Name** - What field implements this relationship?
+
+The implementing FK is declared separately as an `identity.reference` on whichever
+entity physically holds the FK column.
 
 ### Cross-Language Mapping
 The semantic model maps directly to:
@@ -184,10 +211,13 @@ The relationship system replaces the database-specific MetaKey system:
     "name": "user",
     "@objectRef": "User",
     "@cardinality": "one",
-    "@ownership": "references",
-    "@referencedBy": "userId"
+    "@ownership": "references"
   }
 }
+```
+with the FK direction declared on the entity that holds the column:
+```json
+{ "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "User" } }
 ```
 
 The relationship approach is more semantic and works across different persistence technologies (RDB, document stores, graph databases).
