@@ -23,6 +23,15 @@ The canonical agent reference docs (scaffolded by `meta init`) are available via
 import { AGENT_DOCS_BODY, withContentHash } from "@metaobjectsdev/sdk/agent-docs";
 ```
 
+## agent-context
+
+`@metaobjectsdev/sdk/agent-context` assembles the downstream AI-assistant context
+(the slim `.metaobjects/AGENTS.md`/`CLAUDE.md` + the five `metaobjects-*` Claude
+skills with only the project's language reference fragments) from the repo-root
+`agent-context/` source tree. `makeStack`/`detectStack` resolve the project's
+server+client axes; `assemble({ contentRoot, stack })` emits the files. Design:
+`docs/superpowers/specs/2026-06-02-downstream-agent-context-design.md`.
+
 ## Links
 
 - [Spec](https://github.com/metaobjectsdev/metaobjects/tree/main/spec)
