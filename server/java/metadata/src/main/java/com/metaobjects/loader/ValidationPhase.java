@@ -21,6 +21,8 @@ import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
+import com.metaobjects.field.ShortField;
+import com.metaobjects.field.ByteField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
@@ -40,6 +42,8 @@ import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
 import com.metaobjects.source.MetaSource;
+import com.metaobjects.source.RdbSource;
+import com.metaobjects.source.LoaderWarning;
 import com.metaobjects.source.ResolvedSource;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.OutputTemplate;
@@ -117,6 +121,12 @@ public final class ValidationPhase {
         validateDbColumnType(root);
         validateSourceAttrs(root);
         validateSourcePhysicalNames(root, loader);
+        // FR-013 — field-level @readOnly cross-attribute rules.
+        validateFieldReadOnly(root, loader);
+        // FR-014 — TPH discriminator cross-attribute rules.
+        validateDiscriminator(root);
+        // FR-015 — source.rdb @parameterRef typed-input rules.
+        validateSourceParameterRef(root);
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateRelationshipsM2M(root);
@@ -2054,6 +2064,356 @@ public final class ValidationPhase {
         if (full == null) return null;
         int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
         return (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
+    }
+
+    // =========================================================================
+    // FR-013 — field-level @readOnly cross-attribute rules.
+    //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
+    // Mirrors TS core/field/validate-field-readonly.ts.
+    // =========================================================================
+
+    static void validateFieldReadOnly(MetaRoot root, MetaDataLoader loader) {
+        for (MetaData rc : root.getChildren(MetaData.class, false)) {
+            if (!(rc instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rc;
+            boolean isValueObject = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
+
+            // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
+            if (isValueObject) {
+                for (MetaField f : ownFieldsRaw(obj)) {
+                    if (Boolean.TRUE.equals(readOnlyFlag(f)) && loader != null) {
+                        loader.addEnvelopeWarning(new LoaderWarning(
+                            ErrorMessageConstants.WARN_READONLY_VALUE_OBJECT,
+                            "field \"" + shortNameOf(f) + "\" on object.value \""
+                                + shortNameOf(obj) + "\" declares @readOnly: true; "
+                                + "value-objects have no persistence semantics so the "
+                                + "read-only contract is advisory (codegen may use it "
+                                + "for record/struct treatment).",
+                            f.getSource()));
+                    }
+                }
+            }
+
+            // 2) ERR_READONLY_DOWNGRADE — only the explicit own @readOnly: false case.
+            for (MetaField ownField : ownFieldsRaw(obj)) {
+                if (!Boolean.FALSE.equals(readOnlyFlag(ownField))) continue;
+                MetaField inherited = inheritedReadOnlyField(obj, shortNameOf(ownField));
+                if (inherited != null && Boolean.TRUE.equals(readOnlyFlag(inherited))) {
+                    throw new MetaDataException(
+                        "ERR_READONLY_DOWNGRADE"
+                            + ": field \"" + shortNameOf(ownField) + "\" on \""
+                            + shortNameOf(obj) + "\" sets @readOnly: false, but the "
+                            + "extends-chain parent declares @readOnly: true. "
+                            + "Read-only-ness can only be upgraded, not downgraded (FR-013).",
+                        ErrorCode.ERR_READONLY_DOWNGRADE, ownField.getSource());
+                }
+            }
+
+            // 3) ERR_READONLY_ASSIGNED_PRIMARY — @readOnly: true on a field used in an
+            //    identity.primary with @generation: "assigned" (effective tree).
+            if (!isValueObject) {
+                Set<String> assigned = primaryAssignedFieldNames(obj);
+                if (!assigned.isEmpty()) {
+                    for (MetaField f : ownFieldsRaw(obj)) {
+                        if (!assigned.contains(shortNameOf(f))) continue;
+                        if (!Boolean.TRUE.equals(readOnlyFlag(f))) continue;
+                        throw new MetaDataException(
+                            "ERR_READONLY_ASSIGNED_PRIMARY"
+                                + ": field \"" + shortNameOf(f) + "\" on \""
+                                + shortNameOf(obj) + "\" is @readOnly: true AND the target "
+                                + "of identity.primary with @generation: \"assigned\"; the "
+                                + "application has no path to populate the identity value "
+                                + "(FR-013).",
+                            ErrorCode.ERR_READONLY_ASSIGNED_PRIMARY, f.getSource());
+                    }
+                }
+            }
+        }
+    }
+
+    /** Raw own-declared field children (authored nodes, original json source) —
+     *  NOT the merge-folded {@code getMetaFields()} view, whose source on an
+     *  override collapses onto the inherited declaration. Errors emitted against
+     *  these carry the subtype's own envelope, matching the conformance corpus. */
+    private static List<MetaField> ownFieldsRaw(MetaObject obj) {
+        List<MetaField> out = new java.util.ArrayList<>();
+        for (MetaData c : obj.getChildren(MetaData.class, false)) {
+            if (c instanceof MetaField) out.add((MetaField) c);
+        }
+        return out;
+    }
+
+    /** Explicit own @readOnly value (TRUE/FALSE) or null when absent. */
+    private static Boolean readOnlyFlag(MetaField field) {
+        if (!field.hasMetaAttr(MetaField.ATTR_READ_ONLY, false)) return null;
+        Object v = field.getMetaAttr(MetaField.ATTR_READ_ONLY, false).getValue();
+        if (v instanceof Boolean) return (Boolean) v;
+        if (v instanceof String) return Boolean.valueOf("true".equalsIgnoreCase((String) v));
+        return null;
+    }
+
+    /** Walk the extends chain for a field with {@code name}; return its declaring
+     *  node (own attrs intact). */
+    private static MetaField inheritedReadOnlyField(MetaObject obj, String name) {
+        MetaData cursor = obj.getSuperData();
+        while (cursor != null) {
+            if (cursor instanceof MetaObject) {
+                for (MetaField f : ownFieldsRaw((MetaObject) cursor)) {
+                    if (name.equals(shortNameOf(f))) return f;
+                }
+            }
+            cursor = cursor.getSuperData();
+        }
+        return null;
+    }
+
+    /** Names of fields in any effective identity.primary with @generation "assigned". */
+    private static Set<String> primaryAssignedFieldNames(MetaObject obj) {
+        Set<String> out = new HashSet<>();
+        for (MetaIdentity id : obj.getChildren(MetaIdentity.class, true)) {
+            if (!MetaIdentity.SUBTYPE_PRIMARY.equals(id.getSubType())) continue;
+            if (!MetaIdentity.GENERATION_ASSIGNED.equals(id.getGeneration())) continue;
+            out.addAll(id.getFields());
+        }
+        return out;
+    }
+
+    // =========================================================================
+    // FR-014 — TPH discriminator cross-attribute rules.
+    //   ERR_DISCRIMINATOR_FIELD_NOT_FOUND / _VALUE_DUPLICATE / _VALUE_MISSING /
+    //   _VALUE_TYPE_MISMATCH. Mirrors TS core/object/validate-discriminator.ts.
+    // =========================================================================
+
+    private static final Set<String> NUMERIC_DISCRIMINATOR_SUBTYPES = Set.of(
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG,
+        ShortField.SUBTYPE_SHORT, ByteField.SUBTYPE_BYTE);
+
+    static void validateDiscriminator(MetaRoot root) {
+        List<MetaObject> entities = new java.util.ArrayList<>();
+        for (MetaData rc : root.getChildren(MetaData.class, false)) {
+            if (rc instanceof MetaObject && MetaObject.SUBTYPE_ENTITY.equals(rc.getSubType())) {
+                entities.add((MetaObject) rc);
+            }
+        }
+
+        // Pass 1: @discriminator name resolution (own + inherited fields).
+        for (MetaObject obj : entities) {
+            String disc = ownAttrString(obj, MetaObject.ATTR_DISCRIMINATOR);
+            if (disc == null || disc.isEmpty()) continue;
+            if (findFieldOnEntity(obj, disc) == null) {
+                throw new MetaDataException(
+                    "ERR_DISCRIMINATOR_FIELD_NOT_FOUND"
+                        + ": object.entity \"" + shortNameOf(obj) + "\" @discriminator: \""
+                        + disc + "\" does not name a field on this entity (checked own "
+                        + "children and the extends chain)",
+                    ErrorCode.ERR_DISCRIMINATOR_FIELD_NOT_FOUND, obj.getSource());
+            }
+        }
+
+        // Pass 2: @discriminatorValue type-check + collect bindings per root.
+        Map<MetaObject, List<Object[]>> bindingsByRoot = new java.util.LinkedHashMap<>();
+        for (MetaObject obj : entities) {
+            String value = ownAttrString(obj, MetaObject.ATTR_DISCRIMINATOR_VALUE);
+            if (value == null || value.isEmpty()) continue;
+            MetaObject discRoot = findDiscriminatorRoot(obj);
+            if (discRoot == null) continue;
+            String fieldName = ownAttrString(discRoot, MetaObject.ATTR_DISCRIMINATOR);
+            if (fieldName == null) continue;
+            MetaField field = findFieldOnEntity(discRoot, fieldName);
+            if (field == null) continue; // root's own field-not-found already fires
+
+            String st = field.getSubType();
+            if (EnumField.SUBTYPE_ENUM.equals(st)) {
+                List<String> members = effectiveEnumValues(field);
+                if (!members.contains(value)) {
+                    throw new MetaDataException(
+                        "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH"
+                            + ": object.entity \"" + shortNameOf(obj) + "\" @discriminatorValue: \""
+                            + value + "\" is not a member of the discriminator enum field \""
+                            + fieldName + "\" @values " + members,
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH, obj.getSource());
+                }
+            } else if (NUMERIC_DISCRIMINATOR_SUBTYPES.contains(st)) {
+                if (!value.matches("-?\\d+")) {
+                    throw new MetaDataException(
+                        "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH"
+                            + ": object.entity \"" + shortNameOf(obj) + "\" @discriminatorValue: \""
+                            + value + "\" does not coerce to numeric discriminator field \""
+                            + fieldName + "\" (field." + st + ")",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH, obj.getSource());
+                }
+            }
+            // string (and other) discriminator types accept any value.
+
+            bindingsByRoot.computeIfAbsent(discRoot, k -> new java.util.ArrayList<>())
+                          .add(new Object[]{obj, value});
+        }
+
+        // Pass 3: ERR_DISCRIMINATOR_VALUE_DUPLICATE within each root's subtypes.
+        for (Map.Entry<MetaObject, List<Object[]>> e : bindingsByRoot.entrySet()) {
+            Map<String, MetaObject> seen = new java.util.HashMap<>();
+            for (Object[] b : e.getValue()) {
+                MetaObject sub = (MetaObject) b[0];
+                String value = (String) b[1];
+                MetaObject prev = seen.get(value);
+                if (prev != null) {
+                    throw new MetaDataException(
+                        "ERR_DISCRIMINATOR_VALUE_DUPLICATE"
+                            + ": object.entity \"" + shortNameOf(sub) + "\" @discriminatorValue: \""
+                            + value + "\" duplicates the value already claimed by \""
+                            + shortNameOf(prev) + "\"",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_DUPLICATE, sub.getSource());
+                }
+                seen.put(value, sub);
+            }
+        }
+
+        // Pass 4: ERR_DISCRIMINATOR_VALUE_MISSING on concrete subtypes.
+        for (MetaObject obj : entities) {
+            if (isAbstract(obj)) continue;
+            if (ownAttrString(obj, MetaObject.ATTR_DISCRIMINATOR_VALUE) != null) continue;
+            if (ownAttrString(obj, MetaObject.ATTR_DISCRIMINATOR) != null) continue; // a root
+            MetaObject discRoot = findDiscriminatorRoot(obj);
+            if (discRoot == null || discRoot == obj) continue;
+            throw new MetaDataException(
+                "ERR_DISCRIMINATOR_VALUE_MISSING"
+                    + ": object.entity \"" + shortNameOf(obj) + "\" extends the "
+                    + "@discriminator-bearing root \"" + shortNameOf(discRoot) + "\" but is "
+                    + "missing @discriminatorValue (required on every concrete subtype)",
+                ErrorCode.ERR_DISCRIMINATOR_VALUE_MISSING, obj.getSource());
+        }
+    }
+
+    /** A field with {@code name} on {@code entity} — own first, then extends chain. */
+    private static MetaField findFieldOnEntity(MetaObject entity, String name) {
+        for (MetaField f : entity.getMetaFields(false)) {
+            if (name.equals(shortNameOf(f))) return f;
+        }
+        MetaData cursor = entity.getSuperData();
+        while (cursor != null) {
+            if (cursor instanceof MetaObject) {
+                for (MetaField f : ((MetaObject) cursor).getMetaFields(false)) {
+                    if (name.equals(shortNameOf(f))) return f;
+                }
+            }
+            cursor = cursor.getSuperData();
+        }
+        return null;
+    }
+
+    /** First ancestor (or self) carrying @discriminator. */
+    private static MetaObject findDiscriminatorRoot(MetaObject entity) {
+        MetaData cursor = entity;
+        while (cursor != null) {
+            if (cursor instanceof MetaObject) {
+                String v = ownAttrString(cursor, MetaObject.ATTR_DISCRIMINATOR);
+                if (v != null && !v.isEmpty()) return (MetaObject) cursor;
+            }
+            cursor = cursor.getSuperData();
+        }
+        return null;
+    }
+
+    /** Own attribute as a String, or null when absent. */
+    private static String ownAttrString(MetaData node, String attr) {
+        if (!node.hasMetaAttr(attr, false)) return null;
+        return node.getMetaAttr(attr, false).getValueAsString();
+    }
+
+    // =========================================================================
+    // FR-015 — source.rdb @parameterRef typed-input rules.
+    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT /
+    //   _PASSTHROUGH_TYPE_MISMATCH. Mirrors TS persistence/source/validate-source-parameter-ref.ts.
+    // =========================================================================
+
+    private static final Set<String> CALLABLE_KINDS = Set.of(
+        MetaSource.KIND_STORED_PROC, MetaSource.KIND_TABLE_FUNCTION);
+
+    static void validateSourceParameterRef(MetaRoot root) {
+        // Pre-index every object by short name AND fqn.
+        Map<String, MetaObject> index = new java.util.HashMap<>();
+        for (MetaData rc : root.getChildren(MetaData.class, false)) {
+            if (!(rc instanceof MetaObject)) continue;
+            MetaObject o = (MetaObject) rc;
+            index.put(shortNameOf(o), o);
+            if (o.getName() != null) index.put(o.getName(), o);
+        }
+
+        for (MetaData rc : root.getChildren(MetaData.class, false)) {
+            if (!(rc instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rc;
+            for (MetaSource source : obj.getSources(false)) {
+                if (!RdbSource.SUBTYPE_RDB.equals(source.getSubType())) continue;
+                String ref = ownAttrString(source, RdbSource.ATTR_PARAMETER_REF);
+                if (ref == null || ref.isEmpty()) continue;
+
+                // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — before resolution.
+                if (!CALLABLE_KINDS.contains(source.getEffectiveKind())) {
+                    throw new MetaDataException(
+                        "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND"
+                            + ": source.rdb on object \"" + shortNameOf(obj) + "\" has "
+                            + "@parameterRef but @kind is \"" + source.getEffectiveKind()
+                            + "\"; only \"storedProc\" or \"tableFunction\" accept parameters",
+                        ErrorCode.ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND, source.getSource());
+                }
+
+                MetaObject target = index.get(ref);
+                if (target == null) {
+                    throw new MetaDataException(
+                        "ERR_PARAMETER_REF_UNRESOLVED"
+                            + ": source.rdb on object \"" + shortNameOf(obj) + "\" @parameterRef = \""
+                            + ref + "\" does not resolve to any known object",
+                        ErrorCode.ERR_PARAMETER_REF_UNRESOLVED, source.getSource());
+                }
+
+                if (!MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
+                    String reason = MetaObject.SUBTYPE_ENTITY.equals(target.getSubType())
+                        ? "an object.entity (entities have identity; parameter shapes are value-objects)"
+                        : "an object." + target.getSubType();
+                    throw new MetaDataException(
+                        "ERR_PARAMETER_REF_NOT_VALUE_OBJECT"
+                            + ": source.rdb on object \"" + shortNameOf(obj) + "\" @parameterRef = \""
+                            + ref + "\" resolves to " + reason + "; use an object.value",
+                        ErrorCode.ERR_PARAMETER_REF_NOT_VALUE_OBJECT, source.getSource());
+                }
+
+                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
+                for (MetaField paramField : ownFieldsRaw(target)) {
+                    MetaOrigin passthrough = null;
+                    for (MetaData c : paramField.getChildren(MetaData.class, false)) {
+                        if (c instanceof MetaOrigin
+                                && PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(c.getSubType())) {
+                            passthrough = (MetaOrigin) c;
+                            break;
+                        }
+                    }
+                    if (passthrough == null) continue;
+                    String from = passthrough.getFrom();
+                    if (from == null || from.isEmpty()) continue;
+                    int dot = from.indexOf('.');
+                    if (dot < 0) continue;
+                    String targetEntityName = from.substring(0, dot);
+                    String targetFieldName = from.substring(dot + 1);
+                    MetaObject targetEntity = index.get(targetEntityName);
+                    if (targetEntity == null) continue;
+                    MetaField targetField = null;
+                    for (MetaField f : ownFieldsRaw(targetEntity)) {
+                        if (targetFieldName.equals(shortNameOf(f))) { targetField = f; break; }
+                    }
+                    if (targetField == null) continue;
+                    if (!paramField.getSubType().equals(targetField.getSubType())) {
+                        throw new MetaDataException(
+                            "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH"
+                                + ": parameter field \"" + shortNameOf(paramField) + "\" (field."
+                                + paramField.getSubType() + ") on @parameterRef \"" + ref
+                                + "\" uses origin.passthrough @from: \"" + from + "\", but "
+                                + shortNameOf(targetEntity) + "." + targetFieldName + " is field."
+                                + targetField.getSubType() + "; types must match",
+                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH, paramField.getSource());
+                    }
+                }
+            }
+        }
     }
 
 }

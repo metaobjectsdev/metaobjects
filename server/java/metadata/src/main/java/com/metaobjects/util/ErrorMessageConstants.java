@@ -105,6 +105,14 @@ public final class ErrorMessageConstants {
     public static final String WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
 
     /**
+     * FR-013 warning: {@code @readOnly: true} on a field child of an
+     * {@code object.value}. Value-objects have no persistence semantics, so the
+     * read-only contract is advisory (codegen may use it for record/struct
+     * treatment). Cross-language contract: {@code WARN_READONLY_VALUE_OBJECT}.
+     */
+    public static final String WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
+
+    /**
      * Error code emitted when the YAML metadata input is not valid YAML, or cannot be
      * desugared into canonical metadata (ADR-0006).
      * Cross-language contract: {@code ERR_MALFORMED_YAML}.

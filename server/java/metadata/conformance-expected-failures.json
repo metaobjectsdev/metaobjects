@@ -1,17 +1,8 @@
 {
   "language": "java",
-  "_comment": "FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) are implemented in the TS reference but the Java port has not yet shipped them. These fixtures are deferred until each per-port fan-out lands.",
+  "_comment": "FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) VALIDATION passes shipped in the Java port (ValidationPhase.validateFieldReadOnly / validateDiscriminator / validateSourceParameterRef). 9 of 11 fixtures now pass byte-identically. The two remaining entries are BOTH manifestations of one pre-existing Java subtype-field-override gap (orthogonal to the validation fan-out), deferred until the Java loader's field-override provenance/serializer reconciliation: (1) error-field-readonly-downgrade — the validation fires the correct ERR_READONLY_DOWNGRADE with a single error, but the envelope source for a subtype field that OVERRIDES an inherited field is a MergedSource pointing at the base declaration (children[0]) rather than the subtype's authored json source (children[1]); Java clones+stamps MergedSource on extends-overrides, and Contributor carries no per-contributor jsonPath, so the subtype's authored path is not recoverable post-merge (the TS/Python reference models keep the override's plain JsonSource). (2) field-readonly-upgrade-on-subtype — a positive fixture that fails on canonical serialization of the same subtype @readOnly override (same root cause).",
   "fixtures": [
-    "error-field-readonly-assigned-primary",
     "error-field-readonly-downgrade",
-    "field-readonly-upgrade-on-subtype",
-    "error-parameter-ref-unresolved",
-    "error-parameter-ref-not-value-object",
-    "error-parameter-ref-on-table-kind",
-    "error-parameter-ref-passthrough-type-mismatch",
-    "error-tph-discriminator-field-not-found",
-    "error-tph-discriminator-value-duplicate",
-    "error-tph-discriminator-value-missing",
-    "error-tph-discriminator-value-type-mismatch"
+    "field-readonly-upgrade-on-subtype"
   ]
 }
