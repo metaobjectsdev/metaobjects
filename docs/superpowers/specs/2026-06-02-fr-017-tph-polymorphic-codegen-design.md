@@ -372,6 +372,31 @@ New TPH query scenarios:
 
 ## Realization status
 
-- **Tier 1 (TS types-only):** unimplemented. Plan: ship in a single PR alongside this design.
-- **Tier 2 (TS working CRUD):** unimplemented. Plan: separate multi-day PR after Tier 1 lands and soaks.
-- **Tiers 3–5:** unimplemented. Pick up as adopter need + per-port fan-out pressure dictates.
+- **Tier 1 (TS types-only):** **shipped** (commit `7ac54a35`) — discriminated
+  union + per-subtype type guards + `parse<Base>` dispatcher + per-subtype Zod
+  discriminator pin.
+- **Tier 2 (TS working CRUD):** **shipped** across four slices:
+  - #1 Drizzle single-table emission (union of subtype columns, subtype-only
+    columns forced nullable, no DB default).
+  - #2 per-subtype full read schema `<Sub>Schema` (fixes the Tier 1
+    `parse<Base>` reference, which pointed at a never-emitted schema) + the
+    polymorphic & per-subtype queries file (base `find/list` dispatch through
+    `parse<Base>`; per-subtype list/findById/create/update/delete against the
+    single table; subtypes get no standalone queries file).
+  - #3 per-subtype REST routes: a runtime-ts `mountCrudRoutes`
+    `discriminator: { column, value }` option (subtype-scoped reads,
+    cross-subtype 404, create-injects / update-strips the discriminator) +
+    `routesFile` emitting polymorphic list/get at the base path and a per-subtype
+    CRUD set at `<base>/<discriminatorValue lowercased>`; subtypes get no
+    standalone routes file.
+  - **Deviation noted:** per-subtype create/update use
+    `<Sub>InsertSchema` (`.omit({<disc>: true})` on the route boundary,
+    `.partial()` for update) rather than separately-named `<Sub>Create` /
+    `<Sub>Update` aliases. Functionally equivalent; a named-alias polish is
+    deferred.
+  - **Edge deferred:** an *abstract* discriminator base. The conformance
+    fixtures use a concrete base (which owns the table); an abstract base
+    short-circuits the entity-file value-object path before the Drizzle path, so
+    its single TPH table is not yet emitted. Revisit when an adopter needs it.
+- **Tiers 3–5:** unimplemented. Pick up as adopter need + per-port fan-out
+  pressure dictates.
