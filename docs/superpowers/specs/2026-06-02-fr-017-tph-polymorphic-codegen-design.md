@@ -419,5 +419,43 @@ New TPH query scenarios:
     `<Sub>SortAllowlist`, discriminator excluded); per-subtype routes wire to
     them. The base allowlist keeps the discriminator (polymorphic filter).
   - codegen-ts + codegen-ts-tanstack + codegen-ts-react suites: 652/0.
-- **Tiers 4–5:** unimplemented. Pick up as adopter need + per-port fan-out
-  pressure dictates.
+- **Tier 5 (conformance corpora):** **authored + TS-green** (both corpora).
+  - **api-contract** `fixtures/api-contract-conformance/tph/` — Auth base +
+    BridgeAuth/CopayAuth/PriorAuthAuth over one `auths` table; 4 scenarios
+    (polymorphic list/get, per-subtype list/create, per-subtype update/delete,
+    cross-subtype 404). TS runs **both lanes** (hand-rolled reference +
+    GENERATED `Auth.routes.ts`) over one Testcontainers Postgres per scenario per
+    lane — **8/8**. The per-subtype URL segment is the `@discriminatorValue`
+    lowercased (`/auths/bridge`); discriminator injected from the URL on create,
+    never the body; cross-subtype get/delete → 404. Decimal subtype values are
+    not asserted over the API wire (cross-port numeric formatting) — pinned by
+    persistence instead.
+  - **persistence** `fixtures/persistence-conformance/queries/tph-*.yaml` — 4
+    runtime scenarios (insert-then-find-by-id, insert-three-subtypes-list,
+    update-subtype-only-column, no-cross-subtype-update). Required extending the
+    query DSL with `create`/`update` write ops + an `expectError` assertion.
+    `Auth` + subtypes added to the canonical fitness meta; canonical
+    `schema.postgres.sql` regenerated (one `auths` table, subtype cols nullable,
+    type CHECK) — drift-check green. Full TS query suite **21/21**.
+- **Tier 4 (per-port) — TS-side foundations shipped; non-TS fan-out remains.**
+  Building the persistence corpus surfaced that TPH at the **runtime** layer is a
+  real feature the codegen tiers didn't need, now shipped for TS:
+  - **runtime-ts ObjectManager TPH** (commit on this branch): switched the
+    persistence resolution paths (query-builder `resolvePkFields`/`listFieldNames`/
+    `getField`, identity-strategy, type-coercer, validator-runner, metadata
+    `resolveTableName`/`buildNameMap`) from `ownChildren()` to the **effective**
+    `children()` super-chain, so a subtype resolves the base's identity / single
+    table / full field set; added `src/tph.ts` + discriminator inject (create) /
+    scope (read/update/delete) / strip (immutable) mirroring `drizzle-fastify`.
+    12 TDD tests; runtime-ts 317/0; metadata*/codegen-ts/migrate-ts regression
+    green (* one PRE-EXISTING registry-coverage-drift failure, not from this work).
+  - **migrate-ts TPH single-table schema emission** (commit on this branch): a
+    subtype emits no table; the discriminator base folds subtype-only columns in
+    as nullable. (Schema is TS-owned per ADR-0015, so non-TS ports execute this
+    committed DDL — they need NO schema-emission work.)
+  - **Remaining per-port (Java / Kotlin / Python / C#):** each needs (a) runtime
+    TPH in its ObjectManager-equivalent (Exposed / OMDB / SQLAlchemy / EF) to pass
+    the `tph-*` persistence scenarios, and (b) codegen TPH (entity/routes/
+    repository/dto in the port's idiom per the Tier-4 idiom table) + reference-lane
+    routes to pass the api-contract `tph/` corpus in both lanes. ~1 week/port,
+    parallelizable. Ports skip `tph-*` until their slice lands (m2n-* convention).
