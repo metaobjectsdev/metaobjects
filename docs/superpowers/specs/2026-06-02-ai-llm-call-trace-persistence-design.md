@@ -147,38 +147,46 @@ LlmCallBase            (abstract)  envelope + full wire I/O          library/ai/
 materializes no table. The full-wire request/response and the failure-detail
 field live here.
 
+> **Authoring-format notes (verified against the implementation):**
+> (1) The real YAML root is `metadata:` → `package:` + `children:` (not a top-level
+> `package:`/`objects:`). (2) Generic, untyped jsonb columns use `field.string` +
+> `@dbColumnType: jsonb` — `field.object` + `@storage: jsonb` is only valid WITH an
+> `@objectRef` (loader rule `ERR_STORAGE_WITHOUT_OBJECT_REF`). (3) Concrete entities
+> need an `identity.primary` or the loader emits `WARN_LEGACY`.
+
 ```yaml
 # library/ai/llm-call.yaml
-package: metaobjects::ai
-objects:
-  - object.entity:
-      name: LlmCallBase
-      abstract: true
-      children:
-        - field.uuid:      { name: traceId }
-        - field.uuid:      { name: spanId }
-        - field.uuid:      { name: parentSpanId }    # nullable → root span
-        - field.string:    { name: sessionId }
-        - field.string:    { name: callType }        # discriminator / call identity
-        - field.string:    { name: system }          # gen_ai.system, e.g. "anthropic"
-        - field.string:    { name: requestModel }    # gen_ai.request.model
-        - field.string:    { name: responseModel }   # gen_ai.response.model
-        - field.int:       { name: inputTokens }      # gen_ai.usage.input_tokens
-        - field.int:       { name: outputTokens }     # gen_ai.usage.output_tokens
-        - field.currency:  { name: costMinor, currency: USD }   # integer minor units
-        - field.int:       { name: latencyMs }
-        - field.string:    { name: finishReason }     # gen_ai.response.finish_reasons
-        - field.string:    { name: status }           # ok | error
-        - field.string:    { name: errorDetail }      # call/parse failure detail (nullable)
-        - field.timestamp: { name: startedAt }
-        - field.object:    { name: llmRequest,  storage: jsonb }   # full wire request
-        - field.object:    { name: llmResponse, storage: jsonb }   # full wire response
-
-  - object.entity:
-      name: LlmCall                      # ready-to-use generic concrete (raw only)
-      extends: metaobjects::ai::LlmCallBase
-      children:
-        - source.rdb: { table: llm_call, role: primary }
+metadata:
+  package: metaobjects::ai
+  children:
+    - object.entity:
+        name: LlmCallBase
+        abstract: true
+        children:
+          - field.uuid:      { name: traceId }
+          - field.uuid:      { name: spanId }
+          - field.uuid:      { name: parentSpanId }    # nullable → root span
+          - field.string:    { name: sessionId }
+          - field.string:    { name: callType }        # discriminator / call identity
+          - field.string:    { name: system }          # gen_ai.system, e.g. "anthropic"
+          - field.string:    { name: requestModel }    # gen_ai.request.model
+          - field.string:    { name: responseModel }   # gen_ai.response.model
+          - field.int:       { name: inputTokens }      # gen_ai.usage.input_tokens
+          - field.int:       { name: outputTokens }     # gen_ai.usage.output_tokens
+          - field.currency:  { name: costMinor, currency: USD }   # integer minor units
+          - field.int:       { name: latencyMs }
+          - field.string:    { name: finishReason }     # gen_ai.response.finish_reasons
+          - field.string:    { name: status }           # ok | error
+          - field.string:    { name: errorDetail }      # call/parse failure detail (nullable)
+          - field.string:    { name: startedAt }        # ISO-8601 string
+          - field.string:    { name: llmRequest,  dbColumnType: jsonb }   # generic jsonb (no objectRef)
+          - field.string:    { name: llmResponse, dbColumnType: jsonb }
+    - object.entity:
+        name: LlmCall                      # ready-to-use generic concrete (raw only)
+        extends: metaobjects::ai::LlmCallBase
+        children:
+          - source.rdb:       { table: llm_call, role: primary }
+          - identity.primary: { fields: ["spanId"] }
 ```
 
 `PromptLlmCallBase` is shipped **abstract** in a separate file — it adds the two
@@ -187,16 +195,18 @@ so it materializes no table for adopters who never trace prompts; the adopter
 opts in by overlaying `source.rdb` (§4.3).
 
 ```yaml
-# library/ai/prompt-llm-call.yaml
-package: metaobjects::ai
-objects:
-  - object.entity:
-      name: PromptLlmCallBase
-      abstract: true
-      extends: metaobjects::ai::LlmCallBase
-      children:
-        - field.object: { name: voRequest,  storage: jsonb }                   # always set (pre-call)
-        - field.object: { name: voResponse, storage: jsonb, required: false }  # nullable (parse may fail)
+# library/ai/prompt-llm-call.yaml  (#1b — not yet implemented)
+metadata:
+  package: metaobjects::ai
+  children:
+    - object.entity:
+        name: PromptLlmCallBase
+        abstract: true
+        extends: metaobjects::ai::LlmCallBase
+        children:
+          # Generic jsonb at the base; #1b binds the typed VO when prompt-derived.
+          - field.string: { name: voRequest,  dbColumnType: jsonb }                   # always set (pre-call)
+          - field.string: { name: voResponse, dbColumnType: jsonb, required: false }  # nullable (parse may fail)
 ```
 
 Two payload tiers:
@@ -219,14 +229,16 @@ form 3 is prompt-derived and shares a table (spec #1b).
     children:
       - source.rdb: { table: api_call }
 
-# 2. Typed, explicit — adopter names the 2 VO fields itself (no prompt)
+# 2. Typed, explicit — adopter names the 2 VO fields itself (no prompt). Typed
+#    columns reference an app VO via @objectRef (then @storage: jsonb is valid).
 - object.entity:
     name: ClassifyCall
     extends: metaobjects::ai::LlmCallBase
     children:
       - source.rdb:   { table: classify_call }
-      - field.object: { name: voRequest,  storage: jsonb }
-      - field.object: { name: voResponse, storage: jsonb, required: false }
+      - identity.primary: { fields: ["spanId"] }
+      - field.object: { name: voRequest,  objectRef: ClassifyRequest,  storage: jsonb }
+      - field.object: { name: voResponse, objectRef: ClassifyResponse, storage: jsonb, required: false }
 
 # 3. Typed, prompt-derived (preferred) — extends PromptLlmCallBase, bundles its
 #    prompt, NO source.rdb (shares the table set on PromptLlmCallBase per §4.3)
