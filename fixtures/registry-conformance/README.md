@@ -259,6 +259,16 @@ Detail per port:
   through the loader's validation, OMDB, `codegen-spring`, and `codegen-kotlin`
   (all consume the current Java attrs). It is tracked as a dedicated follow-on,
   NOT a silent omission, and the canonical is **not** edited (it is correct).
+  **Update (Phase 2 complete):** every divergence above has since been reconciled
+  unit-by-unit — the final piece, the physical `db*` vocabulary, was converged in
+  SP-G Unit 7 (the logical-equivalent attrs `dbType`/`dbIndex`/`dbLength`/
+  `dbNullable`/`dbPrecision`/`dbScale`/`dbUnique` mapped onto the cross-port
+  `dbColumnType`/`db.indexed`/`maxLength`/required-ness/`precision`/`scale`/`unique`
+  + owned-object `@storage="jsonb"`, with consumers in `omdb` + `codegen-mustache`
+  migrated; the DDL/migration-only remnants `dbForeignKey`/`previousName`/
+  `dbIndexName`/`dbSequenceName`/`dbTablespace` dropped as dead under ADR-0015).
+  The Java manifest now byte-matches the canonical (residual EMPTY); the gate stays
+  `@Ignore`/`@Disabled` only until SP-G Unit 8 flips it atomically with CI wiring.
 
 ## Regenerating the canonical
 

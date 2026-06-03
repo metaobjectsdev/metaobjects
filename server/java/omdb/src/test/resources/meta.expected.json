@@ -21,8 +21,7 @@
             {
               "field.string": {
                 "name": "title",
-                "@column": "title",
-                "@previousName": "name"
+                "@column": "title"
               }
             },
             {

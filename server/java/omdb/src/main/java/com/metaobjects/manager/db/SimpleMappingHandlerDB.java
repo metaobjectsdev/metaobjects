@@ -44,7 +44,9 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	public final static String IS_UNIQUE 	  = "isUnique";
 	public final static String IS_VIEWONLY  = "isViewOnly";
 
-	public final static String FOREIGN_KEY_REF     = "dbForeignKey";
+	// SP-G Unit 7: the legacy @dbForeignKey persistence-attribute key was removed —
+	// FK direction is derived from identity.reference (the SSOT), and the only reader
+	// was the long-dead-commented getForeignKeys() DDL path (schema is TS-owned, ADR-0015).
 	// Source-v2 ADR-0007: table/view names come from source.rdb @table (via
 	// MetaObject.getPrimaryRdbTableName() / .getPrimaryRdbViewName()), not
 	// from object-level @dbTable / @dbView (dropped in Stage 2).
@@ -280,11 +282,12 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		return null;
 	}
 
-	/** Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}. */
+	/** Returns true if the field is declared as a typed-owned-object jsonb column via {@code @storage="jsonb"}. */
 	protected boolean isJsonbField(MetaField mf) {
 		try {
-			return mf.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
-				&& CoreDBMetaDataProvider.DB_TYPE_JSONB.equals(mf.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
+			return mf.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)
+				&& CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
+					mf.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValueAsString());
 		} catch (Exception e) {
 			return false;
 		}

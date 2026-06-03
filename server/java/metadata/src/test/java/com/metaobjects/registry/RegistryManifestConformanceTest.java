@@ -32,25 +32,37 @@ import static org.junit.Assert.assertTrue;
  * canonical to accommodate drift. The only escalation is if TS itself is wrong
  * versus the documented vocabulary.</p>
  *
- * <p><strong>{@code @Ignore} — ESCALATED: Java metamodel-vocabulary divergence.</strong>
- * Running this gate (the emitter + Kotlin runner are wired and functional)
+ * <p><strong>{@code @Ignore} — kept skipped until SP-G Unit 8 flips the gate.</strong>
+ * As of Unit 7 the Java manifest byte-matches the canonical; this test passes when
+ * un-skipped locally (residual EMPTY). It stays {@code @Ignore} only so the gate
+ * (and its CI wiring) flips atomically in Unit 8.</p>
+ *
+ * <p><strong>History — the reconciled divergences.</strong> Running this gate
  * surfaced a pervasive, structural divergence between Java's registry and the
  * cross-port logical vocabulary that TS, C#, and Python all agree on (the
- * canonical). It is NOT the targeted, attr-level drift this gate was scoped to
- * catch — it is a whole-vocabulary mismatch across every type family:</p>
+ * canonical). It was NOT the targeted, attr-level drift this gate was scoped to
+ * catch — it was a whole-vocabulary mismatch across every type family, since
+ * reconciled unit-by-unit:</p>
  * <ul>
  *   <li>Java models the structural reserved keywords {@code abstract}
  *       ({@code @isAbstract}) and {@code isArray} ({@code @isArray}) as ordinary
  *       attrs, and registers {@code @description} per-type (it is a commonAttr in
  *       the contract) — none of which the other three ports register as per-type
  *       attrs.</li>
- *   <li>Java carries a parallel physical-DB attr vocabulary
+ *   <li>Java carried a parallel physical-DB attr vocabulary
  *       ({@code dbType}/{@code dbIndex}/{@code dbLength}/{@code dbNullable}/
  *       {@code dbForeignKey}/{@code dbPrecision}/{@code dbScale}/{@code dbUnique}/
  *       {@code dbSequenceName}/{@code dbIndexName}/{@code dbTablespace}/
  *       {@code previousName}) instead of the contract's
  *       {@code column}/{@code db.indexed}/{@code dbColumnType} plus the logical
- *       {@code maxLength}/{@code precision}/{@code scale}/{@code unique}.</li>
+ *       {@code maxLength}/{@code precision}/{@code scale}/{@code unique}.
+ *       <strong>Reconciled in SP-G Unit 7:</strong> the logical-equivalent db* attrs
+ *       were converged onto the cross-port names (consumers in {@code omdb} +
+ *       {@code codegen-mustache} migrated; {@code dbType="jsonb"} owned-object storage
+ *       now reads {@code field.object @storage="jsonb"}), and the DDL/migration-only
+ *       remnants ({@code dbForeignKey}/{@code previousName}/{@code dbIndexName}/
+ *       {@code dbSequenceName}/{@code dbTablespace}) were dropped as dead under
+ *       ADR-0015 (OMDB is pure data-access).</li>
  *   <li>Java is missing the contract's logical field attrs
  *       {@code autoSet}/{@code filterable}/{@code sortable}/
  *       {@code sortableDefaultOrder}/{@code readOnly}/{@code storage} and carries
@@ -69,7 +81,7 @@ import static org.junit.Assert.assertTrue;
  *       reconciled in SP-G Unit 6c — refactor-dropped from the field classes
  *       (validation is expressed via {@code validator.*} children, the cross-port
  *       form; the temporal-format / currency-locale attrs were vestigial). The
- *       physical {@code db*} set remains SP-G Unit 7.</li>
+ *       physical {@code db*} set was reconciled in SP-G Unit 7 (above).</li>
  *   <li>{@code object.*} carried Java OO attrs
  *       ({@code extends}/{@code implements}/{@code object}/{@code objectAdapter}/
  *       {@code isInterface}/{@code value*}/{@code data*}). The structural keywords
@@ -96,8 +108,9 @@ import static org.junit.Assert.assertTrue;
  * {@code identity.secondary.generation}, {@code identity.reference.onDelete/onUpdate}).
  * The object-OO structural keywords + {@code object}/{@code objectAdapter} binding
  * facets + {@code value*}/{@code data*} (Unit 6b/6b-finish) and the field-validation
- * extras + field {@code locale} (Unit 6c) have since been reconciled, so the residual
- * is now ONLY the physical {@code db*} set (SP-G Unit 7).</p>
+ * extras + field {@code locale} (Unit 6c) and the physical {@code db*} set (Unit 7)
+ * have all been reconciled, so the residual is now EMPTY — the Java manifest
+ * byte-matches the canonical.</p>
  * <p>Reconciling this at source means rewriting Java's metamodel attribute layer
  * to the cross-port vocabulary — a change that ripples through the loader's
  * validation, OMDB, {@code codegen-spring}, and {@code codegen-kotlin} (all of
@@ -108,10 +121,9 @@ import static org.junit.Assert.assertTrue;
 public class RegistryManifestConformanceTest {
 
     @Test
-    @Ignore("SP-G ESCALATED: Java's metamodel registry vocabulary diverges pervasively "
-        + "from the cross-port canonical (TS/C#/Python agree). See class Javadoc for the "
-        + "full inventory. Re-enable once the Java vocabulary reconciliation lands; the "
-        + "canonical is correct and is NOT to be edited.")
+    @Ignore("SP-G: re-enabled by Unit 8 (gate flip + CI wiring). As of Unit 7 the Java "
+        + "manifest byte-matches the canonical (residual EMPTY) when un-skipped locally; "
+        + "kept @Ignore here so the gate flips atomically in Unit 8.")
     public void manifestMatchesCanonical() {
         // The process-global singleton is bootstrapped via ServiceLoader, so it
         // carries the full core + database-extensions + common-attrs vocabulary.

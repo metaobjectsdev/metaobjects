@@ -69,13 +69,16 @@ public class GenericSQLDriver implements DatabaseDriver {
     private final java.util.Map<MetaObject, Gson> fallbackGsonCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
-     * Uses the attr model so jsonb detection works even without a dedicated {@code JsonbField} class.
+     * Returns true if the field is declared as a typed-owned-object jsonb column via
+     * {@code @storage="jsonb"} (the cross-port owned-object storage shape; see
+     * {@link com.metaobjects.field.ObjectField#ATTR_STORAGE}). Uses the attr model so
+     * jsonb detection works even without a dedicated {@code JsonbField} class.
      */
     protected boolean isJsonbField(MetaField f) {
         try {
-            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
-                && CoreDBMetaDataProvider.DB_TYPE_JSONB.equals(f.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
+            return f.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)
+                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
+                    f.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValueAsString());
         } catch (Exception e) {
             return false;
         }

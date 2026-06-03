@@ -14,7 +14,7 @@ import com.metaobjects.MetaDataTypeId;
  * // Service provider extending string fields with database attributes
  * registry.findType("field", "string")
  *     .optionalAttribute("column", "string")
- *     .optionalAttribute("dbNullable", "boolean")
+ *     .optionalAttribute("maxLength", "int")
  *     .optionalChild("validator", "required", "*");
  * }</pre>
  *

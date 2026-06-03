@@ -22,7 +22,7 @@
               "field.string": {
                 "name": "username",
                 "@column": "username",
-                "@dbNullable": "false",
+                "@required": true,
                 "children": [
                   {
                     "validator.required": {}

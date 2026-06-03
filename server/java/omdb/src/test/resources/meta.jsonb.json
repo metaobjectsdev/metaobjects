@@ -22,7 +22,7 @@
               "field.object": {
                 "name": "prefs",
                 "@column": "prefs",
-                "@dbType": "jsonb",
+                "@storage": "jsonb",
                 "@objectRef": "jsonbtest::Prefs"
               }
             },

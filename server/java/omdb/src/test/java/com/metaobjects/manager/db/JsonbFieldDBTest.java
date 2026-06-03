@@ -103,7 +103,7 @@ public class JsonbFieldDBTest {
         omdb.init();
 
         // Schema is external/explicit (ADR-0015): create JSONB_ITEM via literal DDL.
-        // The `prefs` jsonb value-object column (@dbType: jsonb) is written as a JSON
+        // The `prefs` jsonb value-object column (@storage: jsonb) is written as a JSON
         // string (driver setString) and read back as a JSON string (driver getString),
         // so a portable text column holds it on Derby (Postgres uses native jsonb). This
         // exercises the runtime typed-jsonb bind/read path end-to-end against a live table.
