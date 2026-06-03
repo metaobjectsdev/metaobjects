@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import com.metaobjects.*;
-import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.apache.commons.validator.GenericValidator;
 
@@ -41,12 +41,13 @@ public class NumericValidator extends MetaValidator {
                .description("Numeric validator ensuring values are numbers within an optional min/max range")
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
-            // Cross-port value bounds (string-typed, parsed as needed — keeps decimal headroom).
+            // Cross-port int-typed value bounds (the value-under-test is still
+            // parsed as a double; the bound attrs are read via getValueAsString).
             def.optionalAttributeWithConstraints(ATTR_MIN)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
             def.optionalAttributeWithConstraints(ATTR_MAX)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }

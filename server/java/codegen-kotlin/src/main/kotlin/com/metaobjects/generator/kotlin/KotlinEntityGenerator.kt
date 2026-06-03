@@ -273,8 +273,8 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         // Array element-count bounds → @Size on the List property.
         validator(field, ArrayValidator::class.java)?.let { array ->
-            val min = attrInt(array, ArrayValidator.ATTR_MIN, ArrayValidator.ATTR_MINSIZE)
-            val max = attrInt(array, ArrayValidator.ATTR_MAX, ArrayValidator.ATTR_MAXSIZE)
+            val min = attrInt(array, ArrayValidator.ATTR_MIN)
+            val max = attrInt(array, ArrayValidator.ATTR_MAX)
             if (min != null || max != null) out.add(sizeAnnotation(min, max))
         }
 

@@ -57,8 +57,12 @@ import static org.junit.Assert.assertTrue;
  *       Java-specific feature attrs the contract does not
  *       ({@code minLength}/{@code pattern}/{@code maxValue}/{@code minValue}/
  *       {@code format}/{@code dateFormat}/{@code maxDate}/{@code minDate}/
- *       {@code defaultView}, validator {@code msg}/{@code mask}/{@code maxSize}/
- *       {@code minSize}).</li>
+ *       {@code defaultView}). The {@code validator.*} family has since been
+ *       reconciled to the canonical (SP-G Unit 5): {@code @min}/{@code @max} are
+ *       int-typed on {@code base}/{@code length}/{@code numeric}/{@code regex}/
+ *       {@code array}, {@code regex} keeps {@code @pattern}, {@code required}
+ *       carries none, and the legacy {@code msg}/{@code mask}/{@code maxSize}/
+ *       {@code minSize} extras were dropped.</li>
  *   <li>{@code object.*} carries Java OO attrs
  *       ({@code extends}/{@code implements}/{@code object}/{@code objectAdapter}/
  *       {@code isInterface}/{@code value*}/{@code data*}) instead of the

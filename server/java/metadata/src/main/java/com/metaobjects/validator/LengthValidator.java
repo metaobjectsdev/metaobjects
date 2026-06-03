@@ -7,7 +7,7 @@
 package com.metaobjects.validator;
 
 import com.metaobjects.*;
-import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.apache.commons.validator.GenericValidator;
@@ -41,12 +41,14 @@ public class LengthValidator extends MetaValidator
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             // LENGTH-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
+            // Cross-port int-typed bounds (the Integer.parseInt read path below
+            // is compatible with both int- and string-backed attribute values).
             def.optionalAttributeWithConstraints(ATTR_MIN)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
 
             def.optionalAttributeWithConstraints(ATTR_MAX)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }

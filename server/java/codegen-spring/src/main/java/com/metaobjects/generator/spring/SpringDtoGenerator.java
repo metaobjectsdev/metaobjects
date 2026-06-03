@@ -258,8 +258,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // Array element-count bounds → @Size on the List component.
         ArrayValidator array = validator(field, ArrayValidator.class);
         if (array != null) {
-            Integer min = attrInt(array, ArrayValidator.ATTR_MIN, ArrayValidator.ATTR_MINSIZE);
-            Integer max = attrInt(array, ArrayValidator.ATTR_MAX, ArrayValidator.ATTR_MAXSIZE);
+            Integer min = attrInt(array, ArrayValidator.ATTR_MIN);
+            Integer max = attrInt(array, ArrayValidator.ATTR_MAX);
             if (min != null || max != null) {
                 out.add(sizeAnnotation(min, max));
             }
