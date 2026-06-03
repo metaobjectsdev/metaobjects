@@ -8,6 +8,7 @@ package com.metaobjects.field;
 
 import com.metaobjects.*;
 import com.metaobjects.attr.BooleanAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.constraint.PlacementConstraint;
@@ -116,6 +117,55 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     /** Default view specification attribute - MetaField owns this concept */
     public static final String ATTR_DEFAULT_VIEW = "defaultView";
 
+    // === CROSS-PORT LOGICAL FIELD ATTRIBUTES (SP-G) ===
+    // These are part of the cross-port logical vocabulary the registry-conformance
+    // canonical declares on EVERY field subtype (registered on field.base, inherited
+    // by all concrete field subtypes via the inheritsFrom snapshot). They are
+    // additive in SP-G Unit 4 — the parallel physical db* attrs coexist until the
+    // Unit 7 physical-vocabulary convergence.
+
+    /** FR-013: read-only field marker (boolean). */
+    public static final String ATTR_READ_ONLY = "readOnly";
+
+    /** Auto-set policy (string) — when/how the runtime auto-populates the field. */
+    public static final String ATTR_AUTO_SET = "autoSet";
+
+    /** Project D: field is filterable in generated query endpoints (boolean). */
+    public static final String ATTR_FILTERABLE = "filterable";
+
+    /** Project D: field is sortable in generated query endpoints (boolean). */
+    public static final String ATTR_SORTABLE = "sortable";
+
+    /** Project D: default sort order for a sortable field (string: asc / desc). */
+    public static final String ATTR_SORTABLE_DEFAULT_ORDER = "sortableDefaultOrder";
+
+    /** Logical "this column is indexed" marker (boolean). Cross-port key {@code db.indexed}. */
+    public static final String ATTR_DB_INDEXED = "db.indexed";
+
+    /** Logical max length (int) — cross-port name (peer of the physical dbLength). */
+    public static final String ATTR_MAX_LENGTH = "maxLength";
+
+    /** Logical numeric precision (int). */
+    public static final String ATTR_PRECISION = "precision";
+
+    /** Logical numeric scale (int). */
+    public static final String ATTR_SCALE = "scale";
+
+    /** Logical uniqueness marker (boolean). */
+    public static final String ATTR_UNIQUE = "unique";
+
+    /** Storage shape for owned-object data (string: flattened / jsonb / subdocument). */
+    public static final String ATTR_STORAGE = "storage";
+
+    /** Object-reference target for object-valued fields (string). */
+    public static final String ATTR_OBJECT_REF = "objectRef";
+
+    /** Physical column name (string). Cross-port name {@code column}. */
+    public static final String ATTR_COLUMN = "column";
+
+    /** Physical column-type escape hatch (string). Cross-port name {@code dbColumnType}. */
+    public static final String ATTR_DB_COLUMN_TYPE = "dbColumnType";
+
     /** Universal array modifier - any field can be an array */
     public static final String ATTR_IS_ARRAY = "isArray";
 
@@ -180,6 +230,44 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                 // boolean true|false, enum membership) runs post-load in ValidationPhase
                 // (ERR_BAD_ATTR_VALUE). Generalized from FR-011's enum-only @default.
                 def.optionalAttributeWithConstraints(ATTR_DEFAULT)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+                // === SP-G cross-port logical field attrs (declared on EVERY field
+                // subtype via the field.base inheritance snapshot). Registered here
+                // (pre-snapshot) so they propagate to all concrete subtypes — the
+                // registry-conformance canonical declares them on every field row.
+                // The `required` marker is ALSO enforced via a placement constraint;
+                // it is declared here as a named attr so it surfaces in the manifest.
+
+                def.optionalAttributeWithConstraints(ATTR_REQUIRED)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_READ_ONLY)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_AUTO_SET)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_FILTERABLE)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_SORTABLE)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_SORTABLE_DEFAULT_ORDER)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_DB_INDEXED)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)
+                   .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_PRECISION)
+                   .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_SCALE)
+                   .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_UNIQUE)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_STORAGE)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_OBJECT_REF)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_COLUMN)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(ATTR_DB_COLUMN_TYPE)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             });
 

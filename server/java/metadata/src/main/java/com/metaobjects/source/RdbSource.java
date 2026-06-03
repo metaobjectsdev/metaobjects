@@ -1,5 +1,6 @@
 package com.metaobjects.source;
 
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 /**
@@ -17,6 +18,13 @@ public class RdbSource extends MetaSource {
 
     /** RDB source subtype constant. */
     public static final String SUBTYPE_RDB = "rdb";
+
+    /**
+     * FR-015: name of an {@code object.value} whose fields supply the call parameters
+     * for a callable source ({@code @kind: storedProc / tableFunction}). Declared on
+     * {@code source.rdb} (NOT the abstract base) to match the cross-port canonical.
+     */
+    public static final String ATTR_PARAMETER_REF = "parameterRef";
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -36,10 +44,15 @@ public class RdbSource extends MetaSource {
      * {@link MetaSource#registerTypes(MetaDataRegistry)}.
      */
     public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(RdbSource.class, def -> def
-            .type(TYPE_SOURCE).subType(SUBTYPE_RDB)
-            .description("Relational-database source — table, view, materialised view, stored proc, or table-valued function")
-            .inheritsFrom(TYPE_SOURCE, SUBTYPE_BASE)
-        );
+        registry.registerType(RdbSource.class, def -> {
+            def.type(TYPE_SOURCE).subType(SUBTYPE_RDB)
+               .description("Relational-database source — table, view, materialised view, stored proc, or table-valued function")
+               .inheritsFrom(TYPE_SOURCE, SUBTYPE_BASE);
+
+            // FR-015: @parameterRef — declared on the concrete rdb subtype (the
+            // abstract source.base stays attr-free for the param concept).
+            def.optionalAttributeWithConstraints(ATTR_PARAMETER_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
     }
 }

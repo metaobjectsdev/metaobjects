@@ -197,8 +197,7 @@ public class MetaRelationshipIntegrationTest {
         // Test that all essential attributes have proper type support
         String[] essentialAttrs = {
             MetaRelationship.ATTR_OBJECT_REF,
-            MetaRelationship.ATTR_CARDINALITY,
-            MetaRelationship.ATTR_REFERENCED_BY
+            MetaRelationship.ATTR_CARDINALITY
         };
 
         for (String attrName : essentialAttrs) {
@@ -273,9 +272,12 @@ public class MetaRelationshipIntegrationTest {
     }
 
     /**
-     * Helper method to add essential relationship attributes (3-attribute approach)
+     * Helper method to add essential relationship attributes (objectRef + cardinality).
+     * The legacy third {@code referencedBy} attr was removed (SP-G) — FK direction is
+     * the SSOT of {@code identity.reference}; the {@code fkField} arg is retained for
+     * call-site readability but no longer written to the relationship.
      */
-    private void addRelationshipAttributes(MetaRelationship relationship, String target, String cardinality, String referencedBy) throws Exception {
+    private void addRelationshipAttributes(MetaRelationship relationship, String target, String cardinality, String fkField) throws Exception {
         if (target != null) {
             StringAttribute targetAttr = new StringAttribute(MetaRelationship.ATTR_OBJECT_REF);
             targetAttr.setValueAsString(target);
@@ -286,12 +288,6 @@ public class MetaRelationshipIntegrationTest {
             StringAttribute cardAttr = new StringAttribute(MetaRelationship.ATTR_CARDINALITY);
             cardAttr.setValueAsString(cardinality);
             relationship.addChild(cardAttr);
-        }
-
-        if (referencedBy != null) {
-            StringAttribute refAttr = new StringAttribute(MetaRelationship.ATTR_REFERENCED_BY);
-            refAttr.setValueAsString(referencedBy);
-            relationship.addChild(refAttr);
         }
     }
 

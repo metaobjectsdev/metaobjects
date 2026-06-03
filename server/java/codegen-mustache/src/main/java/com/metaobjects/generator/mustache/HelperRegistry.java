@@ -7,6 +7,7 @@ import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.RequiredValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.identity.ReferenceIdentity;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.metaobjects.database.CoreDBMetaDataProvider.COLUMN;
@@ -310,19 +311,17 @@ public class HelperRegistry {
         if (input instanceof MetaField) {
             MetaField field = (MetaField) input;
 
-            // Check if this field is referenced by an AssociationRelationship (new approach)
+            // SP-G: FK-field-ness is derived from identity.reference (the SSOT for
+            // FK direction) — the field is an FK field when it appears in any
+            // reference identity's @fields on the owning entity. Replaces the
+            // removed legacy relationship @referencedBy attr.
             MetaObject metaObject = (MetaObject) field.getParent();
             if (metaObject != null) {
-                // Look for AssociationRelationship children in the MetaObject
-                List<AssociationRelationship> relationships = metaObject.getChildren(AssociationRelationship.class);
-
-                for (AssociationRelationship relationship : relationships) {
-                    // Check if this field is referenced by the relationship
-                    if (relationship.hasMetaAttr("referencedBy")) {
-                        String referencedByField = relationship.getMetaAttr("referencedBy").getValueAsString();
-                        if (field.getName().equals(referencedByField)) {
-                            return true;
-                        }
+                List<MetaIdentity> identities = metaObject.getChildren(MetaIdentity.class);
+                for (MetaIdentity identity : identities) {
+                    if (identity instanceof ReferenceIdentity
+                            && identity.getFields().contains(field.getName())) {
+                        return true;
                     }
                 }
             }

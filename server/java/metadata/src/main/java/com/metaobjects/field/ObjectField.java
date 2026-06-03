@@ -10,7 +10,6 @@ import com.metaobjects.DataTypes;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.registry.MetaDataRegistry;
-import com.metaobjects.attr.StringAttribute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,17 +43,12 @@ public class ObjectField extends MetaField<Object>
                 def.type(TYPE_FIELD).subType(SUBTYPE_OBJECT)
                    .description("Object field with object reference support")
 
-                   // INHERIT FROM BASE FIELD
+                   // INHERIT FROM BASE FIELD.
+                   // @objectRef + @storage are now declared on field.base (SP-G
+                   // cross-port logical vocabulary — every field subtype carries
+                   // them), so ObjectField inherits both via the snapshot rather
+                   // than re-declaring them here.
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
-
-                // OBJECT-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_OBJECTREF)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_STORAGE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
             });
 
             log.debug("Registered ObjectField type with unified registry");

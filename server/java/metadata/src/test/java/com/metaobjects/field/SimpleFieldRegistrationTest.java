@@ -234,15 +234,13 @@ public class SimpleFieldRegistrationTest {
     }
 
     @Test
-    public void testRemovedFieldTypes() {
-        // Verify that ByteField and ShortField are no longer registered
-        assertFalse("ByteField should not be registered",
+    public void testNarrowIntegerFieldTypes() {
+        // SP-G re-introduced field.byte / field.short (cross-port registry canonical).
+        assertTrue("ByteField should be registered",
                    registry.isRegistered("field", "byte"));
 
-        assertFalse("ShortField should not be registered",
+        assertTrue("ShortField should be registered",
                    registry.isRegistered("field", "short"));
-
-        // Test validation successful - no verbose output needed;
     }
 
     @Test

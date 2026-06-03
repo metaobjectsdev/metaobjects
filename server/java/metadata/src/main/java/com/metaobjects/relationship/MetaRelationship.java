@@ -39,8 +39,10 @@ public abstract class MetaRelationship extends MetaData {
     /** Cardinality of relationship: "one" or "many" */
     public final static String ATTR_CARDINALITY = "cardinality";
 
-    /** Field name that implements the relationship */
-    public final static String ATTR_REFERENCED_BY = "referencedBy";
+    // SP-G: the legacy {@code @referencedBy} attr (the own FK-field name implementing
+    // an N:1/1:1 association) was REMOVED. FK direction is the SSOT of
+    // {@code identity.reference} ({@code @fields} / {@code @references}); consumers
+    // derive FK-field-ness from those references (see codegen-mustache HelperRegistry).
 
     // === FR-017 M:N SLIM VOCABULARY ===
     /** Junction (through) entity name for M:N relationships — a third entity declaring two
@@ -124,10 +126,6 @@ public abstract class MetaRelationship extends MetaData {
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
 
-            def.optionalAttributeWithConstraints(ATTR_REFERENCED_BY)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
             // FR-017 M:N slim vocabulary — through / sourceRefField (string) + symmetric (boolean).
             def.optionalAttributeWithConstraints(ATTR_THROUGH)
                .ofType(StringAttribute.SUBTYPE_STRING)
@@ -170,11 +168,6 @@ public abstract class MetaRelationship extends MetaData {
     public String getCardinality() {
         return hasMetaAttr(ATTR_CARDINALITY) ?
                getMetaAttr(ATTR_CARDINALITY).getValueAsString() : CARDINALITY_ONE;
-    }
-
-    public String getReferencedBy() {
-        return hasMetaAttr(ATTR_REFERENCED_BY) ?
-               getMetaAttr(ATTR_REFERENCED_BY).getValueAsString() : null;
     }
 
     // === FR-017 M:N ACCESSORS ===

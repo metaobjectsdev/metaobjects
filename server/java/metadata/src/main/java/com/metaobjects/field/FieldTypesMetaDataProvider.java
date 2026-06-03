@@ -50,6 +50,8 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
 
         // THEN: Register concrete field types that inherit from field.base
         StringField.registerTypes(registry);
+        ByteField.registerTypes(registry);
+        ShortField.registerTypes(registry);
         IntegerField.registerTypes(registry);
         LongField.registerTypes(registry);
         DoubleField.registerTypes(registry);
