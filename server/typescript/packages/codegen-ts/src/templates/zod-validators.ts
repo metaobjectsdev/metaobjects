@@ -52,6 +52,51 @@ function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: strin
   return undefined;
 }
 
+/** True when this object is a TPH subtype — it declares @discriminatorValue
+ *  and an ancestor carries @discriminator. */
+export function isTphSubtype(obj: MetaObject): boolean {
+  return tphDiscriminatorPin(obj) !== undefined;
+}
+
+/**
+ * FR-017 Tier 2 — the per-subtype FULL read schema `<Sub>Schema`. Unlike the
+ * insert schema, this includes every effective field (PK included) so a raw DB
+ * row parses through it. The discriminator field is pinned to its literal value
+ * (`type: z.literal("Bridge")`) so the schema rejects a row of another subtype.
+ *
+ * This is the schema parse<Base>(row) dispatches to (see tph-discriminator.ts).
+ * Non-required columns are `.nullable()`-tolerant: a nullable TPH column read
+ * back from the DB arrives as `null`, not `undefined`, so the read schema must
+ * accept null (the insert schema, by contrast, makes them `.optional()`).
+ */
+export function renderTphSubtypeReadSchema(obj: MetaObject): Code {
+  const z = imp("z@zod");
+  const tphPin = tphDiscriminatorPin(obj);
+
+  const fieldLines: Code[] = [];
+  for (const child of obj.fields()) {
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
+      continue;
+    }
+    const expr = zodFieldExpr(child);
+    // zodFieldExpr already appends `.optional()` for non-required fields; add
+    // `.nullable()` on top so a NULL column value (the TPH default for any
+    // subtype-only column) parses cleanly.
+    fieldLines.push(
+      fieldWillBeOptional(child) ? code`  ${child.name}: ${expr}.nullable()` : code`  ${child.name}: ${expr}`,
+    );
+  }
+
+  const docs = renderDocsFor(obj);
+  const docsPrefix = docs ? `${docs}\n` : "";
+  return code`
+${docsPrefix}export const ${obj.name}Schema = ${z}.object({
+${joinCode(fieldLines, { on: ",\n" })}
+});
+`;
+}
+
 /** Auto-generated PK field names that should be omitted from InsertSchema. */
 function autoGenPkFieldNames(obj: MetaObject): Set<string> {
   const out = new Set<string>();

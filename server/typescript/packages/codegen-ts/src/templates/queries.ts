@@ -8,7 +8,7 @@ import type { RenderContext } from "../render-context.js";
 import { variableNameFromEntity, pluralize } from "../naming.js";
 
 /** Get the PK field name and its TS type for a given entity. */
-function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
+export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
   // Use primaryIdentity() to find the primary identity (may be inherited from extends:/super:).
   const primary = entity.primaryIdentity();
   const rawFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS);

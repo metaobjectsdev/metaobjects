@@ -17,15 +17,29 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { TYPE_FIELD, resolveColumnName } from "@metaobjectsdev/metadata";
+import {
+  TYPE_FIELD,
+  resolveColumnName,
+  OBJECT_ATTR_DISCRIMINATOR,
+  OBJECT_ATTR_DISCRIMINATOR_VALUE,
+} from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
+import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 
 export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string {
+  // FR-017 Tier 2 — a TPH discriminator base mounts polymorphic list/get at the
+  // base path plus a full per-subtype CRUD route set scoped to each
+  // discriminator value. (Subtype entities are filtered out of the routes
+  // generator entirely — their routes live here.)
+  if (isTphDiscriminatorBase(entity, ctx.loadedRoot)) {
+    return renderTphRoutesFile(entity, ctx);
+  }
+
   const entityName = entity.name;
   const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
   // Import the entity's own file. Same target → relative "./Entity"; cross
@@ -276,4 +290,115 @@ function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: Rende
   const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return fieldName;
   return resolveColumnName(field, ctx.columnNamingStrategy);
+}
+
+/**
+ * FR-017 Tier 2 — the routes file for a TPH discriminator base.
+ *
+ * Mounts a polymorphic list/get route set at the base path (`GET /auths`,
+ * `GET /auths/:id` — rows carry the discriminator by value), then a full
+ * per-subtype CRUD route set at `<basePath>/<discriminatorValue lowercased>`
+ * (`/auths/bridge`, ...). The per-subtype create body OMITS the discriminator
+ * (the URL names the subtype); the runtime helper injects it. The per-subtype
+ * route set is scoped to its discriminator value via the `discriminator` option
+ * (cross-subtype get/update/delete 404; update strips the discriminator).
+ *
+ * Subtype route segment defaults to the lowercased `@discriminatorValue`
+ * (`"Bridge"` → `bridge`) — a robust, value-derived path that matches the
+ * FR-017 design's `/auths/bridge` examples. Fastify resolves the static
+ * `/auths/bridge` ahead of the parametric `/auths/:id`, so the two coexist.
+ */
+function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
+  const baseName = base.name;
+  const handlerName = `${baseName.charAt(0).toLowerCase()}${baseName.slice(1)}Routes`;
+  const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
+  const tableVar = variableNameFromEntity(baseName);
+
+  const baseFileSpec = entityModuleSpecifier(
+    ctx.selfTarget, ctx.entityModuleTarget, base.package, baseName, ctx.extStyle,
+  );
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, base.package, ctx.dbImport);
+
+  const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
+  const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
+  const dbSym = imp(`db@${dbImportSpec}`);
+  const tableSym = imp(`${tableVar}@${baseFileSpec}`);
+  const baseConstSym = imp(`${baseName}@${baseFileSpec}`);
+  const baseInsertSym = imp(`${baseName}InsertSchema@${baseFileSpec}`);
+  const baseUpdateSym = imp(`${baseName}UpdateSchema@${baseFileSpec}`);
+  const baseFilterSym = imp(`${baseName}FilterAllowlist@${baseFileSpec}`);
+  const baseSortSym = imp(`${baseName}SortAllowlist@${baseFileSpec}`);
+
+  const fastifyRef = ctx.apiPrefix ? "instance" : "fastify";
+  const dialectLit = JSON.stringify(ctx.dialect);
+
+  const polymorphic = code`
+    ${mountCrudRoutesSym}({
+      fastify: ${fastifyRef},
+      path: ${baseConstSym}.$path,
+      db: ${dbSym},
+      table: ${tableSym},
+      insertSchema: ${baseInsertSym},
+      updateSchema: ${baseUpdateSym},
+      filterAllowlist: ${baseFilterSym},
+      sortAllowlist: ${baseSortSym},
+      dialect: ${dialectLit},
+      expose: ["list", "get"],
+    });`;
+
+  const subtypeMounts: Code[] = tphConcreteSubtypes(base, ctx.loadedRoot).map((sub) => {
+    const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
+    const segment = value.toLowerCase();
+    const subFileSpec = entityModuleSpecifier(
+      ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
+    );
+    const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    return code`
+    ${mountCrudRoutesSym}({
+      fastify: ${fastifyRef},
+      path: ${baseConstSym}.$path + ${JSON.stringify("/" + segment)},
+      db: ${dbSym},
+      table: ${tableSym},
+      insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
+      updateSchema: ${subInsertSym}.omit({ ${discField}: true }).partial(),
+      filterAllowlist: ${baseFilterSym},
+      sortAllowlist: ${baseSortSym},
+      dialect: ${dialectLit},
+      discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },
+    });`;
+  });
+
+  const mounts = joinCode([polymorphic, ...subtypeMounts], { on: "\n" });
+
+  const fn = ctx.apiPrefix
+    ? code`
+/**
+ * Mount polymorphic + per-subtype REST endpoints for the ${baseName} TPH hierarchy.
+ *
+ * GET ${baseName}.$path (+ /:id) lists/gets the discriminated union; each
+ * /${baseName}.$path/<subtype> path is a full per-subtype CRUD set.
+ */
+export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
+  await fastify.register(async (instance) => {
+${mounts}
+  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
+}
+`
+    : code`
+/**
+ * Mount polymorphic + per-subtype REST endpoints for the ${baseName} TPH hierarchy.
+ *
+ * GET ${baseName}.$path (+ /:id) lists/gets the discriminated union; each
+ * /${baseName}.$path/<subtype> path is a full per-subtype CRUD set.
+ */
+export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
+${mounts}
+}
+`;
+
+  const header =
+    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n` +
+    `// Customize via ${baseName}.extra.ts in this directory (e.g., auth, additional handlers).\n`;
+  return header + fn.toString();
 }
