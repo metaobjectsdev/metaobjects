@@ -89,6 +89,15 @@ describe("FR-017 Tier 2 — per-subtype full read schema", () => {
     expect(out).toContain('type: z.literal("Bridge")');
   });
 
+  test("subtype file emits its field-metadata constants object (for Tier 3 forms)", async () => {
+    const { root, bridge } = await loadTph();
+    const out = renderEntityFile(bridge, ctxFor(root));
+    // The `<Sub>` constants object (used by the React form generator).
+    expect(out).toContain("export const BridgeAuth = {");
+    expect(out).toContain('$entity: "BridgeAuth"');
+    expect(out).toContain("quantity: {");
+  });
+
   test("read schema KEEPS the auto-generated PK (unlike the insert schema)", async () => {
     const { root, bridge } = await loadTph();
     const out = renderEntityFile(bridge, ctxFor(root));

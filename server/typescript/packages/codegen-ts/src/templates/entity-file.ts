@@ -54,7 +54,7 @@ export function renderEntityFile(
   // it. The entity-file generator suppresses this entirely when
   // emitAbstractShapes is off; here we only guarantee "shape, never table".
   if (isAbstract(entity)) {
-    return renderValueObjectFile(entity);
+    return renderValueObjectFile(entity, ctx.apiPrefix);
   }
 
   // --- Projection path (read-only: view-backed entity with no table source) ---
@@ -73,7 +73,7 @@ export function renderEntityFile(
   // the shape (LLM tool_use input_schema, REST body parsing) use the Zod
   // schema; consumers that need the type use the interface.
   if (!hasWritableRdbSource(entity)) {
-    return renderValueObjectFile(entity);
+    return renderValueObjectFile(entity, ctx.apiPrefix);
   }
 
   // --- Vanilla / write-through entity path ---

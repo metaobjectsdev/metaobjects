@@ -64,7 +64,7 @@ export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./insta
 // FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,
 // react) to dispatch polymorphic/per-subtype emission and skip subtype files.
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields } from "./templates/tph-discriminator.js";
-export { isTphSubtype } from "./templates/zod-validators.js";
+export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";

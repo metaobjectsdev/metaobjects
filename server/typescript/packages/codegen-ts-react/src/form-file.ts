@@ -1,5 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts } from "@metaobjectsdev/codegen-ts";
+import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts, isTphSubtype } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -20,7 +21,17 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
     // (skips abstract types — no instance — and read-only projections —
     // instantiable for read, never for write), the metadata opt-out, and
     // the optional user filter.
-    filter: (e: MetaObject) => emitsWriteArtifacts(e) && e.ownAttr("emitForm") !== false && userFilter(e),
+    // FR-017 Tier 3: forms are ALWAYS per-subtype. The discriminator base gets
+    // NO form (you can't create an abstract base), but each concrete subtype
+    // does — even though it has no own writable source (it inherits the base's).
+    filter: (e: MetaObject) => {
+      if (e.ownAttr("emitForm") === false) return false;
+      if (!userFilter(e)) return false;
+      if (isTphSubtype(e)) return true; // per-subtype form
+      // A discriminator base is never form-rendered directly.
+      if (typeof e.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
+      return emitsWriteArtifacts(e);
+    },
     generate: perEntity((entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("form-file: renderContext is required (provided by runGen)");
