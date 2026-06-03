@@ -27,7 +27,7 @@ function libraryDirOnDisk(): string | undefined {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
     const candidate = join(dir, "library");
-    if (existsSync(join(candidate, "ai", "llm-call.yaml"))) return candidate;
+    if (existsSync(join(candidate, "ai"))) return candidate;
     const parent = dirname(dir);
     if (parent === dir) break; // reached filesystem root
     dir = parent;
@@ -77,6 +77,11 @@ export function librarySources(packages: string[]): MetaDataSource[] {
             id: `library:${ref}.yaml`,
             format: "yaml",
           }),
+        );
+      } else {
+        throw new Error(
+          `library ref "${ref}" (package "${pkg}") has no on-disk file and no embedded entry — ` +
+            `the embedded library module is stale; run scripts/generate-embedded-library.ts`,
         );
       }
     }

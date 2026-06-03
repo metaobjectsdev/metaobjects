@@ -43,9 +43,9 @@ describe("loader libraries option", () => {
     rmSync(dir, { recursive: true, force: true });
 
     expect(result.errors).toEqual([]);
-    const apiCall = result.root.objects().find((o: { name: string }) => o.name === "ApiCall");
+    const apiCall = result.root.objects().find((o) => o.name === "ApiCall");
     expect(apiCall).toBeDefined();
-    expect(apiCall!.fields().some((f: { name: string }) => f.name === "llmRequest")).toBe(true);
+    expect(apiCall!.fields().some((f) => f.name === "llmRequest")).toBe(true);
   });
 
   test("without the libraries option, the same extends is unresolved", async () => {
@@ -53,6 +53,6 @@ describe("loader libraries option", () => {
     writeFileSync(join(dir, "meta.app.yaml"), APP_YAML);
     const result = await MetaDataLoader.fromDirectory(dir);
     rmSync(dir, { recursive: true, force: true });
-    expect(result.errors.length).toBeGreaterThan(0); // unresolved super
+    expect(result.errors.some((e) => (e as { code?: string }).code === "ERR_UNRESOLVED_SUPER")).toBe(true);
   });
 });

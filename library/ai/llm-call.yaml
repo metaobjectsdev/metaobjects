@@ -23,7 +23,7 @@ metadata:
           - field.string:   { name: finishReason }
           - field.string:   { name: status }
           - field.string:   { name: errorDetail }
-          - field.string:   { name: startedAt }
+          - field.timestamp: { name: startedAt }
           - field.string:   { name: llmRequest,  dbColumnType: jsonb }   # generic jsonb (no objectRef)
           - field.string:   { name: llmResponse, dbColumnType: jsonb }
     - object.entity:

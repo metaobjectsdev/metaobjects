@@ -178,7 +178,7 @@ metadata:
           - field.string:    { name: finishReason }     # gen_ai.response.finish_reasons
           - field.string:    { name: status }           # ok | error
           - field.string:    { name: errorDetail }      # call/parse failure detail (nullable)
-          - field.string:    { name: startedAt }        # ISO-8601 string
+          - field.timestamp: { name: startedAt }
           - field.string:    { name: llmRequest,  dbColumnType: jsonb }   # generic jsonb (no objectRef)
           - field.string:    { name: llmResponse, dbColumnType: jsonb }
     - object.entity:

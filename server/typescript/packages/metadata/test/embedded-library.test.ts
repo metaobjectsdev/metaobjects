@@ -10,7 +10,7 @@
 //      (no missing, no extra).
 //   3. Content sanity — the known "ai/llm-call" entry contains expected text.
 
-import { describe, test, it, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { EMBEDDED_LIBRARY } from "../src/library/embedded-library.generated.ts";
@@ -42,7 +42,7 @@ const canonical = collect(libDir).map((abs) => ({
 
 describe("EMBEDDED_LIBRARY — drift gate", () => {
   for (const { ref, content } of canonical) {
-    it(`${ref} is byte-identical to canonical library/${ref}.yaml`, () => {
+    test(`${ref} is byte-identical to canonical library/${ref}.yaml`, () => {
       expect(EMBEDDED_LIBRARY[ref]).toBeDefined();
       expect(EMBEDDED_LIBRARY[ref]).toBe(content);
     });
