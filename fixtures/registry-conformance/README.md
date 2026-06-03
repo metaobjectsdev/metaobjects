@@ -208,7 +208,9 @@ Detail per port:
   field attrs `db.indexed` / `readOnly` (and `currency` on `field.currency`);
   missing subtypes `field.base|byte|short`, `object.base`, `template.base`, and
   9 `view.*` control kinds; missing attrs `discriminator`/`discriminatorValue`
-  on `object.*`, `cardinality`/`joinEntity`/`joinFields`/`objectRef` on
+  on `object.*`, the M:N slim vocabulary `cardinality`/`through`/
+  `sourceRefField`/`symmetric`/`objectRef` (FR-018 — the removed `joinEntity`/
+  `joinFields` are no longer in the canonical) on
   `relationship.*`, `parameterRef` on `source.rdb`, `unique` on
   `identity.secondary`, `filterable` on `layout.dataGrid`, `locale` on
   `view.currency`; and `template.*` `payloadRef` declared optional + carried on

@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-02
 **Renumber note:** originally drafted + Phase 1/2 merged as **FR-017**; renumbered to **FR-018** on 2026-06-02 (a sibling session had a prior claim on FR-017 for TPH polymorphic codegen, reserved in the 2026-05-31 metamodel-batch plan). The merged Phase-1/Phase-2 commits keep their immutable `FR-017` labels; all work from Phase 3 onward uses **FR-018**.
-**Status:** Phase 1 (vocab) + Phase 2 (runtime resolvers) MERGED to main (`f1e44b7a`); Phase 3 (codegen/REST/docs) + Phase 4 pending.
+**Status:** Phase 1 (vocab) + Phase 2 (runtime resolvers) MERGED to main (`f1e44b7a`). **Phase 3 — codegen across all 5 ports (entity navigation + ORM wiring) + REST traversal (`GET /<source-plural>/{id}/<relation>`) + the api-contract m2m corpus in BOTH lanes + Tier-2 docs — COMPLETE on this branch.** Remaining: the TanStack M:N client hooks follow-up (see "Out of scope / non-goals" below).
 **Relates to:** the SP-G registry-conformance finding that `joinEntity`/`joinFields` is TS-runtime-only, has zero codegen + zero conformance coverage, and is largely redundant with `identity.reference` (the cross-port SSOT for FK direction). Supersedes the original SP-G Java-reconciliation Unit-4 "Java adopts joinEntity/joinFields" step.
 
 ## Problem
@@ -97,6 +97,7 @@ This changes shipped cross-port vocabulary. Per the project's **no-backwards-com
 - **M:N through a junction carrying extra payload fields surfaced as relationship attributes** (association-class attributes) — the junction is a normal entity; its extra fields are accessible as the junction entity, not folded into the M:N navigation. Future if needed.
 - **Polymorphic / many-target M:N.** Single target entity per relationship.
 - **Undirected hetero relations.** `@symmetric` is self-join-only by definition.
+- **TanStack M:N client hooks — NOT generated (client-ergonomics follow-up).** The server-side surface ships in full: the REST sub-resource route (`GET /<source-plural>/{id}/<relation>`), the entity-navigation member, and the per-port runtime traversal/resolver. The one absent piece is a typed `codegen-ts-tanstack` client hook for the M:N collection (e.g. a `use<Source><Relation>` query hook). Consumers reach an M:N collection today via the generated sub-resource route directly. Tracked as a client-ergonomics follow-up.
 
 ## Definition of done
 
