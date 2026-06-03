@@ -11,8 +11,14 @@
 import { joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
-import { renderInsertSchemaOnly, isTphSubtype, renderTphSubtypeReadSchema } from "./zod-validators.js";
+import {
+  renderInsertSchemaOnly,
+  isTphSubtype,
+  renderTphSubtypeReadSchema,
+  tphDiscriminatorPin,
+} from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
+import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { GENERATED_HEADER } from "../constants.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
@@ -26,12 +32,21 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
   // (the `<Sub>` const), so the React form generator can render per-field
   // labels / rules / inputs the same way it does for ordinary entities.
   const tphConstants = tphSubtype ? renderEntityConstants(obj, apiPrefix) : null;
+  // FR-017 Tier 3: per-subtype filter + sort allowlists, excluding the
+  // discriminator (it's pinned by the per-subtype route path, so a client must
+  // not filter on it). Included fields are the subtype's own + inherited base
+  // filterable fields. Drives the per-subtype REST routes' filter layer.
+  const discField = tphSubtype ? tphDiscriminatorPin(obj)?.fieldName : undefined;
+  const tphFilterAllowlist = tphSubtype ? renderFilterAllowlist(obj, discField) : null;
+  const tphSortAllowlist = tphSubtype ? renderSortAllowlist(obj, discField) : null;
   const sections: Code[] = [
     renderValueObjectInterface(obj),
     ...(enumAliases !== null ? [enumAliases] : []),
     ...(tphReadSchema !== null ? [tphReadSchema] : []),
     renderInsertSchemaOnly(obj),
     ...(tphConstants !== null ? [tphConstants] : []),
+    ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
+    ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
   ];
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =

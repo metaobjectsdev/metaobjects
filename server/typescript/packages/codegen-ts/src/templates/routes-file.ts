@@ -353,6 +353,10 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
     );
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // FR-017 Tier 3: each subtype carries its OWN filter/sort allowlist
+    // (discriminator excluded — it's pinned by this path).
+    const subFilterSym = imp(`${sub.name}FilterAllowlist@${subFileSpec}`);
+    const subSortSym = imp(`${sub.name}SortAllowlist@${subFileSpec}`);
     return code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
@@ -361,8 +365,8 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       table: ${tableSym},
       insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
       updateSchema: ${subInsertSym}.omit({ ${discField}: true }).partial(),
-      filterAllowlist: ${baseFilterSym},
-      sortAllowlist: ${baseSortSym},
+      filterAllowlist: ${subFilterSym},
+      sortAllowlist: ${subSortSym},
       dialect: ${dialectLit},
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },
     });`;
