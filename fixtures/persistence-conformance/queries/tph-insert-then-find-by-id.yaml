@@ -1,0 +1,35 @@
+name: tph-insert-then-find-by-id
+description: |
+  FR-017 TPH: insert a BridgeAuth and a CopayAuth into the single `auths` table
+  via the runtime, then find by id. A subtype create injects its discriminator
+  value (the caller omits `type`); a subtype find-by-id is SCOPED to that
+  subtype, so a different-subtype row is invisible (null) — the runtime's
+  cross-subtype guard, mirroring the per-subtype route's 404.
+
+  PORT STATUS: TS resolves this today (runtime-ts ObjectManager TPH support).
+  Java/Kotlin/Python/C# runtime TPH lands in their Tier-4 slice; until then
+  those ports skip the tph-*.yaml scenarios (see corpus README).
+queries:
+  - name: insert-bridge
+    op: create
+    entity: BridgeAuth
+    data: { reference: "REF-1", quantity: 5 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 5 }
+
+  - name: insert-copay
+    op: create
+    entity: CopayAuth
+    data: { reference: "REF-2", copayAmount: "12.50" }
+    expect: { id: "2", type: "Copay", reference: "REF-2", copayAmount: "12.5" }
+
+  - name: find-bridge-by-id
+    op: get
+    entity: BridgeAuth
+    by: { id: 1 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 5 }
+
+  - name: cross-subtype-find-is-invisible
+    op: get
+    entity: BridgeAuth
+    by: { id: 2 }
+    expect: null
