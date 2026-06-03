@@ -1,17 +1,6 @@
 {
   "language": "csharp",
   "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# is now reconciled with TS on the JSON-side FR5a envelopes (parser malformed-JSON catch builds a $-rooted JsonSource with the source-file name; inline-attr loop reports ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR / ERR_BAD_ATTR_VALUE at the parent's path — not key-deeper). Keep this file as the documented ledger surface.",
-  "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target. FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) attrs are now registered in the C# registry vocabulary (SP-G registry-conformance), so positive round-trip fixtures pass; their VALIDATION passes have not yet shipped in the C# port, so the error-* fixtures remain deferred until each per-port fan-out lands.",
-  "fixtures": [
-    "error-field-readonly-assigned-primary",
-    "error-field-readonly-downgrade",
-    "error-parameter-ref-unresolved",
-    "error-parameter-ref-not-value-object",
-    "error-parameter-ref-on-table-kind",
-    "error-parameter-ref-passthrough-type-mismatch",
-    "error-tph-discriminator-field-not-found",
-    "error-tph-discriminator-value-duplicate",
-    "error-tph-discriminator-value-missing",
-    "error-tph-discriminator-value-type-mismatch"
-  ]
+  "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target. FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) VALIDATION passes shipped in the C# port (ValidationPasses.ValidateFieldReadOnly / ValidateDiscriminator / ValidateSourceParameterRef); all error-* fixtures now produce the expected envelopes. No interim known-gaps.",
+  "fixtures": []
 }
