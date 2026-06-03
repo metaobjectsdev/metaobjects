@@ -161,7 +161,7 @@ export { resolveSuperRef } from "./super-resolve.js";
 
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
-export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
+export type { LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions } from "./loader/meta-data-loader.js";
 export { InMemoryStringSource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 

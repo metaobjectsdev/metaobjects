@@ -35,9 +35,18 @@ import type { ParseOptions, ParseResult } from "../parser-core.js";
 // browser-safety crawler — which walks every `import|export from` it sees,
 // type-only or not — never follows a path into a node:fs-using file.
 // Keep field-for-field in sync with `DirectoryOptions` in `./sources/directory-source.ts`.
-type DirectoryFactoryOptions = {
+export type DirectoryFactoryOptions = {
   exclude?: string[];
   recurse?: boolean;
+  /**
+   * Opt-in library packages to prepend before the directory's own sources.
+   * Library sources are prepended so `extends` references to library-shipped
+   * abstract bases are resolvable from app metadata files.
+   *
+   * Example: `{ libraries: ["ai"] }` prepends the `metaobjects::ai` library
+   * (LlmCallBase etc.) so app entities may use `extends: "metaobjects::ai::LlmCallBase"`.
+   */
+  libraries?: string[];
 };
 
 // YAML parser and node:fs-backed Source impls are loaded lazily (dynamic
@@ -124,7 +133,7 @@ export class MetaDataLoader {
     dir: string,
     opts?: DirectoryFactoryOptions & LoadOptions,
   ): Promise<LoadResult> {
-    const { exclude, recurse, ...loaderOpts } = opts ?? {};
+    const { exclude, recurse, libraries, ...loaderOpts } = opts ?? {};
     // Conditional spreads honor exactOptionalPropertyTypes — only forward keys
     // when the caller supplied a value, so DirectorySource's own defaults apply.
     const dirOpts: DirectoryFactoryOptions = {
@@ -132,10 +141,17 @@ export class MetaDataLoader {
       ...(recurse !== undefined && { recurse }),
     };
     const { DirectorySource } = await import("./sources/directory-source.js");
+    // Library sources are loaded lazily to keep the import path away from the
+    // browser-safe entry (library-sources.ts uses node:fs).
+    const { librarySources } = await import("../library/library-sources.js");
     const loader = new MetaDataLoader(loaderOpts);
     try {
-      const sources = await new DirectorySource(dir, dirOpts).expand();
-      return loader.load(sources);
+      const dirSources = await new DirectorySource(dir, dirOpts).expand();
+      // Prepend library sources so `extends` refs to library-shipped abstract
+      // bases are resolvable when the merged root is built. Super resolution is
+      // deferred (order-independent), but prepending is the deterministic choice.
+      const libSources = libraries?.length ? librarySources(libraries) : [];
+      return loader.load([...libSources, ...dirSources]);
     } catch (err) {
       // Match the pre-unification contract: a missing/unreadable directory is
       // surfaced as a collected error on the LoadResult, not a throw. The
