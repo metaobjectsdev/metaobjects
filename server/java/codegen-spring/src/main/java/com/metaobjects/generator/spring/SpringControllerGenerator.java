@@ -89,9 +89,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return MetaObject.class;
     }
 
+    private MetaDataLoader loader;
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
@@ -255,6 +258,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
         src.append("    }\n\n");
+
+        // FR-018 M:N traversal — GET /{id}/<relationName> exposes each
+        // @cardinality:"many" + @through relationship as a sub-resource of the source,
+        // returning the related target rows. The source URL segment is the entity name
+        // pluralized (handled by @RequestMapping above); the relation segment is the
+        // relationship name. Related-row order is not contractual. The repository finder
+        // traverses the junction (hetero / directed self-join / symmetric union-on-read).
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
+            String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
+            src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
+            src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+               .append(finder).append("(@PathVariable Long id) {\n");
+            src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
+            src.append("    }\n\n");
+        }
 
         // parseSort — returns null on malformed/disallowed input. Returning null lets the
         // list handler emit the 400 envelope itself rather than throwing — cleaner

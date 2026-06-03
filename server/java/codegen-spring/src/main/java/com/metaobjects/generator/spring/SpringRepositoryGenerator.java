@@ -49,9 +49,12 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         return MetaObject.class;
     }
 
+    private MetaDataLoader loader;
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
@@ -92,6 +95,20 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    ").append(dtoName).append(" create(").append(dtoName).append(" dto);\n");
         src.append("    Optional<").append(dtoName).append("> update(Long id, ").append(dtoName).append(" dto);\n");
         src.append("    boolean delete(Long id);\n");
+
+        // FR-018 M:N finders — one per @cardinality:"many" + @through relationship.
+        // The matching controller's GET /{id}/<relationName> sub-resource delegates here.
+        // The consumer implements the junction traversal (the runtime M2mJoinResolver helper
+        // collapses the three resolution modes once the junction rows are fetched).
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
+            src.append("\n    /** M:N traversal: the ").append(nav.targetShortName())
+               .append(" rows related to this ").append(shortName)
+               .append(" through ").append(nav.junctionShortName());
+            if (nav.symmetric()) src.append(" (symmetric — union on read)");
+            src.append(". */\n");
+            src.append("    List<").append(nav.targetDtoType()).append("> ")
+               .append(m2mFinderName(nav.relationName())).append("(Long sourceId);\n");
+        }
         src.append("}\n");
 
         try {
@@ -102,6 +119,12 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
         }
+    }
+
+    /** Repository finder name for an M:N relationship: {@code tags} → {@code findTags}. */
+    static String m2mFinderName(String relationName) {
+        if (relationName.isEmpty()) return "find";
+        return "find" + Character.toUpperCase(relationName.charAt(0)) + relationName.substring(1);
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
