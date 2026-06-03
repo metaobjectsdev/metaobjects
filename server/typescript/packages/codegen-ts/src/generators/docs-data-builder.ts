@@ -18,6 +18,9 @@ import {
   IDENTITY_ATTR_GENERATION,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  RELATIONSHIP_ATTR_SYMMETRIC,
   RELATIONSHIP_SUBTYPE_COMPOSITION,
   RELATIONSHIP_SUBTYPE_AGGREGATION,
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
@@ -281,6 +284,27 @@ function relationshipBullet(r: ReturnType<MetaObject["relationships"]>[number]):
     case RELATIONSHIP_SUBTYPE_ASSOCIATION: label = "association"; break;
     default: label = subtype;
   }
+
+  // M:N (FR-018): the relationship traverses a junction (`@through`). Describe
+  // the edge as related-target THROUGH junction, and mark the self-join shape:
+  //   symmetric (undirected) → "symmetric self-join"
+  //   @sourceRefField set (directed) → "directed self-join via `<field>`"
+  // The junction/disambiguator are DECLARED facts (ADR-0020 — no re-derivation).
+  const throughRaw = r.ownAttr(RELATIONSHIP_ATTR_THROUGH);
+  if (typeof throughRaw === "string" && throughRaw.length > 0) {
+    const through = stripPackage(throughRaw);
+    const noteParts = [`${label}, through \`${through}\``];
+    if (r.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true) {
+      noteParts.push("symmetric self-join");
+    } else {
+      const srcRef = r.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      if (typeof srcRef === "string" && srcRef.length > 0) {
+        noteParts.push(`directed self-join via \`${srcRef}\``);
+      }
+    }
+    return `\`${r.name}\` — ${card} → \`${target}\` (${noteParts.join(", ")})`;
+  }
+
   return `\`${r.name}\` — ${card} → \`${target}\` (${label})`;
 }
 
