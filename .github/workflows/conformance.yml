@@ -49,9 +49,9 @@ jobs:
           cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts test/object-model-conformance.test.ts
           # Registry-conformance gate (TS is the reference emitter — byte-matches
           # the committed canonical) + untested-vocabulary coverage report.
-          # C#/Python run theirs via the whole-project/whole-dir scope below;
-          # Java/Kotlin's runner is @Disabled (pending the Java reconciliation, #36)
-          # and is intentionally NOT added to their scoped -Dtest= lists.
+          # All five ports run the gate now (SP-G reconciliation landed): C#/Python
+          # via the whole-project/whole-dir scope below; Java + Kotlin via the
+          # RegistryManifestConformanceTest added to their scoped -Dtest= lists.
           bun test test/registry-conformance.test.ts test/registry-coverage.test.ts
           # Byte-exact render / verify / extract / output-prompt corpora (packages/render).
           cd ../render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts
@@ -83,8 +83,9 @@ jobs:
           # ("No type registered for: field.uuid") when the render module's tests
           # reference the freshly-built metadata artifact.
           mvn -pl metadata,render,codegen-spring -am install -DskipTests -q
-          # Loader + YAML + object-model corpora (metadata module).
-          mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest' -q
+          # Loader + YAML + object-model corpora (metadata module)
+          # + registry-conformance gate (metamodel-vocabulary manifest byte-match, SP-G).
+          mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q
           # Byte-exact render / verify / extract / output-prompt corpora (render module).
           mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q
           # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module)
@@ -128,8 +129,10 @@ jobs:
           # artifacts.
           mvn -pl codegen-kotlin -am install -DskipTests -q
           # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has)
-          # + generator stable-name registry conformance (ADR-0021 D3).
-          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
+          # + generator stable-name registry conformance (ADR-0021 D3)
+          # + registry-conformance gate (metamodel-vocabulary manifest byte-match, SP-G;
+          #   composes the metamodel provider set so codegen-base/om classpath SPI does not pollute it).
+          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest' -q
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]

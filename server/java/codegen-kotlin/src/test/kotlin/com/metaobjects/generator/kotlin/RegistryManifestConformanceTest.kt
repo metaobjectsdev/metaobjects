@@ -1,6 +1,5 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.registry.MetaDataRegistry
 import com.metaobjects.registry.RegistryManifest
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -8,43 +7,50 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Disabled
 
 /**
  * SP-G Registry Conformance — the Kotlin runner.
  *
- * Kotlin runs on the JVM and REUSES the shared Java [MetaDataRegistry] and the Java
- * [RegistryManifest] emitter (the same classes the Java runner validates). This test obtains
- * the shared JVM registry and asserts the emitted manifest is byte-identical to the single
- * committed canonical `fixtures/registry-conformance/expected-registry.json` — proving the
- * JVM-view of the registry matches the cross-port contract from the Kotlin module too.
+ * Kotlin runs on the JVM and REUSES the shared Java [RegistryManifest] emitter (the same
+ * class the Java runner validates). This test composes a registry from the DEFINED metamodel
+ * provider set ([RegistryManifest.composeMetamodelRegistry]) and asserts the emitted manifest
+ * is byte-identical to the single committed canonical
+ * `fixtures/registry-conformance/expected-registry.json` — proving the metamodel vocabulary
+ * matches the cross-port contract from the Kotlin module too.
  *
- * Byte-identity to the Java runner holds by construction (same registry, same emitter); the
- * value here is the gate existing in the Kotlin module's test surface as well.
+ * It composes from the metamodel provider set rather than the process-global
+ * `MetaDataRegistry.getInstance()` ON PURPOSE: this module's test classpath also carries the
+ * `om` + `codegen-base` SPI providers, which register an extra `object.managed` subtype and
+ * ~22 codegen-tooling attrs (`ai*`/`json*`/`has*`, self-registered by the doc generators).
+ * Those are per-port codegen tooling, not the cross-port logical metamodel vocabulary this
+ * gate measures. Composing from the defined provider set makes this runner measure exactly
+ * what the metadata-module runner does — immune to classpath pollution while still catching
+ * real metamodel-vocabulary drift. See `fixtures/registry-conformance/README.md`.
+ *
+ * Byte-identity to the Java runner holds by construction (same provider set, same emitter);
+ * the value here is the gate existing in the Kotlin module's test surface as well.
  *
  * Like the Java runner, this is a drift-finding gate: any mismatch is a real divergence
  * between the JVM metamodel registry's logical vocabulary and the cross-port canonical. Fix
  * the Java registration to match the canonical (TS is the reference) — do NOT loosen the
  * canonical. Escalate if TS itself is wrong versus the documented vocabulary.
- *
- * `@Disabled` — ESCALATED, same root cause as the Java runner
- * (`com.metaobjects.registry.RegistryManifestConformanceTest`): the shared JVM registry's
- * attribute vocabulary diverges pervasively from the cross-port canonical that TS, C#, and
- * Python agree on. See that Java test's Javadoc for the full divergence inventory. The
- * canonical is correct and is NOT edited; re-enable once the Java vocabulary reconciliation
- * lands.
  */
 class RegistryManifestConformanceTest {
 
     @Test
-    @Disabled(
-        "SP-G ESCALATED: the shared JVM metamodel registry vocabulary diverges pervasively " +
-            "from the cross-port canonical (TS/C#/Python agree). See the Java runner's Javadoc " +
-            "for the inventory. Re-enable once the Java vocabulary reconciliation lands; the " +
-            "canonical is correct and is NOT to be edited.",
-    )
     fun manifestMatchesCanonical() {
-        val registry = MetaDataRegistry.getInstance()
+        // Compose from the DEFINED metamodel provider set (RegistryManifest.
+        // composeMetamodelRegistry) rather than the process-global
+        // MetaDataRegistry.getInstance(): this module's test classpath ALSO
+        // carries the `om` + `codegen-base` SPI providers, which register an
+        // extra `object.managed` subtype and ~22 codegen-tooling attrs
+        // (`ai*`/`json*`/`has*`, self-registered by the doc generators). Those
+        // are per-port codegen tooling, NOT the cross-port logical metamodel
+        // vocabulary this gate measures. Composing from the metamodel provider
+        // set makes the Kotlin runner measure exactly what the metadata-module
+        // runner does — byte-identical to the canonical, and still catching real
+        // metamodel-vocabulary drift.
+        val registry = RegistryManifest.composeMetamodelRegistry()
         val got = RegistryManifest.emit(registry).replace("\r\n", "\n")
         val want = readCanonical().replace("\r\n", "\n")
 

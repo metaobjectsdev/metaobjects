@@ -6,7 +6,6 @@
  */
 package com.metaobjects.registry;
 
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -20,11 +19,21 @@ import static org.junit.Assert.assertTrue;
 /**
  * SP-G Registry Conformance — the Java runner.
  *
- * <p>Walks the service-loaded {@link MetaDataRegistry} (core types + database
- * extensions + common doc attrs — the same provider set the metamodel
- * conformance runner uses) and asserts the emitted manifest is byte-identical
- * to the single committed canonical
- * {@code fixtures/registry-conformance/expected-registry.json}.</p>
+ * <p>Composes a registry from the DEFINED metamodel provider set
+ * ({@link RegistryManifest#composeMetamodelRegistry()} — core types + field /
+ * attr / validator / relationship / identity + database extensions + source /
+ * origin + common doc attrs + view / layout / template + core objects) and
+ * asserts the emitted manifest is byte-identical to the single committed
+ * canonical {@code fixtures/registry-conformance/expected-registry.json}.</p>
+ *
+ * <p>It composes from that defined set rather than the process-global
+ * {@link MetaDataRegistry#getInstance()} singleton so the gate measures the same
+ * metamodel vocabulary from EVERY module that runs it — notably
+ * {@code codegen-kotlin}, whose test classpath also carries the {@code om} +
+ * {@code codegen-base} SPI providers (which register an extra
+ * {@code object.managed} subtype and ~22 codegen-tooling attrs the generators
+ * self-register). Mirrors the TS reference's
+ * {@code composeRegistry(coreProviders)}.</p>
  *
  * <p>This is a drift-finding gate: any mismatch is a real divergence between the
  * Java registry's logical vocabulary and the cross-port contract. Fix the Java
@@ -32,10 +41,11 @@ import static org.junit.Assert.assertTrue;
  * canonical to accommodate drift. The only escalation is if TS itself is wrong
  * versus the documented vocabulary.</p>
  *
- * <p><strong>{@code @Ignore} — kept skipped until SP-G Unit 8 flips the gate.</strong>
- * As of Unit 7 the Java manifest byte-matches the canonical; this test passes when
- * un-skipped locally (residual EMPTY). It stays {@code @Ignore} only so the gate
- * (and its CI wiring) flips atomically in Unit 8.</p>
+ * <p><strong>LIVE (SP-G Unit 8).</strong> Units 4-7 reconciled the Java metamodel
+ * registry to byte-match the canonical; Unit 8 re-enabled this gate (and the
+ * Kotlin one), wired both into {@code .github/workflows/conformance.yml}, and
+ * constrained the runner to the defined metamodel provider set (above). The
+ * history of the reconciled divergences is retained below for context.</p>
  *
  * <p><strong>History — the reconciled divergences.</strong> Running this gate
  * surfaced a pervasive, structural divergence between Java's registry and the
@@ -115,19 +125,20 @@ import static org.junit.Assert.assertTrue;
  * to the cross-port vocabulary — a change that ripples through the loader's
  * validation, OMDB, {@code codegen-spring}, and {@code codegen-kotlin} (all of
  * which consume the current Java attrs) and is far beyond a detection-gate unit.
- * The canonical is NOT edited (TS/C#/Python agree it is correct). Re-enable this
- * test (drop {@code @Ignore}) once the Java vocabulary reconciliation lands.</p>
+ * The canonical is NOT edited (TS/C#/Python agree it is correct). That
+ * reconciliation has now landed (Units 4-7) and this gate is re-enabled (Unit 8).</p>
  */
 public class RegistryManifestConformanceTest {
 
     @Test
-    @Ignore("SP-G: re-enabled by Unit 8 (gate flip + CI wiring). As of Unit 7 the Java "
-        + "manifest byte-matches the canonical (residual EMPTY) when un-skipped locally; "
-        + "kept @Ignore here so the gate flips atomically in Unit 8.")
     public void manifestMatchesCanonical() {
-        // The process-global singleton is bootstrapped via ServiceLoader, so it
-        // carries the full core + database-extensions + common-attrs vocabulary.
-        MetaDataRegistry registry = MetaDataRegistry.getInstance();
+        // Compose from the DEFINED metamodel provider set (the same set the
+        // metadata-module SPI declares), NOT the process-global singleton — so
+        // every module that runs this gate (incl. codegen-kotlin, whose test
+        // classpath also carries `om` + `codegen-base` SPI providers) measures
+        // the identical cross-port metamodel vocabulary. Mirrors the TS
+        // reference's composeRegistry(coreProviders). See RegistryManifest.
+        MetaDataRegistry registry = RegistryManifest.composeMetamodelRegistry();
 
         String got = RegistryManifest.emit(registry);
         String want = readCanonical();

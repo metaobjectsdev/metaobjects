@@ -60,6 +60,71 @@ public final class RegistryManifest {
         // Utility class — no instantiation.
     }
 
+    // ------------------------------------------------------------------
+    // The canonical metamodel provider set (the registry-conformance gate's
+    // measured vocabulary).
+    // ------------------------------------------------------------------
+
+    /**
+     * Compose a fresh {@link MetaDataRegistry} from EXACTLY the metadata-module
+     * metamodel providers — the SAME defined provider set the
+     * {@code metadata}-module conformance runner measures (core types +
+     * field/attr/validator/relationship/identity + db-extensions +
+     * source/origin + documentation common-attrs + view/layout/template +
+     * core objects).
+     *
+     * <p>This mirrors the TS reference's explicit {@code composeRegistry(coreProviders)}
+     * (and Python's {@code compose_registry(core_providers)}): the manifest is
+     * emitted from a <strong>defined</strong> provider set, NOT from the
+     * process-global {@link MetaDataRegistry#getInstance()} singleton — which
+     * picks up whatever {@link MetaDataTypeProvider} SPI files happen to be on
+     * the classpath of the module running the test.</p>
+     *
+     * <p><strong>Why this matters for the gate.</strong> The {@code metadata}
+     * module's classpath holds only the metamodel providers, so its runner can
+     * read {@code getInstance()} and stay clean. But a downstream module that
+     * also runs this gate (e.g. {@code codegen-kotlin}) has the {@code om} and
+     * {@code codegen-base} modules on its test classpath — whose SPI providers
+     * register an extra {@code object.managed} subtype and ~22 codegen-tooling
+     * attrs ({@code ai*}/{@code json*}/{@code has*}) that the generators
+     * self-register. Those are per-port codegen tooling, NOT the cross-port
+     * logical metamodel vocabulary the gate measures. Composing from this
+     * defined provider set makes <em>every</em> module's runner measure the same
+     * vocabulary — so the gate stays meaningful (it still catches a real attr/
+     * subtype divergence in any of these providers) while being immune to
+     * classpath pollution. See {@code fixtures/registry-conformance/README.md}.</p>
+     *
+     * @return a new registry composed from the metamodel provider set
+     */
+    public static MetaDataRegistry composeMetamodelRegistry() {
+        return MetaDataRegistry.compose(metamodelProviders());
+    }
+
+    /**
+     * The explicit metamodel provider set — instantiated in the same order as
+     * {@code metadata/src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider}
+     * (provider dependencies are re-resolved by {@code compose}, so order is for
+     * readability only). Keep this list in lockstep with that SPI file.
+     */
+    public static List<MetaDataTypeProvider> metamodelProviders() {
+        return List.of(
+                new com.metaobjects.core.CoreTypeMetaDataProvider(),
+                new com.metaobjects.object.ObjectTypesMetaDataProvider(),
+                new com.metaobjects.field.FieldTypesMetaDataProvider(),
+                new com.metaobjects.attr.AttributeTypesMetaDataProvider(),
+                new com.metaobjects.validator.ValidatorTypesMetaDataProvider(),
+                new com.metaobjects.relationship.RelationshipTypesMetaDataProvider(),
+                new com.metaobjects.identity.IdentityTypesMetaDataProvider(),
+                new com.metaobjects.database.CoreDBMetaDataProvider(),
+                new com.metaobjects.source.SourceTypesMetaDataProvider(),
+                new com.metaobjects.origin.OriginTypesMetaDataProvider(),
+                new com.metaobjects.documentation.DocumentationMetaDataProvider(),
+                new com.metaobjects.view.ViewTypesMetaDataProvider(),
+                new com.metaobjects.layout.LayoutTypesMetaDataProvider(),
+                new com.metaobjects.template.TemplateTypesMetaDataProvider(),
+                new com.metaobjects.object.CoreObjectsMetaDataProvider());
+    }
+
     /**
      * The polymorphic / untyped attr whose value-type follows its owning field's
      * subtype. The manifest renders its {@code valueType} as an explicit

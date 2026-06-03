@@ -199,12 +199,29 @@ divergence:
 | TypeScript | **live + green** (reference emitter; produces the canonical) | `packages/metadata/test/registry-conformance.test.ts` | `conformance` job, `typescript` matrix leg (scoped `bun test`) |
 | C# | **live + green** (byte-identical) | `MetaObjects.Conformance.Tests/RegistryManifestConformanceTests.cs` | `conformance` job, `csharp` matrix leg (whole `MetaObjects.Conformance.Tests` project) |
 | Python | **live + green** (byte-identical) | `tests/conformance/test_registry_conformance.py` | `conformance` job, `python` matrix leg (whole `tests/conformance` dir) |
-| Java | **gated (`@Ignore`)** — Phase-2 vocabulary divergence | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | n/a — intentionally NOT in the scoped `-Dtest=` list while gated |
-| Kotlin | **gated (`@Disabled`)** — shares the Java JVM registry | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | n/a — intentionally NOT in the scoped `-Dtest=` list while gated |
+| Java | **live + green** (byte-identical; reconciled SP-G Units 4-7, gate re-enabled Unit 8) | `metadata/src/test/java/com/metaobjects/registry/RegistryManifestConformanceTest.java` | `conformance` job, `java` matrix leg (in the metadata `-Dtest=` list) |
+| Kotlin | **live + green** (byte-identical; composes the metamodel provider set) | `codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RegistryManifestConformanceTest.kt` | `conformance-kotlin` job (in the codegen-kotlin `-Dtest=` list) |
 
-The three live ports (TS / C# / Python) genuinely run on every CI build (`.github/workflows/conformance.yml`, `conformance` job). The Java + Kotlin runners are wired and compile, but their assertions are `@Ignore`/`@Disabled` pending the Java metamodel-vocabulary reconciliation (tracked as a dedicated follow-on; see the **divergence analysis**:
+All five ports now genuinely run the gate on every CI build (`.github/workflows/conformance.yml`). TS / C# / Python were live from the start; Java + Kotlin were re-enabled in SP-G Unit 8 after the Java metamodel-vocabulary reconciliation (Units 4-7) landed (see the **divergence analysis**:
 [`docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md`](../../docs/superpowers/specs/2026-06-02-sp-g-java-registry-divergence-analysis.md) and the
-[reconciliation plan](../../docs/superpowers/plans/2026-06-02-sp-g-java-reconciliation-plan.md)). They are left out of the Java/Kotlin scoped `-Dtest=` lists so they neither run nor error — re-add them (and drop the annotation) once the reconciliation lands.
+[reconciliation plan](../../docs/superpowers/plans/2026-06-02-sp-g-java-reconciliation-plan.md)).
+
+**Why the Java + Kotlin runners compose from a defined provider set.** Both JVM
+runners build their registry from the explicit metamodel provider set
+(`RegistryManifest.composeMetamodelRegistry()` — mirroring the TS reference's
+`composeRegistry(coreProviders)`), NOT from the process-global
+`MetaDataRegistry.getInstance()` singleton. The metadata module's classpath holds
+only the metamodel providers, but a downstream module that also runs the gate
+(`codegen-kotlin`) has the `om` + `codegen-base` modules on its test classpath —
+whose SPI providers register an extra `object.managed` subtype and ~22
+codegen-tooling attrs (`ai*` / `json*` / `has*`, self-registered by the doc
+generators `MetaDataAIDocumentationGenerator` / `MetaDataFileJsonSchemaGenerator`).
+Those are per-port codegen tooling, NOT the cross-port logical metamodel
+vocabulary the gate measures (the same category as the EXCLUDED native type
+bindings / codegen targets). Composing from the defined provider set makes every
+module's runner measure the identical vocabulary — the gate stays meaningful (it
+still catches a real attr/subtype divergence in any metamodel provider) while
+being immune to classpath pollution.
 
 Detail per port:
 
@@ -230,11 +247,13 @@ Detail per port:
   never-registered constants (`RELATIONSHIP_ATTR_FK_FIELD` / `_PARENT_FIELD`)
   were removed. No structural (Java-class) divergence — Python uses the same attr
   vocabulary and registry model.
-- **Java + Kotlin (shared JVM registry)** — emitter (`RegistryManifest.emit`,
+- **Java + Kotlin (shared JVM emitter)** — emitter (`RegistryManifest.emit`,
   `metadata` module) + runners (`RegistryManifestConformanceTest` in `metadata`
-  and `codegen-kotlin`) are wired and functional, but the assertions remain
-  **`@Ignore`/`@Disabled` — ESCALATED** (Phase-2 divergences below remain).
-  SP-G Phase 1 (Units 2-3) settled three of the divergences cross-port via the
+  and `codegen-kotlin`) are **live + green** (both re-enabled in SP-G Unit 8;
+  each composes from the defined metamodel provider set — see "Why the Java +
+  Kotlin runners compose from a defined provider set" above). The historical
+  divergence inventory below records what the gate surfaced and how it was
+  reconciled. SP-G Phase 1 (Units 2-3) settled three of the divergences cross-port via the
   uniform emitter exclusions documented in "EXCLUDED" above (no Java behavior
   change): the structural keywords `isArray`/`isAbstract` + the `description`
   per-type duplicate are filtered from the `attrs` list, the `metadata.base`
@@ -267,8 +286,9 @@ Detail per port:
   + owned-object `@storage="jsonb"`, with consumers in `omdb` + `codegen-mustache`
   migrated; the DDL/migration-only remnants `dbForeignKey`/`previousName`/
   `dbIndexName`/`dbSequenceName`/`dbTablespace` dropped as dead under ADR-0015).
-  The Java manifest now byte-matches the canonical (residual EMPTY); the gate stays
-  `@Ignore`/`@Disabled` only until SP-G Unit 8 flips it atomically with CI wiring.
+  The Java manifest now byte-matches the canonical (residual EMPTY); SP-G Unit 8
+  re-enabled the gate (dropped `@Ignore`/`@Disabled`), constrained both JVM
+  runners to the defined metamodel provider set, and wired both into CI.
 
 ## Regenerating the canonical
 

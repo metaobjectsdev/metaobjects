@@ -406,7 +406,7 @@ import { CurrencyInput } from "@metaobjectsdev/react";
 
 Preserve the following contracts exactly across all language ports:
 
-**Metamodel subtype vocabularies (must be identical across languages):** the `registry-conformance` gate (`fixtures/registry-conformance/`) is the structural enforcer of this rule — each port emits its registry as a canonical manifest byte-matched to `expected-registry.json` (TS/C#/Python live + green; Java/Kotlin gated pending reconciliation). See `fixtures/registry-conformance/README.md`.
+**Metamodel subtype vocabularies (must be identical across languages):** the `registry-conformance` gate (`fixtures/registry-conformance/`) is the structural enforcer of this rule — each port emits its registry as a canonical manifest byte-matched to `expected-registry.json`. **All five ports (TS / C# / Java / Kotlin / Python) are live + green** (SP-G Java/Kotlin reconciliation complete; the JVM runners compose from the defined metamodel provider set so codegen-base/om classpath SPI does not pollute the measured vocabulary). See `fixtures/registry-conformance/README.md`.
 - Filter operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `like`, `isNull`
 - Source subtypes: `rdb` (paradigm; ADR-0007). The pre-v2 `dbTable`/`dbView` subtypes are RETIRED — `source.rdb` + `@kind: table|view|materializedView|storedProc|tableFunction` is the form, with read-only-ness derived from `@kind`. Multi-source via `@role` (exactly one `primary` per object). Source physical name = `@table` (NOT `@name`); field physical name = `@column` (renamed from `@dbColumn`). Referential actions on relationships: `@onDelete` / `@onUpdate`.
 - Origin subtypes: `passthrough`, `aggregate`

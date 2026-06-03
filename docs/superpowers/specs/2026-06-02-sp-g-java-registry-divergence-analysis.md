@@ -1,8 +1,19 @@
 # SP-G — Java registry divergence classification (A/B/C/D buckets)
 
-_Analysis only. No code/registration/canonical changes were made. This document
-drives the decision of whether to (a) fix Java, (b) expand the cross-port
-contract, or (c) treat divergences as out-of-scope._
+**STATUS: RECONCILED — Java/Kotlin gates re-enabled (SP-G Unit 8).** Every
+divergence classified below was reconciled at source across SP-G Units 2-7 (the
+Phase-1 emitter exclusions + the Phase-2 vocabulary convergence). The Java
+manifest now byte-matches the canonical; SP-G Unit 8 re-enabled both JVM runners
+(`RegistryManifestConformanceTest` in `metadata` + `codegen-kotlin`), constrained
+them to the defined metamodel provider set (`RegistryManifest.composeMetamodelRegistry()`,
+so the `codegen-kotlin` classpath's `om` + `codegen-base` SPI providers no longer
+pollute the measured vocabulary), and wired both into `.github/workflows/conformance.yml`.
+All five ports (TS / C# / Java / Kotlin / Python) are now live + green on the gate.
+The analysis below is retained as the historical classification record.
+
+_Originally analysis only — no code/registration/canonical changes at authoring
+time. This document drove the decision of whether to (a) fix Java, (b) expand the
+cross-port contract, or (c) treat divergences as out-of-scope._
 
 ## Method
 
