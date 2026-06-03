@@ -149,3 +149,19 @@ jobs:
         run: bash scripts/sync-doc-templates.sh
       - name: Fail if synced/generated doc-template artifacts are stale
         run: git diff --exit-code -- server/typescript/packages/codegen-ts/templates server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+
+  embedded-library-drift:
+    # Fails if the embedded library metadata TS module is stale relative to the
+    # canonical library/**/*.yaml sources. generate-embedded-library.ts
+    # reproduces the module from the YAML sources; a non-empty diff means a dev
+    # updated a library YAML file without regenerating the embedded module.
+    needs: fixture-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Regenerate embedded library metadata from canonical
+        run: bun run scripts/generate-embedded-library.ts
+      - name: Fail if the embedded library module is stale
+        run: git diff --exit-code -- server/typescript/packages/metadata/src/library/embedded-library.generated.ts
