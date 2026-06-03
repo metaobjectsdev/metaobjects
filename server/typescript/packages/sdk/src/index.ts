@@ -103,3 +103,6 @@ export {
   PACKAGE_MANIFEST_FILE,
 } from "./package.js";
 export type { PackageManifest } from "./package.js";
+
+// Agent context — stack resolver, file assembler, and vocabulary types
+export * from "./agent-context/index.js";
