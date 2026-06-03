@@ -30,7 +30,7 @@
 //    `view.base` + `view.currency` (the cross-port currency `@locale` wire
 //    contract) remain in the manifest.
 
-import { RESERVED_KEY_IS_ARRAY } from "./shared/structural.js";
+import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
 import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
@@ -39,13 +39,29 @@ import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
 const ATTR_NAME_IS_ABSTRACT = "isAbstract";
 
 /**
- * Per-type attr names excluded from the manifest's `attrs` list — structural
- * keywords (`isArray`, `isAbstract`) and the `description` commonAttr (which is
- * emitted in the `commonAttrs` block, never per-type). See C-2/C-3.
+ * The Java-OO structural-shape keyword names (`implements`, `isInterface`) as
+ * Java's per-type attr names. Like `extends`/`isArray`/`isAbstract` these are
+ * bare structural/OO-shape keywords (the OO modeling spine), NOT per-type
+ * attributes in the cross-port logical vocabulary. TS/C#/Python never register
+ * them as per-type attrs, so filtering them here is a no-op for those ports;
+ * the filter is what drops Java's per-type registrations from its emitter. See
+ * SP-G analysis C-2/C-3 (Unit 6b).
+ */
+const ATTR_NAME_IMPLEMENTS = "implements";
+const ATTR_NAME_IS_INTERFACE = "isInterface";
+
+/**
+ * Per-type attr names excluded from the manifest's `attrs` list — structural /
+ * OO-shape keywords (`isArray`, `isAbstract`, `extends`, `implements`,
+ * `isInterface`) and the `description` commonAttr (emitted in the `commonAttrs`
+ * block, never per-type). See C-2/C-3.
  */
 export const EXCLUDED_PER_TYPE_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   RESERVED_KEY_IS_ARRAY,
   ATTR_NAME_IS_ABSTRACT,
+  RESERVED_KEY_EXTENDS,
+  ATTR_NAME_IMPLEMENTS,
+  ATTR_NAME_IS_INTERFACE,
   DOC_ATTR_DESCRIPTION,
 ]);
 

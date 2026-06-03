@@ -47,11 +47,28 @@ from .shared.structural import KEY_IS_ARRAY
 # ``isAbstract`` as the per-type attr name (the contract's bare ``abstract`` keyword).
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
 
-# Per-type attr names filtered from a type's ``attrs`` list (structural keywords
-# + the description commonAttr). ``description`` is filtered ONLY per-type — it
-# stays in the commonAttrs block.
+# The Java-OO structural-shape keyword names (``extends``/``implements``/
+# ``isInterface``) as Java's per-type attr names. Like ``isArray``/``isAbstract``
+# these are bare structural/OO-shape keywords, NOT per-type attributes in the
+# cross-port logical vocabulary. No-op for Python (never registers them as
+# per-type attrs); the filter drops Java's per-type registrations. See SP-G
+# analysis C-2/C-3 (Unit 6b).
+_ATTR_NAME_EXTENDS = "extends"
+_ATTR_NAME_IMPLEMENTS = "implements"
+_ATTR_NAME_IS_INTERFACE = "isInterface"
+
+# Per-type attr names filtered from a type's ``attrs`` list (structural / OO-shape
+# keywords + the description commonAttr). ``description`` is filtered ONLY
+# per-type — it stays in the commonAttrs block.
 _EXCLUDED_PER_TYPE_ATTR_NAMES = frozenset(
-    {KEY_IS_ARRAY, _ATTR_NAME_IS_ABSTRACT, DOC_ATTR_DESCRIPTION}
+    {
+        KEY_IS_ARRAY,
+        _ATTR_NAME_IS_ABSTRACT,
+        _ATTR_NAME_EXTENDS,
+        _ATTR_NAME_IMPLEMENTS,
+        _ATTR_NAME_IS_INTERFACE,
+        DOC_ATTR_DESCRIPTION,
+    }
 )
 
 

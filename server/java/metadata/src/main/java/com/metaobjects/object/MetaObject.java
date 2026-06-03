@@ -100,7 +100,11 @@ public abstract class MetaObject extends MetaData {
             // OBJECT-SPECIFIC ATTRIBUTES
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_OBJECT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_OBJECT_REF).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // NOTE: @objectRef is NOT registered on object.base. It is a FIELD-level
+            // attr (registered on field.base — see MetaField) consumed by field.object
+            // / relationship.*; an object NODE never carries it. The former redundant
+            // object.base registration was removed in SP-G Unit 6b (it was a Java-only
+            // cross-port divergence; the field-level registration is the SSOT).
 
             // FR-014 single-table-inheritance discriminator — cross-port logical vocabulary
             // (declared on object.base, inherited by object.entity / object.value).

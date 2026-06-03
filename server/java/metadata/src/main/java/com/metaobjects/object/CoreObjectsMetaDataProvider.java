@@ -4,13 +4,28 @@ import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
- * Core objects MetaData type provider that registers DataObject and ValueObject
- * related attributes and type extensions.
+ * Core objects MetaData type provider.
  *
- * This provider handles registration for DataObject and ValueObject classes
- * by delegating to their respective registration methods.
+ * <p>Historically registered a parallel {@code value*} / {@code data*} attribute
+ * vocabulary onto {@code object.base} (e.g. {@code valueEqualsBy},
+ * {@code valueObjectType}, {@code dataBuilderClass}, {@code dataImmutable}).
+ * SP-G Unit 6b removed those registrations: they were vestigial — registered on
+ * the metamodel but read by NO runtime, codegen (including the flavored-object
+ * generators), or loader path in any module — and they were a Java-only
+ * divergence from the cross-port {@code object.*} logical vocabulary
+ * ({@code discriminator}/{@code discriminatorValue}; {@code object.value} also
+ * carries {@code normalize}). The flavored-object codegen (pojoAware /
+ * valueObject) derives its flavor from the generator's own configuration, never
+ * from these metamodel attrs.</p>
  *
- * Priority: 50 (after base types, before other extensions)
+ * <p>{@code object.entity} / {@code object.value} are owned by the metadata
+ * module ({@link EntityMetaObject} / {@link ValueMetaObject}); the retired
+ * dynamic {@code object.data} no longer registers here. This provider now
+ * contributes no attribute extensions, but remains a registered
+ * {@link MetaDataTypeProvider} (service-loaded) as the slot for future
+ * object-family extensions and to keep the provider dependency graph stable.</p>
+ *
+ * <p>Priority: 50 (after base types, before other extensions).</p>
  */
 public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
 
@@ -21,70 +36,19 @@ public class CoreObjectsMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // Depends on object-types since it extends object.base
+        // Depends on object-types since it extended object.base.
         return new String[]{"object-types"};
     }
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // object.entity / object.value are owned by the metadata module
-        // (EntityMetaObject / ValueMetaObject). The retired dynamic DataMetaObject
-        // (object.data) and the old dynamic ValueMetaObject no longer register here.
-        // This provider now only contributes attribute extensions onto object.base.
-
-        // Register additional attributes for existing base types
-        DataObjectExtensions.registerDataObjectAttributes(registry);
-        ValueObjectExtensions.registerValueObjectAttributes(registry);
-    }
-
-    /**
-     * DataObject extensions and attributes
-     */
-    public static class DataObjectExtensions {
-
-        // DataObject attribute constants
-        public static final String DATA_BUILDER_CLASS = "dataBuilderClass";
-        public static final String DATA_IMMUTABLE = "dataImmutable";
-        public static final String DATA_VALIDATION_MODE = "dataValidationMode";
-        public static final String DATA_DEFAULT_VALUES = "dataDefaultValues";
-
-        public static void registerDataObjectAttributes(MetaDataRegistry registry) {
-            // Add DataObject-specific attributes to objects
-            registry.findType("object", "base")
-                .optionalAttribute(DATA_BUILDER_CLASS, "string")
-                .optionalAttribute(DATA_IMMUTABLE, "boolean")
-                .optionalAttribute(DATA_VALIDATION_MODE, "string")
-                .optionalAttribute(DATA_DEFAULT_VALUES, "string");
-
-        }
-    }
-
-    /**
-     * ValueObject extensions and attributes
-     */
-    public static class ValueObjectExtensions {
-
-        // ValueObject attribute constants
-        public static final String VALUE_OBJECT_TYPE = "valueObjectType";
-        public static final String VALUE_EQUALS_BY = "valueEqualsBy";
-        public static final String VALUE_HASHCODE_BY = "valueHashCodeBy";
-        public static final String VALUE_TOSTRING_FORMAT = "valueToStringFormat";
-        public static final String VALUE_EXTENSIONS_ENABLED = "valueExtensionsEnabled";
-
-        public static void registerValueObjectAttributes(MetaDataRegistry registry) {
-            // Add ValueObject-specific attributes to objects
-            registry.findType("object", "base")
-                .optionalAttribute(VALUE_OBJECT_TYPE, "string")
-                .optionalAttribute(VALUE_EQUALS_BY, "string")
-                .optionalAttribute(VALUE_HASHCODE_BY, "string")
-                .optionalAttribute(VALUE_TOSTRING_FORMAT, "string")
-                .optionalAttribute(VALUE_EXTENSIONS_ENABLED, "boolean");
-
-        }
+        // No attribute extensions. The former value*/data* registrations were
+        // vestigial (zero consumers) and a cross-port vocabulary divergence;
+        // removed in SP-G Unit 6b.
     }
 
     @Override
     public String getDescription() {
-        return "Core Objects MetaData Provider - DataObject and ValueObject attribute extensions";
+        return "Core Objects MetaData Provider (no attribute extensions — value*/data* removed in SP-G Unit 6b)";
     }
 }

@@ -88,13 +88,24 @@ public final class RegistryManifest {
 
     /**
      * Per-type attr names filtered from a type's {@code attrs} list: the
-     * structural keywords {@code isArray}/{@code isAbstract} + the
-     * {@code description} commonAttr. Filtered ONLY per-type — {@code description}
-     * remains in the {@code commonAttrs} block.
+     * structural / OO-shape keywords {@code isArray}/{@code isAbstract}/
+     * {@code extends}/{@code implements}/{@code isInterface} + the
+     * {@code description} commonAttr. {@code extends}/{@code implements}/
+     * {@code isInterface} are bare OO-shape keywords (the OO modeling spine,
+     * peers of {@code name}/{@code children}), NOT per-type attributes in the
+     * cross-port logical vocabulary — Java registers them as per-type attrs on
+     * {@code object.base} (inherited by entity/value), so this filter is what
+     * drops them from the emitter (no-op for TS/C#/Python). They remain
+     * REGISTERED (the loader must accept an authored {@code extends:}). Filtered
+     * ONLY per-type — {@code description} remains in the {@code commonAttrs}
+     * block. See SP-G analysis C-2/C-3 (Unit 6b).
      */
     private static final Set<String> EXCLUDED_PER_TYPE_ATTR_NAMES = Set.of(
             MetaField.ATTR_IS_ARRAY,
             MetaData.ATTR_IS_ABSTRACT,
+            com.metaobjects.object.MetaObject.ATTR_EXTENDS,
+            com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS,
+            com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE,
             MetaData.ATTR_DESCRIPTION);
 
     /**

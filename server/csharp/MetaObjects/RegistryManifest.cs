@@ -46,11 +46,18 @@ public static class RegistryManifest
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
     private const string AttrNameIsAbstract = "isAbstract";
 
-    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural keywords + the description commonAttr).</summary>
+    /// <summary>The Java-OO structural-shape keyword names (`implements`/`isInterface`) as per-type attr names — bare OO-shape keywords (the OO modeling spine), not cross-port per-type attrs. No-op for C# (never registers them); the filter drops Java's per-type registrations. See SP-G C-2/C-3 (Unit 6b).</summary>
+    private const string AttrNameImplements = "implements";
+    private const string AttrNameIsInterface = "isInterface";
+
+    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural / OO-shape keywords + the description commonAttr).</summary>
     private static readonly HashSet<string> ExcludedPerTypeAttrNames = new(StringComparer.Ordinal)
     {
         Structural.RESERVED_KEY_IS_ARRAY,
         AttrNameIsAbstract,
+        Structural.RESERVED_KEY_EXTENDS,
+        AttrNameImplements,
+        AttrNameIsInterface,
         DocumentationConstants.DOC_ATTR_DESCRIPTION,
     };
 
