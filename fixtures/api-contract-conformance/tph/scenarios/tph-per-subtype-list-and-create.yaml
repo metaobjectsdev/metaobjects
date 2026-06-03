@@ -1,0 +1,46 @@
+name: tph-per-subtype-list-and-create
+description: >
+  FR-017 Tier 4/5 TPH: each concrete subtype has its own URL segment
+  (`/auths/bridge`) carved out of the single table. GET filters to that
+  subtype; POST creates a row of that subtype — the discriminator is injected
+  by the route handler from the URL, NEVER taken from the body (the body omits
+  it). The created row joins the polymorphic collection.
+requests:
+  - id: r1
+    method: GET
+    path: /api/auths/bridge?sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1]
+  - id: r2
+    method: GET
+    path: /api/auths/bridge/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, type: "Bridge", reference: "REF-1", quantity: 5 }
+  - id: r3
+    method: POST
+    path: /api/auths/bridge
+    body:
+      reference: "REF-NEW"
+      quantity: 9
+    expect:
+      status: 201
+      body:
+        row: { type: "Bridge", reference: "REF-NEW", quantity: 9 }
+  - id: r4
+    method: GET
+    path: /api/auths/bridge?sort=id:asc
+    expect:
+      status: 200
+      body:
+        length: 2
+  - id: r5
+    method: GET
+    path: /api/auths
+    expect:
+      status: 200
+      body:
+        length: 4
