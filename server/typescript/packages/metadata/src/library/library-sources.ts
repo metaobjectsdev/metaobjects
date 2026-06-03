@@ -13,21 +13,30 @@ import { InMemoryStringSource } from "../loader/meta-data-source.js";
 import type { MetaDataSource } from "../loader/meta-data-source.js";
 import { EMBEDDED_LIBRARY } from "./embedded-library.generated.js";
 
-/** Map of package name → ordered list of YAML refs (path under library/ minus .yaml). */
-const REFS_BY_PACKAGE: Readonly<Record<string, readonly string[]>> = {
-  ai: ["ai/llm-call"],
-} as const;
+// Package → ordered refs, derived from the generated embedded module so adding a
+// library file (which regenerates EMBEDDED_LIBRARY) needs no edit here.
+const REFS_BY_PACKAGE: Readonly<Record<string, readonly string[]>> = (() => {
+  const map: Record<string, string[]> = {};
+  for (const ref of Object.keys(EMBEDDED_LIBRARY).sort()) {
+    const pkg = ref.split("/")[0];
+    if (pkg === undefined || pkg === "") continue;
+    (map[pkg] ??= []).push(ref);
+  }
+  return map;
+})();
 
 /**
  * Locate the repo-root `library/` directory by walking up from this module's
- * location until `library/ai/llm-call.yaml` is found (the sentinel file).
- * Returns the path to `library/` if found, or `undefined` when absent (compiled binary).
+ * location until a directory contains BOTH `library/` and `server/` (the two
+ * structural anchors that identify the repo root). Returns the path to the
+ * `library/` subdirectory if found, or `undefined` when absent (compiled binary).
  */
 function libraryDirOnDisk(): string | undefined {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
-    const candidate = join(dir, "library");
-    if (existsSync(join(candidate, "ai"))) return candidate;
+    if (existsSync(join(dir, "library")) && existsSync(join(dir, "server"))) {
+      return join(dir, "library");
+    }
     const parent = dirname(dir);
     if (parent === dir) break; // reached filesystem root
     dir = parent;
@@ -35,14 +44,11 @@ function libraryDirOnDisk(): string | undefined {
   return undefined;
 }
 
-// Cache the on-disk location: it is resolved once per process.
-let _resolvedDir: string | undefined | null = null; // null = not yet resolved
+// Cache the on-disk location: resolved once per process.
+let _cache: { dir: string | undefined } | undefined;
 
 function getLibraryDir(): string | undefined {
-  if (_resolvedDir === null) {
-    _resolvedDir = libraryDirOnDisk();
-  }
-  return _resolvedDir ?? undefined;
+  return (_cache ??= { dir: libraryDirOnDisk() }).dir;
 }
 
 /**

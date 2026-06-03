@@ -141,16 +141,20 @@ export class MetaDataLoader {
       ...(recurse !== undefined && { recurse }),
     };
     const { DirectorySource } = await import("./sources/directory-source.js");
-    // Library sources are loaded lazily to keep the import path away from the
-    // browser-safe entry (library-sources.ts uses node:fs).
-    const { librarySources } = await import("../library/library-sources.js");
     const loader = new MetaDataLoader(loaderOpts);
     try {
       const dirSources = await new DirectorySource(dir, dirOpts).expand();
+      // Library sources are loaded lazily and conditionally to keep the import
+      // path away from the browser-safe entry (library-sources.ts uses node:fs)
+      // and to avoid the import cost when no libraries are requested.
+      let libSources: MetaDataSource[] = [];
+      if (libraries?.length) {
+        const { librarySources } = await import("../library/library-sources.js");
+        libSources = librarySources(libraries);
+      }
       // Prepend library sources so `extends` refs to library-shipped abstract
       // bases are resolvable when the merged root is built. Super resolution is
       // deferred (order-independent), but prepending is the deterministic choice.
-      const libSources = libraries?.length ? librarySources(libraries) : [];
       return loader.load([...libSources, ...dirSources]);
     } catch (err) {
       // Match the pre-unification contract: a missing/unreadable directory is

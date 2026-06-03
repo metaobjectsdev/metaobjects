@@ -54,3 +54,9 @@ describe("EMBEDDED_LIBRARY — exact coverage", () => {
     expect(Object.keys(EMBEDDED_LIBRARY).sort()).toEqual(canonical.map((c) => c.ref).sort());
   });
 });
+
+describe("EMBEDDED_LIBRARY — content sanity", () => {
+  test("ai/llm-call entry contains the LlmCallBase definition", () => {
+    expect(EMBEDDED_LIBRARY["ai/llm-call"]).toContain("LlmCallBase");
+  });
+});
