@@ -3,6 +3,24 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+/**
+ * A fixture is "docs-only" when it ships an `expected/` directory of `.md`
+ * doc goldens but NONE of the strict metadata expectation files. Such fixtures
+ * exist solely to drive the docs-conformance runner (which byte-matches the
+ * `.md` files); the strict metadata conformance runner skips them rather than
+ * flagging them as "declares no expectation files".
+ */
+export function isDocsOnlyFixture(fix: Fixture): boolean {
+  return (
+    fix.hasDocsExpected &&
+    !fix.hasExpected &&
+    !fix.hasExpectedEffective &&
+    !fix.hasExpectedErrors &&
+    !fix.hasExpectedWarnings &&
+    !fix.hasScript
+  );
+}
+
 const DEFAULT_PROVIDERS = ["metaobjects-core-types"];
 
 export interface Fixture {
@@ -19,6 +37,20 @@ export interface Fixture {
   readonly hasExpectedErrors: boolean;
   readonly hasExpectedWarnings: boolean;
   readonly hasScript: boolean;
+  /** True when `expected/` exists and contains at least one `.md` doc golden. */
+  readonly hasDocsExpected: boolean;
+}
+
+/** True when `dir/expected/` exists and holds at least one `.md` file. */
+async function hasDocsExpectedDir(dir: string): Promise<boolean> {
+  const expectedDir = join(dir, "expected");
+  try {
+    const entries = await readdir(expectedDir, { withFileTypes: true });
+    return entries.some((e) => e.isFile() && e.name.endsWith(".md"));
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -66,6 +98,7 @@ export async function discoverFixtures(corpusRoot: string): Promise<Fixture[]> {
       hasExpectedErrors: await exists(join(dir, "expected-errors.json")),
       hasExpectedWarnings: await exists(join(dir, "expected-warnings.json")),
       hasScript: await exists(join(dir, "script.json")),
+      hasDocsExpected: await hasDocsExpectedDir(dir),
     });
   }
   return fixtures;

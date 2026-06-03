@@ -16,9 +16,14 @@ public class ConformanceTests
     // Fixture discovery (shared)
     // -------------------------------------------------------------------------
 
-    /// <summary>xUnit MemberData source — one entry per discovered fixture.</summary>
+    /// <summary>
+    /// xUnit MemberData source — one entry per discovered fixture. Docs-only
+    /// fixtures (an <c>expected/*.md</c> directory, no strict expectation files)
+    /// drive the docs-conformance runner only and are skipped here.
+    /// </summary>
     public static IEnumerable<object[]> Fixtures() =>
         FixtureDiscovery.DiscoverFixtures(CorpusRoot.Path)
+            .Where(f => !f.IsDocsOnly)
             .Select(f => new object[] { f });
 
     // -------------------------------------------------------------------------

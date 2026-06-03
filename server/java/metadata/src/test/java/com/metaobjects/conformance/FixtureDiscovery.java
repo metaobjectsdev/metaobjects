@@ -55,6 +55,8 @@ public final class FixtureDiscovery {
         public final boolean hasExpectedWarnings;
         public final boolean hasScript;
         public final boolean hasProvidersJson;
+        /** True when {@code expected/} exists and holds at least one {@code .md} doc golden. */
+        public final boolean hasDocsExpected;
         /** Provider IDs required by this fixture (from {@code providers.json}); empty if absent. */
         public final List<String> requiredProviders;
 
@@ -62,6 +64,7 @@ public final class FixtureDiscovery {
                 boolean hasExpected, boolean hasExpectedEffective,
                 boolean hasExpectedErrors, boolean hasExpectedWarnings,
                 boolean hasScript, boolean hasProvidersJson,
+                boolean hasDocsExpected,
                 List<String> requiredProviders) {
             this.name = name;
             this.dir = dir;
@@ -72,9 +75,26 @@ public final class FixtureDiscovery {
             this.hasExpectedWarnings = hasExpectedWarnings;
             this.hasScript = hasScript;
             this.hasProvidersJson = hasProvidersJson;
+            this.hasDocsExpected = hasDocsExpected;
             this.requiredProviders = requiredProviders != null
                 ? Collections.unmodifiableList(requiredProviders)
                 : Collections.emptyList();
+        }
+
+        /**
+         * A fixture is "docs-only" when it ships an {@code expected/} directory of
+         * {@code .md} doc goldens but NONE of the strict metadata expectation files.
+         * Such fixtures drive the docs-conformance runner only; the strict metadata
+         * conformance runner skips them rather than flagging "declares no expectation
+         * files".
+         */
+        public boolean isDocsOnly() {
+            return hasDocsExpected
+                && !hasExpected
+                && !hasExpectedEffective
+                && !hasExpectedErrors
+                && !hasExpectedWarnings
+                && !hasScript;
         }
 
         @Override
@@ -128,6 +148,7 @@ public final class FixtureDiscovery {
                 Files.isRegularFile(dir.resolve("expected-warnings.json")),
                 Files.isRegularFile(dir.resolve("script.json")),
                 hasProvidersJson,
+                hasDocsExpectedDir(dir),
                 requiredProviders));
         }
 
@@ -144,6 +165,24 @@ public final class FixtureDiscovery {
      * @return the provider IDs in declared order
      * @throws AssertionError if the file is unreadable or not a JSON array of strings
      */
+    /**
+     * True when {@code dir/expected/} exists and contains at least one {@code .md} file.
+     *
+     * @param dir the fixture scenario directory
+     * @return whether the fixture ships doc goldens
+     */
+    private static boolean hasDocsExpectedDir(Path dir) {
+        Path expectedDir = dir.resolve("expected");
+        if (!Files.isDirectory(expectedDir)) {
+            return false;
+        }
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(expectedDir, "*.md")) {
+            return stream.iterator().hasNext();
+        } catch (IOException e) {
+            throw new AssertionError("Failed to scan expected/ dir under " + dir, e);
+        }
+    }
+
     private static List<String> readRequiredProviders(Path providersFile, String fixtureName) {
         try {
             String content = new String(Files.readAllBytes(providersFile), StandardCharsets.UTF_8);

@@ -153,6 +153,11 @@ public class ConformanceTest {
         List<FixtureDiscovery.Fixture> all = FixtureDiscovery.discover(CORPUS);
         List<Object[]> rows = new ArrayList<>(all.size());
         for (FixtureDiscovery.Fixture f : all) {
+            // Docs-only fixtures (an expected/*.md directory, no strict expectation
+            // files) drive the docs-conformance runner only and are skipped here.
+            if (f.isDocsOnly()) {
+                continue;
+            }
             rows.add(new Object[]{f.name, f});
         }
         return rows;

@@ -17,6 +17,7 @@ import {
   lintFixture,
   classifyAgainstLedger,
   loadLedger,
+  isDocsOnlyFixture,
 } from "@metaobjectsdev/conformance";
 import { tsAdapter } from "./conformance/adapter.js";
 
@@ -37,6 +38,11 @@ const fixtures = await discoverFixtures(CORPUS);
 const ledger = await loadLedger(LEDGER);
 
 for (const fix of fixtures) {
+  // Docs-only fixtures (an `expected/*.md` directory, no strict expectation
+  // files) drive the docs-conformance runner only — the strict metadata
+  // runner skips them rather than flagging "declares no expectation files".
+  if (isDocsOnlyFixture(fix)) continue;
+
   test(`lint: ${fix.name}`, () => {
     expect(lintFixture(fix, ERROR_CODES)).toEqual([]);
   });
