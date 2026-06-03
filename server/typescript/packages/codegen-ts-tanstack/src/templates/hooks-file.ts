@@ -1,9 +1,5 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
-import {
-  type MetaObject,
-  OBJECT_ATTR_DISCRIMINATOR,
-  OBJECT_ATTR_DISCRIMINATOR_VALUE,
-} from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
@@ -11,7 +7,7 @@ import {
   pluralize,
   entityModuleSpecifier,
   isTphDiscriminatorBase,
-  tphConcreteSubtypes,
+  tphPlan,
 } from "@metaobjectsdev/codegen-ts";
 
 /**
@@ -258,7 +254,9 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
   const baseName = base.name;
   const lcBase = baseName.charAt(0).toLowerCase() + baseName.slice(1);
   const keysVar = `${lcBase}Keys`;
-  const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
+  // Single source of truth for discriminator field + subtypes + route segments.
+  const plan = tphPlan(base, ctx.loadedRoot)!;
+  const discField = plan.discriminatorField;
 
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useMutationSym = imp("useMutation@@tanstack/react-query");
@@ -270,15 +268,17 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
   const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
-  const subtypes = tphConcreteSubtypes(base, ctx.loadedRoot);
+  const subtypes = plan.subtypes;
 
   // `${baseName}` imports BOTH the constants value (for $path/$apiPrefix) and the
   // discriminated-union type (declaration merge). Each subtype contributes its
-  // interface type.
+  // interface type AND its own filter type (discriminator-excluded — the route
+  // pins it), so per-subtype hooks filter on the fields the per-subtype
+  // allowlist actually permits.
   const subImportLines = subtypes
     .map((s) => {
-      const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, s.package, s.name, ctx.extStyle);
-      return `import { type ${s.name} } from ${JSON.stringify(m)};`;
+      const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, s.entity.package, s.entity.name, ctx.extStyle);
+      return `import { type ${s.entity.name}, type ${s.entity.name}Filter } from ${JSON.stringify(m)};`;
     })
     .join("\n");
   const entityImports: Code = code`
@@ -294,7 +294,9 @@ export const ${keysVar} = {
   details:       () => [...${keysVar}.all(), "detail"] as const,
   detail:        (id: number) => [...${keysVar}.details(), id] as const,
   subtypeLists:  (sub: string) => [...${keysVar}.all(), sub, "list"] as const,
-  subtypeList:   (sub: string, filter?: ${baseName}Filter) => [...${keysVar}.subtypeLists(sub), filter ?? {}] as const,
+  // filter is loosely typed here (cache-key identity only); the per-subtype
+  // hooks below type it precisely as <Sub>Filter.
+  subtypeList:   (sub: string, filter?: unknown) => [...${keysVar}.subtypeLists(sub), filter ?? {}] as const,
   subtypeDetails:(sub: string) => [...${keysVar}.all(), sub, "detail"] as const,
   subtypeDetail: (sub: string, id: number) => [...${keysVar}.subtypeDetails(sub), id] as const,
 };
@@ -329,46 +331,45 @@ export function use${pluralize(baseName)}(
 `;
 
   // Per-subtype hooks — scoped to each discriminator value's REST sub-path.
-  const subtypeSections: Code[] = subtypes.map((sub) => {
-    const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
-    const seg = value.toLowerCase();
+  const subtypeSections: Code[] = subtypes.map(({ entity: subEntity, value, routeSegment: seg }) => {
+    const subName = subEntity.name;
     const valueLit = JSON.stringify(value);
-    const createInput = `Omit<${sub.name}, ${JSON.stringify(discField)}>`;
+    const createInput = `Omit<${subName}, ${JSON.stringify(discField)}>`;
     const updateInput = `Partial<${createInput}>`;
     const subPath = `\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}\``;
     return code`
-export function use${pluralize(sub.name)}(
-  filter?: ${baseName}Filter,
-  opts?: Omit<${useQueryOptionsSym}<${sub.name}[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${sub.name}[]> {
+export function use${pluralize(subName)}(
+  filter?: ${subName}Filter,
+  opts?: Omit<${useQueryOptionsSym}<${subName}[]>, "queryKey" | "queryFn">,
+): ${useQueryResultSym}<${subName}[]> {
   const fetcher = ${useEntityFetcherSym}();
   const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
-  return ${useQuerySym}<${sub.name}[]>({
+  return ${useQuerySym}<${subName}[]>({
     queryKey: ${keysVar}.subtypeList(${valueLit}, filter),
-    queryFn: () => fetcher<${sub.name}[]>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}\${qs}\`),
+    queryFn: () => fetcher<${subName}[]>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}\${qs}\`),
     ...opts,
   });
 }
 
-export function use${sub.name}(
+export function use${subName}(
   id: number,
-  opts?: Omit<${useQueryOptionsSym}<${sub.name}>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${sub.name}> {
+  opts?: Omit<${useQueryOptionsSym}<${subName}>, "queryKey" | "queryFn">,
+): ${useQueryResultSym}<${subName}> {
   const fetcher = ${useEntityFetcherSym}();
-  return ${useQuerySym}<${sub.name}>({
+  return ${useQuerySym}<${subName}>({
     queryKey: ${keysVar}.subtypeDetail(${valueLit}, id),
-    queryFn: () => fetcher<${sub.name}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`),
+    queryFn: () => fetcher<${subName}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`),
     ...opts,
   });
 }
 
-export function useCreate${sub.name}(
-  opts?: Omit<${useMutationOptionsSym}<${sub.name}, Error, ${createInput}>, "mutationFn">,
-): ${useMutationResultSym}<${sub.name}, Error, ${createInput}> {
+export function useCreate${subName}(
+  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, ${createInput}>, "mutationFn">,
+): ${useMutationResultSym}<${subName}, Error, ${createInput}> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
-  return ${useMutationSym}<${sub.name}, Error, ${createInput}>({
-    mutationFn: (input) => fetcher<${sub.name}>(${subPath}, {
+  return ${useMutationSym}<${subName}, Error, ${createInput}>({
+    mutationFn: (input) => fetcher<${subName}>(${subPath}, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -381,13 +382,13 @@ export function useCreate${sub.name}(
   });
 }
 
-export function useUpdate${sub.name}(
-  opts?: Omit<${useMutationOptionsSym}<${sub.name}, Error, { id: number; input: ${updateInput} }>, "mutationFn">,
-): ${useMutationResultSym}<${sub.name}, Error, { id: number; input: ${updateInput} }> {
+export function useUpdate${subName}(
+  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, { id: number; input: ${updateInput} }>, "mutationFn">,
+): ${useMutationResultSym}<${subName}, Error, { id: number; input: ${updateInput} }> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
-    mutationFn: ({ id, input }) => fetcher<${sub.name}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`, {
+    mutationFn: ({ id, input }) => fetcher<${subName}>(\`\${${baseName}.$apiPrefix}\${${baseName}.$path}/${seg}/\${id}\`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -400,7 +401,7 @@ export function useUpdate${sub.name}(
   });
 }
 
-export function useDelete${sub.name}(
+export function useDelete${subName}(
   opts?: Omit<${useMutationOptionsSym}<void, Error, number>, "mutationFn">,
 ): ${useMutationResultSym}<void, Error, number> {
   const fetcher = ${useEntityFetcherSym}();

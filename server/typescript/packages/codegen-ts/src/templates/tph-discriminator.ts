@@ -29,22 +29,83 @@ interface SubtypeBinding {
   value: string;
 }
 
+/** One concrete subtype in a {@link TphPlan}. */
+export interface TphSubtypePlan {
+  /** The concrete subtype entity. */
+  entity: MetaObject;
+  /** Its `@discriminatorValue`. */
+  value: string;
+  /** The per-subtype REST route segment (e.g. `"bridge"`). The ONE place this
+   *  rule is derived — see {@link tphRouteSegment}. */
+  routeSegment: string;
+}
+
+/**
+ * The single source of truth for a TPH base's polymorphic shape: the
+ * discriminator field name, the concrete subtypes (stable name-sorted order),
+ * each subtype's `@discriminatorValue`, and its per-subtype route segment.
+ *
+ * Every generator in the stack (entity, queries, routes, hooks, grid, forms)
+ * derives its TPH behavior from this one model rather than re-walking the root
+ * and re-deriving the segment / write-shape independently — so the route-segment
+ * rule and subtype set can never drift between, say, the generated routes and
+ * the generated hooks that call them.
+ */
+export interface TphPlan {
+  base: MetaObject;
+  discriminatorField: string;
+  subtypes: TphSubtypePlan[];
+}
+
+// Memoized per base instance — the plan is pure over the (immutable, fully
+// resolved) post-load model, and a base belongs to exactly one root, so caching
+// by the base node identity is safe and erases the repeated root walks.
+const _tphPlanCache = new WeakMap<MetaObject, TphPlan | null>();
+
+/** The per-subtype REST route segment for a discriminator value. The ONE place
+ *  this rule lives: `routesFile` and the TanStack hooks both read it through the
+ *  plan, so generated hooks can't call a URL the generated routes don't serve. */
+export function tphRouteSegment(discriminatorValue: string): string {
+  return discriminatorValue.toLowerCase();
+}
+
+/** The {@link TphPlan} for a discriminator base, or `null` when `base` is not a
+ *  discriminator base (no `@discriminator`, or no concrete subtypes). */
+export function tphPlan(base: MetaObject, root: MetaRoot): TphPlan | null {
+  const cached = _tphPlanCache.get(base);
+  if (cached !== undefined) return cached;
+  const discriminatorField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  let plan: TphPlan | null = null;
+  if (typeof discriminatorField === "string" && discriminatorField !== "") {
+    const bindings = collectConcreteSubtypes(base, root);
+    if (bindings.length > 0) {
+      plan = {
+        base,
+        discriminatorField,
+        subtypes: bindings.map((b) => ({
+          entity: b.subtype,
+          value: b.value,
+          routeSegment: tphRouteSegment(b.value),
+        })),
+      };
+    }
+  }
+  _tphPlanCache.set(base, plan);
+  return plan;
+}
+
 /** True when this entity is a TPH discriminator base — it carries
  *  `@discriminator` AND at least one concrete subtype declares
  *  `@discriminatorValue` extending it. This is the predicate the generator
  *  stack uses to switch into single-table-inheritance emission. */
 export function isTphDiscriminatorBase(obj: MetaObject, root: MetaRoot): boolean {
-  const discFieldName = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-  if (typeof discFieldName !== "string" || discFieldName === "") return false;
-  return collectConcreteSubtypes(obj, root).length > 0;
+  return tphPlan(obj, root) !== null;
 }
 
 /** The concrete subtypes bound to this discriminator base, in stable
  *  (name-sorted) order. Returns `[]` when `base` is not a discriminator base. */
 export function tphConcreteSubtypes(base: MetaObject, root: MetaRoot): MetaObject[] {
-  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-  if (typeof discFieldName !== "string" || discFieldName === "") return [];
-  return collectConcreteSubtypes(base, root).map((b) => b.subtype);
+  return tphPlan(base, root)?.subtypes.map((s) => s.entity) ?? [];
 }
 
 /**

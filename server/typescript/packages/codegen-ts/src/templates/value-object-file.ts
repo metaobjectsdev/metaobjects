@@ -19,6 +19,7 @@ import {
 } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
+import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER } from "../constants.js";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
@@ -39,6 +40,10 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
   const discField = tphSubtype ? tphDiscriminatorPin(obj)?.fieldName : undefined;
   const tphFilterAllowlist = tphSubtype ? renderFilterAllowlist(obj, discField) : null;
   const tphSortAllowlist = tphSubtype ? renderSortAllowlist(obj, discField) : null;
+  // FR-017 Tier 3: the per-subtype CLIENT filter type, discriminator-excluded —
+  // kept in lockstep with the per-subtype allowlist above so a typed
+  // `<Sub>Filter` can't express a filter the server allowlist would 400.
+  const tphFilterType = tphSubtype ? renderFilterType(obj, discField) : null;
   const sections: Code[] = [
     renderValueObjectInterface(obj),
     ...(enumAliases !== null ? [enumAliases] : []),
@@ -47,6 +52,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
     ...(tphConstants !== null ? [tphConstants] : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),
+    ...(tphFilterType !== null ? [tphFilterType] : []),
   ];
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =

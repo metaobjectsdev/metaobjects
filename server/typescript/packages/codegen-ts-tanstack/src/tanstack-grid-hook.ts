@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
 
 export interface TanstackGridHookOpts {
@@ -28,7 +28,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     // opt-out, user filter, and dataGrid layout presence.
     filter: (e: MetaObject) =>
       emitsInstanceArtifacts(e)
-      && e.ownAttr("emitTanstack") !== false
+      && e.ownAttr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
       && userFilter(e)
       && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {

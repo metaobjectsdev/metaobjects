@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
@@ -30,10 +30,10 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     // grid is the single source of truth.
     filter: (e: MetaObject) =>
       emitsInstanceArtifacts(e)
-      && e.ownAttr("emitTanstack") !== false
+      && e.ownAttr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
       && userFilter(e)
       && hasDataGridLayout(e)
-      && (!isTphSubtype(e) || e.ownAttr("emitGrid") === true),
+      && (!isTphSubtype(e) || e.ownAttr(CODEGEN_ATTR_EMIT_GRID) === true),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("tanstack-grid: renderContext is required (provided by runGen)");

@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts, isTphSubtype } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_FORM } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -25,7 +25,7 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
     // NO form (you can't create an abstract base), but each concrete subtype
     // does — even though it has no own writable source (it inherits the base's).
     filter: (e: MetaObject) => {
-      if (e.ownAttr("emitForm") === false) return false;
+      if (e.ownAttr(CODEGEN_ATTR_EMIT_FORM) === false) return false;
       if (!userFilter(e)) return false;
       if (isTphSubtype(e)) return true; // per-subtype form
       // A discriminator base is never form-rendered directly.
