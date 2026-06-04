@@ -24,9 +24,22 @@
 //
 // SKIP rules honored (matching the real generators' filters):
 //   • object.value records have no primary identity → the queries generator skips
-//     them entirely (queries-file.ts `skipValueTypes` = subType !== "value"), and
-//     they get no CRUD/routes/validation. So value objects contribute ONLY a
-//     model symbol here.
+//     them entirely (queries-file.ts `skipNonQueryable` = subType !== "value" &&
+//     !isTphSubtype), and they get no CRUD/routes/validation. So value objects
+//     contribute ONLY a model symbol here.
+//   • TPH subtypes (a @discriminatorValue under a @discriminator base) are ALSO
+//     skipped by the queries + routes generators (isTphSubtype, from
+//     templates/zod-validators.ts) — their query/route/validation surface lives
+//     in the discriminator BASE's polymorphic file, NOT their own. So a TPH
+//     subtype likewise contributes ONLY a model symbol here.
+//     DEFERRAL: the TPH BASE's per-subtype polymorphic helpers (find<Sub>ById /
+//     list<SubPlural> / create<Sub> scoped to the shared table) and the subtype
+//     REST subpaths are NOT YET documented by this builder — that fuller TPH
+//     modeling is a tracked follow-up.
+//   • @emitRoutes:false entities → the routes generator filters them out
+//     (routes-file.ts: ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false), so they get
+//     NO REST symbols here. The queries + validator generators do NOT honor
+//     @emitRoutes, so data-access + validation symbols still apply.
 
 import {
   type MetaRoot,
@@ -49,6 +62,8 @@ import {
   deleteByIdFnName,
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
+import { isTphSubtype } from "../templates/zod-validators.js";
+import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
@@ -133,12 +148,27 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
 // Entities.
 // ---------------------------------------------------------------------------
 
-/** Mirror of the queries generator's filter (queries-file.ts `skipValueTypes`):
- *  a queryable entity is any non-value object. Value objects have no primary
- *  identity, so the queries/routes/validation generators emit no CRUD for them
- *  and they contribute only a model symbol here. */
+/** Mirror of the queries generator's filter (queries-file.ts `skipNonQueryable`
+ *  = `subType !== OBJECT_SUBTYPE_VALUE && !isTphSubtype`). A queryable entity is
+ *  any non-value, non-TPH-subtype object:
+ *   • Value objects have no primary identity → the queries/routes/validation
+ *     generators emit no CRUD for them.
+ *   • TPH subtypes (@discriminatorValue under a @discriminator base) emit no
+ *     standalone queries/routes file — their surface lives in the discriminator
+ *     BASE's polymorphic file (routes-file.ts:27 + queries-file.ts:21-22).
+ *  Either way the object contributes only a model symbol here. (The TPH base's
+ *  per-subtype polymorphic helpers + subpaths are a documented deferral — see
+ *  the module header.) */
 function isQueryable(obj: MetaObject): boolean {
-  return obj.subType !== OBJECT_SUBTYPE_VALUE;
+  return obj.subType !== OBJECT_SUBTYPE_VALUE && !isTphSubtype(obj);
+}
+
+/** Whether the routes generator emits REST routes for this entity. It filters
+ *  out @emitRoutes:false (routes-file.ts:27), unlike the queries + validator
+ *  generators which always emit. So REST symbols are gated separately from the
+ *  other queryable kinds. */
+function emitsRoutes(obj: MetaObject): boolean {
+  return obj.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
 }
 
 function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
@@ -157,7 +187,10 @@ function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
   if (isQueryable(obj)) {
     symbols.push(...dataAccessSymbols(obj, ctx));
     symbols.push(...validationSymbols(obj));
-    symbols.push(...restSymbols(obj));
+    // REST is additionally gated: @emitRoutes:false suppresses routes only.
+    if (emitsRoutes(obj)) {
+      symbols.push(...restSymbols(obj));
+    }
   }
 
   return { node: name, nodeKind: "entity", symbols };

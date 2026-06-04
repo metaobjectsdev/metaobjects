@@ -4,8 +4,9 @@
 // produces, accurate BY CONSTRUCTION because it reuses the real generators' own
 // naming/signature logic. These tests pin the EXACT symbol names the real
 // generators emit (verified against queries.ts / routes-file.ts / extractor.ts /
-// render-helper.ts), prove the queries SKIP rules (no-PK / value object), and
-// prove the template format/kind gating for the extractor + render symbols.
+// render-helper.ts), prove the queries SKIP rules (value object / TPH subtype /
+// @emitRoutes:false), and prove the template format/kind gating for the
+// extractor + render symbols.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -21,6 +22,50 @@ async function loadRoot(children: unknown[]) {
   expect(res.errors).toEqual([]);
   return res.root;
 }
+
+// A TPH discriminator base (@discriminator) + two subtypes (@discriminatorValue).
+// The subtypes get NO standalone queries/routes/validation file — their CRUD
+// surface lives in the base's polymorphic file — so the ApiModel must NOT invent
+// per-subtype find<Sub>ById/create<Sub>/REST/validation symbols. A TPH subtype
+// contributes ONLY a model symbol, exactly like a value object.
+const AUTH_TPH = [
+  {
+    "object.entity": {
+      name: "Auth",
+      "@discriminator": "type",
+      children: [
+        { "source.rdb": { "@table": "auths" } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+      ],
+    },
+  },
+  {
+    "object.entity": {
+      name: "BridgeAuth",
+      extends: "Auth",
+      "@discriminatorValue": "Bridge",
+      children: [{ "field.int": { name: "quantity" } }],
+    },
+  },
+];
+
+// An entity that opts out of route emission via @emitRoutes: false. The routes
+// generator filters it out, so the ApiModel must emit NO REST symbols for it —
+// but data-access + validation still apply (those generators don't honor it).
+const NO_ROUTES = {
+  "object.entity": {
+    name: "Ledger",
+    "@emitRoutes": false,
+    children: [
+      { "field.long": { name: "id" } },
+      { "field.string": { name: "memo" } },
+      { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+      { "source.rdb": { "@table": "ledgers" } },
+    ],
+  },
+};
 
 // An entity WITH a PK + fields + a field.enum + a writable rdb source (so it
 // flows through the full CRUD code path).
@@ -154,6 +199,55 @@ describe("buildApiModel — SKIP rules", () => {
     const allStampNames = stamp?.symbols.map((s) => s.name) ?? [];
     expect(allStampNames).not.toContain("findStampById");
     expect(allStampNames).not.toContain("createStamp");
+  });
+
+  test("a TPH subtype gets ONLY a model symbol (its CRUD lives in the base's polymorphic file)", async () => {
+    const root = await loadRoot([...AUTH_TPH]);
+    const model = buildApiModel(root, { loadedRoot: root });
+
+    // The queries + routes generators skip TPH subtypes (isTphSubtype), so the
+    // BridgeAuth unit must carry ONLY a model symbol — no per-subtype CRUD,
+    // routes, or validation.
+    const sub = unit(model, "BridgeAuth");
+    expect(sub.symbols.map((s) => s.kind)).toEqual(["model"]);
+
+    const subNames = sub.symbols.map((s) => s.name);
+    // None of the invented per-subtype symbols (no generator emits these).
+    for (const invented of [
+      "findBridgeAuthById",
+      "listBridgeAuths",
+      "createBridgeAuth",
+      "updateBridgeAuth",
+      "deleteBridgeAuthById",
+      "BridgeAuthInsertSchema",
+      "BridgeAuthUpdateSchema",
+    ]) {
+      expect(subNames).not.toContain(invented);
+    }
+    const kinds = new Set(sub.symbols.map((s) => s.kind));
+    expect(kinds.has("data-access")).toBe(false);
+    expect(kinds.has("rest")).toBe(false);
+    expect(kinds.has("validation")).toBe(false);
+
+    // The base (it carries @discriminator but no @discriminatorValue) is NOT a
+    // TPH subtype, so it stays a normal queryable entity.
+    const base = unit(model, "Auth");
+    expect(new Set(base.symbols.map((s) => s.kind)).has("data-access")).toBe(true);
+  });
+
+  test("@emitRoutes:false suppresses REST symbols only (data-access + validation stay)", async () => {
+    const root = await loadRoot([NO_ROUTES]);
+    const model = buildApiModel(root, { loadedRoot: root });
+
+    const u = unit(model, "Ledger");
+    const kinds = new Set(u.symbols.map((s) => s.kind));
+    // No routes generated for an @emitRoutes:false entity.
+    expect(kinds.has("rest")).toBe(false);
+    expect(u.symbols.filter((s) => s.kind === "rest")).toEqual([]);
+    // But queries + validators still emit (they don't honor @emitRoutes).
+    expect(kinds.has("data-access")).toBe(true);
+    expect(kinds.has("validation")).toBe(true);
+    expect(kinds.has("model")).toBe(true);
   });
 });
 
