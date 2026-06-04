@@ -336,7 +336,7 @@ public class MetaDataLoader
             // Pass 5: origin path validation
             errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
 
-            // Pass 6: attribute-schema validation. Under strict load (ADR-0022) an
+            // Pass 6: attribute-schema validation. Under strict load (ADR-0023) an
             // own @-attr declared by no provider -> ERR_UNKNOWN_ATTR (Check 0).
             var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry, _strict);
             errors.AddRange(attrResult.Errors);

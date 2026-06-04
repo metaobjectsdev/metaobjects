@@ -1,6 +1,7 @@
-# ADR-0022 — Strict metadata provenance: no made-up attributes
+# ADR-0023 — Strict metadata provenance: no made-up attributes
 
 **Status:** Accepted (2026-06-04)
+**Renumber note:** drafted as ADR-0022; renumbered to **ADR-0023** because a sibling session had a prior, shipped claim on ADR-0022 (codegen-and-docs-surface-architecture). The strict-attr commits in this branch carry immutable `ADR-0022` labels in their messages; all artifacts use **ADR-0023**.
 **Deciders:** human (project owner) + Claude
 **Relates to:** ADR-0001 (build-time type binding; no runtime-classpath-dependent resolution), the SP-G registry-conformance gate (the cross-port "agreed vocabulary" = `fixtures/registry-conformance/expected-registry.json`), and the SP-G Unit-8 finding that codegen generators self-register attributes into the global JVM registry.
 

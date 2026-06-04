@@ -177,7 +177,7 @@ export async function runFixture(
     }
   }
 
-  // ADR-0022 — strict hard-fail. A fixture that declares NO expected-errors.json
+  // ADR-0023 — strict hard-fail. A fixture that declares NO expected-errors.json
   // is a happy-path fixture: under strict load it MUST load with zero errors.
   // Any recorded error (e.g. ERR_UNKNOWN_ATTR from a made-up attribute) fails
   // the fixture with a message naming the unexpected error(s). Previously this
@@ -194,7 +194,7 @@ export async function runFixture(
     checks.push({
       kind: "expected-errors",
       passed: false,
-      detail: `happy-path fixture loaded with unexpected error(s): [${[...outcome.errorCodes].sort().join(", ")}] — under strict, a fixture with no expected-errors.json must load with zero errors (ADR-0022)`,
+      detail: `happy-path fixture loaded with unexpected error(s): [${[...outcome.errorCodes].sort().join(", ")}] — under strict, a fixture with no expected-errors.json must load with zero errors (ADR-0023)`,
     });
   }
 

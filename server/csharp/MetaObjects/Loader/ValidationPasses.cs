@@ -509,7 +509,7 @@ public static class ValidationPasses
     public static AttrSchemaValidationResult ValidateAttrSchema(
         MetaData root,
         TypeRegistry registry,
-        // ADR-0022 — strict load closes the open-attr policy: an own @-attr matching
+        // ADR-0023 — strict load closes the open-attr policy: an own @-attr matching
         // no per-type schema and no commonAttr -> ERR_UNKNOWN_ATTR (Check 0). Defaults
         // false so lax callers keep the legacy open policy; the library loader (and
         // the conformance runner) load strict.
@@ -673,7 +673,7 @@ public static class ValidationPasses
             byName[ca.Name] = ca;
         }
 
-        // --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+        // --- Check 0 (ADR-0023): strict-load undeclared-attr rejection ---
         //
         // Runs BEFORE the byName.Count early-return: a node type with no per-type
         // schema and no common attrs (byName empty) must still reject an authored

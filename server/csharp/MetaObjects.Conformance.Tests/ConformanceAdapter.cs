@@ -162,7 +162,7 @@ public static class ConformanceAdapter
                 Errors: new[] { compErr },
                 WarningEnvelopes: Array.Empty<ErrorEnvelopeRecord>());
         }
-        // ADR-0022 — the library (and its conformance corpora) load strict: an
+        // ADR-0023 — the library (and its conformance corpora) load strict: an
         // authored @-attr declared by no registered provider -> ERR_UNKNOWN_ATTR.
         // The public Strict option stays default-false so downstream can loosen.
         var result = MetaDataLoader.FromDirectory(inputDir, registry, strict: true);

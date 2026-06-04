@@ -56,7 +56,7 @@ public class PerLoaderRegistryTest {
     }
 
     /** Registry WITHOUT briefing -> load records ERR_UNKNOWN_SUBTYPE (template is a
-     *  known type, briefing an unknown subtype). ADR-0022: an unknown child node is
+     *  known type, briefing an unknown subtype). ADR-0023: an unknown child node is
      *  RECORDED + skipped (not thrown — only the root throws), mirroring the TS
      *  reference. The per-loader-registry isolation guarantee is asserted via the
      *  recorded code being specifically the template.briefing rejection. */

@@ -85,7 +85,7 @@ class MetaDataLoader:
         self._registry: TypeRegistry = compose_registry(
             providers if providers is not None else [core_provider]
         )
-        # ADR-0022 — strict load closes the open-attr policy: an authored own
+        # ADR-0023 — strict load closes the open-attr policy: an authored own
         # @-attr matching no per-type schema and no commonAttr → ERR_UNKNOWN_ATTR
         # (alongside Python's always-on unknown TYPE/SUBTYPE rejection). Defaults
         # False so a downstream app keeps the legacy open-attr behavior; the
@@ -155,7 +155,7 @@ class MetaDataLoader:
     ) -> LoadResult:
         """Load every JSON/YAML file under ``directory`` (recursive by default).
 
-        ``strict`` (ADR-0022) — when True, an undeclared own ``@-attr`` →
+        ``strict`` (ADR-0023) — when True, an undeclared own ``@-attr`` →
         ``ERR_UNKNOWN_ATTR``. Defaults False (downstream-friendly open policy).
         """
         loader = cls(providers=providers, strict=strict)
@@ -173,7 +173,7 @@ class MetaDataLoader:
     ) -> LoadResult:
         """Load metadata from a list of URIs (file:// or http(s)://).
 
-        ``strict`` (ADR-0022) — see :meth:`from_directory`.
+        ``strict`` (ADR-0023) — see :meth:`from_directory`.
         """
         loader = cls(providers=providers, strict=strict)
         return loader.load([UriSource(u) for u in uris])
@@ -188,7 +188,7 @@ class MetaDataLoader:
     ) -> LoadResult:
         """Load metadata from an in-memory string (defaults to JSON).
 
-        ``strict`` (ADR-0022) — see :meth:`from_directory`.
+        ``strict`` (ADR-0023) — see :meth:`from_directory`.
         """
         loader = cls(providers=providers, strict=strict)
         return loader.load([InMemoryStringSource(content, format=format)])

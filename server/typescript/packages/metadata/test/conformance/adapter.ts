@@ -166,7 +166,7 @@ export const tsAdapter: ConformanceAdapter = {
         warningEnvelopes: [],
       };
     }
-    // ADR-0022 — the library's own conformance corpora load STRICT: an
+    // ADR-0023 — the library's own conformance corpora load STRICT: an
     // undeclared @-attr is ERR_UNKNOWN_ATTR (no open-attr policy). The public
     // LoadOptions.strict default stays false so a downstream app can loosen.
     const result = await MetaDataLoader.fromDirectory(inputDir, { registry, strict: true });

@@ -161,7 +161,7 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
      * Because {@code field.fizzbuzz} is NOT registered (only {@code field.fizzBuzz}
      * is), the case-sensitive registry lookup must reject it.
      *
-     * <p>ADR-0022: under strict load an unknown CHILD subType is RECORDED (not
+     * <p>ADR-0023: under strict load an unknown CHILD subType is RECORDED (not
      * thrown) and the child is skipped — mirroring the TS reference (the root is
      * the only node that throws). The case-sensitivity guarantee is therefore
      * asserted via the recorded {@code ERR_UNKNOWN_SUBTYPE} (a case-insensitive

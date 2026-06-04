@@ -548,7 +548,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 // node (and any error raised below) carries the full canonical path.
                 jsonPathBuilder.pushKey(childKey);
                 try {
-                    // Registry check — ADR-0022 strict load: an undeclared child
+                    // Registry check — ADR-0023 strict load: an undeclared child
                     // type/subType is a made-up node. Mirrors the TS reference
                     // (parser-core.ts): a CHILD node (unlike the document root) is
                     // RECORDED (not thrown) and SKIPPED, so a happy-path tree can
@@ -1129,7 +1129,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     ErrorCode.ERR_RESERVED_ATTR, currentSourceEnvelope());
             }
 
-            // ADR-0022 strict load: an own @-attr declared by NO registered
+            // ADR-0023 strict load: an own @-attr declared by NO registered
             // provider (no per-type schema entry, no commonAttr) is a made-up
             // attribute → ERR_UNKNOWN_ATTR. Closes the open-attr policy. Mirrors
             // the TS reference: the error is RECORDED (not thrown) and parsing
@@ -1321,11 +1321,11 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     }
 
     // -----------------------------------------------------------------------
-    // ADR-0022 — strict-load helpers
+    // ADR-0023 — strict-load helpers
     // -----------------------------------------------------------------------
 
     /**
-     * ADR-0022 strict load: returns the loader's strict flag. Under strict the
+     * ADR-0023 strict load: returns the loader's strict flag. Under strict the
      * loader rejects any authored type/subType/attribute not declared by a
      * registered provider; a downstream app may set {@code strict=false} to
      * tolerate unenforced vocabulary. The library + conformance runner load
@@ -1336,7 +1336,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     }
 
     /**
-     * ADR-0022 strict load: is {@code attrName} a declared attribute for this
+     * ADR-0023 strict load: is {@code attrName} a declared attribute for this
      * node? Mirrors the TS reference "Check 0" effective-schema lookup — an own
      * {@code @}-attr counts as declared iff it matches EITHER an explicit per-type
      * child attribute requirement (named, direct or inherited) OR a registered
@@ -1368,7 +1368,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             return true;
         }
 
-        // NOTE (ADR-0022): a parent's catch-all {@code attr,*} wildcard child
+        // NOTE (ADR-0023): a parent's catch-all {@code attr,*} wildcard child
         // requirement is the LAX open-attr policy and is deliberately NOT honored
         // here — under strict load an attribute counts as declared only when it
         // has an explicit per-type schema entry or is a registered common attr

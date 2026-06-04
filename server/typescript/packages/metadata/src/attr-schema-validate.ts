@@ -12,7 +12,7 @@
 //                                      MetaAttr instance's own validateValue.
 //   3. allowedValues honored        — declared attrs with a non-empty
 //                                      allowedValues set must hold a member value.
-//   4. Undeclared attrs             — under strict load (ADR-0022) an own
+//   4. Undeclared attrs             — under strict load (ADR-0023) an own
 //                                      @-attr that matches NO per-type attr
 //                                      schema AND NO commonAttr is an
 //                                      ERR_UNKNOWN_ATTR. In lax mode (strict
@@ -65,7 +65,7 @@ export interface AttrSchemaValidationResult {
 export function validateAttrSchema(
   root: MetaData,
   registry: TypeRegistry,
-  // ADR-0022 — strict load closes the open-attr policy: an own @-attr matching
+  // ADR-0023 — strict load closes the open-attr policy: an own @-attr matching
   // no per-type schema and no commonAttr → ERR_UNKNOWN_ATTR. Defaults false so
   // existing lax callers keep the legacy open policy; the library's own loader
   // (and the conformance runner) load strict.
@@ -133,7 +133,7 @@ function validateNode(
     byName.set(ca.name, ca);
   }
 
-  // --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+  // --- Check 0 (ADR-0023): strict-load undeclared-attr rejection ---
   //
   // Runs BEFORE the byName.size early-return: a node type with no per-type
   // schema and no common attrs (byName empty) must still reject an authored

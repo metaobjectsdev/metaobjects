@@ -245,7 +245,7 @@ def _validate_attr_schema(
             schema_cache[key] = cached
         schemas, schema_by_name = cached
 
-        # --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+        # --- Check 0 (ADR-0023): strict-load undeclared-attr rejection ---
         #
         # Runs BEFORE the `not schemas` early-return: a node type with no
         # per-type schema and no common attrs must still reject an authored

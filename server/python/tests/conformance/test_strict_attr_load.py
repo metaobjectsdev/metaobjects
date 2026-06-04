@@ -1,4 +1,4 @@
-"""ADR-0022 — strict-attr load (Python).
+"""ADR-0023 — strict-attr load (Python).
 
 Under strict load, an authored own ``@attr`` that matches no per-type attr
 schema and no commonAttr is an ``ERR_UNKNOWN_ATTR`` (own-only, mirroring the

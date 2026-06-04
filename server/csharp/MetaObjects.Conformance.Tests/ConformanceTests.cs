@@ -216,7 +216,7 @@ public class ConformanceTests
         // A load that collected non-fatal errors but still built a tree gets its
         // tree compared — canonical serialization emits whatever subtree the loader
         // built, and the comparison surfaces any real divergence. This is the
-        // cross-port-aligned behavior: under ADR-0022 strict load a fixture using
+        // cross-port-aligned behavior: under ADR-0023 strict load a fixture using
         // tolerated-but-undeclared vocabulary (no expected-errors.json) collects
         // ERR_UNKNOWN_ATTR yet still serializes its tree identically to TS/Python,
         // so it must NOT be force-failed here (TS/Python skip the error-set check

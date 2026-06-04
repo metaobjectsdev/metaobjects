@@ -373,7 +373,7 @@ describe("attr-schema validation — open policy", () => {
   });
 });
 
-describe("attr-schema validation — strict load (ADR-0022)", () => {
+describe("attr-schema validation — strict load (ADR-0023)", () => {
   /** Parse + run validateAttrSchema with strict=true. */
   function validateStrict(doc: unknown) {
     const registry = new TypeRegistry();

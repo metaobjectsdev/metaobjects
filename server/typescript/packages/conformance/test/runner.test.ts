@@ -218,9 +218,9 @@ test("malformed script.json (bad JSON) → failed check, no throw", async () => 
   expect(errCheck!.detail).toMatch(/parse error/);
 });
 
-// ── ADR-0022 — strict hard-fail: a happy-path fixture must load error-free ───
+// ── ADR-0023 — strict hard-fail: a happy-path fixture must load error-free ───
 
-test("ADR-0022: happy-path fixture (no expected-errors.json) with a recorded error → FAIL naming the unexpected error", async () => {
+test("ADR-0023: happy-path fixture (no expected-errors.json) with a recorded error → FAIL naming the unexpected error", async () => {
   // Models a made-up attribute: strict load records ERR_UNKNOWN_ATTR, but the
   // fixture ships only expected.json (happy path). Under the true hard-fail the
   // runner must assert the actual ERROR set is empty and fail otherwise.
@@ -241,7 +241,7 @@ test("ADR-0022: happy-path fixture (no expected-errors.json) with a recorded err
   expect(errCheck!.detail).toContain("ERR_UNKNOWN_ATTR");
 });
 
-test("ADR-0022: happy-path fixture that loads with zero errors → still passes", async () => {
+test("ADR-0023: happy-path fixture that loads with zero errors → still passes", async () => {
   // Regression guard: the new empty-error assertion must not break clean fixtures.
   const root = await fixture({ "input/m.json": "{}", "expected.json": '{"ok":true}' });
   const [fix] = await discoverFixtures(root);
