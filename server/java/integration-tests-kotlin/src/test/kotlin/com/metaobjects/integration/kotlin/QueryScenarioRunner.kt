@@ -24,10 +24,19 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.IsNotNullOp
 import org.jetbrains.exposed.sql.IsNullOp
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.transactions.transaction
+import com.metaobjects.integration.kotlin.tables.AllTypesTable
+import java.math.BigDecimal
 import java.sql.DriverManager
 import java.sql.Timestamp
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -108,6 +117,9 @@ object QueryScenarioRunner {
         if (spec.op == "relate") return dispatchRelate(spec, root)
 
         val table = tableFor(spec.entity)
+        // op:roundtrip — WRITE the insert row through Exposed, read back by PK, drop PK.
+        if (spec.op == "roundtrip") return dispatchRoundtrip(spec, table)
+
         return when (spec.op) {
             "count" -> {
                 val q = table.selectAll()
@@ -159,6 +171,95 @@ object QueryScenarioRunner {
         return M2MResolver.resolve(jdbc, sourceMeta, sourceId, rel, root)
     }
 
+    /**
+     * op:roundtrip — the WRITE gate. INSERT the scenario's `insert:` row through the Exposed
+     * write path (NOT raw SQL), coercing each authoring value to the target column's Kotlin
+     * type (so the WRITE codec for every field subtype runs); read it back BY the
+     * server-generated PK (a fresh SELECT, exercising the read codec); project to a field-keyed
+     * row and DROP the PK (server-minted via gen_random_uuid(), non-deterministic).
+     *
+     * Mirrors the Java/C#/TS RoundtripWriter semantics on the Exposed substrate. The PK column
+     * is never supplied on insert — `gen_random_uuid()` mints it — proving server-generated PKs
+     * round-trip on the write path too.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun dispatchRoundtrip(spec: QuerySpec, table: Table): Map<String, Any?>? {
+        val insertRow = spec.insert
+            ?: error("op:roundtrip / ${spec.name}: an `insert` block (the row to write) is required")
+        val pkCol = table.primaryKey?.columns?.singleOrNull()
+            ?: error("op:roundtrip / ${spec.name}: table '${table.tableName}' must have a single-column primary key")
+
+        // 1. INSERT via Exposed, coercing each authoring value to the column's Kotlin type. The
+        //    PK column is left unset (gen_random_uuid() fills it server-side).
+        val statement: InsertStatement<Number> = table.insert { stmt ->
+            for ((field, raw) in insertRow) {
+                val col = columnFor(table, field) as Column<Any?>
+                stmt[col] = coerceForWrite(raw, col)
+            }
+        }
+
+        // 2. Capture the server-generated PK Exposed read back from the insert.
+        val pkValue = statement[pkCol as Column<Any?>]
+            ?: error("op:roundtrip / ${spec.name}: insert did not yield a primary key value")
+
+        // 3. Read back BY PK (fresh SELECT → the read codec runs).
+        val q = table.selectAll()
+        q.adjustWhere { buildEq(pkCol, pkValue) }
+        val row = q.singleOrNull()?.let { rowToMap(it, table) } ?: return null
+
+        // 4. Drop the (server-generated) PK — it's non-deterministic, not part of the expectation.
+        return row - pkCol.name
+    }
+
+    /**
+     * Coerce a YAML-parsed authoring value to the JVM type the Exposed column writes. SnakeYAML
+     * surfaces scalars as String/Int/Long/Double/Boolean and a nested mapping (the `@objectRef`
+     * jsonb value object) as a Map. The target type is keyed off the column's SQL type so this
+     * stays generic across the AllTypes columns:
+     *
+     *  - uuid          → java.util.UUID (the upper-case authoring literal lower-cased; the read
+     *                    codec returns it lowercase-canonical, the cross-port contract).
+     *  - numeric/dec   → java.math.BigDecimal (exact; the decimal authoring form is a quoted string).
+     *  - bigint/int8   → Long; int → Int; real → Float; double → Double.
+     *  - date          → java.time.LocalDate ("YYYY-MM-DD").
+     *  - time          → java.time.LocalTime ("HH:mm:ss[.fff]"); preserves the millisecond fraction.
+     *  - timestamp     → java.time.LocalDateTime (no trailing "Z" — wall-clock, no tz).
+     *  - timestamptz   → java.time.Instant (trailing "Z" → absolute instant; the
+     *                    instantWithTimeZone Column<Instant> path binds it tz-aware).
+     *  - jsonb         → a JSON String (the authoring Map serialized; the raw-String jsonb column
+     *                    writes it as a real Postgres JSONB value, not a bare text bind).
+     *  - other (varchar/bool) → identity (Exposed binds String/Boolean directly).
+     */
+    private fun coerceForWrite(raw: Any?, col: Column<*>): Any? {
+        if (raw == null) return null
+        val type = col.columnType.sqlType().lowercase()
+        return when {
+            type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
+            // NUMERIC/DECIMAL: exact BigDecimal from the quoted-string authoring form.
+            type.contains("numeric") || type.contains("decimal") -> BigDecimal(raw.toString())
+            type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
+            // REAL / float4 → Float; DOUBLE PRECISION / float8 → Double. Check the float types
+            // before the generic `int` substring guard (neither contains "int", but order-safe).
+            type.contains("real") || type == "float4" -> (raw as? Number)?.toFloat() ?: raw.toString().toFloat()
+            type.contains("double") || type == "float8" -> (raw as? Number)?.toDouble() ?: raw.toString().toDouble()
+            type.contains("int") -> (raw as? Number)?.toInt() ?: raw.toString().toInt()
+            // TIMESTAMPTZ → absolute Instant (trailing "Z"); plain TIMESTAMP → wall-clock LocalDateTime.
+            type.contains("timestamp") && type.contains("time zone") ->
+                Instant.parse(raw.toString())
+            type.contains("timestamp") -> {
+                val s = raw.toString()
+                if (s.endsWith("Z")) LocalDateTime.ofInstant(Instant.parse(s), ZoneOffset.UTC)
+                else LocalDateTime.parse(s)
+            }
+            type == "date" -> LocalDate.parse(raw.toString())
+            type.contains("time") -> LocalTime.parse(raw.toString())
+            // jsonb raw-String column: serialize the authoring Map to a JSON string so the column
+            // writes a real Postgres JSONB value (a bare String bind would be rejected by jsonb).
+            type.contains("jsonb") -> if (raw is String) raw else JSON.writeValueAsString(raw)
+            else -> raw
+        }
+    }
+
     private fun mustGetEntity(root: MetaRoot, name: String): MetaObject =
         root.getChildren(MetaObject::class.java, false).firstOrNull { it.shortName == name }
             ?: error("Entity '$name' not found in canonical metadata root")
@@ -170,6 +271,7 @@ object QueryScenarioRunner {
         "ProgramStat" -> ProgramStatView
         "ProgramView" -> ProgramView
         "Asset" -> AssetTable
+        "AllTypes" -> AllTypesTable
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
 
@@ -385,7 +487,9 @@ object QueryScenarioRunner {
             if (expect == null) return "[]"
             return Normalization.canonicalRowSet(expect as List<Map<String, Any?>>)
         }
-        if (op == "get") {
+        // get + roundtrip both return a single bare object (roundtrip = the read-back row with
+        // the server-generated PK dropped).
+        if (op == "get" || op == "roundtrip") {
             if (expect == null) return "null"
             // Strip the surrounding [] off canonicalRowsJson — get returns the bare object.
             return Normalization.canonicalRowsJson(listOf(expect as Map<String, Any?>))
@@ -406,7 +510,7 @@ object QueryScenarioRunner {
             return Normalization.canonicalRowSet(actual as List<Map<String, Any?>>)
         }
         if (actual == null) return "null"
-        if (op == "get") {
+        if (op == "get" || op == "roundtrip") {
             return Normalization.canonicalRowsJson(listOf(actual as Map<String, Any?>))
                 .removePrefix("[").removeSuffix("]")
         }

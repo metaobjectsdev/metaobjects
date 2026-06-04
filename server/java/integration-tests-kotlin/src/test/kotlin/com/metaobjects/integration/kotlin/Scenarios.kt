@@ -11,7 +11,7 @@ object Scenarios {
 
     data class QuerySpec(
         val name: String,
-        val op: String,                          // list | get | count | relate
+        val op: String,                          // list | get | count | relate | roundtrip
         val entity: String,
         val by: Map<String, Any?>? = null,
         val filter: Map<String, Any?>? = null,
@@ -19,6 +19,7 @@ object Scenarios {
         val limit: Int? = null,
         val offset: Int? = null,
         val relation: String? = null,            // op:relate — the M:N relationship name to traverse
+        val insert: Map<String, Any?>? = null,   // op:roundtrip — the field-keyed row to WRITE
         val expect: Any? = null,
     )
 
