@@ -20,8 +20,12 @@ public sealed class DbContextGenerator : IGenerator
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
+        // DbSet and no per-subtype model config; the hierarchy is reached via the base
+        // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
         var objects = ctx.Entities
             .Where(o => (o.IsEntity() || o.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(o))
+            .Where(o => !TphPlanBuilder.IsTphSubtype(o, ctx.Root))
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) yield break;
@@ -112,6 +116,16 @@ public sealed class DbContextGenerator : IGenerator
             // EntityGenerator.M2mNavProperty — so they are skipped here.
             foreach (var nav in M2MNavigationBuilder.For(e, ctx.Root).Where(n => !n.IsSelfJoin))
                 modelLines.Add(UsingEntityConfig(nav));
+
+            // FR-017 TPH — single-table inheritance mapping. The base maps its concrete
+            // subtypes onto the shared table via the discriminator property:
+            //   HasDiscriminator(e => e.<DiscProp>).HasValue<Sub>(<EnumType>.<Value>)...
+            // The discriminator property is the entity's @discriminator field (an enum);
+            // its HasConversion<string>() (emitted by the enum loop above) stores the
+            // symbol as text, matching the TS-owned TEXT column. EF folds every subtype's
+            // own columns into the base table as nullable.
+            if (TphPlanBuilder.For(e, ctx.Root) is { } tph)
+                modelLines.Add(HasDiscriminatorConfig(owner, e, tph));
         }
 
         var sb = new StringBuilder();
@@ -176,6 +190,34 @@ public sealed class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"timestamp with time zone\");",
             _ => null,
         };
+    }
+
+    // FR-017 — EF TPH single-table inheritance config for a discriminator base. The
+    // discriminator property is the base's @discriminator field (PascalCased); the
+    // HasValue clauses bind each concrete subtype to its @discriminatorValue. When the
+    // discriminator field is an enum (the canonical shape) the HasValue argument is the
+    // enum literal (<EnumType>.<Value>), which round-trips through the enum's
+    // HasConversion<string>() as the text symbol; otherwise the raw string value.
+    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph)
+    {
+        var discField = baseEntity.FindField(tph.DiscriminatorField);
+        var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var isEnum = discField is not null && discField.SubType == FIELD_SUBTYPE_ENUM;
+        // The enum type is nested in the base class, so qualify it (<Base>.<EnumType>)
+        // when referenced from the DbContext (a sibling type).
+        var enumType = discField is not null && isEnum
+            ? $"{owner}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+
+        var sb = new StringBuilder();
+        sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
+        foreach (var st in tph.Subtypes)
+        {
+            var subCls = CSharpNaming.Pascal(st.Entity.Name);
+            var valueLit = isEnum ? $"{enumType}.{st.Value}" : $"\"{st.Value}\"";
+            sb.Append($".HasValue<{subCls}>({valueLit})");
+        }
+        sb.Append(';');
+        return sb.ToString();
     }
 
     // FR-018 — EF skip-navigation config for a hetero M:N navigation through its

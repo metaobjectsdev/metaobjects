@@ -62,6 +62,6 @@ public abstract class PerEntityGenerator : IGenerator
 
     protected abstract EmittedFile GenerateOne(MetaObject entity, GenContext ctx);
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx) =>
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx) =>
         ctx.Entities.Where(Filter).Select(e => GenerateOne(e, ctx));
 }
