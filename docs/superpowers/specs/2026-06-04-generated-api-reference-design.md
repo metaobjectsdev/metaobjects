@@ -2,9 +2,11 @@
 
 **Date:** 2026-06-04
 **Status:** Design (pending review)
-**Relates to:** ADR-0020 (codegen tiering — this is the deferred Tier-1 SDK-docs
-layer), ADR-0021 (generator registry / `--list`), the neutral `meta docs`
-engine, the downstream agent-context effort (separate, sibling-owned).
+**Relates to:** **ADR-0022 (the `meta docs` vs `api-docs` boundary — the
+governing decision for this work)**, ADR-0020 (codegen tiering — this is the
+deferred Tier-1 SDK-docs layer it carved out), ADR-0021 (generator registry /
+`--list`), the neutral `meta docs` engine, the downstream agent-context effort
+(separate, sibling-owned).
 
 ## Goal
 
@@ -89,11 +91,15 @@ symbol the api-docs reference claims actually appears in the corresponding
 generated output for a fixture model (grep the emitted `.ts` for the documented
 symbol names) — so a generator rename breaks the gate, not the adopter's docs.
 
-### Delivery / how it plugs into surfaces
-- It is a generator: `meta gen` with `api-docs` in the suite emits the files;
-  or `meta docs` could surface it. (Decide during planning whether it rides
-  `meta gen` or `meta docs`; leaning `meta gen` since it's Tier-1 per-port and
-  tracks the codegen output.)
+### Delivery / how it plugs into surfaces (RESOLVED per ADR-0022)
+- **It is a Tier-1 generator** in the `meta gen` world — a registered `api-docs`
+  generator (ADR-0021 registry + `--list` + conformance). It is **NOT** a
+  `meta docs` mode: `meta docs` is the neutral/TS-only metadata-docs engine
+  (ADR-0021 D1's single door governs *that* category only); `api-docs` is the
+  Tier-1, per-port, language-specific SDK reference ADR-0020 carved out.
+- **Rendering mechanism is shared:** `api-docs` renders its Markdown through the
+  **same `render()` Mustache engine + canonical `templates/`** (byte-identity-
+  gated) that `meta docs` uses — consistent rendering, different command/tier.
 - The **agent-form** file is a plain markdown artifact at a known path. The
   agent-context surface (sibling) can *reference* it from the installed
   `.metaobjects/` docs ("your project's generated API is in `<path>`"). We do not
@@ -110,17 +116,19 @@ symbol names) — so a generator rename breaks the gate, not the adopter's docs.
 - Tests: a golden fixture model → both renderings byte-pinned; the drift gate
   (documented symbols ∈ generated output); registry conformance.
 
-## Open questions (for review)
-1. **Ride `meta gen` or `meta docs`?** Leaning `meta gen` (Tier-1, tracks the
-   generated suite). `meta docs` is the neutral engine; mixing Tier-1 there
-   muddies ADR-0020. Confirm.
-2. **Agent-form location/name** — `docs/api/AGENT-API.md` vs `.metaobjects/…`.
-   The latter lands where the agent looks but overlaps agent-context's managed
-   dir; the former is neutral and referenced. Lean `docs/api/` + let
-   agent-context point at it.
-3. **Cross-port fan-out** (after the pilot): per-port `api-docs` generators
-   (each reuses its own naming logic — accurate, ADR-0020-consistent) vs a shared
-   metadata+conventions engine (DRY, drift-gated). Defer until the pilot proves
-   the shape.
-4. **Examples** — agent-form: signature + one-line usage only (token budget) vs a
-   short runnable snippet per symbol. Lean one-line for agent, fuller for human.
+## Decisions (resolved 2026-06-04)
+1. **Command/tier** — RESOLVED (ADR-0022): a **Tier-1 `api-docs` generator** in
+   the `meta gen` world (registry-registered), NOT a `meta docs` mode; renders via
+   the shared Mustache `render()` engine + canonical `templates/`.
+2. **Agent-form location** — RESOLVED: `docs/api/` (neutral path); the
+   agent-context surface *references* it, no write into the sibling-managed
+   `.metaobjects/`.
+3. **Output forms** — two from one model: human (per-entity pages + index),
+   agent (one condensed token-budgeted reference). Examples: human = fuller
+   snippets; agent = signature + one-line usage (token budget).
+
+## Open question (still for review)
+- **Cross-port fan-out** (AFTER the TS pilot): per-port `api-docs` generators
+  (each reuses its own naming logic — accurate, ADR-0020/0022-consistent) vs a
+  shared metadata+conventions engine (DRY, drift-gated). Deferred until the pilot
+  proves the shape; not part of the pilot.
