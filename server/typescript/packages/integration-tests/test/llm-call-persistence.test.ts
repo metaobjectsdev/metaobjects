@@ -67,12 +67,14 @@ const META = JSON.stringify({
             { "field.string": { name: "status" } },
             { "field.string": { name: "errorDetail" } },
             { "field.string": { name: "startedAt" } },
-            // jsonb payloads — field.object maps to JSONB in Postgres (migrate-ts
-            // kind:"json" → JSONB), accepts plain objects through the validator,
-            // and round-trips as a parsed object on read-back. Matches the
-            // in-memory-driver unit-test fixture.
-            { "field.object": { name: "llmRequest" } },
-            { "field.object": { name: "voResponse" } },
+            // llmRequest: raw jsonb stored as a JSON string via field.string + @dbColumnType.
+            // recordLlmCall() calls JSON.stringify before writing; Postgres stores as JSONB
+            // and node-postgres returns it as a parsed object on read-back.
+            { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
+            // voResponse: typed VO stored as jsonb via @objectRef + @storage.
+            // ObjectManager validates against VerdictResponse and stores as JSONB;
+            // node-postgres returns it as a parsed object on read-back.
+            { "field.object": { name: "voResponse", "@objectRef": "VerdictResponse", "@storage": "jsonb" } },
             { "identity.primary": { "@fields": "spanId" } },
           ],
         },

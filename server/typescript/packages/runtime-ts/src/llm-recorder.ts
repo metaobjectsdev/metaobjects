@@ -128,7 +128,7 @@ export async function recordLlmCall(
     status,
     errorDetail,
     startedAt: input.startedAt,
-    llmRequest: input.llmRequest,
+    llmRequest: JSON.stringify(input.llmRequest),
     voResponse,
   };
 

@@ -42,10 +42,13 @@ const META_JSON = {
             { "field.string": { name: "status" } },
             { "field.string": { name: "errorDetail" } },
             { "field.string": { name: "startedAt" } },
-            // llmRequest + voResponse stored as jsonb-style object fields.
-            // Without @storage they persist as opaque values via the in-memory driver.
-            { "field.object": { name: "llmRequest" } },
-            { "field.object": { name: "voResponse" } },
+            // llmRequest: raw jsonb string (field.string + @dbColumnType jsonb).
+            // ObjectManager writes the JSON.stringify'd string; in-memory driver
+            // keeps it as a string on read-back.
+            { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
+            // voResponse: typed VO stored as jsonb via @objectRef + @storage.
+            // ObjectManager validates the object against VerdictResponse and stores it.
+            { "field.object": { name: "voResponse", "@objectRef": "VerdictResponse", "@storage": "jsonb" } },
             {
               "identity.primary": {
                 "@fields": ["id"],
@@ -110,7 +113,7 @@ describe("LlmCallDbRecorder", () => {
       status: "ok",
       errorDetail: null,
       startedAt: "2026-01-01T00:00:00Z",
-      llmRequest: { prompt: "hello" },
+      llmRequest: JSON.stringify({ prompt: "hello" }),
       voResponse: voPayload,
     });
 
@@ -156,6 +159,8 @@ describe("recordLlmCall", () => {
     expect(row!.spanId).toBe("span-ok");
     expect(row!.status).toBe("ok");
     expect(row!.voResponse).toEqual({ verdict: "approve", score: 90 });
+    // In-memory driver stores llmRequest as the JSON string (field.string + @dbColumnType jsonb).
+    expect(JSON.parse(row!.llmRequest as string)).toEqual({ prompt: "hello" });
   });
 
   test("bad response (missing required verdict) → status error, voResponse null, row still persisted", async () => {
