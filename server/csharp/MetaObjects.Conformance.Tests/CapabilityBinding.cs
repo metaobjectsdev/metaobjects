@@ -4,6 +4,7 @@
 // invoke typed-tree accessors on a node and normalize the result.
 
 using MetaObjects.Meta;
+using MetaObjects.Core.Query;
 
 namespace MetaObjects.Conformance.Tests;
 
@@ -68,6 +69,13 @@ public static class CapabilityBinding
             // field.effective-tree → canonical serialization of the node subtree
             ["field.effective-tree"] = (node, _) =>
                 NormalizedResult.EffectiveTree(MetaObjects.SerializerJson.CanonicalSerialize(AsField(node))),
+
+            // field.filter-ops → the canonical per-subtype filter-operator band
+            // (QueryConstants.OPS_BY_SUBTYPE). Returns { names: [...] } in canonical
+            // operator order. Single source of truth — the same map the server
+            // allowlist + codegen consume.
+            ["field.filter-ops"] = (node, _) =>
+                NormalizedResult.Names(QueryConstants.OpsForSubType(AsField(node).SubType).ToList()),
         };
 
     /// <summary>

@@ -51,4 +51,16 @@ def invoke(node: MetaData, capability: str, args: dict[str, Any]) -> dict[str, A
             return {"absent": True}
         return {"subtype": identity.sub_type}
 
+    if capability == "field.filter-ops":
+        # The canonical per-subtype filter-operator band (in canonical operator
+        # order). Single source of truth — the same ordered helper the codegen
+        # filter-allowlist generator consumes. Returns {"names": [...]}.
+        from metaobjects.meta.core.field.meta_field import MetaField
+        from metaobjects.codegen.generators.filter_allowlist_generator import (
+            ops_for_subtype_ordered,
+        )
+        if not isinstance(node, MetaField):
+            raise TypeError(f"field.filter-ops requires a MetaField, got {type(node)}")
+        return {"names": list(ops_for_subtype_ordered(node.sub_type))}
+
     raise ValueError(f"Unknown capability: {capability!r}")

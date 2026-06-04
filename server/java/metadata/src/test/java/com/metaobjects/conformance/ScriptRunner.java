@@ -141,6 +141,18 @@ final class ScriptRunner {
                 }
                 return;
             }
+            case "field.filter-ops": {
+                if (!(target instanceof MetaField)) {
+                    failures.add("script.json op #" + index + " " + invoke
+                        + ": navigation target is not a MetaField");
+                    return;
+                }
+                MetaField field = (MetaField) target;
+                List<String> got = new ArrayList<>(
+                    com.metaobjects.query.FilterOps.opsForSubType(field.getSubType()));
+                assertStringNames(got, expect, index, invoke, failures);
+                return;
+            }
             default:
                 failures.add("script.json op #" + index + ": unsupported invoke '" + invoke + "'");
         }
@@ -180,6 +192,19 @@ final class ScriptRunner {
                     return null;
                 }
                 current = found;
+            } else if ("field".equals(kind)) {
+                // Resolve a field (own or inherited via extends/super) on the
+                // current object node.
+                MetaData found = null;
+                for (MetaField f : current.getChildren(MetaField.class, true)) {
+                    if (name.equals(f.getShortName())) { found = f; break; }
+                }
+                if (found == null) {
+                    failures.add("script.json op #" + index + " navigate: no field named '"
+                        + name + "' at " + current);
+                    return null;
+                }
+                current = found;
             } else {
                 failures.add("script.json op #" + index + " navigate: unsupported kind '" + kind + "'");
                 return null;
@@ -198,13 +223,19 @@ final class ScriptRunner {
 
     private static void assertNames(List<MetaField> fields, JsonObject expect,
                                      int index, String invoke, List<String> failures) {
+        List<String> got = new ArrayList<>();
+        for (MetaField f : fields) got.add(f.getShortName());
+        assertStringNames(got, expect, index, invoke, failures);
+    }
+
+    /** Assert a {@code { names: [...] }} expectation against a list of strings. */
+    private static void assertStringNames(List<String> got, JsonObject expect,
+                                          int index, String invoke, List<String> failures) {
         if (!expect.has("names") || !expect.get("names").isJsonArray()) {
             failures.add("script.json op #" + index + " " + invoke
                 + ": expect.names must be a JSON array");
             return;
         }
-        List<String> got = new ArrayList<>();
-        for (MetaField f : fields) got.add(f.getShortName());
         List<String> want = new ArrayList<>();
         for (JsonElement el : expect.get("names").getAsJsonArray()) want.add(el.getAsString());
         // Use multiset equality (order-insensitive) — corpus does not pin ordering.
