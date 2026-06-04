@@ -104,7 +104,11 @@ public class JdbcCodecRoundTripTest {
             vo.setFloat("rate", 2.5f);                 // FloatCodec
             vo.setObject("amount", new java.math.BigDecimal("123.45"));  // DecimalCodec
             vo.setString("label", "hello-codec");
-            Date created = new Date(1_700_000_000_000L);
+            // field.date → a DATE column: a calendar date with no time-of-day. Author a
+            // midnight-UTC instant so the value the codec writes (zone-free LocalDate) and
+            // reads back is exactly this date regardless of the JVM default zone.
+            Date created = Date.from(java.time.LocalDate.of(2023, 11, 14)
+                .atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
             vo.setDate("createdAt", created);
             vo.setObject("startTime", LocalTime.of(8, 0, 0));  // TimeCodec
 
@@ -129,9 +133,11 @@ public class JdbcCodecRoundTripTest {
             assertEquals("DecimalCodec round-trip", 0,
                     new java.math.BigDecimal("123.45").compareTo((java.math.BigDecimal) read.getObject("amount")));
             assertEquals("StringCodec round-trip", "hello-codec", read.getString("label"));
-            // DateCodec stores as a timestamp; compare epoch millis.
+            // DateCodec binds/reads a zone-free LocalDate against a DATE column and stores it
+            // back as a midnight-UTC java.util.Date; the calendar date round-trips exactly.
             assertNotNull("DateCodec round-trip non-null", read.getDate("createdAt"));
-            assertEquals("DateCodec round-trip", created.getTime(), read.getDate("createdAt").getTime());
+            assertEquals("DateCodec round-trip (calendar date, midnight-UTC)",
+                    created.getTime(), read.getDate("createdAt").getTime());
         } finally {
             omdb.releaseConnection(oc);
         }
@@ -232,9 +238,17 @@ public class JdbcCodecRoundTripTest {
             assertEquals("exactly one row written", 1, rows.size());
             ValueObject read = (ValueObject) rows.iterator().next();
 
-            assertNotNull("TimestampCodec round-trip non-null", read.getDate("tsVal"));
-            assertEquals("TimestampCodec must round-trip the instant exactly",
-                    ts.getTime(), read.getDate("tsVal").getTime());
+            // Plain TIMESTAMP reads back zone-free: the codec reads via getTimestamp(UTC), so the
+            // Timestamp's INSTANT anchors the stored wall clock at UTC. Recover the wall clock as
+            // instant @ UTC (the wire normalizer does the same) — independent of the JVM zone.
+            Object tsRead = read.getDate("tsVal");
+            assertNotNull("TimestampCodec round-trip non-null", tsRead);
+            assertTrue("TimestampCodec must surface a java.sql.Timestamp for a plain TIMESTAMP",
+                    tsRead instanceof Timestamp);
+            assertEquals("TimestampCodec must round-trip the UTC wall clock exactly",
+                    java.time.LocalDateTime.ofInstant(
+                            java.time.Instant.ofEpochMilli(ts.getTime()), java.time.ZoneOffset.UTC),
+                    ((Timestamp) tsRead).toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDateTime());
             assertEquals("CurrencyCodec must round-trip integer minor units",
                     Long.valueOf(199900L), read.getLong("moneyVal"));
             assertEquals("EnumCodec must round-trip the member symbol",
@@ -275,6 +289,112 @@ public class JdbcCodecRoundTripTest {
                 st.execute("DROP TABLE codec_uuid_probe");
             }
         }
+    }
+
+    /**
+     * W2b zone-codec fix — {@code TimestampCodec} (plain TIMESTAMP) is zone-INDEPENDENT.
+     *
+     * <p>Drives the codec's {@code write → read} against a real TIMESTAMP column while the JVM
+     * default zone is pinned to a NON-UTC zone (America/Los_Angeles). Before the fix the codec
+     * bound/read via {@code setTimestamp}/{@code getTimestamp}, which convert through the default
+     * zone — so the UTC wall clock written did NOT come back as the same wall clock under a
+     * non-UTC zone (it shifted by the zone offset). The zone-free {@code setObject(LocalDateTime)}
+     * / {@code getObject(LocalDateTime.class)} stores and reads the exact wall clock regardless of
+     * the default zone. This is the regression guard the symmetric UTC-pinned round-trip masked.</p>
+     */
+    @Test
+    public void timestampCodecIsZoneIndependentAtTheJdbcBoundary() throws Exception {
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        com.metaobjects.field.TimestampField tsField = new com.metaobjects.field.TimestampField("tsVal") {
+            @Override public void setDate(Object obj, Date value) { store.put("v", value); }
+        };
+        JdbcCodecs.TimestampCodec codec = new JdbcCodecs.TimestampCodec();
+
+        // The UTC wall clock the corpus asserts (no zone).
+        java.time.LocalDateTime utcWallClock = java.time.LocalDateTime.of(2026, 6, 3, 14, 30, 0, 123_000_000);
+        Date written = Date.from(utcWallClock.toInstant(java.time.ZoneOffset.UTC));
+
+        java.util.TimeZone savedZone = java.util.TimeZone.getDefault();
+        try {
+            // Pin a non-UTC default zone for the duration of the JDBC IO.
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Los_Angeles"));
+            try (Connection conn = getConnection()) {
+                try (Statement st = conn.createStatement()) {
+                    st.execute("CREATE TABLE codec_ts_probe (t TIMESTAMP)");
+                }
+                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_ts_probe (t) VALUES (?)")) {
+                    codec.write(ps, tsField, 1, written);
+                    ps.executeUpdate();
+                }
+                try (Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT t FROM codec_ts_probe")) {
+                    assertTrue("one row written", rs.next());
+                    codec.readInto(new Object(), tsField, rs, 1);
+                }
+                try (Statement st = conn.createStatement()) {
+                    st.execute("DROP TABLE codec_ts_probe");
+                }
+            }
+        } finally {
+            java.util.TimeZone.setDefault(savedZone);
+        }
+
+        Date readBack = (Date) store.get("v");
+        assertNotNull("TimestampCodec round-trip non-null", readBack);
+        assertTrue("TimestampCodec must surface a java.sql.Timestamp", readBack instanceof Timestamp);
+        // Recover the wall clock zone-free (instant @ UTC), exactly as the wire normalizer does.
+        assertEquals("TimestampCodec must round-trip the UTC wall clock under a NON-UTC default zone",
+                utcWallClock, ((Timestamp) readBack).toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDateTime());
+    }
+
+    /**
+     * W2b zone-codec fix — {@code DateCodec} (DATE column) is zone-INDEPENDENT.
+     *
+     * <p>Same hazard as the timestamp case, narrowed to a calendar date: under a non-UTC default
+     * zone the old {@code setTimestamp}/{@code getTimestamp} path could roll a midnight-UTC date to
+     * the adjacent day. The zone-free {@code setObject(LocalDate)} / {@code getObject(LocalDate.class)}
+     * preserves the calendar date exactly.</p>
+     */
+    @Test
+    public void dateCodecIsZoneIndependentAtTheJdbcBoundary() throws Exception {
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        com.metaobjects.field.DateField dateField = new com.metaobjects.field.DateField("d") {
+            @Override public void setDate(Object obj, Date value) { store.put("v", value); }
+        };
+        JdbcCodecs.DateCodec codec = new JdbcCodecs.DateCodec();
+
+        java.time.LocalDate expectedDate = java.time.LocalDate.of(2026, 6, 3);
+        Date written = Date.from(expectedDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+
+        java.util.TimeZone savedZone = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Los_Angeles"));
+            try (Connection conn = getConnection()) {
+                try (Statement st = conn.createStatement()) {
+                    st.execute("CREATE TABLE codec_date_probe (d DATE)");
+                }
+                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_date_probe (d) VALUES (?)")) {
+                    codec.write(ps, dateField, 1, written);
+                    ps.executeUpdate();
+                }
+                try (Statement st = conn.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT d FROM codec_date_probe")) {
+                    assertTrue("one row written", rs.next());
+                    codec.readInto(new Object(), dateField, rs, 1);
+                }
+                try (Statement st = conn.createStatement()) {
+                    st.execute("DROP TABLE codec_date_probe");
+                }
+            }
+        } finally {
+            java.util.TimeZone.setDefault(savedZone);
+        }
+
+        Date readBack = (Date) store.get("v");
+        assertNotNull("DateCodec round-trip non-null", readBack);
+        java.time.LocalDate actualDate = readBack.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        assertEquals("DateCodec must round-trip the calendar date under a NON-UTC default zone",
+                expectedDate, actualDate);
     }
 
     /**

@@ -58,6 +58,12 @@ final class ObjectManagerDbAdapter {
         if ("relate".equals(spec.op())) {
             return executeRelate(omdb, conn, mc, spec, root, columnTypeProbe);
         }
+        if ("update".equals(spec.op())) {
+            return executeUpdate(omdb, conn, mc, spec, columnSqlTypes);
+        }
+        if ("delete".equals(spec.op())) {
+            return executeDelete(omdb, conn, mc, spec);
+        }
 
         Expression filter = buildFilter(spec.by(), spec.filter());
 
@@ -118,6 +124,69 @@ final class ObjectManagerDbAdapter {
         List<Map<String, Object>> rows = new ArrayList<>(related.size());
         for (Object o : related) rows.add(toRowMap(targetMeta, o, targetColumnSqlTypes));
         return rows;
+    }
+
+    /**
+     * op:update — PATCH a row through the OMDB runtime WRITE path (NOT raw SQL). Load the row by
+     * {@code by:{id}}, apply the {@code data:} patch coercing each value to its native type (the
+     * SAME write coercion {@code op: roundtrip} uses on INSERT — so a port whose UPDATE codec
+     * differs from its INSERT codec is caught), {@code updateObject}, then read the row back BY PK
+     * (a fresh SELECT, so the read codec runs) and return the wire row WITH the PK retained (the
+     * update {@code expect} block asserts the id).
+     */
+    private static Object executeUpdate(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc,
+                                        QuerySpec spec, Map<String, Integer> columnSqlTypes) throws Exception {
+        if (spec.data() == null) {
+            throw new AssertionError("op:update / " + spec.name() + " requires a `data` block (the patch to write)");
+        }
+        MetaField<?> pk = RoundtripWriter.primaryKey(mc);
+        Object pkValue = spec.by() == null ? null : spec.by().get(pk.getName());
+        if (pkValue == null) {
+            throw new AssertionError("op:update / " + spec.name()
+                + " requires a `by` block carrying the primary key '" + pk.getName() + "'");
+        }
+
+        // Author a fresh instance carrying the PK + the data patch, and UPDATE by PK through the
+        // runtime write path (the WRITE codecs run here). The corpus update patches every column,
+        // so the row is fully specified. We do NOT load-then-mutate: the seed row's jsonb was
+        // raw-SQL-inserted without the @type discriminator the metadata-driven deserializer
+        // expects, so reading it back to mutate would fail; building fresh sidesteps that and
+        // still proves the UPDATE codec re-encodes each subtype (it is the write path under test).
+        ValueObject vo = (ValueObject) mc.newInstance();
+        RoundtripWriter.applyValues(mc, vo, Map.of(pk.getName(), pkValue));
+        RoundtripWriter.applyValues(mc, vo, spec.data());
+        omdb.updateObject(conn, vo);
+
+        // Read the row back BY PK so the read codec runs (not an in-memory echo of the patch).
+        Object reread = loadByKey(omdb, conn, mc, Map.of(pk.getName(), vo.get(pk.getName())));
+        if (reread == null) return null;
+        return toRowMap(mc, reread, columnSqlTypes); // PK retained (update expect includes id)
+    }
+
+    /**
+     * op:delete — DELETE a row by PK through the OMDB runtime WRITE path. Load the row by
+     * {@code by:{id}}; if none, return {@code false}. Otherwise {@code deleteObject} and return
+     * {@code true}. The portable proof the row is gone is a follow-up {@code op: get} asserting null.
+     */
+    private static Object executeDelete(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc,
+                                        QuerySpec spec) throws Exception {
+        // Delete by PK through the runtime DELETE path. Use deleteObjects(mc, expression) — a
+        // set-based delete-by-key — so we do NOT load-then-delete: the seed row's raw-SQL jsonb
+        // (no @type discriminator) would fail the metadata-driven deserialize on load. The count
+        // is the boolean outcome (>0 = a row was deleted).
+        Expression byFilter = buildFilter(spec.by(), null);
+        int deleted = omdb.deleteObjects(conn, mc, byFilter);
+        return deleted > 0;
+    }
+
+    /** Load a single object by an exact-match key map, or {@code null} when no row matches. */
+    private static Object loadByKey(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc,
+                                    Map<String, Object> key) throws Exception {
+        Expression filter = buildFilter(key, null);
+        QueryOptions opts = new QueryOptions();
+        if (filter != null) opts.setExpression(filter);
+        Collection<?> rows = omdb.getObjects(conn, mc, opts);
+        return rows.isEmpty() ? null : rows.iterator().next();
     }
 
     private static MetaRelationship findRelationship(MetaObject mc, String relationName) {

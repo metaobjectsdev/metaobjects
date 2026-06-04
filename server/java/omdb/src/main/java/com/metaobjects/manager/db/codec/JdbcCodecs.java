@@ -38,6 +38,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -121,16 +123,59 @@ public final class JdbcCodecs {
         }
     }
 
-    /** Date is stored as a timestamp at the SQL layer (legacy OMDB convention). */
+    /**
+     * A fresh UTC {@link java.util.Calendar} for the zone-pinned JDBC date/timestamp accessors.
+     * {@link java.util.Calendar} is not thread-safe, so each call returns a new instance.
+     */
+    private static java.util.Calendar utcCalendar() {
+        return java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
+    }
+
+    /**
+     * {@code field.date} ⇄ a SQL {@code DATE} column — a zone-free calendar date.
+     *
+     * <p><b>Zone-free bind (the hazard this codec closes).</b> The previous codec bound
+     * {@code setTimestamp(new Timestamp(date.getTime()))} and read {@code getTimestamp}; both
+     * convert the instant through the JVM default zone. A symmetric round-trip on the SAME zone
+     * preserves the millis (which is why a UTC-pinned test passed), but the cross-port contract
+     * asserts the <em>UTC calendar date</em> — under a non-UTC default zone the bound/read
+     * wall-clock shifts and the date can roll to the adjacent day.
+     *
+     * <p>We bind/read through the {@code Calendar(UTC)} overloads of {@code setDate}/{@code getDate},
+     * which pin the wall-clock interpretation to UTC regardless of the JVM default zone (the
+     * primitive is JDBC 2.0 and honoured by both pgjdbc and Derby — unlike JDBC 4.2
+     * {@code getObject(LocalDate.class)}, which Derby silently mishandles). The field's native value
+     * is a {@link java.util.Date} (DateField is backed by {@code DataTypes.DATE}); on write we derive
+     * its UTC calendar date, and on read we store a midnight-UTC {@link java.util.Date} so
+     * {@code MetaField.getDate} stays valid.</p>
+     */
     static final class DateCodec implements JdbcFieldCodec {
+        @Override public int sqlType() { return Types.DATE; }
+        @Override public int sqlLength() { return 0; }
+
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : new java.util.Date(tv.getTime()));
+            java.sql.Date d = rs.getDate(j, utcCalendar());
+            if (rs.wasNull() || d == null) { f.setDate(o, null); return; }
+            // getDate(UTC) yields a java.sql.Date whose epoch millis is midnight-UTC of the stored
+            // calendar date; surface it as a java.util.Date so MetaField.getDate stays valid.
+            f.setDate(o, new java.util.Date(d.getTime()));
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
-            if (v == null) s.setNull(j, Types.TIMESTAMP);
-            else if (v instanceof java.util.Date) s.setTimestamp(j, new Timestamp(((java.util.Date) v).getTime()));
-            else s.setTimestamp(j, new Timestamp(Long.valueOf(v.toString())));
+            if (v == null) { s.setNull(j, Types.DATE); return; }
+            LocalDate ld;
+            if (v instanceof LocalDate localDate) {
+                ld = localDate;
+            } else if (v instanceof java.util.Date date) {
+                // Derive the UTC calendar date from the instant — zone-free, mirroring the read.
+                ld = date.toInstant().atZone(ZoneOffset.UTC).toLocalDate();
+            } else {
+                ld = java.time.Instant.ofEpochMilli(Long.parseLong(v.toString()))
+                    .atZone(ZoneOffset.UTC).toLocalDate();
+            }
+            // Bind the calendar date through setDate(UTC): epoch millis = midnight-UTC of `ld`, and
+            // the UTC Calendar tells the driver to store that exact calendar date (no zone roll).
+            java.sql.Date sqlDate = new java.sql.Date(ld.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli());
+            s.setDate(j, sqlDate, utcCalendar());
         }
     }
 
@@ -247,10 +292,15 @@ public final class JdbcCodecs {
      * {@link java.sql.Timestamp} (plain) or a UTC {@link OffsetDateTime} (tz-aware) instead.
      *
      * <ul>
-     *   <li><b>Plain TIMESTAMP</b> (no {@code @dbColumnType}): {@code setTimestamp} /
-     *       {@code getTimestamp}. The instant's wall-clock is stored verbatim; the runner
-     *       pins the JVM zone to UTC so the wall clock is the UTC wall clock the corpus
-     *       expects (no {@code Z} on the wire).</li>
+     *   <li><b>Plain TIMESTAMP</b> (no {@code @dbColumnType}): bind/read the UTC wall clock through
+     *       the {@code Calendar(UTC)} overloads of {@code setTimestamp}/{@code getTimestamp}. The
+     *       previous codec used the no-Calendar overloads, which convert the instant through the JVM
+     *       default zone — a symmetric round-trip on the SAME zone preserves the value (so a
+     *       UTC-pinned test passed) but the corpus asserts the <em>UTC wall clock</em>, so under a
+     *       non-UTC default zone the stored/read wall-clock shifted. Pinning a UTC Calendar makes the
+     *       wall clock stored and read verbatim regardless of the JVM zone (no {@code Z} on the wire).
+     *       The read value is re-based via {@code Timestamp.valueOf(utcLocalDateTime)} so the wire
+     *       normalizer's {@code Timestamp.toLocalDateTime()} returns that UTC wall clock unshifted.</li>
      *   <li><b>TIMESTAMPTZ</b> ({@code @dbColumnType: timestamp_with_tz}): bind a UTC
      *       {@link OffsetDateTime} via {@code setObject(.., TIMESTAMP_WITH_TIMEZONE)} so pgjdbc
      *       targets the {@code timestamptz} column correctly (a bare {@code setTimestamp} on a
@@ -261,12 +311,21 @@ public final class JdbcCodecs {
      */
     static final class TimestampCodec implements JdbcFieldCodec {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            // Keep the value a java.sql.Timestamp (NOT a plain java.util.Date): Normalization
-            // renders a Timestamp with its wall-clock time ("...T HH:mm:ss"), whereas a plain
-            // java.util.Date is the DATE-column form and renders date-only. (Timestamp IS a
-            // java.util.Date, so setDate accepts it; the runtime native type stays Timestamp.)
-            Timestamp tv = rs.getTimestamp(j);
-            f.setDate(o, rs.wasNull() ? null : tv);
+            if (isTimestampTz(f)) {
+                // tz-aware: keep the java.sql.Timestamp the read path expects (the adapter lifts a
+                // tz-flagged value to an OffsetDateTime so Normalization appends the Z).
+                Timestamp tv = rs.getTimestamp(j);
+                f.setDate(o, rs.wasNull() ? null : tv);
+                return;
+            }
+            // Plain TIMESTAMP: read the stored wall clock zone-free via getTimestamp(UTC), which
+            // pins the wall-clock→instant interpretation to UTC regardless of the JVM default zone.
+            // The returned java.sql.Timestamp's INSTANT (getTime()/toInstant()) is the stored wall
+            // clock anchored at UTC, so the wire normalizer recovers the wall clock zone-free as
+            // `ts.toInstant().atZone(UTC)` — it does NOT use the default-zone toLocalDateTime().
+            // TimestampField is backed by DataTypes.DATE, so setDate accepts the Timestamp.
+            Timestamp tv = rs.getTimestamp(j, utcCalendar());
+            f.setDate(o, (rs.wasNull() || tv == null) ? null : tv);
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             boolean tz = isTimestampTz(f);
@@ -274,15 +333,29 @@ public final class JdbcCodecs {
                 s.setNull(j, tz ? Types.TIMESTAMP_WITH_TIMEZONE : Types.TIMESTAMP);
                 return;
             }
-            long millis = (v instanceof java.util.Date d) ? d.getTime() : Long.parseLong(v.toString());
             if (tz) {
                 // tz-aware column: bind an absolute instant as a UTC OffsetDateTime so pgjdbc
                 // routes it to the timestamptz column without a session-zone reinterpretation.
+                long millis = (v instanceof java.util.Date d) ? d.getTime() : Long.parseLong(v.toString());
                 OffsetDateTime odt = java.time.Instant.ofEpochMilli(millis).atOffset(ZoneOffset.UTC);
                 s.setObject(j, odt, Types.TIMESTAMP_WITH_TIMEZONE);
-            } else {
-                s.setTimestamp(j, new Timestamp(millis));
+                return;
             }
+            // Plain TIMESTAMP: store the UTC wall clock of the instant zone-free. The field's
+            // value carries an instant (java.util.Date epoch millis); its UTC wall clock is
+            // Instant.ofEpochMilli(millis) @ UTC. Binding a Timestamp whose getTime() IS that
+            // instant, with a UTC Calendar, tells the driver to store exactly that wall clock —
+            // no JVM-default-zone reinterpretation. A LocalDateTime value is first re-anchored to
+            // its instant at UTC so the same millis arithmetic applies.
+            long millis;
+            if (v instanceof LocalDateTime localDateTime) {
+                millis = localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
+            } else if (v instanceof java.util.Date d) { // includes java.sql.Timestamp
+                millis = d.getTime();
+            } else {
+                millis = Long.parseLong(v.toString());
+            }
+            s.setTimestamp(j, new Timestamp(millis), utcCalendar());
         }
     }
 

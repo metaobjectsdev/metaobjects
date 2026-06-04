@@ -68,10 +68,7 @@ final class RoundtripWriter {
 
         // 1. Author the insert row into a ValueObject, coercing each field to its native type.
         ValueObject vo = (ValueObject) mc.newInstance();
-        for (Map.Entry<String, Object> e : spec.insert().entrySet()) {
-            MetaField<?> mf = findField(mc, e.getKey());
-            setNative(vo, mf, e.getValue());
-        }
+        applyValues(mc, vo, spec.insert());
 
         // 2. INSERT via the OMDB runtime write path (the write codecs run here). The PK is left
         //    unset: identity.primary @generation:uuid → OMDB mints the uuid app-side on insert.
@@ -96,6 +93,26 @@ final class RoundtripWriter {
     // -----------------------------------------------------------------------
     // Field / key resolution
     // -----------------------------------------------------------------------
+
+    /**
+     * The single primary-key field of {@code mc} (package-visible so {@link ObjectManagerDbAdapter}
+     * can resolve the PK for {@code op: update} / {@code op: delete}).
+     */
+    static MetaField<?> primaryKey(MetaObject mc) {
+        return primaryKeyField(mc);
+    }
+
+    /**
+     * Apply a field-keyed authoring map (the {@code op: update} {@code data:} block, or any
+     * coercion-needing row) onto a ValueObject, coercing each value to the field's native type —
+     * the same WRITE coercion {@code op: roundtrip} uses on INSERT, so the UPDATE write path
+     * re-encodes every subtype identically. Package-visible for {@link ObjectManagerDbAdapter}.
+     */
+    static void applyValues(MetaObject mc, ValueObject vo, Map<String, Object> values) {
+        for (Map.Entry<String, Object> e : values.entrySet()) {
+            setNative(vo, findField(mc, e.getKey()), e.getValue());
+        }
+    }
 
     private static MetaField<?> findField(MetaObject mc, String name) {
         for (MetaField<?> mf : mc.getMetaFields()) {

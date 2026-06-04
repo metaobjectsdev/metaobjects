@@ -160,17 +160,19 @@ public final class QueryScenarioRunner {
                 : Long.parseLong(String.valueOf(expect));
             return Long.toString(n);
         }
+        // op:delete asserts a boolean (true = a row was deleted).
+        if ("delete".equals(op)) return Boolean.toString(asBoolean(expect));
         // op:relate is an ORDER-INDEPENDENT set (M:N navigation) — sort both sides.
         if ("relate".equals(op)) {
             if (expect == null) return "[]";
             return Normalization.canonicalRowSet((List<Map<String, Object>>) expect);
         }
-        // op:get and op:roundtrip both assert a single bare object (roundtrip's expect is the
-        // wire-normalized read-back of the inserted row, PK dropped).
-        if ("get".equals(op) || "roundtrip".equals(op)) {
+        // op:get / op:roundtrip / op:update each assert a single bare object (roundtrip drops the
+        // PK; get + update retain it).
+        if (isSingleObjectOp(op)) {
             if (expect == null) return "null";
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) expect))
-                // canonicalRowsJson always wraps in [...]; the get path expects the bare object.
+                // canonicalRowsJson always wraps in [...]; the single-object path expects the bare object.
                 .replaceAll("^\\[", "").replaceAll("\\]$", "");
         }
         // op:list
@@ -181,16 +183,27 @@ public final class QueryScenarioRunner {
     @SuppressWarnings("unchecked")
     private static String canonicalizeActual(Object actual, String op) {
         if ("count".equals(op)) return Long.toString(actual instanceof Number n ? n.longValue() : 0L);
+        if ("delete".equals(op)) return Boolean.toString(asBoolean(actual));
         if ("relate".equals(op)) {
             if (actual == null) return "[]";
             return Normalization.canonicalRowSet((List<Map<String, Object>>) actual);
         }
         if (actual == null) return "null";
-        if ("get".equals(op) || "roundtrip".equals(op)) {
+        if (isSingleObjectOp(op)) {
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) actual))
                 .replaceAll("^\\[", "").replaceAll("\\]$", "");
         }
         return Normalization.canonicalRowsJson((List<Map<String, Object>>) actual);
+    }
+
+    /** Single-bare-object ops: a read-by-PK ({@code get}), a write-then-read ({@code roundtrip} / {@code update}). */
+    private static boolean isSingleObjectOp(String op) {
+        return "get".equals(op) || "roundtrip".equals(op) || "update".equals(op);
+    }
+
+    private static boolean asBoolean(Object v) {
+        if (v instanceof Boolean b) return b;
+        return Boolean.parseBoolean(String.valueOf(v));
     }
 
     // -----------------------------------------------------------------------

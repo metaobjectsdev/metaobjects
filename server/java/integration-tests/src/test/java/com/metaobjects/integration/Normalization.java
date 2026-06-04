@@ -72,14 +72,17 @@ public final class Normalization {
         }
         if (v instanceof LocalDateTime ts) return ts.format(TIMESTAMP_FMT) + fractionalSuffix(ts.getNano());
         // java.sql.Date / java.sql.Timestamp BOTH extend java.util.Date, so order
-        // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp and a
-        // plain util.Date carry a wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz
-        // column is handled by the OffsetDateTime branch above). The JVM default
-        // zone is pinned to UTC by QueryScenarioTests so the wall clock is the UTC
-        // wall clock the cross-port fixtures expect.
-        if (v instanceof java.sql.Date sd)  return sd.toLocalDate().format(DATE_FMT);
+        // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp carries a
+        // wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz column is handled by the
+        // OffsetDateTime branch above). The plain-TIMESTAMP codec reads via
+        // getTimestamp(UTC) so the Timestamp's INSTANT anchors the stored wall clock at
+        // UTC; recover the wall clock zone-free as instant @ UTC (NOT the default-zone
+        // toLocalDateTime), so the wire shape is independent of the JVM default zone — no
+        // UTC pin required. The DATE codec likewise reads via getDate(UTC), so a
+        // java.sql.Date's instant is midnight-UTC of the stored calendar date.
+        if (v instanceof java.sql.Date sd)  return sd.toInstant().atZone(ZoneOffset.UTC).toLocalDate().format(DATE_FMT);
         if (v instanceof Timestamp ts) {
-            LocalDateTime ldt = ts.toLocalDateTime();
+            LocalDateTime ldt = ts.toInstant().atZone(ZoneOffset.UTC).toLocalDateTime();
             return ldt.format(TIMESTAMP_FMT) + fractionalSuffix(ldt.getNano());
         }
         if (v instanceof java.util.Date d) {
