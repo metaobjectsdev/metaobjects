@@ -67,6 +67,7 @@ import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
+import { effectivePackage } from "../docs-paths.js";
 import type { RenderContext } from "../render-context.js";
 import type { PkInfo } from "../pk-resolver.js";
 
@@ -105,6 +106,10 @@ export interface ApiSymbol {
 export interface ApiUnitDoc {
   /** The metadata node name (entity or template). */
   node: string;
+  /** The node's EFFECTIVE package (own package OR the file-default captured at
+   *  parse time), used to place the unit's doc page + compute collision-safe
+   *  links to it in package layout. Undefined for a package-less node. */
+  package?: string | undefined;
   nodeKind: "entity" | "template";
   symbols: ApiSymbol[];
 }
@@ -193,7 +198,7 @@ function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
     }
   }
 
-  return { node: name, nodeKind: "entity", symbols };
+  return { node: name, package: effectivePackage(obj), nodeKind: "entity", symbols };
 }
 
 /** The CRUD helpers templates/queries.ts emits, named via the SHARED naming
@@ -395,5 +400,5 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     });
   }
 
-  return { node: name, nodeKind: "template", symbols };
+  return { node: name, package: effectivePackage(tmpl), nodeKind: "template", symbols };
 }
