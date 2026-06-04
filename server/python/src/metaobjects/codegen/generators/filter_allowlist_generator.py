@@ -83,8 +83,14 @@ def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
     return None
 
 
-def _ops_for_subtype(sub_type: str | None) -> tuple[str, ...]:
+def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
     """Return the operator tuple for ``sub_type`` per the FR-009 §5 matrix.
+
+    Ordered (canonical operator order), unlike the loader's
+    ``validation_passes.ops_for_subtype`` which returns an order-free
+    ``frozenset``. This is the single ordered source the codegen
+    filter-allowlist emit + the cross-port ``field.filter-ops`` conformance
+    capability consume.
 
     Returns an empty tuple for subtypes outside the FR-009 vocabulary
     (defensive — the allowlist effectively becomes a "field is unknown" gate
@@ -142,7 +148,7 @@ def _compute_filterable_ops(entity: MetaObject) -> dict[str, tuple[str, ...]]:
             continue
         if not _is_filterable(f):
             continue
-        ops = _ops_for_subtype(f.sub_type)
+        ops = ops_for_subtype_ordered(f.sub_type)
         if not ops:
             continue
         out[f.name] = ops

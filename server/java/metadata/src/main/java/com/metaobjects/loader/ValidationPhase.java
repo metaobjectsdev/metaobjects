@@ -14,7 +14,6 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
-import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
@@ -24,9 +23,7 @@ import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
-import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
-import com.metaobjects.field.UuidField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
@@ -1451,20 +1448,11 @@ public final class ValidationPhase {
     private static final String ATTR_FILTERABLE = "filterable";
     private static final String ATTR_DB_INDEXED = "db.indexed";
 
-    // SP-H Unit9 — canonical per-subtype filter-operator band (cross-port).
-    // boolean → eq, isNull (NOT ne — matches every port's codegen + the
-    // FR-009 / api-contract contract).
-    private static final java.util.Set<String> OPS_FOR_BOOLEAN =
-        java.util.Set.of("eq", "isNull");
-    private static final java.util.Set<String> OPS_FOR_NUMERIC =
-        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
-    private static final java.util.Set<String> OPS_FOR_DATE =
-        java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
-    private static final java.util.Set<String> OPS_FOR_STRING =
-        java.util.Set.of("eq", "ne", "in", "like", "isNull");
-    // uuid → identity-comparison only: no `like` (not a substring type), no ordering.
-    private static final java.util.Set<String> OPS_FOR_UUID =
-        java.util.Set.of("eq", "ne", "in", "isNull");
+    // Canonical per-subtype filter-operator band — single source of truth in
+    // com.metaobjects.query.FilterOps. Both this load-validation path and the
+    // codegen-spring filter-allowlist generator reference it, so the two cannot
+    // drift; the cross-port fixtures/conformance/filter-ops-matrix gate asserts
+    // every band byte-identically across the five ports.
 
     static void validateDataGridLayouts(MetaRoot root) {
         for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
@@ -1563,24 +1551,12 @@ public final class ValidationPhase {
     }
 
     private static java.util.Set<String> allowedOpsFor(MetaField field) {
-        String st = field.getSubType();
-        if (BooleanField.SUBTYPE_BOOLEAN.equals(st)) return OPS_FOR_BOOLEAN;
-        if (UuidField.SUBTYPE_UUID.equals(st)) return OPS_FOR_UUID;
-        if (DateField.SUBTYPE_DATE.equals(st)
-                || TimeField.SUBTYPE_TIME.equals(st)
-                || TimestampField.SUBTYPE_TIMESTAMP.equals(st)) {
-            return OPS_FOR_DATE;
-        }
-        if (IntegerField.SUBTYPE_INT.equals(st)
-                || LongField.SUBTYPE_LONG.equals(st)
-                || DoubleField.SUBTYPE_DOUBLE.equals(st)
-                || FloatField.SUBTYPE_FLOAT.equals(st)
-                || DecimalField.SUBTYPE_DECIMAL.equals(st)
-                || CurrencyField.SUBTYPE_CURRENCY.equals(st)) {
-            return OPS_FOR_NUMERIC;
-        }
-        // string / enum fall through to the string-shape ops band.
-        return OPS_FOR_STRING;
+        java.util.Set<String> band =
+            com.metaobjects.query.FilterOps.opsForSubType(field.getSubType());
+        // Any subtype without a declared band (already rejected upstream by
+        // validateFilterableHasSupportedOps) falls through to the string-shape
+        // band, preserving the prior default.
+        return band.isEmpty() ? com.metaobjects.query.FilterOps.OPS_STRING : band;
     }
 
     // =========================================================================
@@ -1703,22 +1679,9 @@ public final class ValidationPhase {
         }
     }
 
-    /** True iff {@code subType} has a canonical filter-operator band (SP-H Unit9). */
+    /** True iff {@code subType} has a canonical filter-operator band. */
     private static boolean subtypeSupportsFiltering(String st) {
-        if (st == null) return false;
-        return StringField.SUBTYPE_STRING.equals(st)
-            || EnumField.SUBTYPE_ENUM.equals(st)
-            || UuidField.SUBTYPE_UUID.equals(st)
-            || BooleanField.SUBTYPE_BOOLEAN.equals(st)
-            || IntegerField.SUBTYPE_INT.equals(st)
-            || LongField.SUBTYPE_LONG.equals(st)
-            || DoubleField.SUBTYPE_DOUBLE.equals(st)
-            || FloatField.SUBTYPE_FLOAT.equals(st)
-            || DecimalField.SUBTYPE_DECIMAL.equals(st)
-            || CurrencyField.SUBTYPE_CURRENCY.equals(st)
-            || DateField.SUBTYPE_DATE.equals(st)
-            || TimeField.SUBTYPE_TIME.equals(st)
-            || TimestampField.SUBTYPE_TIMESTAMP.equals(st);
+        return com.metaobjects.query.FilterOps.supportsFiltering(st);
     }
 
     /**
