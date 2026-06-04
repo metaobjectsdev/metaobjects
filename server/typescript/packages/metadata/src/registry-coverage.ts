@@ -304,3 +304,127 @@ export function toSnapshot(report: CoverageReport): CoverageSnapshot {
 export function emitSnapshot(snapshot: CoverageSnapshot): string {
   return `${JSON.stringify(snapshot, null, 2)}\n`;
 }
+
+// ---------------------------------------------------------------------------
+// Monotonic ratchet (Wave 4a)
+// ---------------------------------------------------------------------------
+//
+// The committed snapshot (coverage-report.json) is a BASELINE, not an exact
+// expectation. The ratchet hard-fails only when coverage REGRESSES — never when
+// it improves. Coverage regresses when a registered (type, subType) or an attr
+// on an exercised subtype that the baseline considered EXERCISED becomes
+// UNEXERCISED, i.e. a NEW item appears in an untested set that wasn't there
+// before. Adding an exercising fixture (an item LEAVES an untested set) is an
+// improvement and is always allowed.
+//
+// Comparison granularity is SET-based, not count-based: an integer-only check
+// would let a regression hide behind a simultaneous improvement (untested count
+// stays flat while one item is newly exercised and a different one regresses).
+// We compare the untested SETS directly so each individual regression is named.
+
+/** One named coverage regression — an item that became unexercised. */
+export interface CoverageRegression {
+  /** "subtype" — a registered (type, subType) no longer exercised; or "attr". */
+  kind: "subtype" | "attr";
+  /** The `"<type>.<subType>"` key that regressed. */
+  key: string;
+  /** For an attr regression: the attr name that became untested (else undefined). */
+  attr?: string;
+}
+
+/** The ratchet verdict: ok=true when live coverage is no worse than baseline. */
+export interface RatchetResult {
+  ok: boolean;
+  /** Every named regression (empty when ok). Sorted for determinism. */
+  regressions: CoverageRegression[];
+}
+
+function sortedUnique(items: readonly string[]): string[] {
+  return [...new Set(items)].sort(compareStrings);
+}
+
+/**
+ * Compare a live coverage snapshot against a committed baseline and report any
+ * REGRESSION (an item the baseline had exercised that the live run no longer
+ * exercises). Improvements (items that left an untested set) are NOT regressions.
+ *
+ * - subtype regression: a key in `live.untestedSubTypes` not in baseline's set.
+ * - attr regression: an attr in a live subtype's `untestedAttrs` not in the
+ *   baseline's untested-attrs set for that SAME key. (A subtype that newly became
+ *   untested is reported once as a subtype regression — its attrs are not double-
+ *   reported, since an untested subtype has no per-attr entry by construction.)
+ */
+export function checkRatchet(
+  baseline: CoverageSnapshot,
+  live: CoverageSnapshot,
+): RatchetResult {
+  const baselineUntestedSubTypes = new Set(baseline.untestedSubTypes);
+  const liveUntestedSubTypes = sortedUnique(live.untestedSubTypes);
+
+  const regressions: CoverageRegression[] = [];
+
+  // Subtype regressions: a NEW untested subtype (was exercised in the baseline).
+  for (const key of liveUntestedSubTypes) {
+    if (!baselineUntestedSubTypes.has(key)) {
+      regressions.push({ kind: "subtype", key });
+    }
+  }
+
+  // Attr regressions: for each EXERCISED subtype (it carries a per-attr entry),
+  // any attr now untested that the baseline did not list as untested for that key.
+  const baselineAttrsByKey = new Map<string, Set<string>>();
+  for (const entry of baseline.untestedAttrsByExercisedSubType) {
+    baselineAttrsByKey.set(entry.key, new Set(entry.untestedAttrs));
+  }
+  for (const entry of live.untestedAttrsByExercisedSubType) {
+    // If the whole subtype regressed, it's already reported above — don't also
+    // attribute its attrs (it has no per-attr baseline entry by construction).
+    if (
+      !baselineUntestedSubTypes.has(entry.key) &&
+      liveUntestedSubTypes.includes(entry.key)
+    ) {
+      continue;
+    }
+    const baselineUntested = baselineAttrsByKey.get(entry.key) ?? new Set<string>();
+    for (const attr of sortedUnique(entry.untestedAttrs)) {
+      if (!baselineUntested.has(attr)) {
+        regressions.push({ kind: "attr", key: entry.key, attr });
+      }
+    }
+  }
+
+  regressions.sort((a, b) => {
+    const byKind = compareStrings(a.kind, b.kind);
+    if (byKind !== 0) return byKind;
+    const byKey = compareStrings(a.key, b.key);
+    if (byKey !== 0) return byKey;
+    return compareStrings(a.attr ?? "", b.attr ?? "");
+  });
+
+  return { ok: regressions.length === 0, regressions };
+}
+
+/** Render the regressions into an actionable, human-readable failure message. */
+export function formatRatchetFailure(result: RatchetResult): string {
+  const lines: string[] = [
+    "Registry coverage REGRESSED — a previously-exercised vocabulary member is no",
+    "longer exercised by any conformance fixture (monotonic-ratchet violation):",
+    "",
+  ];
+  for (const r of result.regressions) {
+    if (r.kind === "subtype") {
+      lines.push(`  - subtype  ${r.key}  (no fixture exercises it anymore)`);
+    } else {
+      lines.push(`  - attr     ${r.key} @${r.attr}  (no fixture sets it anymore)`);
+    }
+  }
+  lines.push(
+    "",
+    "Fix: add a conformance fixture that exercises the listed member(s). Only if",
+    "the member was LEGITIMATELY removed from the vocabulary (a justified change)",
+    "should you regenerate the baseline:",
+    "  cd server/typescript",
+    "  MO_UPDATE_COVERAGE_SNAPSHOT=1 bun test packages/metadata/test/registry-coverage.test.ts",
+  );
+  return lines.join("\n");
+}

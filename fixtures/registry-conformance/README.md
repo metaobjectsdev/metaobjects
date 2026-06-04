@@ -398,24 +398,49 @@ exercised subtype — that NO fixture exercises.
 - **Snapshot:** [`coverage-report.json`](./coverage-report.json) — a sorted,
   deterministic, committed snapshot of the untested sets + counts.
 
-**Report, not hard-fail (by design).** The untested set today is a legitimate
-**pre-existing backlog** — many subtypes (`view.*` controls, the `validator.*`
-family, the abstract `*.base` anchors, the
+**Monotonic ratchet — hard-fails on a coverage REGRESSION (Wave 4a).** The
+untested set today is a legitimate **pre-existing backlog** — many subtypes
+(`view.*` controls, the `validator.*` family, the abstract `*.base` anchors, the
 `attr.*` value-type subtypes) and many attrs are not yet exercised by a fixture.
-Hard-failing CI on that backlog would block everything for no gain. So the test
-ALWAYS prints the coverage summary AND asserts the committed snapshot is
-unchanged — a **newly** untested subtype shows up as a visible git diff (a
-regression to investigate); a newly exercised one is progress. Regenerate the
-snapshot after an intended vocabulary/fixture change:
+Hard-failing CI on that whole backlog would block everything for no gain. So the
+committed `coverage-report.json` is treated as a **baseline**, not an exact
+expectation, and the test enforces a **one-way ratchet**: coverage may improve
+freely but must never regress. The build hard-fails when
+
+- a registered `(type, subType)` that the baseline had **exercised** becomes
+  unexercised (a NEW entry in `untestedSubTypes`), or
+- an attr on an exercised subtype that the baseline had **exercised** becomes
+  unexercised (a NEW entry in that key's `untestedAttrs`).
+
+Adding an exercising fixture (an item LEAVES an untested set) is an improvement
+and is always allowed — the test prints a hint suggesting you tighten the
+baseline so a future regression of the newly-exercised item is caught too.
+
+The comparison is **set-based, not count-based**: an integer-only check would let
+a regression hide behind a simultaneous improvement (one item newly exercised, a
+different one regressing, with the net count unchanged). The ratchet compares the
+untested **sets** directly, so each individual regression is named in the failure
+message (which item regressed + how to fix it). Implemented by `checkRatchet` /
+`formatRatchetFailure` in
+`server/typescript/packages/metadata/src/registry-coverage.ts`; a self-contained
+negative test feeds a synthetic regression and asserts the ratchet bites, so the
+gate is provably live (not vacuous). It runs in ONE port (TS reference) — the
+coverage measurement is over the shared canonical vocabulary, so the ratchet is
+not fanned into all five runners.
+
+When coverage IMPROVES (an item is newly exercised; the baseline can be made
+stricter), or a member is legitimately removed from the vocabulary, regenerate
+the baseline in one step:
 
 ```
 cd server/typescript
 MO_UPDATE_COVERAGE_SNAPSHOT=1 bun test packages/metadata/test/registry-coverage.test.ts
 ```
 
-**Ratchet later.** Once the backlog is burned down (the untested-subtype set
-empties), this can be tightened to hard-fail on any untested subtype — turning
-the report into a gate that forces a fixture for every new vocabulary member.
+**Fully burn down later.** Once the backlog empties (the untested-subtype set
+goes to zero), this can be tightened further to hard-fail on ANY untested subtype
+— forcing a fixture for every vocabulary member, not merely forbidding
+regressions.
 
 ## Per-subtype write-round-trip matrix (SP-H)
 
