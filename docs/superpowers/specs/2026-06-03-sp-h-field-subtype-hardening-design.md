@@ -1,7 +1,9 @@
 # SP-H — Field-Subtype End-to-End Hardening + Write-Path Conformance
 
 **Date:** 2026-06-03
-**Status:** Designed (from the cross-port field-subtype audit; awaiting spec review before planning/execution)
+**Status:** **Phases 1-3 COMPLETE on branch `sp-g-registry-conformance` (Phase 4 finishing).** Cut `field.class` + `field.byte`/`field.short` (all ports + canonical); the persistence corpus now WRITES (`op: roundtrip`, `AllTypes` covers every persistable subtype) and is green on all 5 ports against Testcontainers PG; filter-op bands reconciled cross-port (uuid/currency) + a loader guard for `@filterable`-without-op-band + a filter-allowlist fixture; Java write-codecs (timestamp/currency/enum/native-uuid/time) + Spring `field.time` arm; TS decimal string-exact dataType; Kotlin runs the shared metamodel corpus + a mapper-`else` negative test; bare `field.object` rejected at load. Phase 4 (this unit): per-subtype matrix confirmed (every concrete `field.*` × metamodel / persistence-write-round-trip / codegen, all 5 ports — no residual hole) + docs.
+
+**Validation — the write-gate (Theme 2) was the right call.** Making the corpus WRITE (not just read) is what surfaced the latent breakage "all corpora green" had masked, exactly as the spec predicted. The keystone (`op: roundtrip`) caught, per port: a **TS** enum-CHECK write defect; **Java** timestamp-write (generic `ObjectCodec` rejected `java.util.Date`), native-`uuid`-write, `field.time`-write, and jsonb-write hazards; a **Kotlin** `LocalTime`-write gap; a **C#** read-back-caching defect; and the **uuid/currency filter-op divergences** (filterable in TS, silently dropped elsewhere). None of these had a failing test before the write-gate existed — the structural complement to SP-G (which gated vocabulary) was the missing axis.
 **Relates to:** the `field.byte`/`field.short` finding (a registration-only stub that worked nowhere — Kotlin codegen threw, Python mis-typed to `str`, TS emitted a `text` DB column, Java had no JDBC codec, zero functional tests; cut in `29057ad5`). The audit that followed proved byte/short was the canary, not the exception.
 
 ## Problem
