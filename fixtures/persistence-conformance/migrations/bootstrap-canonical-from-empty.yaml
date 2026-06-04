@@ -58,6 +58,9 @@ expect:
       # persistable field subtype in one table — SP-H Unit 3).
       - { table_name: "all_types" }
       - { table_name: "assets" }
+      # auths backs the FR-017 table-per-hierarchy (TPH) polymorphic corpus —
+      # the discriminator base + its subtypes collapse to one physical table.
+      - { table_name: "auths" }
       - { table_name: "follows" }
       - { table_name: "friendships" }
       - { table_name: "measurements" }
