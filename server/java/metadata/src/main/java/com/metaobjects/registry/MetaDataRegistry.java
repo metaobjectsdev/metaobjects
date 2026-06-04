@@ -94,7 +94,58 @@ public class MetaDataRegistry {
     private static final String UNIVERSAL_PARENT_KEY = "*.*";
 
     private volatile boolean initialized = false;
-    
+
+    /**
+     * ADR-0023 Decision 2 — sealed state. Once {@code true}, every mutating
+     * registration entry point throws {@link com.metaobjects.ErrorCode#ERR_REGISTRY_SEALED}.
+     * The metaobjects library seals its registry after the agreed metamodel
+     * providers bootstrap, so codegen generators cannot self-register made-up
+     * metamodel attributes post-bootstrap. A downstream app that genuinely needs
+     * to extend the vocabulary simply never seals (or composes its own registry
+     * via {@link com.metaobjects.loader.MetaDataLoader#setTypeRegistry}).
+     */
+    private volatile boolean sealed = false;
+
+    /**
+     * Seal the registry: after this call every mutating registration entry point
+     * ({@link #register}/{@link #registerType}/{@link #extendType}/
+     * {@link #registerCommonAttribute}/{@link #addConstraint}/
+     * {@link #registerConstraint}/{@link #setDefaultSubType}/
+     * {@link #addGlobalChildRequirement}/{@link #registerProviders}) throws
+     * {@link com.metaobjects.ErrorCode#ERR_REGISTRY_SEALED}. Idempotent — sealing
+     * an already-sealed registry is a no-op. Reads are unaffected.
+     */
+    public void seal() {
+        this.sealed = true;
+    }
+
+    /**
+     * @return {@code true} if this registry has been {@link #seal() sealed}.
+     */
+    public boolean isSealed() {
+        return sealed;
+    }
+
+    /**
+     * Guard invoked at the top of every mutating registration entry point.
+     *
+     * @param operation a short label for the attempted mutation (used in the
+     *                  error message; identifies which registration was rejected)
+     * @throws MetaDataException with {@link com.metaobjects.ErrorCode#ERR_REGISTRY_SEALED}
+     *                           if the registry is sealed
+     */
+    private void checkNotSealed(String operation) {
+        if (sealed) {
+            throw new MetaDataException(
+                "Registry is sealed (ADR-0023): " + operation + " is not permitted after "
+                + "metamodel bootstrap. Made-up metamodel attributes/types are structurally "
+                + "disallowed — a new metamodel attribute requires a registered provider + human "
+                + "agreement, not a post-bootstrap registration. Downstream apps that need to "
+                + "extend the vocabulary must compose their own (unsealed) registry.",
+                com.metaobjects.ErrorCode.ERR_REGISTRY_SEALED);
+        }
+    }
+
     /**
      * Get the singleton instance
      * 
@@ -195,6 +246,7 @@ public class MetaDataRegistry {
      */
     public synchronized void registerProviders(Collection<MetaDataTypeProvider> providers) {
         Objects.requireNonNull(providers, "providers must not be null");
+        checkNotSealed("registerProviders");
         List<MetaDataTypeProvider> ordered = resolveDependenciesStrict(providers);
         for (MetaDataTypeProvider provider : ordered) {
             try {
@@ -222,6 +274,7 @@ public class MetaDataRegistry {
      */
     public void registerType(Class<? extends MetaData> clazz,
                                    Consumer<TypeDefinitionBuilder> configurator) {
+        checkNotSealed("registerType");
         TypeDefinitionBuilder builder = TypeDefinitionBuilder.forClass(clazz);
         builder.withRegistry(this);  // Provide registry reference for auto-constraint generation
         configurator.accept(builder);
@@ -241,6 +294,7 @@ public class MetaDataRegistry {
     public MetaDataRegistry extendType(Class<? extends MetaData> metaDataClass, Consumer<TypeDefinitionBuilder> extension) {
         Objects.requireNonNull(metaDataClass, "MetaData class cannot be null");
         Objects.requireNonNull(extension, "Extension function cannot be null");
+        checkNotSealed("extendType");
 
         // Find the registered type definition by implementation class
         TypeDefinition existing = null;
@@ -284,6 +338,7 @@ public class MetaDataRegistry {
      * @param definition Complete type definition
      */
     public void register(TypeDefinition definition) {
+        checkNotSealed("register(TypeDefinition)");
         MetaDataTypeId typeId = new MetaDataTypeId(definition.getType(), definition.getSubType());
 
         TypeDefinition existing = typeDefinitions.get(typeId);
@@ -538,6 +593,7 @@ public class MetaDataRegistry {
      * @param requirement Child requirement to add
      */
     public void addGlobalChildRequirement(String parentType, String parentSubType, ChildRequirement requirement) {
+        checkNotSealed("addGlobalChildRequirement");
         String key = parentType + "." + parentSubType;
         globalRequirements.computeIfAbsent(key, k -> new ArrayList<>()).add(requirement);
 
@@ -579,10 +635,12 @@ public class MetaDataRegistry {
         }
 
         // Idempotent: skip re-registration of the same attr name (allows tests that
-        // re-initialise the registry to not blow up on duplicate constraints).
+        // re-initialise the registry to not blow up on duplicate constraints). This
+        // precedes the seal guard so a no-op re-registration never trips the seal.
         if (commonAttributes.containsKey(name)) {
             return;
         }
+        checkNotSealed("registerCommonAttribute(" + name + ")");
 
         CommonAttributeDef def = new CommonAttributeDef(name, valueType, isArray);
         commonAttributes.put(name, def);
@@ -790,6 +848,7 @@ public class MetaDataRegistry {
     public void setDefaultSubType(String type, String subType) {
         Objects.requireNonNull(type, "Type cannot be null");
         Objects.requireNonNull(subType, "SubType cannot be null");
+        checkNotSealed("setDefaultSubType(" + type + ")");
         defaultSubTypes.put(type, subType);
     }
 
@@ -1902,6 +1961,7 @@ public class MetaDataRegistry {
             log.warn("Attempted to add null constraint");
             return;
         }
+        checkNotSealed("addConstraint(" + constraint.getConstraintId() + ")");
 
         // Check for duplicate constraint IDs only when strict detection is enabled
         String constraintId = constraint.getConstraintId();

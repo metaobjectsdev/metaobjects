@@ -210,6 +210,16 @@ public enum ErrorCode {
      */
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
 
+    /**
+     * ADR-0023 Decision 2: a registration ({@code register}/{@code extendType}/
+     * {@code registerCommonAttribute}/{@code addConstraint}/{@code registerType}/
+     * {@code setDefaultSubType}/{@code addGlobalChildRequirement}/{@code registerProviders})
+     * was attempted against a registry that has been sealed after its agreed
+     * metamodel-provider bootstrap. Made-up metamodel attributes/types are
+     * structurally impossible: codegen cannot register post-bootstrap.
+     */
+    ERR_REGISTRY_SEALED,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }
