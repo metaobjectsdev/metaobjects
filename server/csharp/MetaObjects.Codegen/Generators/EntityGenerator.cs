@@ -491,7 +491,11 @@ public sealed class EntityGenerator : IGenerator
 
         var type = required ? baseType : baseType + "?";
         var init = required && !isValue ? " = default!;" : string.Empty;
-        sb.Append($"    public {type} {propName} {{ get; set; }}{init}");
+        // FR-013 — a @readOnly scalar is read-after-insert-only: EF materializes it on
+        // read via a private setter; application code cannot write it, and the
+        // DbContext excludes the column from INSERT / UPDATE (SetAfterSaveBehavior.Ignore).
+        var setter = field.ReadOnly ? "get; private set;" : "get; set;";
+        sb.Append($"    public {type} {propName} {{ {setter} }}{init}");
         return sb.ToString();
     }
 
