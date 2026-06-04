@@ -213,6 +213,13 @@ def _build(
     node.set_source(_current_envelope(source, builder, yaml_position))
 
     pkg = body_dict.get(KEY_PACKAGE)
+    # Capture the file-default package at PARSE time so cross-package
+    # fully-qualified ``extends`` resolves over the MERGED tree (where per-file
+    # root packages are no longer reachable via the parent chain). The node's
+    # own ``package`` if declared, else the inherited context package (the
+    # file's root package). Mirrors TS ``MetaData.fileDefaultPackage``.
+    node.file_default_package = (str(pkg) if pkg else None) or (ctx_pkg or None)
+
     if pkg:
         node.package = str(pkg)
     elif type_ == TYPE_FIELD and parent_type != TYPE_OBJECT and ctx_pkg:

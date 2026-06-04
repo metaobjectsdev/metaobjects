@@ -17,6 +17,14 @@ class MetaData:
         self.sub_type = sub_type
         self.name = name
         self.package: Optional[str] = None
+        # The file-default package captured at PARSE time (the package declared
+        # on the owning file's root). Distinct from ``package`` (which an object
+        # node leaves unset — the parser does not fold the file-default package
+        # onto an object's own package). Used by super-resolution to match a
+        # cross-package fully-qualified ``extends`` over the MERGED tree, where
+        # per-file root packages are no longer reachable via the parent chain.
+        # Mirrors TS ``MetaData.fileDefaultPackage`` / ``resolutionKey()``.
+        self.file_default_package: Optional[str] = None
         self.super_ref: Optional[str] = None
         self.super_data: Optional[MetaData] = None
         self.is_abstract = False

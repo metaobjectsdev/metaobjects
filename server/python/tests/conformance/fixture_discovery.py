@@ -17,6 +17,7 @@ class Fixture:
     input_dir: Path
     providers: tuple[str, ...]
     has_expected: bool
+    has_expected_effective: bool
     has_expected_errors: bool
     has_expected_warnings: bool
     has_script: bool
@@ -50,6 +51,7 @@ def discover_fixtures(corpus: Path) -> list[Fixture]:
                 input_dir=input_dir,
                 providers=providers,
                 has_expected=(entry / "expected.json").is_file(),
+                has_expected_effective=(entry / "expected-effective.json").is_file(),
                 has_expected_errors=(entry / "expected-errors.json").is_file(),
                 has_expected_warnings=(entry / "expected-warnings.json").is_file(),
                 has_script=(entry / "script.json").is_file(),

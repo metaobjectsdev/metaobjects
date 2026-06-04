@@ -188,3 +188,40 @@ def test_resolve_over_deep_relative_ref_emits_error() -> None:
     assert len(errors) == 1
     assert errors[0].code == ErrorCode.ERR_UNRESOLVED_SUPER
     assert sub.super_data is None
+
+
+# ---------------------------------------------------------------------------
+# (h) cross-PACKAGE fully-qualified ref over a MERGED tree (#37)
+# ---------------------------------------------------------------------------
+
+def test_resolve_cross_package_fq_ref_via_file_default_package() -> None:
+    """A fully-qualified cross-package ``extends`` resolves over the merged tree.
+
+    After merge, every object lives under one root and carries NO own
+    ``package`` (the package was declared on each *file's* root). The
+    file-default package is captured at parse time as ``file_default_package``;
+    resolution must index both the bare ``fqn()`` AND the package-folded
+    ``<file_default_package>::<name>`` so an ``extends: "acme::common::Base"``
+    from a node whose file-default package is ``acme::catalog`` resolves to the
+    Base declared under file-default package ``acme::common``.
+
+    Mirrors the TS reference (``findInTree`` matching ``resolutionKey()``).
+    """
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")  # merged root: no package
+
+    # Base — declared in file with package acme::common; no own package post-merge.
+    base = _node("object", "entity", "Base")
+    base.file_default_package = "acme::common"
+    root.add_child(base)
+
+    # Sub — declared in file with package acme::catalog; FQ cross-package ref.
+    sub = _node("object", "entity", "Sub")
+    sub.file_default_package = "acme::catalog"
+    sub.super_ref = "acme::common::Base"
+    root.add_child(sub)
+
+    errors: list[MetaError] = []
+    resolve_supers(root, errors)
+
+    assert errors == [], f"expected no errors, got {errors}"
+    assert sub.super_data is base

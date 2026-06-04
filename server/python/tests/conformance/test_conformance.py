@@ -6,7 +6,11 @@ import json
 import pytest
 
 from .capabilities import invoke
-from .conformance_adapter import load_fixture_result, load_fixture_with_envelopes
+from .conformance_adapter import (
+    load_fixture_effective,
+    load_fixture_result,
+    load_fixture_with_envelopes,
+)
 from .corpus import corpus_root
 from .expected_failures import classify
 from .fixture_discovery import Fixture, discover_fixtures
@@ -171,6 +175,17 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
         got_tree = json.loads(canonical)
         if want_tree != got_tree:
             failures.append("canonical serialization mismatch")
+
+    # Effective-tree check — run whenever expected-effective.json exists,
+    # matching the TS reference runner (hasExpectedEffective). Emits the
+    # EFFECTIVE canonical serialization (extends resolved — inherited members
+    # inlined) and byte-compares newline-normalized text. Asserted only when
+    # the fixture declares it.
+    if fix.has_expected_effective:
+        want_eff = (fix.dir / "expected-effective.json").read_text()
+        got_eff = load_fixture_effective(fix.input_dir, provider_ids=fix.providers)
+        if want_eff.strip() != got_eff.strip():
+            failures.append("effective serialization mismatch")
 
     if fix.has_expected_warnings:
         want_w = sorted(json.loads((fix.dir / "expected-warnings.json").read_text()))

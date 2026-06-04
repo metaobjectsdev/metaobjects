@@ -13,7 +13,10 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.provider import Provider
 from metaobjects.registry import AttrSchema, ChildRule, TypeDefinition
-from metaobjects.serializer_json import canonical_serialize
+from metaobjects.serializer_json import (
+    canonical_serialize,
+    canonical_serialize_effective,
+)
 from metaobjects.shared.base_types import TYPE_ATTR
 from metaobjects.source.error_source import (
     CodeSource,
@@ -266,3 +269,23 @@ def load_fixture_result(
     """
     providers = _resolve_providers(provider_ids)
     return MetaDataLoader.from_directory(input_dir, providers=providers)
+
+
+def load_fixture_effective(
+    input_dir: Path,
+    provider_ids: Optional[Iterable[str]] = None,
+) -> str:
+    """Return the EFFECTIVE canonical serialization (extends resolved —
+    inherited members inlined) of the loaded fixture root.
+
+    Mirrors the TS adapter's ``canonicalSerializeEffective(tree)``. Gated by a
+    fixture's ``expected-effective.json`` (see the conformance runner). On a
+    composition failure (no tree), returns ``""`` — same shape the canonical
+    path uses, so the runner's byte-compare surfaces the mismatch.
+    """
+    providers = _resolve_providers(provider_ids)
+    result, compose_code = _load_or_capture_compose_error(input_dir, providers)
+    if compose_code is not None:
+        return ""
+    assert result is not None
+    return canonical_serialize_effective(result.root)
