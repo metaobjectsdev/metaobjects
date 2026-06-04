@@ -138,9 +138,9 @@ TS: `om.findMany(entityName, filter, opts)`).
 
 | field      | type                                        | notes |
 |------------|---------------------------------------------|-------|
-| `op`       | `list \| get \| count \| relate \| create \| update \| roundtrip`| required |
+| `op`       | `list \| get \| count \| relate \| create \| update \| delete \| roundtrip`| required |
 | `entity`   | string                                      | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update` (the record key) |
+| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update`, `op: delete` (the record key) |
 | `data`     | row object                                  | required for `op: create` / `op: update` (the row payload to write) |
 | `relation` | string                                      | required for `op: relate`; the relationship name to traverse |
 | `insert`   | row (field → value)                         | required for `op: roundtrip`; the row to WRITE through the runtime |
@@ -160,6 +160,23 @@ discriminator value (omit it from `data`); reads/updates are scoped to the
 subtype; the discriminator is immutable; a subtype's write surface is its own
 columns only. A cross-subtype write (an unknown subtype column, or a
 different-subtype id) is expected to fail (`expectError: true`).
+
+### `op: delete` — runtime delete-by-PK
+
+`delete` removes a row by id (`om.delete(entity, by.id)`) through the runtime
+write path. Its `expect` is the **boolean** outcome (`true` = a row was deleted,
+`false` = no matching row). The portable pattern for proving a delete actually
+removed the row is a follow-up `op: get` by the same PK asserting `expect: null`.
+`delete` is exercised end-to-end by `update-delete-all-types.yaml` (seed a fixed
+PK → update every subtype → read back → delete → get-returns-null).
+
+> **`update` / `delete` of the AllTypes row are TS-only until the per-port
+> write-codec units land** — same status as `roundtrip`. A port's UPDATE codec is
+> a distinct path from its INSERT codec (PATCH paths frequently skip the type
+> coercion the INSERT path applies), so `update-delete-all-types.yaml` is the gate
+> that catches an UPDATE-only re-encode regression per subtype. The TS runner
+> ships the verbs; Java / Kotlin / Python / C# implement `op: delete` (and the
+> AllTypes `op: update`) in their SP-H units, then run the scenario green.
 
 #### TPH (table-per-hierarchy) scenarios
 
@@ -195,6 +212,12 @@ native-uuid-write.
   float / decimal / boolean / date / time / timestamp / timestamp(tz) / currency /
   enum / uuid / object(`@objectRef`, jsonb storage). No read scenario references
   it, so it is inert for the read runners (it just adds a table to the schema).
+- **Full int64 fidelity:** one roundtrip query writes the BIGINT max
+  (`9223372036854775807`, > 2^53) to `field.long` AND `field.currency` as a
+  numeric **string** — the write contract for those two subtypes accepts a base-10
+  integer string (or a bigint) precisely so a 64-bit value survives the write codec
+  without precision loss. A port routing these through a 64-bit-lossy numeric type
+  (a JS `number`, a 32-bit int, a double) corrupts the low bits and fails.
 
 > **`roundtrip` is TS-only until the per-port write-codec units land.** The TS
 > runner (`runtime-ts` `ObjectManager.create` → Kysely insert) ships it; the
@@ -224,6 +247,15 @@ Because M:N membership is a **set**, the runner compares `relate` results
 > 6–9. Those ports' integration runners will FAIL the `m2n-*` scenarios until
 > their unit is implemented — expected on the FR-017 branch. When porting,
 > implement the resolver, then run these scenarios green; do not delete them.
+
+> **Symmetric self-pair `(a,a)` divergence (Kotlin RED).** `m2n-symmetric-self-join.yaml`
+> seeds a self-edge (Alice is her own friend, `(1,1)`) and asserts Alice's friends
+> **include Alice**. The contract is that the runtime resolver KEEPS the self
+> endpoint. A generated query that filters `personAId = X OR personBId = X` and
+> then takes "the column that is NOT the source" silently DROPS the self-pair
+> (both columns equal X). The TS runtime resolver keeps it (green); the **Kotlin**
+> generated self-join query currently drops it and is RED on this scenario until
+> its unit fixes the generated query to retain the `(a,a)` row.
 
 ### Filter operators
 

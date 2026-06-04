@@ -35,13 +35,14 @@ export interface QueryScenario {
 
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "roundtrip";
+  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "delete" | "roundtrip";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
   /**
    * For `op: create` / `op: update`: the row payload to write. On a TPH subtype
    * the discriminator is injected by the runtime (omit it). `op: update` also
-   * requires `by: { id }`.
+   * requires `by: { id }`. `op: delete` requires only `by: { id }` (no `data`);
+   * its `expect` is the boolean delete outcome (true = a row was deleted).
    */
   readonly data: Record<string, unknown> | null;
   /**

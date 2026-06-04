@@ -122,6 +122,13 @@ async function execute(om: ObjectManager, root: MetaRoot, spec: QuerySpec): Prom
     if (ids.length !== 1) throw new Error(`${spec.name}: op:update supports single-field 'by' only`);
     return await om.update(spec.entity, ids[0], spec.data, { ifMissing: "throw" });
   }
+  if (spec.op === "delete") {
+    if (!spec.by) throw new Error(`${spec.name}: op:delete requires 'by' (the record key)`);
+    const ids = Object.values(spec.by);
+    if (ids.length !== 1) throw new Error(`${spec.name}: op:delete supports single-field 'by' only`);
+    // Returns a boolean (true = a row was deleted). `expect: true|false`.
+    return await om.delete(spec.entity, ids[0]);
+  }
   if (spec.op === "count") {
     return await om.count(spec.entity, filter);
   }
@@ -213,6 +220,8 @@ function canonicalizeExpected(expect: unknown, op: QuerySpec["op"]): string {
     if (Number.isNaN(n)) throw new Error(`op:count expects an integer, got: ${expect}`);
     return String(n);
   }
+  // `delete` returns a boolean outcome (true = a row was deleted).
+  if (op === "delete") return String(expect === true);
   // `relate` (M:N navigation) is a SET — order is not part of the contract, so
   // sort both sides for a deterministic, port-agnostic comparison. `list` keeps
   // its order (the scenario pins it via `sort:`).
@@ -222,6 +231,7 @@ function canonicalizeExpected(expect: unknown, op: QuerySpec["op"]): string {
 
 function canonicalizeActual(actual: unknown, op: QuerySpec["op"]): string {
   if (op === "count") return String(actual);
+  if (op === "delete") return String(actual === true);
   if (op === "relate") {
     const rows = (Array.isArray(actual) ? actual : actual == null ? [] : [actual]) as Record<string, unknown>[];
     return canonicalRowSet(rows.map(normalizeRow));

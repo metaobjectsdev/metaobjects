@@ -6,7 +6,7 @@ import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
@@ -17,10 +17,24 @@ export type ValidationResult =
   | { ok: true }
   | { ok: false; errors: ValidationFailure[] };
 
+// JS-safe numeric fields: must arrive as a JS `number` (they fit in 2^53).
 const NUMERIC_FIELD_SUBTYPES = new Set<string>([
-  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
 ]);
+
+// 64-bit integer fields (BIGINT on the wire). A full int64 (> 2^53) cannot
+// survive a JS `number`, so the write contract additionally accepts a numeric
+// `string` or a `bigint` for these — the runtime passes them through unchanged
+// so the BIGINT round-trips exactly (read-back is BIGINT→string per
+// normalization.md / ADR-0019). `field.currency` is integer minor units → BIGINT.
+const INT64_FIELD_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
+]);
+
+// A base-10 signed integer literal with no fractional/exponent part — the only
+// string shape accepted for an int64 field (a "1.5" or "1e3" is rejected).
+const INT64_STRING_RE = /^-?\d+$/;
 
 export interface RunValidatorsOpts {
   /** Partial-update mode: required-checks only fire for fields whose key is present in `data`. */
@@ -162,6 +176,11 @@ function checkType(subType: string, value: unknown): string | null {
     if (typeof value !== "string") return `expected string`;
   } else if (NUMERIC_FIELD_SUBTYPES.has(subType)) {
     if (typeof value !== "number") return `expected number`;
+  } else if (INT64_FIELD_SUBTYPES.has(subType)) {
+    // number (in-band) | bigint | base-10 integer string (full int64 fidelity).
+    if (typeof value === "number" || typeof value === "bigint") return null;
+    if (typeof value === "string" && INT64_STRING_RE.test(value)) return null;
+    return `expected a 64-bit integer (number, bigint, or numeric string)`;
   } else if (subType === FIELD_SUBTYPE_BOOLEAN) {
     if (typeof value !== "boolean") return `expected boolean`;
   }

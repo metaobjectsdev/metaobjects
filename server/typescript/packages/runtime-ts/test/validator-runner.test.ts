@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD, TYPE_VALIDATOR,
          FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_BOOLEAN,
+         FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_DOUBLE,
          VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
          OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
@@ -144,6 +145,60 @@ describe("runValidators — type checks (basic)", () => {
       post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_INT), "count"));
     });
     expect(runValidators(e, { count: null }).ok).toBe(true);
+  });
+});
+
+describe("runValidators — int64 write contract (field.long / field.currency)", () => {
+  // A full int64 (> 2^53) cannot survive a JS `number`; the runtime accepts a
+  // numeric string OR a bigint on write for field.long / field.currency so the
+  // wire BIGINT round-trips exactly. (field.int/double/float stay JS-safe → number.)
+  test("field.long accepts a numeric string (full int64 max)", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "lVal"));
+    });
+    expect(runValidators(e, { lVal: "9223372036854775807" }).ok).toBe(true);
+  });
+
+  test("field.long accepts a bigint", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "lVal"));
+    });
+    expect(runValidators(e, { lVal: 9223372036854775807n }).ok).toBe(true);
+  });
+
+  test("field.long still accepts an in-band number", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "lVal"));
+    });
+    expect(runValidators(e, { lVal: 42 }).ok).toBe(true);
+  });
+
+  test("field.long rejects a non-numeric string", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "lVal"));
+    });
+    expect(runValidators(e, { lVal: "not a number" }).ok).toBe(false);
+  });
+
+  test("field.currency accepts a numeric string (full int64 minor units)", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), "moneyVal"));
+    });
+    expect(runValidators(e, { moneyVal: "9223372036854775807" }).ok).toBe(true);
+  });
+
+  test("field.currency rejects a non-numeric string", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY), "moneyVal"));
+    });
+    expect(runValidators(e, { moneyVal: "1.5" }).ok).toBe(false);
+  });
+
+  test("field.double still requires a number (no string fidelity hatch)", () => {
+    const e = makeEntity((post) => {
+      post.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_DOUBLE), "dVal"));
+    });
+    expect(runValidators(e, { dVal: "0.125" }).ok).toBe(false);
   });
 });
 
