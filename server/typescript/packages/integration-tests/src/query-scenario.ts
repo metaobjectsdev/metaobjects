@@ -73,6 +73,20 @@ export async function runQueryScenario(
     const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
 
     for (const spec of scenario.queries) {
+      if (spec.expectError) {
+        let threw = false;
+        try {
+          await execute(om, root, spec);
+        } catch {
+          threw = true;
+        }
+        if (!threw) {
+          throw new Error(
+            `${scenario.sourcePath} / ${spec.name}: expected the ${spec.op} to FAIL, but it succeeded`,
+          );
+        }
+        continue;
+      }
       const actual = await execute(om, root, spec);
       assertResult(scenario.sourcePath, spec, actual);
     }
@@ -96,6 +110,17 @@ async function execute(om: ObjectManager, root: MetaRoot, spec: QuerySpec): Prom
     const ids = Object.values(spec.by);
     if (ids.length !== 1) throw new Error(`${spec.name}: op:get supports single-field 'by' only`);
     return await om.findById(spec.entity, ids[0]);
+  }
+  if (spec.op === "create") {
+    if (!spec.data) throw new Error(`${spec.name}: op:create requires 'data'`);
+    return await om.create(spec.entity, spec.data);
+  }
+  if (spec.op === "update") {
+    if (!spec.by) throw new Error(`${spec.name}: op:update requires 'by' (the record key)`);
+    if (!spec.data) throw new Error(`${spec.name}: op:update requires 'data'`);
+    const ids = Object.values(spec.by);
+    if (ids.length !== 1) throw new Error(`${spec.name}: op:update supports single-field 'by' only`);
+    return await om.update(spec.entity, ids[0], spec.data, { ifMissing: "throw" });
   }
   if (spec.op === "count") {
     return await om.count(spec.entity, filter);
@@ -202,9 +227,9 @@ function canonicalizeActual(actual: unknown, op: QuerySpec["op"]): string {
     return canonicalRowSet(rows.map(normalizeRow));
   }
   if (actual === null || actual === undefined) return "null";
-  // `roundtrip` reads the inserted row back by PK → a single-row result, asserted
-  // exactly like `get`.
-  if (op === "get" || op === "roundtrip") return canonicalJson(normalizeRow(actual as Record<string, unknown>));
+  // get / create / update / roundtrip each return a single row.
+  if (op === "get" || op === "create" || op === "update" || op === "roundtrip")
+    return canonicalJson(normalizeRow(actual as Record<string, unknown>));
   // op: list
   const rows = actual as Record<string, unknown>[];
   return canonicalJson(rows.map(normalizeRow));

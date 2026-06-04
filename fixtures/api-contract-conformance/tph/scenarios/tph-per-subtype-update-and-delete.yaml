@@ -1,0 +1,42 @@
+name: tph-per-subtype-update-and-delete
+description: >
+  FR-017 Tier 4/5 TPH: subtype-scoped mutations. PATCH /auths/bridge/:id
+  updates a subtype-only column; DELETE removes the row from the single table
+  (so it also leaves the polymorphic collection). The discriminator is never
+  changed by a patch.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/auths/bridge/1
+    body:
+      quantity: 50
+    expect:
+      status: 200
+      body:
+        row: { id: 1, type: "Bridge", quantity: 50 }
+  - id: r2
+    method: GET
+    path: /api/auths/bridge/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, quantity: 50 }
+  - id: r3
+    method: DELETE
+    path: /api/auths/bridge/1
+    expect:
+      status: 204
+      body:
+        empty: true
+  - id: r4
+    method: GET
+    path: /api/auths/bridge/1
+    expect:
+      status: 404
+  - id: r5
+    method: GET
+    path: /api/auths?sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [2, 3]

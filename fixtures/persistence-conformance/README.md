@@ -138,26 +138,49 @@ TS: `om.findMany(entityName, filter, opts)`).
 
 | field      | type                                        | notes |
 |------------|---------------------------------------------|-------|
-| `op`       | `list \| get \| count \| relate \| roundtrip`| required |
+| `op`       | `list \| get \| count \| relate \| create \| update \| roundtrip`| required |
 | `entity`   | string                                      | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`                            | required for `op: get` and `op: relate` (the source record key) |
+| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update` (the record key) |
+| `data`     | row object                                  | required for `op: create` / `op: update` (the row payload to write) |
 | `relation` | string                                      | required for `op: relate`; the relationship name to traverse |
 | `insert`   | row (field → value)                         | required for `op: roundtrip`; the row to WRITE through the runtime |
 | `filter`   | filter object (below)                       | optional; same vocabulary as Project D |
 | `sort`     | `[{ field, dir }]`                          | optional; `dir` ∈ `asc | desc` |
 | `limit`    | integer                                     | optional |
 | `offset`   | integer                                     | optional |
-| `expect`   | row or row[] or integer                     | required; the normalized expected result |
+| `expect`   | row or row[] or integer                     | required unless `expectError`; the normalized expected result |
+| `expectError` | boolean                                  | optional; when true the op must FAIL (throw/reject). `expect` is ignored. Portable: each runner asserts "the op raised an error", not a message. |
+
+### `op: create` / `op: update` — runtime writes (FR-017 TPH)
+
+`create` inserts a row (`om.create(entity, data)`); `update` patches a row by id
+(`om.update(entity, by.id, data)`). They exercise the **runtime write path**,
+including **TPH** (FR-017): a create on a discriminator SUBTYPE injects the
+discriminator value (omit it from `data`); reads/updates are scoped to the
+subtype; the discriminator is immutable; a subtype's write surface is its own
+columns only. A cross-subtype write (an unknown subtype column, or a
+different-subtype id) is expected to fail (`expectError: true`).
+
+#### TPH (table-per-hierarchy) scenarios
+
+The `tph-*.yaml` scenarios exercise single-table inheritance through the runtime
+(`Auth` base + `BridgeAuth` / `CopayAuth` / `PriorAuthAuth` subtypes over the one
+`auths` table). They require the port's **runtime TPH support** (resolving a
+subtype's inherited fields/identity/table via `extends`, plus discriminator
+inject/scope/strip). **TypeScript** ships it (runtime-ts ObjectManager); the
+**Java / Kotlin / Python / C#** runtimes gain it in their Tier-4 slice. Until
+then those ports skip the `tph-*` scenarios — do not delete them; implement the
+runtime support, then run them green.
 
 ### `op: roundtrip` — runtime WRITE round-trip
 
-Every other op only READS (the corpus seeds via raw SQL). `roundtrip` is the
-**write** gate: the runner INSERTS the `insert:` row through the port's runtime /
-ORM write path (**not** raw SQL), reads the inserted row back **by primary key**,
-normalizes it, and asserts it equals `expect`. It therefore exercises the WRITE
-codec **and** the read path together — the structural complement to the read gate,
-and what would have caught the `field.byte`/`field.short` hole, the Java
-timestamp-write hazard, and native-uuid-write.
+`roundtrip` is the **all-types write** gate: the runner INSERTS the `insert:` row
+through the port's runtime / ORM write path (**not** raw SQL), reads the inserted
+row back **by primary key**, normalizes it, and asserts it equals `expect`. It
+therefore exercises the WRITE codec **and** the read path together — the
+structural complement to the read gate, and what would have caught the
+`field.byte`/`field.short` hole, the Java timestamp-write hazard, and
+native-uuid-write.
 
 - `insert:` carries field values in the runtime's **native authoring forms** (a
   decimal as a string, a uuid as a string, a `field.object` as an object, a

@@ -25,4 +25,11 @@ internal static class ApiContractCorpusPaths
     public static readonly string M2mScenariosDir = Path.Combine(M2mDir, "scenarios");
     public static readonly string M2mSeedFile = Path.Combine(M2mDir, "seed.json");
     public static readonly string M2mMetaJson = Path.Combine(M2mDir, "meta.json");
+
+    // FR-017 TPH polymorphic-CRUD corpus — a discriminator base (Auth) + concrete
+    // subtypes (Bridge/Copay/PriorAuth) sharing one `auths` table, under tph/.
+    public static readonly string TphDir = Path.Combine(Corpus, "tph");
+    public static readonly string TphScenariosDir = Path.Combine(TphDir, "scenarios");
+    public static readonly string TphSeedFile = Path.Combine(TphDir, "seed.json");
+    public static readonly string TphMetaJson = Path.Combine(TphDir, "meta.json");
 }

@@ -1,0 +1,26 @@
+name: tph-update-subtype-only-column
+description: |
+  FR-017 TPH: update a subtype-only column (BridgeAuth.quantity) through the
+  runtime and verify the new value is stored in the single table. The update is
+  subtype-scoped and the discriminator is unchanged.
+
+  PORT STATUS: TS-only until each port's runtime TPH lands (see corpus README).
+queries:
+  - name: insert-bridge
+    op: create
+    entity: BridgeAuth
+    data: { reference: "REF-1", quantity: 5 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 5 }
+
+  - name: update-quantity
+    op: update
+    entity: BridgeAuth
+    by: { id: 1 }
+    data: { quantity: 50 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 50 }
+
+  - name: verify-stored
+    op: get
+    entity: BridgeAuth
+    by: { id: 1 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 50 }

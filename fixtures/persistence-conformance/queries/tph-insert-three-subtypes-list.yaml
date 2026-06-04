@@ -1,0 +1,36 @@
+name: tph-insert-three-subtypes-list
+description: |
+  FR-017 TPH: insert one row of each subtype, then list the discriminator BASE
+  (Auth). The polymorphic list returns all three rows from the single table,
+  each tagged by its discriminator value (`type`). The base read projects the
+  base's own columns (id, type, reference) — the union across subtypes is what
+  the per-subtype reads surface.
+
+  PORT STATUS: TS-only until each port's runtime TPH lands (see corpus README).
+queries:
+  - name: insert-bridge
+    op: create
+    entity: BridgeAuth
+    data: { reference: "B", quantity: 1 }
+    expect: { id: "1", type: "Bridge", reference: "B", quantity: 1 }
+
+  - name: insert-copay
+    op: create
+    entity: CopayAuth
+    data: { reference: "C", copayAmount: "9.99" }
+    expect: { id: "2", type: "Copay", reference: "C", copayAmount: "9.99" }
+
+  - name: insert-priorauth
+    op: create
+    entity: PriorAuthAuth
+    data: { reference: "P", approver: "Dr. X" }
+    expect: { id: "3", type: "PriorAuth", reference: "P", approver: "Dr. X" }
+
+  - name: list-all-auths-polymorphic
+    op: list
+    entity: Auth
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", type: "Bridge", reference: "B" }
+      - { id: "2", type: "Copay", reference: "C" }
+      - { id: "3", type: "PriorAuth", reference: "P" }

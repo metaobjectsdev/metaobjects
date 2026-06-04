@@ -61,6 +61,27 @@ public static class QueryScenarioRunner
                 continue;
             }
 
+            // FR-017 TPH: an op marked `expectError: true` (a cross-subtype write) MUST
+            // be rejected by the runtime — a throw is the pass. EF's own
+            // DbUpdateException, our subtype-scope/column guards, and a not-found all
+            // count. Note: an `expectError` op may leave a tracked entity in a bad state,
+            // so clear the change tracker before the next op proceeds.
+            if (spec.ExpectError)
+            {
+                try
+                {
+                    await DbContextAdapter.ExecuteAsync(db, spec);
+                }
+                catch (Exception)
+                {
+                    db.ChangeTracker.Clear();
+                    continue; // rejected as required
+                }
+                db.ChangeTracker.Clear();
+                throw new XunitException(
+                    $"{scenario.SourcePath} / {spec.Name}: expected the op to be rejected (expectError: true) but it succeeded");
+            }
+
             if (spec.Op == "roundtrip")
             {
                 // WRITE round-trip: INSERT via the EF runtime, read back by PK, drop

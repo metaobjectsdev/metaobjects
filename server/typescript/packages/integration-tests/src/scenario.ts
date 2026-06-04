@@ -35,9 +35,22 @@ export interface QueryScenario {
 
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count" | "relate" | "roundtrip";
+  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "roundtrip";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
+  /**
+   * For `op: create` / `op: update`: the row payload to write. On a TPH subtype
+   * the discriminator is injected by the runtime (omit it). `op: update` also
+   * requires `by: { id }`.
+   */
+  readonly data: Record<string, unknown> | null;
+  /**
+   * When true the op is expected to FAIL (throw/reject) — e.g. a TPH
+   * cross-subtype write (unknown subtype column, or a different-subtype id).
+   * The result `expect` is ignored. Portable across ports: each runner asserts
+   * "the op raised an error", not a specific message.
+   */
+  readonly expectError: boolean;
   /**
    * For `op: relate`: the relationship name to traverse from the `by` source
    * record (e.g. an M:N navigation). The result is the related rows.
@@ -117,6 +130,8 @@ export function loadQuery(yamlPath: string): QueryScenario {
       op: required(q.op, yamlPath, "query.op") as QuerySpec["op"],
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
+      data: (q.data as Record<string, unknown> | undefined) ?? null,
+      expectError: q.expectError === true,
       relation: q.relation ?? null,
       insert: (q.insert as Record<string, unknown> | undefined) ?? null,
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
@@ -174,6 +189,8 @@ interface QueryYaml {
     op?: string;
     entity?: string;
     by?: unknown;
+    data?: unknown;
+    expectError?: boolean;
     relation?: string;
     insert?: unknown;
     filter?: unknown;

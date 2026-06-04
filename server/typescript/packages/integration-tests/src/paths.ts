@@ -22,5 +22,11 @@ export const API_CONTRACT_SCENARIOS_DIR = resolve(API_CONTRACT_DIR, "scenarios")
 export const API_CONTRACT_M2M_DIR = resolve(API_CONTRACT_DIR, "m2m");
 export const API_CONTRACT_M2M_SCENARIOS_DIR = resolve(API_CONTRACT_M2M_DIR, "scenarios");
 
+// fixtures/api-contract-conformance/tph/ — FR-017 table-per-hierarchy
+// polymorphic CRUD corpus (polymorphic list/get + per-subtype CRUD over HTTP,
+// both lanes).
+export const API_CONTRACT_TPH_DIR = resolve(API_CONTRACT_DIR, "tph");
+export const API_CONTRACT_TPH_SCENARIOS_DIR = resolve(API_CONTRACT_TPH_DIR, "scenarios");
+
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

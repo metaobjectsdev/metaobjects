@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
 
     public DbSet<AllTypes> AllTypeses { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
+    public DbSet<Auth> Auths { get; set; } = default!;
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
@@ -37,6 +38,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
+        modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth);
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
         modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(nameof(PostTag.TagId)), r => r.HasOne<Post>().WithMany().HasForeignKey(nameof(PostTag.PostId)));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();

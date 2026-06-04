@@ -3,6 +3,9 @@ import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_ATTR_PATTERN,
   TYPE_OBJECT,
+  TYPE_FIELD,
+  OBJECT_ATTR_DISCRIMINATOR,
+  OBJECT_ATTR_DISCRIMINATOR_VALUE,
   MetaSource,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
@@ -89,6 +92,9 @@ export function buildExpectedSchema(
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
     if (child.subType === "value") continue;
+    // FR-017 TPH: a subtype shares its discriminator base's single table, so it
+    // emits no table of its own. Its own columns are folded into the base below.
+    if (isTphSubtype(child)) continue;
     const hasReadOnlySource = child.ownChildren().some(
       (c) => c instanceof MetaSource && c.isReadOnly(),
     );
@@ -176,6 +182,41 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
   }
 }
 
+// ---------------------------------------------------------------------------
+// FR-017 TPH (table-per-hierarchy) — single-table schema emission.
+// ---------------------------------------------------------------------------
+
+/** The @discriminator-bearing ancestor of `entity`, or undefined for non-TPH. */
+function discriminatorBaseOf(entity: MetaData): MetaData | undefined {
+  let a = entity.superResolved;
+  while (a !== undefined) {
+    if (a.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) return a;
+    a = a.superResolved;
+  }
+  return undefined;
+}
+
+/** True if `entity` is a TPH SUBTYPE (declares @discriminatorValue + has a
+ *  discriminator-bearing ancestor). Such an entity emits no table of its own. */
+function isTphSubtype(entity: MetaData): boolean {
+  return (
+    entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+    discriminatorBaseOf(entity) !== undefined
+  );
+}
+
+/** Concrete TPH subtypes whose discriminator base is `base` (root-level scan). */
+function tphConcreteSubtypes(base: MetaObject, root: MetaData): MetaObject[] {
+  if (base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === undefined) return [];
+  return root.ownChildren().filter(
+    (c): c is MetaObject =>
+      c.type === TYPE_OBJECT &&
+      !c.isAbstract &&
+      c.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+      discriminatorBaseOf(c) === base,
+  );
+}
+
 function buildTable(
   entity: MetaObject,
   tableName: string,
@@ -210,6 +251,24 @@ function buildTable(
       columns.push(...flattenObjectField(field, root, strategy));
     } else {
       columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy));
+    }
+  }
+
+  // FR-017 TPH: if this is a discriminator base, fold each concrete subtype's
+  // OWN fields into the single table as NULLABLE columns (a row of any other
+  // subtype stores NULL there), even when the field is @required. Dedupe by
+  // column name so an inherited/overridden base column is not re-emitted.
+  if (entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
+    const existing = new Set(columns.map((c) => c.name));
+    for (const sub of tphConcreteSubtypes(entity, root)) {
+      for (const field of sub.ownChildren()) {
+        if (field.type !== TYPE_FIELD) continue;
+        const col = buildColumn(field, false, undefined, strategy);
+        if (existing.has(col.name)) continue;
+        col.nullable = true; // subtype-only columns are always nullable in TPH
+        columns.push(col);
+        existing.add(col.name);
+      }
     }
   }
 
