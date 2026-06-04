@@ -46,7 +46,10 @@ from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
-from ..meta.core.attr.attr_constants import ATTR_SUBTYPE_STRINGARRAY
+from ..meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_PROPERTIES,
+    ATTR_SUBTYPE_STRINGARRAY,
+)
 from ..registry import AttrSchema, TypeRegistry
 from ..shared.base_types import (
     TYPE_FIELD,
@@ -257,6 +260,16 @@ def _validate_attr_schema(
         # legacy open-attr behavior so downstream apps can loosen.
         if strict:
             for attr_node in node.own_meta_attrs():
+                # attr.properties is a first-class, registered, canonical attr
+                # subtype whose designed purpose is an arbitrary-named structural
+                # property bag (its NAME is intentionally not declared by any
+                # per-type schema). It is sanctioned vocabulary, not a made-up
+                # attribute, so strict-attr exempts a materialized properties-attr
+                # from ERR_UNKNOWN_ATTR. (A typo'd plain @-attr still fails — only
+                # the `properties` subtype is exempt.) Mirrors the TS reference
+                # Check-0 in attr-schema-validate.ts.
+                if attr_node.sub_type == ATTR_SUBTYPE_PROPERTIES:
+                    continue
                 if attr_node.name not in schema_by_name:
                     errors.append(
                         MetaError(

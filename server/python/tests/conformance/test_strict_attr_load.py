@@ -80,3 +80,40 @@ def test_strict_accepts_declared_common_attr() -> None:
         json_text, providers=[core_provider, doc_provider], strict=True
     )
     assert ErrorCode.ERR_UNKNOWN_ATTR.name not in _codes(result)
+
+
+# An attr.properties carrying an arbitrary NAME (the designed property-bag
+# contract). Its name is intentionally not declared by any per-type schema.
+_PROPERTIES_BAG = """
+{
+  "metadata.root": {
+    "package": "acme::users",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "attr.properties": {
+                "name": "uiHints",
+                "value": { "widget": "card", "tier": "gold" }
+              }
+            },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}
+"""
+
+
+def test_strict_exempts_attr_properties() -> None:
+    """ADR-0023 — an attr.properties (a registered canonical subtype whose
+    arbitrary NAME is the designed property-bag contract) is NOT a made-up
+    attribute, so strict-attr does not flag it ERR_UNKNOWN_ATTR.
+    """
+    result = MetaDataLoader.from_string(_PROPERTIES_BAG, strict=True)
+    assert ErrorCode.ERR_UNKNOWN_ATTR.name not in _codes(result)

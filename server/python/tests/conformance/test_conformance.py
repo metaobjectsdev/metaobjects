@@ -80,6 +80,31 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
     )
     failures: list[str] = []
 
+    # ADR-0023 — strict hard-fail. A fixture that declares NO expected-errors.json
+    # is a happy-path fixture: under the library's strict load it MUST load with
+    # zero errors. Any recorded error (e.g. ERR_UNKNOWN_ATTR from a made-up
+    # attribute) fails the fixture with a message naming the unexpected error(s).
+    # Previously this was silently tolerated — the runner only byte-compared the
+    # tree and never asserted the error set was empty, so a made-up attr passed.
+    # (Warnings stay separate; this is about ERRORS only.) Gated on the fixture
+    # declaring at least one metadata-expectation file so docs-only / config-error
+    # fixtures are handled by their own checks. Mirrors the TS runner.ts.
+    if (
+        not fix.has_expected_errors
+        and (
+            fix.has_expected
+            or fix.has_expected_effective
+            or fix.has_expected_warnings
+            or fix.has_script
+        )
+        and codes
+    ):
+        failures.append(
+            f"happy-path fixture loaded with unexpected error(s): "
+            f"[{', '.join(sorted(codes))}] — under strict, a fixture with no "
+            f"expected-errors.json must load with zero errors (ADR-0023)"
+        )
+
     if fix.has_expected_errors:
         raw = json.loads((fix.dir / "expected-errors.json").read_text())
         expected_errors, expected_warnings, legacy = _parse_expected_errors(raw)
