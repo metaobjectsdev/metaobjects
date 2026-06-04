@@ -58,8 +58,36 @@ class TypeRegistry:
         # resolve a bare `metadata:` / `object:` key to e.g. `metadata.root` /
         # `object.entity`). Mirrors TypeRegistry._defaultSubTypes in TS.
         self._default_sub_types: dict[str, str] = {}
+        # ADR-0023 Decision 2 — sealed state. Once sealed, every mutating
+        # registration method raises ERR_REGISTRY_SEALED. Python composes from an
+        # explicit immutable provider set (compose_registry(core_providers)), so
+        # sealing here is the guard + negative test (no polluted singleton to
+        # pivot off). The library seals after the metamodel bootstrap; a
+        # downstream app composes its own (unsealed) registry.
+        self._sealed = False
+
+    def seal(self) -> None:
+        """Seal the registry: every subsequent mutating registration raises
+        ERR_REGISTRY_SEALED. Idempotent. Reads are unaffected."""
+        self._sealed = True
+
+    def is_sealed(self) -> bool:
+        """Whether this registry has been sealed (ADR-0023)."""
+        return self._sealed
+
+    def _check_not_sealed(self, operation: str) -> None:
+        if self._sealed:
+            raise ParseError(
+                f"TypeRegistry is sealed (ADR-0023): {operation} is not permitted after "
+                "metamodel bootstrap. Made-up metamodel attributes/types are structurally "
+                "disallowed — a new metamodel attribute requires a registered provider + "
+                "human agreement. Downstream apps that need extra vocabulary must compose "
+                "their own (unsealed) registry.",
+                ErrorCode.ERR_REGISTRY_SEALED,
+            )
 
     def register(self, definition: TypeDefinition) -> None:
+        self._check_not_sealed(f'register("{definition.key}")')
         self._defs[definition.key] = definition
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:
@@ -74,6 +102,7 @@ class TypeRegistry:
         Mirrors TypeRegistry.setDefaultSubType in TS. Used by the YAML desugar
         when resolving sugared `metadata:` / `object:` keys.
         """
+        self._check_not_sealed(f'set_default_sub_type("{type_}")')
         self._default_sub_types[type_] = sub_type
 
     def default_sub_type_of(self, type_: str) -> str | None:
@@ -88,6 +117,7 @@ class TypeRegistry:
 
         Conflict with per-type attrs is detected at validation time, not here.
         """
+        self._check_not_sealed("register_common_attrs")
         for attr in attrs:
             if any(existing.name == attr.name for existing in self._common_attrs):
                 continue  # first registration wins
@@ -140,6 +170,7 @@ class TypeRegistry:
         ``compose_registry``'s topological ordering puts the registering
         provider before the extending one.
         """
+        self._check_not_sealed(f'extend("{type_}.{sub_type}")')
         definition = self.find(type_, sub_type)
         if definition is None:
             raise ParseError(
