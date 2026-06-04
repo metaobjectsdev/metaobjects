@@ -5,7 +5,15 @@ import { code, imp, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
-import { variableNameFromEntity, pluralize } from "../naming.js";
+import {
+  variableNameFromEntity,
+  pluralize,
+  findByIdFnName,
+  listFnName,
+  createFnName,
+  updateFnName,
+  deleteByIdFnName,
+} from "../naming.js";
 
 /** Get the PK field name and its TS type for a given entity. */
 export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
@@ -30,7 +38,7 @@ export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
-  const fnName = `find${entityName}ById`;
+  const fnName = findByIdFnName(entityName);
   const eqSym = imp("eq@drizzle-orm");
 
   return code`
@@ -46,7 +54,7 @@ export function renderListFn(entity: MetaObject, _ctx: RenderContext): Code {
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
   // (e.g., "Category" -> "Categories", not "Categorys").
-  const fnName = `list${pluralize(entityName)}`;
+  const fnName = listFnName(entityName);
 
   return code`
 export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
@@ -62,7 +70,7 @@ export function renderCreateFn(entity: MetaObject, _ctx: RenderContext): Code {
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const fnName = `create${entityName}`;
+  const fnName = createFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
 
   return code`
@@ -79,7 +87,7 @@ export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
-  const fnName = `update${entityName}`;
+  const fnName = updateFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
   const eqSym = imp("eq@drizzle-orm");
 
@@ -96,7 +104,7 @@ export function renderDeleteByIdFn(entity: MetaObject, ctx: RenderContext): Code
   const varName = variableNameFromEntity(entity.name);
   const entityName = entity.name;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
-  const fnName = `delete${entityName}ById`;
+  const fnName = deleteByIdFnName(entityName);
   const eqSym = imp("eq@drizzle-orm");
 
   return code`
