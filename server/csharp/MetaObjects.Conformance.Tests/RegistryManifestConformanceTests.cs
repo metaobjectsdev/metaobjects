@@ -43,6 +43,47 @@ public class RegistryManifestConformanceTests
             FirstDiff(expectedNorm, actualNorm));
     }
 
+    // Wave 3b — the in/out boundary is an EXPLICIT classification (a reason
+    // category per carve-out), not a bare name-match. Assert the classification
+    // is total and self-documenting.
+    [Fact]
+    public void Every_registered_per_type_attr_is_explicitly_classified()
+    {
+        TypeRegistry registry = Provider.ComposeRegistry(new[]
+        {
+            CoreTypes.CoreTypesProvider,
+            DocumentationTypes.DocTypesProvider,
+        });
+
+        foreach (TypeId typeId in registry.AllTypes())
+        {
+            foreach (AttrSchema attr in registry.AttrsOf(typeId.Type, typeId.SubType))
+            {
+                // Total function — ClassifyPerTypeAttr always returns a defined enum value
+                // (Included or a carve-out reason); there is no silent default-include.
+                RegistryManifest.ExclusionReason reason = RegistryManifest.ClassifyPerTypeAttr(attr.Name);
+                Assert.True(Enum.IsDefined(reason));
+            }
+        }
+    }
+
+    [Fact]
+    public void Carve_outs_carry_their_declared_reason_category()
+    {
+        Assert.Equal(RegistryManifest.ExclusionReason.StructuralKeyword, RegistryManifest.ClassifyPerTypeAttr("extends"));
+        Assert.Equal(RegistryManifest.ExclusionReason.StructuralKeyword, RegistryManifest.ClassifyPerTypeAttr("isArray"));
+        Assert.Equal(RegistryManifest.ExclusionReason.NativeBinding, RegistryManifest.ClassifyPerTypeAttr("object"));
+        Assert.Equal(RegistryManifest.ExclusionReason.NativeBinding, RegistryManifest.ClassifyPerTypeAttr("objectAdapter"));
+        Assert.Equal(RegistryManifest.ExclusionReason.CommonAttrDup, RegistryManifest.ClassifyPerTypeAttr("description"));
+        // A genuinely logical attr is Included.
+        Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("column"));
+        Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("maxLength"));
+        // Row classification: the metadata.base anchor + the generic view controls.
+        Assert.Equal(RegistryManifest.ExclusionReason.InheritanceAnchor, RegistryManifest.ClassifyTypeSubType("metadata", "base"));
+        Assert.Equal(RegistryManifest.ExclusionReason.PresentationOnly, RegistryManifest.ClassifyTypeSubType("view", "dropdown"));
+        Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyTypeSubType("view", "currency"));
+    }
+
     private static string Normalize(string s) => s.Replace("\r\n", "\n");
 
     private static string ExpectedRegistryPath()

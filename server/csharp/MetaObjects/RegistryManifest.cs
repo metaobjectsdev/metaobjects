@@ -43,45 +43,79 @@ public static class RegistryManifest
     //    cross-port; C#/Python deregister them, TS keeps them registered).
     // ------------------------------------------------------------------
 
+    // Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason
+    // category per carve-out), not a bare name-match. The negative branch of a
+    // name-list silently meant "logical"; now `ClassifyPerTypeAttr` returns
+    // either an ExclusionReason (carved out, with a documented category) or
+    // INCLUDED (logical cross-port vocabulary). Inclusion-by-classification is
+    // sound because ADR-0023 seals the agreed-vocabulary registry. The axis is
+    // cross-port-CONTRACT vs port-PRIVATE-mechanism (NOT abstract-vs-physical —
+    // the physical-DB attrs column/dbColumnType/db.indexed/precision/scale/
+    // maxLength/unique ARE logical here, the agreed persistence vocabulary).
+
+    /// <summary>The reason a per-type attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary).</summary>
+    public enum ExclusionReason
+    {
+        /// <summary>Sentinel: NOT excluded — logical cross-port vocabulary (INCLUDED).</summary>
+        Included,
+        /// <summary>Native type-binding / factory mechanism (incl. ADR-0001 <c>object</c>, ADR-0005 <c>objectAdapter</c>).</summary>
+        NativeBinding,
+        /// <summary>Bare structural / OO-shape keyword (<c>isArray</c>/<c>isAbstract</c>/<c>extends</c>/<c>implements</c>/<c>isInterface</c>).</summary>
+        StructuralKeyword,
+        /// <summary>A <c>commonAttr</c> (<c>description</c>) re-registered per-type — belongs in the commonAttrs block.</summary>
+        CommonAttrDup,
+        /// <summary>The <c>metadata.base</c> per-port inheritance anchor (deferred <c>inheritsFrom</c> facet).</summary>
+        InheritanceAnchor,
+        /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
+        PresentationOnly,
+    }
+
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
     private const string AttrNameIsAbstract = "isAbstract";
-
-    /// <summary>The Java-OO structural-shape keyword names (`implements`/`isInterface`) as per-type attr names — bare OO-shape keywords (the OO modeling spine), not cross-port per-type attrs. No-op for C# (never registers them); the filter drops Java's per-type registrations. See SP-G C-2/C-3 (Unit 6b).</summary>
+    /// <summary>The Java-OO structural-shape keyword names (the OO modeling spine), not cross-port per-type attrs.</summary>
     private const string AttrNameImplements = "implements";
     private const string AttrNameIsInterface = "isInterface";
-
-    /// <summary>The two per-port type-BINDING facet attr names: <c>object</c> (ADR-0001 class-FQN type binding for OO ports) and <c>objectAdapter</c> (ADR-0005 hybrid value-access seam). Same category as the excluded native type bindings — legitimate per-port binding mechanisms, not cross-port logical vocabulary. No-op for C# (never registers them); the filter drops Java's per-type <c>object.*</c> registrations. See SP-G Unit 6b-finish.</summary>
+    /// <summary>ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam (per-port runtime mechanisms).</summary>
     private const string AttrNameObject = "object";
     private const string AttrNameObjectAdapter = "objectAdapter";
 
-    /// <summary>Per-type attr names filtered from a type's <c>attrs</c> list (structural / OO-shape keywords + the per-port type-binding facets <c>object</c>/<c>objectAdapter</c> + the description commonAttr).</summary>
-    private static readonly HashSet<string> ExcludedPerTypeAttrNames = new(StringComparer.Ordinal)
-    {
-        Structural.RESERVED_KEY_IS_ARRAY,
-        AttrNameIsAbstract,
-        Structural.RESERVED_KEY_EXTENDS,
-        AttrNameImplements,
-        AttrNameIsInterface,
-        AttrNameObject,
-        AttrNameObjectAdapter,
-        DocumentationConstants.DOC_ATTR_DESCRIPTION,
-    };
+    /// <summary>Per-type attr names carved out of the agreed vocabulary, each mapped to its PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the ADR-0023 sealed-vocabulary contract.</summary>
+    private static readonly IReadOnlyDictionary<string, ExclusionReason> ExcludedPerTypeAttrs =
+        new Dictionary<string, ExclusionReason>(StringComparer.Ordinal)
+        {
+            [Structural.RESERVED_KEY_IS_ARRAY] = ExclusionReason.StructuralKeyword,
+            [AttrNameIsAbstract] = ExclusionReason.StructuralKeyword,
+            [Structural.RESERVED_KEY_EXTENDS] = ExclusionReason.StructuralKeyword,
+            [AttrNameImplements] = ExclusionReason.StructuralKeyword,
+            [AttrNameIsInterface] = ExclusionReason.StructuralKeyword,
+            [AttrNameObject] = ExclusionReason.NativeBinding,
+            [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
+            [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
+        };
 
-    /// <summary>True if a <c>(type, subType)</c> row is excluded: the metadata.base anchor + the generic view.* controls.</summary>
-    private static bool IsExcludedTypeSubType(string type, string subType)
+    /// <summary>Classify a per-type attr: an <see cref="ExclusionReason"/> (carved out) or <see cref="ExclusionReason.Included"/> (logical). Total — no silent default.</summary>
+    public static ExclusionReason ClassifyPerTypeAttr(string name) =>
+        ExcludedPerTypeAttrs.TryGetValue(name, out ExclusionReason reason) ? reason : ExclusionReason.Included;
+
+    /// <summary>Classify a <c>(type, subType)</c> row: the metadata.base inheritance anchor / the generic view.* presentation controls / Included.</summary>
+    public static ExclusionReason ClassifyTypeSubType(string type, string subType)
     {
         if (type == BaseTypes.TYPE_METADATA && subType == BaseTypes.SUBTYPE_BASE)
         {
-            return true; // C-5 — Java's internal inheritance anchor
+            return ExclusionReason.InheritanceAnchor; // C-5 — Java's internal inheritance anchor
         }
         if (type == BaseTypes.TYPE_VIEW
             && subType != BaseTypes.SUBTYPE_BASE
             && subType != ViewConstants.VIEW_SUBTYPE_CURRENCY)
         {
-            return true; // B-2 — TS-web-presentation-only generic view controls
+            return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
         }
-        return false;
+        return ExclusionReason.Included;
     }
+
+    /// <summary>True if a <c>(type, subType)</c> row is carved out of the manifest (any reason).</summary>
+    private static bool IsExcludedTypeSubType(string type, string subType) =>
+        ClassifyTypeSubType(type, subType) != ExclusionReason.Included;
 
     // ------------------------------------------------------------------
     // Manifest shape — explicit ordered structures so JSON property order is
@@ -146,12 +180,15 @@ public static class RegistryManifest
             .ToList();
 
     /// <summary>
-    /// As <see cref="SortedAttrs"/>, but filtering the excluded per-type attr
-    /// names (structural keywords + the <c>description</c> commonAttr). Applied
-    /// ONLY to per-type attrs — <c>description</c> stays in the commonAttrs block.
+    /// As <see cref="SortedAttrs"/>, but keeping only attrs the explicit
+    /// classification marks <see cref="ExclusionReason.Included"/> (logical
+    /// cross-port vocabulary). A carved-out attr (structural keyword, native
+    /// binding, per-type <c>description</c> dup) is dropped for a documented
+    /// reason, never a silent name-match. Applied ONLY to per-type attrs —
+    /// <c>description</c> stays in the commonAttrs block.
     /// </summary>
     private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs) =>
-        SortedAttrs(attrs.Where(a => !ExcludedPerTypeAttrNames.Contains(a.Name)).ToList());
+        SortedAttrs(attrs.Where(a => ClassifyPerTypeAttr(a.Name) == ExclusionReason.Included).ToList());
 
     private static ManifestAttr ToManifestAttr(AttrSchema a)
     {
