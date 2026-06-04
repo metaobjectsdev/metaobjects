@@ -18,12 +18,14 @@ public sealed class GeneratorRegistryTests
     [
         "entity", "db-context", "routes", "output-parser", "extractor",
         "output-prompt", "render-helper", "filter-allowlist", "template",
+        // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
+        "callable",
     ];
 
     [Fact]
-    public void Registry_contains_all_nine_generators_with_stable_names()
+    public void Registry_contains_all_expected_generators_with_stable_names()
     {
-        Assert.Equal(9, GeneratorRegistry.Entries.Count);
+        Assert.Equal(ExpectedNames.Length, GeneratorRegistry.Entries.Count);
         foreach (var name in ExpectedNames)
             Assert.True(GeneratorRegistry.Entries.ContainsKey(name), $"missing stable name: {name}");
     }
@@ -55,7 +57,7 @@ public sealed class GeneratorRegistryTests
     public void List_returns_all_entries_native_first_alphabetical_within_tier()
     {
         var list = GeneratorRegistry.List();
-        Assert.Equal(9, list.Count);
+        Assert.Equal(GeneratorRegistry.Entries.Count, list.Count);
         var native = list.Where(e => e.Tier == GeneratorTier.Native).Select(e => e.Name).ToList();
         Assert.Equal(native.OrderBy(n => n, StringComparer.Ordinal).ToList(), native);
     }
