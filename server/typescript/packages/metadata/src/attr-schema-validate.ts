@@ -12,7 +12,14 @@
 //                                      MetaAttr instance's own validateValue.
 //   3. allowedValues honored        — declared attrs with a non-empty
 //                                      allowedValues set must hold a member value.
-//   4. Undeclared attrs             — NOT an error, NOT a warning (open policy).
+//   4. Undeclared attrs             — under strict load (ADR-0022) an own
+//                                      @-attr that matches NO per-type attr
+//                                      schema AND NO commonAttr is an
+//                                      ERR_UNKNOWN_ATTR. In lax mode (strict
+//                                      false) it stays the legacy open policy:
+//                                      NOT an error, NOT a warning. Own-only,
+//                                      so an inherited/overlaid declared attr
+//                                      (validated on its declaring node) is fine.
 //
 // `default` values are NOT auto-applied — A3 is pure validation, not mutation.
 //
@@ -57,13 +64,18 @@ export interface AttrSchemaValidationResult {
 export function validateAttrSchema(
   root: MetaData,
   registry: TypeRegistry,
+  // ADR-0022 — strict load closes the open-attr policy: an own @-attr matching
+  // no per-type schema and no commonAttr → ERR_UNKNOWN_ATTR. Defaults false so
+  // existing lax callers keep the legacy open policy; the library's own loader
+  // (and the conformance runner) load strict.
+  strict = false,
 ): AttrSchemaValidationResult {
   const errors: ParseError[] = [];
   // Tracks (type.subType) pairs for which ERR_PROVIDER_ATTR_CONFLICT has already
   // been emitted. The conflict is a registry-state condition, not a per-node
   // condition — emit it once per (type, subType), not once per node instance.
   const reportedConflicts = new Set<string>();
-  walk(root, registry, errors, reportedConflicts);
+  walk(root, registry, errors, reportedConflicts, strict);
   return { errors, warnings: [] };
 }
 
@@ -72,10 +84,11 @@ function walk(
   registry: TypeRegistry,
   errors: ParseError[],
   reportedConflicts: Set<string>,
+  strict: boolean,
 ): void {
-  validateNode(node, registry, errors, reportedConflicts);
+  validateNode(node, registry, errors, reportedConflicts, strict);
   for (const child of node.ownChildren()) {
-    walk(child, registry, errors, reportedConflicts);
+    walk(child, registry, errors, reportedConflicts, strict);
   }
 }
 
@@ -90,6 +103,7 @@ function validateNode(
   registry: TypeRegistry,
   errors: ParseError[],
   reportedConflicts: Set<string>,
+  strict: boolean,
 ): void {
   // Build the effective schema in a single pass: per-type attrs win on name
   // collision; common attrs fill in for unclaimed names. Surface common-vs-per-type
@@ -116,6 +130,29 @@ function validateNode(
       continue; // per-type wins
     }
     byName.set(ca.name, ca);
+  }
+
+  // --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+  //
+  // Runs BEFORE the byName.size early-return: a node type with no per-type
+  // schema and no common attrs (byName empty) must still reject an authored
+  // @-attr under strict. Own-attrs only — an inherited/overlaid declared attr
+  // was validated on its declaring node and never appears in ownMetaAttrs().
+  // An own attr matching neither a per-type schema entry nor a commonAttr is
+  // a made-up attribute → ERR_UNKNOWN_ATTR (closing the open policy). In lax
+  // mode this stays a no-op (legacy open-attr behavior).
+  if (strict) {
+    for (const inst of node.ownMetaAttrs()) {
+      if (!byName.has(inst.name)) {
+        errors.push(
+          new ParseError(
+            `Unknown attribute '@${inst.name}' on ${nodeLabel(node)} — ` +
+              `not declared by any registered provider for ${typeKey}`,
+            { code: "ERR_UNKNOWN_ATTR", source: node.source },
+          ),
+        );
+      }
+    }
   }
 
   if (byName.size === 0) return;

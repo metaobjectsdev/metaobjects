@@ -5,7 +5,7 @@
       {
         "object.entity": {
           "name": "Product",
-          "@displayName": "Product v2",
+          "@title": "Product v2",
           "children": [
             {
               "field.long": {

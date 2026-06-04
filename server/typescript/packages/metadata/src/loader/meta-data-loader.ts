@@ -443,7 +443,7 @@ export class MetaDataLoader {
       // Eighth pass: attribute-schema validation (Phase A3) — checks each
       // node's @-attributes against its (type, subType) AttrSchema: required
       // attrs present, declared attrs well-typed, allowedValues honored.
-      const attrSchemaResult = validateAttrSchema(root, this._registry);
+      const attrSchemaResult = validateAttrSchema(root, this._registry, this._strict);
       errors.push(...attrSchemaResult.errors);
       warnings.push(...attrSchemaResult.warnings);
 

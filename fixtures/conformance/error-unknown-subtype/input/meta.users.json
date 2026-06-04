@@ -1,11 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme",
+    "package": "acme::users",
     "children": [
       {
         "object.entity": {
-          "name": "Product",
-          "@title": "Product v1",
+          "name": "Account",
           "children": [
             {
               "field.long": {
@@ -13,8 +12,14 @@
               }
             },
             {
+              "field.madeup": {
+                "name": "bogus"
+              }
+            },
+            {
               "identity.primary": {
-                "@fields": "id"
+                "name": "pk",
+                "@fields": ["id"]
               }
             }
           ]

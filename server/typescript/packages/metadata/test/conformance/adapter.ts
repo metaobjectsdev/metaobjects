@@ -166,7 +166,10 @@ export const tsAdapter: ConformanceAdapter = {
         warningEnvelopes: [],
       };
     }
-    const result = await MetaDataLoader.fromDirectory(inputDir, { registry });
+    // ADR-0022 — the library's own conformance corpora load STRICT: an
+    // undeclared @-attr is ERR_UNKNOWN_ATTR (no open-attr policy). The public
+    // LoadOptions.strict default stays false so a downstream app can loosen.
+    const result = await MetaDataLoader.fromDirectory(inputDir, { registry, strict: true });
     // FR5a — surface the full ParseError envelopes; normalize files[] to be
     // relative to the fixture's inputDir so the cross-port assertion has a
     // portable file token. Errors without an envelope (rare; only non-ParseError)

@@ -6,7 +6,7 @@
         "object.entity": {
           "name": "Product",
           "overlay": true,
-          "@displayName": "Product v2"
+          "@title": "Product v2"
         }
       }
     ]
