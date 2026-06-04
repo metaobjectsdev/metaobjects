@@ -118,6 +118,10 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   await mkdir(dirname(manifestAbs), { recursive: true });
   await writeFile(manifestAbs, JSON.stringify(decision.manifest, null, 2) + "\n", "utf8");
 
+  for (const orphan of decision.removed) {
+    result.warnings.push(`${orphan} is no longer part of this stack; orphaned (safe to delete).`);
+  }
+
   if (opts.wireRoot) await wireRootMemory(opts.cwd, result);
 }
 

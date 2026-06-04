@@ -1,0 +1,5 @@
+{
+  "displayName": "Kotlin",
+  "install": "add com.metaobjects:metaobjects-codegen-kotlin + metaobjects-metadata-ktx + metaobjects-maven-plugin to your pom.xml",
+  "codegenCommand": "mvn metaobjects:generate"
+}

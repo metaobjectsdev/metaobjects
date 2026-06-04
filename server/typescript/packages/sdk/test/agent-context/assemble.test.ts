@@ -49,6 +49,20 @@ describe("assemble", () => {
     expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
   });
 
+  test("a kotlin-primary stack assembles without throwing and uses the kotlin codegen command", () => {
+    const stack = makeStack(["kotlin"], []);
+    const files = assemble({ contentRoot: CONTENT_ROOT, stack });
+    const agents = files.find((f) => f.path === ".metaobjects/AGENTS.md")!;
+    expect(agents.contents.toLowerCase()).toContain("kotlin");
+    expect(agents.contents).toContain("mvn metaobjects:generate");
+  });
+
+  test("a stack whose primary server has no meta file falls back to a default codegen command (no throw)", () => {
+    // csharp.meta.json exists now, but the guard must not throw even if a meta file were absent.
+    const stack = makeStack(["csharp"], []);
+    expect(() => assemble({ contentRoot: CONTENT_ROOT, stack })).not.toThrow();
+  });
+
   test("output is deterministic (stable order + identical across runs)", () => {
     const stack = makeStack(["typescript"], ["react"]);
     const a = assemble({ contentRoot: CONTENT_ROOT, stack });

@@ -4,8 +4,10 @@ import { SKILL_NAMES, type AssembledFile, type Stack } from "./types.js";
 
 interface ServerMeta { displayName: string; install: string; codegenCommand: string; }
 
-function readServerMeta(contentRoot: string, server: string): ServerMeta {
-  return JSON.parse(readFileSync(join(contentRoot, "servers", `${server}.meta.json`), "utf8")) as ServerMeta;
+function readServerMeta(contentRoot: string, server: string): ServerMeta | undefined {
+  const p = join(contentRoot, "servers", `${server}.meta.json`);
+  if (!existsSync(p)) return undefined;
+  return JSON.parse(readFileSync(p, "utf8")) as ServerMeta;
 }
 
 function stackLine(contentRoot: string, stack: Stack): { line: string; codegenCommand: string } {

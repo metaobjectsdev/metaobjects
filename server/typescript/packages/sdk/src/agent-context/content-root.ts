@@ -20,10 +20,10 @@ export function resolveAgentContextRoot(override?: string): string {
   }
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++) {
-    const bundled = join(dir, "agent-context");
-    if (isContentRoot(bundled)) return bundled;
-    const mono = join(dir, "agent-context");
-    if (isContentRoot(mono)) return mono;
+    // Matches both a bundled copy shipped inside the package (published) and the
+    // monorepo content tree (dev), since both live at `<dir>/agent-context`.
+    const candidate = join(dir, "agent-context");
+    if (isContentRoot(candidate)) return candidate;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
