@@ -5,10 +5,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: false };
+// wireRoot defaults TRUE (root-wiring is on by default so the scaffolded always-on actually loads; --no-wire-root opts out).
+const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: true };
 
 describe("parseInitArgs", () => {
-  test("default flags are all false", () => {
+  test("default flags (wireRoot on by default, others off)", () => {
     expect(parseInitArgs([])).toEqual(defaultInitFlags);
   });
   test("--force toggles force", () => {
