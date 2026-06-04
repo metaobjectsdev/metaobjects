@@ -95,7 +95,9 @@ public class TphCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var auth = FileContent(files, "Auth.g.cs");
         Assert.Contains("[Table(\"auths\")]", auth);
-        Assert.Contains("public class Auth", auth);
+        // FR-017 TPH: the discriminator base is abstract (no plain-base rows; a
+        // concrete base with a discriminator + no base value fails EF model build).
+        Assert.Contains("public abstract class Auth", auth);
         // The discriminator field is a base property (the `type` enum -> AuthType).
         // Nullable because the `type` field is not @required and not in the PK; the
         // TS-owned `auths.type` column is likewise nullable TEXT.

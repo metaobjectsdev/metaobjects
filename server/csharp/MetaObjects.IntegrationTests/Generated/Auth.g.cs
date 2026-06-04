@@ -9,7 +9,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MetaObjects.IntegrationTests.Generated;
 
 [Table("auths")]
-public class Auth
+public abstract class Auth
 {
     public enum AuthType { Bridge, Copay, PriorAuth }
     [Key]

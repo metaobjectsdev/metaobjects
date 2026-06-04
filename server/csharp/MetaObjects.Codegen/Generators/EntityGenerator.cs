@@ -106,7 +106,13 @@ public sealed class EntityGenerator : IGenerator
         }
         if (!isProjection)
             sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        sb.AppendLine($"public class {className}");
+        // FR-017 TPH: the discriminator base is emitted `abstract` — every row is a
+        // concrete subtype (no plain-base rows exist), so EF Core must not require a
+        // base discriminator value. A concrete base with a discriminator but no
+        // HasValue<Base>(...) fails model validation ("has a discriminator property,
+        // but does not have a discriminator value configured").
+        var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
+        sb.AppendLine($"public {classKeyword} {className}");
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
