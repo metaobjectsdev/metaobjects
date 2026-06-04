@@ -244,7 +244,7 @@ describe("FR-016 loader validation", () => {
     const { errors } = await load(
       oneSourceEntity("Demo", { "@kind": "storedProc", "@view": "v_x" }),
     );
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_PHYSICAL_NAME_KIND_MISMATCH");
   });
 
@@ -252,7 +252,7 @@ describe("FR-016 loader validation", () => {
     const { errors } = await load(
       oneSourceEntity("Demo", { "@kind": "view", "@proc": "fn_x" }),
     );
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_PHYSICAL_NAME_KIND_MISMATCH");
   });
 
@@ -260,7 +260,7 @@ describe("FR-016 loader validation", () => {
     const { errors } = await load(
       oneSourceEntity("Demo", { "@table": "t_x", "@view": "v_x" }),
     );
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_PHYSICAL_NAME_MULTIPLE");
   });
 
@@ -268,7 +268,7 @@ describe("FR-016 loader validation", () => {
     const { errors } = await load(
       oneSourceEntity("Demo", { "@view": "v_x", "@proc": "fn_x" }),
     );
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_PHYSICAL_NAME_MULTIPLE");
   });
 
@@ -277,7 +277,7 @@ describe("FR-016 loader validation", () => {
       oneSourceEntity("Demo", { "@kind": "view", "@table": "v_x" }),
     );
     // Legacy path: warn, not error.
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_PHYSICAL_NAME_KIND_MISMATCH");
     expect(warnings.map((w) => w.code)).toContain("WARN_LEGACY_PHYSICAL_NAME_ALIAS");
   });
@@ -286,7 +286,7 @@ describe("FR-016 loader validation", () => {
     const { errors, warnings } = await load(
       oneSourceEntity("Demo", { "@table": "demo" }),
     );
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_PHYSICAL_NAME_KIND_MISMATCH");
     expect(warnings.map((w) => w.code))
       .not.toContain("WARN_LEGACY_PHYSICAL_NAME_ALIAS");

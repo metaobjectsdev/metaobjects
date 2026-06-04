@@ -161,7 +161,7 @@ describe("FR-014 ERR_DISCRIMINATOR_FIELD_NOT_FOUND", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_DISCRIMINATOR_FIELD_NOT_FOUND");
   });
 });
@@ -208,7 +208,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_DUPLICATE", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_DISCRIMINATOR_VALUE_DUPLICATE");
   });
 });
@@ -246,7 +246,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_MISSING", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_DISCRIMINATOR_VALUE_MISSING");
   });
 
@@ -286,7 +286,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_MISSING", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_DISCRIMINATOR_VALUE_MISSING");
   });
 });
@@ -325,7 +325,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH");
   });
 
@@ -357,7 +357,7 @@ describe("FR-014 ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH");
   });
 });

@@ -115,7 +115,7 @@ describe("loader guard: @filterable on a subtype with no operator band (SP-H Uni
     }));
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
-      const hit = result.errors.find((e) => e.code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
+      const hit = result.errors.find((e) => (e as unknown as { code: string }).code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
       expect(hit).toBeDefined();
       expect(hit?.message).toContain("Outer.blob");
     } finally {
@@ -145,7 +145,7 @@ describe("loader guard: @filterable on a subtype with no operator band (SP-H Uni
     }));
     try {
       const result = await new MetaDataLoader().load([new FileSource(path)]);
-      const hit = result.errors.find((e) => e.code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
+      const hit = result.errors.find((e) => (e as unknown as { code: string }).code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
       expect(hit).toBeUndefined();
     } finally {
       rmSync(tmp, { recursive: true, force: true });

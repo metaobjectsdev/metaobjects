@@ -84,7 +84,7 @@ async function loadTph() {
 describe("FR-017 Tier 1 — renderTphDiscriminatorUnion", () => {
   test("emits the discriminated union + type guards + parser dispatcher on the base entity", async () => {
     const { root, base } = await loadTph();
-    const out = renderTphDiscriminatorUnion(base, root).toString();
+    const out = renderTphDiscriminatorUnion(base, root)!.toString();
 
     // Union type spans every concrete subtype, base does not appear in members.
     expect(out).toContain("export type Auth = BridgeAuth | CopayAuth");

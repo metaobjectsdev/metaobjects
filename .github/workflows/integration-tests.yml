@@ -61,3 +61,33 @@ jobs:
 
       - name: Run integration tests
         run: ./scripts/integration-test.sh ${{ matrix.port }}
+
+  # migrate-ts PG integration tests — the apply / lifecycle / rollback +
+  # introspection suites that exercise REAL Postgres behavior (advisory locks,
+  # multi-tenant ledger, down-migrations) that pg-mem cannot fake. They
+  # `describe.skip` unless MIGRATE_TS_PG_URL is set, so no workflow ran them
+  # until now. A `services: postgres` container supplies the URL.
+  migrate-ts-pg:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: migrate
+          POSTGRES_PASSWORD: migrate
+          POSTGRES_DB: migrate_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U migrate"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Run migrate-ts suite against real Postgres
+        env:
+          MIGRATE_TS_PG_URL: postgres://migrate:migrate@localhost:5432/migrate_test
+        run: cd server/typescript/packages/migrate-ts && bun test

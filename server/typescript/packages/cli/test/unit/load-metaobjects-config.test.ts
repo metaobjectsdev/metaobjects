@@ -4,6 +4,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadMetaobjectsConfig } from "../../src/lib/load-metaobjects-config.js";
 
+// GeneratorSpec is `Generator | string` (a stable-name ref). These fixtures all
+// wire object generators (entityFile()/barrel()), so narrow to the object form
+// to read `.name` without tripping the union.
+function genName(g: { name: string } | string): string {
+  return typeof g === "string" ? g : g.name;
+}
+
 // Place temp dirs inside the monorepo so workspace packages (@metaobjectsdev/*)
 // are resolvable by jiti when it loads the config file.
 const WORKSPACE_TMP = resolve("packages/cli/test/fixtures/__tmp__");
@@ -32,8 +39,8 @@ describe("loadMetaobjectsConfig", () => {
     expect(cfg.outDir).toBe("out");
     expect(cfg.dialect).toBe("sqlite");
     expect(cfg.generators.length).toBe(2);
-    expect(cfg.generators[0]!.name).toBe("entity-file");
-    expect(cfg.generators[1]!.name).toBe("barrel");
+    expect(genName(cfg.generators[0]!)).toBe("entity-file");
+    expect(genName(cfg.generators[1]!)).toBe("barrel");
   });
 
   test("throws a clear error if metaobjects.config.ts is missing", async () => {
@@ -64,8 +71,8 @@ describe("loadMetaobjectsConfig", () => {
       `);
       const cfg = await loadMetaobjectsConfig(osTmp);
       expect(cfg.generators.length).toBe(2);
-      expect(cfg.generators[0]!.name).toBe("entity-file");
-      expect(cfg.generators[1]!.name).toBe("barrel");
+      expect(genName(cfg.generators[0]!)).toBe("entity-file");
+      expect(genName(cfg.generators[1]!)).toBe("barrel");
     } finally {
       rmSync(osTmp, { recursive: true, force: true });
     }

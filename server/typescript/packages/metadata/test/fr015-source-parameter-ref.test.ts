@@ -154,7 +154,7 @@ describe("FR-015 ERR_PARAMETER_REF_UNRESOLVED", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_PARAMETER_REF_UNRESOLVED");
   });
 });
@@ -194,7 +194,7 @@ describe("FR-015 ERR_PARAMETER_REF_NOT_VALUE_OBJECT", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_PARAMETER_REF_NOT_VALUE_OBJECT");
   });
 });
@@ -229,7 +229,7 @@ describe("FR-015 ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND");
   });
 
@@ -263,7 +263,7 @@ describe("FR-015 ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .toContain("ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND");
   });
 });
