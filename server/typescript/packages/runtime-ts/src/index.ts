@@ -32,3 +32,7 @@ export {
   assemble,
   MAX_NEST_DEPTH,
 } from "./extract-object.js";
+
+// LLM call recorder seam + parse-then-persist helper.
+export { LlmCallDbRecorder, NullRecorder, recordLlmCall } from "./llm-recorder.js";
+export type { LlmRecorder, LlmCallRow, LlmCallInput, RecordLlmCallOptions, RecordLlmCallResult } from "./llm-recorder.js";
