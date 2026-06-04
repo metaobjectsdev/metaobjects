@@ -1137,7 +1137,14 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // serializes byte-identically (the open-policy tree shape is
             // preserved; strict only ADDS the diagnostic). In lax mode this is a
             // no-op so a downstream app can carry unenforced attributes silently.
-            if (isStrictLoad() && !isDeclaredAttribute(md, attrName)) {
+            //
+            // ADR-0023 attr.properties exemption: an undeclared @-attr whose value
+            // is a plain JSON object materializes to the sanctioned attr.properties
+            // subtype (an arbitrary-named property bag whose name IS the contract),
+            // so it is NOT a made-up attribute. See {@link #isExemptPropertiesAttr}.
+            if (isStrictLoad()
+                    && !isDeclaredAttribute(md, attrName)
+                    && !isExemptPropertiesAttr(entry.getValue())) {
                 getLoader().addError(new MetaDataException(
                     "Unknown attribute '" + JSON_ATTR_PREFIX + attrName + "' on "
                         + md.getType() + "." + md.getSubType() + " '" + md.getName()
@@ -1373,7 +1380,29 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // here — under strict load an attribute counts as declared only when it
         // has an explicit per-type schema entry or is a registered common attr
         // (matching the TS reference's effective-schema "Check 0"). The wildcard
-        // still governs lax loads via the normal placement path.
+        // still governs lax loads via the normal placement path. (The
+        // attr.properties exemption is applied at the call site, keyed on the
+        // attr VALUE shape — see {@link #isExemptPropertiesAttr}.)
         return false;
+    }
+
+    /**
+     * ADR-0023 attr.properties exemption (mirrors the TS reference's strict
+     * Check-0 + {@code inferUndeclaredAttrSubType}). An undeclared inline
+     * {@code @}-attr whose JSON value is a plain object materializes to the
+     * sanctioned {@code attr.properties} subtype — a registered, canonical attr
+     * subtype whose designed purpose is an arbitrary-named structural property
+     * bag (the bag's NAME is intentionally not declared by any per-type schema;
+     * the name IS the contract). It is sanctioned vocabulary, not a made-up
+     * attribute, so it is exempt from {@link ErrorCode#ERR_UNKNOWN_ATTR}.
+     *
+     * <p>Keyed on the VALUE shape, exactly as the TS reference keys on the
+     * materialized subType (object value → {@code ATTR_SUBTYPE_PROPERTIES}):
+     * a typo'd plain scalar/array {@code @}-attr does NOT resolve to properties
+     * and still records the error. A JSON array is the {@code stringarray}
+     * coercion axis, NOT a property bag, so it is not exempt.</p>
+     */
+    private boolean isExemptPropertiesAttr(JsonElement rawValue) {
+        return rawValue != null && rawValue.isJsonObject();
     }
 }

@@ -215,7 +215,7 @@ public class ConformanceTest {
      * Mirrors {@code ConformanceTests.RunChecks} in the C# runner, restricted
      * to the checks the Java harness currently supports.
      */
-    private static void runConformanceChecks(FixtureDiscovery.Fixture fix,
+    static void runConformanceChecks(FixtureDiscovery.Fixture fix,
                                               List<String> failures) {
         // -- Unsupported-feature fast-fails (honest gaps) --------------------
         // The Java harness does not yet implement effective serialization,
@@ -415,17 +415,33 @@ public class ConformanceTest {
             return;
         }
 
+        // ADR-0023 — strict hard-fail. A fixture that declares NO
+        // expected-errors.json is a happy-path fixture: under strict load it MUST
+        // load with ZERO errors. Any recorded error (e.g. ERR_UNKNOWN_ATTR from a
+        // made-up attribute, recorded non-fatally by the strict parser) fails the
+        // fixture with a message naming the unexpected error(s). Mirrors the TS
+        // reference (commit 9269f0ef): previously this was silently tolerated —
+        // the runner only byte-compared the tree and never asserted the error set
+        // was empty, so a made-up attr passed. (Warnings stay separate — they are
+        // asserted via expected-warnings.json below; this is about ERRORS only.)
+        // Gated on the fixture declaring at least one metadata expectation file so
+        // docs-only / no-expectation fixtures are handled by their own checks.
+        if (!fix.hasExpectedErrors
+                && (fix.hasExpected || fix.hasExpectedEffective
+                    || fix.hasExpectedWarnings || fix.hasScript)
+                && !errorCodesSeen.isEmpty()) {
+            TreeSet<String> unexpected = new TreeSet<>(errorCodesSeen);
+            failures.add("happy-path fixture loaded with unexpected error(s): " + unexpected
+                + " — under strict, a fixture with no expected-errors.json must load with "
+                + "zero errors (ADR-0023)");
+            return;
+        }
+
         // If the fixture is NOT an expected-errors fixture but the loader
         // THREW (vs. recorded errors via {@link MetaDataLoader#addError}),
-        // the tree is mid-build and we can't run tree-dependent checks.
-        //
-        // FR5c — errors recorded via {@code addError} (e.g.
-        // {@code ERR_MERGE_CONFLICT} from the merge-attribution site) do NOT
-        // halt tree building. Existing happy-path fixtures (e.g.
-        // {@code overlay-attr-last-writer-wins}) exercise scenarios that now
-        // surface a recorded error AND a valid tree; TS conformance behaves
-        // the same way (no error-set check unless {@code expected-errors.json}
-        // is declared). Only a thrown exception means the tree is unsafe.
+        // the tree is mid-build and we can't run tree-dependent checks. (A
+        // recorded-but-not-thrown error is already caught by the ADR-0023
+        // hard-fail above; this guards the eager-throw path that leaves no tree.)
         if (thrown != null) {
             failures.add("load threw " + extractErrorCode(thrown)
                 + " — cannot run tree-dependent checks");
