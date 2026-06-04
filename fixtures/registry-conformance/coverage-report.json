@@ -171,7 +171,6 @@
         "objectRef",
         "precision",
         "scale",
-        "sortable",
         "sortableDefaultOrder",
         "storage",
         "unique"

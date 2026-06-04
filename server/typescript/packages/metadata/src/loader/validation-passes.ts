@@ -58,7 +58,6 @@ import {
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
-import { opsForSubType } from "../core/query/query-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
