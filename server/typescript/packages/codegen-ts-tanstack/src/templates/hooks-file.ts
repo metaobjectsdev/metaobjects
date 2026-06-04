@@ -1,6 +1,6 @@
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, Import, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
   isProjection,
@@ -42,20 +42,119 @@ export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string 
     return renderTphHooksFile(entity, ctx, entityModule);
   }
   if (isProjection(entity)) {
-    return renderReadOnlyHooksFile(entity, entityModule);
+    return renderReadOnlyHooksFile(entity, entityModule, ctx);
   }
-  return renderFullHooksFile(entity, entityModule);
+  return renderFullHooksFile(entity, entityModule, ctx);
+}
+
+// ---------------------------------------------------------------------------
+// FR-018 — M:N collection hook(s).
+//
+// For each many-to-many relationship the source declares (`@cardinality: "many"`
+// + `@through`), emit `use<Source><Relation>(sourceId, opts?)` — a useQuery that
+// fetches the REST sub-resource `GET /<source-plural>/{sourceId}/<relationName>`
+// (the exact URL mountM2mRoute serves) and returns the typed target collection
+// (`Target[]`). The query is enabled only when sourceId is present, so callers
+// can pass `undefined` before the parent row loads. A symmetric self-join is
+// still ONE collection hook (the server unions both junction columns on read).
+// ---------------------------------------------------------------------------
+
+/** The M:N relation entries for an entity (cardinality 'many' + a junction). */
+function m2mEntriesFor(entity: MetaObject, ctx: RenderContext): RelationEntry[] {
+  return (ctx.relationMap.get(entity.name) ?? []).filter(
+    (e) => e.cardinality === "many" && e.junctionEntity !== undefined,
+  );
+}
+
+/** The `relation: (relation, sourceId) => ...` query-key factory line, included
+ *  in the keys factory ONLY when the entity has M:N relationships. */
+function m2mKeyLine(keysVar: string): string {
+  return (
+    `  relation: (relation: string, sourceId: number | undefined) =>\n` +
+    `    [...${keysVar}.all(), "relation", relation, sourceId ?? null] as const,`
+  );
+}
+
+/**
+ * Render `use<Source><Relation>(sourceId, opts?)` per M:N relationship. Returns
+ * null when the entity has no M:N relationships (no extra hooks emitted).
+ */
+function renderM2mHooks(
+  entity: MetaObject,
+  ctx: RenderContext,
+  keysVar: string,
+  entries: RelationEntry[],
+): Code | null {
+  if (entries.length === 0) return null;
+
+  const useQuerySym = imp("useQuery@@tanstack/react-query");
+  const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
+  const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
+  const useEntityFetcherSym = imp("useEntityFetcher@@metaobjectsdev/tanstack");
+
+  const source = entity.name;
+
+  // Distinct target row types, imported (aliased) from each target's entity
+  // module. ts-poet's imp() tracks + hoists these into the import block. The
+  // <Target>RelRow alias avoids colliding with the source file's own
+  // `type <Source> as <Source>Row` import on a self-join (source === target).
+  const targetTypeSym = new Map<string, Import>();
+  for (const e of entries) {
+    if (targetTypeSym.has(e.targetEntity)) continue;
+    const mod = entityModuleSpecifier(
+      ctx.selfTarget,
+      ctx.entityModuleTarget,
+      ctx.packageOf.get(e.targetEntity),
+      e.targetEntity,
+      ctx.extStyle,
+    );
+    // `import { type <Target> as <Target>RelRow } from "<mod>"` — the RelRow
+    // alias avoids colliding with the source file's own `type <Source> as
+    // <Source>Row` import on a self-join (source === target).
+    targetTypeSym.set(
+      e.targetEntity,
+      Import.importsName(`${e.targetEntity}RelRow`, mod, true, e.targetEntity),
+    );
+  }
+
+  const hooks = entries.map((e) => {
+    const targetSym = targetTypeSym.get(e.targetEntity)!;
+    const hookName = `use${source}${capitalize(e.name)}`;
+    const relLit = JSON.stringify(e.name);
+    return code`
+export function ${hookName}(
+  sourceId: number | undefined,
+  opts?: Omit<${useQueryOptionsSym}<${targetSym}[]>, "queryKey" | "queryFn">,
+): ${useQueryResultSym}<${targetSym}[]> {
+  const fetcher = ${useEntityFetcherSym}();
+  return ${useQuerySym}<${targetSym}[]>({
+    queryKey: ${keysVar}.relation(${relLit}, sourceId),
+    queryFn: () => fetcher<${targetSym}[]>(\`\${${source}.$apiPrefix}\${${source}.$path}/\${sourceId}/${e.name}\`),
+    enabled: sourceId != null && (opts?.enabled ?? true),
+    ...opts,
+  });
+}
+`;
+  });
+
+  return joinCode(hooks, { on: "\n" });
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 // ---------------------------------------------------------------------------
 // Read-only path (projections)
 // ---------------------------------------------------------------------------
 
-function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string): string {
+function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
+  const m2mEntries = m2mEntriesFor(entity, ctx);
+  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar)}` : "";
 
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
@@ -77,7 +176,7 @@ export const ${keysVar} = {
   lists:   () => [...${keysVar}.all(), "list"] as const,
   list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
   details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: number) => [...${keysVar}.details(), id] as const,
+  detail:  (id: number) => [...${keysVar}.details(), id] as const,${relationKeyLine}
 };
 `;
 
@@ -108,7 +207,8 @@ export function use${entityNamePlural}(
 }
 `;
 
-  const body: Code = joinCode([queryKeys, queries], { on: "\n" });
+  const m2mHooks = renderM2mHooks(entity, ctx, keysVar, m2mEntries);
+  const body: Code = joinCode(m2mHooks ? [queryKeys, queries, m2mHooks] : [queryKeys, queries], { on: "\n" });
 
   const header =
     `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
@@ -120,11 +220,13 @@ export function use${entityNamePlural}(
 // Full path (writable entities — table-backed or write-through)
 // ---------------------------------------------------------------------------
 
-function renderFullHooksFile(entity: MetaObject, entityModule: string): string {
+function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
   const entityName = entity.name;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
+  const m2mEntries = m2mEntriesFor(entity, ctx);
+  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar)}` : "";
 
   const useMutationSym = imp("useMutation@@tanstack/react-query");
   const useQuerySym = imp("useQuery@@tanstack/react-query");
@@ -152,7 +254,7 @@ export const ${keysVar} = {
   lists:   () => [...${keysVar}.all(), "list"] as const,
   list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
   details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: number) => [...${keysVar}.details(), id] as const,
+  detail:  (id: number) => [...${keysVar}.details(), id] as const,${relationKeyLine}
 };
 `;
 
@@ -182,6 +284,8 @@ export function use${entityNamePlural}(
   });
 }
 `;
+
+  const m2mHooks = renderM2mHooks(entity, ctx, keysVar, m2mEntries);
 
   const mutations: Code = code`
 export function useCreate${entityName}(
@@ -238,7 +342,10 @@ export function useDelete${entityName}(
 }
 `;
 
-  const body: Code = joinCode([queryKeys, queries, mutations], { on: "\n" });
+  const body: Code = joinCode(
+    m2mHooks ? [queryKeys, queries, m2mHooks, mutations] : [queryKeys, queries, mutations],
+    { on: "\n" },
+  );
 
   const header =
     `// ${GENERATED_HEADER}-tanstack — DO NOT EDIT.\n` +
