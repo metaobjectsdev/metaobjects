@@ -96,6 +96,7 @@ def run_validations(
     errors: list[MetaError],
     warnings: list[str],
     envelope_warnings: list[LoaderWarning] | None = None,
+    strict: bool = False,
 ) -> None:
     """Run all validation passes in order.
 
@@ -107,7 +108,7 @@ def run_validations(
     push the warning code onto the legacy ``warnings`` channel so existing
     consumers see something.
     """
-    _validate_attr_schema(root, registry, errors)
+    _validate_attr_schema(root, registry, errors, strict)
     _validate_enum_values(root, errors)
     _validate_field_defaults(root, errors)
     _validate_db_column_type(root, errors)
@@ -229,6 +230,7 @@ def _validate_attr_schema(
     root: MetaData,
     registry: TypeRegistry,
     errors: list[MetaError],
+    strict: bool = False,
 ) -> None:
     common_attrs = registry.get_common_attrs()
     # Cache effective schemas per (type, sub_type) — also dedupes the per-type-vs-common
@@ -242,6 +244,29 @@ def _validate_attr_schema(
             cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors, node)
             schema_cache[key] = cached
         schemas, schema_by_name = cached
+
+        # --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+        #
+        # Runs BEFORE the `not schemas` early-return: a node type with no
+        # per-type schema and no common attrs must still reject an authored
+        # @-attr under strict. Own-attrs only — an inherited/overlaid declared
+        # attr was validated on its declaring node and never appears in
+        # own_meta_attrs(). An own attr matching neither a per-type schema entry
+        # nor a commonAttr is a made-up attribute → ERR_UNKNOWN_ATTR (closing the
+        # open policy). In lax mode (the default) this is a no-op, preserving the
+        # legacy open-attr behavior so downstream apps can loosen.
+        if strict:
+            for attr_node in node.own_meta_attrs():
+                if attr_node.name not in schema_by_name:
+                    errors.append(
+                        MetaError(
+                            f"Unknown attribute '@{attr_node.name}' on "
+                            f"{_node_label(node)} — not declared by any registered "
+                            f"provider for {node.type}.{node.sub_type}",
+                            ErrorCode.ERR_UNKNOWN_ATTR,
+                            envelope=node.source,
+                        )
+                    )
 
         if not schemas:
             continue

@@ -187,7 +187,12 @@ def _load_or_capture_compose_error(
     code-only outcomes — parity with the TS and C# adapters.
     """
     try:
-        result = MetaDataLoader.from_directory(input_dir, providers=providers)
+        # ADR-0022 — the library's own conformance corpora load STRICT: an
+        # undeclared @-attr is ERR_UNKNOWN_ATTR (no open-attr policy). The public
+        # `strict` kwarg defaults False so a downstream app can loosen.
+        result = MetaDataLoader.from_directory(
+            input_dir, providers=providers, strict=True
+        )
         return result, None
     except ParseError as ex:
         # composeRegistry raises ParseError with ERR_PROVIDER_* codes.
@@ -268,7 +273,8 @@ def load_fixture_result(
     preserves pre-rc.3 behavior (``[core_provider, doc_provider]``).
     """
     providers = _resolve_providers(provider_ids)
-    return MetaDataLoader.from_directory(input_dir, providers=providers)
+    # ADR-0022 — library conformance loads strict (see _load_or_capture_compose_error).
+    return MetaDataLoader.from_directory(input_dir, providers=providers, strict=True)
 
 
 def load_fixture_effective(
