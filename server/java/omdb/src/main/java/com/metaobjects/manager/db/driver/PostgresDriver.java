@@ -132,6 +132,24 @@ public class PostgresDriver extends GenericSQLDriver {
         return "\"" + name + "\"";
     }
 
+    /**
+     * Postgres has a native {@code jsonb} type: bind JSON text via
+     * {@code setObject(.., Types.OTHER)} (pgjdbc routes {@code OTHER} + a String to the
+     * jsonb column's input function). A bare {@code setString} draws "column is of type
+     * jsonb but expression is of type character varying". The base-class default
+     * ({@code setString}) is correct only for backends that store JSON as text (Derby).
+     */
+    @Override
+    protected void bindJsonbParameter(PreparedStatement s, int index, String json) throws SQLException {
+        s.setObject(index, json, java.sql.Types.OTHER);
+    }
+
+    /** NULL into a jsonb column on Postgres binds with {@code OTHER}, matching the value bind. */
+    @Override
+    protected int jsonbNullSqlType() {
+        return java.sql.Types.OTHER;
+    }
+
     @Override
     public String toString() {
         return "PostgreSQL Database Driver (Enhanced for PostgreSQL 14+)";

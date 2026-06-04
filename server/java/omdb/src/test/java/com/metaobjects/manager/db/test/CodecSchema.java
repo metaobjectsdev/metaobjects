@@ -38,7 +38,10 @@ public final class CodecSchema {
             + "  rate REAL,\n"
             + "  amount DECIMAL(18,2),\n"
             + "  createdAt TIMESTAMP,\n"
-            + "  startTime TIME\n"
+            + "  startTime TIME,\n"
+            + "  tsVal TIMESTAMP,\n"
+            + "  moneyVal BIGINT,\n"
+            + "  status VARCHAR(20)\n"
             + ")";
 
     /** Executes the CODEC_SAMPLE DDL on a fresh connection from {@code connector}. */

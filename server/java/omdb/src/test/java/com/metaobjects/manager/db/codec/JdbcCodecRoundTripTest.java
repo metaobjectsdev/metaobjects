@@ -183,6 +183,101 @@ public class JdbcCodecRoundTripTest {
     }
 
     /**
+     * SP-H Unit 5 — full OMDB round-trip for the codecs that previously had NO dedicated
+     * codec and rode the generic {@code ObjectCodec} fallback: {@code field.timestamp}
+     * (the highest-risk write hazard — {@code setObject(java.util.Date)} is rejected by
+     * pgjdbc), {@code field.currency} (BIGINT minor units), and {@code field.enum} (text).
+     * Exercises write codec → read codec on embedded Derby.
+     *
+     * <p>{@code field.uuid} is NOT exercised here: OMDB binds a native uuid column via
+     * {@code setObject(.., Types.OTHER)} (see {@link UuidCodec} /
+     * {@code GenericSQLDriver.isUuidColumn}), which Derby rejects ("data type 'OTHER' is
+     * not supported"). The native-uuid AND timestamptz WRITE paths are gated against real
+     * Postgres by the persistence-conformance {@code op: roundtrip} scenario; the UuidCodec
+     * read-back-lowercase contract is covered at the raw-JDBC boundary by
+     * {@link #uuidCodecReadsBackLowercaseCanonical()}.</p>
+     */
+    @Test
+    public void timestampCurrencyEnumRoundTripThroughOMDB() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        // 14:30:00.123 UTC on 2026-06-03, expressed as epoch millis so the assertion is
+        // zone-independent (the value written is the value read back).
+        Date ts = new Date(java.time.Instant.parse("2026-06-03T14:30:00.123Z").toEpochMilli());
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            String label = "tcu-roundtrip-" + System.currentTimeMillis();
+            // NOT-NULL columns from CodecSchema.
+            vo.setString("label", label);
+            vo.setInt("count", 1);
+            vo.setLong("bignum", 1L);
+            vo.setBoolean("active", false);
+            vo.setDouble("ratio", 0d);
+            vo.setFloat("rate", 0f);
+            vo.setObject("amount", java.math.BigDecimal.ZERO);
+            vo.setDate("createdAt", new Date(0));
+            vo.setObject("startTime", LocalTime.of(0, 0, 0));
+            // The SP-H subtypes under test.
+            vo.setDate("tsVal", ts);                  // TimestampCodec
+            vo.setLong("moneyVal", 199900L);          // CurrencyCodec (integer minor units)
+            vo.setString("status", "MEDIUM");         // EnumCodec
+
+            omdb.createObject(oc, vo);
+
+            Collection<?> rows = omdb.getObjects(oc, mo,
+                    new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+            assertEquals("exactly one row written", 1, rows.size());
+            ValueObject read = (ValueObject) rows.iterator().next();
+
+            assertNotNull("TimestampCodec round-trip non-null", read.getDate("tsVal"));
+            assertEquals("TimestampCodec must round-trip the instant exactly",
+                    ts.getTime(), read.getDate("tsVal").getTime());
+            assertEquals("CurrencyCodec must round-trip integer minor units",
+                    Long.valueOf(199900L), read.getLong("moneyVal"));
+            assertEquals("EnumCodec must round-trip the member symbol",
+                    "MEDIUM", read.getString("status"));
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    /**
+     * {@link UuidCodec} read-back-lowercase contract at the raw codec/JDBC boundary. The
+     * native-uuid WRITE bind ({@code setObject(.., Types.OTHER)}) is Postgres-only (Derby
+     * rejects {@code OTHER}), so seed a CHAR column with a verbatim (upper-case) UUID string
+     * via raw SQL and assert {@code readInto} lowercases it to the cross-port canonical form.
+     */
+    @Test
+    public void uuidCodecReadsBackLowercaseCanonical() throws Exception {
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        com.metaobjects.field.UuidField uuidField = new com.metaobjects.field.UuidField("uuidVal") {
+            @Override public void setString(Object obj, String value) { store.put("v", value); }
+        };
+        JdbcCodecs.UuidCodec codec = new JdbcCodecs.UuidCodec();
+
+        try (Connection conn = getConnection()) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE codec_uuid_probe (u VARCHAR(36))");
+                st.execute("INSERT INTO codec_uuid_probe (u) VALUES "
+                        + "('AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA')");
+            }
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT u FROM codec_uuid_probe")) {
+                assertTrue("one row seeded", rs.next());
+                codec.readInto(new Object(), uuidField, rs, 1);
+            }
+            assertEquals("UuidCodec must read back lowercase-canonical",
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", store.get("v"));
+            try (Statement st = conn.createStatement()) {
+                st.execute("DROP TABLE codec_uuid_probe");
+            }
+        }
+    }
+
+    /**
      * TimeCodec symmetry at the raw codec/JDBC boundary (codec unit test, not OMDB
      * end-to-end). Uses a verbatim-storing TimeField subclass to isolate ONLY the
      * codec's {@code LocalTime → java.sql.Time → LocalTime} JDBC conversion.

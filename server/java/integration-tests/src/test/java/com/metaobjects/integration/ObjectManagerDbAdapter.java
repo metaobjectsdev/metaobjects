@@ -300,6 +300,17 @@ final class ObjectManagerDbAdapter {
      * For non-ValueObject types the row is keyed by the field's metadata
      * name and the value is what {@link ObjectManagerDB} loaded.</p>
      */
+    /**
+     * Package-visible entry to the read-path row normalizer for the {@code op: roundtrip}
+     * writer ({@link RoundtripWriter}), which reads the inserted row back by PK and needs the
+     * SAME field-keyed wire projection (jsonb parse + wire-type coercion) the read scenarios
+     * use, so the WRITE round-trip asserts against a byte-identical wire shape.
+     */
+    static Map<String, Object> toRowMapForRoundtrip(MetaObject mc, Object instance,
+                                                    Map<String, Integer> columnSqlTypes) {
+        return toRowMap(mc, instance, columnSqlTypes);
+    }
+
     private static Map<String, Object> toRowMap(MetaObject mc, Object instance,
                                                 Map<String, Integer> columnSqlTypes) {
         Map<String, Object> row = new LinkedHashMap<>();

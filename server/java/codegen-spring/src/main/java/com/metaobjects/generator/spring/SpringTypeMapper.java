@@ -11,6 +11,7 @@ import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.database.CoreDBMetaDataProvider;
@@ -76,6 +77,11 @@ public final class SpringTypeMapper {
         if (field instanceof DecimalField) return "java.math.BigDecimal";
         if (field instanceof BooleanField) return "Boolean";
         if (field instanceof DateField) return "java.time.LocalDate";
+        // `field.time` is a wall-clock time-of-day (no date, no zone). Wire form is
+        // "HH:mm:ss[.fff]" (normalization.md) → java.time.LocalTime. Mirrors
+        // KotlinTypeMapper's `time` arm; previously absent, so any time-bearing entity
+        // hit the unsupported-type throw (SP-H Unit 5 fix).
+        if (field instanceof TimeField) return "java.time.LocalTime";
         // Timestamp wire contract (normalization.md): plain `field.timestamp` is
         // "timestamp WITHOUT time zone" → wall-clock ISO string with NO `Z`
         // (e.g. "2026-01-01T10:00:00"), which round-trips as java.time.LocalDateTime.
