@@ -32,10 +32,18 @@
 //     templates/zod-validators.ts) — their query/route/validation surface lives
 //     in the discriminator BASE's polymorphic file, NOT their own. So a TPH
 //     subtype likewise contributes ONLY a model symbol here.
-//     DEFERRAL: the TPH BASE's per-subtype polymorphic helpers (find<Sub>ById /
-//     list<SubPlural> / create<Sub> scoped to the shared table) and the subtype
-//     REST subpaths are NOT YET documented by this builder — that fuller TPH
-//     modeling is a tracked follow-up.
+//     The discriminator BASE itself stays queryable, but its data-access surface
+//     is REDUCED: the queries generator emits only the polymorphic reads
+//     find<Base>ById + list<Base>s on the base — create/update/delete are emitted
+//     PER CONCRETE SUBTYPE (create<Sub> …), since a base row can't be inserted
+//     without choosing a subtype. So the builder documents only those two reads
+//     (plus the base's validation schemas + base-path REST, which ARE emitted);
+//     documenting create<Base>/update<Base>/delete<Base>ById would be
+//     over-documentation (the Task-4 accuracy gate catches exactly that).
+//     DEFERRAL: the TPH BASE's per-subtype polymorphic write helpers (create<Sub>
+//     / update<Sub>ById / delete<Sub>ById scoped to the shared table) and the
+//     subtype REST subpaths are NOT YET documented by this builder — that fuller
+//     TPH modeling is a tracked follow-up (under-documentation, allowed).
 //   • @emitRoutes:false entities → the routes generator filters them out
 //     (routes-file.ts: ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false), so they get
 //     NO REST symbols here. The queries + validator generators do NOT honor
@@ -63,6 +71,7 @@ import {
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
+import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
@@ -139,7 +148,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const units: ApiUnitDoc[] = [];
 
   for (const obj of root.objects()) {
-    units.push(buildEntityUnit(obj, pkCtx));
+    units.push(buildEntityUnit(obj, pkCtx, root));
   }
 
   for (const tmpl of templateOutputs(root)) {
@@ -176,7 +185,7 @@ function emitsRoutes(obj: MetaObject): boolean {
   return obj.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
 }
 
-function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
+function buildEntityUnit(obj: MetaObject, ctx: RenderContext, root: MetaRoot): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
 
@@ -190,7 +199,7 @@ function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
   });
 
   if (isQueryable(obj)) {
-    symbols.push(...dataAccessSymbols(obj, ctx));
+    symbols.push(...dataAccessSymbols(obj, ctx, root));
     symbols.push(...validationSymbols(obj));
     // REST is additionally gated: @emitRoutes:false suppresses routes only.
     if (emitsRoutes(obj)) {
@@ -203,8 +212,18 @@ function buildEntityUnit(obj: MetaObject, ctx: RenderContext): ApiUnitDoc {
 
 /** The CRUD helpers templates/queries.ts emits, named via the SHARED naming
  *  helpers the template itself uses (so the names cannot drift). The PK field +
- *  TS type come from the real getPkInfo. */
-function dataAccessSymbols(obj: MetaObject, ctx: RenderContext): ApiSymbol[] {
+ *  TS type come from the real getPkInfo.
+ *
+ *  TPH discriminator BASE divergence: when `obj` is a discriminator base, the
+ *  queries generator does NOT emit standalone create<Base>/update<Base>/
+ *  delete<Base>ById — a base row can't be inserted without choosing a concrete
+ *  subtype, so write helpers are emitted PER CONCRETE SUBTYPE (create<Sub> …),
+ *  not on the base. The base file emits only the polymorphic reads find<Base>ById
+ *  + list<Base>s. Documenting create<Base>/update<Base>/delete<Base>ById would be
+ *  OVER-documentation (the api-docs accuracy gate catches exactly this). The
+ *  per-subtype write helpers themselves are a tracked deferral (module header),
+ *  so we under-document (allowed) rather than invent names. */
+function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot): ApiSymbol[] {
   const name = obj.name;
   const { fieldName: pk, tsType: pkType } = getPkInfo(obj, ctx);
 
@@ -214,7 +233,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext): ApiSymbol[] {
   const update = updateFnName(name);
   const del = deleteByIdFnName(name);
 
-  return [
+  const reads: ApiSymbol[] = [
     {
       name: find,
       kind: "data-access",
@@ -231,6 +250,16 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext): ApiSymbol[] {
       returns: `Promise<${name}[]>`,
       usage: `List ${name} rows with optional limit/offset paging.`,
     },
+  ];
+
+  // A TPH discriminator base emits ONLY the polymorphic reads — the write
+  // helpers are per concrete subtype (create<Sub> …), not on the base.
+  if (isTphDiscriminatorBase(obj, root)) {
+    return reads;
+  }
+
+  return [
+    ...reads,
     {
       name: create,
       kind: "data-access",
