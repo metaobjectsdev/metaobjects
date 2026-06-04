@@ -2,11 +2,11 @@
 
 **Date:** 2026-06-04
 **Status:** Design (pending review)
-**Relates to:** **ADR-0022 (the `meta docs` vs `api-docs` boundary — the
-governing decision for this work)**, ADR-0020 (codegen tiering — this is the
-deferred Tier-1 SDK-docs layer it carved out), ADR-0021 (generator registry /
-`--list`), the neutral `meta docs` engine, the downstream agent-context effort
-(separate, sibling-owned).
+**Relates to:** **ADR-0022 (consolidated codegen + documentation surface
+architecture — the governing decision; supersedes ADR-0020/0021)**: Part 1
+tiering (this is the deferred Tier-1 SDK-docs layer), Part 2 generator registry/
+`--list`, Part 3 the `meta docs` (neutral) vs `api-docs` (SDK Tier-1) boundary.
+Also the downstream agent-context effort (separate, sibling-owned).
 
 ## Goal
 
