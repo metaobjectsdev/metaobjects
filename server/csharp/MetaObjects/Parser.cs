@@ -469,6 +469,17 @@ public static class Parser
             }
         }
 
+        // --- Capture the file-default package for resolution ---
+        // The effective package of the DECLARING file (inheritedContextPkg)
+        // captured at parse time, so super resolution can match this node by its
+        // EFFECTIVE qualified key <fileDefaultPackage>::<name> even after the
+        // node merges (with no own package) into an accumulating root carrying a
+        // DIFFERENT file's package. Mirrors the TS parser's setFileDefaultPackage.
+        if (model.Package is null && inheritedContextPkg != "")
+        {
+            model.SetFileDefaultPackage(inheritedContextPkg);
+        }
+
         // --- Determine the effective context package for super resolution ---
         string effectivePkg = model.Package ?? inheritedContextPkg;
 

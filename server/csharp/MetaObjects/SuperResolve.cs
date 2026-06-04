@@ -33,6 +33,17 @@ internal static class SuperResolve
     private static MetaData? FindInTree(MetaData root, string fqn)
     {
         if (root.Fqn() == fqn) return root;
+        // Match by EFFECTIVE qualified key (file-default package folded onto the
+        // bare name, captured at parse time) for nodes carrying no own package —
+        // the cross-PACKAGE cross-file case. Mirrors the TS findInTree second
+        // clause. The parser keeps an object's Fqn() bare for the FR5d
+        // referrer-envelope contract, so this clause is what lets a fully-qualified
+        // `extends: acme::common::BaseEntity` resolve against a `BaseEntity`
+        // declared under `package: acme::common` in a separate file.
+        if (root.Package is null && root.Name != "" && root.ResolutionKey() == fqn)
+        {
+            return root;
+        }
         foreach (MetaData child in root.OwnChildren())
         {
             MetaData? found = FindInTree(child, fqn);

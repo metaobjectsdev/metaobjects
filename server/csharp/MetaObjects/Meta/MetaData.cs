@@ -20,6 +20,19 @@ public abstract class MetaData
     private string? _package;
     public string? Package => _package;
 
+    /// <summary>
+    /// Resolution-only: the file-default package (the top-level
+    /// <c>metadata.root</c> <c>package</c> of the declaring file) captured at
+    /// PARSE time. Lets super resolution match a node by its EFFECTIVE qualified
+    /// key <c>&lt;fileDefaultPackage&gt;::&lt;name&gt;</c> even when the node carries
+    /// no own <c>package</c> — and, crucially, makes that key independent of the
+    /// post-MERGE parent chain (after multiple differently-packaged files merge
+    /// into one accumulating root, the root carries only the FIRST file's
+    /// package, so an ancestor walk would mis-key cross-package nodes). Mirrors
+    /// the TS <c>fileDefaultPackage</c> field. Loader-internal; not serialized.
+    /// </summary>
+    private string? _fileDefaultPackage;
+
     /// <summary>Raw super reference string, pre-resolution.</summary>
     private string? _superRef;
     public string? SuperRef => _superRef;
@@ -135,7 +148,11 @@ public abstract class MetaData
     /// </summary>
     public string ResolutionKey()
     {
-        var pkg = _package;
+        // Prefer the node's own package, then the file-default package captured
+        // at PARSE time (independent of the post-merge parent chain). Only when
+        // neither is present (e.g. programmatic construction) fall back to the
+        // nearest-ancestor package walk.
+        var pkg = _package ?? _fileDefaultPackage;
         if (string.IsNullOrEmpty(pkg))
         {
             var node = _parent;
@@ -150,6 +167,16 @@ public abstract class MetaData
             }
         }
         return string.IsNullOrEmpty(pkg) ? Name : $"{pkg}{PACKAGE_SEPARATOR}{Name}";
+    }
+
+    /// <summary>
+    /// Loader-internal: record the file-default package captured at parse time.
+    /// See the <see cref="_fileDefaultPackage"/> field doc. Honors the frozen guard.
+    /// </summary>
+    public void SetFileDefaultPackage(string pkg)
+    {
+        AssertNotFrozen();
+        _fileDefaultPackage = pkg;
     }
 
     // ---------------------------------------------------------------------------
