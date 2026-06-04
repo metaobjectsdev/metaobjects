@@ -127,7 +127,9 @@ export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
 
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
-export { buildRegistryManifest, emitRegistryManifest } from "./registry-manifest.js";
+export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "./registry-manifest.js";
+export type { AttrClassification } from "./registry-manifest.js";
+export { ExclusionReason } from "./registry-manifest-exclusions.js";
 
 // Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs
 // fixture corpora). NODE-ONLY: registry-coverage.ts statically imports node:fs

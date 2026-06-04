@@ -15,7 +15,8 @@ import { test, expect } from "bun:test";
 import { join } from "node:path";
 import { composeRegistry } from "../src/provider.js";
 import { coreProviders } from "../src/core-types.js";
-import { buildRegistryManifest, emitRegistryManifest } from "../src/registry-manifest.js";
+import { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "../src/registry-manifest.js";
+import { EXCLUDED_PER_TYPE_ATTRS, ExclusionReason } from "../src/registry-manifest-exclusions.js";
 
 // The canonical lives at the REPO ROOT — five `../` levels up from test/
 // (test → metadata → packages → typescript → server → repo-root).
@@ -73,4 +74,38 @@ test("manifest cuts the 11 generic view.* controls, keeps view.base + view.curre
     .map((t) => t.subType)
     .sort();
   expect(viewSubTypes).toEqual(["base", "currency"]);
+});
+
+// Wave 3b — the in/out boundary is an EXPLICIT classification (a reason category
+// per carve-out), not a bare name-match. These assert the classification is
+// total and self-documenting: every per-type attr is either INCLUDED (logical)
+// or carved out with a declared ExclusionReason — there is no silent default.
+test("every registered per-type attr is explicitly classified (no silent default-include)", () => {
+  const registry = composeRegistry(coreProviders);
+  for (const typeId of registry.allTypes()) {
+    for (const attr of registry.attrsOf(typeId.type, typeId.subType)) {
+      const c = classifyPerTypeAttr(attr.name);
+      // Total function: either INCLUDED or one of the declared reason categories.
+      const isReason = Object.values(ExclusionReason).includes(c as ExclusionReason);
+      expect(c === "included" || isReason).toBe(true);
+    }
+  }
+});
+
+test("every carved-out per-type attr name carries a declared ExclusionReason", () => {
+  const validReasons = new Set(Object.values(ExclusionReason));
+  for (const [name, reason] of EXCLUDED_PER_TYPE_ATTRS) {
+    expect(validReasons.has(reason)).toBe(true);
+    expect(classifyPerTypeAttr(name)).toBe(reason);
+  }
+  // The structural/OO-shape keywords are classified StructuralKeyword; the
+  // ADR-0001/0005 bindings NativeBinding; the per-type description CommonAttrDup.
+  expect(classifyPerTypeAttr("extends")).toBe(ExclusionReason.StructuralKeyword);
+  expect(classifyPerTypeAttr("isArray")).toBe(ExclusionReason.StructuralKeyword);
+  expect(classifyPerTypeAttr("object")).toBe(ExclusionReason.NativeBinding);
+  expect(classifyPerTypeAttr("objectAdapter")).toBe(ExclusionReason.NativeBinding);
+  expect(classifyPerTypeAttr("description")).toBe(ExclusionReason.CommonAttrDup);
+  // A genuinely logical attr is INCLUDED.
+  expect(classifyPerTypeAttr("column")).toBe("included");
+  expect(classifyPerTypeAttr("maxLength")).toBe("included");
 });

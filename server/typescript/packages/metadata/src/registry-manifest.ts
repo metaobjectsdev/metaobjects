@@ -21,7 +21,8 @@
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
 import {
-  EXCLUDED_PER_TYPE_ATTR_NAMES,
+  EXCLUDED_PER_TYPE_ATTRS,
+  ExclusionReason,
   isExcludedTypeSubType,
 } from "./registry-manifest-exclusions.js";
 
@@ -88,15 +89,44 @@ function sortedAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
 }
 
 /**
- * Sort PER-TYPE attrs, filtering out the excluded per-type attr names
- * (structural keywords `isArray`/`isAbstract` + the `description` commonAttr —
- * see registry-manifest-exclusions). The filter is a no-op for TS (which never
- * registers them as per-type attrs); it is applied uniformly so the cross-port
- * contract is explicit. NOTE: `description` is filtered ONLY here — it remains
- * in the `commonAttrs` block (built via `sortedAttrs`, unfiltered).
+ * Sort PER-TYPE attrs, keeping only those the explicit classification marks
+ * INCLUDED (logical cross-port vocabulary). A per-type attr classified with any
+ * `ExclusionReason` (structural keyword, native binding, per-type `description`
+ * commonAttr dup) is carved out — for a documented reason, never a silent
+ * name-match. The filter is a no-op for TS (which never registers the carved-out
+ * names as per-type attrs); it is applied uniformly so the cross-port contract
+ * is explicit. NOTE: `description` is filtered ONLY here — it remains in the
+ * `commonAttrs` block (built via `sortedAttrs`, unfiltered).
  */
 function sortedPerTypeAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
-  return sortedAttrs(attrs.filter((a) => !EXCLUDED_PER_TYPE_ATTR_NAMES.has(a.name)));
+  return sortedAttrs(attrs.filter((a) => classifyPerTypeAttr(a.name) === INCLUDED));
+}
+
+/**
+ * The boundary classifier (Wave 3b). For every per-type attr the emitter
+ * encounters, the in/out decision is an EXPLICIT classification — never a silent
+ * default. Returns either an `ExclusionReason` (carved out, with a documented
+ * category) or `INCLUDED` (logical cross-port vocabulary). It is TOTAL: there is
+ * no "unclassified" third state, so a port can never silently let an unreasoned
+ * facet through — the self-documenting property the conformance test asserts.
+ *
+ * This replaces the prior tautology — a bare `EXCLUDED.has(name)` whose negative
+ * branch silently meant "logical". The decision is now centralized and reasoned;
+ * the cross-port byte-canonical + ADR-0023 (sealed agreed-vocabulary registry)
+ * together guarantee that an `INCLUDED` attr really is agreed vocabulary rather
+ * than an accidental registration, so inclusion-by-classification is sound.
+ *
+ * NOTE on liveness: a per-type attr exclusion (e.g. `extends`, `object`) is a
+ * CROSS-PORT carve-out that only the OO ports (Java/Kotlin) physically register;
+ * TS/C#/Python never register those names, so a single port's emitter cannot
+ * judge a carve-out "dead" — that is a cross-port property, asserted by the
+ * shared byte-canonical, not here.
+ */
+const INCLUDED = "included" as const;
+export type AttrClassification = ExclusionReason | typeof INCLUDED;
+
+export function classifyPerTypeAttr(name: string): AttrClassification {
+  return EXCLUDED_PER_TYPE_ATTRS.get(name) ?? INCLUDED;
 }
 
 /**

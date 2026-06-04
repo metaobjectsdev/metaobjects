@@ -80,12 +80,77 @@ The TS emitter (`server/typescript/packages/metadata/src/registry-manifest.ts`,
 `emitRegistryManifest`) is the reference implementation; the TS constants are
 the documented source of truth.
 
-## In / out boundary
+## In / out boundary — a principled classification, not a name-match
 
 The guiding rule: **include a facet only if it is part of the cross-port logical
 contract AND all five ports can emit it identically.** A smaller airtight
 manifest beats a bigger flaky one — when unsure, exclude from v1 and document the
 deferral.
+
+**How the in/out decision is made (Wave 3b — principled, not a tautology).** The
+boundary used to be a bare exclusion name-list: an attr was OUT iff its name
+happened to be hand-added to the set, IN otherwise. That is a tautology — it
+records the names someone remembered, and the next port-private attr nobody adds
+silently enters the cross-port contract. The decision is now an **explicit
+classification** (`classifyPerTypeAttr` / `classifyTypeSubType`, uniform across
+all four emitters — TS / C# / Java / Python; Kotlin reuses the JVM emitter). Each
+per-type facet the emitter encounters resolves to **exactly one** of:
+
+- **`INCLUDED`** — logical cross-port vocabulary (this is what the gate measures;
+  MUST be identical in every port). Note "logical" is **not** "non-physical": the
+  physical-DB attrs `column`/`dbColumnType`/`db.indexed`/`precision`/`scale`/
+  `maxLength`/`unique` ARE logical here — they are the agreed cross-port
+  *persistence* vocabulary (every port emits the same DDL contract from them). The
+  real axis is **cross-port-CONTRACT vs port-PRIVATE-mechanism**, not
+  abstract-vs-physical.
+- An **`ExclusionReason`** — carved OUT of the contract *for a declared category*,
+  never a bare name. The categories are: `NATIVE_BINDING` (factories / native type
+  classes / ADR-0001 `@object` / ADR-0005 `@objectAdapter`), `STRUCTURAL_KEYWORD`
+  (`isArray`/`isAbstract`/`extends`/`implements`/`isInterface`), `COMMON_ATTR_DUP`
+  (`description` re-registered per-type — it lives in the `commonAttrs` block),
+  `INHERITANCE_ANCHOR` (`metadata.base`), `PRESENTATION_ONLY` (the generic
+  `view.*` controls).
+
+The classification is **total** — there is no "unclassified" third state that
+silently defaults to IN, so a port can never let an unreasoned facet through
+undetected (`classifyPerTypeAttr` returns `INCLUDED` or a reason, and every port's
+conformance runner asserts the classification is total and that each carve-out
+carries its declared reason).
+
+Why inclusion-by-default is **sound** rather than the old tautology: ADR-0023
+seals each port's composed metamodel registry after the agreed-provider
+bootstrap, so every registered `(type, subType, attr)` is, by construction,
+deliberately-agreed metamodel vocabulary — there is no accidental registration to
+silently let in. The classification's job is therefore to carve the small,
+declared set of *agreed-but-port-private* facets OUT of that agreed vocabulary,
+each with a reason; the cross-port byte-canonical is the backstop that a carve-out
+hasn't gone stale (a dead rule would surface as a manifest diff).
+
+### Base-vs-leaf rule (Wave 3b — one rule, applied identically in every port)
+
+The manifest measures each `(type, subType)` row's **own attr set as physically
+present on that registry row** — i.e. the *resolved* attrs at that row, NOT a
+separately-computed `inheritsFrom` walk. The reference port (TS) registers the
+full common attr set directly onto the base AND every concrete leaf (the
+registration loops in `core-types.ts` do this), so each row is self-contained and
+the manifest can read each row's own attrs uniformly. The JVM port resolves
+`getChildRequirements()` (which includes inherited requirements) to the same
+own-resolved set, de-duped by name. Consequence, made explicit so it is not read
+as an inconsistency:
+
+- A family whose shared attrs are registered on the base (e.g. `field.*`,
+  `relationship.*`, `object.*`) shows those attrs on the **base row AND every leaf
+  row** (each row carries its complete resolved set).
+- A family whose attrs are declared only on the concrete subtype (e.g.
+  `source.rdb`, `template.output`, the `origin.*` leaves) shows an **empty base
+  row** and the attrs on the leaf.
+
+Both are the *same* rule — "emit each row's resolved own-attrs" — applied to two
+different (and legitimate) registration choices. `inheritsFrom` itself is NOT
+surfaced (it remains the deferred facet below): the manifest deliberately does not
+try to attribute an attr to its *declaring* level, only to report the resolved set
+*present* at each level, which every port computes identically and the byte-gate
+verifies.
 
 ### INCLUDED (v1 — the logical vocabulary, must be identical)
 
@@ -100,40 +165,44 @@ deferral.
 - `defaultSubTypes` — the per-type designated default subType for bare-key YAML
   authoring sugar (`metadata` → `root`, `object` → `entity`).
 
-### EXCLUDED — legitimately per-port / physical (never in scope)
+### EXCLUDED — port-private mechanisms (carved out, each with a reason category)
 
-- Node factory / `NodeConstructor` / Java `Class` — per-port physical wiring.
-- Native type bindings (Java `DataTypes` value-class, TS native TS-type, EF/CLR
-  types, the coarse `DataType` classification) — physical, per-port.
-- **The per-port type-binding facets `@object` + `@objectAdapter`** — `@object`
-  is the ADR-0001 class-FQN type binding for OO ports (the Java runtime resolves
-  an object's native class from this attr) and `@objectAdapter` is the ADR-0005
-  hybrid value-access seam. These are the same category as the native type
-  bindings above — legitimate per-port BINDING mechanisms, not cross-port logical
-  vocabulary. Java registers them as per-type attrs on `object.*` (load-bearing
-  runtime mechanisms read by the value-access representation, IO readers, and
-  OMDB — kept registered in Java); the emitter filters them by name from each
-  type's `attrs` list (uniform across all four emitters; a no-op for
-  TS/C#/Python, which never register them). See SP-G Unit 6b-finish.
-- Codegen targets/options.
-- The TS-only `D1` dialect and any other documented port-unique surface.
-- Ordering (we sort everything).
-- **Structural keywords as per-type attrs (`isArray`, `isAbstract`)** — these are
-  bare structural body keywords (peers of `name`/`extends`/`children`), not
-  attributes. Java additionally registers them as ordinary per-type attrs
-  (inherited everywhere); the other ports do not. The emitter filters them by
-  name from each type's `attrs` list (uniform across all four emitters; a no-op
-  for TS/C#/Python). See SP-G analysis C-2/C-3.
-- **`description` as a per-type attr** — `description` is a `commonAttr` (emitted
+Each bullet below is one of the `ExclusionReason` categories above. They are
+**not** "things whose names we listed" — they are facets that are genuinely
+per-port mechanism rather than cross-port contract, and the emitter classifies
+them as such with a declared reason.
+
+- **`NATIVE_BINDING`** — Node factory / `NodeConstructor` / Java `Class`; native
+  type bindings (Java `DataTypes` value-class, TS native TS-type, EF/CLR types,
+  the coarse `DataType` classification); **and the per-port type-binding facets
+  `@object` + `@objectAdapter`** — `@object` is the ADR-0001 class-FQN type
+  binding for OO ports (the Java runtime resolves an object's native class from
+  this attr) and `@objectAdapter` is the ADR-0005 hybrid value-access seam. All
+  are per-port BINDING mechanisms, not cross-port logical vocabulary. Java
+  registers `@object`/`@objectAdapter` as per-type attrs on `object.*`
+  (load-bearing runtime mechanisms read by the value-access representation, IO
+  readers, and OMDB — kept registered in Java); the classification carves them out
+  of the manifest (uniform across all four emitters; a no-op for TS/C#/Python,
+  which never register them). See SP-G Unit 6b-finish.
+- Codegen targets/options; the TS-only `D1` dialect and any other documented
+  port-unique surface; ordering (we sort everything) — all out of scope.
+- **`STRUCTURAL_KEYWORD`** (`isArray`, `isAbstract`, `extends`, `implements`,
+  `isInterface`) — bare structural / OO-shape body keywords (peers of
+  `name`/`children`), not attributes. Java additionally registers them as ordinary
+  per-type attrs (inherited everywhere); the other ports do not. The
+  classification carves them out of each type's `attrs` list (uniform across all
+  four emitters; a no-op for TS/C#/Python). See SP-G analysis C-2/C-3.
+- **`COMMON_ATTR_DUP`** (`description`) — `description` is a `commonAttr` (emitted
   in the `commonAttrs` block), not a per-type attribute. Java registers it
-  per-type too (a duplicate); the emitter filters the per-type occurrence by
-  name (it stays in `commonAttrs`). See SP-G analysis C-3.
-- **The `metadata.base` inheritance anchor** — Java registers an internal
-  abstract anchor (`metadata.base`) that all types inherit from; the other ports
-  register only the concrete tree root (`metadata.root`). It is the
-  not-universally-tracked `inheritsFrom` anchor this manifest already defers, so
-  the `(metadata, base)` row is skipped by the emitter. See SP-G analysis C-5.
-- **The 11 generic `view.*` controls** (`checkbox`, `date`, `dropdown`,
+  per-type too (a duplicate); the classification carves out the per-type
+  occurrence (it stays in `commonAttrs`). See SP-G analysis C-3.
+- **`INHERITANCE_ANCHOR`** (`metadata.base`) — Java registers an internal abstract
+  anchor (`metadata.base`) that all types inherit from; the other ports register
+  only the concrete tree root (`metadata.root`). It is the not-universally-tracked
+  `inheritsFrom` anchor this manifest already defers, so the `(metadata, base)`
+  row is carved out. See SP-G analysis C-5.
+- **`PRESENTATION_ONLY`** — the 11 generic `view.*` controls (`checkbox`, `date`,
+  `dropdown`,
   `hidden`, `hotlink`, `month`, `number`, `password`, `radio`, `text`,
   `textarea`, `web`) — a TS-web-PRESENTATION facet, like the TS-only `D1`
   dialect. They have zero backend / codegen / render consumers; only the TS web

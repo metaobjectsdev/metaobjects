@@ -1,98 +1,125 @@
-// SP-G Registry Conformance — manifest emitter exclusions.
+// SP-G Registry Conformance — manifest emitter CLASSIFICATION (the in/out boundary).
 //
-// A small, explicit, documented exclusion set applied UNIFORMLY by all four
-// registry-manifest emitters (TS / C# / Python / Java) so the canonical settles
-// to its cross-port logical shape. Each exclusion is a principled decision (see
-// the SP-G divergence analysis, buckets C-2/C-3/C-5 and B-2), NOT a fudge to
-// hide a real divergence:
+// WHY THIS FILE IS A CLASSIFICATION, NOT A NAME-MATCH LIST (Wave 3b).
+// ---------------------------------------------------------------------------
+// The manifest's in/out boundary used to be decided by a bare exclusion
+// name-list: an attr was OUT iff its name happened to be hand-added to the set,
+// IN otherwise — a silent default-include. That is a tautology: it cannot tell a
+// genuinely-logical attr from a port-private one; it just records the names
+// someone remembered to list. The next physical/binding attr nobody adds to the
+// list silently enters the cross-port logical contract.
 //
-//  - Structural-keyword / commonAttr per-type attrs (C-2/C-3): `isArray` and
-//    `isAbstract` are bare STRUCTURAL KEYWORDS (peers of name/extends/children),
-//    and `description` is a `commonAttr` — none is a per-type attribute. Java
-//    additionally registers all three as ordinary per-type attrs (inherited
-//    everywhere); the others do not. Filtering them by name from the per-type
-//    `attrs` list makes every port's emitter agree (no-op for TS/C#/Python,
-//    which never registered them as per-type attrs).
+// The principled axis. Every metamodel facet the emitter encounters is one of:
 //
-//  - The `metadata.base` inheritance anchor (C-5): Java registers an internal
-//    abstract anchor (`metadata.base`) that all types inherit from; the other
-//    ports register only the concrete tree root (`metadata.root`). It is the
-//    not-universally-tracked `inheritsFrom` anchor the manifest already defers,
-//    so the `(type, subType)` row is skipped.
+//   • LOGICAL  — part of the cross-port vocabulary contract. MUST be identical
+//                in all five ports (this is what the gate measures). INCLUDED.
+//                Note "logical" is NOT "non-physical": the physical-DB attrs
+//                `column`/`dbColumnType`/`db.indexed`/`precision`/`scale`/
+//                `maxLength`/`unique` ARE logical here — they are the agreed
+//                cross-port persistence vocabulary (every port emits the same
+//                DDL contract from them). The axis is cross-port-CONTRACT vs
+//                port-PRIVATE-mechanism, not abstract-vs-physical.
 //
-//  - The 11 generic `view.*` controls (B-2): `checkbox`/`date`/`dropdown`/
-//    `hidden`/`hotlink`/`month`/`number`/`password`/`radio`/`text`/`textarea`/
-//    `web` are a TS-web-PRESENTATION facet (the TS web client + TS form codegen
-//    consume them; zero backend/codegen/render consumers in any port). Like the
-//    TS-only `D1` dialect, they are excluded from the cross-port logical
-//    contract. They stay REGISTERED in TS (the loader must accept an authored
-//    `view.dropdown`); C#/Python deregister them (dead vocab there). Only
-//    `view.base` + `view.currency` (the cross-port currency `@locale` wire
-//    contract) remain in the manifest.
+//   • PORT_PRIVATE — a per-port mechanism, NOT cross-port vocabulary:
+//        - NATIVE_BINDING   factories / native type classes / the ADR-0001
+//                           `object` class-FQN binding + ADR-0005 `objectAdapter`
+//                           value-access seam (OO-port runtime mechanisms).
+//        - STRUCTURAL_KEYWORD bare body keywords (`isArray`/`isAbstract`/
+//                           `extends`/`implements`/`isInterface`) — the
+//                           structural/OO-shape spine, peers of name/children,
+//                           never per-type attributes.
+//        - COMMON_ATTR_DUP  `description` re-registered per-type (it lives in the
+//                           `commonAttrs` block, never as a per-type attr).
+//        - INHERITANCE_ANCHOR the `metadata.base` per-port abstract anchor (the
+//                           deferred `inheritsFrom` facet; other ports register
+//                           only the concrete `metadata.root`).
+//        - PRESENTATION_ONLY the 11 generic `view.*` controls (checkbox/date/…)
+//                           — a TS-web presentation facet (TS web client + TS
+//                           form codegen consume them; zero backend/codegen/
+//                           render consumers in any port), like the TS-only `D1`
+//                           dialect. Stay REGISTERED in TS; deregistered in
+//                           C#/Python; EXCLUDED from the manifest everywhere.
+//
+// The boundary is now an EXPLICIT classification (not a silent default): the
+// port-private set is enumerated WITH a reason category, and a TRIPWIRE
+// (`assertExclusionsAreLive`) asserts every enumerated exclusion is genuinely
+// present in the registry — so a stale/typo'd exclusion (an excluded name no
+// provider registers) fails the emit instead of silently doing nothing.
+//
+// Inclusion-by-default is SOUND here precisely because of ADR-0023: the library
+// seals its composed metamodel registry after the agreed-provider bootstrap, so
+// every registered (type, subType, attr) is, by construction, deliberately-agreed
+// metamodel vocabulary — there is no "accidental" registration to silently let
+// in. The classification's job is therefore to carve the small, declared set of
+// agreed-but-port-private facets OUT of that agreed vocabulary, with a reason and
+// a liveness tripwire. See fixtures/registry-conformance/README.md.
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
 import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
 
-/** The `isAbstract` structural keyword as Java's per-type attr name (the contract's bare `abstract`). */
-const ATTR_NAME_IS_ABSTRACT = "isAbstract";
+/** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
+export enum ExclusionReason {
+  /** Native type-binding / factory mechanism (incl. ADR-0001 `object`, ADR-0005 `objectAdapter`). */
+  NativeBinding = "native-binding",
+  /** Bare structural / OO-shape keyword (`isArray`/`isAbstract`/`extends`/`implements`/`isInterface`). */
+  StructuralKeyword = "structural-keyword",
+  /** A `commonAttr` (`description`) re-registered per-type — belongs in the commonAttrs block. */
+  CommonAttrDup = "common-attr-dup",
+  /** The `metadata.base` per-port inheritance anchor (deferred `inheritsFrom` facet). */
+  InheritanceAnchor = "inheritance-anchor",
+  /** TS-web-presentation-only facet (the generic `view.*` controls). */
+  PresentationOnly = "presentation-only",
+}
 
-/**
- * The Java-OO structural-shape keyword names (`implements`, `isInterface`) as
- * Java's per-type attr names. Like `extends`/`isArray`/`isAbstract` these are
- * bare structural/OO-shape keywords (the OO modeling spine), NOT per-type
- * attributes in the cross-port logical vocabulary. TS/C#/Python never register
- * them as per-type attrs, so filtering them here is a no-op for those ports;
- * the filter is what drops Java's per-type registrations from its emitter. See
- * SP-G analysis C-2/C-3 (Unit 6b).
- */
+/** `isAbstract` as Java's per-type attr name (the contract's bare `abstract` structural keyword). */
+const ATTR_NAME_IS_ABSTRACT = "isAbstract";
+/** Java-OO structural-shape keywords as per-type attr names (the OO modeling spine). */
 const ATTR_NAME_IMPLEMENTS = "implements";
 const ATTR_NAME_IS_INTERFACE = "isInterface";
-
-/**
- * The two per-port type-BINDING facet attr names: `object` (ADR-0001 class-FQN
- * type binding for OO ports — the Java runtime resolves an object's native class
- * from this attr) and `objectAdapter` (ADR-0005 hybrid value-access seam). These
- * are the same category as the already-excluded native type bindings —
- * legitimate per-port binding mechanisms, not cross-port logical vocabulary. Java
- * registers them as per-type attrs on `object.*` and the filter drops them from
- * its emitter; no-op for TS/C#/Python (which never register them). See SP-G Unit
- * 6b-finish.
- */
+/** ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam (per-port runtime mechanisms). */
 const ATTR_NAME_OBJECT = "object";
 const ATTR_NAME_OBJECT_ADAPTER = "objectAdapter";
 
 /**
- * Per-type attr names excluded from the manifest's `attrs` list — structural /
- * OO-shape keywords (`isArray`, `isAbstract`, `extends`, `implements`,
- * `isInterface`), the per-port type-binding facets (`object`, `objectAdapter`),
- * and the `description` commonAttr (emitted in the `commonAttrs` block, never
- * per-type). See C-2/C-3 + Unit 6b-finish.
+ * The per-type attr names carved OUT of the agreed vocabulary, each mapped to
+ * its PORT_PRIVATE reason category. This is the classification — an attr name
+ * here is OUT *because of its declared category*, not merely because it is
+ * listed. A per-type attr NOT in this map is LOGICAL (INCLUDED) by the
+ * ADR-0023 sealed-vocabulary contract.
  */
-export const EXCLUDED_PER_TYPE_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
-  RESERVED_KEY_IS_ARRAY,
-  ATTR_NAME_IS_ABSTRACT,
-  RESERVED_KEY_EXTENDS,
-  ATTR_NAME_IMPLEMENTS,
-  ATTR_NAME_IS_INTERFACE,
-  ATTR_NAME_OBJECT,
-  ATTR_NAME_OBJECT_ADAPTER,
-  DOC_ATTR_DESCRIPTION,
+export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new Map([
+  [RESERVED_KEY_IS_ARRAY, ExclusionReason.StructuralKeyword],
+  [ATTR_NAME_IS_ABSTRACT, ExclusionReason.StructuralKeyword],
+  [RESERVED_KEY_EXTENDS, ExclusionReason.StructuralKeyword],
+  [ATTR_NAME_IMPLEMENTS, ExclusionReason.StructuralKeyword],
+  [ATTR_NAME_IS_INTERFACE, ExclusionReason.StructuralKeyword],
+  [ATTR_NAME_OBJECT, ExclusionReason.NativeBinding],
+  [ATTR_NAME_OBJECT_ADAPTER, ExclusionReason.NativeBinding],
+  [DOC_ATTR_DESCRIPTION, ExclusionReason.CommonAttrDup],
 ]);
 
 /**
- * `(type, subType)` rows excluded from the manifest. `metadata.base` is Java's
- * internal inheritance anchor (the deferred `inheritsFrom` anchor — C-5). The
- * 11 generic `view.*` controls are a TS-web-presentation facet (B-2): every
- * `view.*` subtype EXCEPT `base` and `currency` is excluded.
+ * `(type, subType)` rows carved OUT of the agreed vocabulary, with reason.
+ * `metadata.base` is the per-port inheritance anchor (INHERITANCE_ANCHOR); the
+ * 11 generic `view.*` controls are TS-web-presentation-only (PRESENTATION_ONLY).
+ * Returns the reason, or `undefined` for an INCLUDED (logical) row.
  */
-export function isExcludedTypeSubType(type: string, subType: string): boolean {
+export function classifyTypeSubType(
+  type: string,
+  subType: string,
+): ExclusionReason | undefined {
   if (type === TYPE_METADATA && subType === SUBTYPE_BASE) {
-    return true; // C-5 — Java's internal inheritance anchor
+    return ExclusionReason.InheritanceAnchor; // C-5 — Java's internal inheritance anchor
   }
   if (type === TYPE_VIEW && subType !== SUBTYPE_BASE && subType !== VIEW_SUBTYPE_CURRENCY) {
-    return true; // B-2 — TS-web-presentation-only generic view controls
+    return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
   }
-  return false;
+  return undefined;
+}
+
+/** True if a `(type, subType)` row is carved out of the manifest (any reason). */
+export function isExcludedTypeSubType(type: string, subType: string): boolean {
+  return classifyTypeSubType(type, subType) !== undefined;
 }
