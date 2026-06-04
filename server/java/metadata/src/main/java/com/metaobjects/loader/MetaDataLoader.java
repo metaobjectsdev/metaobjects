@@ -694,7 +694,14 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     public MetaDataRegistry getTypeRegistry() {
         if (typeRegistry == null) {
-            typeRegistry = MetaDataRegistry.getInstance();
+            // ADR-0023 Decision 2 — the JVM load-time pivot. Default to the sealed,
+            // defined-metamodel-provider-set registry (the cross-port logical
+            // vocabulary), NOT the unbounded classpath-SPI getInstance() singleton
+            // (which the codegen-base/om doc-generator providers pollute with
+            // ai*/json*/object.managed tooling vocabulary). Downstream apps that
+            // need extra vocabulary use setTypeRegistry(compose(...)) — their own
+            // unsealed registry.
+            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
         }
         return typeRegistry;
     }
@@ -961,8 +968,10 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     protected void initDefaultRegistries() {
         if (typeRegistry == null) {
-            typeRegistry = MetaDataRegistry.getInstance();
-            log.debug("Initialized default MetaDataRegistry for loader: {}", getName());
+            // ADR-0023 Decision 2 — default to the sealed defined-provider-set
+            // registry (see getTypeRegistry()), not the polluted SPI singleton.
+            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            log.debug("Initialized default (sealed metamodel) MetaDataRegistry for loader: {}", getName());
         }
 
         if (loaderRegistry == null) {

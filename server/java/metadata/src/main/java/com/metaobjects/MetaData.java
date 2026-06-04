@@ -1243,6 +1243,13 @@ public class MetaData implements Cloneable, Serializable {
         // identical to prior behavior for every consumer that never sets a custom
         // registry (getTypeRegistry() defaults to getInstance()). See
         // docs/superpowers/specs/2026-05-29-java-per-loader-registry-design.md.
+        // The ADR-0023 pivot applies to the LOADER default (authored-metadata load
+        // measures the sealed, defined-provider-set vocabulary). A loader-detached
+        // node (no owning loader) is a programmatic runtime construction — e.g. a
+        // downstream module instantiating its own SPI-registered object type
+        // (object.managed in om). It keeps the SPI singleton fallback so those
+        // runtime types stay constructible. Authored metadata always has an owning
+        // loader, so it gets the sealed registry.
         MetaDataLoader owningLoader = getLoader();
         MetaDataRegistry registry = (owningLoader != null)
             ? owningLoader.getTypeRegistry()

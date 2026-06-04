@@ -101,7 +101,13 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
     // -----------------------------------------------------------------------
 
     private MetaDataLoader newTestLoader() {
-        return createTestLoader("CamelCaseSubtypeRoundTrip", Collections.emptyList());
+        // ADR-0023: the loader defaults to the sealed defined-provider-set registry,
+        // which does NOT carry the test-only field.fizzBuzz subtype registered above.
+        // Run the loader against the shared registry (the extension path) so the
+        // custom subtype is visible.
+        MetaDataLoader loader = createTestLoader("CamelCaseSubtypeRoundTrip", Collections.emptyList());
+        loader.setTypeRegistry(getSharedRegistry());
+        return loader;
     }
 
     // -----------------------------------------------------------------------

@@ -158,7 +158,11 @@ public final class ParserYaml extends CanonicalJsonParser implements MetaDataFil
                 ErrorCode.ERR_MALFORMED_YAML);
         }
 
-        MetaDataRegistry registry = MetaDataRegistry.getInstance();
+        // ADR-0023 Decision 2 — resolve the registry from the owning loader (which
+        // defaults to the sealed defined-provider-set registry), not the polluted
+        // global SPI singleton, so YAML default-subtype desugar measures the same
+        // vocabulary the loader validates against.
+        MetaDataRegistry registry = getLoader().getTypeRegistry();
         YamlDesugar.DesugarResult result = YamlDesugar.desugar(rootNode, registry);
 
         // FR5b — flatten the per-JsonObject PositionMap side table into a

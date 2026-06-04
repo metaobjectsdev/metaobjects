@@ -101,6 +101,51 @@ public final class RegistryManifest {
     }
 
     /**
+     * The process-wide, lazily-built, <strong>sealed</strong> default registry the
+     * library loader uses (ADR-0023 Decision 2 — the JVM load-time pivot).
+     *
+     * <p>This is the SAME defined metamodel provider set the SP-G
+     * registry-conformance gate measures ({@link #composeMetamodelRegistry()}),
+     * promoted from a test-only measurement device to the runtime default.
+     * Unlike {@link MetaDataRegistry#getInstance()} — which is populated by an
+     * unbounded {@code ServiceLoader} SPI scan of whatever {@link MetaDataTypeProvider}
+     * files happen to be on the classpath (the {@code codegen-base}/{@code om}
+     * doc-generator providers self-register {@code ai*}/{@code json*}/{@code has*}
+     * tooling attrs + an {@code object.managed} subtype that were never agreed
+     * metamodel vocabulary) — this registry contains EXACTLY the cross-port logical
+     * metamodel vocabulary, and is sealed so nothing can pollute it post-bootstrap.</p>
+     *
+     * <p>This is also the ADR-0001-consistent choice: vocabulary no longer depends
+     * on classpath SPI presence (AOT-safe). Downstream apps that genuinely need
+     * extra vocabulary use the {@code loader.setTypeRegistry(compose(... + myProvider))}
+     * seam (their own, unsealed registry) — the sanctioned extension path.</p>
+     *
+     * @return the shared sealed default registry
+     */
+    public static MetaDataRegistry defaultLoaderRegistry() {
+        MetaDataRegistry r = defaultLoaderRegistry;
+        if (r == null) {
+            synchronized (DEFAULT_LOCK) {
+                r = defaultLoaderRegistry;
+                if (r == null) {
+                    r = composeMetamodelRegistry();
+                    // The core constraint set is normally lazy-loaded on first
+                    // getAllValidationConstraints() read — which, post-seal, would
+                    // happen DURING a load and trip the seal guard. Force it now,
+                    // while still unsealed, so the sealed registry is fully built.
+                    r.getAllValidationConstraints();
+                    r.seal();
+                    defaultLoaderRegistry = r;
+                }
+            }
+        }
+        return r;
+    }
+
+    private static volatile MetaDataRegistry defaultLoaderRegistry;
+    private static final Object DEFAULT_LOCK = new Object();
+
+    /**
      * The explicit metamodel provider set — instantiated in the same order as
      * {@code metadata/src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider}
      * (provider dependencies are re-resolved by {@code compose}, so order is for
