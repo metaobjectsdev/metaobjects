@@ -36,6 +36,11 @@ class QuerySpec:
     offset: int | None
     expect: Any
     relation: str | None = None
+    #: For ``op: roundtrip``: the field-keyed row to INSERT via the runtime write
+    #: path (native authoring forms — a decimal/uuid/temporal as a string, a
+    #: ``field.object`` as a dict). The runner inserts it, reads it back by PK,
+    #: drops the PK, and asserts the wire-normalized read-back equals ``expect``.
+    insert: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +88,7 @@ def _parse_query(path: Path) -> QueryScenario:
             offset=q.get("offset"),
             expect=q.get("expect"),
             relation=q.get("relation"),
+            insert=q.get("insert"),
         ))
     return QueryScenario(
         name=raw["name"],

@@ -194,6 +194,37 @@
         "children": [
           { "field.string": { "name": "approver", "@maxLength": 80 } }
         ]
+      }},
+      { "object.value": {
+        "name": "Settings",
+        "children": [
+          { "field.string":  { "name": "theme" } },
+          { "field.boolean": { "name": "notify" } },
+          { "field.int":     { "name": "retries" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "AllTypes",
+        "children": [
+          { "source.rdb": { "@table": "all_types" } },
+          { "field.uuid":      { "name": "id" } },
+          { "field.string":    { "name": "sVal",   "@required": true, "@maxLength": 200 } },
+          { "field.int":       { "name": "iVal",   "@required": true } },
+          { "field.long":      { "name": "lVal",   "@required": true } },
+          { "field.double":    { "name": "dVal",   "@required": true } },
+          { "field.float":     { "name": "fVal",   "@required": true } },
+          { "field.decimal":   { "name": "decVal", "@required": true, "@precision": 18, "@scale": 6 } },
+          { "field.boolean":   { "name": "bVal",   "@required": true } },
+          { "field.date":      { "name": "dateVal", "@required": true } },
+          { "field.time":      { "name": "timeVal", "@required": true } },
+          { "field.timestamp": { "name": "tsVal",   "@required": true } },
+          { "field.timestamp": { "name": "tsTzVal", "@required": true, "@dbColumnType": "timestamp_with_tz" } },
+          { "field.currency":  { "name": "moneyVal", "@required": true, "@currency": "USD" } },
+          { "field.enum":      { "name": "enumVal", "@required": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
+          { "field.uuid":      { "name": "uuidVal", "@required": true } },
+          { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
+          { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
+        ]
       }}
     ]
   }

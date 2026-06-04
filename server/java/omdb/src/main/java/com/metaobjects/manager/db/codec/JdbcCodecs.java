@@ -15,10 +15,13 @@
  */
 package com.metaobjects.manager.db.codec;
 
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
@@ -26,6 +29,8 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -34,8 +39,11 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class JdbcCodecs {
@@ -68,6 +76,10 @@ public final class JdbcCodecs {
         register(FloatField.class, new FloatCodec());
         register(DoubleField.class, new DoubleCodec());
         register(StringField.class, new StringCodec());
+        register(TimestampField.class, new TimestampCodec());
+        register(CurrencyField.class, new CurrencyCodec());
+        register(EnumField.class, new EnumCodec());
+        register(UuidField.class, new UuidCodec());
         register(ObjectField.class, DEFAULT);  // identity with the fallback codec
     }
 
@@ -154,14 +166,26 @@ public final class JdbcCodecs {
             f.setObject(o, rs.wasNull() ? null : tv);
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
-            if (v == null) s.setNull(j, Types.TIME);
-            else if (v instanceof LocalTime) s.setTime(j, java.sql.Time.valueOf((LocalTime) v));
-            else {
+            if (v == null) { s.setNull(j, Types.TIME); return; }
+            LocalTime lt;
+            if (v instanceof LocalTime localTime) {
+                lt = localTime;
+            } else {
                 try {
-                    s.setTime(j, java.sql.Time.valueOf(LocalTime.parse(v.toString())));
+                    lt = LocalTime.parse(v.toString());
                 } catch (DateTimeParseException e) {
                     throw new SQLException("Invalid time format: " + v, e);
                 }
+            }
+            // Bind as a LocalTime via JDBC 4.2 setObject so the fractional-second component
+            // survives (java.sql.Time.valueOf TRUNCATES sub-second — e.g. 14:30:00.123 →
+            // 14:30:00, the bug the SP-H roundtrip gate caught). Drivers that reject the
+            // LocalTime bind (e.g. Derby) fall back to java.sql.Time — those backends are
+            // second-resolution anyway, mirroring the read side.
+            try {
+                s.setObject(j, lt, Types.TIME);
+            } catch (SQLException ex) {
+                s.setTime(j, java.sql.Time.valueOf(lt));
             }
         }
     }
@@ -209,6 +233,133 @@ public final class JdbcCodecs {
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             if (v == null) s.setNull(j, Types.VARCHAR);
             else s.setString(j, v.toString());
+        }
+    }
+
+    /**
+     * {@code field.timestamp} ⇄ TIMESTAMP / TIMESTAMPTZ. The field's logical value is a
+     * {@link java.util.Date} (TimestampField is backed by {@code DataTypes.DATE}).
+     *
+     * <p><b>The write hazard this codec closes.</b> Before SP-H Unit 5 TimestampField had no
+     * codec and fell to the generic {@link ObjectCodec}, whose {@code setObject(java.util.Date)}
+     * is rejected by pgjdbc ("Can't infer the SQL type to use for an instance of
+     * java.util.Date") — the INSERT threw at runtime. We bind an explicit
+     * {@link java.sql.Timestamp} (plain) or a UTC {@link OffsetDateTime} (tz-aware) instead.
+     *
+     * <ul>
+     *   <li><b>Plain TIMESTAMP</b> (no {@code @dbColumnType}): {@code setTimestamp} /
+     *       {@code getTimestamp}. The instant's wall-clock is stored verbatim; the runner
+     *       pins the JVM zone to UTC so the wall clock is the UTC wall clock the corpus
+     *       expects (no {@code Z} on the wire).</li>
+     *   <li><b>TIMESTAMPTZ</b> ({@code @dbColumnType: timestamp_with_tz}): bind a UTC
+     *       {@link OffsetDateTime} via {@code setObject(.., TIMESTAMP_WITH_TIMEZONE)} so pgjdbc
+     *       targets the {@code timestamptz} column correctly (a bare {@code setTimestamp} on a
+     *       tz column would be interpreted in the session zone). Read stays {@code getTimestamp}
+     *       (→ java.util.Date); {@code ObjectManagerDbAdapter.coerceWireType} lifts a tz-flagged
+     *       value to an {@link OffsetDateTime} so {@code Normalization} appends the {@code Z}.</li>
+     * </ul>
+     */
+    static final class TimestampCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            // Keep the value a java.sql.Timestamp (NOT a plain java.util.Date): Normalization
+            // renders a Timestamp with its wall-clock time ("...T HH:mm:ss"), whereas a plain
+            // java.util.Date is the DATE-column form and renders date-only. (Timestamp IS a
+            // java.util.Date, so setDate accepts it; the runtime native type stays Timestamp.)
+            Timestamp tv = rs.getTimestamp(j);
+            f.setDate(o, rs.wasNull() ? null : tv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            boolean tz = isTimestampTz(f);
+            if (v == null) {
+                s.setNull(j, tz ? Types.TIMESTAMP_WITH_TIMEZONE : Types.TIMESTAMP);
+                return;
+            }
+            long millis = (v instanceof java.util.Date d) ? d.getTime() : Long.parseLong(v.toString());
+            if (tz) {
+                // tz-aware column: bind an absolute instant as a UTC OffsetDateTime so pgjdbc
+                // routes it to the timestamptz column without a session-zone reinterpretation.
+                OffsetDateTime odt = java.time.Instant.ofEpochMilli(millis).atOffset(ZoneOffset.UTC);
+                s.setObject(j, odt, Types.TIMESTAMP_WITH_TIMEZONE);
+            } else {
+                s.setTimestamp(j, new Timestamp(millis));
+            }
+        }
+    }
+
+    /**
+     * {@code field.currency} ⇄ BIGINT. Money is stored as integer minor units (the cross-port
+     * wire contract — float arithmetic for money is forbidden); CurrencyField is backed by
+     * {@code DataTypes.LONG}, so this is bind-as-{@code long} / read-as-{@code long}, identical
+     * to {@link LongCodec} but registered explicitly so currency does not silently ride the
+     * generic {@link ObjectCodec} fallback.
+     */
+    static final class CurrencyCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            long lv = rs.getLong(j);
+            f.setLong(o, rs.wasNull() ? null : lv);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.BIGINT);
+            else if (v instanceof Long) s.setLong(j, (Long) v);
+            else if (v instanceof Number n) s.setLong(j, n.longValue());
+            else s.setLong(j, Long.valueOf(v.toString()));
+        }
+    }
+
+    /**
+     * {@code field.enum} ⇄ a text column. The enum is string-backed (its member symbol is the
+     * stored value — see {@code EnumField}); EnumField is backed by {@code DataTypes.STRING}, so
+     * this is bind-as-string / read-as-string, identical to {@link StringCodec} but registered
+     * explicitly so enum does not ride the generic {@link ObjectCodec} fallback. The DB
+     * {@code CHECK (col IN (...))} (emitted from {@code @values}) enforces membership.
+     */
+    static final class EnumCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            f.setString(o, rs.getString(j));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.VARCHAR);
+            else s.setString(j, v.toString());
+        }
+    }
+
+    /**
+     * {@code field.uuid} ⇄ a native Postgres {@code uuid} column. UuidField is backed by
+     * {@code DataTypes.STRING} (the wire form is the lowercase-canonical UUID string), but a
+     * native {@code uuid} column rejects a {@code setString} ("operator does not exist: uuid =
+     * varchar" / type-mismatch on INSERT without {@code stringtype=unspecified}). Bind a
+     * {@link java.util.UUID} via {@code setObject(.., Types.OTHER)} instead, and read back the
+     * value lowercase-canonical (dialect-independent — Derby stores a CHAR(36) verbatim).
+     *
+     * <p>Note: for the Postgres driver the native-uuid binding is also intercepted earlier by
+     * {@code GenericSQLDriver.setStatementValue}'s {@code isUuidColumn} branch (which additionally
+     * covers {@code @dbColumnType: uuid} on a plain string field). This codec makes the
+     * {@code field.uuid} subtype self-contained so it is correct even on a driver/path that does
+     * not carry that override, and removes the silent {@link ObjectCodec} fallback.</p>
+     */
+    static final class UuidCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            String v = rs.getString(j);
+            f.setString(o, (v == null || rs.wasNull()) ? null : v.toLowerCase(java.util.Locale.ROOT));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) {
+                s.setNull(j, Types.OTHER);
+            } else {
+                UUID uuid = (v instanceof UUID u) ? u : UUID.fromString(v.toString());
+                s.setObject(j, uuid, Types.OTHER);
+            }
+        }
+    }
+
+    /** True for a {@code field.timestamp} carrying {@code @dbColumnType: timestamp_with_tz}. */
+    private static boolean isTimestampTz(MetaField f) {
+        try {
+            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
+                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equalsIgnoreCase(
+                    String.valueOf(f.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue()).trim());
+        } catch (Exception e) {
+            return false;
         }
     }
 

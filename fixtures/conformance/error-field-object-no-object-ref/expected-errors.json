@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.object.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

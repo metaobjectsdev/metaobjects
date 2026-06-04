@@ -95,6 +95,7 @@ public final class ScenarioLoader {
             asInt(q.get("limit")),
             asInt(q.get("offset")),
             (String) q.get("relation"),
+            (Map<String, Object>) q.get("insert"),
             q.get("expect"));
     }
 

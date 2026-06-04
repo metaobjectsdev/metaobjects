@@ -29,7 +29,6 @@ _SCALAR: dict[str, PyType] = {
     # R6 Plan 2a — field.uuid binds the idiomatic native uuid.UUID (ADR-0001),
     # surfaced at build time. Wire/storage form stays a lowercase-canonical string.
     fc.FIELD_SUBTYPE_UUID: PyType("uuid.UUID", ("import uuid",)),
-    fc.FIELD_SUBTYPE_CLASS: PyType("str"),  # fallback
 }
 
 

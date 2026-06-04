@@ -75,6 +75,26 @@
               }
             },
             {
+              "field.timestamp": {
+                "name": "tsVal",
+                "@column": "tsVal"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "moneyVal",
+                "@column": "moneyVal",
+                "@currency": "USD"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@column": "status",
+                "@values": ["LOW", "MEDIUM", "HIGH"]
+              }
+            },
+            {
               "identity.primary": {
                 "name": "primary",
                 "@fields": ["id"],

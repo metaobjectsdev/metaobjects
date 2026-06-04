@@ -69,6 +69,21 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
         if not spec.relation:
             raise ValueError(f"{spec.name}: op:relate requires 'relation'")
         return om.relate(spec.entity, spec.by, spec.relation)
+    if spec.op == "roundtrip":
+        # WRITE round-trip: INSERT the row through the runtime write path (NOT raw
+        # SQL), read it back by PK so the write codec + read path are both
+        # exercised. The inserted row's PK (server-generated or explicit) drives
+        # the read-back, so identity-generated PKs (gen_random_uuid / increment)
+        # are covered too. The PK is EXCLUDED from the comparison (a generated PK
+        # is non-deterministic) — op:get covers PK round-trip.
+        if not spec.insert:
+            raise ValueError(f"{spec.name}: op:roundtrip requires 'insert' (the row to write)")
+        created = om.create(spec.entity, spec.insert)
+        pk_field = om.primary_key_field(spec.entity)
+        read_back = om.find_by_id(spec.entity, created[pk_field])
+        if read_back is not None:
+            read_back.pop(pk_field, None)
+        return read_back
     # op:list
     sort = [(s.field, s.dir) for s in spec.sort] if spec.sort else None
     return om.find_many(
@@ -152,7 +167,9 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
     if op == "count":
         n = int(expect) if not isinstance(expect, int) else expect
         return str(n)
-    if op == "get":
+    # `roundtrip` reads the inserted row back by PK → a single-row result,
+    # asserted exactly like `get`.
+    if op in ("get", "roundtrip"):
         if expect is None:
             return "null"
         return json.dumps(normalize_row(expect), sort_keys=True, separators=(",", ":"))
@@ -172,7 +189,7 @@ def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> s
         return str(int(actual) if actual is not None else 0)
     if actual is None:
         return "null" if op != "relate" else "[]"
-    if op == "get":
+    if op in ("get", "roundtrip"):
         return json.dumps(
             normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
         )

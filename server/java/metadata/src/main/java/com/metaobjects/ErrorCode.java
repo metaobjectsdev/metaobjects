@@ -134,6 +134,9 @@ public enum ErrorCode {
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,
 
+    /** ADR-0013: a field.object declares no @objectRef (use @dbColumnType: jsonb for an open map). */
+    ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
+
     /** An object declares source nodes but none has role=primary. */
     ERR_SOURCE_NO_PRIMARY,
 
@@ -199,6 +202,13 @@ public enum ErrorCode {
      * {@code format: "merged"} with both contributors listed.
      */
     ERR_MERGE_CONFLICT,
+
+    /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     */
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
 
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,

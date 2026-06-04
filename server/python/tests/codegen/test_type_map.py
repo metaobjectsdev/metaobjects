@@ -20,7 +20,6 @@ def test_scalar_subtypes_map() -> None:
     assert py_type_for(_field(fc.FIELD_SUBTYPE_DOUBLE)).expr == "float"
     assert py_type_for(_field(fc.FIELD_SUBTYPE_FLOAT)).expr == "float"
     assert py_type_for(_field(fc.FIELD_SUBTYPE_BOOLEAN)).expr == "bool"
-    assert py_type_for(_field(fc.FIELD_SUBTYPE_CLASS)).expr == "str"
 
 
 def test_currency_is_int_minor_units() -> None:

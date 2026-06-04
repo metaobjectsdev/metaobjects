@@ -14,6 +14,7 @@ import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UuidField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -40,6 +41,7 @@ import java.nio.file.Paths
  * <p>Operators-per-subtype mapping (FR-009 §5, identical across ports):
  * <ul>
  *   <li>`string` / `enum` → `eq, ne, in, like, isNull`</li>
+ *   <li>`uuid` → `eq, ne, in, isNull` (no `like` — not a substring type, no ordering)</li>
  *   <li>`int / long / float / double / decimal / currency / date / timestamp / time`
  *       → `eq, ne, gt, gte, lt, lte, in, isNull`</li>
  *   <li>`boolean` → `eq, isNull`</li>
@@ -142,6 +144,9 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         /** Operator set for string-shaped subtypes. */
         val OPS_STRING: Set<String> = linkedSetOf("eq", "ne", "in", "like", "isNull")
 
+        /** Operator set for uuid — identity comparison only, no `like`, no ordering. */
+        val OPS_UUID: Set<String> = linkedSetOf("eq", "ne", "in", "isNull")
+
         /** Operator set for numeric / date / timestamp / currency subtypes. */
         val OPS_NUMERIC: Set<String> = linkedSetOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
 
@@ -181,6 +186,7 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             if (subType == null) return emptySet()
             return when (subType) {
                 StringField.SUBTYPE_STRING, EnumField.SUBTYPE_ENUM -> OPS_STRING
+                UuidField.SUBTYPE_UUID -> OPS_UUID
                 IntegerField.SUBTYPE_INT,
                 LongField.SUBTYPE_LONG,
                 FloatField.SUBTYPE_FLOAT,

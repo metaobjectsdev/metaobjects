@@ -135,6 +135,34 @@ describe("mapColumnType — Postgres", () => {
   });
 });
 
+describe("mapColumnType — field.object column parity with migrate-ts (SP-H Unit 4)", () => {
+  // migrate-ts/expected-schema maps a (non-flattened) field.object → { kind: "json" }
+  // → JSONB on Postgres / JSON on SQLite. Codegen must AGREE: the default
+  // single-jsonb-column storage is a jsonb column, never a bare text column.
+  test("Postgres: field.object (default storage) → jsonb (matches migrate-ts JSONB)", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "metadata");
+    f.setAttr("objectRef", "Meta");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+  });
+
+  test("Postgres: field.object with @storage jsonb → jsonb", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "payload");
+    f.setAttr("objectRef", "Payload");
+    f.setAttr("storage", "jsonb");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+  });
+
+  test("SQLite: field.object → text with { mode: 'json' } (matches migrate-ts JSON)", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "metadata");
+    f.setAttr("objectRef", "Meta");
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.fnName).toBe("text");
+    expect(spec.fnOptions).toEqual({ mode: "json" });
+  });
+});
+
 describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
   test("Postgres: uuid → native uuid() column", () => {
     const spec = mapColumnType(metaField(FIELD_SUBTYPE_UUID, "id"), "postgres");

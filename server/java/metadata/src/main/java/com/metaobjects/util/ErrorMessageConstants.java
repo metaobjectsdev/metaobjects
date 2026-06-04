@@ -143,12 +143,29 @@ public final class ErrorMessageConstants {
     public static final String ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF";
 
     /**
+     * Error code emitted when a {@code field.object} declares no {@code @objectRef}
+     * (ADR-0013). A field.object models a typed nested value and REQUIRES @objectRef;
+     * an open/untyped JSON map uses the physical {@code @dbColumnType: jsonb} escape
+     * hatch on a {@code field.string} instead of a bare object.
+     * Cross-language contract: {@code ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF}.
+     */
+    public static final String ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @filter} clause references
      * a field that is not declared filterable, or applies an operator the field's
      * subtype does not support.
      * Cross-language contract: {@code ERR_BAD_ATTR_FILTER}.
      */
     public static final String ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER";
+
+    /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     * Cross-language contract: {@code ERR_FILTERABLE_UNSUPPORTED_SUBTYPE}.
+     */
+    public static final String ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE";
 
     /**
      * Error code emitted when a {@code layout.dataGrid @defaultSortField} value

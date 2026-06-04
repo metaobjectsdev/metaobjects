@@ -21,13 +21,12 @@ import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
-import com.metaobjects.field.ShortField;
-import com.metaobjects.field.ByteField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
@@ -136,6 +135,7 @@ public final class ValidationPhase {
         validateDataGridLayouts(root);
         validateTemplates(root);
         validateEntityHasPrimaryIdentity(root, loader);
+        validateFilterableHasSupportedOps(root);
         warnFilterableWithoutIndex(root, loader);
     }
 
@@ -1105,14 +1105,20 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // field.object @storage validation
+    // field.object + @storage validation
     //
-    // Two rules, matching the cross-port spec:
-    //   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
+    // Rules, matching the cross-port spec (ADR-0013):
+    //   1. A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+    //      A field.object models a typed nested value; without @objectRef it is "an
+    //      oxymoron at the logical layer". Open/untyped JSON uses the physical
+    //      @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //      This rule subsumes the legacy @storage-without-@objectRef check (@storage
+    //      is only meaningful on a field.object), so missing-@objectRef now always
+    //      reports this single, clearer error — one error per node (we skip the
+    //      flattened/array check when @objectRef is absent).
+    //   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
     //      (flattened storage materialises one column-per-field; arrays would
     //       require a side table, which is what @storage="jsonb" is for.)
-    //   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
-    //      (storage shape only makes sense when there IS a referenced object).
     //
     // Only field.object nodes are inspected; @storage on other field subtypes is
     // already rejected by the constraint phase.
@@ -1131,17 +1137,20 @@ public final class ValidationPhase {
 
     private static void validateObjectFieldStorageNode(MetaData node) {
         if (!(node instanceof ObjectField)) return;
-        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
 
         ObjectField field = (ObjectField) node;
 
         if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) {
             throw new MetaDataException(
-                ErrorMessageConstants.ERR_STORAGE_WITHOUT_OBJECT_REF
+                ErrorMessageConstants.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF
                     + ": field.object '" + field.getName()
-                    + "' has @storage but no @objectRef — @storage shape only applies to referenced objects",
-                ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF, field.getSource());
+                    + "' has no @objectRef — a field.object requires @objectRef."
+                    + " For an open/untyped JSON map use @dbColumnType: jsonb on a"
+                    + " field.string instead of a bare object.",
+                ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF, field.getSource());
         }
+
+        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
 
         Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
         if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
@@ -1442,14 +1451,20 @@ public final class ValidationPhase {
     private static final String ATTR_FILTERABLE = "filterable";
     private static final String ATTR_DB_INDEXED = "db.indexed";
 
+    // SP-H Unit9 — canonical per-subtype filter-operator band (cross-port).
+    // boolean → eq, isNull (NOT ne — matches every port's codegen + the
+    // FR-009 / api-contract contract).
     private static final java.util.Set<String> OPS_FOR_BOOLEAN =
-        java.util.Set.of("eq", "ne", "isNull");
+        java.util.Set.of("eq", "isNull");
     private static final java.util.Set<String> OPS_FOR_NUMERIC =
         java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
     private static final java.util.Set<String> OPS_FOR_DATE =
         java.util.Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
     private static final java.util.Set<String> OPS_FOR_STRING =
         java.util.Set.of("eq", "ne", "in", "like", "isNull");
+    // uuid → identity-comparison only: no `like` (not a substring type), no ordering.
+    private static final java.util.Set<String> OPS_FOR_UUID =
+        java.util.Set.of("eq", "ne", "in", "isNull");
 
     static void validateDataGridLayouts(MetaRoot root) {
         for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
@@ -1550,6 +1565,7 @@ public final class ValidationPhase {
     private static java.util.Set<String> allowedOpsFor(MetaField field) {
         String st = field.getSubType();
         if (BooleanField.SUBTYPE_BOOLEAN.equals(st)) return OPS_FOR_BOOLEAN;
+        if (UuidField.SUBTYPE_UUID.equals(st)) return OPS_FOR_UUID;
         if (DateField.SUBTYPE_DATE.equals(st)
                 || TimeField.SUBTYPE_TIME.equals(st)
                 || TimestampField.SUBTYPE_TIMESTAMP.equals(st)) {
@@ -1563,7 +1579,7 @@ public final class ValidationPhase {
                 || CurrencyField.SUBTYPE_CURRENCY.equals(st)) {
             return OPS_FOR_NUMERIC;
         }
-        // string / enum / others fall through to string-shape ops.
+        // string / enum fall through to the string-shape ops band.
         return OPS_FOR_STRING;
     }
 
@@ -1645,6 +1661,64 @@ public final class ValidationPhase {
                 if (o != null) out.add(o.toString());
             }
         }
+    }
+
+    // =========================================================================
+    // @filterable on a subtype with no operator band — error pass (SP-H Unit9)
+    //
+    // A field marked @filterable: true whose subtype has no operator band (e.g.
+    // field.object) would silently generate a filter with an empty operator set
+    // — a route that rejects every request. Error early.
+    // → ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+    //
+    // The op band per subtype is the canonical cross-port set in allowedOpsFor;
+    // here we ask the dedicated "supported subtype" predicate so that string/enum
+    // fall-through in allowedOpsFor does not mask a genuinely unsupported subtype.
+    // =========================================================================
+
+    private static void validateFilterableHasSupportedOps(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (!(rootChild instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rootChild;
+            // Effective fields (includes inherited via extends:/super:).
+            for (MetaField field : obj.getChildren(MetaField.class, true)) {
+                if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
+                Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+                boolean filterable =
+                    (v instanceof Boolean) ? (Boolean) v
+                    : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                    : false;
+                if (!filterable) continue;
+                if (subtypeSupportsFiltering(field.getSubType())) continue;
+                String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE
+                        + ": field \"" + objName + "." + field.getShortName()
+                        + "\" has @filterable: true but its subtype \"" + field.getSubType()
+                        + "\" has no filter-operator band. Remove @filterable, or use a field"
+                        + " subtype that supports filtering"
+                        + " (string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE, field.getSource());
+            }
+        }
+    }
+
+    /** True iff {@code subType} has a canonical filter-operator band (SP-H Unit9). */
+    private static boolean subtypeSupportsFiltering(String st) {
+        if (st == null) return false;
+        return StringField.SUBTYPE_STRING.equals(st)
+            || EnumField.SUBTYPE_ENUM.equals(st)
+            || UuidField.SUBTYPE_UUID.equals(st)
+            || BooleanField.SUBTYPE_BOOLEAN.equals(st)
+            || IntegerField.SUBTYPE_INT.equals(st)
+            || LongField.SUBTYPE_LONG.equals(st)
+            || DoubleField.SUBTYPE_DOUBLE.equals(st)
+            || FloatField.SUBTYPE_FLOAT.equals(st)
+            || DecimalField.SUBTYPE_DECIMAL.equals(st)
+            || CurrencyField.SUBTYPE_CURRENCY.equals(st)
+            || DateField.SUBTYPE_DATE.equals(st)
+            || TimeField.SUBTYPE_TIME.equals(st)
+            || TimestampField.SUBTYPE_TIMESTAMP.equals(st);
     }
 
     /**
@@ -2185,8 +2259,7 @@ public final class ValidationPhase {
     // =========================================================================
 
     private static final Set<String> NUMERIC_DISCRIMINATOR_SUBTYPES = Set.of(
-        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG,
-        ShortField.SUBTYPE_SHORT, ByteField.SUBTYPE_BYTE);
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG);
 
     static void validateDiscriminator(MetaRoot root) {
         List<MetaObject> entities = new java.util.ArrayList<>();

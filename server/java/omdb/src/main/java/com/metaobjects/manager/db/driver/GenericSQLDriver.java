@@ -132,6 +132,27 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * Bind a JSON-text value to a {@code jsonb}/JSON column parameter. Dialect hook:
+     * the default (Derby and other backends with no native json type) stores the JSON as
+     * plain text via {@code setString} into a VARCHAR/CLOB column; {@link PostgresDriver}
+     * overrides to {@code setObject(.., Types.OTHER)} because a real Postgres {@code jsonb}
+     * column rejects a bare {@code setString} ("column is of type jsonb but expression is of
+     * type character varying"). Used by BOTH the open-JSON ({@code @dbColumnType: jsonb}) and
+     * the typed owned-object ({@code @storage: jsonb}) write paths so they agree per dialect.
+     *
+     * @param json the serialized JSON text, never {@code null} (null is bound by the caller)
+     */
+    protected void bindJsonbParameter(PreparedStatement s, int index, String json) throws SQLException {
+        s.setString(index, json);
+    }
+
+    /** The {@code java.sql.Types} code used to bind a NULL into a jsonb/JSON column for this
+     *  dialect. Default {@code VARCHAR} (text storage); Postgres overrides to {@code OTHER}. */
+    protected int jsonbNullSqlType() {
+        return Types.VARCHAR;
+    }
+
+    /**
      * Deserializes a jsonb JSON string to a typed object.
      * <p>
      * Resolution order for the target class:
@@ -1423,8 +1444,8 @@ public class GenericSQLDriver implements DatabaseDriver {
         // column accepts the JSON text (a bare setString is rejected by jsonb's strict
         // input typing).
         if (isOpenJsonbField(f)) {
-            if (value == null) s.setNull(index, Types.OTHER);
-            else s.setObject(index, serializeOpenJsonb(value), Types.OTHER);
+            if (value == null) s.setNull(index, jsonbNullSqlType());
+            else bindJsonbParameter(s, index, serializeOpenJsonb(value));
             return;
         }
         // Native uuid column (field.uuid OR @dbColumnType: uuid): bind a java.util.UUID
@@ -1442,8 +1463,13 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
         com.metaobjects.manager.db.codec.JdbcFieldCodec codec = com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
         if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
-            if (value == null) s.setNull(index, Types.VARCHAR);
-            else s.setString(index, serializeJsonb(f, value));
+            // Typed owned-object jsonb (@storage: jsonb): serialize the value object to JSON
+            // text and bind through the per-dialect jsonb hook (Postgres → Types.OTHER, since
+            // a jsonb column rejects a bare setString; Derby → text VARCHAR). This mirrors the
+            // open-jsonb (@dbColumnType: jsonb) bind above; the SP-H roundtrip gate is the first
+            // write-path exercise of this branch against a real Postgres jsonb column.
+            if (value == null) s.setNull(index, jsonbNullSqlType());
+            else bindJsonbParameter(s, index, serializeJsonb(f, value));
             return;
         }
         codec.write(s, f, index, value);

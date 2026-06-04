@@ -198,6 +198,41 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 4b: ValidateFilterableHasSupportedOps (SP-H Unit9)
+    //   - @filterable: true on a field subtype with NO entry in OPS_BY_SUBTYPE
+    //     (e.g. field.object) → error ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+    //     Such a field would silently generate an empty-ops filter — a route
+    //     that rejects every request.
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateFilterableHasSupportedOps.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFilterableHasSupportedOps(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Children() (effective) — inherited @filterable fields are visible.
+            foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                if (field.OwnAttr(FIELD_ATTR_FILTERABLE) is not true) continue;
+                if (OpsForSubType(field.SubType).Length > 0) continue;
+                errors.Add(new MetaError(
+                    $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but its subtype " +
+                    $"\"{field.SubType}\" has no filter-operator band. Remove @filterable, or use a " +
+                    "field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    Envelope: field.Source));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
     // Pass 5: ValidateOriginPaths
     //   - passthrough.@from / aggregate.@of must resolve to existing Entity.field
     //   - .@via must resolve through valid relationships, hopping entity-by-entity
@@ -1182,8 +1217,17 @@ public static class ValidationPasses
 
     // =========================================================================
     // Pass 8: ValidateFieldObjectStorage
-    //   Cross-attribute validation for @storage on field.object:
-    //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //   Cross-attribute validation for field.object + @storage (ADR-0013):
+    //     - A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+    //       A field.object models a typed nested value; without @objectRef it is
+    //       "an oxymoron at the logical layer". Open/untyped JSON uses the physical
+    //       @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //       This rule subsumes the legacy @storage-without-@objectRef check
+    //       (@storage is only meaningful on a field.object), so missing-@objectRef
+    //       now always reports this single, clearer error — one error per node
+    //       (the flattened/array check is skipped when @objectRef is absent).
+    //       (Previously C# SILENTLY DROPPED a bare field.object in codegen — it is
+    //       now a clear load-time error.)
     //     - @storage "flattened" requires isArray=false (cannot flatten a
     //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
     //
@@ -1199,17 +1243,22 @@ public static class ValidationPasses
         {
             foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
-                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
-                if (storage is null) continue;
-
                 var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
-                if (objectRef is not string refStr || refStr.Length == 0)
+                var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
+
+                if (field.SubType == FIELD_SUBTYPE_OBJECT && !hasObjectRef)
                 {
                     errors.Add(new MetaError(
-                        $"field \"{obj.Name}.{field.Name}\" sets @storage but has no @objectRef",
-                        ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                        $"field.object \"{obj.Name}.{field.Name}\" has no @objectRef; " +
+                        "a field.object requires @objectRef. For an open/untyped JSON map " +
+                        "use @dbColumnType: jsonb on a field.string instead of a bare object.",
+                        ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                         Envelope: field.Source));
+                    continue;
                 }
+
+                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                if (storage is null) continue;
 
                 if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
                 {
@@ -1610,7 +1659,7 @@ public static class ValidationPasses
 
     private static readonly HashSet<string> NumericDiscriminatorSubtypes = new()
     {
-        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
     };
 
     public static IReadOnlyList<MetaError> ValidateDiscriminator(MetaData root)

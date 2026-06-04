@@ -12,9 +12,23 @@ an `@`-prefixed attribute in alphabetical order. `expected.json` and
 `expected-effective.json` are the authoritative reference for the shape — when
 in doubt, read one.
 
-Port status: TypeScript reference (v0.3) passes the full corpus; C# loader +
-conformance shipped; Java H3a (loader restructure) shipped 2026-05-19, H3b
-(conformance harness) in progress; Python planned.
+Port status: the **metamodel loader + canonical serializer corpus is run by
+four ports — TypeScript, C#, Java, and Python — all green.**
+
+**Kotlin runs this corpus transitively, not as a separate run — by design.**
+Kotlin has no distinct loader, parser, or canonical-serializer surface: the
+`metadata-ktx` facade (`com.metaobjects.metadata.ktx.Loader`) forwards every
+call straight to `MetaDataLoader` in the Java `metadata` module, which is the
+single JVM implementation of the load/parse/canonical-serialize path this corpus
+exercises. Java already runs the full corpus against that exact code
+(`metadata/src/test/java/com/metaobjects/conformance/ConformanceTest.java`), so
+wiring a parallel Kotlin metamodel-corpus run would re-invoke identical bytecode
+through a Kotlin harness — redundant, with zero added coverage. Kotlin's
+*distinct* surfaces (codegen via `codegen-kotlin`, runtime via Exposed) are gated
+by their own corpora (render-conformance, persistence-conformance, and
+api-contract-conformance, all of which Kotlin runs as a first-class port). The
+shared metamodel **vocabulary** Kotlin emits is additionally byte-gated by
+`fixtures/registry-conformance/` (Kotlin is live + green there).
 
 ## A scenario directory
 

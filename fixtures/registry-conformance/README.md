@@ -270,8 +270,8 @@ Detail per port:
   (`minLength`/`pattern`/`maxValue`/`minValue`/`format`/`dateFormat`/`maxDate`/
   `minDate`/`defaultView`, validator `msg`/`mask`/`maxSize`/`minSize`); models
   `object.*` with Java OO attrs (`extends`/`implements`/`object`/`objectAdapter`/
-  `isInterface`/`value*`/`data*`) instead of `discriminator`/`discriminatorValue`;
-  and has subtype gaps (missing `field.byte`, `field.short`). (The structural
+  `isInterface`/`value*`/`data*`) instead of `discriminator`/`discriminatorValue`.
+  (The structural
   keyword / `description` / `metadata.base` / generic `view.*` divergences were
   settled in Phase 1 — see above.) Reconciling this at source means rewriting Java's
   metamodel attribute layer to the cross-port vocabulary — a change that ripples
@@ -330,8 +330,8 @@ exercised subtype — that NO fixture exercises.
   deterministic, committed snapshot of the untested sets + counts.
 
 **Report, not hard-fail (by design).** The untested set today is a legitimate
-**pre-existing backlog** — many subtypes (`view.*` controls, `field.byte` /
-`field.short`, the `validator.*` family, the abstract `*.base` anchors, the
+**pre-existing backlog** — many subtypes (`view.*` controls, the `validator.*`
+family, the abstract `*.base` anchors, the
 `attr.*` value-type subtypes) and many attrs are not yet exercised by a fixture.
 Hard-failing CI on that backlog would block everything for no gain. So the test
 ALWAYS prints the coverage summary AND asserts the committed snapshot is
@@ -347,3 +347,46 @@ MO_UPDATE_COVERAGE_SNAPSHOT=1 bun test packages/metadata/test/registry-coverage.
 **Ratchet later.** Once the backlog is burned down (the untested-subtype set
 empties), this can be tightened to hard-fail on any untested subtype — turning
 the report into a gate that forces a fixture for every new vocabulary member.
+
+## Per-subtype write-round-trip matrix (SP-H)
+
+The registry-conformance gate (above) proves the field-subtype vocabulary is
+**identical across ports**, and the metamodel `fixtures/conformance/` corpus
+proves each subtype **loads**. SP-H closed the remaining axis: every concrete
+`field.*` subtype must also **write+read round-trip through each port's
+runtime/ORM** — not just be seeded by raw SQL and read back. That gate lives in
+the persistence corpus, not here, but it is recorded here so a future subtype
+added without a write-round-trip is visible:
+
+| `field.*` subtype | metamodel corpus | persistence write-round-trip | codegen |
+|---|:--:|:--:|:--:|
+| string    | ✅ | ✅ | ✅ |
+| int       | ✅ | ✅ | ✅ |
+| long      | ✅ | ✅ | ✅ |
+| double    | ✅ | ✅ | ✅ |
+| float     | ✅ | ✅ | ✅ |
+| decimal   | ✅ | ✅ | ✅ |
+| boolean   | ✅ | ✅ | ✅ |
+| date      | ✅ | ✅ | ✅ |
+| time      | ✅ | ✅ | ✅ |
+| timestamp | ✅ | ✅ | ✅ |
+| currency  | ✅ | ✅ | ✅ |
+| enum      | ✅ | ✅ | ✅ |
+| uuid      | ✅ | ✅ | ✅ |
+| object    | ✅ | ✅ | ✅ |
+
+- **persistence write-round-trip** = the `op: roundtrip` scenario type in
+  `fixtures/persistence-conformance/queries/roundtrip-all-types.yaml`: its
+  `AllTypes` entity carries one field of every persistable subtype, INSERTed
+  through each port's runtime/ORM write codec (NOT raw SQL) then read back and
+  asserted against the wire-normalized `expect`. Run on all five ports
+  (TS / C# / Java / Kotlin / Python) against Testcontainers Postgres.
+- **codegen** = each port emits the `AllTypes` entity + its `all_types` table
+  (the committed TS-produced `canonical/schema.postgres.sql`), and the
+  api-contract corpus boots each port's generated artifact.
+
+`field.byte` / `field.short` / `field.class` are **absent by design** — they
+were cut as non-functional registration-only stubs (byte/short in `29057ad5`,
+class in SP-H), so the matrix tracks only genuinely-supported subtypes. Adding a
+new persistable `field.*` subtype means adding a column to `AllTypes` (and a row
+here) so the write gate covers it from day one.

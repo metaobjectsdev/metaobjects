@@ -72,10 +72,16 @@ class ErrorCode(str, Enum):
     ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"
     ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY"
     ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF"
+    # ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
+    # physical @dbColumnType: jsonb escape hatch on field.string).
+    ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF"
     ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"
     ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
     ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
+    # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+    # band (e.g. field.object). Would silently generate an empty-ops filter.
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

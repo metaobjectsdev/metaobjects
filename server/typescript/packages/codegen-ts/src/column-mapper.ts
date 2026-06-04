@@ -15,7 +15,6 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -82,7 +81,6 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
     case FIELD_SUBTYPE_ENUM:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
@@ -243,13 +241,21 @@ export function mapColumnType(
           // isn't a silent rounding hazard.
           leadingComment = "TODO: SQLite has no decimal type; stored as text. Convert at the application boundary or migrate to Postgres for native numeric.";
           break;
+        case FIELD_SUBTYPE_OBJECT:
+          // A nested object is stored as a single JSON column (the default
+          // single-jsonb-column storage). SQLite has no native jsonb, so the
+          // idiomatic Drizzle form is text(..., { mode: "json" }) — agreeing with
+          // migrate-ts/expected-schema, which maps field.object → { kind: "json" }
+          // (JSON on SQLite). @storage flattened expansion is a separate codegen
+          // gap; the column TYPE here is the single-column JSON representation.
+          fnName = "text";
+          fnOptions = { mode: "json" };
+          break;
         case FIELD_SUBTYPE_DATE:
         case FIELD_SUBTYPE_TIME:
         case FIELD_SUBTYPE_TIMESTAMP:
         case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
-        case FIELD_SUBTYPE_CLASS:
-        case FIELD_SUBTYPE_OBJECT:
         case FIELD_SUBTYPE_UUID:
           // SQLite has no native uuid type; store as TEXT (string native binding).
           fnName = "text";
@@ -335,9 +341,15 @@ export function mapColumnType(
           }
           break;
         }
-        case FIELD_SUBTYPE_ENUM:
-        case FIELD_SUBTYPE_CLASS:
         case FIELD_SUBTYPE_OBJECT:
+          // A nested object is stored as a single jsonb column (the default
+          // single-jsonb-column storage), matching migrate-ts/expected-schema,
+          // which maps field.object → { kind: "json" } → JSONB on Postgres.
+          // @storage flattened expansion is a separate codegen gap; the column
+          // TYPE here is the single-column jsonb representation.
+          fnName = "jsonb";
+          break;
+        case FIELD_SUBTYPE_ENUM:
         default:
           fnName = "text";
           break;

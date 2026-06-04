@@ -87,7 +87,6 @@ def scalar_kind(sub_type: str) -> str | None:
     ``None`` if the subtype is non-scalar (enum / object)."""
     if sub_type in (
         fc.FIELD_SUBTYPE_STRING,
-        fc.FIELD_SUBTYPE_CLASS,
         fc.FIELD_SUBTYPE_DATE,
         fc.FIELD_SUBTYPE_TIME,
         fc.FIELD_SUBTYPE_TIMESTAMP,

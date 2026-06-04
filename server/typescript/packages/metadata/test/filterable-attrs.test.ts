@@ -39,12 +39,12 @@ describe("loader drift warning for @filterable without index", () => {
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
       metadata: { children: [
-        { object: {
-            name: "Sub", subType: OBJECT_SUBTYPE_ENTITY,
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Sub",
             children: [
-              { field: { name: "id",        subType: FIELD_SUBTYPE_LONG,
-                  children: [{ identity: { subType: IDENTITY_SUBTYPE_PRIMARY, "@fields": "id" } }] }},
-              { field: { name: "firstName", subType: FIELD_SUBTYPE_STRING,
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+              { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "firstName",
                   "@filterable": true } },
             ],
         }},
@@ -66,12 +66,12 @@ describe("loader drift warning for @filterable without index", () => {
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
       metadata: { children: [
-        { object: {
-            name: "Sub", subType: OBJECT_SUBTYPE_ENTITY,
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Sub",
             children: [
-              { field: { name: "id", subType: FIELD_SUBTYPE_LONG,
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
                   "@filterable": true }},
-              { identity: { subType: IDENTITY_SUBTYPE_PRIMARY, "@fields": "id" } },
+              { [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } },
             ],
         }},
       ]},
@@ -87,20 +87,85 @@ describe("loader drift warning for @filterable without index", () => {
   });
 });
 
+describe("loader guard: @filterable on a subtype with no operator band (SP-H Unit9)", () => {
+  test("errors with ERR_FILTERABLE_UNSUPPORTED_SUBTYPE on a filterable field.object", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "loader-filterable-noband-"));
+    const path = join(tmp, "fixture.json");
+    writeFileSync(path, JSON.stringify({
+      metadata: { children: [
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Inner",
+            children: [
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+            ],
+        }},
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Outer",
+            children: [
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+              // field.object has no filter-operator band — @filterable must error.
+              { "field.object": { name: "blob",
+                  "@objectRef": "Inner", "@storage": "jsonb",
+                  "@filterable": true } },
+            ],
+        }},
+      ]},
+    }));
+    try {
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
+      const hit = result.errors.find((e) => e.code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
+      expect(hit).toBeDefined();
+      expect(hit?.message).toContain("Outer.blob");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("no error for a filterable currency / uuid / enum field (op band exists)", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "loader-filterable-band-ok-"));
+    const path = join(tmp, "fixture.json");
+    writeFileSync(path, JSON.stringify({
+      metadata: { children: [
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Item",
+            children: [
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+              { "field.currency": { name: "price", "@currency": "USD",
+                  "@filterable": true, "@db.indexed": true } },
+              { "field.uuid": { name: "sku",
+                  "@filterable": true, "@db.indexed": true } },
+              { "field.enum": { name: "status", "@values": ["A", "B"],
+                  "@filterable": true, "@db.indexed": true } },
+            ],
+        }},
+      ]},
+    }));
+    try {
+      const result = await new MetaDataLoader().load([new FileSource(path)]);
+      const hit = result.errors.find((e) => e.code === "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE");
+      expect(hit).toBeUndefined();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("@db.indexed opts a field out of the @filterable-without-index warning", () => {
   test("@filterable + @db.indexed + no identity → no warning", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "loader-db-indexed-"));
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
       metadata: { children: [
-        { object: {
-            name: "Subscriber", subType: OBJECT_SUBTYPE_ENTITY,
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Subscriber",
             children: [
-              { field: { name: "id", subType: FIELD_SUBTYPE_LONG,
-                  children: [{ identity: { subType: IDENTITY_SUBTYPE_PRIMARY, "@fields": "id" } }] }},
-              { field: {
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+              { [`field.${FIELD_SUBTYPE_STRING}`]: {
                   name: "tags",
-                  subType: FIELD_SUBTYPE_STRING,
                   "@filterable": true,
                   "@db.indexed": true,
               }},
@@ -124,14 +189,13 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
     const path = join(tmp, "fixture.json");
     writeFileSync(path, JSON.stringify({
       metadata: { children: [
-        { object: {
-            name: "Subscriber", subType: OBJECT_SUBTYPE_ENTITY,
+        { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
+            name: "Subscriber",
             children: [
-              { field: { name: "id", subType: FIELD_SUBTYPE_LONG,
-                  children: [{ identity: { subType: IDENTITY_SUBTYPE_PRIMARY, "@fields": "id" } }] }},
-              { field: {
+              { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+              { [`field.${FIELD_SUBTYPE_STRING}`]: {
                   name: "tags",
-                  subType: FIELD_SUBTYPE_STRING,
                   "@filterable": true,
               }},
             ],

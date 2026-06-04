@@ -89,10 +89,7 @@ public static class CoreTypes
     {
         [SUBTYPE_BASE]            = DataType.String,
         [FIELD_SUBTYPE_STRING]    = DataType.String,
-        [FIELD_SUBTYPE_CLASS]     = DataType.String,
         [FIELD_SUBTYPE_INT]       = DataType.Int,
-        [FIELD_SUBTYPE_SHORT]     = DataType.Int,
-        [FIELD_SUBTYPE_BYTE]      = DataType.Int,
         [FIELD_SUBTYPE_LONG]      = DataType.Long,
         [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
         [FIELD_SUBTYPE_ENUM]      = DataType.String,

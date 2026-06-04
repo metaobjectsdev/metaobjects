@@ -33,6 +33,13 @@ expect:
     - '"ownerId" UUID'
     - '"externalId" UUID'
     - '"payload" JSONB'
+    # all_types — the WRITE-roundtrip kitchen-sink (every persistable subtype).
+    # Assert the subtypes whose physical mapping is otherwise unexercised here:
+    # boolean → BOOLEAN, and the enum CHECK referencing a QUOTED mixed-case column
+    # (a bare `enumVal` would fold to `enumval` and reference a missing column).
+    - 'CREATE TABLE "all_types"'
+    - '"bVal" BOOLEAN'
+    - 'CHECK ("enumVal" IN (''LOW'', ''MEDIUM'', ''HIGH''))'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)
@@ -47,6 +54,9 @@ expect:
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name
     rows:
+      # all_types backs the op:roundtrip WRITE-conformance scenario (every
+      # persistable field subtype in one table — SP-H Unit 3).
+      - { table_name: "all_types" }
       - { table_name: "assets" }
       - { table_name: "follows" }
       - { table_name: "friendships" }

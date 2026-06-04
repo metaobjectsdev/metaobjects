@@ -253,7 +253,7 @@ public static class ExtractObject
     /// <summary>Map a scalar field subtype to its <see cref="FieldKind"/>. Unknown → STRING.</summary>
     private static FieldKind ScalarKind(string subType) => subType switch
     {
-        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => FieldKind.Int,
+        FIELD_SUBTYPE_INT => FieldKind.Int,
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => FieldKind.Long,
         FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => FieldKind.Double,
         FIELD_SUBTYPE_DECIMAL => FieldKind.Decimal,

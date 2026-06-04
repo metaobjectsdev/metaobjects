@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
  * <li><strong>field.time:</strong> Time fields for hours, minutes, seconds (no date)</li>
  * <li><strong>field.timestamp:</strong> Timestamp fields</li>
  * <li><strong>field.object:</strong> Object fields with object reference support</li>
- * <li><strong>field.class:</strong> Class fields for class type references</li>
  * <li><strong>field.enum:</strong> Enum fields with a required {@code @values} member set</li>
  * <li><strong>field.uuid:</strong> UUID identity-scalar fields (native java.util.UUID binding)</li>
  * </ul>
@@ -50,8 +49,6 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
 
         // THEN: Register concrete field types that inherit from field.base
         StringField.registerTypes(registry);
-        ByteField.registerTypes(registry);
-        ShortField.registerTypes(registry);
         IntegerField.registerTypes(registry);
         LongField.registerTypes(registry);
         DoubleField.registerTypes(registry);
@@ -64,7 +61,6 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
 
         // Additional field types
         ObjectField.registerTypes(registry);
-        ClassField.registerTypes(registry);
         EnumField.registerTypes(registry);
         CurrencyField.registerTypes(registry);
         UuidField.registerTypes(registry);

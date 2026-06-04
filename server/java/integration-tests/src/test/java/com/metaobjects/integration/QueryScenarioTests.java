@@ -84,6 +84,9 @@ final class QueryScenarioTests {
         bindings.put("fitness::Person",      ValueObject.class);
         bindings.put("fitness::Follow",      ValueObject.class);
         bindings.put("fitness::Friendship",  ValueObject.class);
+        // SP-H Unit 5 op:roundtrip — the every-subtype write keystone + its jsonb value object.
+        bindings.put("fitness::AllTypes",    ValueObject.class);
+        bindings.put("fitness::Settings",    ValueObject.class);
         reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
     }

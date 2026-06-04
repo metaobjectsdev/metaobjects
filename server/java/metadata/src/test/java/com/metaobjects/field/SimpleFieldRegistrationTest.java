@@ -28,7 +28,6 @@ public class SimpleFieldRegistrationTest {
             new FloatField("testFloat");
             new DecimalField("testDecimal");  // New high-precision decimal field
             new ObjectField("testObject");
-            new ClassField("testClass");
         } catch (Exception e) {
             // Ignore
         }
@@ -231,16 +230,6 @@ public class SimpleFieldRegistrationTest {
         assertFalse("Store hours should reject 08:00", storeHours.isValidTime("08:00"));
 
         // Test validation successful - no verbose output needed;
-    }
-
-    @Test
-    public void testNarrowIntegerFieldTypes() {
-        // SP-G re-introduced field.byte / field.short (cross-port registry canonical).
-        assertTrue("ByteField should be registered",
-                   registry.isRegistered("field", "byte"));
-
-        assertTrue("ShortField should be registered",
-                   registry.isRegistered("field", "short"));
     }
 
     @Test

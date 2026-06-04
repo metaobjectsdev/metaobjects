@@ -25,6 +25,9 @@ can apply the BIGINT→string wire rule by SQL type, exactly like the other port
 """
 from __future__ import annotations
 
+import datetime as _dt
+import decimal as _decimal
+import uuid as _uuid
 from collections.abc import Iterable
 from typing import Any, Protocol
 
@@ -33,6 +36,7 @@ from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.field.meta_field import MetaField
 from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
+from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
 from .n2m_resolver import (
@@ -108,6 +112,24 @@ class PostgresDriver:
             return None
         return next(iter(result.rows[0].values()))
 
+    def insert_returning(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any]:
+        """Run an INSERT ... RETURNING and return the (single) RETURNING row.
+
+        The write path commits on success (each conformance scenario owns a
+        fresh container, so autocommit-per-write semantics are fine and keep the
+        round-trip read in the same connection visible without a separate
+        transaction handshake).
+        """
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, params)
+            cols = [d[0] for d in cur.description]
+            row = cur.fetchone()
+            self._conn.commit()
+            return {c: row[i] for i, c in enumerate(cols)}
+        finally:
+            cur.close()
+
 
 class ObjectManager:
     """Method-based read API. Translates Filter dicts → parameterized SQL."""
@@ -137,6 +159,55 @@ class ObjectManager:
         pk_field = self._primary_pk_field(entity)
         rows = self.find_many(entity_name, {pk_field: id_value}, sort=None, limit=1, offset=None)
         return rows[0] if rows else None
+
+    def create(self, entity_name: str, data: dict[str, Any]) -> dict[str, Any]:
+        """INSERT a row through the runtime write path, returning the inserted row.
+
+        ``data`` carries field-keyed values in their *native authoring forms*
+        (the persistence-conformance ``op: roundtrip`` contract): a decimal /
+        uuid / temporal as a string, a ``field.object`` as a dict, currency as an
+        integer (minor units). Each value is coerced to the native Python type
+        the driver binds to the column's physical type (``Decimal`` / ``uuid.UUID``
+        / ``date`` / ``time`` / naive-or-aware ``datetime`` / ``dict``→jsonb), so
+        the WRITE codec is exercised end-to-end. Server-defaulted columns the
+        caller omits (e.g. a ``gen_random_uuid()`` PK) are left out of the INSERT
+        and filled by Postgres; the full row — including the generated PK — is
+        returned via ``RETURNING`` so a round-trip read can key off it.
+        """
+        entity = self._require_entity(entity_name)
+        table = self._table_name(entity)
+
+        insert_cols: list[str] = []
+        params: list[Any] = []
+        for field_name, raw in data.items():
+            f = entity.find_field(field_name)
+            if f is None:
+                raise ValueError(
+                    f"create('{entity_name}'): no field '{field_name}' in metadata"
+                )
+            insert_cols.append(_column_of(f))
+            params.append(_coerce_write_value(f, raw))
+
+        # Always RETURNING the full physical column set so the inserted row —
+        # including any server-generated PK / default — comes back, then map
+        # columns → metadata field names for cross-port row-shape parity.
+        all_cols = [_column_of(f) for f in entity.fields()]
+        col_to_field = {_column_of(f): f.name for f in entity.fields()}
+
+        if insert_cols:
+            col_list = ", ".join(_q(c) for c in insert_cols)
+            placeholders = ", ".join("%s" for _ in insert_cols)
+            sql = (
+                f"INSERT INTO {_q(table)} ({col_list}) VALUES ({placeholders}) "
+                f"RETURNING {', '.join(_q(c) for c in all_cols)}"
+            )
+        else:
+            sql = (
+                f"INSERT INTO {_q(table)} DEFAULT VALUES "
+                f"RETURNING {', '.join(_q(c) for c in all_cols)}"
+            )
+        row = self._driver.insert_returning(sql, tuple(params))
+        return {col_to_field.get(k, k): v for k, v in row.items()}
 
     def find_many(
         self,
@@ -293,6 +364,12 @@ class ObjectManager:
             )
         return _column_of(f)
 
+    def primary_key_field(self, entity_name: str) -> str:
+        """The single-field primary-key NAME for an entity, from its
+        ``identity.primary`` ``@fields``. ``op: roundtrip`` reads the inserted
+        row back by this key (composite PKs are not supported by roundtrip)."""
+        return self._primary_pk_field(self._require_entity(entity_name))
+
     def _primary_pk_field(self, entity: MetaObject) -> str:
         pi = entity.primary_identity()
         if pi is None:
@@ -366,6 +443,74 @@ def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
         placeholders = ", ".join("%s" for _ in value)
         return f"{qc} IN ({placeholders})", list(value)
     raise ValueError(f"Unsupported filter op '{op}' on column '{col}'")
+
+
+# ----------------------------------------------------------------------------
+# Write codec — authoring form → native Python type the driver binds (ADR-0019
+# write side). pg8000 maps Decimal→numeric, uuid.UUID→uuid, naive datetime→
+# timestamp, aware datetime→timestamptz, date→date, time→time, dict→jsonb. We
+# only need to turn the corpus' authoring *strings* into those native types; the
+# driver does the rest. Mirrors the TS runtime write coercer (type-coercer.ts):
+# jsonb objects + native binding per subtype, everything else passes through.
+# ----------------------------------------------------------------------------
+
+
+def _coerce_write_value(field: MetaField, value: Any) -> Any:
+    if value is None:
+        return None
+    sub = field.sub_type
+    col_type = field.attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE)
+
+    # decimal / currency: a decimal authored as a string → Decimal (exact; never
+    # via float). currency is integer minor units — already an int, pass through.
+    if sub == fc.FIELD_SUBTYPE_DECIMAL:
+        return value if isinstance(value, _decimal.Decimal) else _decimal.Decimal(str(value))
+
+    # uuid (logical field.uuid, or a string field pinned to a uuid column):
+    # string → uuid.UUID so the driver binds the native uuid type. PG stores it
+    # lowercase-canonically regardless of input case.
+    if sub == fc.FIELD_SUBTYPE_UUID or col_type == dbc.DB_COLUMN_TYPE_UUID:
+        return value if isinstance(value, _uuid.UUID) else _uuid.UUID(str(value))
+
+    # temporal: parse the authoring string to the native type, with tz-awareness
+    # driven by the field (TIMESTAMP → naive, TIMESTAMPTZ → aware) so the driver
+    # binds the correct physical type.
+    if sub == fc.FIELD_SUBTYPE_DATE:
+        return value if isinstance(value, _dt.date) else _dt.date.fromisoformat(str(value))
+    if sub == fc.FIELD_SUBTYPE_TIME:
+        return value if isinstance(value, _dt.time) else _dt.time.fromisoformat(str(value))
+    if sub == fc.FIELD_SUBTYPE_TIMESTAMP:
+        if isinstance(value, _dt.datetime):
+            return value
+        is_tz = col_type == dbc.DB_COLUMN_TYPE_TIMESTAMP_TZ
+        return _parse_datetime(str(value), tz_aware=is_tz)
+
+    # field.object (jsonb storage): a dict/list passes through — pg8000 binds it
+    # to the jsonb column natively (no manual JSON.stringify, unlike node-pg).
+    # A field.string pinned to a jsonb column behaves the same way.
+    # Everything else (string / int / long / double / float / boolean / enum)
+    # is already the native type pg8000 binds directly.
+    return value
+
+
+def _parse_datetime(text: str, *, tz_aware: bool) -> _dt.datetime:
+    """Parse an ISO-8601 timestamp authoring string to a native datetime.
+
+    A trailing ``Z`` (Zulu/UTC) is normalized to ``+00:00`` for ``fromisoformat``.
+    For a TIMESTAMPTZ column we keep the resulting datetime tz-aware (defaulting
+    an offset-less string to UTC); for a plain TIMESTAMP column we strip any
+    offset to a naive wall-clock value so the driver binds ``timestamp`` (not
+    ``timestamptz``).
+    """
+    iso = text[:-1] + "+00:00" if text.endswith("Z") else text
+    dt = _dt.datetime.fromisoformat(iso)
+    if tz_aware:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dt.timezone.utc)
+        return dt
+    # Naive wall clock: drop any offset without shifting (the wire form already
+    # carried the intended wall-clock components).
+    return dt.replace(tzinfo=None)
 
 
 def _column_of(field: MetaField | None) -> str:

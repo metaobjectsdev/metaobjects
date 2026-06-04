@@ -49,6 +49,9 @@ export const ERROR_CODES = [
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
+  // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
+  // the physical @dbColumnType: jsonb escape hatch on field.string instead).
+  "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF",
   // Source v2 (ADR-0007) error codes — enforcement added during the source-v2 rollout.
   "ERR_RESERVED_ATTR",
   "ERR_SOURCE_NO_PRIMARY",
@@ -75,6 +78,9 @@ export const ERROR_CODES = [
   // FR5c — multi-file overlay merge produced a conflicting attribute value:
   // two contributors set the same @attr to different non-empty values.
   "ERR_MERGE_CONFLICT",
+  // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+  // band (e.g. field.object). Would silently generate an empty-ops filter.
+  "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE",
   "ERR_UNKNOWN",
 ] as const;
 

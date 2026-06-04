@@ -3,13 +3,11 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// Field subtypes (17)
+// Field subtypes (14)
 // ---------------------------------------------------------------------------
 
 export const FIELD_SUBTYPE_STRING = "string";
 export const FIELD_SUBTYPE_INT = "int";
-export const FIELD_SUBTYPE_SHORT = "short";
-export const FIELD_SUBTYPE_BYTE = "byte";
 export const FIELD_SUBTYPE_LONG = "long";
 export const FIELD_SUBTYPE_DOUBLE = "double";
 export const FIELD_SUBTYPE_FLOAT = "float";
@@ -19,7 +17,6 @@ export const FIELD_SUBTYPE_DATE = "date";
 export const FIELD_SUBTYPE_TIME = "time";
 export const FIELD_SUBTYPE_TIMESTAMP = "timestamp";
 export const FIELD_SUBTYPE_OBJECT = "object";
-export const FIELD_SUBTYPE_CLASS = "class";
 export const FIELD_SUBTYPE_CURRENCY = "currency";
 export const FIELD_SUBTYPE_ENUM = "enum";
 /** R6 Plan 2a: logical UUID identity scalar. Bare scalar (no required attrs, no
@@ -31,8 +28,6 @@ export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -42,7 +37,6 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,

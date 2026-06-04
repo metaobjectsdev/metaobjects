@@ -30,7 +30,7 @@ behavior; codegen drift that doesn't is, by definition, not a correctness issue.
 ## The one residual gap — handled opportunistically, not by a corpus
 
 Codegen/type drift *could* go uncaught for vocabulary **no behavior corpus exercises** — the
-"type-universe-shrinks" long tail (`field.short`/`byte`, `validator.{length,regex,numeric,array}`,
+"type-universe-shrinks" long tail (`validator.{length,regex,numeric,array}`,
 non-cascade `@onDelete`/`@onUpdate`, `@kind: storedProc|tableFunction|materializedView`, the
 `view.*` UI subtypes). This is the lowest-priority backlog tier (hardening-review **R10**), and it is
 closed the project's normal way: **adding new metamodel behavior ⇒ add a behavior-corpus fixture that

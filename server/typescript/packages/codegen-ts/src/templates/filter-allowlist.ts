@@ -5,8 +5,6 @@ import {
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -14,18 +12,19 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_CURRENCY,
   opsForSubType,
 } from "@metaobjectsdev/metadata";
 import { sortableFields } from "./filter-shared.js";
 
 const NUMBER_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
+  // currency is integer minor units — coerces as a number on the wire.
+  FIELD_SUBTYPE_CURRENCY,
 ]);
 
 const DATETIME_SUBTYPES = new Set<string>([

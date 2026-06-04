@@ -77,6 +77,13 @@ public final class QueryScenarioRunner {
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
                 Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
                     mc, m -> probeColumnSqlTypes(pg, m));
+                // op:roundtrip — INSERT via the OMDB write path, read back by PK, drop the PK,
+                // assert the normalized read-back == `expect` (the WRITE codec + read gate).
+                if ("roundtrip".equals(spec.op())) {
+                    Object written = RoundtripWriter.execute(omdb, oc, mc, spec, columnSqlTypes);
+                    assertResult(scenario.sourcePath(), spec, written);
+                    continue;
+                }
                 // op:relate normalizes the TARGET entity's rows, so the adapter needs
                 // to probe column types for an entity other than `mc`; hand it a probe
                 // that hits the same per-scenario cache.
@@ -158,7 +165,9 @@ public final class QueryScenarioRunner {
             if (expect == null) return "[]";
             return Normalization.canonicalRowSet((List<Map<String, Object>>) expect);
         }
-        if ("get".equals(op)) {
+        // op:get and op:roundtrip both assert a single bare object (roundtrip's expect is the
+        // wire-normalized read-back of the inserted row, PK dropped).
+        if ("get".equals(op) || "roundtrip".equals(op)) {
             if (expect == null) return "null";
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) expect))
                 // canonicalRowsJson always wraps in [...]; the get path expects the bare object.
@@ -177,7 +186,7 @@ public final class QueryScenarioRunner {
             return Normalization.canonicalRowSet((List<Map<String, Object>>) actual);
         }
         if (actual == null) return "null";
-        if ("get".equals(op)) {
+        if ("get".equals(op) || "roundtrip".equals(op)) {
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) actual))
                 .replaceAll("^\\[", "").replaceAll("\\]$", "");
         }

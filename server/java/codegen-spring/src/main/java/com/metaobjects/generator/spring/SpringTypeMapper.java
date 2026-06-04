@@ -7,12 +7,11 @@ import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
-import com.metaobjects.field.ByteField;
-import com.metaobjects.field.ShortField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.database.CoreDBMetaDataProvider;
@@ -38,7 +37,7 @@ import java.util.Set;
  *
  * <p>Coverage parallels {@code KotlinTypeMapper}: 7 primitive types +
  * currency + enum + uuid. UUID is matched on metadata subtype name (no
- * {@code UuidField} JVM class today). Object / class / decimal etc. throw
+ * {@code UuidField} JVM class today). Object / decimal etc. throw
  * {@link IllegalArgumentException} with a clear message — add support per
  * real consumer ask.</p>
  */
@@ -71,8 +70,6 @@ public final class SpringTypeMapper {
      */
     public static String javaTypeName(MetaField<?> field) {
         if (field instanceof StringField) return "String";
-        if (field instanceof ByteField) return "Byte";
-        if (field instanceof ShortField) return "Short";
         if (field instanceof IntegerField) return "Integer";
         if (field instanceof LongField) return "Long";
         if (field instanceof DoubleField) return "Double";
@@ -80,6 +77,11 @@ public final class SpringTypeMapper {
         if (field instanceof DecimalField) return "java.math.BigDecimal";
         if (field instanceof BooleanField) return "Boolean";
         if (field instanceof DateField) return "java.time.LocalDate";
+        // `field.time` is a wall-clock time-of-day (no date, no zone). Wire form is
+        // "HH:mm:ss[.fff]" (normalization.md) → java.time.LocalTime. Mirrors
+        // KotlinTypeMapper's `time` arm; previously absent, so any time-bearing entity
+        // hit the unsupported-type throw (SP-H Unit 5 fix).
+        if (field instanceof TimeField) return "java.time.LocalTime";
         // Timestamp wire contract (normalization.md): plain `field.timestamp` is
         // "timestamp WITHOUT time zone" → wall-clock ISO string with NO `Z`
         // (e.g. "2026-01-01T10:00:00"), which round-trips as java.time.LocalDateTime.

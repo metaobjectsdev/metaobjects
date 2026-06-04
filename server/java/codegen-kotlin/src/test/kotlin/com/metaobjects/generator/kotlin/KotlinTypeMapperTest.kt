@@ -11,6 +11,7 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
@@ -25,6 +26,7 @@ import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.STRING
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -325,5 +327,37 @@ class KotlinTypeMapperTest {
         assertEquals("uuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
         // `uuid(...)` is a Table member — no extra import line needed.
         assertNull(KotlinTypeMapper.exposedColumnImport(f))
+    }
+
+    // === else-guard: an unmapped field subtype must fail loud, not silently regress ===
+    //
+    // SP-H Unit 8. The mapper's `when` arms each map a known field subtype; the trailing
+    // `else` throws. A future reachable-but-unmapped subtype (the next byte/short-style hole)
+    // must surface as a CLEAR, actionable IllegalArgumentException at codegen time — never a
+    // silent fall-through or an opaque runtime crash downstream. `field.object` (ObjectField)
+    // is a real, reachable subtype with no kotlinTypeName / exposedColumnSpec arm, so it
+    // exercises the guard against a genuinely-unmapped type (not a synthetic stub).
+
+    @Test fun `kotlinTypeName throws a clear error for an unmapped field subtype`() {
+        val f = ObjectField("settings")
+        val ex = assertFailsWith<IllegalArgumentException> {
+            KotlinTypeMapper.kotlinTypeName(f)
+        }
+        val msg = ex.message ?: ""
+        // Actionable: names the failed mapping, the offending Kotlin class, AND the field name.
+        assertTrue(msg.contains("Kotlin type mapping"), "message should name the mapping: $msg")
+        assertTrue(msg.contains("ObjectField"), "message should name the unmapped subtype class: $msg")
+        assertTrue(msg.contains("settings"), "message should name the offending field: $msg")
+    }
+
+    @Test fun `exposedColumnSpec throws a clear error for an unmapped field subtype`() {
+        val f = ObjectField("settings")
+        val ex = assertFailsWith<IllegalArgumentException> {
+            KotlinTypeMapper.exposedColumnSpec(f)
+        }
+        val msg = ex.message ?: ""
+        assertTrue(msg.contains("Exposed column mapping"), "message should name the mapping: $msg")
+        assertTrue(msg.contains("ObjectField"), "message should name the unmapped subtype class: $msg")
+        assertTrue(msg.contains("settings"), "message should name the offending field: $msg")
     }
 }

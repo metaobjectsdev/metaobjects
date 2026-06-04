@@ -14,7 +14,7 @@ public final class Scenarios {
 
     public record QuerySpec(
         String name,
-        String op,                                // list | get | count | relate
+        String op,                                // list | get | count | relate | roundtrip
         String entity,
         Map<String, Object> by,
         Map<String, Object> filter,
@@ -22,6 +22,7 @@ public final class Scenarios {
         Integer limit,
         Integer offset,
         String relation,                          // op:relate — the M:N relationship name to traverse
+        Map<String, Object> insert,               // op:roundtrip — the field-keyed row to WRITE
         Object expect
     ) {}
 

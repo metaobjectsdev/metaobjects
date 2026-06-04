@@ -19,10 +19,7 @@ import { convertToDataType } from "../../data-converter.js";
 import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../../shared/base-types.js";
 import {
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DOUBLE,
@@ -54,18 +51,20 @@ import { ValueObject } from "../object/value-object.js";
 const FIELD_DATA_TYPE: Readonly<Record<string, DataType>> = {
   [SUBTYPE_BASE]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_STRING]: DATA_TYPE_STRING,
-  [FIELD_SUBTYPE_CLASS]: DATA_TYPE_STRING,
   // field.uuid binds to TS `string` (no native UUID type) — DATA_TYPE_STRING.
   [FIELD_SUBTYPE_UUID]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,
-  [FIELD_SUBTYPE_SHORT]: DATA_TYPE_INT,
-  [FIELD_SUBTYPE_BYTE]: DATA_TYPE_INT,
   [FIELD_SUBTYPE_LONG]: DATA_TYPE_LONG,
   [FIELD_SUBTYPE_CURRENCY]: DATA_TYPE_LONG,
   [FIELD_SUBTYPE_ENUM]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_DOUBLE]: DATA_TYPE_DOUBLE,
   [FIELD_SUBTYPE_FLOAT]: DATA_TYPE_DOUBLE,
-  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_DOUBLE,
+  // field.decimal is precision-exact: the native TS binding is `string` (Drizzle
+  // pg `numeric` infers as `string`; SP-H/ADR-0019), the DB column is numeric(p,s),
+  // and the wire form is a STRING. Classifying it DATA_TYPE_DOUBLE would route
+  // @default/coerce through toDouble() and silently round an exact decimal
+  // (e.g. "12345678901234.5678"). DATA_TYPE_STRING keeps it lossless end-to-end.
+  [FIELD_SUBTYPE_DECIMAL]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_BOOLEAN]: DATA_TYPE_BOOLEAN,
   [FIELD_SUBTYPE_DATE]: DATA_TYPE_DATE,
   [FIELD_SUBTYPE_TIME]: DATA_TYPE_DATE,

@@ -42,6 +42,8 @@ class KotlinFilterAllowlistGeneratorTest {
             { "field.string":    { "name": "bio" } },
             { "field.timestamp": { "name": "createdAt", "@filterable": true } },
             { "field.boolean":   { "name": "published", "@filterable": true } },
+            { "field.uuid":      { "name": "ref", "@filterable": true } },
+            { "field.currency":  { "name": "price", "@currency": "USD", "@filterable": true } },
             { "source.rdb":      { "@table": "authors" } },
             { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
         ] } }
@@ -114,6 +116,12 @@ class KotlinFilterAllowlistGeneratorTest {
             // Timestamp shares the numeric op set (gt/lte/etc are valid on timestamps).
             assertTrue("\"createdAt\" to setOf(\"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\")" in src,
                 "expected createdAt → numeric ops; saw:\n$src")
+            // SP-H Unit9 — uuid → eq, ne, in, isNull (no like, no ordering).
+            assertTrue("\"ref\" to setOf(\"eq\", \"ne\", \"in\", \"isNull\")" in src,
+                "expected ref → uuid ops; saw:\n$src")
+            // SP-H Unit9 — currency → numeric ops (integer minor units, orderable).
+            assertTrue("\"price\" to setOf(\"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\")" in src,
+                "expected price → numeric ops; saw:\n$src")
             // Boolean → eq, isNull only (no gt/lt/etc allowed on booleans).
             assertTrue("\"published\" to setOf(\"eq\", \"isNull\")" in src,
                 "expected published → boolean ops; saw:\n$src")

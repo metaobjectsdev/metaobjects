@@ -82,6 +82,17 @@ public static class QueryScenarioRunner
                     $"{scenario.SourcePath} / {spec.Name}: expected the op to be rejected (expectError: true) but it succeeded");
             }
 
+            if (spec.Op == "roundtrip")
+            {
+                // WRITE round-trip: INSERT via the EF runtime, read back by PK, drop
+                // the PK, assert the normalized read-back == `expect`. Exercises the
+                // write codec + read path together (the structural complement to the
+                // read-only scenarios). See RoundtripWriter.
+                var written = await RoundtripWriter.ExecuteAsync(db, spec);
+                AssertResult(scenario.SourcePath, spec, written);
+                continue;
+            }
+
             var efActual = await DbContextAdapter.ExecuteAsync(db, spec);
             AssertResult(scenario.SourcePath, spec, efActual);
         }

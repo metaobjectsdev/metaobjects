@@ -30,6 +30,7 @@
     "ERR_BAD_ATTR_FILTER": "A dataGrid @filter references a non-filterable field or uses an op disallowed for the field's subtype.",
     "ERR_STORAGE_FLATTENED_ARRAY": "@storage \"flattened\" cannot be combined with isArray=true.",
     "ERR_STORAGE_WITHOUT_OBJECT_REF": "@storage was set on a field that has no @objectRef.",
+    "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF": "ADR-0013: a field.object declares no @objectRef. A field.object models a typed nested value and REQUIRES @objectRef. For a genuinely open/untyped JSON map, use the physical escape hatch @dbColumnType: jsonb on a field.string instead of a bare object.",
     "ERR_RESERVED_ATTR": "An @-prefixed reserved structural keyword (e.g. @name, @isArray, @children) was used as an inline attribute.",
     "ERR_SOURCE_NO_PRIMARY": "An object declares source nodes but none has role=primary.",
     "ERR_SOURCE_MULTIPLE_PRIMARY": "An object declares more than one source node with role=primary.",
@@ -47,6 +48,7 @@
     "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH": "FR-014: @discriminatorValue is not a member of the discriminator field's @values (when the discriminator field is field.enum) or cannot be coerced to its subtype.",
     "ERR_YAML_COERCION": "A YAML 1.2 silent type coercion produced a value whose runtime type differs from the attribute's declared valueType (e.g. an unquoted `column: TRUE` parsed as boolean for a string-typed attr). Emitted by every port's YAML loader; canonical JSON is unaffected.",
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
+    "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE": "SP-H Unit9: a field carries @filterable: true but its subtype has no filter-operator band (e.g. field.object). Generating a filter for it would emit an empty operator set — a filter route that rejects every request. Use a filterable subtype (string/enum/uuid/number/currency/date/boolean) or remove @filterable.",
     "ERR_UNKNOWN": "An internal loader error with no stable error code."
   }
 }

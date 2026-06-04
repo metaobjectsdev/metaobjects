@@ -29,10 +29,7 @@ public static class PayloadCodegen
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [FIELD_SUBTYPE_STRING]    = "string",
-            [FIELD_SUBTYPE_CLASS]     = "string",
             [FIELD_SUBTYPE_INT]       = "int",
-            [FIELD_SUBTYPE_SHORT]     = "int",
-            [FIELD_SUBTYPE_BYTE]      = "int",
             [FIELD_SUBTYPE_LONG]      = "long",
             [FIELD_SUBTYPE_CURRENCY]  = "long",
             [FIELD_SUBTYPE_DOUBLE]    = "double",

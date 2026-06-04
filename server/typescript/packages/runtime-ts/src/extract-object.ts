@@ -33,14 +33,11 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DOUBLE,
@@ -267,7 +264,6 @@ function scalarArray(name: string, kind: FieldKind, required: boolean): FieldSpe
 function scalarKind(subType: string): FieldKind {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
@@ -277,8 +273,6 @@ function scalarKind(subType: string): FieldKind {
     case FIELD_SUBTYPE_DECIMAL:
       return FieldKind.STRING;
     case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:
       return FieldKind.INT;
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:

@@ -29,7 +29,7 @@ describe("buildExpectedSchema — field.enum → CHECK", () => {
     expect(table.checks[0]?.name).toBe("orders_status_chk");
   });
   test("expression is `<column> IN (<quoted values>)` over the db column name", () => {
-    expect(table.checks[0]?.expression).toBe("status IN ('OPEN', 'CLOSED')");
+    expect(table.checks[0]?.expression).toBe("\"status\" IN ('OPEN', 'CLOSED')");
   });
   test("every table descriptor has a checks array (empty when no enum)", async () => {
     const noEnum = JSON.stringify({ "metadata.root": { children: [{

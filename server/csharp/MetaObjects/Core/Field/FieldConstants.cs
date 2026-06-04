@@ -16,13 +16,11 @@ namespace MetaObjects.Core.Field;
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (17)
+    // Field subtypes (15)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";
     public const string FIELD_SUBTYPE_INT       = "int";
-    public const string FIELD_SUBTYPE_SHORT     = "short";
-    public const string FIELD_SUBTYPE_BYTE      = "byte";
     public const string FIELD_SUBTYPE_LONG      = "long";
     public const string FIELD_SUBTYPE_DOUBLE    = "double";
     public const string FIELD_SUBTYPE_FLOAT     = "float";
@@ -32,7 +30,6 @@ public static class FieldConstants
     public const string FIELD_SUBTYPE_TIME      = "time";
     public const string FIELD_SUBTYPE_TIMESTAMP = "timestamp";
     public const string FIELD_SUBTYPE_OBJECT    = "object";
-    public const string FIELD_SUBTYPE_CLASS     = "class";
     public const string FIELD_SUBTYPE_CURRENCY  = "currency";
     public const string FIELD_SUBTYPE_ENUM      = "enum";
     /// <summary>
@@ -49,8 +46,6 @@ public static class FieldConstants
         BaseTypes.SUBTYPE_BASE,
         FIELD_SUBTYPE_STRING,
         FIELD_SUBTYPE_INT,
-        FIELD_SUBTYPE_SHORT,
-        FIELD_SUBTYPE_BYTE,
         FIELD_SUBTYPE_LONG,
         FIELD_SUBTYPE_DOUBLE,
         FIELD_SUBTYPE_FLOAT,
@@ -60,7 +55,6 @@ public static class FieldConstants
         FIELD_SUBTYPE_TIME,
         FIELD_SUBTYPE_TIMESTAMP,
         FIELD_SUBTYPE_OBJECT,
-        FIELD_SUBTYPE_CLASS,
         FIELD_SUBTYPE_CURRENCY,
         FIELD_SUBTYPE_ENUM,
         FIELD_SUBTYPE_UUID,
