@@ -120,9 +120,9 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             if (m2mNavs.isNotEmpty()) {
                 append("import org.jetbrains.exposed.sql.JoinType\n")
                 append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
-                // neq / and / or are only used by the symmetric union-on-read branch.
+                // and / or are only used by the symmetric union-on-read branch's directional
+                // ON clause (which keeps the self endpoint — no neq exclusion).
                 if (m2mNavs.any { it.symmetric }) {
-                    append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq\n")
                     append("import org.jetbrains.exposed.sql.and\n")
                     append("import org.jetbrains.exposed.sql.or\n")
                 }
@@ -157,19 +157,21 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 append("fun $ownerTable.${nav.relationName}Query(sourceId: $pkParamSimpleName): Query =\n")
                 if (nav.symmetric) {
                     // Symmetric storage is single-row; a friend appears via EITHER FK column.
-                    // Join the target on whichever junction FK column it matches, keep junction
-                    // rows touching the source on either side, then exclude the source itself —
-                    // so each row contributes the NON-source endpoint (union-on-read).
-                    //
-                    // NOTE: the `neq sourceId` filter drops a degenerate self-loop row (a,a)
-                    // — "a is its own friend" — which no api-contract scenario exercises and
-                    // the cross-port contract leaves undefined. The substrate-agnostic runtime
-                    // M2mJoinResolver carries the canonical self-loop semantics if a consumer
-                    // needs them; this single-query SQL convenience path favours the common case.
+                    // Union-on-read: for each junction row touching the source, the related id is
+                    // the FK column that is NOT the source. We encode that directly in the join ON
+                    // clause as two directional disjuncts:
+                    //   * the target PK = sourceField  WHEN  targetField = sourceId   (source on B side)
+                    //   * the target PK = targetField  WHEN  sourceField = sourceId   (source on A side)
+                    // so each junction row contributes exactly its NON-source endpoint — and a
+                    // self-pair row (a,a) KEEPS the self endpoint (both disjuncts bind target.pk = a
+                    // when the source = a), matching the runtime M2mJoinResolver + every other port
+                    // (Alice is her own friend). No `neq sourceId` exclusion (that would drop (a,a)),
+                    // and the directional ON clause already constrains to junction rows touching the
+                    // source, so no extra WHERE is needed.
                     append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) {\n")
-                    append("        (${nav.targetTableObj}.${nav.targetPkField} eq ${nav.junctionTableObj}.${nav.sourceField}) or (${nav.targetTableObj}.${nav.targetPkField} eq ${nav.junctionTableObj}.${nav.targetField})\n")
+                    append("        ((${nav.junctionTableObj}.${nav.sourceField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.targetField} eq sourceId)) or\n")
+                    append("            ((${nav.junctionTableObj}.${nav.targetField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.sourceField} eq sourceId))\n")
                     append("    }.selectAll()\n")
-                    append("        .where { ((${nav.junctionTableObj}.${nav.sourceField} eq sourceId) or (${nav.junctionTableObj}.${nav.targetField} eq sourceId)) and (${nav.targetTableObj}.${nav.targetPkField} neq sourceId) }\n")
                 } else {
                     // Hetero / directed self-join: join the target by its PK to the junction's
                     // target-side FK, filter the junction on the derived source-side FK.

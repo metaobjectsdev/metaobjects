@@ -141,15 +141,30 @@ class KotlinM2mCodegenTest {
             "expected followingQuery; saw:\n$src")
         assertTrue("FollowTable.followerId eq sourceId" in src,
             "expected directed filter on @sourceRefField followerId; saw:\n$src")
-        // Symmetric self-join: union-on-read both junction FK columns, exclude the source itself.
+        // Symmetric self-join: union-on-read both junction FK columns, KEEP the self endpoint.
         assertTrue("fun PersonTable.friendsQuery(sourceId: Long): Query" in src,
             "expected friendsQuery; saw:\n$src")
         assertTrue("symmetric — union on read" in src, "expected symmetric marker; saw:\n$src")
         assertTrue("FriendshipTable.personAId eq sourceId" in src &&
             "FriendshipTable.personBId eq sourceId" in src,
             "expected union of both junction FK columns; saw:\n$src")
-        assertTrue("PersonTable.id neq sourceId" in src,
-            "expected exclusion of the source endpoint (neq sourceId); saw:\n$src")
+        // The self-pair (a,a) MUST be retained — Alice is her own friend (matches the runtime
+        // M2mJoinResolver + all other ports). The generated query computes the NON-source
+        // endpoint per row via a directional ON clause, so it must NOT carry a `neq sourceId`
+        // exclusion that would drop the (a,a) row.
+        assertFalse("neq sourceId" in src,
+            "the symmetric self-join must KEEP the self endpoint (no `neq sourceId` exclusion); saw:\n$src")
+        // The directional ON clause pairs each junction FK with the OTHER endpoint binding:
+        // one disjunct binds personA to the target PK while personB = sourceId, the mirror
+        // disjunct binds personB to the target PK while personA = sourceId. For a self-pair
+        // (a,a) BOTH columns equal a, so the source-side eq matches AND the target-PK eq binds
+        // to a — the self endpoint is returned, not excluded.
+        assertTrue(
+            "(FriendshipTable.personAId eq PersonTable.id) and (FriendshipTable.personBId eq sourceId)" in src,
+            "expected directional ON clause binding personA to the target and personB to the source; saw:\n$src")
+        assertTrue(
+            "(FriendshipTable.personBId eq PersonTable.id) and (FriendshipTable.personAId eq sourceId)" in src,
+            "expected directional ON clause binding personB to the target and personA to the source; saw:\n$src")
     }
 
     @Test fun junctionEntityEmitsNoTraversalEndpoint() {

@@ -24,8 +24,10 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.IsNotNullOp
 import org.jetbrains.exposed.sql.IsNullOp
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.metaobjects.integration.kotlin.tables.AllTypesTable
@@ -119,6 +121,10 @@ object QueryScenarioRunner {
         val table = tableFor(spec.entity)
         // op:roundtrip — WRITE the insert row through Exposed, read back by PK, drop PK.
         if (spec.op == "roundtrip") return dispatchRoundtrip(spec, table)
+        // op:update — PATCH a row through the Exposed write path, read back by PK (PK retained).
+        if (spec.op == "update") return dispatchUpdate(spec, table)
+        // op:delete — DELETE a row by PK through the Exposed write path; boolean outcome.
+        if (spec.op == "delete") return dispatchDelete(spec, table)
 
         return when (spec.op) {
             "count" -> {
@@ -209,6 +215,58 @@ object QueryScenarioRunner {
 
         // 4. Drop the (server-generated) PK — it's non-deterministic, not part of the expectation.
         return row - pkCol.name
+    }
+
+    /**
+     * op:update — the UPDATE write gate. PATCH a row through the Exposed write path (NOT raw SQL),
+     * coercing each `data:` value to the target column's Kotlin type with the SAME [coerceForWrite]
+     * the INSERT path uses — so a port whose UPDATE codec diverges from its INSERT codec is caught.
+     * Address the row by its single-column PK (from `by:`), then read it back BY PK (a fresh SELECT
+     * → the read codec runs) and return the wire row WITH the PK retained (the update `expect`
+     * block asserts the id). Mirrors the Java/C#/TS update semantics on the Exposed substrate.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun dispatchUpdate(spec: QuerySpec, table: Table): Map<String, Any?>? {
+        val patch = spec.data
+            ?: error("op:update / ${spec.name}: a `data` block (the patch to write) is required")
+        val (pkCol, pkValue) = requirePkValue(spec, table)
+
+        // UPDATE the row by PK, setting each patched column through the WRITE codec.
+        table.update({ buildEq(pkCol, pkValue) }) { stmt ->
+            for ((field, raw) in patch) {
+                val col = columnFor(table, field) as Column<Any?>
+                stmt[col] = coerceForWrite(raw, col)
+            }
+        }
+
+        // Read back BY PK (fresh SELECT → the read codec runs); PK retained for the update expect.
+        val q = table.selectAll()
+        q.adjustWhere { buildEq(pkCol, pkValue) }
+        return q.singleOrNull()?.let { rowToMap(it, table) }
+    }
+
+    /**
+     * op:delete — the DELETE write gate. DELETE a row by its single-column PK (from `by:`) through
+     * the Exposed write path; the boolean outcome is `true` iff a row was removed (delete count > 0).
+     * The portable proof the row is gone is a follow-up `op: get` by the same PK asserting null.
+     */
+    private fun dispatchDelete(spec: QuerySpec, table: Table): Boolean {
+        val (pkCol, pkValue) = requirePkValue(spec, table)
+        val deleted = table.deleteWhere { buildEq(pkCol, pkValue) }
+        return deleted > 0
+    }
+
+    /**
+     * Resolve the single-column primary key column + the (write-coerced) PK value from the spec's
+     * `by:` block — the shared preamble for the by-PK write ops (`update` / `delete`). Errors with
+     * an op-tagged message when the table lacks a single-column PK or `by:` omits the key.
+     */
+    private fun requirePkValue(spec: QuerySpec, table: Table): Pair<Column<*>, Any?> {
+        val pkCol = table.primaryKey?.columns?.singleOrNull()
+            ?: error("op:${spec.op} / ${spec.name}: table '${table.tableName}' must have a single-column primary key")
+        val pkRaw = (spec.by ?: emptyMap())[pkCol.name]
+            ?: error("op:${spec.op} / ${spec.name}: a `by` block carrying the primary key '${pkCol.name}' is required")
+        return pkCol to coerceForWrite(pkRaw, pkCol)
     }
 
     /**
@@ -482,16 +540,18 @@ object QueryScenarioRunner {
             val n = (expect as? Number)?.toLong() ?: expect.toString().toLong()
             return n.toString()
         }
+        // op:delete asserts a boolean (true = a row was deleted).
+        if (op == "delete") return asBoolean(expect).toString()
         // op:relate is an ORDER-INDEPENDENT set (M:N navigation) — sort both sides.
         if (op == "relate") {
             if (expect == null) return "[]"
             return Normalization.canonicalRowSet(expect as List<Map<String, Any?>>)
         }
-        // get + roundtrip both return a single bare object (roundtrip = the read-back row with
-        // the server-generated PK dropped).
-        if (op == "get" || op == "roundtrip") {
+        // get / roundtrip / update each return a single bare object (roundtrip drops the
+        // server-generated PK; get + update retain it).
+        if (isSingleObjectOp(op)) {
             if (expect == null) return "null"
-            // Strip the surrounding [] off canonicalRowsJson — get returns the bare object.
+            // Strip the surrounding [] off canonicalRowsJson — the single-object path is bare.
             return Normalization.canonicalRowsJson(listOf(expect as Map<String, Any?>))
                 .removePrefix("[").removeSuffix("]")
         }
@@ -505,15 +565,26 @@ object QueryScenarioRunner {
             val n = (actual as? Number)?.toLong() ?: 0L
             return n.toString()
         }
+        if (op == "delete") return asBoolean(actual).toString()
         if (op == "relate") {
             if (actual == null) return "[]"
             return Normalization.canonicalRowSet(actual as List<Map<String, Any?>>)
         }
         if (actual == null) return "null"
-        if (op == "get" || op == "roundtrip") {
+        if (isSingleObjectOp(op)) {
             return Normalization.canonicalRowsJson(listOf(actual as Map<String, Any?>))
                 .removePrefix("[").removeSuffix("]")
         }
         return Normalization.canonicalRowsJson(actual as List<Map<String, Any?>>)
+    }
+
+    /** Single-bare-object ops: a read-by-PK (`get`), a write-then-read (`roundtrip` / `update`). */
+    private fun isSingleObjectOp(op: String): Boolean =
+        op == "get" || op == "roundtrip" || op == "update"
+
+    private fun asBoolean(v: Any?): Boolean = when (v) {
+        is Boolean -> v
+        null -> false
+        else -> v.toString().toBoolean()
     }
 }
