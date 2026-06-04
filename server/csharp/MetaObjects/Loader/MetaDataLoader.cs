@@ -87,7 +87,7 @@ public class MetaDataLoader
     /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
     /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
     /// </summary>
-    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null)
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null, bool strict = false)
     {
         var src = new DirectorySource(directory, opts);
         List<IMetaDataSource> sources;
@@ -100,7 +100,7 @@ public class MetaDataLoader
             // Directory-read failure: synthesize an error result directly so
             // state reflects "error" (calling Load([]) would set state to
             // "loaded" because no errors had been collected yet at that point).
-            var loader = new MetaDataLoader(registry);
+            var loader = new MetaDataLoader(registry, strict: strict);
             loader.SetState("error");
             var root = MakeSyntheticRoot();
             if (loader.Freeze)
@@ -113,7 +113,7 @@ public class MetaDataLoader
             };
             return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
-        return new MetaDataLoader(registry).Load(sources);
+        return new MetaDataLoader(registry, strict: strict).Load(sources);
     }
 
     /// <summary>
@@ -336,8 +336,9 @@ public class MetaDataLoader
             // Pass 5: origin path validation
             errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
 
-            // Pass 6: attribute-schema validation
-            var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry);
+            // Pass 6: attribute-schema validation. Under strict load (ADR-0022) an
+            // own @-attr declared by no provider -> ERR_UNKNOWN_ATTR (Check 0).
+            var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry, _strict);
             errors.AddRange(attrResult.Errors);
             warnings.AddRange(attrResult.Warnings);
 

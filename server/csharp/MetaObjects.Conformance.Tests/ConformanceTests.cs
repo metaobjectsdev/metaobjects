@@ -210,22 +210,25 @@ public class ConformanceTests
         }
 
         // ── tree-required checks: guard with a synthetic failure if tree absent ─
-        // (The tree is always non-null in C# — LoadDirectory always returns a root.
-        //  Check error count instead: if errors are non-empty and we need tree checks,
-        //  the serializer will just serialize the empty root, which won't match — that's
-        //  a legitimate test failure, not a special case. Mirror the TS runner's logic:
-        //  if there are errors AND tree-dependent checks, push a synthetic failure only
-        //  when the outcome has errors but no expected-errors check.)
+        // Mirror the TS reference runner (runner.ts): the ONLY condition that
+        // blocks the tree-dependent checks is a genuinely-absent tree (the
+        // provider-composition-error path, where the adapter returns Tree: null!).
+        // A load that collected non-fatal errors but still built a tree gets its
+        // tree compared — canonical serialization emits whatever subtree the loader
+        // built, and the comparison surfaces any real divergence. This is the
+        // cross-port-aligned behavior: under ADR-0022 strict load a fixture using
+        // tolerated-but-undeclared vocabulary (no expected-errors.json) collects
+        // ERR_UNKNOWN_ATTR yet still serializes its tree identically to TS/Python,
+        // so it must NOT be force-failed here (TS/Python skip the error-set check
+        // when there is no expected-errors.json and run the tree check regardless).
         bool treeCheckBlocked =
-            outcome.ErrorCodes.Count > 0 &&
-            !fix.HasExpectedErrors &&
+            outcome.Tree is null &&
             (fix.HasExpected || fix.HasExpectedEffective || fix.HasScript);
 
         if (treeCheckBlocked)
         {
             failures.Add(
-                $"load produced errors [{string.Join(", ", outcome.ErrorCodes)}]" +
-                " — cannot run tree-dependent checks");
+                "load produced no tree — cannot run tree-dependent checks");
         }
 
         // ── expected.json check ───────────────────────────────────────────────

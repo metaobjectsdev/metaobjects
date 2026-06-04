@@ -508,11 +508,16 @@ public static class ValidationPasses
 
     public static AttrSchemaValidationResult ValidateAttrSchema(
         MetaData root,
-        TypeRegistry registry)
+        TypeRegistry registry,
+        // ADR-0022 — strict load closes the open-attr policy: an own @-attr matching
+        // no per-type schema and no commonAttr -> ERR_UNKNOWN_ATTR (Check 0). Defaults
+        // false so lax callers keep the legacy open policy; the library loader (and
+        // the conformance runner) load strict.
+        bool strict = false)
     {
         var errors = new List<MetaError>();
         var reportedConflicts = new HashSet<string>(StringComparer.Ordinal);
-        WalkAttrSchema(root, registry, errors, reportedConflicts);
+        WalkAttrSchema(root, registry, errors, reportedConflicts, strict);
         return new AttrSchemaValidationResult(errors.AsReadOnly(), []);
     }
 
@@ -619,12 +624,13 @@ public static class ValidationPasses
         MetaData node,
         TypeRegistry registry,
         List<MetaError> errors,
-        HashSet<string> reportedConflicts)
+        HashSet<string> reportedConflicts,
+        bool strict)
     {
-        ValidateAttrSchemaNode(node, registry, errors, reportedConflicts);
+        ValidateAttrSchemaNode(node, registry, errors, reportedConflicts, strict);
         foreach (var child in node.OwnChildren())
         {
-            WalkAttrSchema(child, registry, errors, reportedConflicts);
+            WalkAttrSchema(child, registry, errors, reportedConflicts, strict);
         }
     }
 
@@ -638,7 +644,8 @@ public static class ValidationPasses
         MetaData node,
         TypeRegistry registry,
         List<MetaError> errors,
-        HashSet<string> reportedConflicts)
+        HashSet<string> reportedConflicts,
+        bool strict)
     {
         var perType = registry.AttrsOf(node.Type, node.SubType);
         var common  = registry.GetCommonAttrs();
@@ -664,6 +671,30 @@ public static class ValidationPasses
                 continue; // per-type wins
             }
             byName[ca.Name] = ca;
+        }
+
+        // --- Check 0 (ADR-0022): strict-load undeclared-attr rejection ---
+        //
+        // Runs BEFORE the byName.Count early-return: a node type with no per-type
+        // schema and no common attrs (byName empty) must still reject an authored
+        // @-attr under strict. Own-attrs only — an inherited/overlaid declared attr
+        // was validated on its declaring node and never appears in OwnAttrs().
+        // An own attr matching neither a per-type schema entry nor a commonAttr is
+        // a made-up attribute -> ERR_UNKNOWN_ATTR (closing the open policy). In lax
+        // mode this stays a no-op (legacy open-attr behavior).
+        if (strict)
+        {
+            foreach (var (attrName, _) in node.OwnAttrs())
+            {
+                if (!byName.ContainsKey(attrName))
+                {
+                    errors.Add(new MetaError(
+                        $"Unknown attribute '@{attrName}' on {NodeLabel(node)} — " +
+                        $"not declared by any registered provider for {typeKey}",
+                        ErrorCode.ERR_UNKNOWN_ATTR,
+                        Envelope: node.Source));
+                }
+            }
         }
 
         if (byName.Count == 0) return;

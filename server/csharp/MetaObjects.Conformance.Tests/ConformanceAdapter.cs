@@ -162,7 +162,10 @@ public static class ConformanceAdapter
                 Errors: new[] { compErr },
                 WarningEnvelopes: Array.Empty<ErrorEnvelopeRecord>());
         }
-        var result = MetaDataLoader.FromDirectory(inputDir, registry);
+        // ADR-0022 — the library (and its conformance corpora) load strict: an
+        // authored @-attr declared by no registered provider -> ERR_UNKNOWN_ATTR.
+        // The public Strict option stays default-false so downstream can loosen.
+        var result = MetaDataLoader.FromDirectory(inputDir, registry, strict: true);
 
         // FR5a — surface the full envelope per error. Normalize files[] to
         // be relative to inputDir (the harness's portable file token).
@@ -234,6 +237,7 @@ public static class ConformanceAdapter
     /// Navigate a path from the tree root, returning the resolved node or
     /// <see langword="null"/> if any segment does not match.
     /// </summary>
+
     public static MetaData? Navigate(MetaRoot tree, IReadOnlyList<string> path) =>
         Navigator.Navigate(tree, path);
 
