@@ -67,7 +67,7 @@ function humanize(s: string): string {
  *   "Subscriber" → "/subscribers"
  *   "WorkoutEvent" → "/workout_events"
  */
-function resourcePath(entity: MetaData): string {
+export function resourcePath(entity: MetaData): string {
   const overrideAttr = entity.ownAttr("routePath");
   if (typeof overrideAttr === "string" && overrideAttr.length > 0) {
     return overrideAttr.startsWith("/") ? overrideAttr : `/${overrideAttr}`;

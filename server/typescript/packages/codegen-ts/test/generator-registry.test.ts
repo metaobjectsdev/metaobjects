@@ -26,6 +26,7 @@ const EXPECTED_NATIVE = [
   "output-prompt",
   "render-helper",
   "template",
+  "api-docs",
 ] as const;
 
 // Neutral / `meta docs`-owned (Tier-2). Present in the registry for identity +

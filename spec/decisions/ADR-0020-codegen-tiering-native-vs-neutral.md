@@ -1,6 +1,10 @@
 # ADR-0020: Codegen tiering — native-per-port vs neutral-shared
 
-**Status:** Accepted
+> **⚠️ Superseded by [ADR-0022](ADR-0022-codegen-and-docs-surface-architecture.md)**
+> (consolidated codegen + documentation surface architecture). Kept as a
+> historical record; ADR-0022 is the current canonical statement.
+
+**Status:** Superseded by ADR-0022
 **Date:** 2026-06-02
 **Supersedes / relates to:** ADR-0015 (single shared migrate engine), ADR-0016 (build migration apply runner)
 

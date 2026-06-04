@@ -1,6 +1,10 @@
 # ADR-0021: Codegen surface coherence — one front door, stable-name registry, consistent verify
 
-**Status:** Accepted (design); reference implementation in TypeScript, staged fan-out
+> **⚠️ Superseded by [ADR-0022](ADR-0022-codegen-and-docs-surface-architecture.md)**
+> (consolidated codegen + documentation surface architecture). Kept as a
+> historical record; ADR-0022 is the current canonical statement.
+
+**Status:** Superseded by ADR-0022
 **Date:** 2026-06-02
 **Relates to:** ADR-0020 (codegen tiering), ADR-0015/0016 (migrate engine)
 

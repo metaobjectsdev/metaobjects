@@ -9,10 +9,11 @@
 # copies can never silently fork from canonical.
 #
 # A byte-identity test gates root == package copy; run this script whenever you
-# change the canonical template under templates/docs/.
+# change a canonical template under templates/<group>/ (docs, api, …).
 #
 # Idempotent. Safe to run from any directory. Future ports: add their bundled
-# templates/docs destination to the DESTS array below.
+# templates root to the DEST_ROOTS array; add a new template group to
+# TEMPLATE_GROUPS.
 
 set -euo pipefail
 
@@ -20,32 +21,42 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-SRC_DIR="${REPO_ROOT}/templates/docs"
+# Canonical template GROUPS under templates/ (docs, api, …). Each group is a
+# subdir; every consumer mirrors the SAME group subdir so provider refs
+# (`<group>/<file>`) resolve identically from the bundled copy. Adding a new
+# group here is the ONLY edit needed — the byte-identity gate + embed generator
+# discover groups by globbing templates/*/, so they stay in lockstep.
+TEMPLATE_GROUPS=(docs api)
 
-# Canonical -> bundled-copy destinations (one per consumer).
-DESTS=(
-  "${REPO_ROOT}/server/typescript/packages/codegen-ts/templates/docs"
+# Per-consumer bundled-copy ROOT (the consumer's own templates/ dir). Each group
+# is copied under <root>/<group>.
+DEST_ROOTS=(
+  "${REPO_ROOT}/server/typescript/packages/codegen-ts/templates"
 )
 
-if [[ ! -d "${SRC_DIR}" ]]; then
-  echo "error: canonical source dir not found: ${SRC_DIR}" >&2
-  exit 1
-fi
+for group in "${TEMPLATE_GROUPS[@]}"; do
+  src_dir="${REPO_ROOT}/templates/${group}"
+  if [[ ! -d "${src_dir}" ]]; then
+    echo "error: canonical source dir not found: ${src_dir}" >&2
+    exit 1
+  fi
 
-shopt -s nullglob
-SRC_FILES=("${SRC_DIR}"/*.mustache)
-shopt -u nullglob
+  shopt -s nullglob
+  src_files=("${src_dir}"/*.mustache)
+  shopt -u nullglob
 
-if [[ ${#SRC_FILES[@]} -eq 0 ]]; then
-  echo "error: no *.mustache templates found under ${SRC_DIR}" >&2
-  exit 1
-fi
+  if [[ ${#src_files[@]} -eq 0 ]]; then
+    echo "error: no *.mustache templates found under ${src_dir}" >&2
+    exit 1
+  fi
 
-for dest in "${DESTS[@]}"; do
-  mkdir -p "${dest}"
-  for src in "${SRC_FILES[@]}"; do
-    cp "${src}" "${dest}/$(basename "${src}")"
-    echo "synced: ${src} -> ${dest}/$(basename "${src}")"
+  for dest_root in "${DEST_ROOTS[@]}"; do
+    dest="${dest_root}/${group}"
+    mkdir -p "${dest}"
+    for src in "${src_files[@]}"; do
+      cp "${src}" "${dest}/$(basename "${src}")"
+      echo "synced: ${src} -> ${dest}/$(basename "${src}")"
+    done
   done
 done
 
@@ -55,4 +66,4 @@ done
 # embedded module in sync with canonical from a single command. Idempotent.
 bun run "${SCRIPT_DIR}/generate-embedded-templates.ts"
 
-echo "doc templates synced from canonical root: ${SRC_DIR}"
+echo "doc templates synced from canonical root: ${REPO_ROOT}/templates (${TEMPLATE_GROUPS[*]})"
