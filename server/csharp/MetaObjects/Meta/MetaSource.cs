@@ -73,6 +73,29 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     }
 
     /// <summary>
+    /// FR-015 — name (or FQN) of the <c>object.value</c> describing this callable
+    /// source's input shape (the <c>@parameterRef</c> attr). Null when absent
+    /// (a zero-argument callable, or a non-callable source). The referenced
+    /// value-object's field children are the call-site arguments, in declaration order.
+    /// </summary>
+    public string? ParameterRef
+    {
+        get
+        {
+            var v = OwnAttr(SOURCE_ATTR_PARAMETER_REF);
+            return v is string s && s != "" ? s : null;
+        }
+    }
+
+    /// <summary>
+    /// FR-015 — true when this source's effective kind is a callable
+    /// (<c>storedProc</c> / <c>tableFunction</c>): it is invoked with arguments and
+    /// returns rows, rather than being a plain table/view.
+    /// </summary>
+    public bool IsCallable() =>
+        EffectiveKind == SOURCE_KIND_STORED_PROC || EffectiveKind == SOURCE_KIND_TABLE_FUNCTION;
+
+    /// <summary>
     /// True when this source's effective kind is read-only (view, materializedView,
     /// storedProc, tableFunction). Derived from <see cref="EffectiveKind"/>.
     /// </summary>

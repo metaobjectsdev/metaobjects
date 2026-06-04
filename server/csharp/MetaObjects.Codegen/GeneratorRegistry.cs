@@ -155,6 +155,16 @@ public static class GeneratorRegistry
                 Factory = TemplatePrimitive,
                 Options = "name, walk, template, format? (config-only)",
             },
+            // FR-015 — per-entity typed EF Core calling method for a callable source
+            // (storedProc / tableFunction). Same stable name as the TS callable
+            // generator (cross-port contract).
+            ["callable"] = new()
+            {
+                Name = "callable",
+                Description = "Per-entity callable wrapper (storedProc / tableFunction FromSqlInterpolated method).",
+                Tier = GeneratorTier.Native,
+                Factory = _ => new CallableGenerator(),
+            },
         };
 
     /// <summary>All entries, native first then neutral, alphabetical within tier.</summary>

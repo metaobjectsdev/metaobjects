@@ -53,9 +53,9 @@
       "ports": ["typescript"]
     },
     "callable": {
-      "concept": "Per-entity callable/service surface wrapping the query helpers.",
+      "concept": "Per-entity callable wrapper for a callable source (storedProc / tableFunction); in TS it also covers the service surface wrapping the query helpers.",
       "tier": "native",
-      "ports": ["typescript"]
+      "ports": ["typescript", "csharp"]
     },
     "routes-hono": {
       "concept": "Per-entity Hono CRUD routes.",
