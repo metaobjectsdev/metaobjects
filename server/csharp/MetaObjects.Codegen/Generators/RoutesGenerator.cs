@@ -291,6 +291,26 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("    };");
         sb.AppendLine();
 
+        // Per-subtype sort allowlists (case-insensitive) over each subtype's EFFECTIVE
+        // scalar fields (inherited base + own). The per-subtype list resolves the qs
+        // ?sort=<field> through this to the CLR property name before EF.Property — a raw
+        // lowercase field (e.g. "id") would otherwise fail EF translation (no "id"
+        // property; it's "Id") and 500.
+        foreach (var st in tph.Subtypes)
+        {
+            var subClsName = CSharpNaming.Pascal(st.Entity.Name);
+            var subSortFields = st.Entity.Fields()
+                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.IsArray)
+                .Select(f => CSharpNaming.Pascal(f.Name))
+                .ToList();
+            sb.Append($"    private static readonly System.Collections.Generic.HashSet<string> {subClsName}SortAllowlist =");
+            sb.AppendLine(" new(System.StringComparer.OrdinalIgnoreCase)");
+            sb.AppendLine("    {");
+            foreach (var name in subSortFields) sb.AppendLine($"        \"{name}\",");
+            sb.AppendLine("    };");
+            sb.AppendLine();
+        }
+
         sb.AppendLine($"    public static IEndpointRouteBuilder Map{baseCls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
         sb.AppendLine("    {");
 
@@ -377,7 +397,8 @@ public sealed class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
         sb.AppendLine("                var desc = parts.Length > 1 && string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase);");
-        sb.AppendLine("                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, parts[0])) : q.OrderBy(x => EF.Property<object>(x!, parts[0]));");
+        sb.AppendLine($"                if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\" }});");
+        sb.AppendLine("                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved));");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
         sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);");

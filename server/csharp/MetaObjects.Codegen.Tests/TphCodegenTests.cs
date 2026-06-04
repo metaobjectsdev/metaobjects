@@ -179,6 +179,12 @@ public class TphCodegenTests
         Assert.Contains("OfType<PriorAuthAuth>()", auth);
         // Polymorphic POST is NOT emitted on the base path itself.
         Assert.DoesNotContain("MapPost(prefix + \"/auths\",", auth);
+        // Per-subtype list ?sort resolves the raw qs field through a per-subtype
+        // case-insensitive allowlist to the CLR property name BEFORE EF.Property —
+        // a raw "id" (vs "Id") otherwise fails EF translation and 500s.
+        Assert.Contains("BridgeAuthSortAllowlist", auth);
+        Assert.Contains("BridgeAuthSortAllowlist.TryGetValue(parts[0], out var resolved)", auth);
+        Assert.DoesNotContain("EF.Property<object>(x!, parts[0])", auth);
     }
 
     [Fact]
