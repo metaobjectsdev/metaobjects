@@ -24,8 +24,7 @@
           "name": "describeProduct",
           "@payloadRef": "ProductPromptPayload",
           "@textRef": "product/describe",
-          "@format": "xml",
-          "@promptStyle": "guide"
+          "@format": "xml"
         }
       },
       {
@@ -33,7 +32,8 @@
           "name": "productCard",
           "@payloadRef": "ProductPromptPayload",
           "@textRef": "product/card",
-          "@format": "html"
+          "@format": "html",
+          "@promptStyle": "guide"
         }
       },
       {

@@ -373,6 +373,67 @@ describe("attr-schema validation — open policy", () => {
   });
 });
 
+describe("attr-schema validation — strict load (ADR-0022)", () => {
+  /** Parse + run validateAttrSchema with strict=true. */
+  function validateStrict(doc: unknown) {
+    const registry = new TypeRegistry();
+    registerCoreTypes(registry);
+    const { root } = parseJson(JSON.stringify(doc), { registry });
+    return validateAttrSchema(root, registry, true);
+  }
+
+  it("flags a made-up @-attr as ERR_UNKNOWN_ATTR under strict", () => {
+    const { errors } = validateStrict({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Account",
+              children: [
+                { "field.string": { name: "email", "@somethingCustom": "nope" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.code).toBe("ERR_UNKNOWN_ATTR");
+    expect(errors[0]!.message).toContain("@somethingCustom");
+  });
+
+  it("does NOT flag an attr.properties-sourced arbitrary attr under strict (sanctioned escape hatch)", () => {
+    // attr.properties is a first-class, registered, canonical subtype whose
+    // designed purpose is arbitrary-named structural property bags. Its
+    // arbitrary NAME is the contract — strict-attr must exempt it, otherwise
+    // the only way to use a declared subtype is forbidden. The materialized
+    // inline attr (@config) carries subType === "properties".
+    const { errors } = validateStrict({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Account",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "attr.properties": {
+                    name: "config",
+                    value: { owner: "growth", tier: "gold" },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors).toHaveLength(0);
+  });
+});
+
 describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R6 Plan 2b)", () => {
   function entityWith(fieldNode: unknown) {
     return {

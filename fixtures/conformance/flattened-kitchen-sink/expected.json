@@ -45,7 +45,6 @@
           "name": "describeProduct",
           "@format": "xml",
           "@payloadRef": "ProductPromptPayload",
-          "@promptStyle": "guide",
           "@textRef": "product/describe"
         }
       },
@@ -54,6 +53,7 @@
           "name": "productCard",
           "@format": "html",
           "@payloadRef": "ProductPromptPayload",
+          "@promptStyle": "guide",
           "@textRef": "product/card"
         }
       },
@@ -312,7 +312,6 @@
                 "@fields": [
                   "categoryId"
                 ],
-                "@onDelete": "cascade",
                 "@references": "Category"
               }
             },

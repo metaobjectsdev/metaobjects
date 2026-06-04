@@ -129,8 +129,7 @@
                 "name": "fkCategory",
                 "@enforce": true,
                 "@fields": "categoryId",
-                "@references": "Category",
-                "@onDelete": "cascade"
+                "@references": "Category"
               }
             },
 

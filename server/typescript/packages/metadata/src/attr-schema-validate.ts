@@ -38,6 +38,7 @@ import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { TYPE_FIELD } from "./shared/base-types.js";
+import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
@@ -143,6 +144,13 @@ function validateNode(
   // mode this stays a no-op (legacy open-attr behavior).
   if (strict) {
     for (const inst of node.ownMetaAttrs()) {
+      // attr.properties is a first-class, registered, canonical attr subtype
+      // whose designed purpose is an arbitrary-named structural property bag
+      // (its NAME is intentionally not declared by any per-type schema). It is
+      // sanctioned vocabulary, not a made-up attribute, so strict-attr exempts
+      // a materialized properties-attr from ERR_UNKNOWN_ATTR. (A typo'd plain
+      // @-attr still fails — only the `properties` subtype is exempt.)
+      if (inst.subType === ATTR_SUBTYPE_PROPERTIES) continue;
       if (!byName.has(inst.name)) {
         errors.push(
           new ParseError(
