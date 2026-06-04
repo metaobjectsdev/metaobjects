@@ -267,10 +267,18 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // Test 10 — child in a different package emits a "package" key
+    // Test 10 — package emission follows the cross-port AUTHORED-package rule
+    //
+    // The TS oracle emits a node's `package` key iff the author wrote one on the
+    // node body (or it is the root / a field outside an object). A child object
+    // whose effective package merely DIFFERS from its parent's does NOT emit a
+    // redundant `package` key — the package is recovered structurally on reload.
+    // This is the byte-correct cross-port behavior (a single loader builds ONE
+    // MetaRoot for a multi-file load, so children merged from a file with a
+    // different package must not spuriously emit a key TS never emits).
     // -----------------------------------------------------------------------
     @Test
-    public void testChildInDifferentPackageEmitsPackageKey() {
+    public void testChildInDifferentPackageDoesNotEmitPackageKeyUnlessAuthored() {
         // Root is "acme::core"; child object lives in "acme::commerce" (different package).
         MetaRoot root = new MetaRoot("acme::core");
 
@@ -279,9 +287,16 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        // The child node must emit its own "package" key because it differs from the root's.
-        assertTrue("child node must emit 'package' key when it differs from parent's, got: " + json,
+        // Effective-package difference alone must NOT emit a `package` key.
+        assertFalse("unauthored child must NOT emit a redundant 'package' key, got: " + json,
                 json.contains("\"package\": \"acme::commerce\""));
+
+        // When the author explicitly wrote the package (parser sets this flag),
+        // it round-trips on the way out.
+        product.setPackageAuthored(true);
+        String authoredJson = CanonicalJsonSerializer.canonicalSerialize(root);
+        assertTrue("authored child must emit its 'package' key, got: " + authoredJson,
+                authoredJson.contains("\"package\": \"acme::commerce\""));
     }
 
     // -----------------------------------------------------------------------

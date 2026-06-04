@@ -78,9 +78,11 @@ import static org.junit.Assert.fail;
  *       so canonical round-trips produce the right top-level {@code package}.</li>
  *   <li>Warnings: the Java loader has no warning surface yet. Fixtures with
  *       {@code expected-warnings.json} are ledgered as gaps.</li>
- *   <li>Effective serialization + script execution: not implemented in the
- *       Java harness yet. Fixtures using {@code expected-effective.json} or
- *       {@code script.json} are ledgered.</li>
+ *   <li>Effective serialization: supported. A fixture's
+ *       {@code expected-effective.json} (extends RESOLVED — inherited members
+ *       inlined) is byte-compared against
+ *       {@link CanonicalJsonSerializer#canonicalSerializeEffective(MetaData)}
+ *       when present.</li>
  * </ul>
  */
 @RunWith(Parameterized.class)
@@ -271,9 +273,9 @@ public class ConformanceTest {
                 }
             }
         }
-        if (fix.hasExpectedEffective) {
-            failures.add("expected-effective.json (effective serialization) not supported by Java harness");
-        }
+        // expected-effective.json is now supported — the assertion lives below,
+        // after the loader has run and built the tree (so the effective
+        // serialization can resolve the extends chain).
         // expected-warnings.json is now supported — the assertion lives below,
         // after the loader has run (so loader.getWarnings() has a value to
         // compare against).
@@ -443,6 +445,26 @@ public class ConformanceTest {
             String got = CanonicalJsonSerializer.canonicalSerialize(loader.getRoot()).trim();
             if (!want.equals(got)) {
                 failures.add("canonical serialization mismatch:\n--- expected ---\n"
+                    + want + "\n--- got ---\n" + got);
+            }
+        }
+
+        // -- expected-effective.json check ----------------------------------
+        // Mirrors the TS runner: when a fixture ships expected-effective.json,
+        // emit the EFFECTIVE canonical serialization (extends resolved —
+        // inherited members inlined) and byte-compare (newline-normalized).
+        if (fix.hasExpectedEffective) {
+            String want;
+            try {
+                want = new String(Files.readAllBytes(fix.dir.resolve("expected-effective.json")),
+                    StandardCharsets.UTF_8).trim();
+            } catch (IOException ex) {
+                failures.add("expected-effective.json read error: " + ex.getMessage());
+                return;
+            }
+            String got = CanonicalJsonSerializer.canonicalSerializeEffective(loader.getRoot()).trim();
+            if (!want.equals(got)) {
+                failures.add("effective serialization mismatch:\n--- expected ---\n"
                     + want + "\n--- got ---\n" + got);
             }
         }

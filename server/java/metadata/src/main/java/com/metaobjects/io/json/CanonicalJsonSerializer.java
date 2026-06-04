@@ -287,42 +287,38 @@ public final class CanonicalJsonSerializer {
             body.addProperty(KEY_NAME, shortName);
         }
 
-        // 2. package — emit only where introduced (differs from parent's package).
+        // 2. package — emit only where the TS oracle sets `model.package`.
         //
         // Special case: MetaRoot's full name IS the package (e.g. "acme::commerce").
         // For all other nodes, getPackage() gives the package prefix of the qualified name.
         //
-        // WHY "differs from parent" rather than a naive "emit if non-empty":
-        // The TS oracle uses model.package, which is the *authored* package — undefined
-        // when the author did not write a package key, so "emit if present" works there.
-        // Java's getPackage() returns the *effective* (inherited) package: every node in
-        // an "acme::commerce" tree would return "acme::commerce" even when they never
-        // authored it. Emitting unconditionally would wrongly inject a "package" key on
-        // every node. Emitting only when the value differs from the parent's resolved
-        // package approximates "authored here for the first time."
+        // The TS oracle emits `package` iff `model.package` is set, which happens for:
+        //   (a) the root node (its package is always present);
+        //   (b) a node that explicitly authored a `package` key on its body;
+        //   (c) a MetaField whose parent is NOT a MetaObject (field-at-root /
+        //       abstract shared field) — TS's package-inheritance rule sets
+        //       `model.package` from the file context for these.
         //
-        // Known imprecision (Task 2 follow-up): a child that redundantly re-authors the
-        // exact same package as its parent would be suppressed here but emitted by TS.
-        // Tracking the truly-authored package requires a separate flag on MetaData that
-        // does not exist yet; that is the Task 2 work.
+        // We must NOT use "differs from parent package" as a trigger: a single
+        // loader builds ONE MetaRoot for a multi-file load, so children merged
+        // from a file with a different package would spuriously emit a `package`
+        // key that TS never emits (it threads authored-package, not effective
+        // package). Effective package is recovered structurally on reload from
+        // the parent context, so suppressing it here is byte-correct and
+        // round-trips.
         String nodePackage = resolveNodePackage(node);
         if (nodePackage != null && !nodePackage.isEmpty()) {
-            boolean differsFromParent = (parentPackage == null) || !nodePackage.equals(parentPackage);
-            // Cross-port: abstract field-type nodes declared at root level
-            // (e.g. an abstract field.enum bound as a shared type) always emit
-            // their package, even when it equals the root's package — they are
-            // addressable library entries that need a stable qualifier so other
-            // entities can reference them via `extends`. Objects / templates /
-            // layouts at root do not need the redundant emission.
-            boolean rootAbstractFieldType = (node.getParent() instanceof MetaRoot)
-                && (node instanceof com.metaobjects.field.MetaField)
-                && getIsAbstractValue(node);
+            boolean isRoot = node instanceof MetaRoot;
             // Cross-port byte-parity: when the author explicitly wrote a
-            // `package` key on this node's body (even one that happens to
-            // equal the parent's package), round-trip it on the way out.
+            // `package` key on this node's body, round-trip it on the way out.
             // CanonicalJsonParser tracks this via MetaData.isPackageAuthored().
             boolean explicitlyAuthored = node.isPackageAuthored();
-            if (differsFromParent || rootAbstractFieldType || explicitlyAuthored) {
+            // TS package-inheritance rule (c): a MetaField NOT directly inside a
+            // MetaObject (declared at root, or in another non-object container)
+            // carries its own package so it stays addressable via `extends`.
+            boolean fieldOutsideObject = (node instanceof com.metaobjects.field.MetaField)
+                && !(node.getParent() instanceof com.metaobjects.object.MetaObject);
+            if (isRoot || explicitlyAuthored || fieldOutsideObject) {
                 body.addProperty(KEY_PACKAGE, nodePackage);
             }
         }
@@ -438,19 +434,74 @@ public final class CanonicalJsonSerializer {
     }
 
     /**
-     * Returns structural children (own + inherited from super chain) de-duplicated by
-     * type+name, preserving own children first.
+     * Returns the effective structural children of {@code node} (own + inherited
+     * via the super chain), in the cross-port canonical order.
+     *
+     * <p>Mirrors the TS oracle's {@code _effectiveChildren} exactly: start from
+     * the super's effective children, then for each own child either OVERRIDE
+     * the matching (type, name) super child in place (preserving the super's
+     * position) or APPEND it at the end when it introduces a new member. This
+     * places inherited members first, with newly-introduced own members last —
+     * the byte-order the {@code expected-effective.json} fixtures assert.</p>
+     *
+     * <p>Java's {@code getChildren(MetaData.class, true)} de-duplicates by
+     * type+name but lists own children first, which diverges from the oracle —
+     * hence this explicit recursive merge.</p>
      */
     private static List<MetaData> collectEffectiveStructuralChildren(MetaData node) {
-        // getChildren(MetaData.class, true) walks the super chain but de-duplicates by type-name key.
-        List<MetaData> all = node.getChildren(MetaData.class, true);
-        List<MetaData> result = new ArrayList<>();
-        for (MetaData child : all) {
-            if (!(child instanceof MetaAttribute)) {
-                result.add(child);
+        return effectiveChildrenMerged(node, new java.util.IdentityHashMap<>());
+    }
+
+    private static List<MetaData> effectiveChildrenMerged(MetaData node,
+                                                          java.util.Map<MetaData, Boolean> visited) {
+        MetaData superData = node.hasSuperData() ? node.getSuperData() : null;
+
+        if (superData == null || visited.containsKey(superData)) {
+            return collectOwnStructuralChildren(node);
+        }
+        visited.put(superData, Boolean.TRUE);
+
+        // Start from the super's effective children (a fresh, mutable copy).
+        List<MetaData> result = new ArrayList<>(effectiveChildrenMerged(superData, visited));
+
+        List<MetaData> appendQueue = new ArrayList<>();
+        for (MetaData ownChild : collectOwnStructuralChildren(node)) {
+            int idx = -1;
+            for (int i = 0; i < result.size(); i++) {
+                MetaData sc = result.get(i);
+                if (sc.getType().equals(ownChild.getType())
+                        && canonicalMatchName(sc).equals(canonicalMatchName(ownChild))) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx != -1) {
+                result.set(idx, ownChild); // in-place override, super's position kept
+            } else {
+                appendQueue.add(ownChild);
             }
         }
+        result.addAll(appendQueue);
         return result;
+    }
+
+    /**
+     * The name used for cross-port effective-override matching. Mirrors the TS
+     * oracle, whose auto-named nodes carry {@code name === ""}: an auto-generated
+     * name (e.g. a {@code source.rdb}'s {@code rdb1}) collapses to the empty
+     * string so an own auto-named node overrides its inherited counterpart at the
+     * super's position — exactly as TS matches {@code (type, "")} against
+     * {@code (type, "")}. Java assigns real {@code rdbN} auto-names (which the
+     * serializer suppresses), so without this collapse the per-package counter
+     * would make Product's {@code rdb1} and ProductSummary's {@code rdb2} fail to
+     * match and the inherited source would wrongly duplicate.
+     */
+    private static String canonicalMatchName(MetaData node) {
+        if (isAutoGeneratedName(node)) {
+            return "";
+        }
+        String s = node.getShortName();
+        return s == null ? "" : s;
     }
 
     // ---------------------------------------------------------------------------
@@ -459,26 +510,35 @@ public final class CanonicalJsonSerializer {
 
     /**
      * Returns the "authoring package" of a node — the package context an author
-     * would use to write its {@code extends} ref. For root-level nodes this is
-     * the root's own package; for child nodes it walks up to the nearest
-     * MetaObject (entity / value) and returns that ancestor's package. Used by
-     * extends-ref serialization so a field inside an entity in package X
-     * references a sibling in X by short name (not by FQN).
+     * would use to write its {@code extends} ref. For a node that is itself a
+     * top-level type (a child of the MetaRoot — an object / template / abstract
+     * field), this is the node's OWN package. For a node nested inside an entity
+     * it walks up to the nearest MetaObject and returns that ancestor's package.
+     * Used by extends-ref serialization so a sibling in the same package is
+     * referenced by short name (not by FQN).
+     *
+     * <p>Cross-port correctness for the flattened multi-file case: a single
+     * loader builds ONE MetaRoot whose name is just the first input file's
+     * package. The other files contribute children in OTHER packages. The
+     * root's own package is therefore NOT the authoring context for those
+     * children — each node's own {@link MetaData#getPackage()} (the effective
+     * package of its FQN) is. So we never fall back to the root's package; we
+     * fall back to the node's own package.</p>
      */
     private static String authoringPackageFor(MetaData node) {
         MetaData current = node;
         while (current != null) {
-            if (current instanceof MetaRoot) {
-                return resolveNodePackage(current);
-            }
             MetaData parent = current.getParent();
-            if (parent == null) break;
+            if (parent == null || parent instanceof MetaRoot) {
+                // `current` is a top-level type — its own package IS the
+                // authoring context (not the shared root's package).
+                return current.getPackage();
+            }
             if (parent instanceof com.metaobjects.object.MetaObject) {
                 // current is a child of an entity → authoring context = entity's package
                 return parent.getPackage();
             }
-            // Non-MetaObject parent (or MetaRoot): keep walking up; MetaRoot is
-            // caught on the next iteration's top-of-loop check.
+            // Non-MetaObject parent: keep walking up.
             current = parent;
         }
         return node.getPackage();
