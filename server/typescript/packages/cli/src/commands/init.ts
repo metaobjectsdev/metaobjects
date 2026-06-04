@@ -1,10 +1,15 @@
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
+import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
+import {
+  assemble, resolveAgentContextRoot, planScaffold,
+  AGENT_CONTEXT_MANIFEST_PATH, type Manifest,
+} from "@metaobjectsdev/sdk/agent-context";
+import { resolveStack } from "../lib/detect-stack.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
-import { AGENT_DOCS_BODY, withContentHash, isUnmodified } from "@metaobjectsdev/sdk/agent-docs";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 
 const META_COMMON_JSON = JSON.stringify(
@@ -57,8 +62,6 @@ Next steps (when later sub-projects ship):
   meta install-hooks # register MCP server + Claude Code hooks
 `;
 
-const AGENT_DOC_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
-
 export interface InitOptions {
   cwd: string;
   force?: boolean;
@@ -66,6 +69,10 @@ export interface InitOptions {
   printOnly?: boolean;
   refreshDocs?: boolean;
   d1?: boolean;
+  servers?: string[];
+  clients?: string[];
+  noSkills?: boolean;
+  wireRoot?: boolean;
 }
 
 export interface InitResult {
@@ -74,29 +81,55 @@ export interface InitResult {
   warnings: string[];
 }
 
-async function writeAgentDocs(agentDir: string, result: InitResult): Promise<void> {
-  const docsBody = withContentHash(AGENT_DOCS_BODY);
-  for (const filename of AGENT_DOC_FILES) {
-    const path = join(agentDir, filename);
-    const exists = await fileExists(path);
+async function readManifest(cwd: string): Promise<Manifest | undefined> {
+  const p = join(cwd, AGENT_CONTEXT_MANIFEST_PATH);
+  if (!(await fileExists(p))) return undefined;
+  try { return JSON.parse(await readFile(p, "utf8")) as Manifest; } catch { return undefined; }
+}
 
-    if (!exists) {
-      await writeFile(path, docsBody, "utf8");
-      result.created.push(`.metaobjects/${filename}`);
-      continue;
-    }
+async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
+  const stack = resolveStack(opts.cwd, { servers: opts.servers ?? [], clients: opts.clients ?? [] });
+  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack });
+  if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
 
-    const existingBody = await readFile(path, "utf8");
-    if (isUnmodified(existingBody)) {
-      await writeFile(path, docsBody, "utf8");
-      result.created.push(`.metaobjects/${filename}`);
-    } else {
-      await writeFile(`${path}.new`, docsBody, "utf8");
-      result.created.push(`.metaobjects/${filename}.new`);
-      result.warnings.push(
-        `${filename} appears to have been hand-edited; refreshed docs written to ${filename}.new`,
-      );
-    }
+  const prior = await readManifest(opts.cwd);
+  const decision = planScaffold({
+    stack, assembled, prior,
+    readCurrent: (rel) => {
+      const abs = join(opts.cwd, rel);
+      return existsSyncWrap(abs) ? readFileSyncWrap(abs, "utf8") : undefined;
+    },
+  });
+
+  for (const w of decision.writes) {
+    const abs = join(opts.cwd, w.path);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, w.contents, "utf8");
+    result.created.push(w.path);
+  }
+  for (const c of decision.conflicts) {
+    const abs = join(opts.cwd, c.newPath);
+    await mkdir(dirname(abs), { recursive: true });
+    await writeFile(abs, c.contents, "utf8");
+    result.created.push(c.newPath);
+    result.warnings.push(`${c.path} appears hand-edited; refreshed version written to ${c.newPath}`);
+  }
+  const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
+  await mkdir(dirname(manifestAbs), { recursive: true });
+  await writeFile(manifestAbs, JSON.stringify(decision.manifest, null, 2) + "\n", "utf8");
+
+  if (opts.wireRoot) await wireRootMemory(opts.cwd, result);
+}
+
+const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
+async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
+  for (const name of ["CLAUDE.md", "AGENTS.md"]) {
+    const p = join(cwd, name);
+    if (!(await fileExists(p))) continue;
+    const body = await readFile(p, "utf8");
+    if (body.includes(ROOT_IMPORT_LINE)) continue;
+    await writeFile(p, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
+    result.created.push(`${name} (added @import)`);
   }
 }
 
@@ -110,8 +143,8 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   const exists = agentDirExists || metaobjectsExists;
 
   if (opts.refreshDocs && exists && !opts.force) {
-    // Refresh-only path: scaffold agent docs, leave everything else alone.
-    await writeAgentDocs(agentDir, result);
+    // Refresh-only path: scaffold the agent-context, leave everything else alone.
+    await writeAgentContext(opts, result);
     return result;
   }
 
@@ -135,7 +168,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       ".metaobjects/.gitignore",
       `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
-    for (const filename of AGENT_DOC_FILES) result.created.push(`.metaobjects/${filename}`);
+    result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     result.created.push("metaobjects.config.ts");
     return result;
   }
@@ -214,7 +247,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push(`.metaobjects/${PACKAGE_MANIFEST_FILE}`);
   }
 
-  await writeAgentDocs(agentDir, result);
+  await writeAgentContext(opts, result);
 
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
@@ -283,6 +316,10 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       printOnly: flags.printOnly,
       refreshDocs: flags.refreshDocs,
       d1: flags.d1,
+      servers: flags.servers,
+      clients: flags.clients,
+      noSkills: flags.noSkills,
+      wireRoot: flags.wireRoot,
     });
 
     if (flags.printOnly) {

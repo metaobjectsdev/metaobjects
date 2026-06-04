@@ -12,6 +12,13 @@ afterEach(() => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
+// NOTE: the legacy single-blob AGENT_DOCS_BODY was replaced by the agent-context
+// assembler (always-on AGENTS.md/CLAUDE.md + per-stack skill fragments + a manifest).
+// The detailed authoring/codegen/tanstack/filter/projection/currency prose now lives
+// in the `metaobjects-*` skill reference fragments, NOT in the always-on body — so
+// the old content-blob assertions are gone. These tests cover the always-on body and
+// the non-destructive refresh contract.
+
 describe("init writes agent docs", () => {
   test("writes AGENTS.md and CLAUDE.md under .metaobjects/", async () => {
     await init({ cwd });
@@ -26,18 +33,17 @@ describe("init writes agent docs", () => {
     expect(a).toBe(c);
   });
 
-  test("AGENTS.md contains content-hash comment", async () => {
+  test("scaffolds the agent-context manifest", async () => {
     await init({ cwd });
-    const content = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
-    expect(content).toMatch(/<!-- metaobjects-content-hash: [a-f0-9]{64} -->/);
+    expect(existsSync(join(cwd, ".metaobjects", ".agent-context.json"))).toBe(true);
   });
 
   test("AGENTS.md mentions key metamodel rules", async () => {
     await init({ cwd });
     const content = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
-    expect(content).toContain("attribute");
-    expect(content).toContain("@forge");
-    expect(content).toContain("decision");
+    expect(content).toContain("Attribute");
+    expect(content).toContain("codegen");
+    expect(content).toContain("metadata");
   });
 });
 
@@ -52,7 +58,7 @@ describe("init --refresh-docs", () => {
     expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md.new"))).toBe(true);
   });
 
-  test("refresh overwrites AGENTS.md when content-hash matches", async () => {
+  test("refresh overwrites AGENTS.md when it is unmodified since last scaffold", async () => {
     await init({ cwd });
     const result = await init({ cwd, refreshDocs: true });
     expect(result.created).toContain(".metaobjects/AGENTS.md");
@@ -65,70 +71,12 @@ describe("init --refresh-docs", () => {
   });
 });
 
-describe("metaobjects.config.ts section in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes metaobjects.config.ts as the wiring file", async () => {
+describe("metaobjects.config.ts wiring still scaffolded", () => {
+  test("init writes metaobjects.config.ts with defineConfig wiring", async () => {
     await init({ cwd });
-    const claudeMd = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf8");
-    expect(claudeMd).toContain("metaobjects.config.ts");
-    expect(claudeMd).toContain("defineConfig");
-    expect(claudeMd).toContain("@metaobjectsdev/codegen-ts/generators");
-    expect(claudeMd).not.toContain("--out-dir");
-  });
-});
-
-describe("TanStack hooks + grid metadata in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes TanStack hooks + grid metadata", async () => {
-    await init({ cwd });
-    const claudeMd = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("tanstackQuery");
-    expect(claudeMd).toContain("tanstackGrid");
-    expect(claudeMd).toContain("layout[dataGrid]");
-    expect(claudeMd).toContain("EntityFetcherProvider");
-    expect(claudeMd).toContain("CellRendererProvider");
-    expect(claudeMd).toContain("@emitTanstack");
-  });
-});
-
-describe("filter syntax + @filterable in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes filter syntax + @filterable", async () => {
-    await init({ cwd });
-    await init({ cwd, refreshDocs: true });
-    const claudeMd = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf-8");
-    expect(claudeMd).toContain("@filterable");
-    expect(claudeMd).toContain("useSubscribers(filter)");
-    expect(claudeMd).toContain("filter[email][like]");
-  });
-});
-
-describe("projection authoring in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes projection authoring", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "init-projection-docs-"));
-    try {
-      await init({ cwd: tmp, quiet: true });
-      await init({ cwd: tmp, refreshDocs: true, quiet: true });
-      const claudeMd = readFileSync(join(tmp, ".metaobjects", "CLAUDE.md"), "utf-8");
-      expect(claudeMd).toContain("Projections");
-      expect(claudeMd).toContain('"@kind": "view"');
-      expect(claudeMd).toContain("useProgramSummaries");
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("currency fields in refreshed docs", () => {
-  test("refreshed CLAUDE.md describes currency fields", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "init-currency-docs-"));
-    try {
-      await init({ cwd: tmp, quiet: true });
-      await init({ cwd: tmp, refreshDocs: true, quiet: true });
-      const claudeMd = readFileSync(join(tmp, ".metaobjects", "CLAUDE.md"), "utf-8");
-      expect(claudeMd).toContain("Currency fields");
-      expect(claudeMd).toContain("CurrencyInput");
-      expect(claudeMd).toContain("@metaobjectsdev/react");
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
+    const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configTs).toContain("defineConfig");
+    expect(configTs).toContain("@metaobjectsdev/codegen-ts/generators");
   });
 });
 
