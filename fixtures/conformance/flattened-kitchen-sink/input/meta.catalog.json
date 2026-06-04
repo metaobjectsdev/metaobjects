@@ -1,0 +1,252 @@
+{
+  "metadata.root": {
+    "package": "acme::catalog",
+    "children": [
+      {
+        "object.value": {
+          "name": "Dimensions",
+          "extends": "acme::common::BaseValue",
+          "@description": "Owned value object stored flattened onto the product row.",
+          "children": [
+            { "field.double": { "name": "widthCm", "@required": true } },
+            { "field.double": { "name": "heightCm", "@required": true } },
+            { "field.float": { "name": "weightKg" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "SeoMeta",
+          "extends": "acme::common::BaseValue",
+          "@description": "Structured value object stored as a JSONB document.",
+          "children": [
+            { "field.string": { "name": "slug", "@required": true } },
+            { "field.string": { "name": "metaTitle" } },
+            { "field.boolean": { "name": "indexable" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Product",
+          "extends": "acme::common::BaseEntity",
+          "@description": "Kitchen-sink entity exercising every field subtype and attribute band.",
+          "children": [
+            { "source.rdb": { "@table": "products", "@schema": "catalog" } },
+
+            { "field.string": {
+                "name": "sku",
+                "@required": true,
+                "@maxLength": 32,
+                "@filterable": true,
+                "@unique": true,
+                "@db.indexed": true,
+                "children": [
+                  { "validator.required": {} },
+                  { "validator.length": { "@min": 3, "@max": 32 } },
+                  { "validator.regex": { "@pattern": "^[A-Z0-9-]+$" } }
+                ]
+              }
+            },
+            { "field.string": {
+                "name": "name",
+                "@required": true,
+                "@filterable": true,
+                "@sortable": true,
+                "@db.indexed": true,
+                "@column": "product_name"
+              }
+            },
+            { "field.int": {
+                "name": "stockQty",
+                "@filterable": true,
+                "@db.indexed": true,
+                "children": [ { "validator.numeric": { "@min": 0, "@max": 100000 } } ]
+              }
+            },
+            { "field.long": { "name": "viewCount" } },
+            { "field.double": { "name": "rating", "@filterable": true, "@db.indexed": true } },
+            { "field.float": { "name": "discountFactor" } },
+            { "field.decimal": {
+                "name": "weightedScore",
+                "@precision": 12,
+                "@scale": 4,
+                "@filterable": true,
+                "@db.indexed": true
+              }
+            },
+            { "field.boolean": { "name": "active", "@filterable": true, "@db.indexed": true } },
+            { "field.date": { "name": "releaseDate", "@filterable": true, "@db.indexed": true } },
+            { "field.time": { "name": "dailyRestockAt" } },
+            { "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate", "@dbColumnType": "timestamp_with_tz" } },
+            { "field.uuid": { "name": "externalRef", "@unique": true } },
+            { "field.enum": {
+                "name": "status",
+                "extends": "acme::common::Lifecycle",
+                "@filterable": true,
+                "@db.indexed": true
+              }
+            },
+            { "field.currency": {
+                "name": "priceCents",
+                "@currency": "USD",
+                "@filterable": true,
+                "@db.indexed": true,
+                "children": [ { "view.currency": { "@locale": "en-US" } } ]
+              }
+            },
+            { "field.object": {
+                "name": "dimensions",
+                "@objectRef": "Dimensions",
+                "@storage": "flattened"
+              }
+            },
+            { "field.object": {
+                "name": "seo",
+                "@objectRef": "SeoMeta",
+                "@storage": "jsonb"
+              }
+            },
+
+            { "field.long": { "name": "categoryId" } },
+
+            { "relationship.aggregation": {
+                "name": "category",
+                "@cardinality": "one",
+                "@objectRef": "Category"
+              }
+            },
+            { "relationship.association": {
+                "name": "suppliers",
+                "@cardinality": "many",
+                "@objectRef": "Supplier",
+                "@through": "ProductSupplier"
+              }
+            },
+
+            { "identity.secondary": { "name": "bySku", "@fields": "sku" } },
+            { "identity.reference": {
+                "name": "fkCategory",
+                "@enforce": true,
+                "@fields": "categoryId",
+                "@references": "Category",
+                "@onDelete": "cascade"
+              }
+            },
+
+            { "layout.dataGrid": {
+                "name": "default",
+                "@columns": ["sku", "name", "status", "priceCents", "active"],
+                "@defaultSortField": "name",
+                "@defaultSortOrder": "asc",
+                "@pageSize": 50,
+                "@filterable": true
+              }
+            },
+
+            { "attr.properties": {
+                "name": "uiHints",
+                "value": { "group": "inventory", "tier": "standard" }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Category",
+          "extends": "acme::common::BaseEntity",
+          "@description": "Owns products; composition-related to its products.",
+          "children": [
+            { "source.rdb": { "@table": "categories" } },
+            { "field.string": { "name": "title", "@required": true, "@filterable": true, "@db.indexed": true } },
+            { "relationship.composition": {
+                "name": "products",
+                "@cardinality": "many",
+                "@objectRef": "Product"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Supplier",
+          "extends": "acme::common::BaseEntity",
+          "@description": "A product supplier; reachable via the M:N junction.",
+          "children": [
+            { "source.rdb": { "@table": "suppliers" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "relationship.association": {
+                "name": "peers",
+                "@cardinality": "many",
+                "@objectRef": "Supplier",
+                "@through": "SupplierPeer",
+                "@symmetric": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ProductSupplier",
+          "@description": "Junction for the Product<->Supplier M:N association.",
+          "children": [
+            { "source.rdb": { "@table": "product_suppliers" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "productId" } },
+            { "field.long": { "name": "supplierId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "productRef", "@fields": "productId", "@references": "Product" } },
+            { "identity.reference": { "name": "supplierRef", "@fields": "supplierId", "@references": "Supplier" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "SupplierPeer",
+          "@description": "Symmetric self-join junction for Supplier peers.",
+          "children": [
+            { "source.rdb": { "@table": "supplier_peers" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "supplierAId" } },
+            { "field.long": { "name": "supplierBId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "supplierARef", "@fields": "supplierAId", "@references": "Supplier" } },
+            { "identity.reference": { "name": "supplierBRef", "@fields": "supplierBId", "@references": "Supplier" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "ProductSummary",
+          "extends": "Product",
+          "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_product_summary" } },
+            { "field.string": {
+                "name": "displaySku",
+                "children": [ { "origin.passthrough": { "@from": "Product.sku" } } ]
+              }
+            },
+            { "field.int": {
+                "name": "supplierCount",
+                "children": [
+                  { "origin.aggregate": { "@agg": "count", "@of": "Supplier.id", "@via": "Product.suppliers" } }
+                ]
+              }
+            },
+            { "field.object": {
+                "name": "supplierBriefs",
+                "isArray": true,
+                "@objectRef": "acme::common::BaseValue",
+                "children": [ { "origin.collection": { "@via": "Product.suppliers" } } ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

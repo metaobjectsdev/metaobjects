@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme::catalog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "overlay": true,
+          "children": [
+            { "field.string": { "name": "notes", "@maxLength": 500, "@dbColumnType": "jsonb" } }
+          ]
+        }
+      }
+    ]
+  }
+}

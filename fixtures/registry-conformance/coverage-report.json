@@ -1,6 +1,6 @@
 {
   "registeredSubTypeCount": 55,
-  "exercisedSubTypeCount": 32,
+  "exercisedSubTypeCount": 38,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -14,16 +14,10 @@
     "layout.base",
     "object.base",
     "origin.base",
-    "relationship.aggregation",
     "relationship.base",
     "source.base",
     "template.base",
-    "template.toolcall",
-    "validator.array",
     "validator.base",
-    "validator.length",
-    "validator.numeric",
-    "validator.regex",
     "view.base"
   ],
   "untestedAttrsByExercisedSubType": [
@@ -32,7 +26,6 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "example",
         "instruction",
@@ -52,7 +45,6 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "default",
         "example",
@@ -73,11 +65,9 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "instruction",
         "maxLength",
         "objectRef",
@@ -95,11 +85,9 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "instruction",
         "maxLength",
         "objectRef",
@@ -115,11 +103,9 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "instruction",
         "maxLength",
         "objectRef",
@@ -137,7 +123,6 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "example",
         "instruction",
@@ -179,10 +164,8 @@
       "untestedAttrs": [
         "autoSet",
         "column",
-        "db.indexed",
         "dbColumnType",
         "example",
-        "filterable",
         "instruction",
         "maxLength",
         "objectRef",
@@ -238,8 +221,7 @@
         "precision",
         "scale",
         "sortableDefaultOrder",
-        "storage",
-        "unique"
+        "storage"
       ]
     },
     {
@@ -267,7 +249,6 @@
     {
       "key": "field.timestamp",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "db.indexed",
         "default",
@@ -299,8 +280,7 @@
         "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
-        "unique"
+        "storage"
       ]
     },
     {
@@ -315,6 +295,16 @@
       "key": "origin.passthrough",
       "untestedAttrs": [
         "via"
+      ]
+    },
+    {
+      "key": "relationship.aggregation",
+      "untestedAttrs": [
+        "onDelete",
+        "onUpdate",
+        "sourceRefField",
+        "symmetric",
+        "through"
       ]
     },
     {
@@ -353,6 +343,20 @@
         "owner",
         "requiredTags",
         "since"
+      ]
+    },
+    {
+      "key": "template.toolcall",
+      "untestedAttrs": [
+        "owner",
+        "since"
+      ]
+    },
+    {
+      "key": "validator.regex",
+      "untestedAttrs": [
+        "max",
+        "min"
       ]
     }
   ]

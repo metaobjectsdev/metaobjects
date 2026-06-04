@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "@description": "Shared abstract base — every concrete entity inherits id + createdAt.",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "field.enum": {
+          "name": "Lifecycle",
+          "abstract": true,
+          "@description": "Reusable lifecycle enum — extended by concrete enum fields.",
+          "@values": ["DRAFT", "ACTIVE", "ARCHIVED"]
+        }
+      },
+      {
+        "object.value": {
+          "name": "BaseValue",
+          "abstract": true,
+          "@description": "Abstract value-object base carrying an audit label.",
+          "children": [
+            { "field.string": { "name": "label" } }
+          ]
+        }
+      }
+    ]
+  }
+}
