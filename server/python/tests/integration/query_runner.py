@@ -61,6 +61,23 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
         # by is a single-field PK lookup; pass first value.
         first_value = next(iter(spec.by.values()))
         return om.find_by_id(spec.entity, first_value)
+    if spec.op == "update":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:update requires 'by' (the record key)")
+        if not spec.data:
+            raise ValueError(f"{spec.name}: op:update requires 'data'")
+        ids = list(spec.by.values())
+        if len(ids) != 1:
+            raise ValueError(f"{spec.name}: op:update supports single-field 'by' only")
+        return om.update(spec.entity, ids[0], spec.data)
+    if spec.op == "delete":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:delete requires 'by' (the record key)")
+        ids = list(spec.by.values())
+        if len(ids) != 1:
+            raise ValueError(f"{spec.name}: op:delete supports single-field 'by' only")
+        # Returns a boolean (true = a row was deleted). `expect: true|false`.
+        return om.delete(spec.entity, ids[0])
     if spec.op == "count":
         return om.count(spec.entity, spec.filter)
     if spec.op == "relate":
@@ -167,9 +184,13 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
     if op == "count":
         n = int(expect) if not isinstance(expect, int) else expect
         return str(n)
+    # `delete` returns a boolean outcome (true = a row was deleted).
+    if op == "delete":
+        return str(expect is True)
     # `roundtrip` reads the inserted row back by PK → a single-row result,
-    # asserted exactly like `get`.
-    if op in ("get", "roundtrip"):
+    # asserted exactly like `get`. `update` reads the UPDATE ... RETURNING row
+    # back the same way.
+    if op in ("get", "roundtrip", "update"):
         if expect is None:
             return "null"
         return json.dumps(normalize_row(expect), sort_keys=True, separators=(",", ":"))
@@ -187,9 +208,13 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
 def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> str:
     if op == "count":
         return str(int(actual) if actual is not None else 0)
+    # `delete` returns a boolean — handle BEFORE the dict/normalize_row path
+    # (a bool has no ``.items()``; that is the normalization.py:48 AttributeError).
+    if op == "delete":
+        return str(actual is True)
     if actual is None:
         return "null" if op != "relate" else "[]"
-    if op in ("get", "roundtrip"):
+    if op in ("get", "roundtrip", "update"):
         return json.dumps(
             normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
         )

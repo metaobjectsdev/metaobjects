@@ -130,6 +130,41 @@ class PostgresDriver:
         finally:
             cur.close()
 
+    def update_returning(
+        self, sql: str, params: tuple[Any, ...] = ()
+    ) -> SelectResult | None:
+        """Run an UPDATE ... RETURNING; return a single-row :class:`SelectResult`
+        (row + per-column OID type metadata), or ``None`` when no row matched.
+        Commits on success (same per-write autocommit semantics as
+        ``insert_returning``). The OIDs carry the int4-vs-int8 (BIGINT→string)
+        wire discriminator into the serialization boundary, exactly like the read
+        path — so a BIGINT/currency column updates back as a numeric string."""
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, params)
+            cols = [d[0] for d in cur.description]
+            oids = [d[1] for d in cur.description]
+            row = cur.fetchone()
+            self._conn.commit()
+            if row is None:
+                return None
+            column_oids = {c: oids[i] for i, c in enumerate(cols)}
+            return SelectResult([{c: row[i] for i, c in enumerate(cols)}], column_oids)
+        finally:
+            cur.close()
+
+    def execute_rowcount(self, sql: str, params: tuple[Any, ...] = ()) -> int:
+        """Run a DML statement (DELETE / UPDATE) and return the affected row
+        count. Commits on success."""
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, params)
+            count = cur.rowcount
+            self._conn.commit()
+            return int(count) if count is not None else 0
+        finally:
+            cur.close()
+
 
 class ObjectManager:
     """Method-based read API. Translates Filter dicts → parameterized SQL."""
@@ -208,6 +243,75 @@ class ObjectManager:
             )
         row = self._driver.insert_returning(sql, tuple(params))
         return {col_to_field.get(k, k): v for k, v in row.items()}
+
+    def update(
+        self, entity_name: str, id_value: Any, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """UPDATE a row by primary key through the runtime write path.
+
+        ``data`` carries field-keyed values in the same *native authoring forms*
+        as :meth:`create` (a decimal/uuid/temporal as a string, ``field.object``
+        as a dict, currency as integer minor units). Each value is run through the
+        SAME write codec the INSERT path uses (``_coerce_write_value``) so the
+        PATCH path cannot silently skip the type coercion INSERT applies — the
+        per-port hazard the ``update-delete-all-types`` corpus gates. Returns the
+        updated row (mapped to metadata field names) via ``RETURNING``, or
+        ``None`` when no row matched the PK.
+        """
+        entity = self._require_entity(entity_name)
+        table = self._table_name(entity)
+        pk_field = self._primary_pk_field(entity)
+        pk_col = _column_of(entity.find_field(pk_field))
+
+        set_cols: list[str] = []
+        params: list[Any] = []
+        for field_name, raw in data.items():
+            f = entity.find_field(field_name)
+            if f is None:
+                raise ValueError(
+                    f"update('{entity_name}'): no field '{field_name}' in metadata"
+                )
+            set_cols.append(_column_of(f))
+            params.append(_coerce_write_value(f, raw))
+        if not set_cols:
+            # No columns to set → just read the row back by PK (no-op update).
+            return self.find_by_id(entity_name, id_value)
+
+        all_cols = [_column_of(f) for f in entity.fields()]
+        col_to_field = {_column_of(f): f.name for f in entity.fields()}
+        assignments = ", ".join(f"{_q(c)} = %s" for c in set_cols)
+        params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
+        sql = (
+            f"UPDATE {_q(table)} SET {assignments} WHERE {_q(pk_col)} = %s "
+            f"RETURNING {', '.join(_q(c) for c in all_cols)}"
+        )
+        result = self._driver.update_returning(sql, tuple(params))
+        if result is None:
+            self.last_column_oids = {}
+            return None
+        # Surface the RETURNING column OIDs (mapped to metadata field names) so the
+        # serialization boundary applies the same SQL-type wire rules as a read —
+        # a BIGINT / currency column comes back as a numeric string. Mirrors the
+        # find_many bookkeeping.
+        self.last_column_oids = {
+            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
+        }
+        row = result.rows[0]
+        return {col_to_field.get(k, k): v for k, v in row.items()}
+
+    def delete(self, entity_name: str, id_value: Any) -> bool:
+        """DELETE a row by primary key through the runtime write path.
+
+        Returns ``True`` when a row was deleted, ``False`` when the PK matched
+        nothing. Mirrors the TS ``om.delete`` boolean outcome contract.
+        """
+        entity = self._require_entity(entity_name)
+        table = self._table_name(entity)
+        pk_field = self._primary_pk_field(entity)
+        pk_col = _column_of(entity.find_field(pk_field))
+        sql = f"DELETE FROM {_q(table)} WHERE {_q(pk_col)} = %s"
+        param = _coerce_write_value(entity.find_field(pk_field), id_value)
+        return self._driver.execute_rowcount(sql, (param,)) > 0
 
     def find_many(
         self,

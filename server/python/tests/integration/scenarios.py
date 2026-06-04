@@ -41,6 +41,11 @@ class QuerySpec:
     #: ``field.object`` as a dict). The runner inserts it, reads it back by PK,
     #: drops the PK, and asserts the wire-normalized read-back equals ``expect``.
     insert: dict[str, Any] | None = None
+    #: For ``op: update``: the field-keyed partial row to PATCH via the runtime
+    #: write path (same native authoring forms as ``insert``), addressed by
+    #: ``by``. ``op: delete`` carries neither ``data`` nor ``insert`` — it
+    #: removes the row by ``by`` and its ``expect`` is the boolean outcome.
+    data: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,7 @@ def _parse_query(path: Path) -> QueryScenario:
             expect=q.get("expect"),
             relation=q.get("relation"),
             insert=q.get("insert"),
+            data=q.get("data"),
         ))
     return QueryScenario(
         name=raw["name"],
