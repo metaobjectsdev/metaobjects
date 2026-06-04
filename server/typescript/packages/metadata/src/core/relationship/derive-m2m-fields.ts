@@ -7,7 +7,7 @@
 // source entity, one to the target — exactly as 1:N FK direction is declared
 // (`find-reference.ts` is the analogous SSOT).
 //
-// Three modes (see the FR-017 design):
+// Three modes (see the FR-018 design):
 //   1. Hetero (source != target): the reference resolving to the source entity
 //      gives sourceField; the one resolving to the target gives targetField.
 //   2. Directed self-join (source == target, @sourceRefField set): both

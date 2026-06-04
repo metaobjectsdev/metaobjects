@@ -1,15 +1,15 @@
 // Two-stage M:N resolution.
 //
-// A M:N relationship declares only the slim FR-017 vocabulary on the source
+// A M:N relationship declares only the slim FR-018 vocabulary on the source
 // entity: `@cardinality: "many"` + `@objectRef: <target>` + `@through:
 // <junction>` (plus optional `@sourceRefField` / `@symmetric` for self-joins).
 // It does NOT restate the junction FK columns — those are DERIVED from the
 // junction entity's two `identity.reference` children via the shared
 // `deriveM2MFields` helper (the SSOT for FK direction, the same one the loader
-// validator + every other port use). This kills the pre-FR-017 stopgap that
+// validator + every other port use). This kills the pre-FR-018 stopgap that
 // read `@joinEntity` / `@joinFields` off the relationship.
 //
-// Resolution has three modes (see the FR-017 design):
+// Resolution has three modes (see the FR-018 design):
 //   1. Hetero (source != target): junction WHERE sourceField (IN|=) source.pk,
 //      collect targetField, then target WHERE pk IN (...).
 //   2. Directed self-join (`@sourceRefField`): identical traversal; the helper

@@ -1,6 +1,6 @@
 """Generic, metadata-driven M:N (many-to-many) query resolver.
 
-A M:N relationship declares only the slim FR-017 vocabulary on the source
+A M:N relationship declares only the slim FR-018 vocabulary on the source
 entity: ``@cardinality: "many"`` + ``@objectRef: <target>`` + ``@through:
 <junction>`` (plus optional ``@sourceRefField`` / ``@symmetric`` for self-joins).
 It does NOT restate the junction FK columns — those are DERIVED from the junction

@@ -36,7 +36,7 @@ public static class WriteCoercion
 
     /// <summary>
     /// Coerce a YAML authoring value to the target property's CLR type. Handles the
-    /// scalar subtypes (string/int/long/short/double/float/decimal/bool/currency),
+    /// scalar subtypes (string/int/long/double/float/decimal/bool/currency),
     /// temporal (DateOnly/TimeOnly/DateTime with the right Kind), uuid (Guid), enum
     /// (by symbol), and a nested mapping → an owned value-object POCO.
     /// </summary>
@@ -62,7 +62,6 @@ public static class WriteCoercion
         if (underlying == typeof(string))  return raw;
         if (underlying == typeof(int))     return int.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
         if (underlying == typeof(long))    return long.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
-        if (underlying == typeof(short))   return short.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
         if (underlying == typeof(double))  return double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(float))   return float.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(decimal)) return decimal.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);

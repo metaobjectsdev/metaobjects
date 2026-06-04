@@ -6,7 +6,7 @@ A M:N relationship (``@cardinality: "many"``, ``@objectRef: <target>``,
 the junction entity's two ``identity.reference`` children — one resolving to the
 source entity, one to the target — exactly as 1:N FK direction is declared.
 
-Three modes (see the FR-017 design + the TS reference ``derive-m2m-fields.ts``):
+Three modes (see the FR-018 design + the TS reference ``derive-m2m-fields.ts``):
   1. Hetero (source != target): the reference resolving to the source entity
      gives source_field; the one resolving to the target gives target_field.
   2. Directed self-join (source == target, @sourceRefField set): both references
