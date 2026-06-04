@@ -95,11 +95,8 @@ public class TphCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var auth = FileContent(files, "Auth.g.cs");
         Assert.Contains("[Table(\"auths\")]", auth);
-        // The @discriminator BASE is emitted ABSTRACT: it is never instantiated directly
-        // (every row is a concrete subtype), and EF Core requires a DbSet-mapped concrete
-        // TPH root to carry its own discriminator value — there is none, so an abstract
-        // root is the only valid EF mapping. Polymorphic reads of db.Set<Auth>() still
-        // surface the subtype rows.
+        // FR-017 TPH: the discriminator base is abstract (no plain-base rows; a
+        // concrete base with a discriminator + no base value fails EF model build).
         Assert.Contains("public abstract class Auth", auth);
         // The discriminator field is a base property (the `type` enum -> AuthType).
         // Nullable because the `type` field is not @required and not in the PK; the
@@ -182,6 +179,12 @@ public class TphCodegenTests
         Assert.Contains("OfType<PriorAuthAuth>()", auth);
         // Polymorphic POST is NOT emitted on the base path itself.
         Assert.DoesNotContain("MapPost(prefix + \"/auths\",", auth);
+        // Per-subtype list ?sort resolves the raw qs field through a per-subtype
+        // case-insensitive allowlist to the CLR property name BEFORE EF.Property —
+        // a raw "id" (vs "Id") otherwise fails EF translation and 500s.
+        Assert.Contains("BridgeAuthSortAllowlist", auth);
+        Assert.Contains("BridgeAuthSortAllowlist.TryGetValue(parts[0], out var resolved)", auth);
+        Assert.DoesNotContain("EF.Property<object>(x!, parts[0])", auth);
     }
 
     [Fact]

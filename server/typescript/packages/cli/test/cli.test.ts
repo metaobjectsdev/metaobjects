@@ -5,30 +5,27 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// wireRoot defaults TRUE (root-wiring is on by default so the scaffolded always-on actually loads; --no-wire-root opts out).
+const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: true };
+
 describe("parseInitArgs", () => {
-  test("default flags are all false", () => {
-    expect(parseInitArgs([])).toEqual({ force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false });
+  test("default flags (wireRoot on by default, others off)", () => {
+    expect(parseInitArgs([])).toEqual(defaultInitFlags);
   });
   test("--force toggles force", () => {
-    expect(parseInitArgs(["--force"])).toEqual({ force: true, quiet: false, printOnly: false, refreshDocs: false, d1: false });
+    expect(parseInitArgs(["--force"])).toEqual({ ...defaultInitFlags, force: true });
   });
   test("--quiet toggles quiet", () => {
-    expect(parseInitArgs(["--quiet"])).toEqual({ force: false, quiet: true, printOnly: false, refreshDocs: false, d1: false });
+    expect(parseInitArgs(["--quiet"])).toEqual({ ...defaultInitFlags, quiet: true });
   });
   test("--print-only toggles printOnly", () => {
-    expect(parseInitArgs(["--print-only"])).toEqual({ force: false, quiet: false, printOnly: true, refreshDocs: false, d1: false });
+    expect(parseInitArgs(["--print-only"])).toEqual({ ...defaultInitFlags, printOnly: true });
   });
   test("multiple flags compose", () => {
-    expect(parseInitArgs(["--force", "--quiet"])).toEqual({
-      force: true,
-      quiet: true,
-      printOnly: false,
-      refreshDocs: false,
-      d1: false,
-    });
+    expect(parseInitArgs(["--force", "--quiet"])).toEqual({ ...defaultInitFlags, force: true, quiet: true });
   });
   test("--d1 toggles d1", () => {
-    expect(parseInitArgs(["--d1"])).toEqual({ force: false, quiet: false, printOnly: false, refreshDocs: false, d1: true });
+    expect(parseInitArgs(["--d1"])).toEqual({ ...defaultInitFlags, d1: true });
   });
   test("throws on unknown flag", () => {
     expect(() => parseInitArgs(["--foo"])).toThrow();

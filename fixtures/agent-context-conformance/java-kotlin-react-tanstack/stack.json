@@ -1,0 +1,1 @@
+{ "servers": ["java", "kotlin"], "clients": ["react", "tanstack"] }

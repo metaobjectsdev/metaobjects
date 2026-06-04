@@ -145,4 +145,4 @@ your LLM client → parse the response with the generated parser.
 
 ---
 
-For this project's server parser specifics read `references/<server>.md`.
+For this project's server-language parser specifics, read every `references/*.md` file in this skill's directory (one per server language in this project's stack).

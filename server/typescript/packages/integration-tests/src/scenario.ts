@@ -132,7 +132,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
       data: (q.data as Record<string, unknown> | undefined) ?? null,
-      expectError: q.expectError === true,
+      expectError: q["expect-error"] === true,
       relation: q.relation ?? null,
       insert: (q.insert as Record<string, unknown> | undefined) ?? null,
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
@@ -191,7 +191,7 @@ interface QueryYaml {
     entity?: string;
     by?: unknown;
     data?: unknown;
-    expectError?: boolean;
+    "expect-error"?: boolean;
     relation?: string;
     insert?: unknown;
     filter?: unknown;

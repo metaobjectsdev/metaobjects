@@ -148,8 +148,8 @@ TS: `om.findMany(entityName, filter, opts)`).
 | `sort`     | `[{ field, dir }]`                          | optional; `dir` ∈ `asc | desc` |
 | `limit`    | integer                                     | optional |
 | `offset`   | integer                                     | optional |
-| `expect`   | row or row[] or integer                     | required unless `expectError`; the normalized expected result |
-| `expectError` | boolean                                  | optional; when true the op must FAIL (throw/reject). `expect` is ignored. Portable: each runner asserts "the op raised an error", not a message. |
+| `expect`   | row or row[] or integer                     | required unless `expect-error`; the normalized expected result |
+| `expect-error` | boolean                                  | optional; when true the op must FAIL (throw/reject). `expect` is ignored. Portable: each runner asserts "the op raised an error", not a message. |
 
 ### `op: create` / `op: update` — runtime writes (FR-017 TPH)
 
@@ -159,7 +159,7 @@ including **TPH** (FR-017): a create on a discriminator SUBTYPE injects the
 discriminator value (omit it from `data`); reads/updates are scoped to the
 subtype; the discriminator is immutable; a subtype's write surface is its own
 columns only. A cross-subtype write (an unknown subtype column, or a
-different-subtype id) is expected to fail (`expectError: true`).
+different-subtype id) is expected to fail (`expect-error: true`).
 
 ### `op: delete` — runtime delete-by-PK
 
