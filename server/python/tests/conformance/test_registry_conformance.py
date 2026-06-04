@@ -13,7 +13,12 @@ from pathlib import Path
 from metaobjects.core_types import core_provider
 from metaobjects.documentation import doc_provider
 from metaobjects.provider import compose_registry
-from metaobjects.registry_manifest import emit_registry_manifest
+from metaobjects.registry_manifest import (
+    ExclusionReason,
+    classify_per_type_attr,
+    classify_type_subtype,
+    emit_registry_manifest,
+)
 
 
 def _registry_conformance_canonical() -> Path:
@@ -45,3 +50,28 @@ def test_python_registry_matches_canonical() -> None:
         "Fix the Python registration to match the cross-port contract "
         "(canonical/TS is the source of truth), or escalate if TS is wrong."
     )
+
+
+# Wave 3b — the in/out boundary is an EXPLICIT classification (a reason category
+# per carve-out), not a bare name-match.
+def test_every_registered_per_type_attr_is_explicitly_classified() -> None:
+    registry = compose_registry([core_provider, doc_provider])
+    for definition in registry._defs.values():  # noqa: SLF001 (no public iterator)
+        for attr in definition.attrs:
+            # Total function — always a defined ExclusionReason member, no silent default.
+            assert isinstance(classify_per_type_attr(attr.name), ExclusionReason)
+
+
+def test_carve_outs_carry_their_declared_reason_category() -> None:
+    assert classify_per_type_attr("extends") is ExclusionReason.STRUCTURAL_KEYWORD
+    assert classify_per_type_attr("isArray") is ExclusionReason.STRUCTURAL_KEYWORD
+    assert classify_per_type_attr("object") is ExclusionReason.NATIVE_BINDING
+    assert classify_per_type_attr("objectAdapter") is ExclusionReason.NATIVE_BINDING
+    assert classify_per_type_attr("description") is ExclusionReason.COMMON_ATTR_DUP
+    # Genuinely logical attrs are INCLUDED.
+    assert classify_per_type_attr("column") is ExclusionReason.INCLUDED
+    assert classify_per_type_attr("maxLength") is ExclusionReason.INCLUDED
+    # Row classification.
+    assert classify_type_subtype("metadata", "base") is ExclusionReason.INHERITANCE_ANCHOR
+    assert classify_type_subtype("view", "dropdown") is ExclusionReason.PRESENTATION_ONLY
+    assert classify_type_subtype("view", "currency") is ExclusionReason.INCLUDED

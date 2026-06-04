@@ -22,6 +22,7 @@ live in ``fixtures/registry-conformance/expected-registry.json``.
 from __future__ import annotations
 
 import json
+from enum import Enum
 
 from .documentation.doc_constants import DOC_ATTR_DESCRIPTION
 from .meta.core.attr.attr_constants import (
@@ -33,65 +34,78 @@ from .registry import AttrSchema, TypeRegistry
 from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW
 from .shared.structural import KEY_IS_ARRAY
 
-# SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform across
-# all four ports; see fixtures/registry-conformance/README.md "EXCLUDED" list +
-# the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
-#  - structural keywords (``isArray``/``isAbstract``) + the ``description``
-#    commonAttr are NOT per-type attrs (no-op for Python, which never registers
-#    them as such; ``description`` stays in commonAttrs);
-#  - ``metadata.base`` is a per-port inheritance anchor (Java's), not in the
-#    cross-port contract — other ports register only ``metadata.root``;
-#  - the 11 generic ``view.*`` controls are a TS-web-presentation facet (cut
-#    cross-port; C#/Python deregister them, TS keeps them registered).
+# Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason category
+# per carve-out), not a bare name-match. The negative branch of a name-list
+# silently meant "logical"; now ``classify_per_type_attr`` returns either an
+# ``ExclusionReason`` (carved out, with a documented category) or ``INCLUDED``
+# (logical cross-port vocabulary). Inclusion-by-classification is sound because
+# ADR-0023 seals the agreed-vocabulary registry. The axis is
+# cross-port-CONTRACT vs port-PRIVATE-mechanism (NOT abstract-vs-physical — the
+# physical-DB attrs column/dbColumnType/db.indexed/precision/scale/maxLength/
+# unique ARE logical here, the agreed persistence vocabulary). See
+# fixtures/registry-conformance/README.md.
 
-# ``isAbstract`` as the per-type attr name (the contract's bare ``abstract`` keyword).
+
+class ExclusionReason(str, Enum):
+    """Reason a per-type attr/row is carved out of the agreed vocabulary."""
+
+    #: Sentinel: NOT excluded — logical cross-port vocabulary.
+    INCLUDED = "included"
+    #: Native type-binding / factory (incl. ADR-0001 ``object``, ADR-0005 ``objectAdapter``).
+    NATIVE_BINDING = "native-binding"
+    #: Bare structural / OO-shape keyword (isArray/isAbstract/extends/implements/isInterface).
+    STRUCTURAL_KEYWORD = "structural-keyword"
+    #: A commonAttr (``description``) re-registered per-type — belongs in commonAttrs.
+    COMMON_ATTR_DUP = "common-attr-dup"
+    #: The ``metadata.base`` per-port inheritance anchor (deferred inheritsFrom facet).
+    INHERITANCE_ANCHOR = "inheritance-anchor"
+    #: TS-web-presentation-only facet (the generic ``view.*`` controls).
+    PRESENTATION_ONLY = "presentation-only"
+
+
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
-
-# The Java-OO structural-shape keyword names (``extends``/``implements``/
-# ``isInterface``) as Java's per-type attr names. Like ``isArray``/``isAbstract``
-# these are bare structural/OO-shape keywords, NOT per-type attributes in the
-# cross-port logical vocabulary. No-op for Python (never registers them as
-# per-type attrs); the filter drops Java's per-type registrations. See SP-G
-# analysis C-2/C-3 (Unit 6b).
 _ATTR_NAME_EXTENDS = "extends"
 _ATTR_NAME_IMPLEMENTS = "implements"
 _ATTR_NAME_IS_INTERFACE = "isInterface"
-
-# The two per-port type-BINDING facet attr names: ``object`` (ADR-0001 class-FQN
-# type binding for OO ports) and ``objectAdapter`` (ADR-0005 hybrid value-access
-# seam). Same category as the excluded native type bindings — legitimate per-port
-# binding mechanisms, not cross-port logical vocabulary. No-op for Python (never
-# registers them); the filter drops Java's per-type ``object.*`` registrations.
-# See SP-G Unit 6b-finish.
+# ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam.
 _ATTR_NAME_OBJECT = "object"
 _ATTR_NAME_OBJECT_ADAPTER = "objectAdapter"
 
-# Per-type attr names filtered from a type's ``attrs`` list (structural / OO-shape
-# keywords + the per-port type-binding facets ``object``/``objectAdapter`` + the
-# description commonAttr). ``description`` is filtered ONLY per-type — it stays in
-# the commonAttrs block.
-_EXCLUDED_PER_TYPE_ATTR_NAMES = frozenset(
-    {
-        KEY_IS_ARRAY,
-        _ATTR_NAME_IS_ABSTRACT,
-        _ATTR_NAME_EXTENDS,
-        _ATTR_NAME_IMPLEMENTS,
-        _ATTR_NAME_IS_INTERFACE,
-        _ATTR_NAME_OBJECT,
-        _ATTR_NAME_OBJECT_ADAPTER,
-        DOC_ATTR_DESCRIPTION,
-    }
-)
+# Per-type attr names carved out of the agreed vocabulary, each mapped to its
+# PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the
+# ADR-0023 sealed-vocabulary contract. ``description`` is carved out ONLY
+# per-type — it stays in the commonAttrs block.
+_EXCLUDED_PER_TYPE_ATTRS: dict[str, ExclusionReason] = {
+    KEY_IS_ARRAY: ExclusionReason.STRUCTURAL_KEYWORD,
+    _ATTR_NAME_IS_ABSTRACT: ExclusionReason.STRUCTURAL_KEYWORD,
+    _ATTR_NAME_EXTENDS: ExclusionReason.STRUCTURAL_KEYWORD,
+    _ATTR_NAME_IMPLEMENTS: ExclusionReason.STRUCTURAL_KEYWORD,
+    _ATTR_NAME_IS_INTERFACE: ExclusionReason.STRUCTURAL_KEYWORD,
+    _ATTR_NAME_OBJECT: ExclusionReason.NATIVE_BINDING,
+    _ATTR_NAME_OBJECT_ADAPTER: ExclusionReason.NATIVE_BINDING,
+    DOC_ATTR_DESCRIPTION: ExclusionReason.COMMON_ATTR_DUP,
+}
+
+
+def classify_per_type_attr(name: str) -> ExclusionReason:
+    """Classify a per-type attr: an ``ExclusionReason`` (carved out) or
+    ``ExclusionReason.INCLUDED`` (logical). Total — no silent default."""
+    return _EXCLUDED_PER_TYPE_ATTRS.get(name, ExclusionReason.INCLUDED)
+
+
+def classify_type_subtype(type_name: str, sub_type: str) -> ExclusionReason:
+    """Classify a ``(type, subType)`` row: the metadata.base inheritance anchor
+    (C-5) / the generic ``view.*`` presentation controls (B-2) / INCLUDED."""
+    if type_name == TYPE_METADATA and sub_type == SUBTYPE_BASE:
+        return ExclusionReason.INHERITANCE_ANCHOR  # C-5 — Java's internal inheritance anchor
+    if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
+        return ExclusionReason.PRESENTATION_ONLY  # B-2 — TS-web-presentation generic view controls
+    return ExclusionReason.INCLUDED
 
 
 def _is_excluded_type_subtype(type_name: str, sub_type: str) -> bool:
-    """``(type, subType)`` rows excluded: the metadata.base anchor (C-5) + the
-    generic ``view.*`` controls (B-2; every view subtype except base/currency)."""
-    if type_name == TYPE_METADATA and sub_type == SUBTYPE_BASE:
-        return True  # C-5 — Java's internal inheritance anchor
-    if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
-        return True  # B-2 — TS-web-presentation-only generic view controls
-    return False
+    """True if a ``(type, subType)`` row is carved out of the manifest (any reason)."""
+    return classify_type_subtype(type_name, sub_type) is not ExclusionReason.INCLUDED
 
 
 def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
@@ -124,11 +138,13 @@ def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
 
 
 def _sorted_per_type_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
-    """As ``_sorted_attrs``, but filtering the excluded per-type attr names
-    (structural keywords + the ``description`` commonAttr). Applied ONLY to
-    per-type attrs — ``description`` stays in the commonAttrs block."""
+    """As ``_sorted_attrs``, but keeping only attrs the explicit classification
+    marks ``INCLUDED`` (logical cross-port vocabulary). A carved-out attr
+    (structural keyword, native binding, per-type ``description`` dup) is dropped
+    for a documented reason, never a silent name-match. Applied ONLY to per-type
+    attrs — ``description`` stays in the commonAttrs block."""
     return _sorted_attrs(
-        [a for a in attrs if a.name not in _EXCLUDED_PER_TYPE_ATTR_NAMES]
+        [a for a in attrs if classify_per_type_attr(a.name) is ExclusionReason.INCLUDED]
     )
 
 
