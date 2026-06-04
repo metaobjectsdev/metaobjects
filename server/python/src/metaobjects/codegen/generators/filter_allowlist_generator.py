@@ -16,6 +16,7 @@ it without conditional codegen branching.
 Operators-per-subtype mapping (FR-009 §5, identical across ports):
 
 * ``string`` / ``enum`` → ``eq, ne, in, like, isNull``
+* ``uuid`` → ``eq, ne, in, isNull``  (no ``like`` — not a substring type, no ordering)
 * ``int / long / float / double / decimal / currency / date / timestamp / time``
   → ``eq, ne, gt, gte, lt, lte, in, isNull``
 * ``boolean`` → ``eq, isNull``
@@ -46,6 +47,8 @@ from metaobjects.shared.separators import PACKAGE_SEP
 
 # Operator sets — preserve insertion order (Python dict order == spec order).
 _OPS_STRING: tuple[str, ...] = ("eq", "ne", "in", "like", "isNull")
+# uuid: identity-comparison only — no `like` (not a substring type), no ordering.
+_OPS_UUID: tuple[str, ...] = ("eq", "ne", "in", "isNull")
 _OPS_NUMERIC: tuple[str, ...] = ("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
 _OPS_BOOLEAN: tuple[str, ...] = ("eq", "isNull")
 
@@ -91,6 +94,8 @@ def _ops_for_subtype(sub_type: str | None) -> tuple[str, ...]:
         return ()
     if sub_type in (fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_ENUM):
         return _OPS_STRING
+    if sub_type == fc.FIELD_SUBTYPE_UUID:
+        return _OPS_UUID
     if sub_type in (
         fc.FIELD_SUBTYPE_INT,
         fc.FIELD_SUBTYPE_LONG,

@@ -128,6 +128,8 @@ def run_validations(
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_filterable_has_index(root, warnings)
+    # SP-H Unit9 — @filterable on a subtype with no operator band → error.
+    _validate_filterable_has_supported_ops(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -608,16 +610,21 @@ def _validate_datagrid_sort_fields(
 # ---------------------------------------------------------------------------
 # Ops-per-field-subtype allow-table (from query-constants.ts)
 # ---------------------------------------------------------------------------
-# string         → eq, ne, in, like, isNull
+# string / enum  → eq, ne, in, like, isNull
+# uuid           → eq, ne, in, isNull  (no like — not a substring type, no ordering)
 # boolean        → eq, isNull
-# numerics + temporal → eq, ne, gt, gte, lt, lte, in, isNull
+# numerics + currency + temporal → eq, ne, gt, gte, lt, lte, in, isNull
 
 _OPS_STRING: frozenset[str] = frozenset({"eq", "ne", "in", "like", "isNull"})
+_OPS_UUID: frozenset[str] = frozenset({"eq", "ne", "in", "isNull"})
 _OPS_BOOLEAN: frozenset[str] = frozenset({"eq", "isNull"})
 _OPS_NUMERIC_TEMPORAL: frozenset[str] = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
 
+# string-shaped subtypes (string op band): string + enum.
+_STRING_SUBTYPES: frozenset[str] = frozenset({"string", "enum"})
+# currency = integer minor units (an orderable number) → numeric band.
 _NUMERIC_TEMPORAL_SUBTYPES: frozenset[str] = frozenset(
-    {"int", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    {"int", "long", "double", "float", "decimal", "currency", "date", "time", "timestamp"}
 )
 
 
@@ -626,8 +633,10 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
 
     Mirrors the ops-per-subtype allow-table from query-constants.ts.
     """
-    if field_subtype == "string":
+    if field_subtype in _STRING_SUBTYPES:
         return _OPS_STRING
+    if field_subtype == "uuid":
+        return _OPS_UUID
     if field_subtype == "boolean":
         return _OPS_BOOLEAN
     if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:
@@ -1265,6 +1274,39 @@ def _validate_filterable_has_index(
                 f'[filterable-without-index] field "{node.name}.{field.name}" has @filterable: true '
                 f"but is not part of any identity. Filtering on this field will sequential-scan. "
                 f"Add @db.indexed: true to the field (when supported), or remove @filterable: true."
+            )
+
+
+# ---------------------------------------------------------------------------
+# Pass: @filterable on a subtype with no operator band (SP-H Unit9)
+# ---------------------------------------------------------------------------
+# A field marked @filterable: true whose subtype has no op band (e.g.
+# field.object) would silently generate a filter with an empty operator set —
+# a route that rejects every request. Error early.
+# → ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+
+
+def _validate_filterable_has_supported_ops(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT or not isinstance(node, MetaObject):
+            continue
+        for field in node.fields():
+            if field.attr("filterable") is not True:
+                continue
+            if ops_for_subtype(field.sub_type):
+                continue
+            errors.append(
+                MetaError(
+                    f'Field "{node.name}.{field.name}" has @filterable: true but its subtype '
+                    f'"{field.sub_type}" has no filter-operator band. Remove @filterable, or use a '
+                    f"field subtype that supports filtering "
+                    f"(string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    envelope=field.source,
+                )
             )
 
 

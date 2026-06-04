@@ -160,6 +160,14 @@ public final class ErrorMessageConstants {
     public static final String ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER";
 
     /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     * Cross-language contract: {@code ERR_FILTERABLE_UNSUPPORTED_SUBTYPE}.
+     */
+    public static final String ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @defaultSortField} value
      * does not name a real field on the owning entity.
      * Cross-language contract: {@code ERR_BAD_DEFAULT_SORT_FIELD}.

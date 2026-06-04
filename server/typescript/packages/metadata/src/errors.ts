@@ -78,6 +78,9 @@ export const ERROR_CODES = [
   // FR5c — multi-file overlay merge produced a conflicting attribute value:
   // two contributors set the same @attr to different non-empty values.
   "ERR_MERGE_CONFLICT",
+  // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+  // band (e.g. field.object). Would silently generate an empty-ops filter.
+  "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE",
   "ERR_UNKNOWN",
 ] as const;
 

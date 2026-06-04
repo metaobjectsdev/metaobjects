@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "ref",
+                "@filterable": true
+              }
+            },
+            {
+              "field.currency": {
+                "name": "total",
+                "@currency": "USD",
+                "@filterable": true
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@filterable": true,
+                "@values": [
+                  "pending",
+                  "paid",
+                  "shipped"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": [
+                  "ref"
+                ]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byTotal",
+                "@fields": [
+                  "total"
+                ]
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "byStatus",
+                "@fields": [
+                  "status"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

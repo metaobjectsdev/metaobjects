@@ -70,6 +70,9 @@ public enum ErrorCode
     ERR_DISCRIMINATOR_VALUE_DUPLICATE,
     ERR_DISCRIMINATOR_VALUE_MISSING,
     ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+    // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+    // band (e.g. field.object). Would silently generate an empty-ops filter.
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
     ERR_UNKNOWN,
 }
 

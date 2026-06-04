@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -418,6 +418,10 @@ export class MetaDataLoader {
 
       // Fifth pass: @filterable without index drift warning.
       warnings.push(...validateFilterableHasIndex(root));
+
+      // SP-H Unit9 — @filterable on a subtype with no operator band → error
+      // (would silently generate a filter that rejects every request).
+      errors.push(...validateFilterableHasSupportedOps(root));
 
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.

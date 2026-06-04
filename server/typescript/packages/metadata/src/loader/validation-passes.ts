@@ -58,6 +58,7 @@ import {
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
+import { opsForSubType } from "../core/query/query-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -251,6 +252,35 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
     }
   }
   return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// @filterable on a subtype with no operator band (SP-H Unit9)
+// ---------------------------------------------------------------------------
+// A field marked @filterable: true whose subtype has NO entry in OPS_BY_SUBTYPE
+// (e.g. field.object, or any extension subtype without a declared op band)
+// would silently generate a filter type/allowlist with an empty op set — a
+// filter route that rejects every request. Error early instead of shipping
+// broken codegen. → ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+
+export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    // children() — inherited @filterable fields (via extends:/super:) are visible.
+    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      if (field.ownAttr(FIELD_ATTR_FILTERABLE) !== true) continue;
+      if (opsForSubType(field.subType).length > 0) continue;
+      errors.push(
+        new ParseError(
+          `Field "${obj.name}.${field.name}" has @filterable: true but its subtype ` +
+            `"${field.subType}" has no filter-operator band. Remove @filterable, or use a ` +
+            `field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).`,
+          { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+        ),
+      );
+    }
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------------------

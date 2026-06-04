@@ -79,6 +79,9 @@ class ErrorCode(str, Enum):
     ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
     ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
+    # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+    # band (e.g. field.object). Would silently generate an empty-ops filter.
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

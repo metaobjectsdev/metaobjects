@@ -1,0 +1,50 @@
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "shipTo",
+                "@objectRef": "Address",
+                "@storage": "jsonb",
+                "@filterable": true,
+                "@db.indexed": true
+              }
+            },
+            {
+              "identity.primary": {
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

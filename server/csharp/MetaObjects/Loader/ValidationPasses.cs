@@ -198,6 +198,41 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 4b: ValidateFilterableHasSupportedOps (SP-H Unit9)
+    //   - @filterable: true on a field subtype with NO entry in OPS_BY_SUBTYPE
+    //     (e.g. field.object) → error ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+    //     Such a field would silently generate an empty-ops filter — a route
+    //     that rejects every request.
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateFilterableHasSupportedOps.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFilterableHasSupportedOps(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Children() (effective) — inherited @filterable fields are visible.
+            foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                if (field.OwnAttr(FIELD_ATTR_FILTERABLE) is not true) continue;
+                if (OpsForSubType(field.SubType).Length > 0) continue;
+                errors.Add(new MetaError(
+                    $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but its subtype " +
+                    $"\"{field.SubType}\" has no filter-operator band. Remove @filterable, or use a " +
+                    "field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    Envelope: field.Source));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
     // Pass 5: ValidateOriginPaths
     //   - passthrough.@from / aggregate.@of must resolve to existing Entity.field
     //   - .@via must resolve through valid relationships, hopping entity-by-entity

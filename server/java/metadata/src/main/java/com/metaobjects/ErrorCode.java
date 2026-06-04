@@ -203,6 +203,13 @@ public enum ErrorCode {
      */
     ERR_MERGE_CONFLICT,
 
+    /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     */
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

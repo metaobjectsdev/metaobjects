@@ -16,6 +16,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -52,6 +53,7 @@ import java.util.Set;
  * <p>Operators-per-subtype mapping (FR-009 §5, identical across ports):</p>
  * <ul>
  *   <li>{@code string} / {@code enum} → {@code eq, ne, in, like, isNull}</li>
+ *   <li>{@code uuid} → {@code eq, ne, in, isNull} (no {@code like} — not a substring type, no ordering)</li>
  *   <li>{@code int / long / short / byte / float / double / decimal /
  *       currency / date / timestamp / time} →
  *       {@code eq, ne, gt, gte, lt, lte, in, isNull}</li>
@@ -74,6 +76,9 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     /** Operator set for string-shaped subtypes. */
     private static final Set<String> OPS_STRING =
         ordered("eq", "ne", "in", "like", "isNull");
+    /** Operator set for uuid — identity comparison only, no {@code like}, no ordering. */
+    private static final Set<String> OPS_UUID =
+        ordered("eq", "ne", "in", "isNull");
     /** Operator set for numeric / date / timestamp / currency subtypes. */
     private static final Set<String> OPS_NUMERIC =
         ordered("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
@@ -137,6 +142,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         if (subType == null) return Set.of();
         return switch (subType) {
             case StringField.SUBTYPE_STRING, EnumField.SUBTYPE_ENUM -> OPS_STRING;
+            case UuidField.SUBTYPE_UUID -> OPS_UUID;
             case IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG,
                  FloatField.SUBTYPE_FLOAT, DoubleField.SUBTYPE_DOUBLE, DecimalField.SUBTYPE_DECIMAL,
                  CurrencyField.SUBTYPE_CURRENCY,

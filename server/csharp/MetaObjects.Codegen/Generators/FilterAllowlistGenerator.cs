@@ -9,6 +9,7 @@
 //
 // Operators-per-subtype mapping (FR-009 §5, identical across ports):
 //   string / enum                              → eq, ne, in, like, isNull
+//   uuid                                       → eq, ne, in, isNull  (no like — not a substring type)
 //   int / long / float / double /
 //   decimal / currency / date / timestamp / time → eq, ne, gt, gte, lt, lte, in, isNull
 //   boolean                                    → eq, isNull
@@ -30,6 +31,10 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     /// <summary>Operator set for string-shaped subtypes.</summary>
     internal static readonly string[] OpsString =
         { "eq", "ne", "in", "like", "isNull" };
+
+    /// <summary>Operator set for uuid — identity comparison only, no <c>like</c> (not a substring type) and no ordering.</summary>
+    internal static readonly string[] OpsUuid =
+        { "eq", "ne", "in", "isNull" };
 
     /// <summary>Operator set for numeric / date / timestamp / currency subtypes.</summary>
     internal static readonly string[] OpsNumeric =
@@ -125,6 +130,7 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch
     {
         FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM => OpsString,
+        FIELD_SUBTYPE_UUID => OpsUuid,
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_DECIMAL
             or FIELD_SUBTYPE_CURRENCY
