@@ -81,6 +81,9 @@ export const ERROR_CODES = [
   // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
   // band (e.g. field.object). Would silently generate an empty-ops filter.
   "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE",
+  // ADR-0023 — a registration was attempted against a registry sealed after its
+  // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
+  "ERR_REGISTRY_SEALED",
   "ERR_UNKNOWN",
 ] as const;
 

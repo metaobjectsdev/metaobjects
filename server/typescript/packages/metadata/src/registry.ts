@@ -89,7 +89,41 @@ export class TypeRegistry {
   /** Attrs accepted on every metatype (declared by providers). */
   private readonly _commonAttrs: AttrSchema[] = [];
 
+  /**
+   * ADR-0023 Decision 2 — sealed state. Once sealed, every mutating registration
+   * method (`register`/`setDefaultSubType`/`registerCommonAttrs`/`extend`) throws
+   * `ERR_REGISTRY_SEALED`. The library seals its composed registry after the agreed
+   * metamodel providers bootstrap, so nothing can register made-up metamodel
+   * attributes post-bootstrap. A downstream app composes its own (unsealed) registry.
+   */
+  private _sealed = false;
+
+  /** Seal the registry: every subsequent mutating registration throws
+   *  `ERR_REGISTRY_SEALED`. Idempotent. Reads are unaffected. */
+  seal(): void {
+    this._sealed = true;
+  }
+
+  /** Whether this registry has been sealed (ADR-0023). */
+  isSealed(): boolean {
+    return this._sealed;
+  }
+
+  /** Guard at the top of every mutating registration method. */
+  private checkNotSealed(operation: string): void {
+    if (this._sealed) {
+      throw new MetaModelError(
+        `TypeRegistry is sealed (ADR-0023): ${operation} is not permitted after metamodel ` +
+        `bootstrap. Made-up metamodel attributes/types are structurally disallowed — a new ` +
+        `metamodel attribute requires a registered provider + human agreement. Downstream apps ` +
+        `that need extra vocabulary must compose their own (unsealed) registry.`,
+        { code: "ERR_REGISTRY_SEALED" },
+      );
+    }
+  }
+
   register(def: TypeDefinition): void {
+    this.checkNotSealed(`register("${def.typeId.toString()}")`);
     const key = def.typeId.toString();
     if (this._defs.has(key)) {
       throw new Error(
@@ -139,6 +173,7 @@ export class TypeRegistry {
 
   /** Designate the default subType for a bare `type` key (used by YAML authoring sugar). */
   setDefaultSubType(type: string, subType: string): void {
+    this.checkNotSealed(`setDefaultSubType("${type}")`);
     this._defaultSubTypes.set(type, subType);
   }
 
@@ -160,6 +195,7 @@ export class TypeRegistry {
    * per-type attrs are resolved at validation time (Task 1.3).
    */
   registerCommonAttrs(attrs: AttrSchema[]): void {
+    this.checkNotSealed("registerCommonAttrs");
     for (const attr of attrs) {
       if (attr.valueType === SUBTYPE_BASE) {
         throw new Error(
@@ -192,6 +228,7 @@ export class TypeRegistry {
     subType: string,
     ext: { attributes?: AttrSchema[]; childRules?: ChildRule[] },
   ): void {
+    this.checkNotSealed(`extend("${type}.${subType}")`);
     const def = this.find(type, subType);
     if (def === undefined) {
       throw new Error(
