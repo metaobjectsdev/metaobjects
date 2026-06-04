@@ -34,6 +34,15 @@ public static class DbContextAdapter
 
     private static async Task<object?> ExecuteGeneric<T>(AppDbContext db, QuerySpec spec) where T : class
     {
+        // FR-017 TPH-aware writes. db.Set<T>() for a TPH SUBTYPE is automatically scoped
+        // to that subtype's discriminator value (EF filters the single table), so a
+        // create injects the discriminator via the CLR type, and a get/update on a
+        // cross-subtype row is invisible (not found → the cross-subtype guard).
+        if (spec.Op == "create")
+            return await ExecuteCreate<T>(db, spec);
+        if (spec.Op == "update")
+            return await ExecuteUpdate<T>(db, spec);
+
         var queryable = (IQueryable<T>)db.Set<T>().AsNoTracking();
 
         // For op:get, filter is implied by `by`.
@@ -57,6 +66,59 @@ public static class DbContextAdapter
         // op: list
         var rows = await queryable.ToListAsync();
         return rows.Select(RowFor).ToList();
+    }
+
+    // op: create — construct a fresh entity, write only the supplied `data` fields, and
+    // SaveChanges. The discriminator is NEVER supplied by the caller; EF injects it from
+    // the CLR type (TPH). Returns the materialized row (server-assigned id + discriminator).
+    private static async Task<object?> ExecuteCreate<T>(AppDbContext db, QuerySpec spec) where T : class
+    {
+        if (spec.Data is null)
+            throw new InvalidOperationException($"op:create '{spec.Name}' requires a `data` block");
+        var entity = Activator.CreateInstance<T>();
+        foreach (var (field, raw) in spec.Data)
+        {
+            var prop = Property(typeof(T), field);   // a data field not on this subtype is an authoring error
+            prop.SetValue(entity, CoerceValue(raw, prop.PropertyType));
+        }
+        db.Set<T>().Add(entity);
+        await db.SaveChangesAsync();
+        // Re-read fresh so the discriminator EF injected (and any DB defaults) are present.
+        db.ChangeTracker.Clear();
+        return RowFor(entity);
+    }
+
+    // op: update — fetch the entity SCOPED to its subtype (db.Set<T>() filters by the
+    // discriminator), apply only the supplied `data` fields, SaveChanges. Two cross-subtype
+    // writes MUST throw (mirroring the per-subtype route's 404 / column rejection):
+    //   (a) a `data` field that is not a property of this subtype → Property(...) throws;
+    //   (b) a `by` id that belongs to a different subtype → not found → throw.
+    // The discriminator is immutable: it is not a writable `data` field.
+    private static async Task<object?> ExecuteUpdate<T>(AppDbContext db, QuerySpec spec) where T : class
+    {
+        if (spec.By is null || spec.By.Count == 0)
+            throw new InvalidOperationException($"op:update '{spec.Name}' requires a `by` block");
+        if (spec.Data is null)
+            throw new InvalidOperationException($"op:update '{spec.Name}' requires a `data` block");
+
+        // (a) Resolve every data property FIRST — a cross-subtype column (not a property
+        // of this subtype) throws here before any DB hit, matching the runtime rejection.
+        var assignments = spec.Data
+            .Select(kv => (Prop: Property(typeof(T), kv.Key), Raw: kv.Value))
+            .ToList();
+
+        // (b) Subtype-scoped fetch — a different-subtype id is invisible → not found.
+        var queryable = ApplyFilter((IQueryable<T>)db.Set<T>(), ToFilterFromBy(spec.By));
+        var entity = await queryable.FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException(
+                $"op:update '{spec.Name}': no {typeof(T).Name} matches {string.Join(", ", spec.By.Select(b => $"{b.Key}={b.Value}"))} " +
+                "(cross-subtype id is invisible to the subtype scope)");
+
+        foreach (var (prop, raw) in assignments)
+            prop.SetValue(entity, CoerceValue(raw, prop.PropertyType));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return RowFor(entity);
     }
 
     // -----------------------------------------------------------------------

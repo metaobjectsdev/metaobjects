@@ -94,6 +94,8 @@ public static class ScenarioLoader
                 Limit: q.Limit,
                 Offset: q.Offset,
                 Relation: q.Relation,
+                Data: q.Data,
+                ExpectError: q.ExpectError ?? false,
                 Expect: q.Expect)).ToList());
     }
 
@@ -121,6 +123,8 @@ public static class ScenarioLoader
         public int? Limit { get; set; }
         public int? Offset { get; set; }
         public string? Relation { get; set; }
+        public Dictionary<string, object?>? Data { get; set; }
+        public bool? ExpectError { get; set; }
         public YamlNode? Expect { get; set; }
     }
 
