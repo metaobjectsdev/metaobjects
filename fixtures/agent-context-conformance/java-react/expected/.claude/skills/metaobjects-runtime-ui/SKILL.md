@@ -127,5 +127,4 @@ sit on top of this one seam.
 
 ---
 
-For server runtime specifics read `references/<server>.md`; for the web client read
-`references/<client>.md`.
+For this project's runtime + web-client specifics, read every `references/*.md` file in this skill's directory (one per server language and client framework in this project's stack).

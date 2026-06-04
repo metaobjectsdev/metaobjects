@@ -96,5 +96,4 @@ specific entity names to scope a run to those entities.
 
 ---
 
-For this project's server-language specifics (config file, generator names, the
-gen command), read `references/<server>.md`.
+For this project's server-language codegen specifics, read every `references/*.md` file in this skill's directory (one per server language in this project's stack).

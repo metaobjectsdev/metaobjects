@@ -7,13 +7,16 @@ describe("parseInitArgs — stack flags", () => {
     expect(f.servers).toEqual(["java", "kotlin"]);
     expect(f.clients).toEqual(["react", "tanstack"]);
     expect(f.noSkills).toBe(true);
-    expect(f.wireRoot).toBe(false);
+    expect(f.wireRoot).toBe(true);
   });
-  test("defaults: empty server/client overrides, skills on, no root wiring", () => {
+  test("defaults: empty server/client overrides, skills on, root wiring on", () => {
     const f = parseInitArgs([]);
     expect(f.servers).toEqual([]);
     expect(f.clients).toEqual([]);
     expect(f.noSkills).toBe(false);
-    expect(f.wireRoot).toBe(false);
+    expect(f.wireRoot).toBe(true);
+  });
+  test("--no-wire-root opts out of root wiring", () => {
+    expect(parseInitArgs(["--no-wire-root"]).wireRoot).toBe(false);
   });
 });

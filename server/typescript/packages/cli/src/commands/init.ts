@@ -127,13 +127,24 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
 async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
-  for (const name of ["CLAUDE.md", "AGENTS.md"]) {
-    const p = join(cwd, name);
-    if (!(await fileExists(p))) continue;
-    const body = await readFile(p, "utf8");
+  const claudePath = join(cwd, "CLAUDE.md");
+  const agentsPath = join(cwd, "AGENTS.md");
+  const claudeExists = await fileExists(claudePath);
+  const agentsExists = await fileExists(agentsPath);
+
+  // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
+  if (!claudeExists && !agentsExists) {
+    await writeFile(claudePath, `# Project memory\n\n${ROOT_IMPORT_LINE}\n`, "utf8");
+    result.created.push("CLAUDE.md (created with MetaObjects @import)");
+    return;
+  }
+  // Otherwise append the import to whichever exist (idempotent — never double-add).
+  for (const [path, exists] of [[claudePath, claudeExists], [agentsPath, agentsExists]] as const) {
+    if (!exists) continue;
+    const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
-    await writeFile(p, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.created.push(`${name} (added @import)`);
+    await writeFile(path, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
+    result.warnings.push(`wired ${ROOT_IMPORT_LINE} into ${path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md"} so the MetaObjects context loads`);
   }
 }
 

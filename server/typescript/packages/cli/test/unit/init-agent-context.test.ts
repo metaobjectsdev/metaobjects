@@ -45,4 +45,20 @@ describe("init() — agent-context scaffolding", () => {
     expect(existsSync(`${p}.new`)).toBe(true);
     expect(r.warnings.some((w) => w.includes("AGENTS.md"))).toBe(true);
   });
+
+  test("--wire-root appends the @import to an existing root CLAUDE.md (idempotent)", async () => {
+    writeFileSync(join(cwd, "CLAUDE.md"), "# my project\n", "utf8");
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
+    const body = readFileSync(join(cwd, "CLAUDE.md"), "utf8");
+    expect(body).toContain("@.metaobjects/AGENTS.md");
+    expect(body).toContain("# my project");                 // original preserved
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true, refreshDocs: true });
+    const after = readFileSync(join(cwd, "CLAUDE.md"), "utf8");
+    expect(after.match(/@\.metaobjects\/AGENTS\.md/g)?.length).toBe(1);  // not double-added
+  });
+  test("--wire-root creates a root CLAUDE.md with the @import when none exists", async () => {
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
+    expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(true);
+    expect(readFileSync(join(cwd, "CLAUDE.md"), "utf8")).toContain("@.metaobjects/AGENTS.md");
+  });
 });

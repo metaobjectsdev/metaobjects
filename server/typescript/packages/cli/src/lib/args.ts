@@ -28,7 +28,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
       server: { type: "string", multiple: true },
       client: { type: "string", multiple: true },
       "no-skills": { type: "boolean", default: false },
-      "wire-root": { type: "boolean", default: false },
+      "no-wire-root": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -42,7 +42,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     servers: (values.server as string[] | undefined) ?? [],
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],
-    wireRoot: !!values["wire-root"],
+    wireRoot: !values["no-wire-root"],
   };
 }
 
