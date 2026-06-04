@@ -1,6 +1,5 @@
 package com.metaobjects.conformance;
 
-import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
@@ -11,7 +10,6 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /**
  * Proves two loaders with different type registries in one JVM validate
@@ -44,31 +42,40 @@ public class PerLoaderRegistryTest {
         return loader;
     }
 
-    private static void load(MetaDataLoader loader) {
+    private static MetaDataLoader load(MetaDataLoader loader) {
         loader.load(List.<MetaDataSource>of(new InMemoryStringSource(META, "meta.t.json")));
+        return loader;
     }
 
-    /** Registry WITH briefing -> load succeeds (must not throw). */
+    /** Registry WITH briefing -> load succeeds with NO recorded errors. */
     private static void assertAccepts(MetaDataRegistry reg) {
-        load(newLoader("with-briefing", reg));
+        MetaDataLoader loader = load(newLoader("with-briefing", reg));
+        assertTrue("expected a clean load (no recorded errors) when template.briefing "
+                + "IS registered, got: " + loader.getErrors(),
+            loader.getErrors().isEmpty());
     }
 
-    /** Registry WITHOUT briefing -> load fails (unknown subtype / not accepted). */
+    /** Registry WITHOUT briefing -> load records ERR_UNKNOWN_SUBTYPE (template is a
+     *  known type, briefing an unknown subtype). ADR-0022: an unknown child node is
+     *  RECORDED + skipped (not thrown — only the root throws), mirroring the TS
+     *  reference. The per-loader-registry isolation guarantee is asserted via the
+     *  recorded code being specifically the template.briefing rejection. */
     private static void assertRejects(MetaDataRegistry reg) {
-        try {
-            load(newLoader("without-briefing", reg));
-            fail("expected load to fail: template.briefing is unknown in this registry");
-        } catch (MetaDataException expected) {
-            String m = String.valueOf(expected.getMessage());
+        MetaDataLoader loader = load(newLoader("without-briefing", reg));
+        boolean rejected = loader.getErrors().stream().anyMatch(e -> {
+            boolean unknownSubtype = e.getCode()
+                .map(c -> c == com.metaobjects.ErrorCode.ERR_UNKNOWN_SUBTYPE
+                       || c == com.metaobjects.ErrorCode.ERR_UNKNOWN_TYPE)
+                .orElse(false);
+            String m = String.valueOf(e.getMessage());
             // Tight: the failure must be specifically that template.briefing is an
-            // unknown/unaccepted SUBTYPE — not merely any message mentioning the
-            // node name (which would let unrelated failures pass this guard).
-            assertTrue("expected a template.briefing unknown-subtype/not-accepted failure, got: " + m,
-                m.contains("UNKNOWN_SUBTYPE")
-                || m.contains("does not accept child")
-                || m.contains("template.briefing")
-                || m.contains("template:briefing"));
-        }
+            // unknown SUBTYPE — not merely any error (which would let unrelated
+            // failures pass this guard).
+            return unknownSubtype && (m.contains("template.briefing") || m.contains("template:briefing"));
+        });
+        assertTrue("expected a recorded template.briefing unknown-subtype failure, got: "
+                + loader.getErrors(),
+            rejected);
     }
 
     @Test

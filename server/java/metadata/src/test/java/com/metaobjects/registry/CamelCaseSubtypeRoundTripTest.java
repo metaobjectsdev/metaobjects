@@ -159,30 +159,33 @@ public class CamelCaseSubtypeRoundTripTest extends SharedRegistryTestBase {
     /**
      * Attempts to load a document containing {@code field.fizzbuzz} (all-lowercase).
      * Because {@code field.fizzbuzz} is NOT registered (only {@code field.fizzBuzz}
-     * is), the case-sensitive registry lookup must reject it and throw an exception.
+     * is), the case-sensitive registry lookup must reject it.
+     *
+     * <p>ADR-0022: under strict load an unknown CHILD subType is RECORDED (not
+     * thrown) and the child is skipped — mirroring the TS reference (the root is
+     * the only node that throws). The case-sensitivity guarantee is therefore
+     * asserted via the recorded {@code ERR_UNKNOWN_SUBTYPE} (a case-insensitive
+     * lookup would have matched {@code field.fizzBuzz} and produced no error).</p>
      */
     @Test
     public void wrongCaseSubtypeIsRejected() {
         MetaDataLoader loader = newTestLoader();
         CanonicalJsonParser parser = new CanonicalJsonParser(loader, "fizzBuzz-wrong-case.json");
 
-        try {
-            parser.loadFromStream(
-                new ByteArrayInputStream(CANONICAL_WRONG_CASE.getBytes(StandardCharsets.UTF_8)));
-            fail("Expected an exception when loading unregistered 'field.fizzbuzz' (wrong case), " +
-                 "but loadFromStream completed without error. " +
-                 "This means a case-insensitive lookup is still active in the pipeline.");
-        } catch (MetaDataException e) {
-            // Expected: the case-sensitive registry lookup did not find 'field.fizzbuzz'
-            // and threw a MetaDataException (or a subclass of it).
-            assertTrue(
-                "Exception message should mention the unregistered type; got: " + e.getMessage(),
-                e.getMessage() != null);
-        } catch (RuntimeException e) {
-            // Also acceptable: a RuntimeException wrapping the MetaDataException.
-            assertTrue(
-                "RuntimeException should have a non-null message; got: " + e.getMessage(),
-                e.getMessage() != null);
-        }
+        parser.loadFromStream(
+            new ByteArrayInputStream(CANONICAL_WRONG_CASE.getBytes(StandardCharsets.UTF_8)));
+
+        boolean rejected = loader.getErrors().stream()
+            .anyMatch(e -> e.getCode()
+                .map(c -> c == com.metaobjects.ErrorCode.ERR_UNKNOWN_SUBTYPE
+                       || c == com.metaobjects.ErrorCode.ERR_UNKNOWN_TYPE)
+                .orElse(false));
+
+        assertTrue(
+            "Expected a recorded ERR_UNKNOWN_SUBTYPE for unregistered 'field.fizzbuzz' "
+                + "(wrong case), but the load recorded no such error. This means a "
+                + "case-insensitive lookup is still active in the pipeline. Errors: "
+                + loader.getErrors(),
+            rejected);
     }
 }
