@@ -209,6 +209,26 @@ public class ConformanceTests
             }
         }
 
+        // ── ADR-0023 strict hard-fail: happy-path fixtures load error-free ───
+        // A fixture that declares NO expected-errors.json is a happy-path fixture:
+        // under strict load it MUST load with zero errors. Any recorded error (e.g.
+        // ERR_UNKNOWN_ATTR from a made-up attribute) fails the fixture with a message
+        // naming the unexpected error(s). Previously this was silently tolerated — the
+        // runner only byte-compared the tree and never asserted the error set was empty,
+        // so a made-up attr passed. (Warnings stay on the expected-warnings.json path;
+        // this is about ERRORS only.) Gated on the fixture declaring at least one
+        // metadata-expectation file so docs-only / config-error fixtures are handled by
+        // their own checks below. Mirrors the TS reference runner (runner.ts).
+        if (!fix.HasExpectedErrors &&
+            (fix.HasExpected || fix.HasExpectedEffective || fix.HasExpectedWarnings || fix.HasScript) &&
+            outcome.ErrorCodes.Count > 0)
+        {
+            var sorted = outcome.ErrorCodes.Order(StringComparer.Ordinal).ToList();
+            failures.Add(
+                $"happy-path fixture loaded with unexpected error(s): [{string.Join(", ", sorted)}] — " +
+                "under strict, a fixture with no expected-errors.json must load with zero errors (ADR-0023)");
+        }
+
         // ── tree-required checks: guard with a synthetic failure if tree absent ─
         // Mirror the TS reference runner (runner.ts): the ONLY condition that
         // blocks the tree-dependent checks is a genuinely-absent tree (the

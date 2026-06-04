@@ -684,8 +684,31 @@ public static class ValidationPasses
         // mode this stays a no-op (legacy open-attr behavior).
         if (strict)
         {
+            // attr.properties is a first-class, registered, canonical attr subtype
+            // whose designed purpose is an arbitrary-named structural property bag
+            // (its NAME is intentionally not declared by any per-type schema). It is
+            // sanctioned vocabulary, not a made-up attribute, so strict-attr exempts a
+            // materialized properties-attr from ERR_UNKNOWN_ATTR. (A typo'd plain @-attr
+            // still fails — only the `properties` subtype is exempt.) An own attr is
+            // dual-stored (a structural MetaAttr child + a SetAttr map entry), so the
+            // child's subType is the SSOT for the exemption. Mirrors the TS reference
+            // (attr-schema-validate.ts: `if (inst.subType === ATTR_SUBTYPE_PROPERTIES)`).
+            var propertyBagNames = node
+                .OwnChildrenOfSubType(TYPE_ATTR, ATTR_SUBTYPE_PROPERTIES)
+                .Select(c => c.Name)
+                .ToHashSet(StringComparer.Ordinal);
+
             foreach (var (attrName, _) in node.OwnAttrs())
             {
+                // The reserved structural key `value` is dual-stored on an attr
+                // node's _attrs map (parseAttrChild: SetAttr(RESERVED_KEY_VALUE, …)).
+                // It is the node's intrinsic value, never an authored @-attr, so it
+                // must not be mistaken for a made-up attribute. (In the TS reference
+                // an attr node's `value` is not a MetaAttr instance, so it never
+                // appears in ownMetaAttrs() — skipping it here gives identical walk
+                // behavior on this C#-port dual-storage representation.)
+                if (attrName == RESERVED_KEY_VALUE) continue;
+                if (propertyBagNames.Contains(attrName)) continue;
                 if (!byName.ContainsKey(attrName))
                 {
                     errors.Add(new MetaError(
