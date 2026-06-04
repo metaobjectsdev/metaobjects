@@ -31,6 +31,7 @@ import {
   extractor,
   outputPrompt,
   renderHelper,
+  apiDocsFile,
   docsFile,
   templateGenerator,
 } from "./generators/index.js";
@@ -150,6 +151,14 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => templatePrimitive(),
     options: "name, walk, template, format?, filter?, provider?, target?",
+  },
+  "api-docs": {
+    name: "api-docs",
+    description:
+      "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
+    tier: "native",
+    factory: () => apiDocsFile(),
+    options: "filter?, target?",
   },
 
   // ----- Tier-2 neutral (owned by the `meta docs` engine — D1 / ADR-0020) ---

@@ -72,6 +72,11 @@
       "tier": "native",
       "ports": ["typescript"]
     },
+    "api-docs": {
+      "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",
       "tier": "native",

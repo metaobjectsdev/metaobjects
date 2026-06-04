@@ -11,6 +11,7 @@ export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";
 export { outputPrompt, type OutputPromptOpts } from "./output-prompt-file.js";
 export { renderHelper, type RenderHelperOpts } from "./render-helper-file.js";
+export { apiDocsFile, type ApiDocsFileOpts } from "./api-docs-file.js";
 /** @deprecated ADR-0021 D1 — `meta docs` is the single docs door; `docsFile` stays as its internal engine, not a `meta gen` config generator. */
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
 export {

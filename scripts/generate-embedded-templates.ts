@@ -2,11 +2,12 @@
 //
 // generate-embedded-templates.ts
 //
-// Reads the canonical doc templates at repo-root templates/docs/*.mustache and
-// emits a plain-string TS module
+// Reads every canonical template GROUP under repo-root templates/*/ *.mustache
+// (docs, api, …) and emits a plain-string TS module
 //   server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
 // mapping the provider resolve ref (path under templates/ WITHOUT the .mustache
-// suffix, e.g. "docs/entity-page.md") to the EXACT file contents.
+// suffix, e.g. "docs/entity-page.md" or "api/index.md") to the EXACT file
+// contents. New groups are picked up automatically (glob templates/*/).
 //
 // WHY a generated string module (not a `.mustache` text-import): codegen-ts
 // builds with `tsc`, which rejects unknown-extension text imports
@@ -22,7 +23,7 @@
 // A byte-identity drift test gates this output:
 //   server/typescript/packages/codegen-ts/test/embedded-templates.test.ts
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,7 +46,7 @@ function findRepoRoot(start: string): string {
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = findRepoRoot(scriptDir);
 
-const canonicalDir = join(repoRoot, "templates", "docs");
+const templatesRoot = join(repoRoot, "templates");
 const outFile = join(
   repoRoot,
   "server",
@@ -57,24 +58,34 @@ const outFile = join(
   "embedded-templates.generated.ts",
 );
 
-const files = readdirSync(canonicalDir).filter((f) => f.endsWith(".mustache"));
-
-if (files.length === 0) {
-  console.error(`error: no *.mustache templates found under ${canonicalDir}`);
-  process.exit(1);
-}
+// Every template GROUP is a subdir of templates/ (docs, api, …). Glob each
+// group's *.mustache so new groups are embedded automatically.
+const groups = readdirSync(templatesRoot)
+  .filter((g) => statSync(join(templatesRoot, g)).isDirectory())
+  .sort();
 
 // ref = path under templates/ WITHOUT the .mustache suffix, matching how
 // FrameworkTemplatesProvider.resolve(ref) builds `<dir>/<ref>.mustache`.
-// e.g. templates/docs/entity-page.md.mustache -> "docs/entity-page.md".
+// e.g. templates/docs/entity-page.md.mustache -> "docs/entity-page.md";
+// templates/api/index.md.mustache -> "api/index.md".
 // Sorted by ref for deterministic, byte-stable output.
-const entries = files
-  .map((file) => {
-    const ref = `docs/${file.slice(0, -".mustache".length)}`;
-    const content = readFileSync(join(canonicalDir, file), "utf-8");
-    return { ref, content };
+const entries = groups
+  .flatMap((group) => {
+    const dir = join(templatesRoot, group);
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".mustache"))
+      .map((file) => {
+        const ref = `${group}/${file.slice(0, -".mustache".length)}`;
+        const content = readFileSync(join(dir, file), "utf-8");
+        return { ref, content };
+      });
   })
   .sort((a, b) => (a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0));
+
+if (entries.length === 0) {
+  console.error(`error: no *.mustache templates found under ${templatesRoot}/*/`);
+  process.exit(1);
+}
 
 const body = entries
   // JSON.stringify emits a safe string literal — preserves newlines/quotes/
@@ -82,7 +93,7 @@ const body = entries
   .map((e) => `  ${JSON.stringify(e.ref)}: ${JSON.stringify(e.content)},`)
   .join("\n");
 
-const source = `// @generated from templates/docs/*.mustache — DO NOT EDIT.
+const source = `// @generated from templates/*/*.mustache — DO NOT EDIT.
 // Regenerate: bun run scripts/generate-embedded-templates.ts (or scripts/sync-doc-templates.sh).
 //
 // Embedded framework doc templates so they resolve inside the
