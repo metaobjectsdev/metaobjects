@@ -197,55 +197,88 @@ public final class RegistryManifest {
     // ------------------------------------------------------------------
 
     /**
-     * Per-type attr names filtered from a type's {@code attrs} list: the
-     * structural / OO-shape keywords {@code isArray}/{@code isAbstract}/
-     * {@code extends}/{@code implements}/{@code isInterface} + the
-     * {@code description} commonAttr. {@code extends}/{@code implements}/
-     * {@code isInterface} are bare OO-shape keywords (the OO modeling spine,
-     * peers of {@code name}/{@code children}), NOT per-type attributes in the
-     * cross-port logical vocabulary — Java registers them as per-type attrs on
-     * {@code object.base} (inherited by entity/value), so this filter is what
-     * drops them from the emitter (no-op for TS/C#/Python). They remain
-     * REGISTERED (the loader must accept an authored {@code extends:}). Filtered
-     * ONLY per-type — {@code description} remains in the {@code commonAttrs}
-     * block. See SP-G analysis C-2/C-3 (Unit 6b).
-     *
-     * <p>Also excludes the two per-port type-BINDING facets {@code object}
-     * (ADR-0001 class-FQN type binding for OO ports — the runtime resolves an
-     * object's native class from this attr) and {@code objectAdapter} (ADR-0005
-     * hybrid value-access seam). These are the same category as the already-
-     * excluded native type bindings — legitimate per-port binding mechanisms, not
-     * cross-port logical vocabulary. They stay REGISTERED in Java (load-bearing
-     * runtime mechanisms read by the value-access representation, IO readers, and
-     * OMDB); the filter only drops them from the manifest. No-op for TS/C#/Python
-     * (which never register them as per-type attrs). See SP-G Unit 6b-finish.
+     * Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason
+     * category per carve-out), not a bare name-match. The negative branch of a
+     * name-list silently meant "logical"; now {@link #classifyPerTypeAttr} returns
+     * either an {@link ExclusionReason} (carved out, with a documented category) or
+     * {@link ExclusionReason#INCLUDED} (logical cross-port vocabulary).
+     * Inclusion-by-classification is sound because ADR-0023 seals the
+     * agreed-vocabulary registry. The axis is cross-port-CONTRACT vs
+     * port-PRIVATE-mechanism (NOT abstract-vs-physical — the physical-DB attrs
+     * column/dbColumnType/db.indexed/precision/scale/maxLength/unique ARE logical
+     * here, the agreed persistence vocabulary).
      */
-    private static final Set<String> EXCLUDED_PER_TYPE_ATTR_NAMES = Set.of(
-            MetaField.ATTR_IS_ARRAY,
-            MetaData.ATTR_IS_ABSTRACT,
-            com.metaobjects.object.MetaObject.ATTR_EXTENDS,
-            com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS,
-            com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE,
-            com.metaobjects.object.MetaObject.ATTR_OBJECT,
-            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER,
-            MetaData.ATTR_DESCRIPTION);
+    public enum ExclusionReason {
+        /** Sentinel: NOT excluded — logical cross-port vocabulary. */
+        INCLUDED,
+        /** Native type-binding / factory (incl. ADR-0001 {@code object}, ADR-0005 {@code objectAdapter}). */
+        NATIVE_BINDING,
+        /** Bare structural / OO-shape keyword (isArray/isAbstract/extends/implements/isInterface). */
+        STRUCTURAL_KEYWORD,
+        /** A commonAttr ({@code description}) re-registered per-type — belongs in commonAttrs. */
+        COMMON_ATTR_DUP,
+        /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
+        INHERITANCE_ANCHOR,
+        /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
+        PRESENTATION_ONLY
+    }
 
     /**
-     * True if a {@code (type, subType)} row is excluded from the manifest: the
-     * {@code metadata.base} inheritance anchor (C-5) + the generic
-     * presentation-only {@code view.*} controls (B-2; every view subtype except
-     * {@code base} and {@code currency}).
+     * Per-type attr names carved out of the agreed vocabulary, each mapped to its
+     * PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the
+     * ADR-0023 sealed-vocabulary contract.
+     *
+     * <p>The structural / OO-shape keywords {@code isArray}/{@code isAbstract}/
+     * {@code extends}/{@code implements}/{@code isInterface} are bare OO-shape
+     * keywords (the OO modeling spine, peers of {@code name}/{@code children}),
+     * NOT per-type attributes — Java registers them on {@code object.base}
+     * (inherited by entity/value), so the classification is what drops them from
+     * the emitter (no-op for TS/C#/Python). They remain REGISTERED (the loader
+     * must accept an authored {@code extends:}). {@code description} is carved out
+     * ONLY per-type — it remains in the {@code commonAttrs} block. {@code object}
+     * (ADR-0001 class-FQN type binding) and {@code objectAdapter} (ADR-0005
+     * value-access seam) are per-port binding mechanisms (same category as native
+     * type bindings); they stay REGISTERED in Java (read by the value-access
+     * representation, IO readers, OMDB), only carved out of the manifest.</p>
      */
-    private static boolean isExcludedTypeSubType(String type, String subType) {
+    private static final Map<String, ExclusionReason> EXCLUDED_PER_TYPE_ATTRS = Map.of(
+            MetaField.ATTR_IS_ARRAY, ExclusionReason.STRUCTURAL_KEYWORD,
+            MetaData.ATTR_IS_ABSTRACT, ExclusionReason.STRUCTURAL_KEYWORD,
+            com.metaobjects.object.MetaObject.ATTR_EXTENDS, ExclusionReason.STRUCTURAL_KEYWORD,
+            com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS, ExclusionReason.STRUCTURAL_KEYWORD,
+            com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD,
+            com.metaobjects.object.MetaObject.ATTR_OBJECT, ExclusionReason.NATIVE_BINDING,
+            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING,
+            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP);
+
+    /**
+     * Classify a per-type attr: an {@link ExclusionReason} (carved out) or
+     * {@link ExclusionReason#INCLUDED} (logical). Total — no silent default.
+     */
+    public static ExclusionReason classifyPerTypeAttr(String name) {
+        return EXCLUDED_PER_TYPE_ATTRS.getOrDefault(name, ExclusionReason.INCLUDED);
+    }
+
+    /**
+     * Classify a {@code (type, subType)} row: the {@code metadata.base} inheritance
+     * anchor (C-5) / the generic presentation-only {@code view.*} controls (B-2) /
+     * {@link ExclusionReason#INCLUDED}.
+     */
+    public static ExclusionReason classifyTypeSubType(String type, String subType) {
         if (MetaData.TYPE_METADATA.equals(type) && MetaData.SUBTYPE_BASE.equals(subType)) {
-            return true; // C-5 — Java's internal inheritance anchor
+            return ExclusionReason.INHERITANCE_ANCHOR; // C-5 — Java's internal inheritance anchor
         }
         if (MetaView.TYPE_VIEW.equals(type)
                 && !MetaData.SUBTYPE_BASE.equals(subType)
                 && !CurrencyView.SUBTYPE_CURRENCY.equals(subType)) {
-            return true; // B-2 — TS-web-presentation-only generic view controls
+            return ExclusionReason.PRESENTATION_ONLY; // B-2 — TS-web-presentation generic view controls
         }
-        return false;
+        return ExclusionReason.INCLUDED;
+    }
+
+    /** True if a {@code (type, subType)} row is carved out of the manifest (any reason). */
+    private static boolean isExcludedTypeSubType(String type, String subType) {
+        return classifyTypeSubType(type, subType) != ExclusionReason.INCLUDED;
     }
 
     /**
@@ -298,8 +331,8 @@ public final class RegistryManifest {
             if (name == null || WILDCARD.equals(name)) {
                 continue; // wildcard "any attr" rule (deferred childRules)
             }
-            if (EXCLUDED_PER_TYPE_ATTR_NAMES.contains(name)) {
-                continue; // structural keyword / description commonAttr (C-2/C-3)
+            if (classifyPerTypeAttr(name) != ExclusionReason.INCLUDED) {
+                continue; // carved out (structural keyword / native binding / description dup) — see classifyPerTypeAttr
             }
             String valueType = valueTypeOf(name, req.getExpectedSubType());
             // Array-ness is the orthogonal axis: a StringAttribute requirement

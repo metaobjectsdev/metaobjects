@@ -6,6 +6,7 @@
  */
 package com.metaobjects.registry;
 
+import com.metaobjects.MetaDataTypeId;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -164,6 +165,60 @@ public class RegistryManifestConformanceTest {
                 + "(fixtures/registry-conformance/expected-registry.json). Fix the Java "
                 + "registration to match the cross-port contract, or escalate if TS is wrong.",
             wantNorm, gotNorm);
+    }
+
+    // Wave 3b — the in/out boundary is an EXPLICIT classification (a reason
+    // category per carve-out), not a bare name-match. These assert the
+    // classification is total and self-documenting.
+
+    @Test
+    public void everyRegisteredPerTypeAttrIsExplicitlyClassified() {
+        MetaDataRegistry registry = RegistryManifest.composeMetamodelRegistry();
+        for (MetaDataTypeId id : registry.getRegisteredTypes()) {
+            TypeDefinition def = registry.getTypeDefinition(id.type(), id.subType());
+            if (def == null) {
+                continue;
+            }
+            for (ChildRequirement req : def.getChildRequirements()) {
+                if (!com.metaobjects.attr.MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) {
+                    continue;
+                }
+                String name = req.getName();
+                if (name == null || "*".equals(name)) {
+                    continue;
+                }
+                // Total function — always returns a defined reason (INCLUDED or a
+                // carve-out category); there is no silent default-include.
+                assertTrue("classification must be non-null for attr " + name,
+                    RegistryManifest.classifyPerTypeAttr(name) != null);
+            }
+        }
+    }
+
+    @Test
+    public void carveOutsCarryTheirDeclaredReasonCategory() {
+        assertEquals(RegistryManifest.ExclusionReason.STRUCTURAL_KEYWORD,
+            RegistryManifest.classifyPerTypeAttr("extends"));
+        assertEquals(RegistryManifest.ExclusionReason.STRUCTURAL_KEYWORD,
+            RegistryManifest.classifyPerTypeAttr("isArray"));
+        assertEquals(RegistryManifest.ExclusionReason.NATIVE_BINDING,
+            RegistryManifest.classifyPerTypeAttr("object"));
+        assertEquals(RegistryManifest.ExclusionReason.NATIVE_BINDING,
+            RegistryManifest.classifyPerTypeAttr("objectAdapter"));
+        assertEquals(RegistryManifest.ExclusionReason.COMMON_ATTR_DUP,
+            RegistryManifest.classifyPerTypeAttr("description"));
+        // Genuinely logical attrs are INCLUDED.
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
+            RegistryManifest.classifyPerTypeAttr("column"));
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
+            RegistryManifest.classifyPerTypeAttr("maxLength"));
+        // Row classification.
+        assertEquals(RegistryManifest.ExclusionReason.INHERITANCE_ANCHOR,
+            RegistryManifest.classifyTypeSubType("metadata", "base"));
+        assertEquals(RegistryManifest.ExclusionReason.PRESENTATION_ONLY,
+            RegistryManifest.classifyTypeSubType("view", "dropdown"));
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
+            RegistryManifest.classifyTypeSubType("view", "currency"));
     }
 
     /** Locate + read {@code fixtures/registry-conformance/expected-registry.json}. */
