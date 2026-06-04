@@ -27,14 +27,14 @@ queries:
     entity: BridgeAuth
     by: { id: 1 }
     data: { copayAmount: "9.99" }
-    expectError: true
+    expect-error: true
 
   - name: cross-subtype-id-not-found
     op: update
     entity: BridgeAuth
     by: { id: 2 }
     data: { quantity: 7 }
-    expectError: true
+    expect-error: true
 
   - name: bridge-unchanged
     op: get
