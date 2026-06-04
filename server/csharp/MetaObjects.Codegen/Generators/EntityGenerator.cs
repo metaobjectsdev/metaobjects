@@ -106,7 +106,15 @@ public sealed class EntityGenerator : IGenerator
         }
         if (!isProjection)
             sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        sb.AppendLine($"public class {className}");
+        // FR-017 TPH: the @discriminator BASE is emitted `public abstract class`. The
+        // base is never instantiated directly (every row is a concrete subtype, tagged
+        // by the discriminator), and EF Core REQUIRES a concrete TPH root mapped via a
+        // DbSet to carry its own discriminator value — there is none, so an abstract
+        // root is the only valid mapping. Polymorphic reads (db.Set<Base>()) still
+        // return the subtype rows; the subtypes (emitted via EmitTphSubtypeClass) are
+        // the concrete leaves. A non-TPH-base concrete entity stays a plain class.
+        var classModifier = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
+        sb.AppendLine($"public {classModifier} {className}");
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members

@@ -95,7 +95,12 @@ public class TphCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         var auth = FileContent(files, "Auth.g.cs");
         Assert.Contains("[Table(\"auths\")]", auth);
-        Assert.Contains("public class Auth", auth);
+        // The @discriminator BASE is emitted ABSTRACT: it is never instantiated directly
+        // (every row is a concrete subtype), and EF Core requires a DbSet-mapped concrete
+        // TPH root to carry its own discriminator value — there is none, so an abstract
+        // root is the only valid EF mapping. Polymorphic reads of db.Set<Auth>() still
+        // surface the subtype rows.
+        Assert.Contains("public abstract class Auth", auth);
         // The discriminator field is a base property (the `type` enum -> AuthType).
         // Nullable because the `type` field is not @required and not in the PK; the
         // TS-owned `auths.type` column is likewise nullable TEXT.

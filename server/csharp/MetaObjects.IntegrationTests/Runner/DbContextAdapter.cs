@@ -12,6 +12,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using MetaObjects.IntegrationTests.Generated;
 using Microsoft.EntityFrameworkCore;
+using YamlDotNet.RepresentationModel;
 
 namespace MetaObjects.IntegrationTests.Runner;
 
@@ -42,6 +43,8 @@ public static class DbContextAdapter
             return await ExecuteCreate<T>(db, spec);
         if (spec.Op == "update")
             return await ExecuteUpdate<T>(db, spec);
+        if (spec.Op == "delete")
+            return await ExecuteDelete<T>(db, spec);
 
         var queryable = (IQueryable<T>)db.Set<T>().AsNoTracking();
 
@@ -73,13 +76,17 @@ public static class DbContextAdapter
     // the CLR type (TPH). Returns the materialized row (server-assigned id + discriminator).
     private static async Task<object?> ExecuteCreate<T>(AppDbContext db, QuerySpec spec) where T : class
     {
-        if (spec.Data is null)
-            throw new InvalidOperationException($"op:create '{spec.Name}' requires a `data` block");
+        var data = DataMapping(spec, "create");
         var entity = Activator.CreateInstance<T>();
-        foreach (var (field, raw) in spec.Data)
+        foreach (var (keyNode, valueNode) in data.Children)
         {
-            var prop = Property(typeof(T), field);   // a data field not on this subtype is an authoring error
-            prop.SetValue(entity, CoerceValue(raw, prop.PropertyType));
+            var field = ((YamlScalarNode)keyNode).Value!;
+            // The shared WRITE coercion (same path op:roundtrip uses): scalar style is
+            // preserved, so a quoted full-int64/decimal/uuid stays a string until parsed,
+            // a temporal string carries its Kind, a nested object → an owned jsonb POCO.
+            // A data field not on this subtype is an authoring error (Property throws).
+            var prop = WriteCoercion.Property(typeof(T), field);
+            prop.SetValue(entity, WriteCoercion.CoerceToProperty(valueNode, prop.PropertyType, prop));
         }
         db.Set<T>().Add(entity);
         await db.SaveChangesAsync();
@@ -98,13 +105,21 @@ public static class DbContextAdapter
     {
         if (spec.By is null || spec.By.Count == 0)
             throw new InvalidOperationException($"op:update '{spec.Name}' requires a `by` block");
-        if (spec.Data is null)
-            throw new InvalidOperationException($"op:update '{spec.Name}' requires a `data` block");
+        var data = DataMapping(spec, "update");
 
-        // (a) Resolve every data property FIRST — a cross-subtype column (not a property
-        // of this subtype) throws here before any DB hit, matching the runtime rejection.
-        var assignments = spec.Data
-            .Select(kv => (Prop: Property(typeof(T), kv.Key), Raw: kv.Value))
+        // (a) Resolve + coerce every data property FIRST — a cross-subtype column (not a
+        // property of this subtype) throws here before any DB hit, matching the runtime
+        // rejection. The shared WRITE coercion is the SAME path op:roundtrip uses, so a
+        // port whose UPDATE codec diverged from its INSERT codec is caught: full-int64
+        // strings, decimals, uuids, temporal Kind, enums, and the nested jsonb POCO are
+        // all re-encoded identically to insert.
+        var assignments = data.Children
+            .Select(kv => (Node: ((YamlScalarNode)kv.Key).Value!, Value: kv.Value))
+            .Select(kv =>
+            {
+                var prop = WriteCoercion.Property(typeof(T), kv.Node);
+                return (Prop: prop, Coerced: WriteCoercion.CoerceToProperty(kv.Value, prop.PropertyType, prop));
+            })
             .ToList();
 
         // (b) Subtype-scoped fetch — a different-subtype id is invisible → not found.
@@ -114,12 +129,49 @@ public static class DbContextAdapter
                 $"op:update '{spec.Name}': no {typeof(T).Name} matches {string.Join(", ", spec.By.Select(b => $"{b.Key}={b.Value}"))} " +
                 "(cross-subtype id is invisible to the subtype scope)");
 
-        foreach (var (prop, raw) in assignments)
-            prop.SetValue(entity, CoerceValue(raw, prop.PropertyType));
+        foreach (var (prop, coerced) in assignments)
+            prop.SetValue(entity, coerced);
+        await db.SaveChangesAsync();
+
+        // GENUINE read-back: clear the tracker and re-SELECT by the same key so the
+        // returned row exercises the DB READ codec (enum text→enum, jsonb text→POCO,
+        // timestamptz→UTC, NUMERIC rounding) — NOT the in-memory instance EF's identity
+        // map would otherwise echo. Without this the result would just mirror the values
+        // we wrote, hiding any UPDATE write/read codec defect (the SP-H roundtrip lesson).
+        db.ChangeTracker.Clear();
+        var readBack = await ApplyFilter((IQueryable<T>)db.Set<T>().AsNoTracking(), ToFilterFromBy(spec.By))
+            .FirstOrDefaultAsync();
+        // Project via the shared EntityRow (handles the owned-POCO jsonb field), the
+        // SAME wire projection op:roundtrip uses — so an UPDATE re-encode of the jsonb
+        // object (and every scalar subtype) is asserted identically to insert.
+        return readBack is null ? null : EntityRow.Of(readBack);
+    }
+
+    // op: delete — remove the row identified by `by` (the PK) through the EF runtime
+    // write path. Returns a boolean: true = a row was deleted, false = no matching row
+    // (the `expect:` is that boolean). Subtype-scoped like update — a cross-subtype id
+    // is invisible (returns false). A follow-up op:get by the same PK (expect: null) is
+    // the portable proof the row is actually gone.
+    private static async Task<object?> ExecuteDelete<T>(AppDbContext db, QuerySpec spec) where T : class
+    {
+        if (spec.By is null || spec.By.Count == 0)
+            throw new InvalidOperationException($"op:delete '{spec.Name}' requires a `by` block");
+
+        var entity = await ApplyFilter((IQueryable<T>)db.Set<T>(), ToFilterFromBy(spec.By))
+            .FirstOrDefaultAsync();
+        if (entity is null) return false;
+
+        db.Set<T>().Remove(entity);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
-        return RowFor(entity);
+        return true;
     }
+
+    // The op:create / op:update `data` block as a YAML mapping (scalar style preserved
+    // so the shared WRITE coercion can honor the authoring forms).
+    private static YamlMappingNode DataMapping(QuerySpec spec, string op) =>
+        spec.Data as YamlMappingNode
+        ?? throw new InvalidOperationException($"op:{op} '{spec.Name}' requires a `data` mapping (the field values to write)");
 
     // -----------------------------------------------------------------------
     // Entity / property resolution
@@ -316,18 +368,12 @@ public static class DbContextAdapter
         return arr;
     }
 
-    // Read all public instance properties off the materialized entity into a
-    // dictionary keyed by the entity's metadata field name (lowerCamel) — the same
-    // shape every other port produces.
-    private static IReadOnlyDictionary<string, object?> RowFor<T>(T entity)
-    {
-        var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
-            // Pascal → lowerCamel for the wire-format key.
-            var key = char.ToLowerInvariant(prop.Name[0]) + prop.Name[1..];
-            dict[key] = prop.GetValue(entity);
-        }
-        return dict;
-    }
+    // Project the materialized entity to the lowerCamel-keyed wire row via the shared
+    // EntityRow. Pass the DECLARED type T (not the runtime type) so a TPH polymorphic
+    // read of a subtype row projects only the base's columns — the wire contract the
+    // list scenarios assert. EntityRow also serializes an owned-POCO jsonb field to its
+    // field-keyed JSON string (so an AllTypes op:get re-reads `settings` as an object,
+    // not the POCO's ToString()).
+    private static IReadOnlyDictionary<string, object?> RowFor<T>(T entity) =>
+        EntityRow.Of(entity!, typeof(T));
 }

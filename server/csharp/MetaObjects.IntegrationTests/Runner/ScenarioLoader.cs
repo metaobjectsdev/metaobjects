@@ -124,7 +124,17 @@ public static class ScenarioLoader
         public int? Limit { get; set; }
         public int? Offset { get; set; }
         public string? Relation { get; set; }
-        public Dictionary<string, object?>? Data { get; set; }
+        // For op: create / update — the field values to write through the EF runtime.
+        // Captured as a raw YamlNode (scalar style preserved) so the writer can honor
+        // the authoring forms (a quoted full-int64/decimal/uuid stays a string; a
+        // temporal string carries its Kind; a nested object is a mapping → owned POCO).
+        // Same rationale as Insert — UPDATE re-encode of every subtype is the point of
+        // update-delete-all-types.yaml, so it must use the same coercion as roundtrip.
+        public YamlNode? Data { get; set; }
+        // The corpus authors this key in camelCase (`expectError:`) while most other
+        // keys are hyphenated (`seed-data:`); the hyphenated naming convention would
+        // map it to `expect-error`, so pin the literal camelCase alias the fixtures use.
+        [YamlMember(Alias = "expectError", ApplyNamingConventions = false)]
         public bool? ExpectError { get; set; }
         // For op: roundtrip — the field-keyed row to WRITE through the EF runtime.
         // Captured as a raw YamlNode (scalar style preserved) so the writer can honor

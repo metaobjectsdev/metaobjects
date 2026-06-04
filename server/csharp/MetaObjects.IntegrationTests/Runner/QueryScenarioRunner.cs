@@ -163,6 +163,10 @@ public static class QueryScenarioRunner
                 throw new InvalidOperationException($"op:count expects an integer, got: {raw ?? "null"}");
             return n.ToString(CultureInfo.InvariantCulture);
         }
+        // `delete` returns a boolean outcome (true = a row was deleted); the `expect:`
+        // is the bare boolean scalar. Canonicalize both sides as a JSON bool string.
+        if (op == "delete")
+            return ((expect as YamlScalarNode)?.Value?.ToLowerInvariant()) == "true" ? "true" : "false";
         // `relate` (M:N navigation) is a SET — order is not part of the contract,
         // so sort both sides for a deterministic, port-agnostic comparison. The
         // scenario does not (and must not) pin order via `sort:`.
@@ -238,6 +242,9 @@ public static class QueryScenarioRunner
 
     private static string CanonicalizeActual(object? actual, string op)
     {
+        // `delete` returns a boolean (true = a row was deleted).
+        if (op == "delete")
+            return actual is true ? "true" : "false";
         // `relate` is a SET: normalize each row, then sort the canonical row strings.
         if (op == "relate")
         {
