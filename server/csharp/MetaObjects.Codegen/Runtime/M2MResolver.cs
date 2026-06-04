@@ -1,14 +1,30 @@
-// M2MResolver — the C# (EF/Npgsql) runtime many-to-many query resolver (FR-017).
+// M2MResolver — the C# runtime many-to-many query resolver (FR-018).
 //
-// A M:N relationship declares only the slim FR-017 vocabulary on the source
+// This is the SHIPPING resolver a real C# adopter references at runtime: given a
+// source entity id and an M:N relationship, traverse the junction/through entity
+// and return the related target rows (the `GET /<source-plural>/{id}/<relation>`
+// contract). It is the C# peer of the Java OMDB `M2MResolver` (the `omdb`
+// data-access package), the TS `runtime-ts/src/n2m-resolver.ts`, the Kotlin
+// `M2mJoinResolver`, and the Python ObjectManager m2m path.
+//
+// SITING. The resolver needs the loaded model (`MetaObject` / `MetaRoot`, which
+// live in MetaObjects core) to derive junction FK direction, plus a live data
+// connection. MetaObjects.Codegen references core and is the documented runtime
+// home for consumer-referenced helpers (FilterParser, EfCoreFilterDispatch,
+// ExtractObject) — mirroring the Java port's `om`/`omdb` siting and TS's
+// `runtime-ts`. The resolver addresses the schema over the provider-neutral
+// System.Data.Common abstraction (an open DbConnection the consumer supplies),
+// so the shipping assembly takes NO Npgsql package dependency — a consumer hands
+// it their NpgsqlConnection (or any ADO.NET connection).
+//
+// A M:N relationship declares only the slim FR-018 vocabulary on the source
 // entity: @cardinality: "many" + @objectRef: <target> + @through: <junction>
 // (plus optional @sourceRefField / @symmetric for self-joins). It does NOT
 // restate the junction FK columns — those are DERIVED from the junction entity's
 // two identity.reference children via the shared M2MDerivation helper (the SSOT
 // for FK direction, the same one the loader validator + every other port use).
-// This mirrors the TS runtime resolver (runtime-ts/src/n2m-resolver.ts).
 //
-// Resolution has three modes (see the FR-017 design):
+// Resolution has three modes (see the FR-018 design):
 //   1. Hetero (source != target): junction WHERE sourceCol = source.pk, collect
 //      targetCol, then target WHERE pk IN (...).
 //   2. Directed self-join (@sourceRefField): identical traversal; M2MDerivation
@@ -17,22 +33,23 @@
 //      junction WHERE sourceCol = id OR targetCol = id; for each row the related
 //      id is whichever FK column is NOT the source id (a self-pair where both
 //      columns equal the source id yields the source id itself).
-//
-// The M:N entities (Post/Tag, Person, junctions) are NOT in the generated
-// AppDbContext — the resolver addresses the schema directly via Npgsql, returning
-// the same row-dictionary shape the rest of the runner normalizes + compares.
 
+using System;
+using System.Collections.Generic;
+using System.Data.Common;
 using System.Globalization;
+using System.Linq;
+using System.Threading.Tasks;
 using MetaObjects.Core.Field;
 using MetaObjects.Core.Relationship;
 using MetaObjects.Meta;
-using Npgsql;
 
-namespace MetaObjects.IntegrationTests.Runner;
+namespace MetaObjects.Codegen.Runtime;
 
 /// <summary>
-/// Resolves a M:N relationship traversal (the <c>op: relate</c> verb) against a
-/// live Postgres database, deriving the junction FK columns from metadata.
+/// Resolves a M:N relationship traversal against a live SQL database, deriving the
+/// junction FK columns from metadata. Provider-neutral: the caller supplies an open
+/// ADO.NET <see cref="DbConnection"/> (e.g. an <c>NpgsqlConnection</c>).
 /// </summary>
 public static class M2MResolver
 {
@@ -42,28 +59,33 @@ public static class M2MResolver
     /// metadata-field-keyed dictionary). Membership is a set; the caller compares
     /// order-independently.
     /// </summary>
+    /// <param name="conn">an open ADO.NET connection (the consumer's, e.g. Npgsql).</param>
+    /// <param name="root">the loaded model root (to find junction + target entities).</param>
+    /// <param name="entityName">the source entity declaring the relationship.</param>
+    /// <param name="sourceId">the source record key (a scalar; coerced to the PK's native type).</param>
+    /// <param name="relationName">the M:N relationship name on the source entity.</param>
     public static async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> RelateAsync(
-        string connString, MetaRoot root, string entityName, object? sourceId, string relationName)
+        DbConnection conn, MetaRoot root, string entityName, object? sourceId, string relationName)
     {
         var source = root.FindObject(entityName)
-            ?? throw new InvalidOperationException($"op:relate: entity '{entityName}' not found in metadata");
+            ?? throw new InvalidOperationException($"relate: entity '{entityName}' not found in metadata");
 
         var rel = source.Relationships().FirstOrDefault(r => r.Name == relationName)
             ?? throw new InvalidOperationException(
-                $"op:relate: relationship '{relationName}' not found on '{entityName}'");
+                $"relate: relationship '{relationName}' not found on '{entityName}'");
 
         if (rel.Through is null)
             throw new InvalidOperationException(
-                $"op:relate: relationship '{entityName}.{relationName}' is not M:N (no @through)");
+                $"relate: relationship '{entityName}.{relationName}' is not M:N (no @through)");
 
         // Derive the [sourceField, targetField] junction FK fields from the
         // junction's two identity.reference children (hetero / directed / symmetric).
         var fields = M2MDerivation.DeriveM2MFields(rel, source, root);
 
         var junction = root.FindObject(rel.Through!)
-            ?? throw new InvalidOperationException($"op:relate: junction '{rel.Through}' not found");
+            ?? throw new InvalidOperationException($"relate: junction '{rel.Through}' not found");
         var target = root.FindObject(rel.ObjectRef!)
-            ?? throw new InvalidOperationException($"op:relate: target '{rel.ObjectRef}' not found");
+            ?? throw new InvalidOperationException($"relate: target '{rel.ObjectRef}' not found");
 
         var junctionTable = TableOf(junction);
         var targetTable = TableOf(target);
@@ -71,14 +93,11 @@ public static class M2MResolver
         var targetCol = ColumnOf(junction, fields.TargetField);
         var targetPkCol = ColumnOf(target, PrimaryKeyField(target));
 
-        // The `by` id arrives as a YAML scalar (string); coerce it to the source
+        // The `by` id arrives as a scalar (often a string); coerce it to the source
         // entity's PK native type so the parameter binds with the right SQL type
         // (a string would make Postgres reject `bigint = text`).
         var sourcePkField = source.FindField(PrimaryKeyField(source));
         var typedSourceId = CoerceId(sourceId, sourcePkField);
-
-        await using var conn = new NpgsqlConnection(connString);
-        await conn.OpenAsync();
 
         // 1. Query the junction for the related target ids.
         var relatedIds = rel.Symmetric
@@ -98,11 +117,12 @@ public static class M2MResolver
 
     /// <summary>Hetero + directed self-join: junction WHERE sourceCol = id → targetCol.</summary>
     private static async Task<List<object>> CollectDirectedAsync(
-        NpgsqlConnection conn, string junctionTable, string sourceCol, string targetCol, object? sourceId)
+        DbConnection conn, string junctionTable, string sourceCol, string targetCol, object? sourceId)
     {
         var sql = $"SELECT {Quote(targetCol)} FROM {Quote(junctionTable)} WHERE {Quote(sourceCol)} = @id";
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("id", sourceId ?? DBNull.Value);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        AddParam(cmd, "id", sourceId);
 
         var ids = new List<object>();
         var seen = new HashSet<string>();
@@ -122,13 +142,14 @@ public static class M2MResolver
     /// self-pair row (both columns equal the source id) yields the source id.
     /// </summary>
     private static async Task<List<object>> CollectSymmetricAsync(
-        NpgsqlConnection conn, string junctionTable, string sourceCol, string targetCol, object? sourceId)
+        DbConnection conn, string junctionTable, string sourceCol, string targetCol, object? sourceId)
     {
         var sql =
             $"SELECT {Quote(sourceCol)}, {Quote(targetCol)} FROM {Quote(junctionTable)} " +
             $"WHERE {Quote(sourceCol)} = @id OR {Quote(targetCol)} = @id";
-        await using var cmd = new NpgsqlCommand(sql, conn);
-        cmd.Parameters.AddWithValue("id", sourceId ?? DBNull.Value);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        AddParam(cmd, "id", sourceId);
 
         var sourceKey = sourceId is null ? null : KeyOf(sourceId);
         var ids = new List<object>();
@@ -151,20 +172,21 @@ public static class M2MResolver
 
     /// <summary>Load target rows WHERE pk = ANY(ids), keyed by metadata field name.</summary>
     private static async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> LoadByIdsAsync(
-        NpgsqlConnection conn, MetaObject target, string targetTable, string targetPkCol, List<object> ids)
+        DbConnection conn, MetaObject target, string targetTable, string targetPkCol, List<object> ids)
     {
         // SELECT every scalar field column of the target, aliased back to the
-        // metadata field name so the row shape matches the rest of the runner.
+        // metadata field name so the row shape matches the wire contract.
         var scalarFields = target.Fields().ToList();
         var selectList = string.Join(", ",
             scalarFields.Select(f => $"{Quote(ColumnOf(target, f.Name))} AS {Quote(f.Name)}"));
         var sql = $"SELECT {selectList} FROM {Quote(targetTable)} WHERE {Quote(targetPkCol)} = ANY(@ids)";
 
-        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
         // Bind a strongly-typed array — the FK values read from the junction are
         // already native (BIGINT → long etc.), so a homogeneous typed array lets
-        // Npgsql infer the right element OID (an object[] would not bind).
-        cmd.Parameters.AddWithValue("ids", ToTypedArray(ids));
+        // the provider infer the right element type (an object[] would not bind).
+        AddParam(cmd, "ids", ToTypedArray(ids));
 
         var rows = new List<IReadOnlyDictionary<string, object?>>();
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -195,7 +217,7 @@ public static class M2MResolver
     }
 
     /// <summary>
-    /// Coerce a `by`-id YAML scalar to the source PK's native CLR type so the SQL
+    /// Coerce a `by`-id scalar to the source PK's native CLR type so the SQL
     /// parameter binds with the right type (string would trip <c>bigint = text</c>).
     /// </summary>
     private static object? CoerceId(object? raw, MetaField? pkField)
@@ -215,26 +237,34 @@ public static class M2MResolver
     private static string PrimaryKeyField(MetaObject obj)
     {
         var pk = obj.PrimaryIdentity()
-            ?? throw new InvalidOperationException($"target '{obj.Name}' has no primary identity");
+            ?? throw new InvalidOperationException($"entity '{obj.Name}' has no primary identity");
         if (pk.Fields.Count == 0)
-            throw new InvalidOperationException($"target '{obj.Name}' primary identity has no fields");
+            throw new InvalidOperationException($"entity '{obj.Name}' primary identity has no fields");
         return pk.Fields[0];
     }
 
-    // String-coerced identity key — source ids (from YAML) and junction FK values
+    // String-coerced identity key — source ids (from input) and junction FK values
     // (from the driver) may differ in CLR type (long vs the same long boxed
-    // differently); compare by string to bridge, mirroring the TS resolver.
+    // differently); compare by string to bridge, mirroring the other ports.
     private static string KeyOf(object value) => Convert.ToString(value, CultureInfo.InvariantCulture)!;
 
     private static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
 
-    // Build a homogeneous typed array from collected FK values so Npgsql infers the
-    // element OID. All elements share one CLR type (one junction FK column).
+    // Build a homogeneous typed array from collected FK values so the provider infers
+    // the element type. All elements share one CLR type (one junction FK column).
     private static Array ToTypedArray(List<object> values)
     {
         var elementType = values[0].GetType();
         var arr = Array.CreateInstance(elementType, values.Count);
         for (int i = 0; i < values.Count; i++) arr.SetValue(values[i], i);
         return arr;
+    }
+
+    private static void AddParam(DbCommand cmd, string name, object? value)
+    {
+        var p = cmd.CreateParameter();
+        p.ParameterName = name;
+        p.Value = value ?? DBNull.Value;
+        cmd.Parameters.Add(p);
     }
 }

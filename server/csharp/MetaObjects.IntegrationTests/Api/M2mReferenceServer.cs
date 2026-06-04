@@ -9,6 +9,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Npgsql;
 using MetaObjects.IntegrationTests.Runner;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
@@ -123,8 +124,13 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
         if (method == "GET" && segs.Length == 4 && segs[0] == "api"
             && _routes.TryGetValue((segs[1], segs[3]), out var target))
         {
-            var related = await M2MResolver.RelateAsync(
-                _pg.ConnectionString, _root, target.Entity, segs[2], target.Relation);
+            // Open the consumer-style ADO.NET connection and resolve via the SHIPPING
+            // resolver (MetaObjects.Codegen.Runtime.M2MResolver) — the same surface a
+            // real C# adopter calls. No resolver logic is duplicated here.
+            await using var conn = new NpgsqlConnection(_pg.ConnectionString);
+            await conn.OpenAsync();
+            var related = await MetaObjects.Codegen.Runtime.M2MResolver.RelateAsync(
+                conn, _root, target.Entity, segs[2], target.Relation);
             var rows = related.Select(r => (object?)r.ToDictionary(kv => kv.Key, kv => kv.Value)).ToList();
             await SendJsonAsync(ctx, 200, rows);
             return;

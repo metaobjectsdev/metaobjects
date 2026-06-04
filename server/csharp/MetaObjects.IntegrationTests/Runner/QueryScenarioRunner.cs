@@ -117,7 +117,13 @@ public static class QueryScenarioRunner
         if (string.IsNullOrEmpty(spec.Relation))
             throw new InvalidOperationException($"op:relate '{spec.Name}' requires `relation`");
         var sourceId = spec.By.Values.First();
-        return await M2MResolver.RelateAsync(connString, root, spec.Entity, sourceId, spec.Relation!);
+        // Open the consumer-style ADO.NET connection and hand it to the SHIPPING
+        // resolver (MetaObjects.Codegen.Runtime.M2MResolver) — the same provider-
+        // neutral surface a real C# adopter calls. No resolver logic lives here.
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        return await MetaObjects.Codegen.Runtime.M2MResolver.RelateAsync(
+            conn, root, spec.Entity, sourceId, spec.Relation!);
     }
 
     /// <summary>Read the committed canonical Postgres schema artifact (TS-produced).</summary>
