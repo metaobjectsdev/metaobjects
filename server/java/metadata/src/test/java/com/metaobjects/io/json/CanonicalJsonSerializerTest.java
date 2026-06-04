@@ -213,7 +213,13 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // Test 7 — extends emitted when super data is set
+    // Test 7 — extends emitted when super data is set (no authored ref → FQN)
+    //
+    // Cross-port contract (matches TS / C# / Python): the serializer echoes the
+    // AUTHORED `extends` string verbatim. A programmatically-built tree that sets
+    // super via setSuperData() (never the parser) carries NO authored ref, so the
+    // serializer falls back to the resolved super FQN. The serializer must never
+    // recompute a short-vs-FQN form — that was the latent divergence (#37).
     // -----------------------------------------------------------------------
     @Test
     public void testExtendsEmittedWhenSuperDataSet() {
@@ -229,7 +235,46 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        assertTrue("expected extends key with short name, got: " + json, json.contains("\"extends\": \"BaseEntity\""));
+        // No authored ref on this programmatic tree → fall back to resolved FQN.
+        assertTrue("expected extends key with resolved FQN, got: " + json,
+                json.contains("\"extends\": \"test::pkg::BaseEntity\""));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 7b — extends echoes the AUTHORED ref VERBATIM (cross-port contract)
+    //
+    // When the authored `extends` string is preserved (as the canonical parser
+    // does via setAuthoredSuperRef), the serializer re-emits it byte-for-byte —
+    // regardless of whether the super lives in the same or a different package.
+    // This is the contract gated by the flattened-kitchen-sink fixture's
+    // same-package-FQN extends; here we assert it directly on a synthetic tree.
+    // -----------------------------------------------------------------------
+    @Test
+    public void testExtendsEchoesAuthoredRefVerbatim() {
+        MetaRoot root = new MetaRoot("test::pkg");
+
+        ValueMetaObject base = ValueMetaObject.create("test::pkg::Base");
+        base.addMetaAttr(BooleanAttribute.create(MetaData.ATTR_IS_ABSTRACT, true));
+        root.addChild(base);
+
+        // Same package as the super, but authored as a FULL FQN — must echo FQN.
+        ValueMetaObject derivedFqn = ValueMetaObject.create("test::pkg::DerivedFqn");
+        derivedFqn.setSuperData(base);
+        derivedFqn.setAuthoredSuperRef("test::pkg::Base");
+        root.addChild(derivedFqn);
+
+        // Same package, authored as a SHORT name — must echo the short name.
+        ValueMetaObject derivedShort = ValueMetaObject.create("test::pkg::DerivedShort");
+        derivedShort.setSuperData(base);
+        derivedShort.setAuthoredSuperRef("Base");
+        root.addChild(derivedShort);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        assertTrue("authored FQN extends must echo verbatim, got: " + json,
+                json.contains("\"extends\": \"test::pkg::Base\""));
+        assertTrue("authored short extends must echo verbatim, got: " + json,
+                json.contains("\"extends\": \"Base\""));
     }
 
     // -----------------------------------------------------------------------
@@ -330,13 +375,16 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     }
 
     // -----------------------------------------------------------------------
-    // Test 12 — extends emitted as short name when super is in the same package
+    // Test 12 — no authored ref → serializer falls back to the resolved FQN
     //
-    // Both Base and Derived are in "test::pkg".  The existing Test 7 covers
-    // same-package extends; this test makes the intent explicit.
+    // Both Base and Derived are in "test::pkg", super set programmatically with
+    // NO authored ref. Under the echo-verbatim contract (#37) the serializer no
+    // longer recomputes a short name for same-package supers — it emits the
+    // resolved FQN fallback. The short-vs-FQN choice is the AUTHOR's (echoed
+    // verbatim; see Test 7b), not the serializer's to recompute.
     // -----------------------------------------------------------------------
     @Test
-    public void testExtendsEmittedAsShortNameWhenSamePackage() {
+    public void testExtendsFallsBackToFqnWhenNoAuthoredRef() {
         MetaRoot root = new MetaRoot("test::pkg");
 
         ValueMetaObject base = ValueMetaObject.create("test::pkg::Base");
@@ -349,11 +397,8 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
 
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
 
-        // Same package — short name is unambiguous and preferred.
-        assertTrue("extends must be the short name when super is in the same package, got: " + json,
-                json.contains("\"extends\": \"Base\""));
-        // Must NOT use the FQN — that would be unnecessarily verbose.
-        assertFalse("extends must NOT be the FQN when super is in the same package",
+        // No authored ref → resolved FQN fallback (no short-name recompute).
+        assertTrue("extends must be the resolved FQN when no ref was authored, got: " + json,
                 json.contains("\"extends\": \"test::pkg::Base\""));
     }
 

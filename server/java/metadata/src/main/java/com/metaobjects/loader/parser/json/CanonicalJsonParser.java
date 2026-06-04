@@ -656,6 +656,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             md.setPackageAuthored(true);
         }
 
+        // Preserve the raw, as-authored `extends` reference so the canonical
+        // serializer can echo it VERBATIM (matching the TS / C# / Python oracles
+        // which all re-emit the raw superRef). Without this Java would recompute
+        // a short-vs-FQN form and diverge on, e.g., a same-package extends that
+        // the author wrote as a full FQN.
+        if (md != null && superRef != null && !superRef.isEmpty()) {
+            md.setAuthoredSuperRef(superRef);
+        }
+
         if (md == null) {
             log.warn("createOrOverlayMetaData returned null for [{}:{}:{}] in file [{}]",
                 type, subType, name, getFilename());

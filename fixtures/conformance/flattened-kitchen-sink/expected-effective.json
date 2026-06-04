@@ -585,7 +585,7 @@
       {
         "object.entity": {
           "name": "ProductSummary",
-          "extends": "Product",
+          "extends": "acme::catalog::Product",
           "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
           "@uiHints": {
             "group": "inventory",

@@ -302,6 +302,15 @@ public class MetaData implements Cloneable, Serializable {
     // byte-parity with the TS / Python oracles.
     private boolean packageAuthored = false;
 
+    // The raw `extends` (super) reference string EXACTLY as authored in the
+    // source file (e.g. "Product", "acme::catalog::Product", a relative ref).
+    // The parser resolves this string to a concrete super node (getSuperData),
+    // but the canonical serializer must echo the AUTHORED form verbatim — never
+    // a recomputed short-vs-FQN form — to stay byte-identical with the TS / C# /
+    // Python oracles (which all preserve and re-emit the raw `superRef`). See
+    // CanonicalJsonSerializer's `extends` emission and the TS `model.superRef`.
+    private String authoredSuperRef = null;
+
     /**
      * Constructs a MetaData object with enhanced type system integration.
      * 
@@ -869,6 +878,25 @@ public class MetaData implements Cloneable, Serializable {
      */
     public void setPackageAuthored(boolean packageAuthored) {
         this.packageAuthored = packageAuthored;
+    }
+
+    /**
+     * Returns the raw {@code extends} (super) reference string exactly as it was
+     * authored in the source file, or {@code null} if no {@code extends} was
+     * authored on this node. The canonical serializer echoes this verbatim. See
+     * the {@code authoredSuperRef} field doc for context.
+     */
+    public String getAuthoredSuperRef() {
+        return authoredSuperRef;
+    }
+
+    /**
+     * Records the raw, as-authored {@code extends} (super) reference string.
+     * Called by the canonical JSON / YAML parser when the body declares an
+     * {@code "extends"} key, so the serializer can re-emit it verbatim.
+     */
+    public void setAuthoredSuperRef(String authoredSuperRef) {
+        this.authoredSuperRef = authoredSuperRef;
     }
 
     /**

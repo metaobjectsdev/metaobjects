@@ -323,27 +323,23 @@ public final class CanonicalJsonSerializer {
             }
         }
 
-        // 3. extends — emit when super data is set
-        // Use the short name when the super is in the same package as the node;
-        // use the fully-qualified name when the super lives in a different package
-        // so that round-trip loading can resolve it correctly.
+        // 3. extends — echo the AUTHORED super-ref string VERBATIM.
+        //
+        // Cross-port contract: TS / C# / Python all preserve the raw `superRef`
+        // the parser read and re-emit it unchanged (TS `model.superRef`). Java
+        // must do the same. Recomputing a short-vs-FQN form (the prior behavior)
+        // only happened to byte-match fixtures that authored cross-package
+        // extends as FQN and same-package extends as short names — a same-package
+        // extends authored as a full FQN (or a relative ref) would diverge.
+        //
+        // The parser stores the as-authored string via setAuthoredSuperRef when
+        // it sees an `extends` key; fall back to the resolved super FQN only when
+        // no authored string is available (e.g. a programmatically-built tree).
         if (node.hasSuperData()) {
-            MetaData superData = node.getSuperData();
-            // For "same-package" detection we want the NODE's AUTHORING context
-            // (closest MetaObject/MetaRoot ancestor's package — a field `status`
-            // inside `Order` in `acme` has getPackage() == "acme::Order" but
-            // authors think of it as living in "acme") compared against the
-            // SUPER's own declared package (from its FQN), so synthetic
-            // tree-misalignments still emit FQN extends when the names diverge.
-            String authoringPackage = authoringPackageFor(node);
-            String superPackage = resolveNodePackage(superData);
-            String superRef;
-            if (authoringPackage != null && !authoringPackage.isEmpty()
-                    && authoringPackage.equals(superPackage)) {
-                superRef = superData.getShortName();
-            } else {
-                superRef = superData.getName();
-            }
+            String authoredSuperRef = node.getAuthoredSuperRef();
+            String superRef = (authoredSuperRef != null && !authoredSuperRef.isEmpty())
+                ? authoredSuperRef
+                : node.getSuperData().getName();
             if (superRef != null && !superRef.isEmpty()) {
                 body.addProperty(KEY_EXTENDS, superRef);
             }
@@ -507,42 +503,6 @@ public final class CanonicalJsonSerializer {
     // ---------------------------------------------------------------------------
     // Helpers — package resolution
     // ---------------------------------------------------------------------------
-
-    /**
-     * Returns the "authoring package" of a node — the package context an author
-     * would use to write its {@code extends} ref. For a node that is itself a
-     * top-level type (a child of the MetaRoot — an object / template / abstract
-     * field), this is the node's OWN package. For a node nested inside an entity
-     * it walks up to the nearest MetaObject and returns that ancestor's package.
-     * Used by extends-ref serialization so a sibling in the same package is
-     * referenced by short name (not by FQN).
-     *
-     * <p>Cross-port correctness for the flattened multi-file case: a single
-     * loader builds ONE MetaRoot whose name is just the first input file's
-     * package. The other files contribute children in OTHER packages. The
-     * root's own package is therefore NOT the authoring context for those
-     * children — each node's own {@link MetaData#getPackage()} (the effective
-     * package of its FQN) is. So we never fall back to the root's package; we
-     * fall back to the node's own package.</p>
-     */
-    private static String authoringPackageFor(MetaData node) {
-        MetaData current = node;
-        while (current != null) {
-            MetaData parent = current.getParent();
-            if (parent == null || parent instanceof MetaRoot) {
-                // `current` is a top-level type — its own package IS the
-                // authoring context (not the shared root's package).
-                return current.getPackage();
-            }
-            if (parent instanceof com.metaobjects.object.MetaObject) {
-                // current is a child of an entity → authoring context = entity's package
-                return parent.getPackage();
-            }
-            // Non-MetaObject parent: keep walking up.
-            current = parent;
-        }
-        return node.getPackage();
-    }
 
     /**
      * Returns the "canonical package" for a node.
