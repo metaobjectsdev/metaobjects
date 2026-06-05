@@ -14,6 +14,7 @@
 
 using System.Text;
 using System.Text.Json;
+using System.Text.Encodings.Web;
 using MetaObjects.AgentContext;
 
 namespace MetaObjects.Cli;
@@ -165,7 +166,13 @@ internal static class AgentDocsCommand
             clients = manifest.Clients,
             files = manifest.Files,
         };
-        var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+        // UnsafeRelaxedJsonEscaping keeps `& < > +` and non-ASCII unescaped, matching Java's
+        // Gson `disableHtmlEscaping()` and TS/Python so the manifest is byte-consistent cross-port.
+        var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        });
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
         File.WriteAllBytes(manifestPath, Encoding.UTF8.GetBytes(json + "\n"));
     }

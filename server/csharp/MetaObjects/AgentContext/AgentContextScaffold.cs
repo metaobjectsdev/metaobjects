@@ -82,9 +82,12 @@ public static class AgentContextScaffold
         }
 
         var assembledPaths = assembled.Select(f => f.Path).ToHashSet();
+        // Dictionary enumeration order is not contractual; sort ordinally so the printed
+        // "no longer applies" notes are deterministic and match the path-sorted manifest.
         var removed = prior is null
             ? new List<string>()
-            : prior.Files.Keys.Where(p => !assembledPaths.Contains(p)).ToList();
+            : prior.Files.Keys.Where(p => !assembledPaths.Contains(p))
+                .OrderBy(p => p, StringComparer.Ordinal).ToList();
 
         var manifest = new Manifest(
             1,
