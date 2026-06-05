@@ -1,6 +1,8 @@
 import {
   recordLlmCall,
   type LlmRecorder,
+  type LlmCallInput,
+  type RecordLlmCallOptions,
   type RecordLlmCallResult,
   type Format,
 } from "@metaobjectsdev/runtime-ts";
@@ -66,8 +68,9 @@ export async function callLlm(
   } catch (err) {
     const errorDetail = err instanceof Error ? err.message : String(err);
     // Hand-built error row — key set must match recordLlmCall's row exactly
-    // (14 keys: spanId/traceId/callType/requestModel/inputTokens/outputTokens/
-    //  costMinor/latencyMs/finishReason/status/errorDetail/startedAt/llmRequest/voResponse).
+    // (16 keys: spanId/traceId/parentSpanId/sessionId/callType/requestModel/
+    //  inputTokens/outputTokens/costMinor/latencyMs/finishReason/status/
+    //  errorDetail/startedAt/llmRequest/voResponse).
     const row = {
       spanId,
       traceId,
@@ -90,23 +93,31 @@ export async function callLlm(
     return { voResponse: null, status: "error", errorDetail };
   }
 
-  return recordLlmCall(
-    {
-      spanId,
-      traceId,
-      callType: input.callType,
-      startedAt,
-      parentSpanId: input.parentSpanId,
-      sessionId: input.sessionId,
-      llmRequest: completion.request ?? input.request,
-      llmResponseText: completion.body,
-      requestModel: input.request.model,
-      inputTokens: completion.usage?.inputTokens,
-      outputTokens: completion.usage?.outputTokens,
-      costMinor: cost(completion.model ?? input.request.model, completion.usage) ?? undefined,
-      latencyMs: clock.now() - t0,
-      finishReason: completion.finishReason,
-    },
-    { recorder: deps.recorder, responseMo: deps.responseMo, format: deps.format },
-  );
+  // Build the recordLlmCall input with only the optional fields that are
+  // actually present — `exactOptionalPropertyTypes` forbids assigning an
+  // explicit `undefined` to an optional `T?` property.
+  const recInput: LlmCallInput = {
+    spanId,
+    traceId,
+    callType: input.callType,
+    startedAt,
+    requestModel: input.request.model,
+    latencyMs: clock.now() - t0,
+    llmRequest: completion.request ?? input.request,
+    llmResponseText: completion.body,
+  };
+  if (input.parentSpanId !== undefined) recInput.parentSpanId = input.parentSpanId;
+  if (input.sessionId !== undefined) recInput.sessionId = input.sessionId;
+  if (completion.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;
+  if (completion.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;
+  const costMinor = cost(completion.model ?? input.request.model, completion.usage);
+  if (costMinor !== null) recInput.costMinor = costMinor;
+  if (completion.finishReason !== undefined) recInput.finishReason = completion.finishReason;
+
+  const recOpts: RecordLlmCallOptions = {
+    recorder: deps.recorder,
+    responseMo: deps.responseMo,
+  };
+  if (deps.format !== undefined) recOpts.format = deps.format;
+  return recordLlmCall(recInput, recOpts);
 }

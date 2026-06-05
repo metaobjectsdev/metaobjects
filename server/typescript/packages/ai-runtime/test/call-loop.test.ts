@@ -25,7 +25,7 @@ async function respMo() {
 
 class Capture extends NullRecorder {
   rows: LlmCallRow[] = [];
-  async record(c: LlmCallRow): Promise<void> {
+  override async record(c: LlmCallRow): Promise<void> {
     this.rows.push(c);
   }
 }

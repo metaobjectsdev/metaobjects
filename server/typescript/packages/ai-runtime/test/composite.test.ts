@@ -4,10 +4,10 @@ import { CompositeRecorder } from "../src/composite.js";
 
 class Capture extends NullRecorder {
   rows: LlmCallRow[] = [];
-  async record(c: LlmCallRow): Promise<void> { this.rows.push(c); }
+  override async record(c: LlmCallRow): Promise<void> { this.rows.push(c); }
 }
 class Throwing extends NullRecorder {
-  async record(): Promise<void> { throw new Error("sink-down"); }
+  override async record(): Promise<void> { throw new Error("sink-down"); }
 }
 
 const ROW: LlmCallRow = { spanId: "s", callType: "X" };
