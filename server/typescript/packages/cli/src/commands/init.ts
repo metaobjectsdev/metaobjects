@@ -353,7 +353,13 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     }
 
     if (!flags.quiet) {
-      log.info(nextStepsBlock());
+      if (flags.docsOnly) {
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        for (const w of result.warnings) log.info(`  ${w}`);
+        log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+      } else {
+        log.info(nextStepsBlock());
+      }
     }
     return 0;
   } catch (err) {
