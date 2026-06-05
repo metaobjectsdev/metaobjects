@@ -37,18 +37,21 @@ def extract(
     stripped = _strip.strip(text)
     ci = o.tolerance != Tolerance.STRICT
 
+    # XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there
+    # is no enclosing root to locate — so parse the whole stripped text's top-level elements
+    # directly. Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors
+    # Java Extract.extract.
+    span: str | None
+    raw: dict[str, object]
     if schema.format == Format.JSON:
         span = _locate.json(stripped)
+        raw = {} if span is None else JsonForgivingReader().read(span)
+    elif o.rootless:
+        span = None if stripped == "" else stripped
+        raw = {} if span is None else XmlForgivingReader().read_rootless(stripped, ci)
     else:
         span = _locate.xml(stripped, schema.root_name, ci)
-
-    raw: dict[str, object]
-    if span is None:
-        raw = {}
-    elif schema.format == Format.JSON:
-        raw = JsonForgivingReader().read(span)
-    else:
-        raw = XmlForgivingReader().read(span, ci)
+        raw = {} if span is None else XmlForgivingReader().read(span, ci)
 
     if not raw and (stripped == "" or span is None):
         report.mark_empty()

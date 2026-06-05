@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from metaobjects.render.extract import (
+    ExtractOptions,
     FieldKind,
     FieldSpec,
     Format,
@@ -59,7 +60,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 27
+    assert len(_cases()) == 30
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}
@@ -153,11 +154,19 @@ def _parse_schema(node: dict[str, object]) -> ExtractSchema:
 def test_classification_and_canonical_value_match(case_name: str) -> None:
     case_dir = _CORPUS / case_name
 
-    schema = _parse_schema(json.loads((case_dir / "schema.json").read_text()))
+    schema_node = json.loads((case_dir / "schema.json").read_text())
+    schema = _parse_schema(schema_node)
     text = (case_dir / "input.txt").read_text()
     expected = json.loads((case_dir / "expected.json").read_text())
 
-    outcome = extract(text, schema)
+    # Optional per-fixture parse option: "rootless": true → the XML response has no wrapper
+    # root element (the payload's fields ARE the top-level elements). Mirrors the Java/TS
+    # runners. JSON fixtures ignore it.
+    opts = ExtractOptions.defaults()
+    if bool(schema_node.get("rootless", False)):
+        opts = opts.with_rootless(True)
+
+    outcome = extract(text, schema, opts)
 
     # empty flag
     assert outcome.report.is_empty() == bool(expected["empty"]), (

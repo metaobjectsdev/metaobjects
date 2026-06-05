@@ -49,6 +49,17 @@ class XmlForgivingReader:
         self._parse_children(inner, case_insensitive, out)
         return out
 
+    def read_rootless(self, text: str | None, case_insensitive: bool) -> dict[str, object]:
+        """Rootless read: parse the WHOLE text's top-level elements directly, with no
+        enclosing root element to strip (a flat sequence like ``<a>..</a><b>..</b>``).
+        Used for :attr:`ExtractOptions.rootless` responses. Leading/trailing non-element
+        text is ignored. Never throws. Mirrors Java ``readRootless``."""
+        out: dict[str, object] = {}
+        if text is None or text.strip() == "":
+            return out
+        self._parse_children(text, case_insensitive, out)
+        return out
+
     def _parse_children(self, inner: str, ci: bool, out: dict[str, object]) -> None:
         open_tag = _OPEN_TAG_CI if ci else _OPEN_TAG
         pos = 0
@@ -79,11 +90,25 @@ class XmlForgivingReader:
                 content_end = close_m.start()
                 nxt = close_m.end()
             else:
-                # unclosed tag: extract text up to the next sibling open tag
+                # unclosed tag: extract content up to the next sibling open tag.
                 sib = open_tag.search(inner, content_start)
                 if sib is not None:
-                    content_end = sib.start()
-                    nxt = content_end
+                    # When the unclosed element's content begins IMMEDIATELY with a child
+                    # open tag (no leading text), that child was almost certainly meant to
+                    # be NESTED, not a sibling — a common LLM malformation is dropping the
+                    # parent's close tag while still emitting a real child element
+                    # (e.g. <check ...><payoff>text). Absorb the remainder of this span as
+                    # the unclosed element's content so the child nests under it. When there
+                    # IS leading text before the first child tag (e.g. <t>hi<c>..), keep the
+                    # sibling split — the leading text is the unclosed element's body and the
+                    # following tag is its sibling. Mirrors Java XmlForgivingReader.
+                    no_leading_text = inner[content_start : sib.start()].strip() == ""
+                    if no_leading_text:
+                        content_end = len(inner)
+                        nxt = len(inner)
+                    else:
+                        content_end = sib.start()
+                        nxt = content_end
                 else:
                     content_end = len(inner)
                     nxt = len(inner)

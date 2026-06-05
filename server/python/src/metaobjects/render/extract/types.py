@@ -236,12 +236,17 @@ class ExtractOptions:
 
     ``aliases``/``normalizers`` are MERGED with the schema's, runtime winning on key
     conflict. ``on_field`` is the single bespoke-coercion hook.
+
+    ``rootless`` (XML only): when ``True``, the input has NO enclosing root element —
+    the payload's fields ARE the top-level elements (a flat sequence like
+    ``<a>..</a><b>..</b>``). Mirrors Java ``ExtractOptions.rootless``.
     """
 
     tolerance: Tolerance = Tolerance.NORMAL
     aliases: dict[str, str] = field(default_factory=dict)
     normalizers: dict[str, Normalizer] = field(default_factory=dict)
     on_field: OnField | None = None
+    rootless: bool = False
 
     @staticmethod
     def defaults() -> "ExtractOptions":
@@ -253,6 +258,18 @@ class ExtractOptions:
             aliases=dict(self.aliases),
             normalizers=dict(self.normalizers),
             on_field=self.on_field,
+            rootless=self.rootless,
+        )
+
+    def with_rootless(self, r: bool) -> "ExtractOptions":
+        """XML only: parse a rootless flat element sequence directly (no wrapper
+        root). Returns a copy with ``rootless`` set. Mirrors Java ``withRootless``."""
+        return ExtractOptions(
+            tolerance=self.tolerance,
+            aliases=dict(self.aliases),
+            normalizers=dict(self.normalizers),
+            on_field=self.on_field,
+            rootless=r,
         )
 
 
