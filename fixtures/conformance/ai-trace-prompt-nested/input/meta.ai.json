@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "metaobjects::ai",
+    "children": [
+      { "object.value": { "name": "ClassifyRequest", "children": [ { "field.string": { "name": "text" } } ] } },
+      { "object.value": { "name": "ClassifyResponse", "children": [ { "field.string": { "name": "label" } } ] } },
+      { "object.entity": { "name": "LlmCallBase", "abstract": true, "children": [
+        { "field.uuid": { "name": "spanId" } },
+        { "field.string": { "name": "status" } }
+      ] } },
+      { "object.entity": { "name": "ClassifyCall", "extends": "metaobjects::ai::LlmCallBase", "children": [
+        { "source.rdb": { "@table": "classify_call", "@role": "primary" } },
+        { "identity.primary": { "@fields": ["spanId"] } },
+        { "template.prompt": { "name": "ClassifyPrompt", "@payloadRef": "ClassifyRequest", "@responseRef": "ClassifyResponse", "@textRef": "p/classify", "@format": "xml" } }
+      ] } }
+    ]
+  }
+}
