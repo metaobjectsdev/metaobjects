@@ -107,6 +107,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
+    "@metaobjectsdev/migrate-ts": "workspace:*",
     "@metaobjectsdev/runtime-ts": "workspace:*",
     "bun-types": "latest",
     "drizzle-orm": "^0.36.0",

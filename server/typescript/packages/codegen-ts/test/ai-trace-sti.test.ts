@@ -6,6 +6,7 @@ import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, barrel, traceHelperFile } from "../src/generators/index.js";
 import { deriveTraceFields } from "../src/ai/derive-trace-fields.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 
 const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children: [
   { "object.value": { name: "ClassifyReq", children: [{ "field.string": { name: "text" } }] } },
@@ -60,5 +61,26 @@ describe("ai-trace #1c — STI callType stamping", () => {
     const { summarize } = await genTrace();
     expect(summarize).toContain('callType: "summarize"');
     expect(summarize).not.toContain('callType: "SummarizeCall"');
+  });
+});
+
+describe("ai-trace #1c — STI table collapse", () => {
+  test("N trace subtypes collapse to one prompt_llm_call table", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ai1c-schema-"));
+    writeFileSync(join(dir, "m.json"), STI_MODEL);
+    const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+    rmSync(dir, { recursive: true, force: true });
+    expect(loaded.errors).toEqual([]);
+
+    const expected = buildExpectedSchema(loaded.root, { columnNamingStrategy: "literal" });
+    const traceTables = expected.tables.filter((t) => t.name === "prompt_llm_call");
+    expect(traceTables.length).toBe(1);
+    expect(expected.tables.some((t) => t.name === "classify_call" || t.name === "summarize_call")).toBe(false);
+
+    const cols = new Set(traceTables[0]!.columns.map((c) => c.name));
+    expect(cols.has("callType")).toBe(true);
+    expect(cols.has("voRequest")).toBe(true);
+    expect(cols.has("voResponse")).toBe(true);
+    expect(traceTables[0]!.columns.filter((c) => c.name === "voResponse").length).toBe(1);
   });
 });
