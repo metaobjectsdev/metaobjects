@@ -66,6 +66,33 @@ export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./insta
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
 export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
+
+// Built-in template render functions — the composition seam for adopters who
+// want to call a built-in template, then post-process / append to its output
+// from their own Generator (added to `generators: [...]`) WITHOUT forking the
+// template. Mirrors the `renderZodValidators` export. Each is also reachable via
+// a dedicated subpath (e.g. `@metaobjectsdev/codegen-ts/templates/entity-file`).
+export { renderEntityFile } from "./templates/entity-file.js";
+export type { RenderEntityFileOpts } from "./templates/entity-file.js";
+export { renderZodValidators } from "./templates/zod-validators.js";
+export { renderDrizzleSchema } from "./templates/drizzle-schema.js";
+export {
+  renderInferredTypes,
+  renderEnumTypeAliases,
+  renderValueObjectInterface,
+  enumUnionAliasName,
+  enumUnionString,
+} from "./templates/inferred-types.js";
+export { renderBarrel } from "./templates/barrel.js";
+export type { BarrelEntry } from "./templates/barrel.js";
+export { renderFilterType } from "./templates/filter-type.js";
+export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
+export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
+export { renderQueriesFile } from "./templates/queries-file.js";
+export { renderRoutesFile } from "./templates/routes-file.js";
+export { renderValueObjectFile } from "./templates/value-object-file.js";
+export { renderProjectionDecl } from "./templates/projection-decl.js";
+export type { ProjectionDeclOpts } from "./templates/projection-decl.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";

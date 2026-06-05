@@ -20,6 +20,61 @@
       "bun": "./src/templates/zod-validators.ts",
       "types": "./dist/templates/zod-validators.d.ts",
       "default": "./dist/templates/zod-validators.js"
+    },
+    "./templates/entity-file": {
+      "bun": "./src/templates/entity-file.ts",
+      "types": "./dist/templates/entity-file.d.ts",
+      "default": "./dist/templates/entity-file.js"
+    },
+    "./templates/drizzle-schema": {
+      "bun": "./src/templates/drizzle-schema.ts",
+      "types": "./dist/templates/drizzle-schema.d.ts",
+      "default": "./dist/templates/drizzle-schema.js"
+    },
+    "./templates/inferred-types": {
+      "bun": "./src/templates/inferred-types.ts",
+      "types": "./dist/templates/inferred-types.d.ts",
+      "default": "./dist/templates/inferred-types.js"
+    },
+    "./templates/barrel": {
+      "bun": "./src/templates/barrel.ts",
+      "types": "./dist/templates/barrel.d.ts",
+      "default": "./dist/templates/barrel.js"
+    },
+    "./templates/filter-type": {
+      "bun": "./src/templates/filter-type.ts",
+      "types": "./dist/templates/filter-type.d.ts",
+      "default": "./dist/templates/filter-type.js"
+    },
+    "./templates/filter-allowlist": {
+      "bun": "./src/templates/filter-allowlist.ts",
+      "types": "./dist/templates/filter-allowlist.d.ts",
+      "default": "./dist/templates/filter-allowlist.js"
+    },
+    "./templates/entity-constants": {
+      "bun": "./src/templates/entity-constants.ts",
+      "types": "./dist/templates/entity-constants.d.ts",
+      "default": "./dist/templates/entity-constants.js"
+    },
+    "./templates/queries-file": {
+      "bun": "./src/templates/queries-file.ts",
+      "types": "./dist/templates/queries-file.d.ts",
+      "default": "./dist/templates/queries-file.js"
+    },
+    "./templates/routes-file": {
+      "bun": "./src/templates/routes-file.ts",
+      "types": "./dist/templates/routes-file.d.ts",
+      "default": "./dist/templates/routes-file.js"
+    },
+    "./templates/value-object-file": {
+      "bun": "./src/templates/value-object-file.ts",
+      "types": "./dist/templates/value-object-file.d.ts",
+      "default": "./dist/templates/value-object-file.js"
+    },
+    "./templates/projection-decl": {
+      "bun": "./src/templates/projection-decl.ts",
+      "types": "./dist/templates/projection-decl.d.ts",
+      "default": "./dist/templates/projection-decl.js"
     }
   },
   "files": ["dist", "src", "templates", "README.md", "LICENSE"],
