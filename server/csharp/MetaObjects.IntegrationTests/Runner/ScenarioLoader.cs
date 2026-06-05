@@ -131,10 +131,9 @@ public static class ScenarioLoader
         // Same rationale as Insert — UPDATE re-encode of every subtype is the point of
         // update-delete-all-types.yaml, so it must use the same coercion as roundtrip.
         public YamlNode? Data { get; set; }
-        // The corpus authors this key in camelCase (`expectError:`) while most other
-        // keys are hyphenated (`seed-data:`); the hyphenated naming convention would
-        // map it to `expect-error`, so pin the literal camelCase alias the fixtures use.
-        [YamlMember(Alias = "expectError", ApplyNamingConventions = false)]
+        // The corpus authors this key hyphenated (`expect-error:`, matching
+        // `seed-data:`); the HyphenatedNamingConvention maps ExpectError → expect-error
+        // automatically, so no explicit alias is needed (TS reads q["expect-error"]).
         public bool? ExpectError { get; set; }
         // For op: roundtrip — the field-keyed row to WRITE through the EF runtime.
         // Captured as a raw YamlNode (scalar style preserved) so the writer can honor
