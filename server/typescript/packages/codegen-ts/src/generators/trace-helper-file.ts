@@ -23,6 +23,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_FORMAT,
+  TEMPLATE_ATTR_TEXT_REF,
 } from "@metaobjectsdev/metadata";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -98,9 +99,14 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
 
       const requestType = typeof payloadRef === "string" ? payloadRef : "unknown";
 
-      const lines: string[] = [
-        `// ${GENERATED_HEADER} — DO NOT EDIT.`,
-        ``,
+      // A renderable prompt (carries @textRef) gets an additional call<Entity> helper
+      // that renders the prompt text, calls the LLM, then parses + persists a trace row.
+      const textRef = prompt.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+      const renderable = typeof textRef === "string";
+      const renderFormat = typeof promptFormat === "string" ? promptFormat : "text";
+
+      // Build the import block — all imports MUST stay at the top of the emitted file.
+      const importLines: string[] = [
         `import type { ObjectManager } from "@metaobjectsdev/runtime-ts";`,
         `import {`,
         `  LlmCallDbRecorder,`,
@@ -110,6 +116,24 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `} from "@metaobjectsdev/runtime-ts";`,
         `import { Format } from "@metaobjectsdev/runtime-ts";`,
         `import type { MetaObject } from "@metaobjectsdev/metadata";`,
+      ];
+      if (renderable) {
+        importLines.push(
+          `import { render, type Provider } from "@metaobjectsdev/render";`,
+          `import {`,
+          `  callLlm,`,
+          `  type LlmClient,`,
+          `  type CostFn,`,
+          `  type Clock,`,
+          `  type IdGen,`,
+          `} from "@metaobjectsdev/ai-runtime";`,
+        );
+      }
+
+      const lines: string[] = [
+        `// ${GENERATED_HEADER} — DO NOT EDIT.`,
+        ``,
+        ...importLines,
         ``,
         `// ---- Payload interfaces (inlined) ------------------------------------------`,
         ``,
@@ -150,6 +174,62 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `}`,
         ``,
       ];
+
+      if (renderable) {
+        const callFn = `call${pascal(entityName)}`;
+        lines.push(
+          ``,
+          `// ---- Call helper (GENERATE -> CALL -> record) -------------------------------`,
+          ``,
+          `export interface ${entityName}CallDeps {`,
+          `  om: ObjectManager;`,
+          `  responseMo: MetaObject;`,
+          `  client: LlmClient;`,
+          `  /** Prompt-TEXT resolver for render() (NOT the LLM client). */`,
+          `  provider: Provider;`,
+          `  model: string;`,
+          `  system?: string;`,
+          `  params?: Record<string, unknown>;`,
+          `  cost?: CostFn;`,
+          `  clock?: Clock;`,
+          `  ids?: IdGen;`,
+          `  traceId?: string;`,
+          `  parentSpanId?: string;`,
+          `  sessionId?: string;`,
+          `}`,
+          ``,
+          `/**`,
+          ` * Render the ${entityName} prompt, call the LLM, then parse + persist a trace`,
+          ` * row (finally-style: a call/parse failure still writes a row).`,
+          ` */`,
+          `export async function ${callFn}(`,
+          `  payload: ${requestType},`,
+          `  deps: ${entityName}CallDeps,`,
+          `): Promise<${entityName}TraceResult> {`,
+          `  const prompt = render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(renderFormat)}, provider: deps.provider });`,
+          `  const result = await callLlm(`,
+          `    {`,
+          `      callType: ${JSON.stringify(entityName)},`,
+          `      payload,`,
+          `      request: { prompt, model: deps.model, system: deps.system, params: deps.params },`,
+          `      traceId: deps.traceId,`,
+          `      parentSpanId: deps.parentSpanId,`,
+          `      sessionId: deps.sessionId,`,
+          `    },`,
+          `    {`,
+          `      client: deps.client,`,
+          `      recorder: new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}),`,
+          `      responseMo: deps.responseMo,`,
+          `      format: ${formatLiteral},`,
+          `      cost: deps.cost,`,
+          `      clock: deps.clock,`,
+          `      ids: deps.ids,`,
+          `    },`,
+          `  );`,
+          `  return result as ${entityName}TraceResult;`,
+          `}`,
+        );
+      }
 
       return [{
         path: `${dirPrefix}${entityName}.trace.ts`,

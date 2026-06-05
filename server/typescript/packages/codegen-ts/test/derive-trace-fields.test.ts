@@ -62,6 +62,63 @@ describe("derive trace fields", () => {
     expect(h).toContain("recordLlmCall");
   });
 
+  test("trace-helper emits both record and call helpers for a renderable prompt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ai1b-call-"));
+    writeFileSync(join(dir, "m.json"), MODEL);
+    const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+    rmSync(dir, { recursive: true, force: true });
+    expect(loaded.errors).toEqual([]);
+    const out = await runGen({
+      config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "~/db", dialect: "postgres",
+        generators: [entityFile(), queriesFile(), traceHelperFile(), barrel()] }),
+      metadata: loaded.root,
+    });
+    expect(out.warnings).toEqual([]);
+    const h = readFileSync(join(tmp, "ClassifyCall.trace.ts"), "utf-8");
+    expect(h).toContain("export async function recordClassifyCall(");
+    expect(h).toContain("export async function callClassifyCall(");
+    expect(h).toContain('from "@metaobjectsdev/ai-runtime"');
+    expect(h).toContain('from "@metaobjectsdev/render"');
+    expect(h).toContain('render({ ref: "p/x"');
+    // imports must all be at the top: no `import ` after the first export.
+    const firstExport = h.indexOf("export ");
+    const lastImport = h.lastIndexOf("\nimport ");
+    expect(lastImport).toBeLessThan(firstExport);
+  });
+
+  test("trace-helper emits only the record helper for a non-renderable prompt", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ai1b-norender-"));
+    writeFileSync(join(dir, "m.json"), JSON.stringify({ "metadata.root": { package: "t::ai", children: [
+      { "object.value": { name: "ReqVO", children: [{ "field.string": { name: "q" } }] } },
+      { "object.value": { name: "ResVO", children: [{ "field.string": { name: "a" } }] } },
+      { "object.entity": { name: "LlmCallBase", abstract: true, children: [
+        { "field.uuid": { name: "spanId" } }, { "field.string": { name: "status" } },
+      ] } },
+      { "object.entity": { name: "ClassifyCall", extends: "LlmCallBase", children: [
+        { "source.rdb": { "@table": "classify_call", "@role": "primary" } },
+        { "identity.primary": { "@fields": ["spanId"] } },
+        { "template.prompt": { name: "ClassifyPrompt", "@payloadRef": "ReqVO", "@responseRef": "ResVO", "@format": "xml" } },
+      ] } },
+    ] } }));
+    const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+    rmSync(dir, { recursive: true, force: true });
+    // A template.prompt without @textRef is flagged by the loader (it always requires
+    // a renderable body), but the entity still loads — the generator must degrade to
+    // emitting ONLY the record helper, never the render-dependent call helper.
+    expect(loaded.errors.map((e) => String(e))).toContain(
+      "ParseError: template \"ClassifyPrompt\" requires @textRef",
+    );
+    const out = await runGen({
+      config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "~/db", dialect: "postgres",
+        generators: [traceHelperFile()] }),
+      metadata: loaded.root,
+    });
+    const h = readFileSync(join(tmp, "ClassifyCall.trace.ts"), "utf-8");
+    expect(h).toContain("export async function recordClassifyCall(");
+    expect(h).not.toContain("export async function callClassifyCall(");
+    expect(h).not.toContain('from "@metaobjectsdev/ai-runtime"');
+  });
+
   test("entity without a nested prompt is untouched", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ai1b-plain-"));
     writeFileSync(join(dir, "m.json"), JSON.stringify({ "metadata.root": { package: "t::x", children: [
