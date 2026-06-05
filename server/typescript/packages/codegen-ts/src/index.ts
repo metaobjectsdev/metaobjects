@@ -95,3 +95,7 @@ export type {
 export { buildEntityDocData } from "./generators/docs-data-builder.js";
 export type { TemplateDocData, TemplateOutputPart } from "./generators/template-doc-data.js";
 export { buildTemplateDocData } from "./generators/template-doc-builder.js";
+
+// AI trace-field derivation — pre-pass for meta gen (injects voRequest/voResponse
+// jsonb fields onto LlmCallBase-derived entities that nest a template.prompt).
+export { deriveTraceFields } from "./ai/derive-trace-fields.js";
