@@ -95,6 +95,9 @@ def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
     Returns an empty tuple for subtypes outside the FR-009 vocabulary
     (defensive — the allowlist effectively becomes a "field is unknown" gate
     when the subtype is unrecognized).
+
+    Module-level back-compat shim; the override seam is
+    :meth:`FilterAllowlistGenerator._ops_for_field`.
     """
     if sub_type is None:
         return ()
@@ -135,103 +138,149 @@ def _is_filterable(field: MetaField) -> bool:
 
 
 def _compute_filterable_ops(entity: MetaObject) -> dict[str, tuple[str, ...]]:
-    """Build the ``{field_name: op_tuple}`` map for ``entity`` (own + inherited
-    effective fields). Only fields with ``@filterable: true`` are included;
-    object fields and subtypes outside the FR-009 vocabulary are skipped.
+    """Module-level back-compat wrapper. Delegates to a default
+    :class:`FilterAllowlistGenerator`."""
+    return FilterAllowlistGenerator()._compute_filterable_ops(entity)
 
-    The returned dict preserves the entity's field declaration order so the
-    emitted source is deterministic.
+
+class FilterAllowlistGenerator:
+    """``object.entity`` + ``source.rdb @kind="table"`` → one
+    ``<entity_snake>_filter_allowlist.py`` per writable entity (FR-009 §3.5).
+
+    EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
+    the protected hooks to customize the emitted allowlist without forking. The
+    factory ``filter_allowlist_generator()`` and the module-level
+    ``render_filter_allowlist()`` both delegate to a default instance, so the
+    default suite stays byte-identical.
+
+    Override points:
+
+    * ``_ops_for_field(field)`` — the operator tuple a filterable field is allowed
+      (defaults to the FR-009 §5 per-subtype matrix). Override to widen/narrow the
+      operator vocabulary for a custom field shape.
+    * ``_emit_constants(fields_const, ops_const, ops_by_field)`` — the emitted
+      ``frozenset`` / ``dict`` literal lines.
+    * ``render_filter_allowlist(entity)`` — the whole module (last resort).
+
+    Skips entities without a ``source.rdb`` child and read-only kinds
+    (view / materializedView / storedProc / tableFunction) — same gate as
+    ``RouterGenerator``, so the two generators emit in lock-step.
     """
-    out: dict[str, tuple[str, ...]] = {}
-    for f in entity.fields():
-        if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-            continue
-        if not _is_filterable(f):
-            continue
-        ops = ops_for_subtype_ordered(f.sub_type)
-        if not ops:
-            continue
-        out[f.name] = ops
-    return out
+
+    name = "filter-allowlist-generator"
+
+    def _ops_for_field(self, field: MetaField) -> tuple[str, ...]:
+        """The operator tuple allowed for ``field`` (FR-009 §5 per-subtype matrix by
+        default). Override to customize the per-field operator vocabulary; returning
+        an empty tuple excludes the field from the allowlist."""
+        return ops_for_subtype_ordered(field.sub_type)
+
+    def _compute_filterable_ops(
+        self, entity: MetaObject
+    ) -> dict[str, tuple[str, ...]]:
+        """Build the ``{field_name: op_tuple}`` map for ``entity`` (own + inherited
+        effective fields). Only fields with ``@filterable: true`` are included;
+        object fields and fields whose ``_ops_for_field`` yields no operators are
+        skipped. Preserves declaration order so the emitted source is deterministic."""
+        out: dict[str, tuple[str, ...]] = {}
+        for f in entity.fields():
+            if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+                continue
+            if not _is_filterable(f):
+                continue
+            ops = self._ops_for_field(f)
+            if not ops:
+                continue
+            out[f.name] = ops
+        return out
+
+    def _emit_constants(
+        self,
+        fields_const: str,
+        ops_const: str,
+        ops_by_field: dict[str, tuple[str, ...]],
+    ) -> list[str]:
+        """The ``<ENTITY>_FILTER_FIELDS`` frozenset + ``<ENTITY>_FILTER_OPS_BY_FIELD``
+        dict literal lines. Override to change the emitted data-structure shape."""
+        lines: list[str] = []
+        if not ops_by_field:
+            lines.append(f"{fields_const}: frozenset[str] = frozenset()")
+            lines.append("")
+            lines.append(f"{ops_const}: dict[str, frozenset[str]] = {{}}")
+        else:
+            lines.append(f"{fields_const}: frozenset[str] = frozenset({{")
+            for name in ops_by_field:
+                lines.append(f'    "{name}",')
+            lines.append("})")
+            lines.append("")
+            lines.append(f"{ops_const}: dict[str, frozenset[str]] = {{")
+            for name, ops in ops_by_field.items():
+                ops_literal = ", ".join(f'"{op}"' for op in ops)
+                lines.append(f'    "{name}": frozenset({{{ops_literal}}}),')
+            lines.append("}")
+        return lines
+
+    def render_filter_allowlist(self, entity: MetaObject) -> str | None:
+        """Render the filter allowlist module for ``entity`` (or ``None`` to skip).
+
+        Returns ``None`` for entities without a ``source.rdb`` child and for
+        read-only kinds (``view`` / ``materializedView`` / ``storedProc`` /
+        ``tableFunction``) — these match the router generator's "no router"
+        gate, so emitting an allowlist would be pure noise.
+        """
+        if not emits_instance_artifacts(entity):
+            return None
+        src = _primary_source_rdb(entity)
+        if src is None:
+            return None
+        if src.effective_kind() != SOURCE_KIND_TABLE:
+            return None
+
+        short_name = entity.name
+        upper = short_name.upper()
+        fields_const = f"{upper}_FILTER_FIELDS"
+        ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
+
+        ops_by_field = self._compute_filterable_ops(entity)
+
+        parts: list[str] = []
+        parts.append(
+            generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
+            + f'"""GENERATED — per-entity FR-009 filter allowlist for {short_name}.\n\n'
+            f"{fields_const} lists the filterable field names; {ops_const}\n"
+            f'constrains the operator vocabulary for each field by its subtype."""\n'
+        )
+        parts.append("from __future__ import annotations")
+        parts.append("")
+        parts.extend(self._emit_constants(fields_const, ops_const, ops_by_field))
+        parts.append("")
+        return "\n".join(parts)
+
+    def generate(self, ctx: GenContext) -> list[EmittedFile]:
+        def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
+            source = self.render_filter_allowlist(entity)
+            if source is None:
+                return []
+            snake = _snake_case(entity.name)
+            return [
+                EmittedFile(
+                    path=f"{snake}_filter_allowlist.py",
+                    content=ruff_format(source),
+                )
+            ]
+
+        return per_entity(emit)(ctx)
 
 
 def render_filter_allowlist(entity: MetaObject) -> str | None:
-    """Render the filter allowlist module for ``entity`` (or ``None`` to skip).
-
-    Returns ``None`` for entities without a ``source.rdb`` child and for
-    read-only kinds (``view`` / ``materializedView`` / ``storedProc`` /
-    ``tableFunction``) — these match the router generator's "no router"
-    gate, so emitting an allowlist would be pure noise.
-    """
-    if not emits_instance_artifacts(entity):
-        return None
-    src = _primary_source_rdb(entity)
-    if src is None:
-        return None
-    if src.effective_kind() != SOURCE_KIND_TABLE:
-        return None
-
-    short_name = entity.name
-    upper = short_name.upper()
-    fields_const = f"{upper}_FILTER_FIELDS"
-    ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
-
-    ops_by_field = _compute_filterable_ops(entity)
-
-    parts: list[str] = []
-    parts.append(
-        generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
-        + f'"""GENERATED — per-entity FR-009 filter allowlist for {short_name}.\n\n'
-        f"{fields_const} lists the filterable field names; {ops_const}\n"
-        f'constrains the operator vocabulary for each field by its subtype."""\n'
-    )
-    parts.append("from __future__ import annotations")
-    parts.append("")
-    # FIELDS
-    if not ops_by_field:
-        parts.append(f"{fields_const}: frozenset[str] = frozenset()")
-        parts.append("")
-        parts.append(f"{ops_const}: dict[str, frozenset[str]] = {{}}")
-    else:
-        parts.append(f"{fields_const}: frozenset[str] = frozenset({{")
-        for name in ops_by_field:
-            parts.append(f'    "{name}",')
-        parts.append("})")
-        parts.append("")
-        parts.append(f"{ops_const}: dict[str, frozenset[str]] = {{")
-        for name, ops in ops_by_field.items():
-            ops_literal = ", ".join(f'"{op}"' for op in ops)
-            parts.append(f'    "{name}": frozenset({{{ops_literal}}}),')
-        parts.append("}")
-    parts.append("")
-    return "\n".join(parts)
+    """Module-level back-compat wrapper. Delegates to a default
+    :class:`FilterAllowlistGenerator`. Subclass it to customize."""
+    return FilterAllowlistGenerator().render_filter_allowlist(entity)
 
 
 def filter_allowlist_generator() -> Generator:
     """Generator factory: ``object.entity`` + ``source.rdb @kind="table"`` → one
     ``<entity_snake>_filter_allowlist.py`` per writable entity.
 
-    Skips entities without a ``source.rdb`` child and read-only kinds
-    (view / materializedView / storedProc / tableFunction) — same gate as
-    ``router_generator``, so the two generators emit in lock-step.
-    """
-
-    class _Gen:
-        name = "filter-allowlist-generator"
-
-        def generate(self, ctx: GenContext) -> list[EmittedFile]:
-            def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
-                source = render_filter_allowlist(entity)
-                if source is None:
-                    return []
-                snake = _snake_case(entity.name)
-                return [
-                    EmittedFile(
-                        path=f"{snake}_filter_allowlist.py",
-                        content=ruff_format(source),
-                    )
-                ]
-
-            return per_entity(emit)(ctx)
-
-    return _Gen()
+    Returns a :class:`FilterAllowlistGenerator` (subclassable extension seam)."""
+    return FilterAllowlistGenerator()

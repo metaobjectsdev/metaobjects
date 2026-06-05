@@ -47,8 +47,25 @@ def _snake_case(name: str) -> str:
     return "".join(out)
 
 
-def render_output_prompt(template: MetaData, root: MetaData) -> str | None:
+def _emit_format_spec(
+    payload: MetaObject, template: MetaData, root_name: str
+) -> str:
+    """The baked ``OutputFormatSpec`` literal. Module-level back-compat shim; the
+    override seam is :meth:`OutputPromptGenerator._emit_format_spec`."""
+    return ofs.spec_literal(payload, template, root_name)
+
+
+def render_output_prompt(
+    template: MetaData,
+    root: MetaData,
+    *,
+    generator: "OutputPromptGenerator | None" = None,
+) -> str | None:
     """Render one output-prompt module for a json/xml ``template.output`` node.
+
+    When *generator* is supplied, its ``_emit_format_spec`` override is used to bake
+    the ``OutputFormatSpec`` literal (the extension seam); when ``None`` the
+    module-level default is used (byte-identical back-compat path).
 
     Returns ``None`` when the format is unsupported (not json/xml) or the
     ``@payloadRef`` can't be resolved to an ``object.value`` (defensive — the loader
@@ -70,7 +87,8 @@ def render_output_prompt(template: MetaData, root: MetaData) -> str | None:
     render_fn = f"render_{snake}_format"
     # root_name == payload class name so the fragment and extract() agree.
     root_name = payload_class_name(template_name)
-    spec_literal = ofs.spec_literal(payload, template, root_name)
+    emit_spec = generator._emit_format_spec if generator is not None else _emit_format_spec
+    spec_literal = emit_spec(payload, template, root_name)
 
     fqn = (
         f"{payload.package}::{template_name}"
@@ -123,6 +141,21 @@ class OutputPromptGenerator:
         # iterates templates (not entities).
         self.filter = filter
 
+    def _emit_format_spec(
+        self, payload: MetaObject, template: MetaData, root_name: str
+    ) -> str:
+        """EXTENSION SEAM — the baked ``OutputFormatSpec`` literal. Defaults to the
+        module-level :func:`_emit_format_spec`; override to inject custom field
+        examples / instructions / style into the prompt fragment descriptor."""
+        return _emit_format_spec(payload, template, root_name)
+
+    def _render_module(self, template: MetaData, root: MetaData) -> str | None:
+        """EXTENSION SEAM — render the whole output-prompt module for one
+        ``template.output``. Defaults to :func:`render_output_prompt` (passing this
+        instance so the ``_emit_format_spec`` override is honored). Override to
+        pre/post-process the emitted source or replace the render path."""
+        return render_output_prompt(template, root, generator=self)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
         if root is None:
@@ -137,7 +170,7 @@ class OutputPromptGenerator:
             key=lambda c: c.name,
         )
         for tmpl in outputs:
-            content = render_output_prompt(tmpl, root)
+            content = self._render_module(tmpl, root)
             if content is None:
                 # Not an error — text-format outputs and unresolved payloads are
                 # simply skipped (no prompt fragment), matching the C# contract.

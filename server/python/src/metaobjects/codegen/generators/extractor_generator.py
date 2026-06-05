@@ -145,8 +145,17 @@ def _emit_mapper(vo: MetaData, root: MetaData, root_vo: MetaData, template_name:
     return lines
 
 
-def render_extractor(template: MetaData, root: MetaData) -> str | None:
+def render_extractor(
+    template: MetaData,
+    root: MetaData,
+    *,
+    generator: "ExtractorGenerator | None" = None,
+) -> str | None:
     """Render one ``<snake>_extractor.py`` for a ``template.output`` node.
+
+    When *generator* is supplied, its ``_emit_mapper`` override is used for each
+    mirror→strict mapper (the extension seam); when ``None`` the module-level
+    :func:`_emit_mapper` is used (byte-identical back-compat path).
 
     Returns ``None`` when the ``@payloadRef`` can't be resolved to an ``object.value``,
     or when the target ``@format`` is not json/xml (the extract tier requires the
@@ -228,11 +237,12 @@ def render_extractor(template: MetaData, root: MetaData) -> str | None:
     lines.append("")
 
     # One mirror→strict mapper per reachable VO (root + nested), in BFS order.
+    emit_mapper = generator._emit_mapper if generator is not None else _emit_mapper
     for i, vo in enumerate(vos):
         if i > 0:
             lines.append("")
             lines.append("")
-        lines.extend(_emit_mapper(vo, root, payload, template_name))
+        lines.extend(emit_mapper(vo, root, payload, template_name))
 
     lines.append("")
     lines.append("")
@@ -250,6 +260,26 @@ class ExtractorGenerator:
     def __init__(self, *, filter: Callable[[MetaObject], bool] | None = None) -> None:
         self.filter = filter
 
+    def _emit_mapper(
+        self,
+        vo: MetaData,
+        root: MetaData,
+        root_vo: MetaData,
+        template_name: str,
+    ) -> list[str]:
+        """EXTENSION SEAM — one ``_to_strict_<vo>(m) -> <Strict>`` mirror→strict
+        mapper block. Defaults to the module-level :func:`_emit_mapper`; override to
+        customize how the extracted mirror graph is mapped onto the strict Pydantic
+        payload (e.g. coercion, post-validation, default-filling)."""
+        return _emit_mapper(vo, root, root_vo, template_name)
+
+    def _render_module(self, template: MetaData, root: MetaData) -> str | None:
+        """EXTENSION SEAM — render the whole extractor module for one
+        ``template.output``. Defaults to :func:`render_extractor` (passing this
+        instance so the ``_emit_mapper`` override is honored). Override to
+        pre/post-process the emitted source or replace the render path."""
+        return render_extractor(template, root, generator=self)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
         if root is None:
@@ -264,7 +294,7 @@ class ExtractorGenerator:
             key=lambda c: c.name,
         )
         for tmpl in outputs:
-            content = render_extractor(tmpl, root)
+            content = self._render_module(tmpl, root)
             if content is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: skipping template.output "
