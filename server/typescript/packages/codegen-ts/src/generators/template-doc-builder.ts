@@ -24,10 +24,22 @@ import {
   DOC_ATTR_DESCRIPTION,
   stripPackage,
 } from "@metaobjectsdev/metadata";
+import {
+  TYPE_TEMPLATE,
+  TEMPLATE_SUBTYPE_OUTPUT,
+} from "@metaobjectsdev/metadata";
+import type { Provider } from "@metaobjectsdev/render";
 import { GENERATED_HEADER } from "../constants.js";
 import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode, type DocPageNode } from "../docs-paths.js";
 import type { TemplateDocData, TemplateOutputPart } from "./template-doc-data.js";
+import { buildEnrichedPayloadTree } from "./template-payload-tree.js";
+import { annotateTemplate, type AnnotatePayloadField } from "./template-source-annotate.js";
+import {
+  renderSourceBlock,
+  renderVariablesTable,
+  renderRichLinkedHtml,
+} from "./template-source-render.js";
 
 export interface BuildTemplateDocDataOpts {
   /** Page-placement layout. Defaults to "flat" (back-compat: same-dir links). */
@@ -35,6 +47,11 @@ export interface BuildTemplateDocDataOpts {
   /** Root used to resolve the @payloadRef target's package for a correct
    *  cross-link in package layout. Optional: flat layout never needs it. */
   loadedRoot?: MetaRoot;
+  /** The page provider — the SAME one the render-helper drift gate / page
+   *  rendering use (e.g. `projectProvider(projectRoot)`). Used to resolve each
+   *  referenced mustache's SOURCE TEXT for the "## Template source" section.
+   *  Optional: when absent (or a ref doesn't resolve) the section is omitted. */
+  provider?: Provider;
 }
 
 // FIXED, language-NEUTRAL capability sentences. NO type names, NO signatures.
@@ -148,10 +165,110 @@ export function buildTemplateDocData(
   }
   if (maxChars !== undefined) data.maxChars = maxChars;
 
+  // ── "## Template source" section (Task 4) ────────────────────────────────
+  // Resolve each referenced mustache's SOURCE TEXT via the page provider, then
+  // annotate it against the ENRICHED payload tree (owner/type/required per node)
+  // and pre-render the three doc forms. Only when a provider + a resolvable
+  // payload VO are available; a ref that doesn't resolve is skipped (no crash).
+  if (opts?.provider !== undefined && root !== undefined && payloadName !== "unknown") {
+    const section = buildTemplateSourceSection({
+      provider: opts.provider,
+      root,
+      payloadName,
+      // Document: the single @textRef (unlabeled). Email: one labeled part each.
+      refs:
+        parts !== undefined
+          ? parts.map((p) => ({ label: p.label, ref: p.ref }))
+          : sourceRefs.map((ref) => ({ ref })),
+    });
+    if (section !== undefined) data.templateSourceSection = section;
+  }
+
   const desc = templateDescription(template);
   if (desc !== undefined) {
     data.descriptionQuote = desc.split("\n").map((l) => `> ${l}`.trimEnd()).join("\n");
   }
 
   return data;
+}
+
+// One referenced template source to document: an optional human label (email
+// part name) + the logical mustache ref (`@textRef` / `@subjectRef` / …).
+interface SourceRefSpec {
+  label?: string;
+  ref: string;
+}
+
+interface BuildSectionArgs {
+  provider: Provider;
+  root: MetaRoot;
+  payloadName: string;
+  refs: SourceRefSpec[];
+}
+
+/**
+ * Build the PRE-RENDERED "## Template source" section markdown. For each ref:
+ * resolve its mustache source via the provider, annotate it against the enriched
+ * payload tree, and emit the fenced source block + the linked variables table +
+ * the rich `<details>` linked view. A document template yields one block; an
+ * email yields one `### <label>` sub-section per part. Refs whose source the
+ * provider can't resolve are skipped (graceful — the build-time drift gate
+ * already errors on a truly unresolved ref). Returns `undefined` when NOTHING
+ * resolved, so the caller omits the section entirely.
+ */
+function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined {
+  const { provider, root, payloadName, refs } = args;
+  const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(root, payloadName);
+  const resolvePartialHref = makePartialHrefResolver(root);
+  const isMultipart = refs.length > 1 || refs.some((r) => r.label !== undefined);
+
+  const blocks: string[] = [];
+  for (const spec of refs) {
+    const source = provider.resolve(spec.ref);
+    if (source === undefined) continue; // missing source → skip this part.
+    const tokens = annotateTemplate(source, tree, {
+      ownerVoName: payloadName,
+      resolvePartialHref,
+    });
+    const parts: string[] = [];
+    if (isMultipart && spec.label !== undefined) parts.push(`### ${spec.label}`);
+    parts.push(renderSourceBlock(tokens));
+    const table = renderVariablesTable(tokens);
+    if (table !== "") parts.push(table);
+    parts.push(renderRichLinkedHtml(tokens));
+    blocks.push(parts.join("\n\n"));
+  }
+
+  if (blocks.length === 0) return undefined;
+  return ["## Template source", "", blocks.join("\n\n")].join("\n");
+}
+
+/**
+ * A `{{>ref}}` partial-href resolver: returns `./<TemplateName>.md` when `ref`
+ * is a mustache source documented by SOME `template.output` node (it is one of
+ * that template's source refs — @textRef or an email part ref), else undefined
+ * (the partial is highlight-only). This makes a partial that inlines another
+ * documented template link to that template's page.
+ */
+function makePartialHrefResolver(root: MetaRoot): (ref: string) => string | undefined {
+  // Map each documented source ref → the template node's short name.
+  const refToTemplate = new Map<string, string>();
+  for (const child of root.ownChildren()) {
+    if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
+    for (const attr of [
+      TEMPLATE_ATTR_TEXT_REF,
+      TEMPLATE_ATTR_SUBJECT_REF,
+      TEMPLATE_ATTR_HTML_BODY_REF,
+      TEMPLATE_ATTR_TEXT_BODY_REF,
+    ]) {
+      const v = child.ownAttr(attr);
+      if (typeof v === "string" && v.length > 0 && !refToTemplate.has(v)) {
+        refToTemplate.set(v, child.name);
+      }
+    }
+  }
+  return (ref: string) => {
+    const name = refToTemplate.get(ref);
+    return name !== undefined ? `./${name}.md` : undefined;
+  };
 }

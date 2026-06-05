@@ -39,7 +39,9 @@ const META = {
 
 const dirs: string[] = [];
 
-/** Build a standalone project root holding metaobjects/ — NO gen config. */
+/** Build a standalone project root holding metaobjects/ — NO gen config. Also
+ *  drops the mustache source the WelcomePage @textRef ("site/welcome") resolves
+ *  to, so the template page's "## Template source" section has real source. */
 async function project(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "meta-docs-"));
   dirs.push(root);
@@ -47,6 +49,12 @@ async function project(): Promise<string> {
   await writeFile(
     join(root, "metaobjects", "meta.json"),
     JSON.stringify(META),
+    "utf8",
+  );
+  await mkdir(join(root, "templates", "site"), { recursive: true });
+  await writeFile(
+    join(root, "templates", "site", "welcome.mustache"),
+    "<h1>Welcome, {{name}}!</h1>\n<p>{{headline}}</p>\n",
     "utf8",
   );
   return root;
@@ -201,6 +209,13 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(entity).toContain("## Constraints");
     // Template page declares its render contract.
     expect(template).toContain("**Kind:**");
+    // Template page embeds the linked, highlighted template SOURCE resolved via
+    // the project's templates/ dir (the same provider the drift gate uses).
+    expect(template).toContain("## Template source");
+    expect(template).toContain("```mustache");
+    expect(template).toContain("<h1>Welcome, {{name}}!</h1>");
+    expect(template).toContain("[Welcome.name](./Welcome.md#field-name)");
+    expect(template).toContain("<summary>Linked view</summary>");
 
     // Neutral: no language/toolchain leakage in either page.
     for (const page of [entity, template]) {

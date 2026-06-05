@@ -27,7 +27,10 @@ import type { GenContext } from "../../src/generator.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance");
 
-function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): GenContext {
+function makeCtx(
+  root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"],
+  projectRoot?: string,
+): GenContext {
   const renderContext = makeRenderContext({
     dialect: "sqlite",
     loadedRoot: root,
@@ -43,6 +46,7 @@ function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): Gen
     config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
     renderContext,
     warn: () => {},
+    ...(projectRoot !== undefined && { projectRoot }),
   };
 }
 
@@ -54,7 +58,11 @@ async function emitFixture(fixtureName: string) {
   );
   const res = await new MetaDataLoader().load(sources);
   expect(res.errors, `Fixture ${fixtureName} load errors`).toEqual([]);
-  const out = await docsFile().generate(makeCtx(res.root));
+  // projectRoot = the fixture's input/ dir, which carries a `templates/` folder
+  // holding the referenced mustache sources — so the page's provider resolves
+  // each @textRef / email part-ref to its real template source for the
+  // "## Template source" section.
+  const out = await docsFile().generate(makeCtx(res.root, inputDir));
   return out;
 }
 
@@ -105,6 +113,25 @@ describe("template.output doc page (render contract) — DOCUMENT", () => {
       "A render helper is generated for this template: it takes the payload and returns the rendered output as a single string.",
     );
 
+    // Template source: the real mustache, a linked variables table, the rich view.
+    expect(md).toContain("## Template source");
+    // The verbatim fenced source of the resolved template.
+    expect(md).toContain("```mustache");
+    expect(md).toContain("<h1>Welcome, {{name}}!</h1>");
+    // Variables table header + a linked field row using the shared field-<name> slug.
+    expect(md).toContain("| Variable | Field | Type | Required |");
+    expect(md).toContain("[Welcome.name](./Welcome.md#field-name)");
+    expect(md).toContain("[Welcome.headline](./Welcome.md#field-headline)");
+    // Rich linked <details> view.
+    expect(md).toContain("<summary>Linked view</summary>");
+
+    // Byte-identity against the regenerated golden.
+    const golden = readFileSync(
+      join(CORPUS, "template-doc-document", "expected", "WelcomePage.md"),
+      "utf-8",
+    );
+    expect(md).toBe(golden);
+
     assertNeutral(md, "WelcomePage.md");
   });
 });
@@ -139,6 +166,26 @@ describe("template.output doc page (render contract) — EMAIL", () => {
     expect(md).toContain(
       "A render helper is generated for this template: it takes the payload and returns the rendered email — subject, HTML body, and an optional text body.",
     );
+
+    // Template source: one sub-section per email part, each with the real source.
+    expect(md).toContain("## Template source");
+    expect(md).toContain("### Subject");
+    expect(md).toContain("### HTML body");
+    expect(md).toContain("### Text body");
+    expect(md).toContain("```mustache");
+    expect(md).toContain("Welcome aboard, {{name}}!");
+    expect(md).toContain("<h1>Welcome, {{name}}!</h1>");
+    // Linked variables table per part, with field-<name> slug links.
+    expect(md).toContain("[Welcome.name](./Welcome.md#field-name)");
+    expect(md).toContain("[Welcome.headline](./Welcome.md#field-headline)");
+    expect(md).toContain("<summary>Linked view</summary>");
+
+    // Byte-identity against the regenerated golden.
+    const golden = readFileSync(
+      join(CORPUS, "template-doc-email", "expected", "WelcomeEmail.md"),
+      "utf-8",
+    );
+    expect(md).toBe(golden);
 
     assertNeutral(md, "WelcomeEmail.md");
   });

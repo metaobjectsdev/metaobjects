@@ -28,6 +28,73 @@ Multipart email — rendered as the following parts:
 - `email/welcome.html`
 - `email/welcome.text`
 
+## Template source
+
+### Subject
+
+```mustache
+Welcome aboard, {{name}}!
+
+```
+
+| Variable | Field | Type | Required |
+| --- | --- | --- | --- |
+| `{{name}}` | [Welcome.name](./Welcome.md#field-name) | string | no |
+
+<details>
+<summary>Linked view</summary>
+
+<pre style="white-space:pre-wrap;word-break:break-word">Welcome aboard, <a href="./Welcome.md#field-name"><span style="color:#0969da">{{name}}</span></a>!
+</pre>
+
+</details>
+
+### HTML body
+
+```mustache
+<h1>Welcome, {{name}}!</h1>
+<p>{{headline}}</p>
+
+```
+
+| Variable | Field | Type | Required |
+| --- | --- | --- | --- |
+| `{{name}}` | [Welcome.name](./Welcome.md#field-name) | string | no |
+| `{{headline}}` | [Welcome.headline](./Welcome.md#field-headline) | string | no |
+
+<details>
+<summary>Linked view</summary>
+
+<pre style="white-space:pre-wrap;word-break:break-word">&lt;h1&gt;Welcome, <a href="./Welcome.md#field-name"><span style="color:#0969da">{{name}}</span></a>!&lt;/h1&gt;
+&lt;p&gt;<a href="./Welcome.md#field-headline"><span style="color:#0969da">{{headline}}</span></a>&lt;/p&gt;
+</pre>
+
+</details>
+
+### Text body
+
+```mustache
+Welcome, {{name}}!
+
+{{headline}}
+
+```
+
+| Variable | Field | Type | Required |
+| --- | --- | --- | --- |
+| `{{name}}` | [Welcome.name](./Welcome.md#field-name) | string | no |
+| `{{headline}}` | [Welcome.headline](./Welcome.md#field-headline) | string | no |
+
+<details>
+<summary>Linked view</summary>
+
+<pre style="white-space:pre-wrap;word-break:break-word">Welcome, <a href="./Welcome.md#field-name"><span style="color:#0969da">{{name}}</span></a>!
+
+<a href="./Welcome.md#field-headline"><span style="color:#0969da">{{headline}}</span></a>
+</pre>
+
+</details>
+
 ## Capability
 
 A render helper is generated for this template: it takes the payload and returns the rendered email — subject, HTML body, and an optional text body.

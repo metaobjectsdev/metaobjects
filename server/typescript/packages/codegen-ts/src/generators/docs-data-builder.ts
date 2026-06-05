@@ -131,7 +131,7 @@ function collectValidatorParts(field: MetaField): ValidatorParts {
  *  from declared metadata, never re-derived into ANSI/ORM SQL. Shared by the
  *  Constraints table (`neutralTypeCell`) and the Storage table's physical-type
  *  fallback (`storageTypeCell`). */
-function neutralTypeStr(field: MetaField): string {
+export function neutralTypeStr(field: MetaField): string {
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
