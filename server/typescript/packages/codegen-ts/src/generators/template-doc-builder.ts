@@ -32,6 +32,7 @@ import type { Provider } from "@metaobjectsdev/render";
 import { GENERATED_HEADER } from "../constants.js";
 import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode, type DocPageNode } from "../docs-paths.js";
+import { fieldAnchorSlug } from "./field-anchor.js";
 import type { TemplateDocData, TemplateOutputPart } from "./template-doc-data.js";
 import { buildEnrichedPayloadTree } from "./template-payload-tree.js";
 import { annotateTemplate, type AnnotatePayloadField } from "./template-source-annotate.js";
@@ -89,6 +90,16 @@ function templateDescription(t: MetaData): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+/** Page-placement node for a metadata object resolved by short name, with the
+ *  SAME package-less fallback the Payload cross-link and field hrefs share: when
+ *  the object can't be resolved off the root, fall back to a root-level node so a
+ *  link is still emitted. Keeps every inbound href routing through the one
+ *  `docPageHref(layout, …)` placement. */
+function pageNodeByName(root: MetaRoot | undefined, name: string): DocPageNode {
+  const obj = root?.findObject(name);
+  return obj !== undefined ? docPageNode(obj) : { name };
+}
+
 /** Build the TemplateDocData for one `template.output` node. */
 export function buildTemplateDocData(
   template: MetaData,
@@ -139,13 +150,12 @@ export function buildTemplateDocData(
 
   // Cross-link to the payload entity's page. The href is derived from the SAME
   // page-placement function used to write that entity page, so it resolves in
-  // BOTH layouts. Resolve the payload's package from the root (by short name)
-  // so package layout can fold the correct relative path; fall back to a
-  // package-less node (root-level) when it can't be resolved.
-  const payloadObj = root?.findObject(payloadName);
-  const payloadTarget: DocPageNode =
-    payloadObj !== undefined ? docPageNode(payloadObj) : { name: payloadName };
-  const payloadLink = docPageHref(layout, docPageNode(template), payloadTarget);
+  // BOTH layouts (package layout folds the correct relative path).
+  const payloadLink = docPageHref(
+    layout,
+    docPageNode(template),
+    pageNodeByName(root, payloadName),
+  );
 
   const data: TemplateDocData = {
     generatedMarker: `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`,
@@ -174,6 +184,8 @@ export function buildTemplateDocData(
     const section = buildTemplateSourceSection({
       provider: opts.provider,
       root,
+      layout,
+      template,
       payloadName,
       // Document: the single @textRef (unlabeled). Email: one labeled part each.
       refs:
@@ -202,6 +214,12 @@ interface SourceRefSpec {
 interface BuildSectionArgs {
   provider: Provider;
   root: MetaRoot;
+  /** Page-placement layout — threaded so field/partial hrefs route through the
+   *  SAME docPageHref the Payload cross-link uses (resolves under package layout). */
+  layout: OutputLayout;
+  /** The `template.output` node whose page is being built — the FROM page for
+   *  every relative href on this section. */
+  template: MetaData;
   payloadName: string;
   refs: SourceRefSpec[];
 }
@@ -217,9 +235,17 @@ interface BuildSectionArgs {
  * resolved, so the caller omits the section entirely.
  */
 function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined {
-  const { provider, root, payloadName, refs } = args;
+  const { provider, root, layout, template, payloadName, refs } = args;
   const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(root, payloadName);
-  const resolvePartialHref = makePartialHrefResolver(root);
+  const fromNode = docPageNode(template);
+
+  // Layout-aware field href: route through the SAME docPageHref the Payload
+  // cross-link uses, so the link lands on the owner VO's REAL page in BOTH
+  // layouts (flat → `./Owner.md`, package → `../<pkg>/Owner.md`).
+  const fieldHref = (owner: string, name: string): string =>
+    `${docPageHref(layout, fromNode, pageNodeByName(root, owner))}#${fieldAnchorSlug(name)}`;
+
+  const resolvePartialHref = makePartialHrefResolver(root, layout, fromNode);
   const isMultipart = refs.length > 1 || refs.some((r) => r.label !== undefined);
 
   const blocks: string[] = [];
@@ -229,6 +255,7 @@ function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined 
     const tokens = annotateTemplate(source, tree, {
       ownerVoName: payloadName,
       resolvePartialHref,
+      fieldHref,
     });
     const parts: string[] = [];
     if (isMultipart && spec.label !== undefined) parts.push(`### ${spec.label}`);
@@ -244,15 +271,20 @@ function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined 
 }
 
 /**
- * A `{{>ref}}` partial-href resolver: returns `./<TemplateName>.md` when `ref`
- * is a mustache source documented by SOME `template.output` node (it is one of
- * that template's source refs — @textRef or an email part ref), else undefined
- * (the partial is highlight-only). This makes a partial that inlines another
- * documented template link to that template's page.
+ * A `{{>ref}}` partial-href resolver: returns a relative href to the page of the
+ * `template.output` node that documents `ref` (it is one of that template's
+ * source refs — @textRef or an email part ref), else undefined (the partial is
+ * highlight-only). The href routes through the SAME `docPageHref(layout, …)` the
+ * field/Payload links use, so it resolves in BOTH layouts (flat → `./Name.md`,
+ * package → a correct relative path like `../comms/OrderEmail.md`).
  */
-function makePartialHrefResolver(root: MetaRoot): (ref: string) => string | undefined {
-  // Map each documented source ref → the template node's short name.
-  const refToTemplate = new Map<string, string>();
+function makePartialHrefResolver(
+  root: MetaRoot,
+  layout: OutputLayout,
+  fromNode: DocPageNode,
+): (ref: string) => string | undefined {
+  // Map each documented source ref → the template node that documents it.
+  const refToTemplate = new Map<string, MetaData>();
   for (const child of root.ownChildren()) {
     if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
     for (const attr of [
@@ -263,12 +295,12 @@ function makePartialHrefResolver(root: MetaRoot): (ref: string) => string | unde
     ]) {
       const v = child.ownAttr(attr);
       if (typeof v === "string" && v.length > 0 && !refToTemplate.has(v)) {
-        refToTemplate.set(v, child.name);
+        refToTemplate.set(v, child);
       }
     }
   }
   return (ref: string) => {
-    const name = refToTemplate.get(ref);
-    return name !== undefined ? `./${name}.md` : undefined;
+    const node = refToTemplate.get(ref);
+    return node !== undefined ? docPageHref(layout, fromNode, docPageNode(node)) : undefined;
   };
 }

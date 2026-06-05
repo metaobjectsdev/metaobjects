@@ -28,6 +28,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { dirname, posix as posixPath } from "node:path";
 import { InMemoryStringSource, MetaDataLoader } from "@metaobjectsdev/metadata";
 import {
 	ERR_VAR_NOT_ON_PAYLOAD,
@@ -35,7 +36,13 @@ import {
 	verify,
 } from "@metaobjectsdev/render";
 import type { GenContext } from "../../src/generator.js";
+import {
+	docPageHref,
+	docPageNode,
+	docPageOutputPath,
+} from "../../src/docs-paths.js";
 import { docsFile } from "../../src/generators/docs-file.js";
+import type { OutputLayout } from "../../src/import-path.js";
 import { buildEnrichedPayloadTree } from "../../src/generators/template-payload-tree.js";
 import {
 	type AnnotatePayloadField,
@@ -52,15 +59,25 @@ const CORPUS = resolve(
 	"../../../../../../fixtures/conformance",
 );
 const FIXTURE = "template-source-conformance";
+// Multi-package mirror of FIXTURE: the payload VOs live in `acme::shop`, the
+// two template.output nodes in `acme::comms`. Under package layout the doc
+// pages are written under their package dirs, so a template page links a field
+// on a VO in a DIFFERENT directory — the cross-package href case.
+const FIXTURE_PACKAGE = "template-source-conformance-package";
 
 interface Emitted {
 	path: string;
 	content: string;
 }
 
+// `outputLayout` defaults to "flat" so the existing flat cases are unchanged.
+// We thread it the SAME way the real `meta docs` command does (cli/docs.ts):
+// onto `config.outputLayout` (where the generator reads placement from) AND
+// into `makeRenderContext` — so this test exercises the exact production path.
 function makeCtx(
 	root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"],
 	projectRoot: string,
+	outputLayout: OutputLayout = "flat",
 ): GenContext {
 	const renderContext = makeRenderContext({
 		dialect: "sqlite",
@@ -69,6 +86,7 @@ function makeCtx(
 		dbImport: "~/db",
 		pkMap: buildPkMap(root),
 		relationMap: buildRelationMap(root),
+		outputLayout,
 	});
 	return {
 		entities: root.objects(),
@@ -79,6 +97,7 @@ function makeCtx(
 			extStyle: "none",
 			dbImport: "~/db",
 			dialect: "sqlite",
+			outputLayout,
 		} as never,
 		renderContext,
 		warn: () => {},
@@ -86,8 +105,8 @@ function makeCtx(
 	};
 }
 
-async function loadFixture() {
-	const inputDir = join(CORPUS, FIXTURE, "input");
+async function loadFixture(fixture: string = FIXTURE) {
+	const inputDir = join(CORPUS, fixture, "input");
 	const inputFiles = readdirSync(inputDir).filter((f) => f.endsWith(".json"));
 	const sources = inputFiles.map(
 		(f) =>
@@ -101,9 +120,14 @@ async function loadFixture() {
 	return { root: res.root, inputDir };
 }
 
-async function emit(): Promise<Emitted[]> {
-	const { root, inputDir } = await loadFixture();
-	return (await docsFile().generate(makeCtx(root, inputDir))) as Emitted[];
+async function emit(
+	fixture: string = FIXTURE,
+	outputLayout: OutputLayout = "flat",
+): Promise<Emitted[]> {
+	const { root, inputDir } = await loadFixture(fixture);
+	return (await docsFile().generate(
+		makeCtx(root, inputDir, outputLayout),
+	)) as Emitted[];
 }
 
 // ── Link parsing (precise — no false-accept) ─────────────────────────────────
@@ -402,5 +426,158 @@ describe("teeth — the integrity check fails on real drift", () => {
 			[...allVarPaths(tokens)].filter((p) => !linked.has(p)),
 		);
 		expect([...unlinked].sort()).toEqual([...flagged].sort());
+	});
+});
+
+// ── 4. Package layout — field links resolve cross-package ─────────────────────
+//
+// Under `outputLayout: "package"` the doc pages are written under their package
+// dirs (`acme/shop/Order.md`, `acme/comms/OrderPage.md`). A template page in
+// `acme/comms/` linking a field on a VO in `acme/shop/` MUST emit a relative
+// href that, resolved against the template page's OWN output path, lands on the
+// VO's REAL emitted page (`../shop/Order.md#field-ref`) — NOT a bare
+// `./Order.md` (which from `acme/comms/` points at the wrong directory). The
+// sibling "Payload" link already does this via docPageHref; the per-`{{var}}`
+// field links must match. `docPageOutputPath`/`docPageHref` are the source of
+// truth for expected placement.
+
+// Parse field-doc links allowing BOTH `./` and `../` relative forms (package
+// layout yields `../shop/Order.md#field-…`). Captures the FULL relative href
+// (path + fragment) plus the page filename + anchor, on both surfaces.
+const PKG_MD_LINK =
+	/\[[^\]]*\]\((\.\.?\/[^)#]*?([^/)#]+\.md)#(field-[A-Za-z0-9_]+))\)/g;
+const PKG_HREF_LINK =
+	/href="(\.\.?\/[^"#]*?([^/"#]+\.md)#(field-[A-Za-z0-9_]+))"/g;
+
+interface PkgFieldLink {
+	href: string; // full relative href incl. fragment, e.g. ../shop/Order.md#field-ref
+	page: string; // target page filename, e.g. Order.md
+	anchor: string; // e.g. field-ref
+	surface: "md" | "href";
+}
+
+function parsePkgFieldLinks(content: string): PkgFieldLink[] {
+	const out: PkgFieldLink[] = [];
+	for (const m of content.matchAll(PKG_MD_LINK)) {
+		out.push({ href: m[1]!, page: m[2]!, anchor: m[3]!, surface: "md" });
+	}
+	for (const m of content.matchAll(PKG_HREF_LINK)) {
+		out.push({ href: m[1]!, page: m[2]!, anchor: m[3]!, surface: "href" });
+	}
+	return out;
+}
+
+describe("package layout — field links resolve cross-package", () => {
+	it("every {{var}} field link on a template page resolves to the field-owner's REAL package-layout page", async () => {
+		const layout: OutputLayout = "package";
+		const { root, inputDir } = await loadFixture(FIXTURE_PACKAGE);
+		const files = (await docsFile().generate(
+			makeCtx(root, inputDir, layout),
+		)) as Emitted[];
+		const emittedPaths = new Set(files.map((f) => f.path));
+
+		// Sanity: pages ARE folded under their package dirs.
+		for (const p of [
+			"acme/shop/Order.md",
+			"acme/shop/Customer.md",
+			"acme/comms/OrderPage.md",
+			"acme/comms/OrderEmail.md",
+		]) {
+			expect(emittedPaths.has(p), `missing package-layout page ${p}`).toBe(
+				true,
+			);
+		}
+
+		// Index: page output path → set of field anchors it emits.
+		const anchorByPath = new Map<string, Set<string>>();
+		const ID = /id="(field-[A-Za-z0-9_]+)"/g;
+		for (const f of files) {
+			const set = new Set<string>();
+			for (const m of f.content.matchAll(ID)) set.add(m[1]!);
+			anchorByPath.set(f.path, set);
+		}
+
+		const templatePages = files.filter((f) =>
+			f.path.startsWith("acme/comms/"),
+		);
+		expect(templatePages.length, "no template pages emitted").toBe(2);
+
+		let checked = 0;
+		for (const page of templatePages) {
+			// The template node that produced this page (carries its package, so its
+			// placement folds under `acme/comms/`). Looked up off the root's own
+			// children (templates aren't `findObject`-able).
+			const templateName = page.path.split("/").pop()!.replace(/\.md$/, "");
+			const templateNode = root
+				.ownChildren()
+				.find((c) => c.name === templateName);
+			expect(
+				templateNode,
+				`could not find template node for ${page.path}`,
+			).toBeDefined();
+			const fromNode = docPageNode(templateNode!);
+			// The from-node MUST place under the template's own dir.
+			expect(docPageOutputPath(layout, fromNode)).toBe(page.path);
+
+			const links = parsePkgFieldLinks(page.content);
+			// Each template page must carry field links on BOTH surfaces.
+			expect(
+				links.length,
+				`${page.path}: no field links parsed (page content may use a bare ./<Owner>.md href the package-aware regex rejects — that IS the bug)`,
+			).toBeGreaterThan(0);
+
+			for (const link of links) {
+				// The owner VO is the target page's short name (Order.md → Order).
+				const ownerName = link.page.replace(/\.md$/, "");
+				const ownerObj = root.findObject(ownerName);
+				expect(
+					ownerObj,
+					`${page.path}: link target ${link.page} is not a known VO`,
+				).toBeDefined();
+
+				// Source of truth for WHERE the owner page is + WHAT href should point
+				// at it from this template page (`fromNode` computed above).
+				const toNode = docPageNode(ownerObj!);
+				const expectedOwnerPath = docPageOutputPath(layout, toNode);
+				const expectedHref = `${docPageHref(layout, fromNode, toNode)}#${link.anchor}`;
+
+				// (a) The href must NOT be a bare `./<Owner>.md…` — under package layout
+				// it must carry the owner's package dir relative to the template page.
+				expect(
+					link.href.startsWith(`./${link.page}#`),
+					`${page.path}: field link ${link.href} is a bare ./${link.page} — ignores package layout (owner page is ${expectedOwnerPath})`,
+				).toBe(false);
+
+				// (b) The href must equal what docPageHref derives (the same helper the
+				// Payload link already uses) for this from→to pair.
+				expect(
+					link.href,
+					`${page.path}: field link ${link.href} != expected ${expectedHref}`,
+				).toBe(expectedHref);
+
+				// (c) Resolving the href against the template page's own dir must land
+				// on the owner's ACTUAL emitted page path.
+				const resolved = posixPath.normalize(
+					posixPath.join(dirname(page.path), link.href.split("#")[0]!),
+				);
+				expect(
+					resolved,
+					`${page.path}: field link ${link.href} resolves to ${resolved}, not the emitted owner page ${expectedOwnerPath}`,
+				).toBe(expectedOwnerPath);
+
+				// (d) That resolved page is in the emitted set AND carries the anchor.
+				expect(
+					emittedPaths.has(resolved),
+					`${page.path}: resolved target ${resolved} is not an emitted page`,
+				).toBe(true);
+				expect(
+					anchorByPath.get(resolved)?.has(link.anchor),
+					`${page.path}: ${resolved} is missing anchor ${link.anchor}`,
+				).toBe(true);
+
+				checked++;
+			}
+		}
+		expect(checked, "no cross-package field links checked").toBeGreaterThan(0);
 	});
 });

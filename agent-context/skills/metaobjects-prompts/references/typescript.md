@@ -95,3 +95,14 @@ build (exit 1, `(output)`-prefixed diagnostic) if a reference can't be resolved 
 catching payload-VO ↔ parser drift at build time. The emitted parser imports `zod`;
 it's usually already a dependency (Drizzle / `runtime-ts` lean on it), else
 `npm i zod`.
+
+## See which fields a template consumes
+
+Run `meta docs` to emit neutral model docs to `./docs` — one page per
+`template.output` at `docs/<Template>.md`. Each template page has a
+`## Template source` section that shows the Mustache source with every `{{var}}`
+linked to that field's doc page (`docs/<Owner>.md#field-<name>`), plus a variables
+table — so you can see exactly which payload fields a template reads. Those links are
+build-time drift-gated against the render `verify()` engine, so a link can't claim a
+field that `verify()` would reject. (`meta docs` is the single door for these neutral
+docs — it's a command, not a `meta gen` generator.)

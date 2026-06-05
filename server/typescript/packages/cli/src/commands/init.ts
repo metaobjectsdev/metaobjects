@@ -48,7 +48,7 @@ export default defineConfig({
     queriesFile(),
     routesFile(),
     barrel(),
-    apiDocsFile(),
+    apiDocsFile(),  // SDK/API reference -> <outDir>/docs/api/ (for neutral model docs, run: meta docs)
   ],
 });
 `;
@@ -60,6 +60,7 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 Next steps (when later sub-projects ship):
   meta ingest        # propose entities from your existing TS code
   meta gen           # codegen TS targets from entities
+  meta docs          # neutral model docs (entity + template pages, incl. linked template source)
   meta serve         # local viewer
   meta install-hooks # register MCP server + Claude Code hooks
 `;
