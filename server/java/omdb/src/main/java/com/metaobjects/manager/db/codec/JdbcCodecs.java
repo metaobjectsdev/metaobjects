@@ -1,13 +1,24 @@
 /*
- * Copyright (c) 2026 Doug Mealing LLC. All Rights Reserved.
+ * Copyright 2026 Doug Mealing LLC dba Meta Objects
  *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/*
  * FR-003 Plan 4 (Debt 1) — JDBC codec registry. Replaces the if/else type
  * ladders in ObjectManagerDB.parseField and GenericSQLDriver.setStatementValue
  * with explicit per-subtype codecs (ADR-0002 Open-Closed).
- *
  * Each nested codec is a verbatim transcription of the original ladder branch.
  * Extending OMDB to a new field subtype is one register() call.
- *
  * Pattern reference: MyBatis TypeHandlerRegistry + Jackson SimpleModule —
  * explicit static registration, no ServiceLoader (which hides registration
  * from grep + tracing). Keep all codecs in this single file so a reader sees
