@@ -47,6 +47,12 @@ export interface Generator {
   /** Marks the generator that produces entity modules — the runner uses its
    *  target as the entity-module target for cross-target import resolution. */
   emitsEntityModule?: boolean;
+  /** Marks the OPT-IN Hono routes generator (routesFileHono). The runner
+   *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
+   *  so a generator that documents the API surface (api-docs) can AUTO-DETECT
+   *  that Hono routes are actually being emitted and document them — rather than
+   *  silently omitting the Hono CRUD registrars whenever the variant is wired. */
+  emitsHonoRoutes?: boolean;
 }
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void

@@ -42,6 +42,11 @@ export interface ResolvedGenConfig {
   dialect: Dialect;
   /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each entity's metadata package. */
   outputLayout?: OutputLayout;
+  /** Whether the OPT-IN Hono routes generator (routesFileHono) is active in the
+   *  run — aggregated by the runner from the suite's `emitsHonoRoutes` markers.
+   *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
+   *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
+  includeHonoRoutes?: boolean;
 }
 
 export interface MetaobjectsGenConfig extends ResolvedGenConfig {
