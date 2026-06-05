@@ -22,6 +22,7 @@ import {
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
+  TEMPLATE_ATTR_FORMAT,
 } from "@metaobjectsdev/metadata";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -32,6 +33,7 @@ import {
 } from "../generator.js";
 import { generatePayloadInterfacesBatch } from "../payload-codegen.js";
 import { GENERATED_HEADER } from "../constants.js";
+import { LLM_CALL_BASE } from "../ai/derive-trace-fields.js";
 
 export interface TraceHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */
@@ -39,8 +41,6 @@ export interface TraceHelperOpts {
   /** Optional named output target (registry key). Defaults to "default". */
   target?: string;
 }
-
-const LLM_CALL_BASE = "LlmCallBase";
 
 /** Walk the super chain looking for a node whose name matches `baseName`. */
 function extendsBase(obj: MetaObject): boolean {
@@ -81,6 +81,13 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const entityName = entity.name;
       const fnName = `record${pascal(entityName)}`;
 
+      // Derive the parse format from the prompt's @format attr.
+      // "xml" → Format.XML; absent or any other value → Format.JSON.
+      const promptFormat = prompt.ownAttr(TEMPLATE_ATTR_FORMAT);
+      const formatLiteral = typeof promptFormat === "string" && promptFormat.toLowerCase() === "xml"
+        ? "Format.XML"
+        : "Format.JSON";
+
       // Collect VO names for interface emission (dedupe via batch emitter).
       const voNames: string[] = [];
       if (typeof payloadRef === "string") voNames.push(payloadRef);
@@ -112,6 +119,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         ``,
         `export interface ${entityName}TraceResult extends RecordLlmCallResult {`,
         `  /** Parsed response VO, or null when extraction reported a lost-required field. */`,
+        `  /** Note: voResponse is the plain extracted record typed as the response shape (structural, not an instance). */`,
         `  voResponse: ${responseRef} | null;`,
         `}`,
         ``,
@@ -136,7 +144,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `  const result = await recordLlmCall(input, {`,
         `    recorder: new LlmCallDbRecorder(om, "${entityName}"),`,
         `    responseMo,`,
-        `    format: Format.JSON,`,
+        `    format: ${formatLiteral},`,
         `  });`,
         `  return result as ${entityName}TraceResult;`,
         `}`,

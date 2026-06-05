@@ -22,7 +22,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 
-const LLM_CALL_BASE = "LlmCallBase";
+export const LLM_CALL_BASE = "LlmCallBase";
 
 /** Walk the super chain looking for a node whose name matches `baseName`. */
 function extendsBase(obj: MetaData, baseName: string): boolean {

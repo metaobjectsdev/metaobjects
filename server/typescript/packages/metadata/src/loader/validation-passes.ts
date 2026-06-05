@@ -111,9 +111,19 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
 // `meta verify` step, not here.
 // ---------------------------------------------------------------------------
 
+/** Recursively collect all template.* nodes anywhere in the metadata tree. */
+function allTemplates(node: MetaData): MetaData[] {
+  const out: MetaData[] = [];
+  for (const c of node.ownChildren()) {
+    if (c.type === TYPE_TEMPLATE) out.push(c);
+    out.push(...allTemplates(c));
+  }
+  return out;
+}
+
 export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const tmpl of root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE)) {
+  for (const tmpl of allTemplates(root)) {
     // --- @kind / textRef / email part-ref cross-field rules ---
     // template.output is either a document (@kind absent/"document" → @textRef
     // required) or an email (@kind="email" → @subjectRef + @htmlBodyRef required,

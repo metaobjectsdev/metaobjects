@@ -24,6 +24,20 @@ describe("template.prompt @responseRef", () => {
   });
 });
 
+test("unresolved @responseRef on a NESTED prompt is a loader error", async () => {
+  const m = JSON.stringify({ "metadata.root": { package: "t::ai", children: [
+    { "object.value": { name: "ReqVO", children: [{ "field.string": { name: "q" } }] } },
+    { "object.entity": { name: "Call", children: [
+      { "source.rdb": { "@table": "call", "@role": "primary" } },
+      { "field.uuid": { name: "spanId" } },
+      { "identity.primary": { "@fields": ["spanId"] } },
+      { "template.prompt": { name: "CallPrompt", "@payloadRef": "ReqVO", "@responseRef": "NoSuchVO", "@textRef": "p/x", "@format": "xml" } },
+    ] } },
+  ] } });
+  const r = await MetaDataLoader.fromString(m, "json");
+  expect(r.errors.some((e: { code?: string }) => e.code === "ERR_INVALID_TEMPLATE")).toBe(true);
+});
+
 test("template.prompt is allowed as a child of object.entity", async () => {
   const m = JSON.stringify({ "metadata.root": { package: "t::ai", children: [
     { "object.value": { name: "ReqVO", children: [{ "field.string": { name: "q" } }] } },
