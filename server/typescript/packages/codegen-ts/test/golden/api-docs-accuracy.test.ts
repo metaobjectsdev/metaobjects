@@ -45,7 +45,7 @@ import {
   renderHelper,
 } from "../../src/generators/index.js";
 import { buildApiModel, type ApiModel, type ApiSymbol } from "../../src/generators/api-model.js";
-import { routesHandlerName } from "../../src/naming.js";
+import { routesHandlerName, variableNameFromEntity } from "../../src/naming.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -236,6 +236,80 @@ function hasPathConst(content: string, path: string): boolean {
 /** Whole-word presence of an identifier (used for negative/inverse assertions). */
 function hasIdentifier(content: string, name: string): boolean {
   return new RegExp(`\\b${esc(name)}\\b`).test(content);
+}
+
+// ---------------------------------------------------------------------------
+// Field-SET extraction from the REAL generated output (T2 field-shape gate).
+// The api-docs field shapes must name EXACTLY the fields the generators emit, so
+// the gate parses the emitted code's own field sets and compares — a precise
+// match (no documented field absent from / extra vs the generated artifact).
+// ---------------------------------------------------------------------------
+
+/** The TOP-LEVEL property keys inside the FIRST `<openMarker> … }` object body
+ *  starting at `openMarker` — brace-depth-aware so nested `{ … }` (e.g. a
+ *  column's `{ enum: [...] }` options or a zod `.transform(() => …)`) don't leak
+ *  their inner keys. A "key" is an identifier at brace depth 1 immediately
+ *  followed by `:`. */
+function topLevelKeys(content: string, openMarker: string): string[] {
+  const start = content.indexOf(openMarker);
+  if (start < 0) return [];
+  // Advance to the first `{` after the marker (the object-literal open).
+  let i = content.indexOf("{", start);
+  if (i < 0) return [];
+  let depth = 0;
+  const keys: string[] = [];
+  let atKeyPosition = false; // true when the next identifier is a depth-1 key
+  for (; i < content.length; i++) {
+    const ch = content[i]!;
+    if (ch === "{") {
+      depth++;
+      if (depth === 1) atKeyPosition = true;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) break;
+      continue;
+    }
+    if (depth !== 1) continue;
+    if (ch === ",") {
+      atKeyPosition = true;
+      continue;
+    }
+    if (atKeyPosition && /[A-Za-z_$]/.test(ch)) {
+      const m = content.slice(i).match(/^([A-Za-z_$][\w$]*)\s*:/);
+      if (m) {
+        keys.push(m[1]!);
+        i += m[1]!.length; // skip past the identifier (the `:` re-enters the loop)
+      }
+      atKeyPosition = false;
+    }
+  }
+  return keys;
+}
+
+/** The drizzle table column names an entity file emits — the model's field set.
+ *  Reads the `<table> = sqliteTable("<name>", { … })` columns object. */
+function modelColumnNames(entityContent: string, tableVar: string): string[] {
+  return topLevelKeys(entityContent, `${tableVar} = sqliteTable(`);
+}
+
+/** The property keys of a `z.object({ … })` bound to `<schemaName> = z.object(`. */
+function zodSchemaKeys(entityContent: string, schemaName: string): string[] {
+  return topLevelKeys(entityContent, `${schemaName} = z.object(`);
+}
+
+/** The interface property names an entity/VO file emits (value-object path). */
+function interfaceFieldNames(content: string, ifaceName: string): string[] {
+  const m = content.match(new RegExp(`export\\s+interface\\s+${esc(ifaceName)}\\s*\\{([\\s\\S]*?)\\n\\}`));
+  if (!m) return [];
+  const body = m[1]!;
+  const names: string[] = [];
+  for (const line of body.split("\n")) {
+    const mm = line.match(/^\s*([A-Za-z_$][\w$]*)\??\s*:/);
+    if (mm) names.push(mm[1]!);
+  }
+  return names;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,5 +648,107 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     expect(fileFor(queriesFiles, "SummaryVO.queries.ts"), "queries skips value object").toBeUndefined();
     expect(hasExportedFn(queriesAll, "findSummaryVOById")).toBe(false);
     expect(hasExportedFn(queriesAll, "createSummaryVO")).toBe(false);
+  });
+
+  // -----------------------------------------------------------------------
+  // FIELD SHAPES (T2): the documented field SET (model / create / update /
+  // extractor payload) must match — PRECISELY — the field set the REAL
+  // generators emit. A drift in the field set (a documented field absent from /
+  // extra vs the generated artifact) FAILS the gate. We also assert
+  // required/optional + the enum-literal type agree with the generated zod/TS.
+  // -----------------------------------------------------------------------
+
+  /** Pull a unit's symbol of a given kind (first match). */
+  function symOf(node: string, kind: ApiSymbol["kind"]): ApiSymbol {
+    const u = model.units.find((x) => x.node === node)!;
+    const s = u.symbols.find((x) => x.kind === kind);
+    expect(s, `${node} has a ${kind} symbol`).toBeDefined();
+    return s!;
+  }
+  /** A documented symbol's field NAMES (in order). */
+  function docFieldNames(s: ApiSymbol): string[] {
+    return (s.fields ?? []).map((f) => f.name);
+  }
+
+  test("FIELD SHAPE: model fields == the entity's emitted drizzle columns (precise set)", () => {
+    const f = fileFor(entityFiles, "Product.ts")!;
+    const emitted = modelColumnNames(f.content, variableNameFromEntity("Product"));
+    expect(emitted.length).toBeGreaterThan(0);
+    const documented = docFieldNames(symOf("Product", "model"));
+    // PRECISE set match — order-independent, no missing/extra field.
+    expect([...documented].sort()).toEqual([...emitted].sort());
+    // The PK (id) is documented required; a plain non-required field is optional.
+    const byName = new Map(symOf("Product", "model").fields!.map((x) => [x.name, x]));
+    expect(byName.get("id")!.optional).toBe(false);
+    expect(byName.get("name")!.optional).toBe(true);
+  });
+
+  test("FIELD SHAPE: create-payload fields == the emitted ProductInsertSchema keys (precise set + optionality)", () => {
+    const f = fileFor(entityFiles, "Product.ts")!;
+    const emitted = zodSchemaKeys(f.content, "ProductInsertSchema");
+    expect(emitted.length).toBeGreaterThan(0);
+    // The auto-gen PK (id) must NOT be in the InsertSchema — nor documented.
+    expect(emitted).not.toContain("id");
+    // The createProduct data-access symbol's fields document the InsertSchema.
+    const createSym = model.units.find((u) => u.node === "Product")!.symbols
+      .find((s) => s.kind === "data-access" && s.name.startsWith("createProduct"))!;
+    expect(createSym.fields, "createProduct carries the create payload shape").toBeDefined();
+    expect([...docFieldNames(createSym)].sort()).toEqual([...emitted].sort());
+    expect(docFieldNames(createSym)).not.toContain("id");
+
+    // The validation InsertSchema symbol documents the SAME set.
+    const insertVal = model.units.find((u) => u.node === "Product")!.symbols
+      .find((s) => s.kind === "validation" && s.name === "ProductInsertSchema")!;
+    expect([...docFieldNames(insertVal)].sort()).toEqual([...emitted].sort());
+
+    // Enum-literal accuracy: `status` is documented as the literal union the
+    // generator emits (`"active" | "discontinued"`), not an opaque name.
+    const status = insertVal.fields!.find((x) => x.name === "status")!;
+    expect(status.type).toBe(`"active" | "discontinued"`);
+    expect(f.content).toContain(`z.enum(["active", "discontinued"])`);
+  });
+
+  test("FIELD SHAPE: update-payload fields == the emitted ProductUpdateSchema keys (all optional)", () => {
+    const f = fileFor(entityFiles, "Product.ts")!;
+    const emitted = zodSchemaKeys(f.content, "ProductUpdateSchema");
+    expect(emitted.length).toBeGreaterThan(0);
+    const updateVal = model.units.find((u) => u.node === "Product")!.symbols
+      .find((s) => s.kind === "validation" && s.name === "ProductUpdateSchema")!;
+    expect([...docFieldNames(updateVal)].sort()).toEqual([...emitted].sort());
+    // PATCH semantics — every documented update field is optional.
+    expect(updateVal.fields!.every((x) => x.optional)).toBe(true);
+    // The updateProduct data-access symbol documents the same update set.
+    const updateSym = model.units.find((u) => u.node === "Product")!.symbols
+      .find((s) => s.kind === "data-access" && s.name.startsWith("updateProduct"))!;
+    expect([...docFieldNames(updateSym)].sort()).toEqual([...emitted].sort());
+  });
+
+  test("FIELD SHAPE: REST POST body == create set, PATCH body == update set, GET response == model set", () => {
+    const f = fileFor(entityFiles, "Product.ts")!;
+    const insert = zodSchemaKeys(f.content, "ProductInsertSchema");
+    const update = zodSchemaKeys(f.content, "ProductUpdateSchema");
+    const cols = modelColumnNames(f.content, variableNameFromEntity("Product"));
+    const rest = model.units.find((u) => u.node === "Product")!.symbols.filter((s) => s.kind === "rest");
+    const post = rest.find((s) => s.name.startsWith("POST "))!;
+    const patch = rest.find((s) => s.name.startsWith("PATCH "))!;
+    const getOne = rest.find((s) => s.name === "GET /products/:id")!;
+    expect([...docFieldNames(post)].sort()).toEqual([...insert].sort());
+    expect([...docFieldNames(patch)].sort()).toEqual([...update].sort());
+    expect([...docFieldNames(getOne)].sort()).toEqual([...cols].sort());
+    // DELETE carries no body shape.
+    const del = rest.find((s) => s.name.startsWith("DELETE "))!;
+    expect(del.fields).toBeUndefined();
+  });
+
+  test("FIELD SHAPE: extractor payload fields == the @payloadRef VO interface fields", () => {
+    const voFile = fileFor(entityFiles, "SummaryVO.ts")!;
+    const emitted = interfaceFieldNames(voFile.content, "SummaryVO");
+    expect(emitted).toContain("headline");
+    const extract = model.units.find((u) => u.node === "ProductSummary")!.symbols
+      .find((s) => s.kind === "extractor" && s.name === "extractProductSummary")!;
+    expect(extract.fields, "extract carries the payload VO shape").toBeDefined();
+    expect([...docFieldNames(extract)].sort()).toEqual([...emitted].sort());
+    // @required field is documented required.
+    expect(extract.fields!.find((x) => x.name === "headline")!.optional).toBe(false);
   });
 });

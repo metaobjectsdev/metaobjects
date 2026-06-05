@@ -17,6 +17,7 @@
 import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
 import type { ApiModel, ApiUnitDoc, ApiSymbol, ApiSymbolKind } from "./api-model.js";
+import { inlineShape, type FieldShape } from "./api-field-shape.js";
 import { docPageHref, type DocPageNode } from "../docs-paths.js";
 import type { OutputLayout } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -61,6 +62,12 @@ interface SectionVM {
   heading: string;
   symbols: SymbolVM[];
 }
+interface FieldRowVM {
+  field: string;
+  type: string;
+  required: string;
+  notes: string;
+}
 interface SymbolVM {
   signature: string;
   usage: string;
@@ -73,6 +80,42 @@ interface SymbolVM {
   /** When/why the symbol throws — surfaced as a "Throws:" line. */
   throws?: string;
   example?: string;
+  /** Present iff the symbol carries a documented field shape — rendered as a
+   *  Field / Type / Required / Notes table (mirroring the docs Constraints
+   *  table) so a reader sees exactly what fields to pass / expect. */
+  hasFields?: boolean;
+  /** The field-table rows (one per documented field). */
+  fieldRows?: FieldRowVM[];
+  /** A short caption above the table naming what the shape is (e.g. "Fields",
+   *  "Request body", "Returns"). */
+  fieldsCaption?: string;
+}
+
+/** A human-page caption for a symbol's field table, by kind + signature shape. */
+function fieldsCaptionFor(s: ApiSymbol): string {
+  if (s.kind === "model") return "Fields";
+  if (s.kind === "validation") return "Accepted fields";
+  if (s.kind === "extractor") return "Returns";
+  if (s.kind === "rest") {
+    return s.name.startsWith("GET ") ? "Response body" : "Request body";
+  }
+  // data-access: a create/update takes a body; reads return the model.
+  return s.name.startsWith("create") || s.name.startsWith("update") ? "Request body (data)" : "Returns";
+}
+
+/** Markdown-escape a cell whose text may contain a `|` (TS union types do). */
+function mdCell(text: string): string {
+  return text.replace(/\|/g, "\\|");
+}
+
+/** Build the Field / Type / Required / Notes rows from a field shape. */
+function fieldRows(fields: FieldShape[]): FieldRowVM[] {
+  return fields.map((f) => ({
+    field: f.name,
+    type: mdCell(f.type),
+    required: f.optional ? "" : "yes",
+    notes: f.note ?? "",
+  }));
 }
 
 /** The exact `import { … } from "<importPath>"` an adopter writes for a symbol.
@@ -113,6 +156,13 @@ function symbolVM(s: ApiSymbol): SymbolVM {
   }
   if (s.throws !== undefined) vm.throws = s.throws;
   if (s.example !== undefined) vm.example = s.example;
+  // Field shape → a Field / Type / Required / Notes table (only when there is at
+  // least one field; a shape with no fields is omitted to keep the page clean).
+  if (s.fields !== undefined && s.fields.length > 0) {
+    vm.hasFields = true;
+    vm.fieldsCaption = fieldsCaptionFor(s);
+    vm.fieldRows = fieldRows(s.fields);
+  }
   return vm;
 }
 
@@ -226,6 +276,41 @@ interface AgentUnitVM {
  *  import line per symbol). REST endpoints aren't importable identifiers — they
  *  collapse under their entity's single route-registrar import (the registrar is
  *  the imported name; the endpoints list the verbs/paths it mounts). */
+/**
+ * The agent-form signature WITH the field shape inlined — so an LLM sees exactly
+ * what to pass / what it gets, not an opaque `unknown` / `ZodType` / type NAME.
+ * Token-frugal but complete. Shaping is per kind:
+ *   • model            → `interface <Name> <inlineShape>`;
+ *   • data-access      → swap the `data: unknown` param for `data: <inlineShape>`
+ *                        (create/update only; reads have no body shape);
+ *   • validation       → `<Name>InsertSchema: ZodType<<inlineShape>>`;
+ *   • REST             → append ` body: <inlineShape>` (write) / ` -> <inlineShape>`
+ *                        (GET response);
+ *   • extractor        → append ` // <Payload>: <inlineShape>`.
+ * Falls back to the bare signature when the symbol carries no field shape.
+ */
+function agentSignature(s: ApiSymbol): string {
+  if (s.fields === undefined || s.fields.length === 0) return s.signature;
+  const shape = inlineShape(s.fields);
+  switch (s.kind) {
+    case "model":
+      return `interface ${s.name} ${shape}`;
+    case "data-access":
+      // create/update carry a `data: unknown` body param to specialize.
+      return s.signature.includes("data: unknown")
+        ? s.signature.replace("data: unknown", `data: ${shape}`)
+        : s.signature;
+    case "validation":
+      return s.signature.replace("ZodType", `ZodType<${shape}>`);
+    case "rest":
+      return s.name.startsWith("GET ") ? `${s.signature} -> ${shape}` : `${s.signature} body: ${shape}`;
+    case "extractor":
+      return `${s.signature} // ${s.returns ?? "payload"}: ${shape}`;
+    default:
+      return s.signature;
+  }
+}
+
 function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
   const order: string[] = [];
   const byModule = new Map<string, { names: string[]; symbols: AgentSymbolVM[] }>();
@@ -242,7 +327,7 @@ function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
     const imported = s.kind === "rest" ? s.registrar ?? s.name : s.name;
     if (!g.names.includes(imported)) g.names.push(imported);
 
-    const sym: AgentSymbolVM = { signature: s.signature, usage: s.usage };
+    const sym: AgentSymbolVM = { signature: agentSignature(s), usage: s.usage };
     if (s.throws !== undefined) sym.throwsMarker = `[throws: ${s.throws}]`;
     g.symbols.push(sym);
   }

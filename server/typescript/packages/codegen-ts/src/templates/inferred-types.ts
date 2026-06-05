@@ -28,6 +28,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
+import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
 
@@ -125,6 +126,46 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_TIME]: "string",
   [FIELD_SUBTYPE_TIMESTAMP]: "string",
 };
+
+/**
+ * The PLAIN-STRING TS type expression for a field — the SINGLE source of truth
+ * for "what TS type does the codegen give this field". `valueObjectFieldType`
+ * (which returns a `Code` so cross-module `field.object` refs hoist via
+ * `imp(...)`) makes the SAME per-branch decisions; this string form exists for
+ * consumers (the api-docs field-shape builder) that need the type name as text,
+ * not a hoisting `Code`. The branch logic MUST stay in lock-step with
+ * `valueObjectFieldType` below.
+ *
+ *  • field.object → the referenced object's bare (package-stripped) name, `[]`
+ *    when an array; `unknown` / `unknown[]` when the @objectRef is missing.
+ *  • field.enum   → the same enum-union alias `enumUnionAliasName` emits
+ *    (`<Owner><Field>` or the abstract super's PascalCase), `string` fallback.
+ *  • scalar       → SCALAR_TS_BY_SUBTYPE (else `unknown`), `[]` when an array.
+ */
+export function fieldTsTypeString(ownerName: string, field: MetaField): string {
+  if (field.subType === FIELD_SUBTYPE_OBJECT) {
+    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref === "string" && ref.length > 0) {
+      const base = stripPackage(ref);
+      return field.isArray ? `${base}[]` : base;
+    }
+    return field.isArray ? "unknown[]" : "unknown";
+  }
+  if (field.subType === FIELD_SUBTYPE_ENUM) {
+    const values = enumValues(field);
+    if (values !== undefined) {
+      // The emitted TS type is an enum-union ALIAS (`<Owner><Field>`), but its
+      // definition IS this literal union — inline it so the documented shape is
+      // self-contained (an agent sees the exact allowed values, not an opaque
+      // alias name). Array enums wrap the parenthesized union: `(A | B)[]`.
+      const union = enumUnionString(values);
+      return field.isArray ? `(${union})[]` : union;
+    }
+    return field.isArray ? "string[]" : "string";
+  }
+  const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
+  return field.isArray ? `${scalar}[]` : scalar;
+}
 
 /**
  * One-line TS type expression for a field on a value-only object.

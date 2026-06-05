@@ -164,6 +164,86 @@ ${joinCode(insertFieldLines, { on: ",\n" })}
 `;
 }
 
+/** One documented field in an Insert/Update schema's accepted shape. */
+export interface SchemaFieldShape {
+  /** The field name (the schema property key). */
+  name: string;
+  /** Whether the property is optional in the schema (`.optional()` / omitted-OK). */
+  optional: boolean;
+  /** For the @discriminator field on a TPH subtype's InsertSchema: the pinned
+   *  literal value (`z.literal("Bridge")`). Undefined otherwise. */
+  pinnedLiteral?: string;
+  /** True for @autoSet timestamp fields the schema fills server-side
+   *  (`z.string().optional().transform(...)`). */
+  autoSet?: boolean;
+}
+
+/**
+ * The field SET (name + optionality) the `<Name>InsertSchema` accepts — derived
+ * by the SAME iteration + skip rules `renderInsertSchemaOnly` /
+ * `renderZodValidators` use to EMIT that schema, so a documented create-payload
+ * shape can never drift from the real schema:
+ *   • auto-generated PK fields are omitted (caller doesn't provide them);
+ *   • @readOnly fields are omitted (DB / replication owns the write path);
+ *   • a TPH subtype's @discriminator field is a pinned `z.literal(value)`;
+ *   • @autoSet fields are present but optional (server fills them);
+ *   • every other field's optionality is `fieldWillBeOptional` (not required, or
+ *     carries a @default).
+ */
+export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
+  const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
+  const out: SchemaFieldShape[] = [];
+  for (const child of obj.fields()) {
+    if (autoGenPkFields.has(child.name)) continue;
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      out.push({ name: child.name, optional: false, pinnedLiteral: tphPin.value });
+      continue;
+    }
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
+      out.push({ name: child.name, optional: true, autoSet: true });
+    } else {
+      out.push({ name: child.name, optional: fieldWillBeOptional(child) });
+    }
+  }
+  return out;
+}
+
+/**
+ * The field SET the `<Name>UpdateSchema` accepts — same iteration + skip rules
+ * as `insertSchemaFields`, but mirroring the UpdateSchema branch of
+ * `renderZodValidators`:
+ *   • a TPH subtype's @discriminator field is OMITTED (clients can't change subtype);
+ *   • @autoSet onCreate fields are OMITTED (creation timestamps are immutable);
+ *   • @autoSet onUpdate fields are present + optional (server fills them);
+ *   • every other field is optional (PATCH semantics).
+ */
+export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
+  const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
+  const out: SchemaFieldShape[] = [];
+  for (const child of obj.fields()) {
+    if (autoGenPkFields.has(child.name)) continue;
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // TPH subtype discriminator: omitted from the update schema entirely.
+    if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE) {
+      // Omitted: creation timestamps cannot change after creation.
+      continue;
+    }
+    if (autoSet === AUTO_SET_ON_UPDATE) {
+      out.push({ name: child.name, optional: true, autoSet: true });
+      continue;
+    }
+    // All non-autoSet fields are optional in the update schema (PATCH semantics).
+    out.push({ name: child.name, optional: true });
+  }
+  return out;
+}
+
 export function renderZodValidators(obj: MetaObject): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);

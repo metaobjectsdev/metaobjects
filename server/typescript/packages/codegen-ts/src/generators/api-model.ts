@@ -81,6 +81,13 @@ import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
 import type { PkInfo } from "../pk-resolver.js";
+import {
+  modelFieldShapes,
+  createFieldShapes,
+  updateFieldShapes,
+  payloadFieldShapes,
+  type FieldShape,
+} from "./api-field-shape.js";
 
 // ---------------------------------------------------------------------------
 // Public IR shape.
@@ -129,6 +136,20 @@ export interface ApiSymbol {
   usage: string;
   /** Optional usage example snippet. */
   example?: string;
+  /**
+   * The field SHAPE this symbol's payload carries — name + TS type + optionality
+   * per field — so both renderers (human field table + agent inline shape) can
+   * show WHAT fields to pass, not just the type NAME. Accurate by construction:
+   * derived by REUSING the real generators' field walks (api-field-shape.ts), so
+   * the api-docs accuracy gate can assert the documented field set == the emitted
+   * one. Attached to:
+   *   • model            → the entity's inferred fields (model line / GET response);
+   *   • create payload    → the InsertSchema field set (create<Name> / POST body);
+   *   • update payload    → the UpdateSchema field set (update<Name> / PATCH body);
+   *   • extractor payload → the @payloadRef VO interface (extract<Name>'s return).
+   * Undefined for symbols with no documented payload shape (e.g. deleteById, list).
+   */
+  fields?: FieldShape[];
 }
 
 export interface ApiUnitDoc {
@@ -268,6 +289,7 @@ function buildEntityUnit(
     signature: `interface ${name}`,
     returns: name,
     usage: `The typed shape of a ${name} row, generated from its metadata.`,
+    fields: modelFieldShapes(obj),
   });
 
   if (isQueryable(obj)) {
@@ -340,6 +362,12 @@ function dataAccessSymbols(
     return reads;
   }
 
+  // Create/update payload shapes — the EXACT InsertSchema/UpdateSchema field sets
+  // (api-field-shape reuses the zod emitter's own walk), so `data: unknown`'s
+  // real shape is documented + gate-verified against the emitted schema.
+  const createShape = createFieldShapes(obj);
+  const updateShape = updateFieldShapes(obj);
+
   return [
     ...reads,
     {
@@ -351,6 +379,7 @@ function dataAccessSymbols(
       returns: `Promise<${name}>`,
       throws: `ZodError when data fails ${name}InsertSchema validation.`,
       usage: `Validate (via ${name}InsertSchema) and insert a new ${name}.`,
+      fields: createShape,
     },
     {
       name: update,
@@ -361,6 +390,7 @@ function dataAccessSymbols(
       returns: `Promise<${name} | null>`,
       throws: `ZodError when data fails the partial ${name}InsertSchema validation.`,
       usage: `Partially update an existing ${name} by primary key; null when not found.`,
+      fields: updateShape,
     },
     {
       name: del,
@@ -380,7 +410,8 @@ function dataAccessSymbols(
 function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
   const name = obj.name;
   // The zod schemas are composed INTO the entity file (entity-file.ts calls
-  // renderZodValidators), so they import from the same `<Name>` module.
+  // renderZodValidators), so they import from the same `<Name>` module. The
+  // documented field shapes ARE those schemas' accepted shapes.
   return [
     {
       name: `${name}InsertSchema`,
@@ -389,6 +420,7 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
       signature: `${name}InsertSchema: ZodType`,
       returns: `ZodType`,
       usage: `Zod schema validating the body of a create<${name}> / POST request (auto-generated PKs excluded).`,
+      fields: createFieldShapes(obj),
     },
     {
       name: `${name}UpdateSchema`,
@@ -397,6 +429,7 @@ function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
       signature: `${name}UpdateSchema: ZodType`,
       returns: `ZodType`,
       usage: `Zod schema validating the body of an update / PATCH request (all fields optional).`,
+      fields: updateFieldShapes(obj),
     },
   ];
 }
@@ -424,24 +457,34 @@ function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
   const routesMod = entityModulePath(layout, obj, `${name}.routes`);
   const registrar = routesHandlerName(name);
 
-  const ep = (method: string, p: string, desc: string): ApiSymbol => ({
-    name: `${method} ${p}`,
-    kind: "rest",
-    importPath: routesMod,
-    registrar,
-    signature: `${method} ${p}`,
-    usage: desc,
-  });
+  // The REST bodies/responses ARE the same gate-verified shapes: a GET returns
+  // the model shape, POST takes the create shape, PATCH takes the update shape.
+  const modelShape = modelFieldShapes(obj);
+  const createShape = createFieldShapes(obj);
+  const updateShape = updateFieldShapes(obj);
+
+  const ep = (method: string, p: string, desc: string, fields?: FieldShape[]): ApiSymbol => {
+    const sym: ApiSymbol = {
+      name: `${method} ${p}`,
+      kind: "rest",
+      importPath: routesMod,
+      registrar,
+      signature: `${method} ${p}`,
+      usage: desc,
+    };
+    if (fields !== undefined) sym.fields = fields;
+    return sym;
+  };
 
   const symbols: ApiSymbol[] = [
-    ep("GET", path, `List ${name} (supports filter/sort/paging query params).`),
-    ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`),
+    ep("GET", path, `List ${name} (supports filter/sort/paging query params).`, modelShape),
+    ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`, modelShape),
   ];
 
   if (!readOnly) {
     symbols.push(
-      ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`),
-      ep("PATCH", `${path}/:id`, `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`),
+      ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
+      ep("PATCH", `${path}/:id`, `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
       ep("DELETE", `${path}/:id`, `Delete a ${name} by id.`),
     );
   }
@@ -477,17 +520,23 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   if (payload && (format === "json" || format === "xml")) {
     const extract = `extract${name}`;
     const extractLenient = `extractLenient${name}`;
+    // The extractor's strict return IS the @payloadRef value-object's interface —
+    // document its field shape (same VO field walk the payload interface emitter
+    // uses) so an agent sees what `extract<Name>` yields, not just the type name.
+    const payloadShape = payloadFieldShapes(root, payload);
+    const extractSym: ApiSymbol = {
+      name: extract,
+      kind: "extractor",
+      importPath: extractorMod,
+      signature: `${extract}(root: MetaRoot, text: string): ${payload}`,
+      params: [`root: MetaRoot`, `text: string`],
+      returns: payload,
+      throws: `Error when a @required field is lost (the strict opt-in gate).`,
+      usage: `Parse dirty LLM ${format} text into a strict, fully-typed ${payload} graph.`,
+    };
+    if (payloadShape !== undefined) extractSym.fields = payloadShape;
     symbols.push(
-      {
-        name: extract,
-        kind: "extractor",
-        importPath: extractorMod,
-        signature: `${extract}(root: MetaRoot, text: string): ${payload}`,
-        params: [`root: MetaRoot`, `text: string`],
-        returns: payload,
-        throws: `Error when a @required field is lost (the strict opt-in gate).`,
-        usage: `Parse dirty LLM ${format} text into a strict, fully-typed ${payload} graph.`,
-      },
+      extractSym,
       {
         name: extractLenient,
         kind: "extractor",

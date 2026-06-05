@@ -66,7 +66,12 @@ export interface BuildDocDataOpts {
   layout?: OutputLayout;
 }
 
-function isFieldRequired(field: MetaField): boolean {
+/** Whether a field is required — `@required` true OR a `validator.required`
+ *  child. The SINGLE source of truth for required-ness across the Constraints
+ *  table, the Storage nullable rule, and (via the api-docs field-shape builder)
+ *  the documented model-field optionality. Exported so the field-shape builder
+ *  reuses the EXACT same rule rather than re-deriving it. */
+export function isFieldRequired(field: MetaField): boolean {
   if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }

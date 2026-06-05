@@ -15,6 +15,16 @@
 ```ts
 {{importLine}}
 ```
+{{#hasFields}}
+
+{{fieldsCaption}}:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+{{#fieldRows}}
+| `{{field}}` | `{{{type}}}` | {{required}} | {{notes}} |
+{{/fieldRows}}
+{{/hasFields}}
 {{#mountNote}}
 
 Mount: {{{mountNote}}}
