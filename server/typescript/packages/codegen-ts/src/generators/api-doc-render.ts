@@ -16,7 +16,7 @@
 
 import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
-import type { ApiModel, ApiUnitDoc, ApiSymbol, ApiSymbolKind } from "./api-model.js";
+import type { ApiModel, ApiUnitDoc, ApiSymbol, ApiSymbolKind, UnitExample } from "./api-model.js";
 import { inlineShape, type FieldShape } from "./api-field-shape.js";
 import { docPageHref, type DocPageNode } from "../docs-paths.js";
 import type { OutputLayout } from "../import-path.js";
@@ -53,6 +53,79 @@ const KIND_HEADING: Record<ApiSymbolKind, string> = {
  *  ROOT, so its links to per-unit pages are computed via the same docPageHref
  *  used elsewhere (resolves in flat AND package layout). */
 const INDEX_NODE: DocPageNode = { name: "index" };
+
+// ---------------------------------------------------------------------------
+// Setup preamble — how to obtain the runtime handles the documented signatures
+// need (`db` / `provider` / `root`). This is PROSE (not gate-enforced), so every
+// import + type here is grounded in the REAL runtime API:
+//   • `db`       — the generated CRUD helpers take `db: Db`, a Drizzle alias
+//                  (`NodePgDatabase` / `BaseSQLiteDatabase`, queries-file.ts);
+//                  construction is adopter-specific ("pass any compatible
+//                  Drizzle instance"), so we show the standard drizzle() call
+//                  rather than invent a framework import.
+//   • `provider` — render<Name>(payload, provider: Provider); `Provider` +
+//                  `InMemoryProvider` are exported from @metaobjectsdev/render.
+//   • `root`     — extract<Name>(root: MetaRoot, …); `MetaRoot` is obtained from
+//                  the loader shortcuts (`loadDirectory` / `loadString`) on
+//                  @metaobjectsdev/metadata, whose LoadResult carries `.root`.
+// ---------------------------------------------------------------------------
+
+/** A setup row: the handle name, a one-line description, and a verified snippet.
+ *  `snippetInline` is the same snippet flattened to a single line (`; `-joined)
+ *  for the token-frugal agent form. */
+interface SetupHandleVM {
+  handle: string;
+  note: string;
+  snippet: string;
+  snippetInline: string;
+}
+
+/** The full set of handles a unit's example may reference. The per-unit page
+ *  shows only the handles that unit's example actually uses; the agent + index
+ *  forms show the full set once. */
+/** Build a setup row, deriving the single-line agent snippet from the block one
+ *  (newlines → `; `, collapsing any blank lines / double semicolons). */
+function setupHandle(handle: string, note: string, snippet: string): SetupHandleVM {
+  const snippetInline = snippet
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => (l.endsWith(";") ? l.slice(0, -1) : l))
+    .join("; ");
+  return { handle, note, snippet, snippetInline };
+}
+
+const SETUP_HANDLES: Record<"db" | "provider" | "root", SetupHandleVM> = {
+  db: setupHandle(
+    "db",
+    "your Drizzle connection — the generated queries take `db: Db` (a `NodePgDatabase` / `BaseSQLiteDatabase` alias). Construct one over your own driver and pass any compatible Drizzle instance:",
+    `import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));`,
+  ),
+  provider: setupHandle(
+    "provider",
+    "the render `Provider` (resolves a template ref to text) — import it from `@metaobjectsdev/render`; `InMemoryProvider` is built in (or supply your own filesystem-backed `Provider`):",
+    `import { InMemoryProvider } from "@metaobjectsdev/render";
+const provider = new InMemoryProvider({ "group/source": "Hello {{name}}" });`,
+  ),
+  root: setupHandle(
+    "root",
+    "the loaded `MetaRoot` `extract<Name>` parses against — load your metadata via `@metaobjectsdev/metadata` (the result carries `.root`):",
+    `import { loadDirectory } from "@metaobjectsdev/metadata";
+const { root } = await loadDirectory("./metadata");`,
+  ),
+};
+
+/** Which handles a unit's example references (so the page shows only those). */
+function setupHandlesFor(unit: ApiUnitDoc): SetupHandleVM[] {
+  const text = unit.example ? unit.example.body.join("\n") : "";
+  const out: SetupHandleVM[] = [];
+  if (/\bdb\b/.test(text)) out.push(SETUP_HANDLES.db);
+  if (/\bprovider\b/.test(text)) out.push(SETUP_HANDLES.provider);
+  if (/\broot\b/.test(text)) out.push(SETUP_HANDLES.root);
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Per-unit HUMAN page.
@@ -134,6 +207,9 @@ function importLineFor(s: ApiSymbol): string {
 function entityPageVM(unit: ApiUnitDoc): {
   generatedMarker: string;
   node: string;
+  hasSetup: boolean;
+  setup: SetupHandleVM[];
+  unitExample?: string;
   sections: SectionVM[];
 } {
   const sections: SectionVM[] = [];
@@ -145,7 +221,34 @@ function entityPageVM(unit: ApiUnitDoc): {
       symbols: ofKind.map(symbolVM),
     });
   }
-  return { generatedMarker: GENERATED_MARKER, node: unit.node, sections };
+  const setup = setupHandlesFor(unit);
+  const vm: {
+    generatedMarker: string;
+    node: string;
+    hasSetup: boolean;
+    setup: SetupHandleVM[];
+    unitExample?: string;
+    sections: SectionVM[];
+  } = {
+    generatedMarker: GENERATED_MARKER,
+    node: unit.node,
+    hasSetup: setup.length > 0,
+    setup,
+    sections,
+  };
+  const ex = unitExampleBlock(unit.example);
+  if (ex !== undefined) vm.unitExample = ex;
+  return vm;
+}
+
+/** The full worked-example block for a unit (imports + body), as one ```ts body
+ *  string. Undefined when the unit has no runnable example. */
+function unitExampleBlock(example: UnitExample | undefined): string | undefined {
+  if (example === undefined) return undefined;
+  const lines = [...example.imports];
+  if (example.imports.length > 0 && example.body.length > 0) lines.push("");
+  lines.push(...example.body);
+  return lines.join("\n");
 }
 
 function symbolVM(s: ApiSymbol): SymbolVM {
@@ -267,6 +370,10 @@ interface AgentGroupVM {
 interface AgentUnitVM {
   node: string;
   groups: AgentGroupVM[];
+  /** ONE compact worked example for the unit — the concrete call site an agent
+   *  benefits most from. The body statements only (imports are already in the
+   *  group headers above). Undefined when the unit has no runnable example. */
+  example?: string;
 }
 
 /** Group a unit's symbols by their import MODULE (first-appearance order),
@@ -349,7 +456,18 @@ function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
 export function renderAgentApi(model: ApiModel, provider: Provider): string {
   const units: AgentUnitVM[] = model.units
     .filter((u) => u.symbols.length > 0)
-    .map((u) => ({ node: u.node, groups: agentGroups(u) }));
+    .map((u) => {
+      const vm: AgentUnitVM = { node: u.node, groups: agentGroups(u) };
+      // The compact agent example: body statements only (the imports are already
+      // amortized into the group headers above the example).
+      if (u.example !== undefined && u.example.body.length > 0) {
+        vm.example = u.example.body.join("\n");
+      }
+      return vm;
+    });
+  // The handles ANY unit's example references — shown once at the top so an agent
+  // knows where db / provider / root come from before the call sites below.
+  const setup = setupHandlesForModel(model);
   const payload = {
     generatedMarker: GENERATED_MARKER,
     title: "Agent API Reference",
@@ -360,7 +478,21 @@ export function renderAgentApi(model: ApiModel, provider: Provider): string {
     project: "this project",
     // Import paths are RELATIVE to the adopter's generated-output dir.
     importNote: "Imports are relative to your generated-output directory.",
+    hasSetup: setup.length > 0,
+    setup,
     units,
   };
   return render({ ref: AGENT_REF, payload, provider, format: "markdown" });
+}
+
+/** The union of setup handles referenced by ANY unit's example, in canonical
+ *  db→provider→root order (shown once at the top of the agent form). */
+function setupHandlesForModel(model: ApiModel): SetupHandleVM[] {
+  const used = new Set<string>();
+  for (const u of model.units) {
+    for (const h of setupHandlesFor(u)) used.add(h.handle);
+  }
+  return (["db", "provider", "root"] as const)
+    .filter((h) => used.has(h))
+    .map((h) => SETUP_HANDLES[h]);
 }

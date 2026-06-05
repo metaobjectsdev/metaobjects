@@ -161,6 +161,35 @@ export interface ApiUnitDoc {
   package?: string | undefined;
   nodeKind: "entity" | "template";
   symbols: ApiSymbol[];
+  /**
+   * ONE worked, runnable example per unit — a concrete call site an agent (or a
+   * human) can copy. ACCURATE BY CONSTRUCTION: it is composed from the SAME
+   * symbol NAMES + importPaths this builder already documents (never invented)
+   * and the SAME field SHAPES (T2) attached to the unit's payload symbols, with
+   * example VALUES derived from each field's TS type (string→"…", number→1,
+   * enum→a real member, …) — not entity-hardcoded. The body lines (without
+   * imports) are what the agent form shows; the human page wraps the full block
+   * (imports + body) in a fenced ```ts.
+   *
+   * For an ENTITY: a create→find→update→delete flow over the entity's own
+   * CRUD helpers. For a TEMPLATE: an extract (parse LLM text) and/or render
+   * (produce the document) call. Undefined when a unit has no runnable surface
+   * (e.g. a bare value-object model with no queries/template).
+   */
+  example?: UnitExample;
+}
+
+/** A worked example for a unit: the imports it needs (one `import { … } from "…"`
+ *  per module, in first-appearance order) + the body statements. Split so the
+ *  human page can render a full fenced block and the agent form can show a tight
+ *  body. */
+export interface UnitExample {
+  /** `import { a, b } from "Mod"` lines, deduped by module, reusing the symbols'
+   *  own importPaths (never re-derived). */
+  imports: string[];
+  /** The worked-flow statements (no imports), e.g.
+   *  `const created = await createProduct(db, { name: "…" });`. */
+  body: string[];
 }
 
 export interface ApiModel {
@@ -301,7 +330,15 @@ function buildEntityUnit(
     }
   }
 
-  return { node: name, package: effectivePackage(obj), nodeKind: "entity", symbols };
+  const unit: ApiUnitDoc = {
+    node: name,
+    package: effectivePackage(obj),
+    nodeKind: "entity",
+    symbols,
+  };
+  const example = entityExample(name, symbols);
+  if (example !== undefined) unit.example = example;
+  return unit;
 }
 
 /** The CRUD helpers templates/queries.ts emits, named via the SHARED naming
@@ -569,5 +606,127 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
     });
   }
 
-  return { node: name, package: effectivePackage(tmpl), nodeKind: "template", symbols };
+  const unit: ApiUnitDoc = {
+    node: name,
+    package: effectivePackage(tmpl),
+    nodeKind: "template",
+    symbols,
+  };
+  const example = templateExample(name, symbols);
+  if (example !== undefined) unit.example = example;
+  return unit;
+}
+
+// ---------------------------------------------------------------------------
+// Worked examples — composed from the symbols already documented above (their
+// real names + importPaths) and the field SHAPES (T2) attached to the payload
+// symbols, with VALUES derived from each field's TS type. Nothing is invented:
+// a symbol that isn't in `symbols` is never called, and an import never names a
+// module a documented symbol doesn't already point at.
+// ---------------------------------------------------------------------------
+
+/** A sample literal for a documented field, derived from its TS type STRING
+ *  (T2's `FieldShape.type`) — never from the entity. Enum unions yield a real
+ *  member; arrays an empty list; scalars a type-appropriate placeholder. */
+function sampleValueForType(type: string): string {
+  const t = type.trim();
+  // Enum / string-literal union (`"active" | "archived"`): use the first member
+  // verbatim so the example is a REAL accepted value.
+  const firstLiteral = t.match(/^"([^"]*)"/);
+  if (firstLiteral) return `"${firstLiteral[1]}"`;
+  if (t.endsWith("[]")) return "[]";
+  if (t === "number") return "1";
+  if (t === "bigint") return "1n";
+  if (t === "boolean") return "true";
+  if (t === "Date") return "new Date()";
+  if (t === "string") return `"…"`;
+  // Unknown / object / nested type: a typed-object placeholder keeps the call
+  // shape intact without inventing a fake member set.
+  return "{}";
+}
+
+/** Build a `{ field: value; … }` object literal from a payload field shape,
+ *  using only the REQUIRED fields plus the first optional (so an agent sees a
+ *  minimal-but-real body) — values derived from each field's TS type. */
+function objectLiteralFromFields(fields: FieldShape[] | undefined): string {
+  if (fields === undefined || fields.length === 0) return "{}";
+  const required = fields.filter((f) => !f.optional);
+  // If nothing is strictly required, show the first field so the body isn't `{}`.
+  const chosen = required.length > 0 ? required : fields.slice(0, 1);
+  const parts = chosen.map((f) => `${f.name}: ${sampleValueForType(f.type)}`);
+  return `{ ${parts.join(", ")} }`;
+}
+
+/** One `import { … } from "<mod>"` line per module, deduped, reusing each
+ *  symbol's OWN importPath (so the example import can't drift from the docs). */
+function importLines(picks: { name: string; importPath: string }[]): string[] {
+  const order: string[] = [];
+  const byMod = new Map<string, string[]>();
+  for (const p of picks) {
+    let names = byMod.get(p.importPath);
+    if (names === undefined) {
+      names = [];
+      byMod.set(p.importPath, names);
+      order.push(p.importPath);
+    }
+    if (!names.includes(p.name)) names.push(p.name);
+  }
+  return order.map((mod) => `import { ${byMod.get(mod)!.join(", ")} } from "${mod}";`);
+}
+
+/** A worked create→find→update→delete flow over an entity's documented CRUD
+ *  helpers. Only emitted when the entity actually carries those data-access
+ *  symbols (a value object / TPH subtype has only a model → no example). */
+function entityExample(name: string, symbols: ApiSymbol[]): UnitExample | undefined {
+  const da = (fn: string) => symbols.find((s) => s.kind === "data-access" && s.name === fn);
+  const create = da(createFnName(name));
+  const find = da(findByIdFnName(name));
+  const update = da(updateFnName(name));
+  const del = da(deleteByIdFnName(name));
+  // Need at least create+find to have a meaningful worked flow.
+  if (create === undefined || find === undefined) return undefined;
+
+  const createBody = objectLiteralFromFields(create.fields);
+  const picks: { name: string; importPath: string }[] = [
+    { name: create.name, importPath: create.importPath },
+    { name: find.name, importPath: find.importPath },
+  ];
+  const body: string[] = [
+    `const created = await ${create.name}(db, ${createBody});`,
+    `const found = await ${find.name}(db, created.id);`,
+  ];
+  if (update !== undefined) {
+    picks.push({ name: update.name, importPath: update.importPath });
+    body.push(`const updated = await ${update.name}(db, created.id, ${objectLiteralFromFields(update.fields)});`);
+  }
+  if (del !== undefined) {
+    picks.push({ name: del.name, importPath: del.importPath });
+    body.push(`const removed = await ${del.name}(db, created.id);`);
+  }
+  return { imports: importLines(picks), body };
+}
+
+/** A worked extract / render example for a template unit, over whichever of the
+ *  two surfaces the template actually exposes (extract is json/xml-gated). */
+function templateExample(name: string, symbols: ApiSymbol[]): UnitExample | undefined {
+  const extract = symbols.find((s) => s.kind === "extractor" && s.name === `extract${name}`);
+  const renderSym = symbols.find((s) => s.kind === "render" && s.name === `render${name}`);
+  if (extract === undefined && renderSym === undefined) return undefined;
+
+  const picks: { name: string; importPath: string }[] = [];
+  const body: string[] = [];
+  if (extract !== undefined) {
+    picks.push({ name: extract.name, importPath: extract.importPath });
+    body.push(`const extracted = ${extract.name}(root, llmText);`);
+  }
+  if (renderSym !== undefined) {
+    picks.push({ name: renderSym.name, importPath: renderSym.importPath });
+    // Render's payload object literal comes from the @payloadRef VO shape the
+    // render symbol returns/consumes; reuse the extractor's documented payload
+    // fields when present so the example body is real.
+    const payloadFields = extract?.fields;
+    const payloadLit = objectLiteralFromFields(payloadFields);
+    body.push(`const output = ${renderSym.name}(${payloadLit}, provider);`);
+  }
+  return { imports: importLines(picks), body };
 }
