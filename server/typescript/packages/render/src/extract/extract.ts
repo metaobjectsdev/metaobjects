@@ -12,7 +12,7 @@ import { ExtractionReport } from "./types.js";
 import { strip } from "./strip.js";
 import { locateJson, locateXml } from "./locate.js";
 import { readJson, TRUNCATED } from "./json-forgiving-reader.js";
-import { readXml, TEXT_KEY } from "./xml-forgiving-reader.js";
+import { readXml, readXmlRootless, TEXT_KEY } from "./xml-forgiving-reader.js";
 import { coerceValue, scalarCoerce, MALFORMED } from "./coerce.js";
 
 /** The forgiving entry point: extract dirty `text` against `schema`. Never throws. */
@@ -28,16 +28,20 @@ export function extract(
   const stripped = strip(text);
   const ci = o.tolerance !== Tolerance.STRICT;
 
-  const span =
-    schema.format === Format.JSON ? locateJson(stripped) : locateXml(stripped, schema.rootName, ci);
-
+  // XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there is no
+  // enclosing root to locate — so parse the whole stripped text's top-level elements directly.
+  // Otherwise locate the <rootName> span as before. JSON is unaffected. Mirrors Java Extract.
+  let span: string | null;
   let raw: Record<string, unknown>;
-  if (span == null) {
-    raw = {};
-  } else if (schema.format === Format.JSON) {
-    raw = readJson(span);
+  if (schema.format === Format.JSON) {
+    span = locateJson(stripped);
+    raw = span == null ? {} : readJson(span);
+  } else if (o.rootless) {
+    span = stripped.length === 0 ? null : stripped;
+    raw = span == null ? {} : readXmlRootless(stripped, ci);
   } else {
-    raw = readXml(span, ci);
+    span = locateXml(stripped, schema.rootName, ci);
+    raw = span == null ? {} : readXml(span, ci);
   }
 
   if (isEmptyRecord(raw) && (stripped.length === 0 || span == null)) {
