@@ -15,8 +15,8 @@ def test_compose_runs_in_dependency_order() -> None:
     b = Provider("b")
     a.add(_def("x", "a"))
     b.add(_def("x", "b"))
-    a._on_register = lambda: order.append("a")
-    b._on_register = lambda: order.append("b")
+    a.on_register(lambda _registry: order.append("a"))
+    b.on_register(lambda _registry: order.append("b"))
     reg = compose_registry([a, b])
     assert order == ["b", "a"]  # dependency b before dependent a
     assert reg.find("x", "a") is not None and reg.find("x", "b") is not None

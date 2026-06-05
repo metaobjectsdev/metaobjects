@@ -196,8 +196,14 @@ public class YamlConformanceTests
         }
 
         // Compose a registry mirroring the canonical conformance harness — every
-        // YAML fixture uses the standard core-types registry.
-        var registry = Provider.ComposeRegistry([CoreTypes.CoreTypesProvider]);
+        // YAML fixture uses the standard core-types registry plus the DB-domain provider
+        // (which now owns the @column field attr after it was migrated off core field
+        // schema). @column's string ValueType is what fires the YAML coercion guard on
+        // fixtures like `column: TRUE` / `column: ~`.
+        var registry = Provider.ComposeRegistry([
+            CoreTypes.CoreTypesProvider,
+            MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+        ]);
         var parseOpts = new ParseOptions(registry)
         {
             SourceName = "input.yaml",

@@ -27,6 +27,7 @@ const EXPECTED_NATIVE = [
   "render-helper",
   "template",
   "api-docs",
+  "trace-helper",
 ] as const;
 
 // Neutral / `meta docs`-owned (Tier-2). Present in the registry for identity +

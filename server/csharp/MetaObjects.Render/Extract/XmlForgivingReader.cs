@@ -4,19 +4,33 @@ namespace MetaObjects.Render.Extract;
 
 /// <summary>
 /// Stage-4 tolerant XML reader for the bounded corpus malformation set. Never throws.
+/// Mirrors Java XmlForgivingReader: maps an element's child elements, text, AND attributes
+/// into the field map, and handles self-closing tags (<c>&lt;x a="1"/&gt;</c>).
+///
+/// <para>Representation: text-only element with no attributes → its trimmed text
+/// (<c>string</c>); self-closing / attributes-only element → a dictionary of attribute
+/// name→value (empty string when none); element with child elements (± attributes) → a
+/// dictionary merging attributes and child entries (a child element wins a name collision);
+/// element with text AND attributes → a dictionary of the attributes plus the body text under
+/// <see cref="TextKey"/> (a scalar consumer unwraps it); repeated sibling tags → a list.</para>
 /// </summary>
 public sealed class XmlForgivingReader
 {
     /// <summary>
-    /// Parses <paramref name="span"/> as a forgiving XML document, returning
-    /// the direct children of the root element as a dictionary keyed by tag name
-    /// (lower-cased when <paramref name="caseInsensitive"/> is <c>true</c>).
-    /// Values are <c>string</c> for text-only children, a nested
-    /// <see cref="Dictionary{String, Object}"/> for element children, or a
-    /// <see cref="List{Object}"/> when the same tag name appears more than once.
-    /// Returns an empty dictionary for <c>null</c>, blank, or unextractable input.
-    /// Never throws.
+    /// Reserved key holding an element's own text content when the element is represented as a
+    /// dictionary (because it also carries attributes). '#' is not a legal XML name char, so it
+    /// never collides with a real attribute or child-element name.
     /// </summary>
+    public const string TextKey = "#text";
+
+    // tag name + everything up to the closing '>' (attributes and/or a trailing '/' for a
+    // self-closing tag). Non-greedy so the first '>' closes the open tag.
+    private const string OpenTagPattern = @"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>";
+    // one attribute: name = "double" | 'single' | bareword.
+    private static readonly Regex AttrRegex = new(
+        "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))",
+        RegexOptions.Compiled);
+
     public Dictionary<string, object?> Read(string? span, bool caseInsensitive)
     {
         var out_ = new Dictionary<string, object?>();
@@ -35,9 +49,7 @@ public sealed class XmlForgivingReader
 
     private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_)
     {
-        var openTag = new Regex(
-            @"<([A-Za-z_][A-Za-z0-9_]*)(\s[^>]*)?>",
-            ci ? RegexOptions.IgnoreCase : RegexOptions.None);
+        var openTag = new Regex(OpenTagPattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
 
         int pos = 0;
         Match m = openTag.Match(inner, pos);
@@ -45,8 +57,22 @@ public sealed class XmlForgivingReader
         {
             string tag = m.Groups[1].Value;
             string key = ci ? tag.ToLowerInvariant() : tag;
-            int contentStart = m.Index + m.Length;
 
+            string rawAttrs = m.Groups[2].Value.Trim();
+            bool selfClosing = rawAttrs.EndsWith("/");
+            if (selfClosing) rawAttrs = rawAttrs.Substring(0, rawAttrs.Length - 1).Trim();
+            var attrs = ParseAttrs(rawAttrs, ci);
+
+            if (selfClosing)
+            {
+                Accumulate(out_, key, attrs.Count == 0 ? (object?)"" : attrs);
+                pos = m.Index + m.Length;
+                if (pos >= inner.Length) break;
+                m = openTag.Match(inner, pos);
+                continue;
+            }
+
+            int contentStart = m.Index + m.Length;
             string closeRe = @"</" + Regex.Escape(tag) + @"\s*>";
             var closeRegex = new Regex(closeRe, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
             Match close = closeRegex.Match(inner, contentStart);
@@ -74,22 +100,52 @@ public sealed class XmlForgivingReader
             }
 
             string content = inner.Substring(contentStart, contentEnd - contentStart);
-            object? value = content.Contains('<')
-                ? NestedOrText(content, ci)
-                : content.Trim();
-
-            Accumulate(out_, key, value);
+            Accumulate(out_, key, Combine(attrs, content, ci));
             pos = next;
             if (pos >= inner.Length) break;
             m = openTag.Match(inner, pos);
         }
     }
 
-    private static object? NestedOrText(string content, bool ci)
+    /// <summary>Combine an element's attributes with its body (nested children or plain text).</summary>
+    private static object? Combine(Dictionary<string, object?> attrs, string content, bool ci)
     {
-        var nested = new Dictionary<string, object?>();
-        ParseChildren(content, ci, nested);
-        return nested.Count == 0 ? content.Trim() : (object?)nested;
+        if (content.Contains('<'))
+        {
+            var nested = new Dictionary<string, object?>();
+            ParseChildren(content, ci, nested);
+            if (nested.Count > 0)
+            {
+                // attributes first; a child element wins a name collision
+                var merged = new Dictionary<string, object?>(attrs);
+                foreach (var kv in nested) merged[kv.Key] = kv.Value;
+                return merged;
+            }
+        }
+        return TextValue(attrs, content);
+    }
+
+    private static object? TextValue(Dictionary<string, object?> attrs, string content)
+    {
+        string text = content.Trim();
+        if (attrs.Count == 0) return text;
+        var m = new Dictionary<string, object?>(attrs) { [TextKey] = text };
+        return m;
+    }
+
+    private static Dictionary<string, object?> ParseAttrs(string rawAttrs, bool ci)
+    {
+        var attrs = new Dictionary<string, object?>();
+        if (rawAttrs.Length == 0) return attrs;
+        foreach (Match a in AttrRegex.Matches(rawAttrs))
+        {
+            string name = ci ? a.Groups[1].Value.ToLowerInvariant() : a.Groups[1].Value;
+            string val = a.Groups[2].Success ? a.Groups[2].Value
+                : a.Groups[3].Success ? a.Groups[3].Value
+                : a.Groups[4].Success ? a.Groups[4].Value : "";
+            if (!attrs.ContainsKey(name)) attrs[name] = val;
+        }
+        return attrs;
     }
 
     private static void Accumulate(Dictionary<string, object?> out_, string key, object? value)

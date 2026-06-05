@@ -1,0 +1,4 @@
+{ "format": "XML", "rootName": "doc", "fields": [
+  { "name": "vibe", "kind": "OBJECT", "required": true, "fields": [
+    { "name": "thread_id", "kind": "STRING", "required": true },
+    { "name": "text", "kind": "STRING", "required": true, "textContent": true } ] } ] }

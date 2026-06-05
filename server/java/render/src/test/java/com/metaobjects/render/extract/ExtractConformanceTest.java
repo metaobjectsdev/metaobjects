@@ -46,11 +46,19 @@ public class ExtractConformanceTest {
 
     @Test
     public void classificationAndCanonicalValueMatch() throws IOException {
-        ExtractSchema schema = parseSchema(JSON.readTree(dir.resolve("schema.json").toFile()));
+        JsonNode schemaNode = JSON.readTree(dir.resolve("schema.json").toFile());
+        ExtractSchema schema = parseSchema(schemaNode);
         String input = Files.readString(dir.resolve("input.txt"));
         JsonNode expected = JSON.readTree(dir.resolve("expected.json").toFile());
 
-        ExtractionOutcome out = Extract.extract(input, schema, ExtractOptions.defaults());
+        // Optional per-fixture parse option: "rootless": true → XML response has no wrapper root
+        // (a flat top-level element sequence). Other ports without this option will fail this
+        // fixture — an intentional cross-port "fix me" gate.
+        ExtractOptions opts = ExtractOptions.defaults();
+        if (schemaNode.has("rootless") && schemaNode.get("rootless").asBoolean()) {
+            opts = opts.withRootless(true);
+        }
+        ExtractionOutcome out = Extract.extract(input, schema, opts);
 
         assertEquals(dir + " empty flag", expected.get("empty").asBoolean(), out.report().isEmpty());
 
@@ -152,6 +160,10 @@ public class ExtractConformanceTest {
             Double min = f.has("min") ? f.get("min").asDouble() : null;
             Double max = f.has("max") ? f.get("max").asDouble() : null;
             return FieldSpec.range(name, kind, req, min, max);
+        }
+        // @xmlText: a scalar field that receives its element's text content (the #text sentinel).
+        if (f.has("textContent") && f.get("textContent").asBoolean()) {
+            return FieldSpec.textContentField(name, kind, req);
         }
         // Phase B: a scalar field may carry a generalized @default absent-fill string.
         String defaultValue = f.has("default") ? f.get("default").asText() : null;

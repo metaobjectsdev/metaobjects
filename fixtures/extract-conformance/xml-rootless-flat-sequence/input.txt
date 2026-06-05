@@ -1,0 +1,1 @@
+<objective_status>still fighting</objective_status><objective_complete>false</objective_complete>

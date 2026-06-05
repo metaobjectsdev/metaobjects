@@ -83,7 +83,7 @@ public class ExtractTest {
     public void jsonStringArrayExtractsAsList() {
         ExtractSchema s = new ExtractSchema(Format.JSON, "answer", List.of(
                 new FieldSpec("tags", FieldKind.STRING, false, true, null, null, null, null, null,
-                        null, null, Normalize.DEFAULT)));
+                        null, null, Normalize.DEFAULT, false)));
         ExtractionOutcome o = Extract.extract("{\"tags\":[\"a\",\"b\"]}", s, ExtractOptions.defaults());
         assertEquals(List.of("a", "b"), o.data().get("tags"));
         assertEquals(FieldExtraction.EXTRACTED, o.report().states().get("tags"));
@@ -94,7 +94,7 @@ public class ExtractTest {
         ExtractSchema s = new ExtractSchema(Format.JSON, "answer", List.of(
                 new FieldSpec("tones", FieldKind.ENUM, false, true,
                         List.of("HIGH", "LOW"), Map.of("warm", "HIGH"), null, null, null,
-                        null, null, Normalize.DEFAULT)));
+                        null, null, Normalize.DEFAULT, false)));
         ExtractionOutcome o = Extract.extract("{\"tones\":[\"warm\",\"LOW\"]}", s, ExtractOptions.defaults());
         assertEquals(List.of("HIGH", "LOW"), o.data().get("tones"));
         assertEquals(FieldExtraction.EXTRACTED, o.report().states().get("tones"));
@@ -133,7 +133,7 @@ public class ExtractTest {
         ExtractSchema s = new ExtractSchema(Format.JSON, "answer", List.of(
                 new FieldSpec("tones", FieldKind.ENUM, false, true,
                         List.of("HIGH", "LOW"), Map.of(), null, null, null,
-                        null, null, Normalize.DEFAULT)));
+                        null, null, Normalize.DEFAULT, false)));
         ExtractionOutcome o = Extract.extract("{\"tones\":[\"HIGH\",\"grape\"]}", s, ExtractOptions.defaults());
         assertEquals(FieldExtraction.MALFORMED, o.report().states().get("tones"));
         assertEquals(List.of("HIGH"), o.data().get("tones"));   // valid element retained

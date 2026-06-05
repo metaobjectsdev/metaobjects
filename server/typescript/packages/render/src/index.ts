@@ -21,6 +21,7 @@ export {
   Tolerance,
   ExtractionReport,
   scalar,
+  textContentField,
   enumField,
   enumArray,
   range,

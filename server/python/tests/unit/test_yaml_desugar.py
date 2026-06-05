@@ -6,7 +6,7 @@ shared corpus end-to-end; this file pins down per-rule behavior in isolation.
 """
 from __future__ import annotations
 
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode
 from metaobjects.provider import compose_registry
 from metaobjects.registry import TypeRegistry
@@ -14,7 +14,9 @@ from metaobjects.yaml_desugar import desugar
 
 
 def _registry() -> TypeRegistry:
-    return compose_registry([core_provider])
+    # Full default provider set — the DB-domain @column attr (exercised by the
+    # coercion-guard tests below) is declared by db_provider, not core.
+    return compose_registry(list(core_providers))
 
 
 # ---------------------------------------------------------------------------

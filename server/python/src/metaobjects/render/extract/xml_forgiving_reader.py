@@ -1,5 +1,18 @@
 """Stage-4 tolerant XML reader for the bounded corpus malformation set. Never throws.
 
+Mirrors Java XmlForgivingReader: maps an element's child elements, text, AND attributes
+into the field map, and handles self-closing tags (``<x a="1"/>``).
+
+Representation:
+
+- text-only element, no attributes      → its trimmed text (``str``) — unchanged
+- self-closing / attributes-only element → a dict of attribute name→value ("" when none)
+- element with child elements (± attrs)  → a dict merging attributes + child entries
+  (a child element wins a name collision)
+- element with text AND attributes       → a dict of the attributes plus the body text under
+  :data:`TEXT_KEY` (a scalar consumer unwraps it)
+- repeated sibling tags                  → a list
+
 Carries the FR-010 fixed-behavior edge cases:
 
 - No-throw on a leading ``</x>``.
@@ -9,8 +22,17 @@ from __future__ import annotations
 
 import re
 
-_OPEN_TAG = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)(\s[^>]*)?>")
-_OPEN_TAG_CI = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)(\s[^>]*)?>", re.IGNORECASE)
+#: Reserved key holding an element's own text content when the element is represented as a
+#: dict (because it also carries attributes). ``#`` is not a legal XML name char, so it never
+#: collides with a real attribute or child-element name.
+TEXT_KEY = "#text"
+
+# tag name + everything up to the closing '>' (attributes and/or a trailing '/' for a
+# self-closing tag). Non-greedy so the first '>' closes the open tag.
+_OPEN_TAG = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>")
+_OPEN_TAG_CI = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>", re.IGNORECASE)
+# one attribute: name = "double" | 'single' | bareword.
+_ATTR = re.compile(r"""([A-Za-z_:][A-Za-z0-9_:.\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s/>]+))""")
 
 
 class XmlForgivingReader:
@@ -36,6 +58,18 @@ class XmlForgivingReader:
                 return
             tag = m.group(1)
             key = tag.lower() if ci else tag
+
+            raw_attrs = (m.group(2) or "").strip()
+            self_closing = raw_attrs.endswith("/")
+            if self_closing:
+                raw_attrs = raw_attrs[:-1].strip()
+            attrs = self._parse_attrs(raw_attrs, ci)
+
+            if self_closing:
+                self._accumulate(out, key, "" if not attrs else attrs)
+                pos = m.end()
+                continue
+
             content_start = m.end()
             close_re = re.compile(
                 "</" + re.escape(tag) + r"\s*>", re.IGNORECASE if ci else 0
@@ -54,18 +88,43 @@ class XmlForgivingReader:
                     content_end = len(inner)
                     nxt = len(inner)
             content = inner[content_start:content_end]
-            value: object
-            if "<" in content:
-                value = self._nested_or_text(content, ci)
-            else:
-                value = content.strip()
-            self._accumulate(out, key, value)
+            self._accumulate(out, key, self._combine(attrs, content, ci))
             pos = nxt
 
-    def _nested_or_text(self, content: str, ci: bool) -> object:
-        nested: dict[str, object] = {}
-        self._parse_children(content, ci, nested)
-        return content.strip() if not nested else nested
+    def _combine(self, attrs: dict[str, object], content: str, ci: bool) -> object:
+        """Combine an element's attributes with its body (nested children or plain text)."""
+        if "<" in content:
+            nested: dict[str, object] = {}
+            self._parse_children(content, ci, nested)
+            if nested:
+                # attributes first; a child element wins a name collision
+                merged: dict[str, object] = dict(attrs)
+                merged.update(nested)
+                return merged
+        return self._text_value(attrs, content)
+
+    def _text_value(self, attrs: dict[str, object], content: str) -> object:
+        text = content.strip()
+        if not attrs:
+            return text
+        m: dict[str, object] = dict(attrs)
+        m[TEXT_KEY] = text
+        return m
+
+    def _parse_attrs(self, raw_attrs: str, ci: bool) -> dict[str, object]:
+        attrs: dict[str, object] = {}
+        if not raw_attrs:
+            return attrs
+        for a in _ATTR.finditer(raw_attrs):
+            name = a.group(1).lower() if ci else a.group(1)
+            val = a.group(2) if a.group(2) is not None else (
+                a.group(3) if a.group(3) is not None else (
+                    a.group(4) if a.group(4) is not None else ""
+                )
+            )
+            if name not in attrs:
+                attrs[name] = val
+        return attrs
 
     def _accumulate(self, out: dict[str, object], key: str, value: object) -> None:
         if key not in out:

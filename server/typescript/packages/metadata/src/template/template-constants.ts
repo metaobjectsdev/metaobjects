@@ -65,6 +65,7 @@ export const TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef";
 export const TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef";
 
 // Prompt-overlay attrs (template.prompt only).
+export const TEMPLATE_ATTR_RESPONSE_REF = "responseRef";
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";
 export const TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
 export const TEMPLATE_ATTR_MODEL = "model";
@@ -107,3 +108,10 @@ export const PROMPT_STYLES = [
   PROMPT_STYLE_EXAMPLE_ONLY,
 ] as const;
 export type PromptStyle = (typeof PROMPT_STYLES)[number];
+
+// @xmlText — a FIELD-level marker (boolean) for the tolerant extract engine: this field
+// receives its element's TEXT CONTENT when a template.output response is parsed from XML
+// (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]). Registered on field.* by
+// templateProvider (the prompt/output domain owns this extract concern — NOT a core field
+// property). No effect for @format: json. Mirrors Java TemplateConstants.ATTR_XML_TEXT.
+export const FIELD_ATTR_XML_TEXT = "xmlText";

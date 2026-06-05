@@ -236,6 +236,115 @@ def test_extract_never_raises_on_total_garbage_and_still_defaults() -> None:
     assert _field_value(verdict_mo, "arc_transition", obj) == "not_ready"
 
 
+# ---------------------------------------------------------------------------
+# @xmlText — attribute XML body extraction (JAXB @XmlValue / Jackson
+# @JacksonXmlText / .NET [XmlText]). Python port of the TS verdict test
+# "attribute XML + @xmlText extract into a typed object graph".
+# ---------------------------------------------------------------------------
+
+# A Doc with two arrays-of-records: Vibe{thread_id, text@xmlText} and Check{id, resolved}.
+# The XML carries attributes on the array elements (thread_id="...", id="...",
+# resolved="..."); a Vibe's `text` field is marked @xmlText so it reads the element's
+# TEXT BODY while `thread_id` reads the attribute.
+_XML_TEXT_META = {
+    "metadata.root": {
+        "package": PKG,
+        "children": [
+            {
+                "object.value": {
+                    "name": "Vibe",
+                    "children": [
+                        {"field.string": {"name": "thread_id"}},
+                        {"field.string": {"name": "text", "@xmlText": True}},
+                    ],
+                }
+            },
+            {
+                "object.value": {
+                    "name": "Check",
+                    "children": [
+                        {"field.string": {"name": "id"}},
+                        {"field.enum": {"name": "resolved", "@values": ["yes", "no"]}},
+                    ],
+                }
+            },
+            {
+                "object.value": {
+                    "name": "Doc",
+                    "children": [
+                        {
+                            "field.object": {
+                                "name": "vibes",
+                                "isArray": True,
+                                "@objectRef": f"{PKG}::Vibe",
+                            }
+                        },
+                        {
+                            "field.object": {
+                                "name": "checks",
+                                "isArray": True,
+                                "@objectRef": f"{PKG}::Check",
+                            }
+                        },
+                    ],
+                }
+            },
+        ],
+    }
+}
+
+_ATTR_XML = (
+    "<Doc>\n"
+    '  <vibes thread_id="TH-001">Durk staggers but still blocks the trail.</vibes>\n'
+    "  <vibes thread_id=\"TH-002\">Skett's bow arm trembles.</vibes>\n"
+    '  <checks id="T1" resolved="yes"/>\n'
+    '  <checks id="T2" resolved="no"/>\n'
+    "</Doc>"
+)
+
+
+def test_attribute_xml_and_xml_text_extract_into_typed_object_graph() -> None:
+    result_load = load_string(json.dumps(_XML_TEXT_META))
+    assert result_load.errors == [], f"load errors: {result_load.errors}"
+    assert isinstance(result_load.root, MetaRoot)
+    doc_mo = _find_object(result_load.root, "Doc")
+    vibe_mo = _find_object(result_load.root, "Vibe")
+    check_mo = _find_object(result_load.root, "Check")
+
+    # @xmlText schema check: Vibe.text carries the text_content flag (and nothing else does).
+    vibe_schema = extract_schema_for(vibe_mo, Format.XML)
+    by_name = {f.name: f for f in vibe_schema.fields}
+    assert by_name["text"].text_content is True
+    assert by_name["thread_id"].text_content is False
+
+    result = extract_object(doc_mo, _ATTR_XML, Format.XML)
+    doc = result.data
+    assert isinstance(doc, ValueObject)
+
+    # vibes: thread_id from the attribute; text from the element BODY via @xmlText.
+    vibes = _field_value(doc_mo, "vibes", doc)
+    assert isinstance(vibes, list)
+    assert len(vibes) == 2
+    assert _field_value(vibe_mo, "thread_id", vibes[0]) == "TH-001"
+    assert (
+        _field_value(vibe_mo, "text", vibes[0])
+        == "Durk staggers but still blocks the trail."
+    )
+    assert _field_value(vibe_mo, "thread_id", vibes[1]) == "TH-002"
+    assert _field_value(vibe_mo, "text", vibes[1]) == "Skett's bow arm trembles."
+
+    # checks: both attributes (id + resolved) map to fields on a self-closing element.
+    checks = _field_value(doc_mo, "checks", doc)
+    assert isinstance(checks, list)
+    assert len(checks) == 2
+    assert _field_value(check_mo, "id", checks[0]) == "T1"
+    assert _field_value(check_mo, "resolved", checks[0]) == "yes"
+    assert _field_value(check_mo, "id", checks[1]) == "T2"
+    assert _field_value(check_mo, "resolved", checks[1]) == "no"
+
+    assert result.report.has_lost_required() is False
+
+
 def test_extract_schema_for_mirrors_metadata_shape() -> None:
     root = _load_root()
     verdict_mo = _find_object(root, "Verdict")

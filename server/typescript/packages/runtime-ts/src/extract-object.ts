@@ -51,6 +51,7 @@ import {
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_NORMALIZE,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_XML_TEXT,
   NORMALIZE_DEFAULT,
   type NormalizeMode,
 } from "@metaobjectsdev/metadata";
@@ -59,6 +60,7 @@ import {
   Format,
   FieldKind,
   scalar,
+  textContentField,
   enumField,
   enumArray,
   object,
@@ -171,6 +173,10 @@ function fieldSpecFor(
   if (field.isArray === true) {
     // Scalar array: the engine coerces each element; no per-element default fill.
     return scalarArray(name, kind, required);
+  }
+  // @xmlText: a (non-array) scalar field marked to receive its element's XML text content.
+  if (ownAttrString(field, FIELD_ATTR_XML_TEXT) === "true") {
+    return textContentField(name, kind, required);
   }
   return scalar(name, kind, required, dv);
 }

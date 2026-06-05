@@ -17,16 +17,20 @@ public final class Extract {
         String stripped = Strip.strip(text);
         boolean ci = o.tolerance() != Tolerance.STRICT;
 
-        String span = schema.format() == Format.JSON
-                ? Locate.json(stripped)
-                : Locate.xml(stripped, schema.rootName(), ci);
+        // XML rootless (opts.rootless): the payload's fields ARE the top-level elements — there is
+        // no enclosing root to locate — so parse the whole stripped text's top-level elements
+        // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
+        String span;
         Map<String, Object> raw;
-        if (span == null) {
-            raw = Map.of();
-        } else if (schema.format() == Format.JSON) {
-            raw = new JsonForgivingReader().read(span);
+        if (schema.format() == Format.JSON) {
+            span = Locate.json(stripped);
+            raw = span == null ? Map.of() : new JsonForgivingReader().read(span);
+        } else if (o.rootless()) {
+            span = stripped.isEmpty() ? null : stripped;
+            raw = span == null ? Map.of() : new XmlForgivingReader().readRootless(stripped, ci);
         } else {
-            raw = new XmlForgivingReader().read(span, ci);
+            span = Locate.xml(stripped, schema.rootName(), ci);
+            raw = span == null ? Map.of() : new XmlForgivingReader().read(span, ci);
         }
 
         if (raw.isEmpty() && (stripped.isEmpty() || span == null)) {
@@ -41,7 +45,11 @@ public final class Extract {
                                 Map<String, Object> data, ExtractionReport report, ExtractOptions o, boolean ci) {
         for (FieldSpec f : fields) {
             String path = prefix.isEmpty() ? f.name() : prefix + "." + f.name();
-            Object present = lookup(raw, f.name(), ci);
+            // A @xmlText field reads the element's text body (carried under the #text sentinel
+            // when the element also has attributes), not a same-named child element.
+            Object present = f.textContent()
+                    ? raw.get(XmlForgivingReader.TEXT_KEY)
+                    : lookup(raw, f.name(), ci);
             if (present == null) {
                 // FR-011 / Phase B: an absent field with a declared @default fills the value
                 // → DEFAULTED (which satisfies a @required field). Generalized to all field
@@ -137,6 +145,12 @@ public final class Extract {
                 return nestedData;
             }
             return Coerce.MALFORMED;   // object expected but scalar/non-map present
+        }
+        // A text element that also carried XML attributes is represented by XmlForgivingReader
+        // as a map with the body under TEXT_KEY. A scalar field reads that text (attributes are
+        // ignored for scalars — preserving pre-attribute-support behaviour).
+        if (present instanceof Map<?, ?> mp && mp.containsKey(XmlForgivingReader.TEXT_KEY)) {
+            present = mp.get(XmlForgivingReader.TEXT_KEY);
         }
         String rawStr = present instanceof String s ? s : String.valueOf(present);
         return Coerce.value(rawStr, f, o, path, report);

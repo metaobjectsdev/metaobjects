@@ -313,21 +313,12 @@ _FIELD_COMMON_ATTRS = [
         required=False,
         allowed_values=AUTO_SET_VALUES,
     ),
-    AttrSchema(name=FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False),
-    # R6 Plan 2b — @dbColumnType physical column-type override (DB-domain attr).
-    # Registered as a bare string attr (NO allowed_values) — matching TS/Java/C#,
-    # which register it unconstrained and let ONLY the _validate_db_column_type pass
-    # enforce the closed set. That pass covers both the unknown-value rejection
-    # (Rule 1) and the (subtype × value) pairing legality (Rule 2), so an unknown
-    # value fires exactly ONE ERR_BAD_ATTR_VALUE. The TS port registers this on a
-    # dedicated metaobjects-db provider; Python keeps physical attrs (@column,
-    # @dbColumnType) on the core field defs until a full Python db-codegen port
-    # lands (same rationale as @column above).
-    AttrSchema(
-        name=FIELD_ATTR_DB_COLUMN_TYPE,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-    ),
+    # NOTE: the DB-domain physical field attrs (@column, @dbColumnType) are NOT
+    # declared here — they are DB-domain concerns registered by the dedicated
+    # `db_provider` (metaobjects-db) via TypeRegistry.extend, mirroring the
+    # cross-port end-state (Java CoreDBMetaDataProvider / TS dbProvider / C#
+    # DbMetaDataProvider). The @dbColumnType (subtype × value) pairing legality is
+    # still enforced by the loader's _validate_db_column_type pass (unconditional).
     # FR-010 field-teaching attrs (any field): free-text shown in the generated
     # output-format prompt fragment. Never carried in comments.
     AttrSchema(name=FIELD_ATTR_EXAMPLE, value_type=ATTR_SUBTYPE_STRING, required=False),
@@ -787,3 +778,25 @@ core_provider.add(
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
 )
+
+
+# ---------------------------------------------------------------------------
+# The canonical default provider set (cross-port `coreProviders`).
+#
+# Mirrors TS's `coreProviders = [coreTypesProvider, dbProvider, docProvider,
+# templateProvider]` and C#'s DefaultRegistry composition. The core types are
+# registered first; the DB-domain (`db_provider`) and template/output domain
+# (`template_provider`) then EXTEND the core field types via TypeRegistry.extend,
+# and the documentation provider adds the common doc attrs. Spread to add more:
+# `[*core_providers, my_provider]`.
+# ---------------------------------------------------------------------------
+from .meta.persistence.db.db_provider import db_provider  # noqa: E402
+from .meta.template.template_provider import template_provider  # noqa: E402
+from .documentation.doc_provider import doc_provider  # noqa: E402
+
+core_providers: list[Provider] = [
+    core_provider,
+    db_provider,
+    doc_provider,
+    template_provider,
+]

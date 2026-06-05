@@ -127,4 +127,14 @@ public static class TemplateConstants
         PROMPT_STYLE_INLINE,
         PROMPT_STYLE_EXAMPLE_ONLY,
     ];
+
+    // -----------------------------------------------------------------------
+    // @xmlText — FIELD-level marker (boolean) for the tolerant extract engine: this
+    // field receives its element's TEXT CONTENT when a template.output response is
+    // parsed from XML (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]).
+    // Registered on field.* by TemplateTypesProvider (the prompt/output domain owns
+    // this extract concern — NOT a core field property). No effect for @format: json.
+    // Mirrors Java TemplateConstants.ATTR_XML_TEXT and TS FIELD_ATTR_XML_TEXT.
+    // -----------------------------------------------------------------------
+    public const string FIELD_ATTR_XML_TEXT = "xmlText";
 }

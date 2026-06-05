@@ -46,7 +46,7 @@ public class ExtractConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(22, Cases().Count());
+        Assert.Equal(27, Cases().Count());
     }
 
     [Theory]
@@ -247,6 +247,12 @@ public class ExtractConformanceTests
             double? min = f.TryGetProperty("min", out JsonElement minEl2) ? minEl2.GetDouble() : (double?)null;
             double? max = f.TryGetProperty("max", out JsonElement maxEl2) ? maxEl2.GetDouble() : (double?)null;
             return FieldSpec.Range(name, kind, required, min, max);
+        }
+
+        // @xmlText: a scalar field that receives its element's text content (the #text sentinel).
+        if (f.TryGetProperty("textContent", out JsonElement tc) && tc.GetBoolean())
+        {
+            return FieldSpec.TextContentField(name, kind, required);
         }
 
         // Phase B: a scalar field may carry a generalized @default absent-fill string.

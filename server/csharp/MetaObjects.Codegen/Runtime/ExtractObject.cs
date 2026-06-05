@@ -136,7 +136,18 @@ public static class ExtractObject
         // single-value absent-fill and does not apply to the array element list, so it is dropped here.
         if (IsArrayType(field))
             return FieldSpec.ScalarArray(name, kind, required);
+        // @xmlText: a (non-array) scalar field marked to receive its element's XML text content
+        // (the template/output domain marker — registered by TemplateTypesProvider).
+        if (IsXmlText(field))
+            return FieldSpec.TextContentField(name, kind, required);
         return FieldSpec.Scalar(name, kind, required, scalarDefault);
+    }
+
+    /// <summary>True iff the field's <c>@xmlText</c> is explicitly true (the XML text-content extract marker).</summary>
+    private static bool IsXmlText(MetaField field)
+    {
+        object? v = field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT);
+        return v is true || (v is string s && s.Equals("true", System.StringComparison.OrdinalIgnoreCase));
     }
 
     // =========================================================================

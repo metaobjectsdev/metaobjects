@@ -12,7 +12,13 @@ def test_register_and_find() -> None:
     )
     reg.register(base)
     found = reg.find("field", "base")
-    assert found is base
+    # register() stores a per-registry COPY of the definition (so a later provider's
+    # extend() mutates the registry's list, not the provider's shared singleton) — so
+    # the stored def is an equal-but-distinct object, not the same instance.
+    assert found is not None
+    assert found.type == base.type and found.sub_type == base.sub_type
+    assert found.factory is base.factory  # the factory is shared (type identity)
+    assert [a.name for a in found.attrs] == [a.name for a in base.attrs]
     assert reg.find("field", "missing") is None
 
 

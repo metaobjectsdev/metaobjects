@@ -1,0 +1,3 @@
+<doc>
+  <check id="A" resolved="yes"><payoff>The gate swings wide and the path is clear.
+</doc>

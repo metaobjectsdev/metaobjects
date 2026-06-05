@@ -8,12 +8,12 @@
 // preserving the package root's browser-safety contract.
 
 import { MetaDataLoader } from "./meta-data-loader.js";
-import type { LoadOptions, LoadResult } from "./meta-data-loader.js";
+import type { LoadOptions, LoadResult, DirectoryFactoryOptions } from "./meta-data-loader.js";
 import type { MetaDataFormat } from "./meta-data-source.js";
 
 export function loadDirectory(
   dir: string,
-  opts?: { exclude?: string[]; recurse?: boolean } & LoadOptions,
+  opts?: DirectoryFactoryOptions & LoadOptions,
 ): Promise<LoadResult> {
   return MetaDataLoader.fromDirectory(dir, opts);
 }

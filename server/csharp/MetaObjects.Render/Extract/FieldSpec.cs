@@ -20,11 +20,22 @@ public sealed record FieldSpec(
     ExtractSchema? Nested,
     string? CoerceDefault = null,
     string? DefaultValue = null,
-    NormalizeMode Normalize = NormalizeMode.Strip)
+    NormalizeMode Normalize = NormalizeMode.Strip,
+    bool TextContent = false)
 {
     /// <summary>Build a plain scalar field (string / int / long / double / boolean).</summary>
     public static FieldSpec Scalar(string name, FieldKind kind, bool required) =>
         new(name, kind, required, false, null, null, null, null, null);
+
+    /// <summary>
+    /// A field that receives its element's TEXT CONTENT — the <c>@xmlText</c> marker (analogous to
+    /// JAXB <c>@XmlValue</c> / Jackson <c>@JacksonXmlText</c> / .NET <c>[XmlText]</c>). The extract
+    /// engine reads it from the <see cref="XmlForgivingReader.TextKey"/> sentinel the lenient XML
+    /// reader carries when an element has both attributes and a text body, instead of a same-named
+    /// child; coerced to <paramref name="kind"/> as a normal scalar.
+    /// </summary>
+    public static FieldSpec TextContentField(string name, FieldKind kind, bool required) =>
+        new(name, kind, required, false, null, null, null, null, null, TextContent: true);
 
     /// <summary>
     /// Phase B (scalar array): a non-enum scalar field that is a list (<c>Array == true</c>).

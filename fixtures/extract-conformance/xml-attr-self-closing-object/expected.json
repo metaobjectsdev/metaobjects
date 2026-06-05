@@ -1,0 +1,3 @@
+{ "empty": false,
+  "states": { "check": "EXTRACTED", "check.id": "EXTRACTED", "check.status": "EXTRACTED" },
+  "data": { "check.id": "A", "check.status": "ok" } }

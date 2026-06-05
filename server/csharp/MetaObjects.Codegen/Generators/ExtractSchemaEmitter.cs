@@ -42,6 +42,9 @@ internal static class ExtractSchemaEmitter
             return $"FieldSpec.Scalar(\"{name}\", FieldKind.String, {Bool(required)}) /* FR-010: nested extract deferred */";
 
         string kind = Fr010FieldMapping.ScalarKind(field.SubType) ?? "String";
+        // @xmlText: a (non-array) scalar field marked to receive its element's XML text content.
+        if (!Fr010FieldMapping.IsArray(field) && Fr010FieldMapping.HasXmlText(field))
+            return $"FieldSpec.TextContentField(\"{name}\", FieldKind.{kind}, {Bool(required)})";
         return $"FieldSpec.Scalar(\"{name}\", FieldKind.{kind}, {Bool(required)})";
     }
 

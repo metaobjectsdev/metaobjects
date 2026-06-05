@@ -1,0 +1,8 @@
+<doc>
+  <status>ok</status>
+  <surprise>unmodeled top-level element</surprise>
+  <meta id="M-1">
+    <extra>unmodeled child element</extra>
+  </meta>
+  <trailing flag="x"/>
+</doc>

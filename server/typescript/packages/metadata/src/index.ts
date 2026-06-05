@@ -140,6 +140,8 @@ export { ExclusionReason } from "./registry-manifest-exclusions.js";
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
+export { templateProvider, xmlTextSchema } from "./template/template-provider.js";
+export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 
 // Type provider model
 export { composeRegistry } from "./provider.js";
@@ -174,7 +176,7 @@ export { resolveSuperRef } from "./super-resolve.js";
 
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
-export type { LoadOptions, LoadResult, LoadingState } from "./loader/meta-data-loader.js";
+export type { LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions } from "./loader/meta-data-loader.js";
 export { InMemoryStringSource } from "./loader/meta-data-source.js";
 export type { MetaDataSource, MetaDataFormat } from "./loader/meta-data-source.js";
 

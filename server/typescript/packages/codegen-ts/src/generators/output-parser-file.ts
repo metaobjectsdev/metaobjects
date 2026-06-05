@@ -9,7 +9,8 @@
 // Custom output directory:
 //   generators: [..., outputParser({ outDir: "src/generated/outputs" })]
 
-import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
+import { TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
+import { findTemplates } from "../templates/find-templates.js";
 import {
   type EmittedFile,
   type Generator,
@@ -30,9 +31,7 @@ export const outputParser = function outputParser(opts?: OutputParserOpts): Gene
   const generator: Generator = {
     name: "output-parser",
     generate: oncePerRun((_entities, ctx) => {
-      const outputs = ctx.loadedRoot
-        .ownChildren()
-        .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
+      const outputs = findTemplates(ctx.loadedRoot, TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
       for (const t of outputs) {
         files.push({

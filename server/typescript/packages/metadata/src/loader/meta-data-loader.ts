@@ -35,9 +35,18 @@ import type { ParseOptions, ParseResult } from "../parser-core.js";
 // browser-safety crawler — which walks every `import|export from` it sees,
 // type-only or not — never follows a path into a node:fs-using file.
 // Keep field-for-field in sync with `DirectoryOptions` in `./sources/directory-source.ts`.
-type DirectoryFactoryOptions = {
+export type DirectoryFactoryOptions = {
   exclude?: string[];
   recurse?: boolean;
+  /**
+   * Opt-in library packages to prepend before the directory's own sources.
+   * Library sources are prepended so `extends` references to library-shipped
+   * abstract bases are resolvable from app metadata files.
+   *
+   * Example: `{ libraries: ["ai"] }` prepends the `metaobjects::ai` library
+   * (LlmCallBase etc.) so app entities may use `extends: "metaobjects::ai::LlmCallBase"`.
+   */
+  libraries?: string[];
 };
 
 // YAML parser and node:fs-backed Source impls are loaded lazily (dynamic
@@ -60,6 +69,14 @@ export interface LoadOptions {
   freeze?: boolean;
   /** Strict parsing mode — passed through to parser. Default false. */
   strict?: boolean;
+  /**
+   * Optional callback invoked with the fully-resolved, validated root
+   * immediately before the tree is frozen. Use this to inject programmatically
+   * derived nodes (e.g. codegen pre-passes) that must be part of the frozen
+   * metadata tree. The callback may mutate the root; after it returns the tree
+   * is frozen and immutable. Ignored when `freeze: false`.
+   */
+  preFreeze?: (root: MetaRoot) => void;
 }
 
 export interface LoadResult {
@@ -90,6 +107,7 @@ export class MetaDataLoader {
   private readonly _registry: TypeRegistry;
   private readonly _freeze: boolean;
   private readonly _strict: boolean;
+  private readonly _preFreeze: ((root: MetaRoot) => void) | undefined;
 
   private _state: LoadingState = "uninitialized";
   private _root: MetaRoot | undefined;
@@ -98,6 +116,7 @@ export class MetaDataLoader {
     this._registry = opts?.registry ?? MetaDataLoader._defaultRegistry();
     this._freeze = opts?.freeze !== false; // default true
     this._strict = opts?.strict === true;  // default false
+    this._preFreeze = opts?.preFreeze;
   }
 
   private static _defaultRegistry(): TypeRegistry {
@@ -124,7 +143,7 @@ export class MetaDataLoader {
     dir: string,
     opts?: DirectoryFactoryOptions & LoadOptions,
   ): Promise<LoadResult> {
-    const { exclude, recurse, ...loaderOpts } = opts ?? {};
+    const { exclude, recurse, libraries, ...loaderOpts } = opts ?? {};
     // Conditional spreads honor exactOptionalPropertyTypes — only forward keys
     // when the caller supplied a value, so DirectorySource's own defaults apply.
     const dirOpts: DirectoryFactoryOptions = {
@@ -134,8 +153,19 @@ export class MetaDataLoader {
     const { DirectorySource } = await import("./sources/directory-source.js");
     const loader = new MetaDataLoader(loaderOpts);
     try {
-      const sources = await new DirectorySource(dir, dirOpts).expand();
-      return loader.load(sources);
+      const dirSources = await new DirectorySource(dir, dirOpts).expand();
+      // Library sources are loaded lazily and conditionally to keep the import
+      // path away from the browser-safe entry (library-sources.ts uses node:fs)
+      // and to avoid the import cost when no libraries are requested.
+      let libSources: MetaDataSource[] = [];
+      if (libraries?.length) {
+        const { librarySources } = await import("../library/library-sources.js");
+        libSources = librarySources(libraries);
+      }
+      // Prepend library sources so `extends` refs to library-shipped abstract
+      // bases are resolvable when the merged root is built. Super resolution is
+      // deferred (order-independent), but prepending is the deterministic choice.
+      return loader.load([...libSources, ...dirSources]);
     } catch (err) {
       // Match the pre-unification contract: a missing/unreadable directory is
       // surfaced as a collected error on the LoadResult, not a throw. The
@@ -495,6 +525,11 @@ export class MetaDataLoader {
     // Freeze applies to BOTH paths — synthetic-root callers shouldn't get a
     // mutable model just because their inputs failed.
     if (this._freeze) {
+      // Run the preFreeze hook (if any) before locking the tree. This is the
+      // designated injection point for programmatic tree enrichment (e.g.
+      // codegen pre-passes that derive additional nodes from the validated
+      // metadata). After the hook returns the tree is frozen and immutable.
+      this._preFreeze?.(root);
       root.freeze();
     }
 

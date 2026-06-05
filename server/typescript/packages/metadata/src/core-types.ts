@@ -3,6 +3,7 @@ import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegis
 import type { MetaDataTypeProvider } from "./provider.js";
 import { dbProvider } from "./persistence/db/db-provider.js";
 import { docProvider } from "./core/documentation/doc-provider.js";
+import { templateProvider } from "./template/template-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -189,8 +190,11 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       subType === OBJECT_SUBTYPE_VALUE
         ? [...objectAttrs, { ...normalizeAttr }]
         : [...objectAttrs];
+    // template.prompt (and other template subtypes) may be nested inside
+    // object.entity so a prompt can be co-located with its owning entity.
+    const rules = subType === OBJECT_SUBTYPE_ENTITY ? [...objectRules, wildcard(TYPE_TEMPLATE)] : objectRules;
     registry.register(
-      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, objectRules, MetaObject, subTypeObjectAttrs),
+      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, rules, MetaObject, subTypeObjectAttrs),
     );
   }
 
@@ -356,7 +360,7 @@ export const coreTypesProvider: MetaDataTypeProvider = {
 
 /** The default provider bundle — core metamodel types plus DB-domain attrs.
  *  Spread it to add more: `[...coreProviders, mine]`. */
-export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider];
+export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider, templateProvider];
 
 /**
  * Register the core metamodel into an existing registry. Thin convenience

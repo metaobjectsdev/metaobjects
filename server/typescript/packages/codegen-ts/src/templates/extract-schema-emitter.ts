@@ -22,6 +22,7 @@ import {
   fields,
   isRequired,
   isArray,
+  xmlText,
   scalarKind,
   mirrorType,
   extractMapCall,
@@ -83,6 +84,10 @@ function fieldSpecLiteral(field: MetaData, owner: MetaData): string {
       `{ name: ${name}, kind: FieldKind.${kind}, required: ${required}, array: true, ` +
       `enumValues: null, enumAlias: null, min: null, max: null, nested: null }`
     );
+  }
+  // @xmlText: a scalar field marked to receive its element's XML text content.
+  if (xmlText(field)) {
+    return `textContentField(${name}, FieldKind.${kind}, ${required})`;
   }
   return `scalar(${name}, FieldKind.${kind}, ${required})`;
 }

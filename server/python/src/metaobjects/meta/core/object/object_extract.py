@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.template.template_constants import TEMPLATE_ATTR_XML_TEXT
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.render.extract import (
     FieldKind,
@@ -172,6 +173,11 @@ def _field_spec_for(
     if array:
         # Scalar array: the engine coerces each element; no per-element default fill.
         return FieldSpec.scalar_array(name, kind, required)
+    # @xmlText: a non-array scalar marked to receive its element's XML text content
+    # (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named
+    # child. Mirrors the TS fieldSpecFor textContentField branch. No effect for JSON.
+    if _text_content(field):
+        return FieldSpec.text_content_field(name, kind, required)
     dv = _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
     return FieldSpec.scalar(name, kind, required, dv)
 
@@ -290,6 +296,16 @@ def _is_array(field: MetaField) -> bool:
 def _is_required(field: MetaField) -> bool:
     """True iff ``@required`` is explicitly the bool ``True`` or the string ``"true"``."""
     v = field.attr(fc.FIELD_ATTR_REQUIRED)
+    if v is True:
+        return True
+    return isinstance(v, str) and v.lower() == "true"
+
+
+def _text_content(field: MetaField) -> bool:
+    """True iff ``@xmlText`` is explicitly the bool ``True`` or the string ``"true"`` —
+    the XML text-content extract marker (the field receives its element's text body).
+    Mirrors ``_is_required`` and the TS ``xmlText(field)`` own-attr check."""
+    v = field.attr(TEMPLATE_ATTR_XML_TEXT)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"

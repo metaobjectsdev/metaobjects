@@ -82,6 +82,11 @@ def _field_spec_literal(field: MetaData, owner: MetaData) -> str:
         return f'FieldSpec.scalar("{name}", FieldKind.STRING, {req})'
 
     kind = fm.scalar_kind(field.sub_type) or "STRING"
+    # @xmlText: a scalar field marked to receive its element's XML text content
+    # (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]). Mirrors the TS
+    # extract-schema-emitter textContentField branch. No effect for JSON.
+    if fm.xml_text(field):
+        return f'FieldSpec.text_content_field("{name}", FieldKind.{kind}, {req})'
     return f'FieldSpec.scalar("{name}", FieldKind.{kind}, {req})'
 
 
