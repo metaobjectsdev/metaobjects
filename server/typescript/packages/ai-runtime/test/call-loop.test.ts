@@ -124,4 +124,31 @@ describe("callLlm", () => {
     expect(rec.rows.length).toBe(1);
     expect(rec.rows[0]!.status).toBe("error");
   });
+
+  test("threads parentSpanId + sessionId into the row", async () => {
+    const client: LlmClient = {
+      async complete() { return { body: JSON.stringify({ verdict: "ok" }) }; },
+    };
+    const rec = new Capture();
+    await callLlm(
+      { callType: "V", payload: {}, request: { prompt: "P", model: "m" },
+        parentSpanId: "parent-1", sessionId: "sess-1" },
+      { client, recorder: rec, responseMo: await respMo() },
+    );
+    expect(rec.rows[0]!.parentSpanId).toBe("parent-1");
+    expect(rec.rows[0]!.sessionId).toBe("sess-1");
+  });
+
+  test("error path also threads parentSpanId + sessionId", async () => {
+    const client: LlmClient = { async complete() { throw new Error("boom"); } };
+    const rec = new Capture();
+    await callLlm(
+      { callType: "V", payload: {}, request: { prompt: "P", model: "m" },
+        parentSpanId: "parent-2", sessionId: "sess-2" },
+      { client, recorder: rec, responseMo: await respMo() },
+    );
+    expect(rec.rows[0]!.status).toBe("error");
+    expect(rec.rows[0]!.parentSpanId).toBe("parent-2");
+    expect(rec.rows[0]!.sessionId).toBe("sess-2");
+  });
 });

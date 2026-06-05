@@ -24,6 +24,10 @@ export interface CallLlmInput {
   request: LlmRequest;
   /** Existing trace to attach to; a new trace id is generated when absent. */
   traceId?: string;
+  /** Parent span id; absent → this is a root span. */
+  parentSpanId?: string;
+  /** Logical session/conversation id. */
+  sessionId?: string;
 }
 
 export interface CallLlmDeps {
@@ -79,6 +83,8 @@ export async function callLlm(
       startedAt,
       llmRequest: JSON.stringify(input.request),
       voResponse: null,
+      parentSpanId: input.parentSpanId ?? null,
+      sessionId: input.sessionId ?? null,
     };
     await deps.recorder.record(row);
     return { voResponse: null, status: "error", errorDetail };
@@ -90,6 +96,8 @@ export async function callLlm(
       traceId,
       callType: input.callType,
       startedAt,
+      parentSpanId: input.parentSpanId,
+      sessionId: input.sessionId,
       llmRequest: completion.request ?? input.request,
       llmResponseText: completion.body,
       requestModel: input.request.model,
