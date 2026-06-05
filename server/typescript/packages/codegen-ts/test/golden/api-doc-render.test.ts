@@ -578,6 +578,60 @@ describe("renderAgentApi — condensed agent/LLM form", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Worked example chains via the entity's REAL primary key — not a literal `id`.
+// ---------------------------------------------------------------------------
+
+// An entity whose primary key is the field `code` (NOT `id`). The find/update/
+// delete chain in the worked example must read back `created.code`, because
+// `created.id` would be a property the row does not have — an example that does
+// not compile against the generated model.
+const COUPON_PK_CODE = [
+  {
+    "object.entity": {
+      name: "Coupon",
+      children: [
+        { "field.string": { name: "code" } },
+        { "field.string": { name: "label" } },
+        { "identity.primary": { "@fields": "code", "@generation": "assigned" } },
+        { "source.rdb": { "@table": "coupons" } },
+      ],
+    },
+  },
+];
+
+async function loadCouponModel(): Promise<ApiModel> {
+  const res = await new MetaDataLoader().load([
+    new InMemoryStringSource(
+      JSON.stringify({ "metadata.root": { package: "acme::shop", children: COUPON_PK_CODE } }),
+      { id: "meta.json", format: "json" },
+    ),
+  ]);
+  expect(res.errors).toEqual([]);
+  return buildApiModel(res.root, { loadedRoot: res.root });
+}
+
+describe("worked example chains via the entity's REAL primary key (not a literal `id`)", () => {
+  test("a non-`id` PK (`code`) makes the find/update/delete chain read back `created.code`", async () => {
+    const model = await loadCouponModel();
+    const couponUnit = model.units.find((u) => u.node === "Coupon")!;
+    const body = couponUnit.example!.body.join("\n");
+    // Accurate-by-construction: the chain reads the real PK accessor.
+    expect(body).toContain(`const found = await findCouponById(db, created.code);`);
+    expect(body).toContain(`const updated = await updateCoupon(db, created.code,`);
+    expect(body).toContain(`const removed = await deleteCouponById(db, created.code);`);
+    // And NEVER the wrong `created.id` (the field this entity does not have).
+    expect(body).not.toContain("created.id");
+  });
+
+  test("the rendered agent page surfaces the corrected `created.code` chain", async () => {
+    const model = await loadCouponModel();
+    const out = renderAgentApi(model, provider);
+    expect(out).toContain(`const found = await findCouponById(db, created.code);`);
+    expect(out).not.toContain("created.id");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ONE model feeds both forms.
 // ---------------------------------------------------------------------------
 

@@ -413,7 +413,12 @@ function buildEntityUnit(
     nodeKind: "entity",
     symbols,
   };
-  const example = entityExample(name, symbols);
+  // The worked example reads the row back by its REAL primary key (e.g.
+  // `created.code`), not a hard-coded `id` — reuse the same getPkInfo the
+  // data-access symbols were named from so the example is accurate-by-
+  // construction for any PK field name.
+  const pkName = getPkInfo(obj, ctx).fieldName;
+  const example = entityExample(name, pkName, symbols);
   if (example !== undefined) unit.example = example;
   return unit;
 }
@@ -999,8 +1004,12 @@ function importLines(picks: { name: string; importPath: string }[]): string[] {
 
 /** A worked create→find→update→delete flow over an entity's documented CRUD
  *  helpers. Only emitted when the entity actually carries those data-access
- *  symbols (a value object / TPH subtype has only a model → no example). */
-function entityExample(name: string, symbols: ApiSymbol[]): UnitExample | undefined {
+ *  symbols (a value object / TPH subtype has only a model → no example).
+ *
+ *  `pkName` is the entity's REAL primary-key field (from getPkInfo) — the
+ *  find/update/delete calls read it back as `created.<pkName>`, so the example
+ *  stays accurate-by-construction for an entity whose PK is not named `id`. */
+function entityExample(name: string, pkName: string, symbols: ApiSymbol[]): UnitExample | undefined {
   const da = (fn: string) => symbols.find((s) => s.kind === "data-access" && s.name === fn);
   const create = da(createFnName(name));
   const find = da(findByIdFnName(name));
@@ -1010,21 +1019,23 @@ function entityExample(name: string, symbols: ApiSymbol[]): UnitExample | undefi
   if (create === undefined || find === undefined) return undefined;
 
   const createBody = objectLiteralFromFields(create.fields);
+  // The handle returned by create<Name> exposes the row's real PK accessor.
+  const createdPk = `created.${pkName}`;
   const picks: { name: string; importPath: string }[] = [
     { name: create.name, importPath: create.importPath },
     { name: find.name, importPath: find.importPath },
   ];
   const body: string[] = [
     `const created = await ${create.name}(db, ${createBody});`,
-    `const found = await ${find.name}(db, created.id);`,
+    `const found = await ${find.name}(db, ${createdPk});`,
   ];
   if (update !== undefined) {
     picks.push({ name: update.name, importPath: update.importPath });
-    body.push(`const updated = await ${update.name}(db, created.id, ${objectLiteralFromFields(update.fields)});`);
+    body.push(`const updated = await ${update.name}(db, ${createdPk}, ${objectLiteralFromFields(update.fields)});`);
   }
   if (del !== undefined) {
     picks.push({ name: del.name, importPath: del.importPath });
-    body.push(`const removed = await ${del.name}(db, created.id);`);
+    body.push(`const removed = await ${del.name}(db, ${createdPk});`);
   }
   return { imports: importLines(picks), body };
 }
