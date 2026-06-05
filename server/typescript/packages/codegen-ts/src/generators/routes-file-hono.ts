@@ -27,6 +27,9 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "routes-file-hono",
+    // Marks this as the Hono routes generator so the runner can aggregate
+    // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
+    emitsHonoRoutes: true,
     filter: (e: MetaObject) => e.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {

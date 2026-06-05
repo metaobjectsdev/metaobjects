@@ -18,6 +18,41 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
 import { renderExtractor } from "../src/templates/extractor.js";
 import { generatePayloadInterfaces } from "../src/payload-codegen.js";
+import { entityFile } from "../src/generators/index.js";
+import { makeRenderContext } from "../src/render-context.js";
+import { buildPkMap } from "../src/pk-resolver.js";
+import { buildRelationMap } from "../src/relation-resolver.js";
+import type { GenContext } from "../src/generator.js";
+
+// Emit the REAL per-VO entity modules (`<VO>.ts` exporting `interface <VO>` +
+// its enum union-aliases) the same way `meta gen` does, so the generated
+// extractor's `from "./<VO>.js"` payload imports RESOLVE against the modules
+// that actually exist (no hand-written `payloads.ts` that no generator emits).
+async function writeEntityModules(
+  dir: string,
+  root: Awaited<ReturnType<typeof loadRoot>>,
+): Promise<void> {
+  const renderContext = makeRenderContext({
+    dialect: "sqlite",
+    loadedRoot: root,
+    outDir: "/tmp",
+    dbImport: "~/db",
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+  const ctx: GenContext = {
+    entities: root.objects(),
+    loadedRoot: root,
+    matches: () => true,
+    projectRoot: "/tmp",
+    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+    renderContext,
+    warn: () => {},
+  };
+  for (const f of await entityFile().generate(ctx)) {
+    writeFileSync(join(dir, f.path), f.content);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // tsc --strict compile gate (mirrors fr004-verify-demo.test.ts's `compile()`).
@@ -166,12 +201,13 @@ describe("Extractor codegen — source shape", () => {
     // NOT a bare `m.tags!` / `m.flags!` (which would be a tsc --strict TS2322 error).
     expect(src).toContain("(m.tags ?? []).filter((x): x is NonNullable<typeof x> => x != null)");
     expect(src).toContain(
-      "m.flags == null ? null : m.flags.filter((x): x is NonNullable<typeof x> => x != null)",
+      "m.flags == null ? undefined : m.flags.filter((x): x is NonNullable<typeof x> => x != null)",
     );
     expect(src).not.toContain("m.tags!");
     expect(src).not.toContain("m.flags!");
-    // optional single nested object → null-guarded recurse into its mapper
-    expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : null");
+    // optional single nested object → undefined-guarded recurse into its mapper
+    // (the strict entity-module interface types optionals `?: T` = `T | undefined`).
+    expect(src).toContain("m.shipTo ? toStrictCustomer(m.shipTo) : undefined");
   });
 
   test("payload typing: field.enum is a value-constrained union alias (not unknown), single + array", async () => {
@@ -233,7 +269,6 @@ describe("Extractor codegen — source shape", () => {
 
   test("tsc --strict gate: emitted payload + parser + extractor type-check with ZERO diagnostics", async () => {
     const root = await loadRoot(MODEL);
-    const payloadSrc = generatePayloadInterfaces(root, "Order");
     const parserSrc = renderOutputParser(root, "OrderOut");
     const extractorSrc = renderExtractor(root, "OrderOut");
 
@@ -246,13 +281,16 @@ describe("Extractor codegen — source shape", () => {
 
     const dir = mkdtempSync(join(import.meta.dir, "extractor-tsc-"));
     TEMP_DIRS.push(dir);
-    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    // The REAL per-VO entity modules the extractor imports its payload types from.
+    await writeEntityModules(dir, root);
     writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
     writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
     writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
 
     const diagnostics = compile(dir, [
-      "payloads.ts",
+      "Order.ts",
+      "Customer.ts",
+      "Line.ts",
       "OrderOut.output.ts",
       "OrderOut.extractor.ts",
       "engine.d.ts",
@@ -266,13 +304,13 @@ describe("Extractor codegen — source shape", () => {
 describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () => {
   test("extractOrder() extracts dirty JSON into the strict payload; missing-required throws; extract re-exposed", async () => {
     const root = await loadRoot(MODEL);
-    const payloadSrc = generatePayloadInterfaces(root, "Order");
     const parserSrc = renderOutputParser(root, "OrderOut");
     const extractorSrc = renderExtractor(root, "OrderOut");
 
     const dir = mkdtempSync(join(import.meta.dir, "extractor-emit-"));
     TEMP_DIRS.push(dir);
-    writeFileSync(join(dir, "payloads.ts"), payloadSrc);
+    // The extractor's payload imports are `import type` (erased at runtime), so the
+    // VO modules need not be loaded here; the run-proof exercises the emitted logic.
     writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
     writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
 
@@ -303,22 +341,23 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(order.priority).toBe("HIGH");
     // enum array: null-filtered, typed as OrderLabels[].
     expect(order.labels).toEqual(["A", "B"]);
-    // optional single nested object `shipTo` ABSENT in this input → the `m.shipTo ? toStrictCustomer(...) : null`
-    // branch produces null at runtime (not undefined, not a partial object).
-    expect(order.shipTo).toBeNull();
+    // optional single nested object `shipTo` ABSENT in this input → the `m.shipTo ? toStrictCustomer(...) : undefined`
+    // branch produces undefined at runtime (matches the strict `shipTo?: Customer` entity-module
+    // interface optionality — not a partial object).
+    expect(order.shipTo).toBeUndefined();
 
-    // optional single nested object PRESENT → the null-guard recurses into toStrictCustomer and populates.
+    // optional single nested object PRESENT → the guard recurses into toStrictCustomer and populates.
     const withShipTo =
       '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"], "shipTo": { "name": "Grace" } }';
     const shipped = ex.extractOrderOut(root, withShipTo);
-    expect(shipped.shipTo).not.toBeNull();
+    expect(shipped.shipTo).not.toBeUndefined();
     expect(shipped.shipTo.name).toBe("Grace");
-    // and when shipTo is genuinely absent on a separate clean input, it is null (re-confirm the branch)
+    // and when shipTo is genuinely absent on a separate clean input, it is undefined (re-confirm the branch)
     const noShipTo = ex.extractOrderOut(
       root,
       '{ "customer": { "name": "Ada" }, "lines": [ { "sku": "A", "qty": 2 } ], "tags": ["x"], "priority": "LOW", "labels": ["A"] }',
     );
-    expect(noShipTo.shipTo).toBeNull();
+    expect(noShipTo.shipTo).toBeUndefined();
 
     // missing required `customer` → throws
     expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow();

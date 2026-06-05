@@ -64,9 +64,9 @@ function isObjectField(field: MetaData): boolean {
 
 /**
  * The union-alias type name for a `field.enum` with effective `@values`, or undefined when the
- * field is not a value-constrained enum. Reuses `enumUnionAliasName` — the SAME naming the payload
- * emitter (`payload-codegen.ts`) types the field as — so the cast target resolves to the exact
- * alias exported from `payloads.ts`. `ownerName` is the owning value-object's interface name.
+ * field is not a value-constrained enum. Reuses `enumUnionAliasName` — the SAME naming the entity
+ * inferred-types emitter types the field as — so the cast target resolves to the exact alias
+ * exported from the owning VO's entity module. `ownerName` is the owning value-object's interface name.
  */
 function enumAlias(field: MetaData, ownerName: string): string | undefined {
   if (field.subType !== FIELD_SUBTYPE_ENUM) return undefined;
@@ -76,11 +76,12 @@ function enumAlias(field: MetaData, ownerName: string): string | undefined {
 }
 
 /**
- * True iff the field is required IN THE STRICT PAYLOAD TYPE. This MUST match
- * payload-codegen.ts's `isFieldRequired` predicate EXACTLY (boolean `true` only) — the payload
- * interface decides `T` vs `T | null` by that predicate, and the mapper's optionality assumption
- * (`m.f!` vs `m.f ?? null`) has to agree with the type it is constructing. A `@required:"true"`
- * string field is therefore `T | null` in the payload AND optional here (no skew).
+ * True iff the field is required IN THE STRICT PAYLOAD TYPE. The strict payload IS the VO's own
+ * generated entity-module interface (`renderValueObjectInterface`), which types a required field
+ * `f: T` and an optional one `f?: T` (i.e. `T | undefined` — NOT `T | null`). So the mapper's
+ * optionality assumption (`m.f!` vs `m.f ?? undefined`) has to agree with THAT interface, and an
+ * absent optional maps to `undefined`, never `null`. This predicate matches the interface's
+ * required test (boolean `true` only) so the two never skew.
  */
 function isFieldRequired(field: MetaData): boolean {
   return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
@@ -93,8 +94,10 @@ function mapperName(vo: MetaData): string {
 
 /**
  * The mapper-body initializer expression for one field, reading mirror member `m.<name>` and
- * mapping it onto the strict payload's exact optionality (required → `m.f!`; optional → `m.f ?? null`).
- * Nested single/array objects recurse into their toStrict<Type> mapper, guarding null when optional.
+ * mapping it onto the strict payload's exact optionality (required → `m.f!`; optional → `m.f ?? undefined`).
+ * The strict payload is the VO's generated entity-module interface, whose optional fields are
+ * `f?: T` (= `T | undefined`, never `T | null`), so an absent optional maps to `undefined`.
+ * Nested single/array objects recurse into their toStrict<Type> mapper, guarding when optional.
  */
 function strictArg(field: MetaData, root: MetaData, ownerName: string): string {
   const name = field.name;
@@ -104,25 +107,25 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string): string {
     const target = refVo(field, root);
     if (target === undefined) {
       // Unresolved @objectRef — the payload type would be `unknown`; pass through as-is.
-      return required ? `m.${name}!` : `m.${name} ?? null`;
+      return required ? `m.${name}!` : `m.${name} ?? undefined`;
     }
     const fn = mapperName(target);
     if (isArray(field)) {
       // Required array-of-objects: each element mapped; element nulls dropped at the type level
       // via the non-null assertion (extract never yields null elements for a present array).
       if (required) return `m.${name}!.map((e) => ${fn}(e!))`;
-      return `m.${name} ? m.${name}!.map((e) => ${fn}(e!)) : null`;
+      return `m.${name} ? m.${name}!.map((e) => ${fn}(e!)) : undefined`;
     }
     // Single nested object.
     if (required) return `${fn}(m.${name}!)`;
-    return `m.${name} ? ${fn}(m.${name}) : null`;
+    return `m.${name} ? ${fn}(m.${name}) : undefined`;
   }
 
   // Scalar ARRAY (e.g. `field.string` with isArray): the mirror types it `(T | null)[] | null`
-  // but the strict payload types it `T[]` (required) / `T[] | null` (optional). A bare `m.f!`
+  // but the strict payload types it `T[]` (required) / `T[]?` (optional). A bare `m.f!`
   // would leave the element type `T | null`, a `tsc --strict` TS2322 error. Filter out null
   // elements so the element type narrows to non-null (consistent with the lost-element DROP policy
-  // already used for required arrays-of-objects above).
+  // already used for required arrays-of-objects above). An absent optional array maps to `undefined`.
   //
   // ENUM arrays: the mirror element is a plain `string`, but the strict payload types it as the
   // closed `<Alias>[]` union. The null-filter alone narrows to `string[]`, not `<Alias>[]` — a
@@ -136,23 +139,23 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string): string {
       return alias !== undefined ? `(${filtered}) as ${alias}[]` : filtered;
     }
     const filtered = `m.${name}.filter((x): x is NonNullable<typeof x> => x != null)`;
-    const guarded = `m.${name} == null ? null : ${filtered}`;
+    const guarded = `m.${name} == null ? undefined : ${filtered}`;
     return alias !== undefined
-      ? `m.${name} == null ? null : (${filtered}) as ${alias}[]`
+      ? `m.${name} == null ? undefined : (${filtered}) as ${alias}[]`
       : guarded;
   }
 
   // Scalar / enum (single): the strict payload's optionality decides the shape.
-  // Required → non-null assertion; optional → `?? null` (matches the payload's `f?: T | null`).
+  // Required → non-null assertion; optional → `?? undefined` (matches the entity-module `f?: T`).
   //
   // ENUM scalar: the mirror member is a plain `string`, but the strict payload types it as the
   // closed `<Alias>` union — assigning `string` into `<Alias>` is a `tsc --strict` TS2322 error.
   // So the value is CAST to `<Alias>`. Sound for the same reason as enum arrays above: the engine
   // already validated membership (or extract throws on a lost required field).
   if (alias !== undefined) {
-    return required ? `m.${name}! as ${alias}` : `(m.${name} ?? null) as ${alias} | null`;
+    return required ? `m.${name}! as ${alias}` : `(m.${name} ?? undefined) as ${alias} | undefined`;
   }
-  return required ? `m.${name}!` : `m.${name} ?? null`;
+  return required ? `m.${name}!` : `m.${name} ?? undefined`;
 }
 
 /**
@@ -202,24 +205,44 @@ function emitMapper(
 }
 
 /**
- * Collect the strict payload-interface names reachable from `vo` (for the type-only import),
- * PLUS every enum union-alias reachable from those VOs. Both are exported from `payloads.ts`
- * (the alias is hoisted above the interface there), so the extractor's `as <Alias>` casts need
- * the alias names imported alongside the interface names. Deduped, in discovery order.
+ * One payload-type import group: the strict types (VO interface + its own enum
+ * union-aliases) imported from a single VO entity module.
  */
-function reachablePayloadTypes(vo: MetaData, root: MetaData): string[] {
-  const order: string[] = [];
-  const seen = new Set<string>();
+interface PayloadImportGroup {
+  /** The VO whose entity module exports these types (`./<module>.js`). */
+  module: string;
+  /** The strict type names exported by that module, in discovery order. */
+  types: string[];
+}
+
+/**
+ * Group the strict payload types reachable from `vo` BY THE ENTITY MODULE THAT EXPORTS THEM.
+ *
+ * Each value-object gets its own generated entity module (`entityFile()` emits `<VO>.ts` exporting
+ * `export interface <VO>`), and `renderEnumTypeAliases` hoists every `field.enum` union-alias INTO
+ * the OWNING VO's module (`export type <Owner><Field> = ...` co-located with the interface). So a
+ * VO's interface AND the aliases for its own enum fields are imported from `./<VO>.js` — NOT from a
+ * single `payloads.ts` (which no generator emits). Deduped, in discovery order, one group per VO.
+ */
+function reachablePayloadGroups(vo: MetaData, root: MetaData): PayloadImportGroup[] {
+  const groups: PayloadImportGroup[] = [];
+  const seenVo = new Set<string>();
+  const seenAlias = new Set<string>();
   const visit = (cur: MetaData) => {
-    if (seen.has(cur.name)) return;
-    seen.add(cur.name);
-    order.push(cur.name);
+    if (seenVo.has(cur.name)) return;
+    seenVo.add(cur.name);
+    // The VO interface + its OWN enum aliases share the VO's entity module.
+    const types: string[] = [cur.name];
     for (const f of fields(cur)) {
       const alias = enumAlias(f, cur.name);
-      if (alias !== undefined && !seen.has(alias)) {
-        seen.add(alias);
-        order.push(alias);
+      if (alias !== undefined && !seenAlias.has(alias)) {
+        seenAlias.add(alias);
+        types.push(alias);
       }
+    }
+    groups.push({ module: cur.name, types });
+    // Recurse into nested object refs (their interfaces live in their own modules).
+    for (const f of fields(cur)) {
       if (isObjectField(f)) {
         const target = refVo(f, root);
         if (target !== undefined) visit(target);
@@ -227,7 +250,7 @@ function reachablePayloadTypes(vo: MetaData, root: MetaData): string[] {
     }
   };
   visit(vo);
-  return order;
+  return groups;
 }
 
 /** Collect the mirror-interface names reachable from `vo` (root mirror + nested VO mirrors). */
@@ -286,9 +309,15 @@ export function renderExtractor(root: MetaData, templateName: string): string {
   const extractName = `extract${templateName}`;
   const rootMapper = mapperName(vo);
 
-  const payloadTypes = reachablePayloadTypes(vo, root);
+  const payloadGroups = reachablePayloadGroups(vo, root);
   const mirrorTypes = reachableMirrorTypes(vo, root, rootMirror);
   const mappers = emitMappers(vo, root, rootMirror);
+
+  // One type-only import per VO entity module (the VO interface + its own enum
+  // union-aliases co-located there). NOT a single non-existent `./payloads.js`.
+  const payloadImports = payloadGroups
+    .map((g) => `import type { ${g.types.join(", ")} } from "./${g.module}.js";`)
+    .join("\n");
 
   const lostMsg =
     `${extractName}: lost required field(s): `;
@@ -301,7 +330,7 @@ export function renderExtractor(root: MetaData, templateName: string): string {
     `// mapping the all-nullable mirror onto the strict payload. No registry / binding / factory.\n` +
     `\n` +
     `import {\n  ${extractLenientWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.output.js";\n` +
-    `import type { ${payloadTypes.join(", ")} } from "./payloads.js";\n` +
+    `${payloadImports}\n` +
     `import type { MetaRoot } from "@metaobjectsdev/metadata";\n` +
     `import type { ExtractionResult } from "@metaobjectsdev/render";\n` +
     `\n` +

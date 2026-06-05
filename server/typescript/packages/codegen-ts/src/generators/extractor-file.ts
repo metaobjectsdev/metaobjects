@@ -5,7 +5,8 @@
 //
 // The emitted extractor sits over the output-parser's nested-capable extract and turns dirty LLM
 // text into the strict typed payload graph. It imports from the sibling <Name>.output.ts (the
-// output-parser) and ./payloads.ts, so run it alongside outputParser() + a payload generator.
+// output-parser) and from each payload value-object's own entity module (<VO>.ts, emitted by
+// entityFile), so run it alongside outputParser() + entityFile().
 //
 // Consumer wiring (metaobjects.config.ts):
 //   generators: [..., outputParser(), extractor()]

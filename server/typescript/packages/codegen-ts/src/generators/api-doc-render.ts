@@ -29,6 +29,40 @@ const AGENT_REF = "api/agent-api.md";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 
+// ---------------------------------------------------------------------------
+// Relative-import RENDER prefix.
+//
+// An `ApiSymbol.importPath` is the generated module's path RELATIVE TO the
+// codegen output dir (flat → `Product.queries`; package → the package-folded
+// `acme/shop/Product.queries`). It is the DATA the accuracy gate verifies
+// against the emitted file, so it stays a bare module path.
+//
+// The generated files import each OTHER with `./`-prefixed RELATIVE specifiers
+// (`from "./Product"`), so a copy-paste consumer co-located in the generated
+// output dir must do the same — a BARE specifier (`from "Product.queries"`)
+// only resolves with a non-default `baseUrl` and otherwise fails TS2307. The
+// renderers therefore `./`-prefix the importPath in every rendered `from "…"`
+// (the human page, the agent group headers, AND the example import blocks),
+// without touching the underlying importPath data. A consumer importing from
+// elsewhere adjusts the prefix (stated once in the page's import note).
+// ---------------------------------------------------------------------------
+
+/** The `./`-prefixed RELATIVE specifier for a documented module path (the form a
+ *  co-located consumer copy-pastes). Already-relative paths pass through. */
+function relSpecifier(importPath: string): string {
+  return importPath.startsWith("./") || importPath.startsWith("../")
+    ? importPath
+    : `./${importPath}`;
+}
+
+/** Rewrite the `from "<module>"` tail of an example `import { … } from "<module>";`
+ *  line to the `./`-prefixed relative specifier — the example imports are
+ *  pre-composed in the ApiModel (reusing each symbol's bare importPath), so the
+ *  `./` prefix is applied at render time alongside the section/header imports. */
+function relImportLine(line: string): string {
+  return line.replace(/(\bfrom\s+")([^"]+)(")/, (_m, pre, mod, post) => `${pre}${relSpecifier(mod)}${post}`);
+}
+
 // The human-facing section ORDER + HEADING per ApiSymbolKind. A unit's page
 // renders only the kinds it actually carries, always in this canonical order
 // (so two runs over the same model are byte-stable regardless of symbol order).
@@ -221,7 +255,7 @@ function importLineFor(s: ApiSymbol): string {
   // registrar named on the symbol instead of the "METHOD /path" name.
   const isRouteKind = s.kind === "rest" || s.kind === "rest-hono";
   const imported = isRouteKind ? s.registrar ?? s.name : s.name;
-  return `import { ${imported} } from "${s.importPath}"`;
+  return `import { ${imported} } from "${relSpecifier(s.importPath)}"`;
 }
 
 /** Group a unit's symbols into ordered sections (one per present kind), each a
@@ -253,7 +287,9 @@ function entityPageVM(unit: ApiUnitDoc): EntityPageVM {
  *  string. Undefined when the unit has no runnable example. */
 function unitExampleBlock(example: UnitExample | undefined): string | undefined {
   if (example === undefined) return undefined;
-  const lines = [...example.imports];
+  // The example imports are pre-composed in the ApiModel from the symbols' bare
+  // importPaths; `./`-prefix each at render time so the copy-paste block resolves.
+  const lines = example.imports.map(relImportLine);
   if (example.imports.length > 0 && example.body.length > 0) lines.push("");
   lines.push(...example.body);
   return lines.join("\n");
@@ -469,7 +505,7 @@ function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
   return order.map((mod) => {
     const g = byModule.get(mod)!;
     return {
-      importHeader: `import { ${g.names.join(", ")} } from "${mod}"`,
+      importHeader: `import { ${g.names.join(", ")} } from "${relSpecifier(mod)}"`,
       symbols: g.symbols,
     };
   });
