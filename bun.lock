@@ -116,6 +116,31 @@
         "react",
       ],
     },
+    "server/typescript/packages/ai-runtime": {
+      "name": "@metaobjectsdev/ai-runtime",
+      "version": "0.9.0",
+      "dependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+        "@metaobjectsdev/render": "workspace:*",
+        "@metaobjectsdev/runtime-ts": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.6.0",
+      },
+      "peerDependencies": {
+        "@anthropic-ai/sdk": ">=0.30.0",
+        "@opentelemetry/api": ">=1.0.0",
+        "langfuse": ">=3.0.0",
+        "openai": ">=4.0.0",
+      },
+      "optionalPeers": [
+        "@anthropic-ai/sdk",
+        "@opentelemetry/api",
+        "langfuse",
+        "openai",
+      ],
+    },
     "server/typescript/packages/cli": {
       "name": "@metaobjectsdev/cli",
       "version": "0.9.0",
@@ -596,6 +621,8 @@
     "@libsql/linux-x64-musl": ["@libsql/linux-x64-musl@0.4.7", "", { "os": "linux", "cpu": "x64" }, "sha512-nI6tpS1t6WzGAt1Kx1n1HsvtBbZ+jHn0m7ogNNT6pQHZQj7AFFTIMeDQw/i/Nt5H38np1GVRNsFe99eSIMs9XA=="],
 
     "@libsql/win32-x64-msvc": ["@libsql/win32-x64-msvc@0.4.7", "", { "os": "win32", "cpu": "x64" }, "sha512-7pJzOWzPm6oJUxml+PCDRzYQ4A1hTMHAciTAHfFK4fkbDZX33nWPVG7Y3vqdKtslcwAzwmrNDc6sXy2nwWnbiw=="],
+
+    "@metaobjectsdev/ai-runtime": ["@metaobjectsdev/ai-runtime@workspace:server/typescript/packages/ai-runtime"],
 
     "@metaobjectsdev/angular": ["@metaobjectsdev/angular@workspace:client/web/packages/angular"],
 
