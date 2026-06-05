@@ -9,8 +9,8 @@
 
 | Field | Required | Type | Limits | Rules |
 |---|---|---|---|---|
-| `name` |  | `string` |  |  |
-| `headline` |  | `string` |  |  |
+| <a id="field-name"></a>`name` |  | `string` |  |  |
+| <a id="field-headline"></a>`headline` |  | `string` |  |  |
 
 ## Used by
 

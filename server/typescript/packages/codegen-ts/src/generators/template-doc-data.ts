@@ -70,4 +70,16 @@ export interface TemplateDocData {
   /** FIXED, language-NEUTRAL capability sentence per @kind. No type names, no
    *  function signatures. See template-doc-builder.ts. */
   capability: string;
+
+  /**
+   * @markdown — the PRE-RENDERED "## Template source" section body (linked-
+   * template-source-docs, Task 4). Present iff at least one referenced mustache
+   * resolved to source via the page provider. For a document template it is one
+   * block; for an email it is one `### <part>` sub-section per part. Each carries
+   * the fenced ```mustache source, a linked variables table, and the rich
+   * `<details>` linked view — ALL pre-rendered in the builder (the page template
+   * just emits this markdown verbatim, like `descriptionQuote`), so the mustache
+   * page never re-parses the embedded `{{field}}` tokens. Absent when no
+   * referenced source resolved (the section is omitted, not empty). */
+  templateSourceSection?: string;
 }

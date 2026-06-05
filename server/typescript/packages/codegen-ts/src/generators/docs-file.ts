@@ -121,7 +121,11 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
         templateNodes.push(node);
         const path = docPageOutputPath(layout, node);
         placements.push({ path, fqn: child.resolutionKey() });
-        const payload = buildTemplateDocData(child, { layout, loadedRoot: ctx.loadedRoot });
+        const payload = buildTemplateDocData(child, {
+          layout,
+          loadedRoot: ctx.loadedRoot,
+          provider,
+        });
         files.push({ path, content: renderDocPage(TEMPLATE_PAGE_REF, payload, provider, path) });
       }
 

@@ -19,7 +19,10 @@ import type { GenContext } from "../../src/generator.js";
 //   test/golden → test → codegen-ts → packages → typescript → server → repo-root/fixtures/conformance
 const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance");
 
-function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): GenContext {
+function makeCtx(
+  root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"],
+  projectRoot?: string,
+): GenContext {
   const renderContext = makeRenderContext({
     dialect: "sqlite",
     loadedRoot: root,
@@ -35,6 +38,7 @@ function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): Gen
     config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
     renderContext,
     warn: () => {},
+    ...(projectRoot !== undefined && { projectRoot }),
   };
 }
 
@@ -72,7 +76,10 @@ describe("docsFile() conformance — expected/<Entity>.md byte-match", () => {
       expect(res.errors, `Fixture ${fixtureName} load errors`).toEqual([]);
 
       const gen = docsFile();
-      const out = await gen.generate(makeCtx(res.root));
+      // projectRoot = the fixture's input/ dir so the page provider resolves any
+      // template.output source refs (its `templates/` dir) for the "## Template
+      // source" section — fixtures without one simply have nothing to resolve.
+      const out = await gen.generate(makeCtx(res.root, inputDir));
 
       // Match each expected .md file by filename.
       const expectedFiles = readdirSync(expectedDir).filter((f) => f.endsWith(".md"));

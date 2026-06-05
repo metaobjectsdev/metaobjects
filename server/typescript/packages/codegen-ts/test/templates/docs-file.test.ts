@@ -388,7 +388,7 @@ describe("renderDocsFile — object.value", () => {
     // The neutral Constraints table renders even for value objects with no
     // storage — built from the object's own field metadata.
     expect(out).toContain("## Constraints");
-    expect(out).toContain("| `name` | yes | `string` |");
+    expect(out).toContain('| <a id="field-name"></a>`name` | yes | `string` |');
     // No language-specific leakage.
     expect(out).not.toContain("## Generated code");
     expect(out).not.toMatch(/\.ts\b/);
