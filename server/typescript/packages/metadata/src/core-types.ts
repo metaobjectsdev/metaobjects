@@ -190,8 +190,11 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       subType === OBJECT_SUBTYPE_VALUE
         ? [...objectAttrs, { ...normalizeAttr }]
         : [...objectAttrs];
+    // template.prompt (and other template subtypes) may be nested inside
+    // object.entity so a prompt can be co-located with its owning entity.
+    const rules = subType === OBJECT_SUBTYPE_ENTITY ? [...objectRules, wildcard(TYPE_TEMPLATE)] : objectRules;
     registry.register(
-      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, objectRules, MetaObject, subTypeObjectAttrs),
+      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, rules, MetaObject, subTypeObjectAttrs),
     );
   }
 
