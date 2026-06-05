@@ -46,7 +46,7 @@ public class ExtractConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(27, Cases().Count());
+        Assert.Equal(30, Cases().Count());
     }
 
     [Theory]
@@ -66,8 +66,17 @@ public class ExtractConformanceTests
         using JsonDocument expectedDoc = JsonDocument.Parse(File.ReadAllText(Path.Combine(caseDir, "expected.json")));
         JsonElement expected = expectedDoc.RootElement;
 
+        // Optional per-fixture parse option: "rootless": true → the XML response has no wrapper
+        // root element; parse its top-level elements directly. Mirrors the Java / Python runners.
+        ExtractOptions opts = ExtractOptions.Defaults();
+        if (schemaDoc.RootElement.TryGetProperty("rootless", out JsonElement rootlessEl)
+            && rootlessEl.ValueKind == JsonValueKind.True)
+        {
+            opts = opts.WithRootless(true);
+        }
+
         // Run the engine
-        ExtractionOutcome outcome = ExtractEngine.Run(input, schema);
+        ExtractionOutcome outcome = ExtractEngine.Run(input, schema, opts);
 
         // Assert: empty flag
         bool expectedEmpty = expected.GetProperty("empty").GetBoolean();
@@ -147,7 +156,8 @@ public class ExtractConformanceTests
         }
     }
 
-    /// <summary>Canonical leaf comparison: numbers within 1e-9 tolerance; else string-equal.</summary>
+    /// <summary>Canonical leaf comparison: numbers within 1e-9 tolerance; booleans by canonical
+    /// lowercase token; else string-equal.</summary>
     private static void AssertCanonical(string caseName, string path, JsonElement expected, object? actual)
     {
         if (expected.ValueKind == JsonValueKind.Number)
@@ -157,6 +167,14 @@ public class ExtractConformanceTests
             Assert.True(
                 Math.Abs(expectedNum - actualNum) <= 1e-9,
                 $"{caseName} data[{path}]: expected {expectedNum} but got {actualNum}");
+        }
+        else if (expected.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            // The engine coerces a BOOLEAN field to a native bool; compare on the canonical
+            // lowercase token so "true"/"false" line up regardless of the actual's runtime type.
+            string expectedBool = expected.GetBoolean() ? "true" : "false";
+            string actualBool = Convert.ToString(actual)?.ToLowerInvariant() ?? "";
+            Assert.Equal(expectedBool, actualBool);
         }
         else
         {

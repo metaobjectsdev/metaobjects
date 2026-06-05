@@ -62,24 +62,10 @@ public static class FieldSchema
                 "The value is populated by the database (computed column, default expression, " +
                 "trigger), by replication, or by another external owner."),
 
-        // DB-domain attrs — registered on every field subtype (mirror TS dbProvider:
-        // @column is above; @db.indexed and @dbColumnType complete the trio).
-        new AttrSchema(
-            Name: DbConstants.FIELD_ATTR_DB_INDEXED,
-            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
-            Required: false,
-            Description:
-                "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."),
-
-        new AttrSchema(
-            Name: DbConstants.FIELD_ATTR_DB_COLUMN_TYPE,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description:
-                "Physical DB column-type override (ADR-0013 escape hatch). Legal values are " +
-                "uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field " +
-                "subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
-                "The logical field type and its native binding are unchanged."),
+        // DB-domain attrs (@column / @db.indexed / @dbColumnType) are NOT here — they
+        // are registered onto every field subtype by DbMetaDataProvider (DbProvider.cs)
+        // via TypeRegistry.Extend, matching the TS dbProvider and Java CoreDBMetaDataProvider
+        // end-state (domain field-attrs live in domain providers, not on core FieldSchema).
 
         // @default is polymorphic: its value type follows the OWNING field's
         // subtype. No single fixed valueType can capture that, so ValueType is

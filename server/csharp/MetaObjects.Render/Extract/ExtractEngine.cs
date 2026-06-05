@@ -20,17 +20,27 @@ public static class ExtractEngine
         string stripped = Strip.Apply(text);
         bool ci = o.Tolerance != Tolerance.Strict;
 
-        string? span = schema.Format == Format.Json
-            ? Locate.Json(stripped)
-            : Locate.Xml(stripped, schema.RootName, ci);
-
+        // XML rootless (opts.Rootless): the payload's fields ARE the top-level elements — there is
+        // no enclosing root to locate — so parse the whole stripped text's top-level elements
+        // directly. Otherwise locate the <rootName> span as before. JSON is unaffected.
+        // Mirrors Java Extract.extract.
+        string? span;
         Dictionary<string, object?> raw;
-        if (span == null)
-            raw = new Dictionary<string, object?>();
-        else if (schema.Format == Format.Json)
-            raw = new JsonForgivingReader().Read(span);
+        if (schema.Format == Format.Json)
+        {
+            span = Locate.Json(stripped);
+            raw = span == null ? new Dictionary<string, object?>() : new JsonForgivingReader().Read(span);
+        }
+        else if (o.Rootless)
+        {
+            span = stripped.Length == 0 ? null : stripped;
+            raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().ReadRootless(stripped, ci);
+        }
         else
-            raw = new XmlForgivingReader().Read(span, ci);
+        {
+            span = Locate.Xml(stripped, schema.RootName, ci);
+            raw = span == null ? new Dictionary<string, object?>() : new XmlForgivingReader().Read(span, ci);
+        }
 
         if (raw.Count == 0 && (stripped.Length == 0 || span == null))
         {

@@ -115,13 +115,19 @@ public static class ConformanceAdapter
         {
             ["metaobjects-core-types"]    = CoreTypes.CoreTypesProvider,
             ["metaobjects-documentation"] = DocumentationTypes.DocTypesProvider,
-            // R6 Plan 2b — the shared db-attr fixtures (e.g. @dbColumnType pairing)
-            // declare a "metaobjects-db" provider. In C# the physical-attr handling +
-            // @dbColumnType pairing validation live in the always-on loader passes
-            // (ValidationPasses.ValidateDbColumnType), not a separate registered
-            // provider, so the id maps to a no-op composition entry whose only job is
-            // to resolve the fixture's providers.json. The validation fires regardless.
-            ["metaobjects-db"]            = new NoopTestProvider("metaobjects-db", "metaobjects-core-types"),
+            // The shared db-attr fixtures (@column / @db.indexed / @dbColumnType) declare a
+            // "metaobjects-db" provider. These DB-domain field attrs are registered onto every
+            // field subtype by DbMetaDataProvider (matching the TS dbProvider / Java
+            // CoreDBMetaDataProvider end-state) — NOT on core FieldSchema — so the fixture must
+            // compose the real provider for those attrs to be known under strict loading
+            // (ADR-0023). The @dbColumnType subtype×value pairing validation additionally fires
+            // in the always-on loader pass (ValidationPasses.ValidateDbColumnType).
+            ["metaobjects-db"]            = MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+            // The "metaobjects-template" provider registers the @xmlText field marker (XML
+            // text-content extraction) on every field subtype. The template.prompt-under-entity
+            // nesting (FR-004 TS pilot) is NOT ported to C#; a fixture exercising that nesting
+            // stays a known-gap in conformance-expected-failures.json.
+            ["metaobjects-template"]      = MetaObjects.Template.TemplateTypesProvider.Instance,
             // Test-only — provider-extension-* fixtures.
             ["example-template-briefing"] = new ExampleTemplateBriefingProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),

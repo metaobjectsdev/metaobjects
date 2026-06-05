@@ -24,6 +24,10 @@ public class RegistryManifestConformanceTests
         TypeRegistry registry = Provider.ComposeRegistry(new[]
         {
             CoreTypes.CoreTypesProvider,
+            // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core.
+            MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+            // Template/output-domain field attr (@xmlText) — Extend over core.
+            MetaObjects.Template.TemplateTypesProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 
@@ -52,6 +56,10 @@ public class RegistryManifestConformanceTests
         TypeRegistry registry = Provider.ComposeRegistry(new[]
         {
             CoreTypes.CoreTypesProvider,
+            // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core.
+            MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+            // Template/output-domain field attr (@xmlText) — Extend over core.
+            MetaObjects.Template.TemplateTypesProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 
