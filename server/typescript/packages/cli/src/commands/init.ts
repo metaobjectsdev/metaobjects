@@ -73,6 +73,8 @@ export interface InitOptions {
   clients?: string[];
   noSkills?: boolean;
   wireRoot?: boolean;
+  /** Scaffold ONLY the agent-context (always-on + skills + root wiring), skipping the metaobjects/ project scaffold — for dropping context into an existing/polyglot repo. */
+  docsOnly?: boolean;
 }
 
 export interface InitResult {
@@ -156,6 +158,12 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   const agentDirExists = await dirExists(agentDir);
   const metaobjectsExists = await dirExists(metaobjectsDir);
   const exists = agentDirExists || metaobjectsExists;
+
+  if (opts.docsOnly) {
+    // Agent-context only: scaffold the always-on + skills + root wiring, never the metaobjects/ project.
+    await writeAgentContext(opts, result);
+    return result;
+  }
 
   if (opts.refreshDocs && exists && !opts.force) {
     // Refresh-only path: scaffold the agent-context, leave everything else alone.
@@ -335,6 +343,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       clients: flags.clients,
       noSkills: flags.noSkills,
       wireRoot: flags.wireRoot,
+      docsOnly: flags.docsOnly,
     });
 
     if (flags.printOnly) {

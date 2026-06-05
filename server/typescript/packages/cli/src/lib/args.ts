@@ -14,6 +14,7 @@ export interface InitFlags {
   clients: string[];
   noSkills: boolean;
   wireRoot: boolean;
+  docsOnly: boolean;
 }
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -29,6 +30,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
       client: { type: "string", multiple: true },
       "no-skills": { type: "boolean", default: false },
       "no-wire-root": { type: "boolean", default: false },
+      "docs-only": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -43,6 +45,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],
     wireRoot: !values["no-wire-root"],
+    docsOnly: !!values["docs-only"],
   };
 }
 
