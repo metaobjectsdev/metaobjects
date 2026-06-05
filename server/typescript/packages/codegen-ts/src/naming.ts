@@ -99,5 +99,17 @@ export function deleteByIdFnName(entityName: string): string {
   return `delete${entityName}ById`;
 }
 
+/**
+ * Generated Fastify route-registrar name: camelCase `<entity>Routes`. The routes
+ * generator (templates/routes-file.ts) emits a single exported
+ * `export async function <entity>Routes(fastify)` that mounts the entity's CRUD
+ * verb set — this is the symbol an adopter imports to wire the endpoints. Kept
+ * here as the single source of truth so the routes template and the api-docs
+ * ApiModel builder derive the exact same spelling (no drift).
+ */
+export function routesHandlerName(entityName: string): string {
+  return `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
+}
+
 // Re-exported here for callers that import from codegen-ts's naming module.
 export { toKebabCase };

@@ -2,11 +2,29 @@
 
 # {{title}}
 
-Generated API reference for {{project}}; call these exactly as written.
+Generated API reference for {{project}}; call these exactly as written. {{importNote}}
+{{#hasSetup}}
+
+## Setup
+{{#setup}}
+- `{{handle}}` — {{{note}}} `{{{snippetInline}}}`
+{{/setup}}
+{{/hasSetup}}
 {{#units}}
 
 ## {{node}}
+{{#groups}}
+
+`{{importHeader}}`
 {{#symbols}}
-- `{{signature}}` — {{usage}}
+- `{{signature}}` — {{usage}}{{#throwsMarker}} {{throwsMarker}}{{/throwsMarker}}
 {{/symbols}}
+{{/groups}}
+{{#example}}
+
+Example:
+```ts
+{{{example}}}
+```
+{{/example}}
 {{/units}}

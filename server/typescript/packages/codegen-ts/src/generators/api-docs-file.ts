@@ -14,9 +14,16 @@
 //   • `AGENT-API.md` — the token-frugal agent form.
 //
 // Unlike `docs`/`mermaid-er` (Tier-2 neutral, owned by `meta docs`), `api-docs`
-// is a NATIVE generator: it ships in the recommended `meta gen` suite and is
-// registered native in the generator registry (ADR-0022 Part 3). It is NOT a
-// `meta docs` mode.
+// is a NATIVE generator: it is REGISTERED in the generator registry (ADR-0022
+// Part 3) — so it appears in `gen --list` and is selectable by its stable name
+// `api-docs`. It is NOT a `meta docs` mode.
+//
+// It is NOT (yet) part of the default `meta gen` scaffold suite: it is
+// registry-listed but not auto-run. Turning it on by default in the scaffold,
+// and surfacing the agent form (AGENT-API.md) to a coding agent via a pointer
+// from the installed `.metaobjects/` context, are tracked as agent-context-
+// coordination follow-ups — deliberately deferred here to avoid colliding with
+// the live agent-context work.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
@@ -59,6 +66,7 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
       // run always provides it) and derived otherwise.
       const model = buildApiModel(ctx.loadedRoot, {
         loadedRoot: ctx.loadedRoot,
+        outputLayout: layout,
         ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
       });
 

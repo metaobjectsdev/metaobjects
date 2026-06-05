@@ -24,7 +24,7 @@ import {
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { variableNameFromEntity } from "../naming.js";
+import { variableNameFromEntity, routesHandlerName } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
@@ -39,7 +39,7 @@ export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string
   }
 
   const entityName = entity.name;
-  const handlerName = `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
+  const handlerName = routesHandlerName(entityName);
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
   const entityFileSpec = entityModuleSpecifier(
@@ -308,7 +308,7 @@ function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: Rende
  */
 function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
   const baseName = base.name;
-  const handlerName = `${baseName.charAt(0).toLowerCase()}${baseName.slice(1)}Routes`;
+  const handlerName = routesHandlerName(baseName);
   // Single source of truth for the discriminator field + subtypes + route segments.
   const plan = tphPlan(base, ctx.loadedRoot)!;
   const discField = plan.discriminatorField;
