@@ -31,7 +31,7 @@ using MetaObjects.Meta;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>Generates Minimal API CRUD route registration per <c>object.entity</c>.</summary>
-public sealed class RoutesGenerator : PerEntityGenerator
+public class RoutesGenerator : PerEntityGenerator
 {
     public override string Name => "routes-generator";
 
@@ -55,7 +55,7 @@ public sealed class RoutesGenerator : PerEntityGenerator
         return GenerateStandardRoutes(entity, ctx);
     }
 
-    private EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
         var dbSet = CSharpNaming.Pluralize(cls);
@@ -242,7 +242,7 @@ public sealed class RoutesGenerator : PerEntityGenerator
     //
     // The base path (auths) is the pluralized base ENTITY name lowercased. ASP.NET routes
     // the static /auths/<segment> ahead of the parametric /auths/{id}, so they coexist.
-    private EmittedFile GenerateTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
+    protected virtual EmittedFile GenerateTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
     {
         var baseCls = CSharpNaming.Pascal(baseEntity.Name);
         var dbSet = CSharpNaming.Pluralize(baseCls);

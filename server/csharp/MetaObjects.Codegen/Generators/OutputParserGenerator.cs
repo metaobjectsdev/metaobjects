@@ -51,11 +51,11 @@ namespace MetaObjects.Codegen.Generators;
 /// Emits one parser file per <c>template.output</c> node, with a static class
 /// exposing <c>Parse(string)</c> + <c>TryParse(string, out T?, out string?)</c>.
 /// </summary>
-public sealed class OutputParserGenerator : IGenerator
+public class OutputParserGenerator : IGenerator
 {
-    public string Name => "output-parser-generator";
+    public virtual string Name => "output-parser-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var outputs = ctx.Root.OwnChildren()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
@@ -76,7 +76,7 @@ public sealed class OutputParserGenerator : IGenerator
         return files;
     }
 
-    private static EmittedFile EmitParser(MetaData tmpl, string payloadRef, GenContext ctx)
+    protected virtual EmittedFile EmitParser(MetaData tmpl, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
         var parserClass = $"{templateName}Parser";

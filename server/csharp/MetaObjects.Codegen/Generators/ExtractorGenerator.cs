@@ -40,11 +40,11 @@ namespace MetaObjects.Codegen.Generators;
 /// Emits one <c>&lt;Payload&gt;Extractor.cs</c> per nested-capable <c>template.output</c> — the
 /// <c>extract</c> tier (tolerant extract into the strict typed payload record).
 /// </summary>
-public sealed class ExtractorGenerator : IGenerator
+public class ExtractorGenerator : IGenerator
 {
-    public string Name => "extractor-generator";
+    public virtual string Name => "extractor-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var outputs = ctx.Root.OwnChildren()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
@@ -77,7 +77,7 @@ public sealed class ExtractorGenerator : IGenerator
         return files;
     }
 
-    private static EmittedFile EmitExtractor(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
+    protected virtual EmittedFile EmitExtractor(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         string templateName = tmpl.Name;
         string parserClass = $"{templateName}Parser";

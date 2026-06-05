@@ -17,7 +17,7 @@ using static MetaObjects.Persistence.Source.SourceConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>Generates a typed EF Core calling method per callable-source entity (FR-015).</summary>
-public sealed class CallableGenerator : PerEntityGenerator
+public class CallableGenerator : PerEntityGenerator
 {
     public override string Name => "callable-generator";
 

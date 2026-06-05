@@ -24,7 +24,7 @@ using static MetaObjects.Core.Field.FieldConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>Generates one <c>&lt;Entity&gt;FilterAllowlist.cs</c> per writable entity.</summary>
-public sealed class FilterAllowlistGenerator : PerEntityGenerator
+public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
@@ -104,7 +104,7 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     /// FR-009 vocabulary (object/class) collapse to the empty op-set and are
     /// dropped.
     /// </summary>
-    internal static Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity)
+    protected virtual Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity)
     {
         var out_ = new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.Ordinal);
         foreach (var field in entity.Fields())

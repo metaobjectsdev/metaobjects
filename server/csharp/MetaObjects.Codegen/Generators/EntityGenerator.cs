@@ -22,12 +22,21 @@ using static MetaObjects.Persistence.Origin.OriginConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-/// <summary>Generates EF Core entity/projection classes + value-object POCOs.</summary>
-public sealed class EntityGenerator : IGenerator
+/// <summary>
+/// Generates EF Core entity/projection classes + value-object POCOs.
+///
+/// Open for extension (ADR-0002): the per-class emit methods are
+/// <c>protected virtual</c>, and two finer-grained hooks —
+/// <see cref="EmitClassHeader"/> (XML-doc + composite [PrimaryKey] + [Table] + the
+/// class declaration line) and <see cref="EmitPropertyAttributes"/> (per-property
+/// C# attributes appended after the framework attributes) — cover the bulk of
+/// adopter customizations. The default bodies leave emitted output byte-identical.
+/// </summary>
+public class EntityGenerator : IGenerator
 {
-    public string Name => "entity-generator";
+    public virtual string Name => "entity-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         // Entities + read-only projections get the full EF mapping.
         var mapped = ctx.Entities
@@ -67,7 +76,7 @@ public sealed class EntityGenerator : IGenerator
     }
 
     // EF Core entity (table) or projection (view) class.
-    private EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
         var pk = entity.PrimaryIdentity();
@@ -94,25 +103,7 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
 
-        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
-        // Sandcastle, IDE hover-doc) require the doc comment to immediately
-        // precede the declaration, before any attributes.
-        XmlDocBuilder.AppendTo(sb, entity);
-        // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
-        if (pkFields.Count > 1)
-        {
-            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
-            sb.AppendLine($"[PrimaryKey({names})]");
-        }
-        if (!isProjection)
-            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        // FR-017 TPH: the discriminator base is emitted `abstract` — every row is a
-        // concrete subtype (no plain-base rows exist), so EF Core must not require a
-        // base discriminator value. A concrete base with a discriminator but no
-        // HasValue<Base>(...) fails model validation ("has a discriminator property,
-        // but does not have a discriminator value configured").
-        var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-        sb.AppendLine($"public {classKeyword} {className}");
+        EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -146,6 +137,7 @@ public sealed class EntityGenerator : IGenerator
                 member = ObjectNavProperty(entity, field, ctx);
             }
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -166,6 +158,39 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
+    }
+
+    // Extension hook — owns the per-class header for a mapped entity/projection: the
+    // XML doc comment, a composite class-level [PrimaryKey(...)], the [Table(...)] (on
+    // tables/write-through only, never a read-only projection view), and the
+    // `public [abstract] class <name>` declaration line. The default body reproduces
+    // exactly the inline emission, so the default output is byte-identical. Override to
+    // emit a `partial` class, add a marker interface, attach extra class-level
+    // attributes, etc. (ADR-0002, open-closed). Implementations MUST NOT emit the
+    // trailing `{` — the caller does.
+    protected virtual void EmitClassHeader(
+        StringBuilder sb, MetaObject entity, string className, bool isProjection,
+        IReadOnlyList<string> pkFields, GenContext ctx)
+    {
+        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
+        // Sandcastle, IDE hover-doc) require the doc comment to immediately
+        // precede the declaration, before any attributes.
+        XmlDocBuilder.AppendTo(sb, entity);
+        // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
+        if (pkFields.Count > 1)
+        {
+            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
+            sb.AppendLine($"[PrimaryKey({names})]");
+        }
+        if (!isProjection)
+            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
+        // FR-017 TPH: the discriminator base is emitted `abstract` — every row is a
+        // concrete subtype (no plain-base rows exist), so EF Core must not require a
+        // base discriminator value. A concrete base with a discriminator but no
+        // HasValue<Base>(...) fails model validation ("has a discriminator property,
+        // but does not have a discriminator value configured").
+        var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
+        sb.AppendLine($"public {classKeyword} {className}");
     }
 
     // A M:N navigation collection property on the source entity. The collection is
@@ -192,7 +217,7 @@ public sealed class EntityGenerator : IGenerator
     // physical table (a row of another subtype stores NULL there), so even an
     // @required subtype field is nullable at the column level. The subtype carries NO
     // [Table] (it shares the base's table) and no PK ([Key] lives on the base).
-    private EmittedFile EmitTphSubtypeClass(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile EmitTphSubtypeClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
         var baseClass = CSharpNaming.Pascal(TphBaseOf(entity).Name);
@@ -242,6 +267,7 @@ public sealed class EntityGenerator : IGenerator
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
                 member = ObjectNavProperty(entity, field, ctx);
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -316,7 +342,7 @@ public sealed class EntityGenerator : IGenerator
     // ([Table]/[Key]/[Column]/[MaxLength]/[Required]) and is emitted as
     // `public abstract class`. C# concrete entities flatten inherited fields (they
     // do not reference the base), so the shape is standalone — never a base type.
-    private EmittedFile EmitAbstractShapeClass(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile EmitAbstractShapeClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
 
@@ -349,6 +375,7 @@ public sealed class EntityGenerator : IGenerator
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(entity, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -366,7 +393,7 @@ public sealed class EntityGenerator : IGenerator
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
     // [Key]; column names are set in the DbContext's OwnsOne config (flattened) or are
     // opaque JSON property names (jsonb), so the POCO carries no mapping attributes.
-    private EmittedFile EmitValueObjectPoco(MetaObject vo, GenContext ctx)
+    protected virtual EmittedFile EmitValueObjectPoco(MetaObject vo, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(vo.Name);
         var sb = new StringBuilder();
@@ -395,6 +422,7 @@ public sealed class EntityGenerator : IGenerator
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -427,6 +455,34 @@ public sealed class EntityGenerator : IGenerator
             decls.Add($"    public enum {typeName} {{ {members} }}");
         }
         return decls;
+    }
+
+    // Extension hook — invoked once per emitted property, AFTER the framework
+    // attributes ([Key]/[Column]/[Required]/[MaxLength]/validators) and immediately
+    // BEFORE the `public <type> <Prop> { get; ... }` line. The default body is empty
+    // (no-op), so default output is byte-identical. Override to append per-property C#
+    // attributes (e.g. `[ContainsPhi]`, `[ReportingField(...)]`) keyed off the field's
+    // metadata. Each line written should carry the 4-space property indent.
+    protected virtual void EmitPropertyAttributes(
+        StringBuilder sb, MetaObject owner, MetaField field, GenContext ctx)
+    {
+        // No-op by default.
+    }
+
+    // Splices the EmitPropertyAttributes hook output into an already-built member
+    // string, immediately before its `    public ` declaration line (after the
+    // framework attributes). When the hook is the default no-op the member is returned
+    // unchanged, keeping default output byte-identical.
+    private string ApplyPropertyAttributes(string member, MetaObject owner, MetaField field, GenContext ctx)
+    {
+        var hook = new StringBuilder();
+        EmitPropertyAttributes(hook, owner, field, ctx);
+        if (hook.Length == 0) return member;
+
+        const string decl = "    public ";
+        var idx = member.LastIndexOf(decl, StringComparison.Ordinal);
+        if (idx < 0) return member; // no recognizable property line — leave untouched
+        return member[..idx] + hook + member[idx..];
     }
 
     // A property for an enum-subtype field. The property type is the nested enum name.

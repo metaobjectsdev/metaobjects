@@ -19,11 +19,11 @@ namespace MetaObjects.Codegen.Generators;
 /// Emits one <c>&lt;Template&gt;Prompt</c> class per json/xml <c>template.output</c>, exposing
 /// <c>RenderFormat()</c> + <c>RenderFormat(PromptOverrides)</c>.
 /// </summary>
-public sealed class OutputPromptGenerator : IGenerator
+public class OutputPromptGenerator : IGenerator
 {
-    public string Name => "output-prompt-generator";
+    public virtual string Name => "output-prompt-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var outputs = ctx.Root.OwnChildren()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
@@ -48,7 +48,7 @@ public sealed class OutputPromptGenerator : IGenerator
         return files;
     }
 
-    private static EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
+    protected virtual EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
         var promptClass = $"{templateName}Prompt";
