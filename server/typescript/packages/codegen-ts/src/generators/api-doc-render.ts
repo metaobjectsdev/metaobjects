@@ -143,6 +143,14 @@ interface SectionVM {
   heading: string;
   symbols: SymbolVM[];
 }
+interface EntityPageVM {
+  generatedMarker: string;
+  node: string;
+  hasSetup: boolean;
+  setup: SetupHandleVM[];
+  unitExample?: string;
+  sections: SectionVM[];
+}
 interface FieldRowVM {
   field: string;
   type: string;
@@ -176,7 +184,8 @@ interface SymbolVM {
 function fieldsCaptionFor(s: ApiSymbol): string {
   if (s.kind === "model") return "Fields";
   if (s.kind === "validation") return "Accepted fields";
-  if (s.kind === "extractor" || s.kind === "prompt") return s.kind === "prompt" ? "Payload" : "Returns";
+  if (s.kind === "prompt") return "Payload";
+  if (s.kind === "extractor") return "Returns";
   if (s.kind === "relation") return "Navigations";
   if (s.kind === "callable") return "Returns";
   if (s.kind === "rest" || s.kind === "rest-hono") {
@@ -217,14 +226,7 @@ function importLineFor(s: ApiSymbol): string {
 
 /** Group a unit's symbols into ordered sections (one per present kind), each a
  *  list of {signature, usage, import, throws, example}. Empty kinds are omitted. */
-function entityPageVM(unit: ApiUnitDoc): {
-  generatedMarker: string;
-  node: string;
-  hasSetup: boolean;
-  setup: SetupHandleVM[];
-  unitExample?: string;
-  sections: SectionVM[];
-} {
+function entityPageVM(unit: ApiUnitDoc): EntityPageVM {
   const sections: SectionVM[] = [];
   for (const kind of KIND_ORDER) {
     const ofKind = unit.symbols.filter((s) => s.kind === kind);
@@ -235,14 +237,7 @@ function entityPageVM(unit: ApiUnitDoc): {
     });
   }
   const setup = setupHandlesFor(unit);
-  const vm: {
-    generatedMarker: string;
-    node: string;
-    hasSetup: boolean;
-    setup: SetupHandleVM[];
-    unitExample?: string;
-    sections: SectionVM[];
-  } = {
+  const vm: EntityPageVM = {
     generatedMarker: GENERATED_MARKER,
     node: unit.node,
     hasSetup: setup.length > 0,
@@ -397,13 +392,6 @@ interface AgentUnitVM {
   example?: string;
 }
 
-/** Group a unit's symbols by their import MODULE (first-appearance order),
- *  emitting ONE `import { … } from "<module>"` header per module then the
- *  symbols under it. This is the token-frugal form that still tells the agent the
- *  exact import for EVERY symbol (one header amortized over N symbols, vs. an
- *  import line per symbol). REST endpoints aren't importable identifiers — they
- *  collapse under their entity's single route-registrar import (the registrar is
- *  the imported name; the endpoints list the verbs/paths it mounts). */
 /**
  * The agent-form signature WITH the field shape inlined — so an LLM sees exactly
  * what to pass / what it gets, not an opaque `unknown` / `ZodType` / type NAME.
@@ -449,6 +437,13 @@ function agentSignature(s: ApiSymbol): string {
   }
 }
 
+/** Group a unit's symbols by their import MODULE (first-appearance order),
+ *  emitting ONE `import { … } from "<module>"` header per module then the
+ *  symbols under it. This is the token-frugal form that still tells the agent the
+ *  exact import for EVERY symbol (one header amortized over N symbols, vs. an
+ *  import line per symbol). REST endpoints aren't importable identifiers — they
+ *  collapse under their entity's single route-registrar import (the registrar is
+ *  the imported name; the endpoints list the verbs/paths it mounts). */
 function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
   const order: string[] = [];
   const byModule = new Map<string, { names: string[]; symbols: AgentSymbolVM[] }>();

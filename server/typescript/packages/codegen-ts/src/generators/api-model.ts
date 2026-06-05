@@ -577,18 +577,7 @@ function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
   const createShape = createFieldShapes(obj);
   const updateShape = updateFieldShapes(obj);
 
-  const ep = (method: string, p: string, desc: string, fields?: FieldShape[]): ApiSymbol => {
-    const sym: ApiSymbol = {
-      name: `${method} ${p}`,
-      kind: "rest",
-      importPath: routesMod,
-      registrar,
-      signature: `${method} ${p}`,
-      usage: desc,
-    };
-    if (fields !== undefined) sym.fields = fields;
-    return sym;
-  };
+  const ep = restEndpointFactory("rest", routesMod, registrar);
 
   const symbols: ApiSymbol[] = [
     ep("GET", path, `List ${name} (supports filter/sort/paging query params).`, modelShape),
@@ -604,6 +593,29 @@ function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
   }
 
   return symbols;
+}
+
+/** Build a REST endpoint symbol factory bound to one route surface (kind +
+ *  route module + registrar). The Fastify and Hono REST builders share this so a
+ *  `METHOD /path` endpoint is shaped one way; only the surface-level kind/module/
+ *  registrar and the per-endpoint description differ between them. */
+function restEndpointFactory(
+  kind: ApiSymbolKind,
+  routesMod: string,
+  registrar: string,
+): (method: string, p: string, desc: string, fields?: FieldShape[]) => ApiSymbol {
+  return (method, p, desc, fields) => {
+    const sym: ApiSymbol = {
+      name: `${method} ${p}`,
+      kind,
+      importPath: routesMod,
+      registrar,
+      signature: `${method} ${p}`,
+      usage: desc,
+    };
+    if (fields !== undefined) sym.fields = fields;
+    return sym;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -765,18 +777,7 @@ function restHonoSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
   const createShape = createFieldShapes(obj);
   const updateShape = updateFieldShapes(obj);
 
-  const ep = (method: string, p: string, desc: string, fields?: FieldShape[]): ApiSymbol => {
-    const sym: ApiSymbol = {
-      name: `${method} ${p}`,
-      kind: "rest-hono",
-      importPath: honoMod,
-      registrar,
-      signature: `${method} ${p}`,
-      usage: desc,
-    };
-    if (fields !== undefined) sym.fields = fields;
-    return sym;
-  };
+  const ep = restEndpointFactory("rest-hono", honoMod, registrar);
 
   const symbols: ApiSymbol[] = [
     ep("GET", path, `[Hono] List ${name} (filter/sort/paging query params).`, modelShape),
