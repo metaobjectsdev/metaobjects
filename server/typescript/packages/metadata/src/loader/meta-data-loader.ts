@@ -69,6 +69,14 @@ export interface LoadOptions {
   freeze?: boolean;
   /** Strict parsing mode — passed through to parser. Default false. */
   strict?: boolean;
+  /**
+   * Optional callback invoked with the fully-resolved, validated root
+   * immediately before the tree is frozen. Use this to inject programmatically
+   * derived nodes (e.g. codegen pre-passes) that must be part of the frozen
+   * metadata tree. The callback may mutate the root; after it returns the tree
+   * is frozen and immutable. Ignored when `freeze: false`.
+   */
+  preFreeze?: (root: MetaRoot) => void;
 }
 
 export interface LoadResult {
@@ -99,6 +107,7 @@ export class MetaDataLoader {
   private readonly _registry: TypeRegistry;
   private readonly _freeze: boolean;
   private readonly _strict: boolean;
+  private readonly _preFreeze: ((root: MetaRoot) => void) | undefined;
 
   private _state: LoadingState = "uninitialized";
   private _root: MetaRoot | undefined;
@@ -107,6 +116,7 @@ export class MetaDataLoader {
     this._registry = opts?.registry ?? MetaDataLoader._defaultRegistry();
     this._freeze = opts?.freeze !== false; // default true
     this._strict = opts?.strict === true;  // default false
+    this._preFreeze = opts?.preFreeze;
   }
 
   private static _defaultRegistry(): TypeRegistry {
@@ -505,6 +515,11 @@ export class MetaDataLoader {
     // Freeze applies to BOTH paths — synthetic-root callers shouldn't get a
     // mutable model just because their inputs failed.
     if (this._freeze) {
+      // Run the preFreeze hook (if any) before locking the tree. This is the
+      // designated injection point for programmatic tree enrichment (e.g.
+      // codegen pre-passes that derive additional nodes from the validated
+      // metadata). After the hook returns the tree is frozen and immutable.
+      this._preFreeze?.(root);
       root.freeze();
     }
 

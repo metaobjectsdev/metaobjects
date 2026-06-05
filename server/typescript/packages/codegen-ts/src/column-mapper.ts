@@ -27,6 +27,8 @@ import {
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  STORAGE_JSONB,
   VALIDATOR_ATTR_MAX,
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
@@ -337,7 +339,13 @@ export function mapColumnType(
         }
         case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_CLASS:
+          fnName = "text";
+          break;
         case FIELD_SUBTYPE_OBJECT:
+          // @storage: jsonb on a field.object → Postgres jsonb column.
+          // Unset (or non-jsonb) storage falls back to text (back-compat).
+          fnName = field.ownAttr(FIELD_ATTR_STORAGE) === STORAGE_JSONB ? "jsonb" : "text";
+          break;
         default:
           fnName = "text";
           break;
