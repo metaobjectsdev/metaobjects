@@ -62,6 +62,11 @@ When `apiDocsFile()` is enabled (it is in the default scaffold), **read
 imports, function signatures, payload field shapes, and runnable examples for this
 project's generated API, so you don't have to guess them.
 
+`apiDocsFile()` (a generator → `docs/api/`) is the SDK/API reference. The neutral
+model docs (one page per entity and per template, including the linked template
+source) are different: they come from the separate `meta docs` command (→ `docs/`),
+which is the single door for neutral docs — not a `meta gen` generator.
+
 From `@metaobjectsdev/codegen-ts-react`: `formFile()` → `<Entity>.form.tsx`.
 From `@metaobjectsdev/codegen-ts-tanstack`: `tanstackQuery()` → `<Entity>.hooks.ts`
 (5 React Query hooks), `tanstackGrid()` → `<Entity>.columns.tsx`,
