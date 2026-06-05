@@ -24,6 +24,7 @@ import {
   TEMPLATE_ATTR_OWNER,
   TEMPLATE_ATTR_SINCE,
   TEMPLATE_ATTR_REQUIRED_TAGS,
+  TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_MAX_TOKENS,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_MODEL,
@@ -160,6 +161,12 @@ const promptOverlayAttrs: AttrSchema[] = [
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
     description: "Target model id (LLM-specific).",
+  },
+  {
+    name: TEMPLATE_ATTR_RESPONSE_REF,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation).",
   },
 ];
 

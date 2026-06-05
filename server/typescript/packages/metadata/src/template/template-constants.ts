@@ -65,6 +65,7 @@ export const TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef";
 export const TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef";
 
 // Prompt-overlay attrs (template.prompt only).
+export const TEMPLATE_ATTR_RESPONSE_REF = "responseRef";
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";
 export const TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
 export const TEMPLATE_ATTR_MODEL = "model";

@@ -23,6 +23,7 @@ import {
 } from "../shared/base-types.js";
 import {
   TEMPLATE_ATTR_PAYLOAD_REF,
+  TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_KIND,
@@ -179,6 +180,18 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
         ),
       );
       continue;
+    }
+    const responseRef = tmpl.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
+    if (typeof responseRef === "string") {
+      const resVo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === responseRef);
+      if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
+        errors.push(
+          new ParseError(
+            `template "${tmpl.name}" @responseRef "${responseRef}" does not resolve to an object.value at root`,
+            { code: "ERR_INVALID_TEMPLATE", source: resolvedSource(tmpl.source, tmpl.fqn(), responseRef) },
+          ),
+        );
+      }
     }
     const fieldNames = new Set(
       payload.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
