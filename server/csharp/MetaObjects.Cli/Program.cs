@@ -23,7 +23,11 @@ if (args.Length == 0)
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
-        "                                                       --db         NOT supported in C# (migrate engine)");
+        "                                                       --db         NOT supported in C# (migrate engine)\n" +
+        "    agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>]\n" +
+        "                                                     scaffold the slim MetaObjects Claude Code\n" +
+        "                                                     agent context (defaults to csharp when a\n" +
+        "                                                     *.csproj is present)");
     return 2;
 }
 
@@ -31,6 +35,7 @@ return args[0] switch
 {
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
+    "agent-docs" => AgentDocsCommand.Run(args[1..]),
     _ => Unknown(args[0]),
 };
 

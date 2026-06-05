@@ -19,4 +19,16 @@
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
   </ItemGroup>
+
+  <!-- Bundle the repo-root agent-context/ content tree so `dotnet meta agent-docs`
+       resolves it both in dev (run-from-output) and when installed as a .NET tool.
+       Copied under <output>/agent-context/, where ContentRoot.Resolve looks first. -->
+  <ItemGroup>
+    <Content Include="../../../agent-context/**/*">
+      <Link>agent-context/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>tools/net8.0/any/agent-context/%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+    </Content>
+  </ItemGroup>
 </Project>
