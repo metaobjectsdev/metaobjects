@@ -64,9 +64,15 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
       // ONE ApiModel feeds every form (Task-1 builder; Task-2 renderers). The
       // pkMap is reused from the run's renderContext when present (the real gen
       // run always provides it) and derived otherwise.
+      // Auto-detect: document the OPT-IN Hono CRUD surface iff the Hono routes
+      // generator is actually in the run. The runner aggregates each generator's
+      // `emitsHonoRoutes` marker into ctx.config.includeHonoRoutes, so api-docs
+      // "just works" — it documents Hono exactly when `routesFileHono` is wired,
+      // and omits it (Fastify-only) otherwise. No explicit opt needed.
       const model = buildApiModel(ctx.loadedRoot, {
         loadedRoot: ctx.loadedRoot,
         outputLayout: layout,
+        includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
         ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
       });
 

@@ -96,7 +96,7 @@ const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));
 ## Example
 
 \`\`\`ts
-import { createProduct, findProductById, updateProduct, deleteProductById } from "Product.queries";
+import { createProduct, findProductById, updateProduct, deleteProductById } from "./Product.queries";
 
 const created = await createProduct(db, { name: "…" });
 const found = await findProductById(db, created.id);
@@ -111,7 +111,7 @@ const removed = await deleteProductById(db, created.id);
 The typed shape of a Product row, generated from its metadata.
 
 \`\`\`ts
-import { Product } from "Product"
+import { Product } from "./Product"
 \`\`\`
 
 Fields:
@@ -128,7 +128,7 @@ Fields:
 Fetch a single Product by its primary key; null when not found.
 
 \`\`\`ts
-import { findProductById } from "Product.queries"
+import { findProductById } from "./Product.queries"
 \`\`\`
 
 ### \`listProducts(db: Db, opts?: { limit?: number; offset?: number }): Promise<Product[]>\`
@@ -136,7 +136,7 @@ import { findProductById } from "Product.queries"
 List Product rows with optional limit/offset paging.
 
 \`\`\`ts
-import { listProducts } from "Product.queries"
+import { listProducts } from "./Product.queries"
 \`\`\`
 
 ### \`createProduct(db: Db, data: unknown): Promise<Product>\`
@@ -144,7 +144,7 @@ import { listProducts } from "Product.queries"
 Validate (via ProductInsertSchema) and insert a new Product.
 
 \`\`\`ts
-import { createProduct } from "Product.queries"
+import { createProduct } from "./Product.queries"
 \`\`\`
 
 Request body (data):
@@ -160,7 +160,7 @@ Throws: ZodError when data fails ProductInsertSchema validation.
 Partially update an existing Product by primary key; null when not found.
 
 \`\`\`ts
-import { updateProduct } from "Product.queries"
+import { updateProduct } from "./Product.queries"
 \`\`\`
 
 Request body (data):
@@ -176,7 +176,7 @@ Throws: ZodError when data fails the partial ProductInsertSchema validation.
 Delete a Product by primary key; true when a row was removed.
 
 \`\`\`ts
-import { deleteProductById } from "Product.queries"
+import { deleteProductById } from "./Product.queries"
 \`\`\`
 
 ## REST
@@ -186,7 +186,7 @@ import { deleteProductById } from "Product.queries"
 List Product (supports filter/sort/paging query params).
 
 \`\`\`ts
-import { productRoutes } from "Product.routes"
+import { productRoutes } from "./Product.routes"
 \`\`\`
 
 Response body:
@@ -203,7 +203,7 @@ Mount: \`await productRoutes(fastify)\`
 Fetch a single Product by id (404 when not found).
 
 \`\`\`ts
-import { productRoutes } from "Product.routes"
+import { productRoutes } from "./Product.routes"
 \`\`\`
 
 Response body:
@@ -220,7 +220,7 @@ Mount: \`await productRoutes(fastify)\`
 Create a Product (body validated by ProductInsertSchema).
 
 \`\`\`ts
-import { productRoutes } from "Product.routes"
+import { productRoutes } from "./Product.routes"
 \`\`\`
 
 Request body:
@@ -236,7 +236,7 @@ Mount: \`await productRoutes(fastify)\`
 Partially update a Product by id (body validated by ProductUpdateSchema).
 
 \`\`\`ts
-import { productRoutes } from "Product.routes"
+import { productRoutes } from "./Product.routes"
 \`\`\`
 
 Request body:
@@ -252,7 +252,7 @@ Mount: \`await productRoutes(fastify)\`
 Delete a Product by id.
 
 \`\`\`ts
-import { productRoutes } from "Product.routes"
+import { productRoutes } from "./Product.routes"
 \`\`\`
 
 Mount: \`await productRoutes(fastify)\`
@@ -264,7 +264,7 @@ Mount: \`await productRoutes(fastify)\`
 Zod schema validating the body of a create<Product> / POST request (auto-generated PKs excluded).
 
 \`\`\`ts
-import { ProductInsertSchema } from "Product"
+import { ProductInsertSchema } from "./Product"
 \`\`\`
 
 Accepted fields:
@@ -278,7 +278,7 @@ Accepted fields:
 Zod schema validating the body of an update / PATCH request (all fields optional).
 
 \`\`\`ts
-import { ProductUpdateSchema } from "Product"
+import { ProductUpdateSchema } from "./Product"
 \`\`\`
 
 Accepted fields:
@@ -299,11 +299,11 @@ describe("renderEntityApiPage — human per-unit page", () => {
     const { model } = await loadModel();
     const out = renderEntityApiPage(unit(model, "Product"), provider);
     // Import per symbol — the #1 actionability fix.
-    expect(out).toContain(`import { findProductById } from "Product.queries"`);
-    expect(out).toContain(`import { Product } from "Product"`);
-    expect(out).toContain(`import { ProductInsertSchema } from "Product"`);
+    expect(out).toContain(`import { findProductById } from "./Product.queries"`);
+    expect(out).toContain(`import { Product } from "./Product"`);
+    expect(out).toContain(`import { ProductInsertSchema } from "./Product"`);
     // REST wires through the route registrar (not an importable endpoint fn).
-    expect(out).toContain(`import { productRoutes } from "Product.routes"`);
+    expect(out).toContain(`import { productRoutes } from "./Product.routes"`);
     expect(out).toContain("Mount: `await productRoutes(fastify)`");
     // Computed-but-previously-dropped throws now surfaces on the human page.
     expect(out).toContain("Throws: ZodError when data fails ProductInsertSchema validation.");
@@ -351,7 +351,7 @@ describe("renderEntityApiPage — human per-unit page", () => {
 Build one.
 
 \`\`\`ts
-import { makeWidget } from "Widget.queries"
+import { makeWidget } from "./Widget.queries"
 \`\`\`
 
 \`\`\`ts
@@ -433,19 +433,19 @@ Generated API reference for this project; call these exactly as written. Imports
 
 ## Product
 
-\`import { Product, ProductInsertSchema, ProductUpdateSchema } from "Product"\`
+\`import { Product, ProductInsertSchema, ProductUpdateSchema } from "./Product"\`
 - \`interface Product { id: number; name?: string }\` — The typed shape of a Product row, generated from its metadata.
 - \`ProductInsertSchema: ZodType<{ name?: string }>\` — Zod schema validating the body of a create<Product> / POST request (auto-generated PKs excluded).
 - \`ProductUpdateSchema: ZodType<{ name?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
 
-\`import { findProductById, listProducts, createProduct, updateProduct, deleteProductById } from "Product.queries"\`
+\`import { findProductById, listProducts, createProduct, updateProduct, deleteProductById } from "./Product.queries"\`
 - \`findProductById(db: Db, id: number): Promise<Product | null>\` — Fetch a single Product by its primary key; null when not found.
 - \`listProducts(db: Db, opts?: { limit?: number; offset?: number }): Promise<Product[]>\` — List Product rows with optional limit/offset paging.
 - \`createProduct(db: Db, data: { name?: string }): Promise<Product>\` — Validate (via ProductInsertSchema) and insert a new Product. [throws: ZodError when data fails ProductInsertSchema validation.]
 - \`updateProduct(db: Db, id: number, data: { name?: string }): Promise<Product | null>\` — Partially update an existing Product by primary key; null when not found. [throws: ZodError when data fails the partial ProductInsertSchema validation.]
 - \`deleteProductById(db: Db, id: number): Promise<boolean>\` — Delete a Product by primary key; true when a row was removed.
 
-\`import { productRoutes } from "Product.routes"\`
+\`import { productRoutes } from "./Product.routes"\`
 - \`GET /products -> { id: number; name?: string }\` — List Product (supports filter/sort/paging query params).
 - \`GET /products/:id -> { id: number; name?: string }\` — Fetch a single Product by id (404 when not found).
 - \`POST /products body: { name?: string }\` — Create a Product (body validated by ProductInsertSchema).
@@ -462,16 +462,16 @@ const removed = await deleteProductById(db, created.id);
 
 ## SummaryVO
 
-\`import { SummaryVO } from "SummaryVO"\`
+\`import { SummaryVO } from "./SummaryVO"\`
 - \`interface SummaryVO { headline: string }\` — The typed shape of a SummaryVO row, generated from its metadata.
 
 ## ProductSummary
 
-\`import { extractProductSummary, extractLenientProductSummary } from "ProductSummary.extractor"\`
+\`import { extractProductSummary, extractLenientProductSummary } from "./ProductSummary.extractor"\`
 - \`extractProductSummary(root: MetaRoot, text: string): SummaryVO // SummaryVO: { headline: string }\` — Parse dirty LLM json text into a strict, fully-typed SummaryVO graph. [throws: Error when a @required field is lost (the strict opt-in gate).]
 - \`extractLenientProductSummary(root: MetaRoot, text: string): ExtractionResult<ProductSummaryExtracted>\` — Never-throwing extract; inspect report for lost/defaulted fields.
 
-\`import { renderProductSummary } from "ProductSummary.render"\`
+\`import { renderProductSummary } from "./ProductSummary.render"\`
 - \`renderProductSummary(payload: SummaryVO, provider: Provider): string\` — Render the ProductSummary document from a typed SummaryVO payload.
 
 Example:
@@ -543,12 +543,12 @@ describe("renderAgentApi — condensed agent/LLM form", () => {
     // The import header names the module AND the importable identifier; the
     // bullet names the callable signature. Together an agent has the exact import
     // + the call shape for createProduct.
-    expect(out).toContain(`import { findProductById, listProducts, createProduct, updateProduct, deleteProductById } from "Product.queries"`);
+    expect(out).toContain(`import { findProductById, listProducts, createProduct, updateProduct, deleteProductById } from "./Product.queries"`);
     // T2: the agent form now inlines the create payload SHAPE in place of the
     // opaque `data: unknown`, so an agent knows what fields to pass.
     expect(out).toContain("`createProduct(db: Db, data: { name?: string }): Promise<Product>`");
     // REST endpoints are wired through the entity's route registrar import.
-    expect(out).toContain(`import { productRoutes } from "Product.routes"`);
+    expect(out).toContain(`import { productRoutes } from "./Product.routes"`);
   });
 
   test("throws is surfaced as a compact [throws: …] marker", async () => {
