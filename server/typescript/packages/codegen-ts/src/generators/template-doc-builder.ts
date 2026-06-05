@@ -90,6 +90,16 @@ function templateDescription(t: MetaData): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+/** Page-placement node for a metadata object resolved by short name, with the
+ *  SAME package-less fallback the Payload cross-link and field hrefs share: when
+ *  the object can't be resolved off the root, fall back to a root-level node so a
+ *  link is still emitted. Keeps every inbound href routing through the one
+ *  `docPageHref(layout, …)` placement. */
+function pageNodeByName(root: MetaRoot | undefined, name: string): DocPageNode {
+  const obj = root?.findObject(name);
+  return obj !== undefined ? docPageNode(obj) : { name };
+}
+
 /** Build the TemplateDocData for one `template.output` node. */
 export function buildTemplateDocData(
   template: MetaData,
@@ -140,13 +150,12 @@ export function buildTemplateDocData(
 
   // Cross-link to the payload entity's page. The href is derived from the SAME
   // page-placement function used to write that entity page, so it resolves in
-  // BOTH layouts. Resolve the payload's package from the root (by short name)
-  // so package layout can fold the correct relative path; fall back to a
-  // package-less node (root-level) when it can't be resolved.
-  const payloadObj = root?.findObject(payloadName);
-  const payloadTarget: DocPageNode =
-    payloadObj !== undefined ? docPageNode(payloadObj) : { name: payloadName };
-  const payloadLink = docPageHref(layout, docPageNode(template), payloadTarget);
+  // BOTH layouts (package layout folds the correct relative path).
+  const payloadLink = docPageHref(
+    layout,
+    docPageNode(template),
+    pageNodeByName(root, payloadName),
+  );
 
   const data: TemplateDocData = {
     generatedMarker: `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`,
@@ -232,15 +241,9 @@ function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined 
 
   // Layout-aware field href: route through the SAME docPageHref the Payload
   // cross-link uses, so the link lands on the owner VO's REAL page in BOTH
-  // layouts (flat → `./Owner.md`, package → `../<pkg>/Owner.md`). Resolve the
-  // owner's package off the root (by short name); fall back to a package-less
-  // node when it can't be resolved — mirroring the Payload link's fallback.
-  const fieldHref = (owner: string, name: string): string => {
-    const ownerObj = root.findObject(owner);
-    const toNode: DocPageNode =
-      ownerObj !== undefined ? docPageNode(ownerObj) : { name: owner };
-    return `${docPageHref(layout, fromNode, toNode)}#${fieldAnchorSlug(name)}`;
-  };
+  // layouts (flat → `./Owner.md`, package → `../<pkg>/Owner.md`).
+  const fieldHref = (owner: string, name: string): string =>
+    `${docPageHref(layout, fromNode, pageNodeByName(root, owner))}#${fieldAnchorSlug(name)}`;
 
   const resolvePartialHref = makePartialHrefResolver(root, layout, fromNode);
   const isMultipart = refs.length > 1 || refs.some((r) => r.label !== undefined);
