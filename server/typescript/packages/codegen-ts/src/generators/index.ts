@@ -19,6 +19,7 @@ export {
   type TemplateWalkResult,
   type TemplateFormat,
 } from "./template-generator.js";
+export { traceHelperFile, type TraceHelperOpts } from "./trace-helper-file.js";
 export type {
   EntityDocData,
   StorageFieldDoc,

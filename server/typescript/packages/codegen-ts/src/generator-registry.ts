@@ -33,6 +33,7 @@ import {
   renderHelper,
   docsFile,
   templateGenerator,
+  traceHelperFile,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
@@ -150,6 +151,14 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => templatePrimitive(),
     options: "name, walk, template, format?, filter?, provider?, target?",
+  },
+
+  "trace-helper": {
+    name: "trace-helper",
+    description: "Per-entity typed record<Entity> helper wrapping recordLlmCall (LlmCallBase-derived entities only).",
+    tier: "native",
+    factory: () => traceHelperFile(),
+    options: "outDir?, target?",
   },
 
   // ----- Tier-2 neutral (owned by the `meta docs` engine — D1 / ADR-0020) ---

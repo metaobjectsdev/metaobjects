@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
-import { entityFile, queriesFile, barrel } from "../src/generators/index.js";
+import { entityFile, queriesFile, barrel, traceHelperFile } from "../src/generators/index.js";
 import { deriveTraceFields } from "../src/ai/derive-trace-fields.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 
@@ -41,6 +41,25 @@ describe("derive trace fields", () => {
     expect(t).toContain("voRequest");
     expect(t).toContain("voResponse");
     expect(t).toContain("jsonb");
+  });
+
+  test("emits a typed record helper for a derived trace entity", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ai1b-h-"));
+    writeFileSync(join(dir, "m.json"), MODEL);
+    const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+    rmSync(dir, { recursive: true, force: true });
+    expect(loaded.errors).toEqual([]);
+    const out = await runGen({
+      config: defineConfig({ outDir: tmp, extStyle: "none", dbImport: "~/db", dialect: "postgres",
+        generators: [entityFile(), queriesFile(), traceHelperFile(), barrel()] }),
+      metadata: loaded.root,
+    });
+    expect(out.warnings).toEqual([]);
+    const files = readdirSync(tmp);
+    expect(files).toContain("ClassifyCall.trace.ts");
+    const h = readFileSync(join(tmp, "ClassifyCall.trace.ts"), "utf-8");
+    expect(h).toContain("recordClassifyCall");
+    expect(h).toContain("recordLlmCall");
   });
 
   test("entity without a nested prompt is untouched", async () => {

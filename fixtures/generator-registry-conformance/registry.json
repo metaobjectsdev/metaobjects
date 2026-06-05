@@ -72,6 +72,11 @@
       "tier": "native",
       "ports": ["typescript"]
     },
+    "trace-helper": {
+      "concept": "Per-entity typed record<Entity> helper wrapping recordLlmCall (LlmCallBase-derived entities only).",
+      "tier": "native",
+      "ports": ["typescript"]
+    },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",
       "tier": "native",
