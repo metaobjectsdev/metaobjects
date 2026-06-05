@@ -1,0 +1,304 @@
+# MetaObjects -- Full Reference Corpus
+
+> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.9.0` on npm and `7.2.0` on Maven Central.
+
+**Note for AI assistants:** This file is the concatenated reference material for MetaObjects, intended to be loaded as LLM context. For the short index, see [llms.txt](https://metaobjects.dev/llms.txt). For the canonical spec and source, see the [GitHub repo](https://github.com/metaobjectsdev/metaobjects). When this file is out of date relative to the GitHub source, the GitHub source wins.
+
+**Adopting MetaObjects in a project?** Before anything else: install the port's package, run `meta init` (the Node `meta` CLI — works in any project with Node, including JVM/Python projects with a TS frontend), then load the scaffolded `.metaobjects/AGENTS.md` and the `.claude/skills/metaobjects-*` skills. Those are version-matched to the installed release and far richer than this file. See "For AI assistants adopting MetaObjects" below.
+
+---
+
+## What MetaObjects is
+
+MetaObjects is a cross-language metadata standard for declaring typed entity models. From a single metadata definition, MetaObjects drives four capabilities — **all four ship today across all five ports** (TypeScript, Java, Kotlin, C#, Python):
+
+1. **Code generation** -- idiomatic per-language code generated from the same metadata model.
+2. **Runtime metadata access** -- load the metadata at runtime to drive dynamic behavior: CRUD operations, validation, relationships, dynamic admin UIs, LLM tool registration.
+3. **Drift detection** -- catch divergence between code and metadata before it ships, surfacing drift as build-time breakage.
+4. **Prompt construction** -- treat LLM prompts as governed metadata: a typed payload (a projection), external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt-to-payload drift detection.
+
+The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs **without any MetaObjects dependency at runtime**. If the `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) packages disappeared tomorrow, your generated code keeps working in every language.
+
+---
+
+## For AI assistants adopting MetaObjects
+
+If you are an AI assistant helping someone adopt MetaObjects, do this **first** — the scaffolded local context is richer and version-matched, and it loads automatically into the project's agent context:
+
+1. **Install the port's package:**
+   - TypeScript / Node: `npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts`
+   - Java / Kotlin: add `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and `com.metaobjects:metaobjects-maven-plugin`, all at `7.2.0`.
+   - Python: `pip install metaobjects`
+   - C#: install the MetaObjects .NET tool (invoked as `dotnet meta`).
+2. **Run `meta init`** (the Node `meta` CLI). It works in any project that has Node — including a JVM or Python project with a TypeScript frontend. It scaffolds a slim always-on `.metaobjects/AGENTS.md` + `.metaobjects/CLAUDE.md` (auto-wired via an `@.metaobjects/AGENTS.md` import line into the project's root `CLAUDE.md`/`AGENTS.md`, so it loads automatically) plus five `metaobjects-*` Claude Code skills under `.claude/skills/`, carrying only the project's language reference fragments. Re-run `meta init --refresh-docs` to update the agent docs after a CLI upgrade. (Native per-port scaffold commands for JVM/Python/C#-only projects are forthcoming; today, run the Node `meta init` regardless of backend.)
+3. **Load `.metaobjects/AGENTS.md` and the `.claude/skills/metaobjects-*` skills.** They teach metadata authoring, codegen, runtime/UI, prompt construction, and `verify` — for this project's exact stack and version.
+
+This file is the short corpus; the deep, version-matched how-to is the scaffolded local context.
+
+---
+
+## The four pillars
+
+The pillars are weighted equally and are not separate products; they are views on the same metadata. All four ship per language today, conformance-gated so behavior is byte-identical across ports.
+
+### Codegen
+
+Emit idiomatic per-language code from a single metadata model.
+
+- TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side)
+- Java: Spring REST + DTO + JPA repositories via `codegen-spring`
+- Kotlin: KotlinPoet + Exposed + Spring via `codegen-kotlin`
+- C#: EF Core + ASP.NET
+- Python: Pydantic + FastAPI
+
+Hand-edit-preserving regeneration uses a three-way merge so engineers can extend generated entities without losing their work when metadata changes. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
+
+### Runtime metadata
+
+Load metadata at runtime and drive behavior dynamically. Runtime targets per language:
+
+- TypeScript: Kysely (Node-side runtime helpers in `runtime-ts`)
+- Java: modernized JDBC + Spring-tx via OMDB (pure data-access: CRUD/query/codec/transactions)
+- Kotlin: Exposed
+- C#: EF Core
+- Python: SQLAlchemy Core via an `ObjectManager` layer
+
+Runtime use cases include CRUD scaffolding, validation rules, relationship traversal, dynamic admin UIs, and LLM tool registration (so AI agents see typed tools generated from metadata). Each port's runtime returns native in-process language types (`field.decimal` → `BigDecimal`/`decimal`/`Decimal`, temporal → native, jsonb → native map); wire canonicalization is applied only at the serialization boundary, never inside the query path (ADR-0019).
+
+### Drift detection
+
+Catch divergence between code and metadata. `verify` is one verb with three explicit subverbs (ADR-0021):
+
+- `verify --codegen` — regenerate from metadata into a temp dir and fail if it differs from the committed generated output (catches "metadata changed but codegen wasn't re-run" and hand-edited generated files).
+- `verify --templates` — check each `template.*` node's `{{field}}` references against its payload VO (prompt-to-payload drift).
+- `verify --db` — live-DB schema drift; Node `meta` only (it is part of the schema toolchain, ADR-0015).
+
+Combinations aggregate (exit non-zero if any selected mode reports drift). Bare `verify` runs the port's documented back-compat default and advertises the explicit subverbs.
+
+### Prompt construction
+
+The prompt is code too — but most teams still ship it as a string assembled imperatively and scattered across services, with no declared shape, no tests, and no visibility into token cost. The fourth pillar makes a prompt a declared, deterministic, testable artifact.
+
+A prompt's input payload is declared as a typed projection — the same machinery used for DB views — so the data a prompt consumes has one declared shape and unused fields (payload bloat, token cost) show up as a diff. The prompt text is never inline: it is external and resolved by a runtime-configured provider (filesystem, RDB, or NoSQL), addressed by a backend- and locale-agnostic logical reference, so a rule block triplicated across call sites lives once. A logic-less Mustache engine renders `(payload + provider-resolved text) → final prompt string` deterministically: the same inputs always produce the same string, which makes prompts snapshot-testable in CI and keeps them byte-stable so a stray whitespace or key-order change can't silently break exact-prefix prompt caching (where the savings run up to ~90% of input cost). A build-time `verify --templates` step proves every prompt variable resolves to a real field on its payload, so a renamed field three services away breaks the build instead of quietly degrading output.
+
+Because the render is conformance-gated, the determinism guarantee holds in every language port — which is also what lets an eval harness (often Python) render exactly what a production service (often not) ships. The library-side building blocks all ship in all five ports today: render, payload-VO codegen, `verify`, `template.output` parser-on-receipt (FR-006), the output-format prompt fragment, and the tolerant `extract` parser (FR-010/FR-011). The one remaining library-side piece is MCP exposure of declared prompts/tools (see the roadmap).
+
+---
+
+## Implementations
+
+| Language | Status | Notes |
+|---|---|---|
+| TypeScript | Reference implementation, npm `0.9.0` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
+| Java | Maven Central `7.2.0` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
+| Kotlin | Maven Central `7.2.0` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
+| C# | npm-line `0.9.0` (NuGet / .NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
+| Python | npm-line `0.9.0` (PyPI) | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
+
+Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, ~90 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (20 scenarios, two lanes — a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
+
+---
+
+## Monorepo layout
+
+```
+metaobjects/
+  spec/                          # canonical metamodel docs (target-agnostic) + ADRs
+  fixtures/                      # cross-language conformance corpora
+  server/                        # runs on a server
+    typescript/   java/   python/   csharp/
+  client/                        # runs on an end-user device
+    web/                         # browser (TS-only -- the browser is TS-native)
+```
+
+Kotlin lives alongside Java under `server/java/` since both run on the JVM.
+
+TypeScript plays two distinct roles in this layout:
+
+- **Server-side TS** is a peer port to Java/Kotlin/Python/C# at `server/typescript/`.
+- **Universal web client TS** at `client/web/` is consumed by all backends. A Java backend serving a React frontend still uses the TS client packages.
+
+Where does a new package go?
+1. Server-side or client-side? -> top-level dir.
+2. What language/platform? -> second-level dir.
+3. What framework integration? -> package name at the third level.
+
+---
+
+## TypeScript package layout
+
+Server-side (`server/typescript/packages/`):
+
+- `metadata/` (`@metaobjectsdev/metadata`) -- metamodel loader, types, constants
+- `codegen-ts/` (`@metaobjectsdev/codegen-ts`) -- framework-neutral TS codegen engine
+- `codegen-ts-react/` (`@metaobjectsdev/codegen-ts-react`) -- React codegen (formFile)
+- `codegen-ts-tanstack/` (`@metaobjectsdev/codegen-ts-tanstack`) -- TanStack codegen (queries, grids)
+- `runtime-ts/` (`@metaobjectsdev/runtime-ts`) -- Node-side runtime (Kysely, Drizzle, Fastify helpers)
+- `migrate-ts/` (`@metaobjectsdev/migrate-ts`) -- the schema-migration engine every port uses
+- `sdk/` (`@metaobjectsdev/sdk`) -- workspace memory, path helpers
+- `cli/` (`@metaobjectsdev/cli`, binary `meta`) -- CLI commands: `init`, `gen`, `migrate`, `verify`
+
+Universal web client (`client/web/packages/`): `@metaobjectsdev/runtime-web`, `@metaobjectsdev/react`, `@metaobjectsdev/tanstack`.
+
+---
+
+## Java / Kotlin Maven coordinates
+
+All published to Maven Central under `com.metaobjects:*` at `7.2.0`:
+
+- `metaobjects-metadata`, `metaobjects-metadata-ktx`
+- `metaobjects-codegen-base`, `metaobjects-codegen-mustache`, `metaobjects-codegen-spring`, `metaobjects-codegen-kotlin`, `metaobjects-codegen-plantuml`
+- `metaobjects-render`
+- `metaobjects-om`, `metaobjects-omdb`
+- `metaobjects-dynamic-core`, `metaobjects-core-spring`
+- `metaobjects-maven-plugin` (goal prefix `metaobjects`)
+
+The Maven plugin exposes two goals: `metaobjects:generate` (codegen — also runs Kotlin generators via the shared SPI) and `metaobjects:verify` (`-Dmeta.verify.mode=codegen|templates`). There is **no** Maven migrate goal: schema migration is Node-`meta`-only (ADR-0015).
+
+---
+
+## Quickstart (TypeScript)
+
+```bash
+cd server/typescript
+bun install
+bun test
+```
+
+Bun-first dev workflow; no separate build step. Typecheck across the workspace:
+
+```bash
+bun run --filter '*' typecheck
+```
+
+Distribution artifacts remain Node-compatible -- consumers can install via npm/pnpm/bun.
+
+CLI binary: `meta`.
+Project config: `metaobjects.config.ts`.
+Project marker directory: `.metaobjects/`.
+
+---
+
+## Quickstart (Java / Kotlin)
+
+Add the Maven coordinates above at `7.2.0`. Run codegen with `mvn metaobjects:generate` and codegen-drift checks with `mvn metaobjects:verify`. Configure generators (including Kotlin generators, which run through the same goal) on the `metaobjects-maven-plugin`. See [`server/java/`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java) and [`server/java/codegen-kotlin/README.md`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java/codegen-kotlin).
+
+---
+
+## Quickstart (C#)
+
+```bash
+dotnet tool install --global <MetaObjects CLI tool>   # installs the `dotnet meta` tool
+dotnet meta gen
+dotnet meta verify          # codegen-side verify subverbs (--codegen / --templates)
+```
+
+Schema migration (`migrate`, `verify --db`) is Node-`meta`-only (ADR-0015).
+
+---
+
+## Quickstart (Python)
+
+```bash
+pip install metaobjects
+metaobjects gen
+metaobjects verify          # codegen-side verify subverbs (--codegen / --templates)
+```
+
+Schema migration is Node-`meta`-only (ADR-0015).
+
+---
+
+## Example: defining metadata
+
+Entity files live under `metaobjects/` in your project. The format below is YAML; canonical JSON is the on-disk interchange (the conformance fixtures use JSON), and the YAML desugar lowers to it. YAML authoring is sigil-free; canonical JSON `@`-prefixes inline attributes.
+
+```yaml
+# metaobjects/subscriber.meta.yaml
+metadata.root:
+  package: acme
+  children:
+    - object.entity:
+        name: Subscriber
+        children:
+          - field.long:    { name: id }
+          - field.string:  { name: email }
+          - field.string:  { name: createdAt, autoSet: onCreate }
+          - identity.primary: { fields: [id] }
+```
+
+The project config (`metaobjects.config.ts`) wires up the generators and target settings:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import {
+  entityFile,
+  queriesFile,
+  routesFile,
+  // formFile,   // opt-in: emit React form components (from @metaobjectsdev/codegen-ts-react)
+  barrel,
+} from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  outDir:    "./src/db",
+  dbImport:  "../db",
+  dialect:   "sqlite",
+  apiPrefix: "",
+  generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+});
+```
+
+Run the CLI:
+
+```bash
+# Scaffold metaobjects/, .metaobjects/, metaobjects.config.ts, AND the agent context
+# (.metaobjects/AGENTS.md + CLAUDE.md + .claude/skills/metaobjects-*)
+$ meta init
+
+# Generate code (entities + queries + routes + barrel per config)
+$ meta gen
+
+# Optional positional filter
+$ meta gen Subscriber Order --dry-run
+
+# Drift checks
+$ meta verify --codegen      # regen-and-diff vs committed output
+$ meta verify --templates    # prompt {{field}} ↔ payload-VO drift
+$ meta verify --db postgres://...   # live-DB schema drift (Node meta only)
+
+# Diff metadata vs live DB and emit migration SQL files (Node meta only, used by every port)
+$ meta migrate --db file:./dev.db --slug add-subscriber
+
+# Flatten loaded metadata to a canonical JSON snapshot
+$ meta export --out ./snapshot.json
+```
+
+Non-TS ports run codegen + codegen-verify in their own build tool: `mvn metaobjects:generate` / `mvn metaobjects:verify` (Java/Kotlin), `dotnet meta gen` / `dotnet meta verify` (C#), `metaobjects gen` / `metaobjects verify` (Python). Schema migration is always the Node `meta` CLI.
+
+---
+
+## License
+
+Apache License 2.0. See [`LICENSE`](https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE).
+
+---
+
+## Architectural narrative
+
+For the "why metadata is the architectural spine AI codegen needs" argument, see Doug Mealing's flagship essay: [I thought AI killed MetaObjects. Then AI drift made it essential.](https://dougmealing.com/writing/metaobjects-ai-drift/)
+
+On the fourth pillar — why prompts are code too: [The prompt is code — and yours is drifting too.](https://dougmealing.com/writing/the-prompt-is-code/)
+
+For the comparison between MetaObjects and the broader AI stack (context engineering, schema-driven agent design, knowledge-graph grounding, the Model Context Protocol), see: [The 2025 AI stack and the architecture it's missing](https://dougmealing.com/writing/ai-stack-missing-architecture/).
+
+---
+
+## Future: MetaObjects MCP server
+
+A Model Context Protocol server exposing declared prompts/tools, the metadata graph, conformance fixtures, and codegen tools as agent-callable functions is the remaining library-side prompt-pillar piece on the roadmap. When shipped, it will let AI agents resolve spec sections, validate metadata, and trigger codegen directly through MCP. Track progress in the [roadmap](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md).
+
+---
+
+## Commercial
+
+Consulting engagements and production rollouts: [metaobjects.com](https://metaobjects.com).
