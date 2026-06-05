@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory
  * Args:
  * - `outputDir` (required): output directory root.
  */
-class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -83,7 +83,7 @@ class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
+    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
         // Only emit for json/xml formats.
         val format = template.format
         val supported = TemplateConstants.FORMAT_JSON.equals(format, ignoreCase = true)

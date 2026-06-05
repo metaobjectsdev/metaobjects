@@ -45,7 +45,7 @@ import java.nio.file.Paths
  *   <li>`outputDir` (required): output directory root.</li>
  * </ul>
  */
-class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -63,7 +63,7 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path) {
+    protected open fun emit(entity: MetaObject, outRoot: Path) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val className = "${shortName}FilterAllowlist"
 

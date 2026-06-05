@@ -27,7 +27,7 @@ import java.nio.file.Paths
  *   <li>{@code packageName} (required) — the Kotlin package both files live in</li>
  * </ul>
  */
-class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -51,7 +51,7 @@ class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emitHelper(pkg, outRoot)
     }
 
-    private fun emitValidator(pkg: String, entries: List<Pair<String, String>>, outRoot: Path) {
+    protected open fun emitValidator(pkg: String, entries: List<Pair<String, String>>, outRoot: Path) {
         val registry = entries.joinToString(",\n        ") { (fqn, table) -> "\"$fqn\" to $table" }
 
         val source = buildString {
@@ -92,7 +92,7 @@ class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         Files.writeString(outFile, source)
     }
 
-    private fun emitHelper(pkg: String, outRoot: Path) {
+    protected open fun emitHelper(pkg: String, outRoot: Path) {
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")

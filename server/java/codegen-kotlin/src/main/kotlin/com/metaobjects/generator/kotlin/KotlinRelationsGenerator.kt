@@ -54,7 +54,7 @@ import java.nio.file.Paths
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -84,7 +84,7 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(
+    protected open fun emit(
         entity: MetaObject,
         manyRels: List<MetaRelationship>,
         m2mNavs: List<KotlinM2mSupport.M2mNav>,
@@ -196,7 +196,7 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * generator: defensive defaults rather than throwing on partially-formed
      * metadata.
      */
-    private fun primaryKeyKotlinType(entity: MetaObject): TypeName {
+    protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
         val primary = entity.children
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary } ?: return LONG

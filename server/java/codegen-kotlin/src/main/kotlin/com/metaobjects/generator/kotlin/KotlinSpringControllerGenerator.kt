@@ -75,7 +75,7 @@ import org.slf4j.LoggerFactory
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -120,7 +120,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+    protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = shortName + "Table"
         val routePath = pluralLowercase(shortName)
@@ -382,7 +382,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      *       extensions; a {@code String} field only handles {@code like}).</li>
      * </ul>
      */
-    private fun emitFilterPipeline(
+    protected open fun emitFilterPipeline(
         out: StringBuilder,
         shortName: String,
         tableObjectName: String,
@@ -556,7 +556,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * field subtype shape: string-like fields skip the comparison ops; booleans
      * skip everything but eq/isNull.
      */
-    private fun emitPerFieldDispatchArm(
+    protected open fun emitPerFieldDispatchArm(
         out: StringBuilder,
         tableObjectName: String,
         fieldName: String,
@@ -597,7 +597,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * single string into the target type. Parse failure → null → propagates as
      * {@code invalid_filter_value}.
      */
-    private fun emitTypedCoercer(
+    protected open fun emitTypedCoercer(
         out: StringBuilder,
         shortName: String,
         typeSuffix: String,
@@ -637,7 +637,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * (the common case), else fully package-qualified so the generated file compiles across
      * packages.
      */
-    private fun emitM2mEndpoint(
+    protected open fun emitM2mEndpoint(
         out: StringBuilder,
         sourcePkg: String,
         sourceShort: String,
@@ -671,7 +671,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * type name, used to cast each predicate value in the `Column<T>.eq/neq/inList` calls
      * (Exposed's typed comparison ops reject a bare `Any?`).
      */
-    private data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
+    protected data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
 
     /**
      * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —

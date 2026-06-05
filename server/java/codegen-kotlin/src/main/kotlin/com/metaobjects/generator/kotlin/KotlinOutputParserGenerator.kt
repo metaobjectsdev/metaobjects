@@ -72,7 +72,7 @@ import org.slf4j.LoggerFactory
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -90,7 +90,7 @@ class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
+    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
         val payloadRef = template.payloadRef
         if (payloadRef.isNullOrEmpty()) {
             // Loader validation normally catches this first; defensive only.

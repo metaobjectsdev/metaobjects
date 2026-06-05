@@ -42,7 +42,7 @@ import java.nio.file.Paths
  *       (only emits the {@code Database.connect} wiring)</li>
  * </ul>
  */
-class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 

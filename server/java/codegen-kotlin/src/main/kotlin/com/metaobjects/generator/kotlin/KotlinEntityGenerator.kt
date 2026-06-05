@@ -49,7 +49,7 @@ import java.nio.file.Paths
  *       created under it.</li>
  * </ul>
  */
-class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -79,7 +79,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
+    protected open fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
         // so the resolved property type (a ClassName) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
@@ -126,7 +126,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * subtypes a shared shape to implement. Enum-field files are still emitted so property
      * types resolve. Written to the same package path/file (`<Name>.kt`) as [emit] would use.
      */
-    private fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
+    protected open fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         for (field in obj.metaFields) {
             if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
@@ -160,7 +160,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * NOT consulted here — flattened vs jsonb only affects the persistence column shape,
      * not the in-memory shape.
      */
-    private fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+    protected open fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
         val element = resolveElementType(field, owner, loader)
         // @isArray fields are a List of the element type (List<T>). isArrayType()
         // covers both the `isArray: true` shorthand and a child @isArray attr.
@@ -170,7 +170,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /** The Kotlin TypeName for a single (non-array) element of [field]. */
-    private fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+    protected open fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
         // field.enum → typed enum class generated alongside this entity.
         KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
         if (field is ObjectField) {
@@ -216,7 +216,7 @@ class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      *   <li>`validator.array @min/@max` → `@Size(min=…, max=…)` on the `List`.</li>
      * </ul>
      */
-    private fun validationAnnotations(field: MetaField<*>): List<AnnotationSpec> {
+    protected open fun validationAnnotations(field: MetaField<*>): List<AnnotationSpec> {
         val isArray = field.isArrayType
         val isString = field is StringField
         val out = mutableListOf<AnnotationSpec>()

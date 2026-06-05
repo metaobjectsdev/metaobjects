@@ -29,7 +29,7 @@ import com.metaobjects.relationship.MetaRelationship
  * `Person` → `persons`); the relation segment is the relationship `name`;
  * related-row order is not contractual.
  */
-internal object KotlinM2mSupport {
+object KotlinM2mSupport {
 
     /**
      * One resolved M:N navigation on a source entity.
