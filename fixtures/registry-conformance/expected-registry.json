@@ -156,6 +156,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -267,6 +273,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -390,6 +402,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -501,6 +519,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -618,6 +642,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -729,6 +759,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -876,6 +912,12 @@
           "valueType": "string",
           "isArray": true,
           "required": true
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -987,6 +1029,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -1104,6 +1152,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -1215,6 +1269,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -1332,6 +1392,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -1443,6 +1509,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false
@@ -1560,6 +1632,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -1674,6 +1752,12 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
         }
       ]
     },
@@ -1785,6 +1869,12 @@
         },
         {
           "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
           "required": false

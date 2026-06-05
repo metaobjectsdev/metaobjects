@@ -18,6 +18,7 @@ import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
 import { dbProvider } from "../../src/persistence/db/db-provider.js";
 import { docProvider } from "../../src/core/documentation/doc-provider.js";
+import { templateProvider } from "../../src/template/template-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -116,6 +117,7 @@ const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [coreTypesProvider.id]: coreTypesProvider, // "metaobjects-core-types"
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"
+  [templateProvider.id]: templateProvider,   // "metaobjects-template" (template.* / @responseRef / @xmlText — TS-pilot AI vocab)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "cycle-a": cycleAProvider,

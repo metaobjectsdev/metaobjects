@@ -58,6 +58,7 @@ import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
 import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
+import { TEMPLATE_ATTR_RESPONSE_REF } from "./template/template-constants.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
@@ -71,6 +72,17 @@ export enum ExclusionReason {
   InheritanceAnchor = "inheritance-anchor",
   /** TS-web-presentation-only facet (the generic `view.*` controls). */
   PresentationOnly = "presentation-only",
+  /**
+   * A TS-pilot feature attr deliberately NOT yet part of the cross-port
+   * contract. Registered + validated + exercised in TS only (the other four
+   * ports have not ported the foundation behind it), so it is carved out of the
+   * cross-port manifest until the feature is promoted to all five ports. The
+   * liveness tripwire still requires it to be genuinely registered in TS — this
+   * is an explicit, reasoned carve-out, not a silent default. Today the sole
+   * member is `template.prompt`'s `@responseRef` (the AI prompt-derived-trace
+   * vertical, sibling of the cross-port `@payloadRef`).
+   */
+  TsPilotVocab = "ts-pilot-vocab",
 }
 
 /** `isAbstract` as Java's per-type attr name (the contract's bare `abstract` structural keyword). */
@@ -98,6 +110,7 @@ export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new
   [ATTR_NAME_OBJECT, ExclusionReason.NativeBinding],
   [ATTR_NAME_OBJECT_ADAPTER, ExclusionReason.NativeBinding],
   [DOC_ATTR_DESCRIPTION, ExclusionReason.CommonAttrDup],
+  [TEMPLATE_ATTR_RESPONSE_REF, ExclusionReason.TsPilotVocab],
 ]);
 
 /**

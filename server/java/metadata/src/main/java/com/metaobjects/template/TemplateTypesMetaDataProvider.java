@@ -1,5 +1,6 @@
 package com.metaobjects.template;
 
+import com.metaobjects.MetaDataTypeId;
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -42,8 +43,19 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
         // This is an output/extract concern, NOT a core field property, so it is registered here
         // (the prompt domain provider) rather than on the core field type — mirroring how
         // CoreDBMetaDataProvider extends field.base with @dbColumn etc. from the database domain.
-        registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
-                .optionalAttribute(TemplateConstants.ATTR_XML_TEXT, BooleanAttribute.SUBTYPE_BOOLEAN);
+        // Extend EVERY registered field subtype (base + all concretes) with @xmlText.
+        // The concrete field subtypes snapshot their effective attrs from field.base
+        // when they are registered (by the field-types provider, a dependency) — which
+        // happens BEFORE this provider runs — so a lone field.base extension does not
+        // propagate to them in the emitted registry manifest. Iterating the registered
+        // field subtypes mirrors the TS reference (which extends the full FIELD_SUBTYPES
+        // set) and keeps the cross-port registry manifest byte-identical.
+        for (MetaDataTypeId id : registry.getRegisteredTypes()) {
+            if (MetaField.TYPE_FIELD.equals(id.type())) {
+                registry.findType(MetaField.TYPE_FIELD, id.subType())
+                        .optionalAttribute(TemplateConstants.ATTR_XML_TEXT, BooleanAttribute.SUBTYPE_BOOLEAN);
+            }
+        }
     }
 
     @Override

@@ -27,8 +27,9 @@ import {
 import type { Dialect, Row } from "./persistence-driver.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
-  if (dialect !== "sqlite") return row;
-  return mapBooleansFromInt(entity, row);
+  const hydrated = deserializeJsonbObjectFields(entity, row);
+  if (dialect !== "sqlite") return hydrated;
+  return mapBooleansFromInt(entity, hydrated);
 }
 
 export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {
@@ -64,6 +65,35 @@ function serializeJsonbColumns(entity: MetaData, row: Row): Row {
     if (v === null || v === undefined || typeof v !== "object") continue;
     out ??= { ...row };
     out[child.name] = JSON.stringify(v);
+  }
+  return out ?? row;
+}
+
+/**
+ * Read-side complement of `serializeJsonbColumns`: a `field.object` jsonb column
+ * is the structured-VO storage and must round-trip as a native object (ADR-0019),
+ * not the serialized string. node-pg's jsonb parser already returns a parsed
+ * object for the postgres driver, so this only acts on a still-stringified value
+ * (the in-memory test driver, or any driver that does not parse jsonb) — an
+ * already-parsed object/array passes through untouched. Only `field.object`
+ * columns are hydrated; a `field.string @dbColumnType: jsonb` stays the raw
+ * string it is declared to be. A non-JSON string is left as-is.
+ */
+function deserializeJsonbObjectFields(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  for (const child of entity.ownChildren()) {
+    if (child.type !== TYPE_FIELD) continue;
+    if (!isJsonbObjectField(child)) continue;
+    if (!(child.name in row)) continue;
+    const v = row[child.name];
+    if (typeof v !== "string") continue;
+    try {
+      const parsed = JSON.parse(v);
+      out ??= { ...row };
+      out[child.name] = parsed;
+    } catch {
+      // Not JSON — leave the raw string in place.
+    }
   }
   return out ?? row;
 }
