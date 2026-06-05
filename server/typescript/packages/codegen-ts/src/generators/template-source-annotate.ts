@@ -80,6 +80,15 @@ export interface AnnotateOptions {
 	 * Optional — when absent, partials are captured ref-only (no href).
 	 */
 	resolvePartialHref?: (ref: string) => string | undefined;
+	/**
+	 * Override how a resolved field's doc-page href is built (owner page + the
+	 * shared `#field-<name>` fragment). Optional — when absent, the flat default
+	 * `./<owner>.md#field-<name>` is used (byte-identical to today). A caller with
+	 * the output layout + page placement in scope injects a layout-aware resolver
+	 * (the SAME `docPageHref(layout, …)` the Payload cross-link uses) so the link
+	 * resolves under package layout too.
+	 */
+	fieldHref?: (owner: string, name: string) => string;
 }
 
 // A Mustache parse token: [type, value, start, end, subTokens?, closeStart?, ...].
@@ -111,6 +120,10 @@ export function annotateTemplate(
 	const out: TplToken[] = [];
 	let cursor = 0;
 
+	// How a resolved field's href is built: the injected layout-aware resolver
+	// when provided, else the flat default (byte-identical to today's output).
+	const buildFieldHref = opts.fieldHref ?? fieldHref;
+
 	// Emit verbatim source between `cursor` and `to` as a text token, advancing
 	// the cursor. This recovers literal text AND any span Mustache trimmed as
 	// standalone (e.g. the newline after a standalone partial/section), so the
@@ -129,7 +142,7 @@ export function annotateTemplate(
 		const hit = resolveTemplateVariable(stack, path);
 		if (!hit) return undefined;
 		const field = toResolvedField(hit);
-		return { field, href: fieldHref(field.owner, field.name) };
+		return { field, href: buildFieldHref(field.owner, field.name) };
 	}
 
 	// Build a variable token ({{x}} or {{&x}}/{{{x}}}). The implicit iterator
