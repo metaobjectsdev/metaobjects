@@ -29,5 +29,5 @@
 
 | Field | Required | Type | Limits | Rules |
 |---|---|---|---|---|
-| `id` | yes | `long` |  | primary key |
-| `name` | yes | `string` |  |  |
+| <a id="field-id"></a>`id` | yes | `long` |  | primary key |
+| <a id="field-name"></a>`name` | yes | `string` |  |  |

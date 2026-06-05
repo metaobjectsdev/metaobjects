@@ -24,6 +24,7 @@ import {
 	type PayloadField,
 	type ResolveStack,
 } from "@metaobjectsdev/render";
+import { fieldAnchorSlug } from "./field-anchor.js";
 
 /**
  * An enriched payload-field node. Structurally a verify `PayloadField` (so the
@@ -85,10 +86,12 @@ export interface AnnotateOptions {
 type Token = readonly unknown[];
 
 /** The doc-page href for a resolved field: `./<OwnerVO>.md#field-<name>`. The
- *  anchor slug is `field-<name>` (prefixed — avoids colliding with other page
- *  anchors), matching the per-field anchor the entity page emits (Task 2). */
+ *  anchor slug comes from the SHARED `fieldAnchorSlug()` (prefixed — avoids
+ *  colliding with other page anchors), the SAME helper the entity page uses to
+ *  emit its per-field `<a id="field-<name>">` anchor, so the link and the anchor
+ *  can never drift. */
 function fieldHref(owner: string, name: string): string {
-	return `./${owner}.md#field-${name}`;
+	return `./${owner}.md#${fieldAnchorSlug(name)}`;
 }
 
 function toResolvedField(f: AnnotatePayloadField): ResolvedField {

@@ -46,6 +46,7 @@ import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode } from "../docs-paths.js";
+import { fieldAnchorHtml } from "./field-anchor.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -209,7 +210,12 @@ function buildConstraintRow(
   if (sup !== undefined) rules.push(`extends \`${sup.name}\``);
 
   return {
-    field: `\`${field.name}\``,
+    // The Field cell carries a stable HTML anchor (`<a id="field-<name>">`)
+    // before the backticked name, so the template-source annotator's
+    // `#field-<name>` links resolve. Slug = `fieldAnchorSlug(name)` — the SINGLE
+    // source shared with the annotator so anchor and link can't drift. The
+    // anchor is a language-independent HTML id, so the page stays neutral.
+    field: `${fieldAnchorHtml(field.name)}\`${field.name}\``,
     required: required ? "yes" : "",
     type: neutralTypeCell(field),
     limits: limits.join(", "),
