@@ -1,7 +1,14 @@
 # AI Runtime (#2/#3) — Call Loop + Recorder Adapters — Design
 
 _Date: 2026-06-05_
-_Status: Design (approved for implementation — TS-first vertical)_
+_Status: SHIPPED (TS-first vertical) — `@metaobjectsdev/ai-runtime` implemented per the
+[plan](../plans/2026-06-05-ai-runtime-call-loop-and-recorders.md). All 12 tasks complete:
+`LlmClient` seam, `callLlm` bridge, `builtinCost`, Composite/Langfuse/OTel recorders,
+Anthropic/OpenAI reference clients, generated `call<Entity>`, real-Postgres round-trip.
+Post-implementation review additions: `responseModel` captured from `completion.model`;
+vendor adapters emit `usage` only when a token count is present (`builtinCost` stays
+`null` for unknown usage); generated `call<Entity>` is `exactOptionalPropertyTypes`-safe.
+Cross-port (Java/Python/C#/Kotlin) deferred per §8._
 
 ## 0. Relationship to the parent design
 
