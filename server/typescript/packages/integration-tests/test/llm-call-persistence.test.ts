@@ -22,6 +22,8 @@ import {
   recordLlmCall,
 } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
+import { callLlm } from "@metaobjectsdev/ai-runtime";
+import type { LlmClient, IdGen } from "@metaobjectsdev/ai-runtime";
 
 import { startPostgres } from "../src/postgres-container.ts";
 import { executeSql } from "../src/postgres-sql.ts";
@@ -30,7 +32,7 @@ import { executeSql } from "../src/postgres-sql.ts";
 // Inline metadata — VerdictResponse value object + TraceCall entity
 // ---------------------------------------------------------------------------
 //
-// TraceCall declares all 14 fields that recordLlmCall() writes into every row.
+// TraceCall declares all 16 fields that recordLlmCall() writes into every row.
 // ObjectManager.create() throws on any key not declared as a field on the
 // entity, so the declaration must be exhaustive.
 
@@ -55,6 +57,8 @@ const META = JSON.stringify({
             // identity fields
             { "field.uuid": { name: "spanId" } },
             { "field.uuid": { name: "traceId" } },
+            { "field.uuid": { name: "parentSpanId" } },
+            { "field.string": { name: "sessionId" } },
             // call metadata
             { "field.string": { name: "callType" } },
             { "field.string": { name: "requestModel" } },
@@ -187,6 +191,94 @@ describe("LLM call persistence — real Postgres round-trip", () => {
       expect(errRow.status).toBe("error");
       expect(errRow.voResponse).toBeNull();
       expect(typeof errRow.errorDetail).toBe("string");
+
+      await kysely.destroy();
+      kysely = null;
+    } finally {
+      if (kysely !== null) await (kysely as Kysely<Record<string, never>>).destroy();
+      await pgc.stop();
+    }
+  }, { timeout: 60_000 });
+
+  test("callLlm: GENERATE->CALL->record round-trips a typed trace + error path", async () => {
+    const result = await MetaDataLoader.fromString(META, "json");
+    expect(result.errors).toHaveLength(0);
+    const root = result.root;
+    const verdictMo = root.findObject("VerdictResponse");
+
+    const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
+    const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
+    const { up: ddl } = emit(diffResult.changes, { dialect: "postgres" });
+
+    const pgc = await startPostgres();
+    let kysely: Kysely<Record<string, never>> | null = null;
+    try {
+      await executeSql(pgc.connectionUri, ddl);
+      kysely = new Kysely<Record<string, never>>({
+        dialect: new PostgresDialect({
+          pool: new Pool({ connectionString: pgc.connectionUri, options: "-c timezone=UTC" }),
+        }),
+      });
+      const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
+      const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+      const rec = new LlmCallDbRecorder(om, "TraceCall");
+
+      // Deterministic ids so we can read the generated row back. callLlm pulls
+      // spanId first, then traceId (only when input.traceId is absent).
+      const CALL_SPAN  = "33333333-3333-4333-8333-333333333333";
+      const CALL_TRACE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+      const okIds: IdGen = (() => {
+        const q = [CALL_SPAN, CALL_TRACE];
+        let i = 0;
+        return { next: () => q[i++]! };
+      })();
+
+      // ---- good path ----
+      const goodClient: LlmClient = {
+        async complete() {
+          return {
+            body: '{"verdict":"ship","score":9}',
+            model: "gpt-4o-mini",
+            usage: { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+            finishReason: "stop",
+          };
+        },
+      };
+      const okRes = await callLlm(
+        { callType: "TraceCall", payload: { q: "ready?" },
+          request: { prompt: "decide", model: "gpt-4o-mini" } },
+        { client: goodClient, recorder: rec, responseMo: verdictMo!, format: Format.JSON, ids: okIds },
+      );
+      expect(okRes.status).toBe("ok");
+
+      const okRow = await om.findById("TraceCall", CALL_SPAN) as Record<string, unknown>;
+      expect(okRow, "callLlm row must exist").not.toBeNull();
+      expect(okRow.status).toBe("ok");
+      expect(okRow.voResponse).toEqual({ verdict: "ship", score: 9 });
+      expect(okRow.traceId).toBe(CALL_TRACE);
+      expect(okRow.callType).toBe("TraceCall");
+      // builtinCost gpt-4o-mini @ 1M input + 1M output = 0.15 + 0.60 = $0.75 = 75 cents
+      expect(Number(okRow.costMinor)).toBe(75);
+
+      // ---- error path: client throws ----
+      const ERR_SPAN  = "44444444-4444-4444-8444-444444444444";
+      const ERR_TRACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+      const errIds: IdGen = (() => {
+        const q = [ERR_SPAN, ERR_TRACE];
+        let i = 0;
+        return { next: () => q[i++]! };
+      })();
+      const badClient: LlmClient = { async complete() { throw new Error("provider-503"); } };
+      const errRes = await callLlm(
+        { callType: "TraceCall", payload: {}, request: { prompt: "x", model: "gpt-4o-mini" } },
+        { client: badClient, recorder: rec, responseMo: verdictMo!, format: Format.JSON, ids: errIds },
+      );
+      expect(errRes.status).toBe("error");
+
+      const errRow = await om.findById("TraceCall", ERR_SPAN) as Record<string, unknown>;
+      expect(errRow.status).toBe("error");
+      expect(String(errRow.errorDetail)).toContain("provider-503");
+      expect(errRow.voResponse).toBeNull();
 
       await kysely.destroy();
       kysely = null;
