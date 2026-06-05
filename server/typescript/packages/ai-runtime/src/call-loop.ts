@@ -20,7 +20,8 @@ import { builtinCost, type CostFn } from "./cost.js";
 export interface CallLlmInput {
   /** Discriminator / call identity; defaults to the generated entity name. */
   callType: string;
-  /** The typed request VO (logged as llmRequest unless completion.request is set). */
+  /** The typed request VO, passed through for call-site traceability. (Not
+   *  persisted directly — `request` is what gets logged as llmRequest.) */
   payload: unknown;
   /** What we send to the client (already-rendered prompt + model + params). */
   request: LlmRequest;
@@ -67,15 +68,17 @@ export async function callLlm(
     completion = await deps.client.complete(input.request);
   } catch (err) {
     const errorDetail = err instanceof Error ? err.message : String(err);
-    // Hand-built error row — key set must match recordLlmCall's row exactly
-    // (16 keys: spanId/traceId/parentSpanId/sessionId/callType/requestModel/
-    //  inputTokens/outputTokens/costMinor/latencyMs/finishReason/status/
-    //  errorDetail/startedAt/llmRequest/voResponse).
+    // Hand-built error row: the client never returned, so there is no response
+    // to extract — we cannot route through recordLlmCall. Its column set mirrors
+    // recordLlmCall's row (same keys, null-valued where the call produced nothing).
     const row = {
       spanId,
       traceId,
+      parentSpanId: input.parentSpanId ?? null,
+      sessionId: input.sessionId ?? null,
       callType: input.callType,
       requestModel: input.request.model,
+      responseModel: null,
       inputTokens: null,
       outputTokens: null,
       costMinor: null,
@@ -86,8 +89,6 @@ export async function callLlm(
       startedAt,
       llmRequest: JSON.stringify(input.request),
       voResponse: null,
-      parentSpanId: input.parentSpanId ?? null,
-      sessionId: input.sessionId ?? null,
     };
     await deps.recorder.record(row);
     return { voResponse: null, status: "error", errorDetail };
@@ -108,6 +109,7 @@ export async function callLlm(
   };
   if (input.parentSpanId !== undefined) recInput.parentSpanId = input.parentSpanId;
   if (input.sessionId !== undefined) recInput.sessionId = input.sessionId;
+  if (completion.model !== undefined) recInput.responseModel = completion.model;
   if (completion.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;
   if (completion.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;
   const costMinor = cost(completion.model ?? input.request.model, completion.usage);

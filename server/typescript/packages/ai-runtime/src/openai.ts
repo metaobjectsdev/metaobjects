@@ -1,4 +1,4 @@
-import type { LlmClient, LlmRequest, LlmCompletion } from "./client.js";
+import type { LlmClient, LlmRequest, LlmCompletion, LlmUsage } from "./client.js";
 
 /** Minimal structural subset of the openai SDK used here. */
 export interface OpenAILike {
@@ -22,7 +22,7 @@ export class OpenAIClient implements LlmClient {
 
   async complete(req: LlmRequest): Promise<LlmCompletion> {
     const messages = [
-      ...(req.system ? [{ role: "system" as const, content: req.system }] : []),
+      ...(req.system !== undefined ? [{ role: "system" as const, content: req.system }] : []),
       { role: "user" as const, content: req.prompt },
     ];
     const args = { model: req.model, messages, ...req.params };
@@ -35,12 +35,16 @@ export class OpenAIClient implements LlmClient {
     if (res.model !== undefined) out.model = res.model;
     if (choice?.finish_reason !== undefined) out.finishReason = choice.finish_reason;
 
-    const promptTokens = res.usage?.prompt_tokens;
-    const completionTokens = res.usage?.completion_tokens;
-    const usage: LlmCompletion["usage"] = {};
-    if (promptTokens !== undefined) usage.inputTokens = promptTokens;
-    if (completionTokens !== undefined) usage.outputTokens = completionTokens;
-    out.usage = usage;
+    // Only attach usage when at least one token count is present — see the
+    // CostFn contract note in anthropic.ts (undefined usage → null cost).
+    const inTok = res.usage?.prompt_tokens;
+    const outTok = res.usage?.completion_tokens;
+    if (inTok !== undefined || outTok !== undefined) {
+      const usage: LlmUsage = {};
+      if (inTok !== undefined) usage.inputTokens = inTok;
+      if (outTok !== undefined) usage.outputTokens = outTok;
+      out.usage = usage;
+    }
 
     return out;
   }

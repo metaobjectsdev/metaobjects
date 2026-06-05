@@ -37,6 +37,7 @@ const META_JSON = {
             { "field.string": { name: "sessionId" } },
             { "field.string": { name: "callType" } },
             { "field.string": { name: "requestModel" } },
+            { "field.string": { name: "responseModel" } },
             { "field.long": { name: "inputTokens" } },
             { "field.long": { name: "outputTokens" } },
             { "field.long": { name: "costMinor" } },

@@ -1,4 +1,4 @@
-import type { LlmClient, LlmRequest, LlmCompletion } from "./client.js";
+import type { LlmClient, LlmRequest, LlmCompletion, LlmUsage } from "./client.js";
 
 /** Minimal structural subset of @anthropic-ai/sdk used here. */
 export interface AnthropicLike {
@@ -49,12 +49,17 @@ export class AnthropicClient implements LlmClient {
     if (res.model !== undefined) out.model = res.model;
     if (res.stop_reason !== undefined) out.finishReason = res.stop_reason;
 
-    const inputTokens = res.usage?.input_tokens;
-    const outputTokens = res.usage?.output_tokens;
-    const usage: LlmCompletion["usage"] = {};
-    if (inputTokens !== undefined) usage.inputTokens = inputTokens;
-    if (outputTokens !== undefined) usage.outputTokens = outputTokens;
-    out.usage = usage;
+    // Only attach usage when at least one token count is present — the CostFn
+    // contract distinguishes "usage unknown" (undefined → null cost) from
+    // "usage known but zero". An always-present `{}` would collapse the two.
+    const inTok = res.usage?.input_tokens;
+    const outTok = res.usage?.output_tokens;
+    if (inTok !== undefined || outTok !== undefined) {
+      const usage: LlmUsage = {};
+      if (inTok !== undefined) usage.inputTokens = inTok;
+      if (outTok !== undefined) usage.outputTokens = outTok;
+      out.usage = usage;
+    }
 
     return out;
   }

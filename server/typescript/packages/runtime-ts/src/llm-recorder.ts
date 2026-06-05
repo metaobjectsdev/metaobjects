@@ -71,6 +71,8 @@ export interface LlmCallInput {
   llmRequest: unknown;
   llmResponseText: string;
   requestModel?: string;
+  /** gen_ai.response.model — the model the provider actually used. */
+  responseModel?: string;
   inputTokens?: number;
   outputTokens?: number;
   costMinor?: number;
@@ -126,6 +128,7 @@ export async function recordLlmCall(
     sessionId: input.sessionId ?? null,
     callType: input.callType,
     requestModel: input.requestModel ?? null,
+    responseModel: input.responseModel ?? null,
     inputTokens: input.inputTokens ?? null,
     outputTokens: input.outputTokens ?? null,
     costMinor: input.costMinor ?? null,

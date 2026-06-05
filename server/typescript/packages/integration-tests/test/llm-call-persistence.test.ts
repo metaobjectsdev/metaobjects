@@ -32,7 +32,7 @@ import { executeSql } from "../src/postgres-sql.ts";
 // Inline metadata — VerdictResponse value object + TraceCall entity
 // ---------------------------------------------------------------------------
 //
-// TraceCall declares all 16 fields that recordLlmCall() writes into every row.
+// TraceCall declares all 17 fields that recordLlmCall() writes into every row.
 // ObjectManager.create() throws on any key not declared as a field on the
 // entity, so the declaration must be exhaustive.
 
@@ -62,6 +62,7 @@ const META = JSON.stringify({
             // call metadata
             { "field.string": { name: "callType" } },
             { "field.string": { name: "requestModel" } },
+            { "field.string": { name: "responseModel" } },
             { "field.int": { name: "inputTokens" } },
             { "field.int": { name: "outputTokens" } },
             { "field.currency": { name: "costMinor", "@currency": "USD" } },
@@ -257,6 +258,8 @@ describe("LLM call persistence — real Postgres round-trip", () => {
       expect(okRow.voResponse).toEqual({ verdict: "ship", score: 9 });
       expect(okRow.traceId).toBe(CALL_TRACE);
       expect(okRow.callType).toBe("TraceCall");
+      // responseModel captured from the completion (provider-reported model).
+      expect(okRow.responseModel).toBe("gpt-4o-mini");
       // builtinCost gpt-4o-mini @ 1M input + 1M output = 0.15 + 0.60 = $0.75 = 75 cents
       expect(Number(okRow.costMinor)).toBe(75);
 

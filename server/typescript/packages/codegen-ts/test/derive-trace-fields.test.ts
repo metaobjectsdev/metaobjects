@@ -80,6 +80,11 @@ describe("derive trace fields", () => {
     expect(h).toContain('from "@metaobjectsdev/ai-runtime"');
     expect(h).toContain('from "@metaobjectsdev/render"');
     expect(h).toContain('render({ ref: "p/x"');
+    // exactOptionalPropertyTypes-safe shape: request built then optionals added.
+    expect(h).toContain("const request: LlmRequest = { prompt, model: deps.model };");
+    expect(h).toContain("const callInput: CallLlmInput = { callType: \"ClassifyCall\", payload, request };");
+    expect(h).toContain("if (deps.system !== undefined) request.system = deps.system;");
+    expect(h).toContain("const result = await callLlm(callInput, callDeps);");
     // imports must all be at the top: no `import ` after the first export.
     const firstExport = h.indexOf("export ");
     const lastImport = h.lastIndexOf("\nimport ");
