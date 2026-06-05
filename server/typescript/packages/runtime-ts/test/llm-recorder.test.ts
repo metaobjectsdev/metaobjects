@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import type { MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import { Format } from "@metaobjectsdev/render";
 import { ObjectManager } from "../src/object-manager.js";
@@ -8,6 +8,7 @@ import {
   NullRecorder,
   LlmCallDbRecorder,
   recordLlmCall,
+  type LlmCallRow,
 } from "../src/llm-recorder.js";
 
 // =============================================================================
@@ -32,6 +33,8 @@ const META_JSON = {
             { "field.long": { name: "id" } },
             { "field.string": { name: "spanId" } },
             { "field.string": { name: "traceId" } },
+            { "field.string": { name: "parentSpanId" } },
+            { "field.string": { name: "sessionId" } },
             { "field.string": { name: "callType" } },
             { "field.string": { name: "requestModel" } },
             { "field.long": { name: "inputTokens" } },
@@ -193,5 +196,79 @@ describe("recordLlmCall", () => {
     expect(row!.status).toBe("error");
     expect(row!.voResponse).toBeNull();
     expect(typeof row!.errorDetail).toBe("string");
+  });
+});
+
+// =============================================================================
+// Task 4 — parentSpanId + sessionId envelope fields
+// =============================================================================
+
+// Minimal metadata: a value object with one required string field.
+// Mirrors the VerdictResponse shape used in the integration test.
+const ENVELOPE_META = JSON.stringify({
+  "metadata.root": {
+    package: "test::ai",
+    children: [
+      {
+        "object.value": {
+          name: "Resp",
+          children: [{ "field.string": { name: "verdict", "@required": true } }],
+        },
+      },
+    ],
+  },
+});
+
+// A capturing recorder that stores the last row written by recordLlmCall.
+class CaptureRecorder extends NullRecorder {
+  last: LlmCallRow | null = null;
+  override async record(call: LlmCallRow): Promise<void> {
+    this.last = call;
+  }
+}
+
+async function loadRespMo() {
+  const res = await MetaDataLoader.fromString(ENVELOPE_META, "json");
+  expect(res.errors).toEqual([]);
+  return res.root.findObject("Resp")!;
+}
+
+describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
+  test("threads parentSpanId + sessionId into the persisted row", async () => {
+    const rec = new CaptureRecorder();
+    const responseMo = await loadRespMo();
+    await recordLlmCall(
+      {
+        spanId: "s1",
+        traceId: "t1",
+        parentSpanId: "p1",
+        sessionId: "sess1",
+        callType: "X",
+        startedAt: "2026-06-05T00:00:00Z",
+        llmRequest: { a: 1 },
+        llmResponseText: JSON.stringify({ verdict: "ok" }),
+      },
+      { recorder: rec, responseMo },
+    );
+    expect(rec.last?.parentSpanId).toBe("p1");
+    expect(rec.last?.sessionId).toBe("sess1");
+  });
+
+  test("omitted parentSpanId + sessionId default to null in the row", async () => {
+    const rec = new CaptureRecorder();
+    const responseMo = await loadRespMo();
+    await recordLlmCall(
+      {
+        spanId: "s2",
+        traceId: "t2",
+        callType: "X",
+        startedAt: "2026-06-05T00:00:00Z",
+        llmRequest: {},
+        llmResponseText: JSON.stringify({ verdict: "ok" }),
+      },
+      { recorder: rec, responseMo },
+    );
+    expect(rec.last?.parentSpanId).toBeNull();
+    expect(rec.last?.sessionId).toBeNull();
   });
 });

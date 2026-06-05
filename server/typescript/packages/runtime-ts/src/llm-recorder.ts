@@ -61,6 +61,10 @@ export class LlmCallDbRecorder implements LlmRecorder {
 export interface LlmCallInput {
   spanId: string;
   traceId: string;
+  /** Parent span id; null/absent → this is a root span. */
+  parentSpanId?: string;
+  /** Logical session/conversation id (gen_ai session grouping). */
+  sessionId?: string;
   callType: string;
   /** ISO 8601 timestamp, supplied by the caller before the LLM call was made. */
   startedAt: string;
@@ -118,6 +122,8 @@ export async function recordLlmCall(
   const row: LlmCallRow = {
     spanId: input.spanId,
     traceId: input.traceId,
+    parentSpanId: input.parentSpanId ?? null,
+    sessionId: input.sessionId ?? null,
     callType: input.callType,
     requestModel: input.requestModel ?? null,
     inputTokens: input.inputTokens ?? null,
