@@ -141,6 +141,17 @@ function styledSpan(style: string, inner: string): string {
 	return `<span style="${style}">${inner}</span>`;
 }
 
+/** A styled span for a token kind, wrapped in a clickable `<a href>` when the
+ *  token resolved to a link (else the bare span). The raw text is HTML-escaped. */
+function linkSpan(
+	style: string,
+	raw: string,
+	href: string | undefined,
+): string {
+	const span = styledSpan(style, escapeHtml(raw));
+	return href ? `<a href="${escapeHtml(href)}">${span}</a>` : span;
+}
+
 /**
  * The collapsed <details> "Linked view": a <pre> reproducing the template where
  * each token is an inline-styled <span> (color by kind) and each resolved
@@ -159,22 +170,19 @@ export function renderRichLinkedHtml(tokens: TplToken[]): string {
 			}
 			case "var":
 			case "unescaped": {
-				const span = styledSpan(STYLE_VAR, escapeHtml(t.raw));
-				pre += t.href ? `<a href="${escapeHtml(t.href)}">${span}</a>` : span;
+				pre += linkSpan(STYLE_VAR, t.raw, t.href);
 				break;
 			}
 			case "section":
 			case "inverted":
 			case "close": {
-				const span = styledSpan(STYLE_SECTION, escapeHtml(t.raw));
 				// Only open tags (section/inverted) carry an href; close tags don't.
 				const href = "href" in t ? t.href : undefined;
-				pre += href ? `<a href="${escapeHtml(href)}">${span}</a>` : span;
+				pre += linkSpan(STYLE_SECTION, t.raw, href);
 				break;
 			}
 			case "partial": {
-				const span = styledSpan(STYLE_PARTIAL, escapeHtml(t.raw));
-				pre += t.href ? `<a href="${escapeHtml(t.href)}">${span}</a>` : span;
+				pre += linkSpan(STYLE_PARTIAL, t.raw, t.href);
 				break;
 			}
 			case "comment": {

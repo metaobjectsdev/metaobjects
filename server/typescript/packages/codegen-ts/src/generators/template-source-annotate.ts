@@ -132,6 +132,22 @@ export function annotateTemplate(
 		return { field, href: fieldHref(field.owner, field.name) };
 	}
 
+	// Build a variable token ({{x}} or {{&x}}/{{{x}}}). The implicit iterator
+	// `.` is always valid against the current context; any other path resolves
+	// against the enriched tree (carrying field + href when found).
+	function makeVarToken(
+		kind: "var" | "unescaped",
+		raw: string,
+		value: string,
+		stack: ResolveStack<AnnotatePayloadField>,
+	): TplToken {
+		if (value === ".") return { kind, raw, path: value, valid: true };
+		const r = resolveAt(stack, value);
+		return r
+			? { kind, raw, path: value, field: r.field, href: r.href, valid: true }
+			: { kind, raw, path: value, valid: false };
+	}
+
 	function walk(
 		tokens: Token[],
 		stack: ResolveStack<AnnotatePayloadField>,
@@ -156,24 +172,7 @@ export function annotateTemplate(
 					// {{x}} — escaped variable.
 					const raw = source.slice(start, end);
 					cursor = end;
-					if (value === ".") {
-						// Implicit iterator — always valid, references the current context.
-						out.push({ kind: "var", raw, path: value, valid: true });
-						break;
-					}
-					const r = resolveAt(stack, value);
-					out.push(
-						r
-							? {
-									kind: "var",
-									raw,
-									path: value,
-									field: r.field,
-									href: r.href,
-									valid: true,
-								}
-							: { kind: "var", raw, path: value, valid: false },
-					);
+					out.push(makeVarToken("var", raw, value, stack));
 					break;
 				}
 				case "&":
@@ -181,23 +180,7 @@ export function annotateTemplate(
 					// {{&x}} / {{{x}}} — unescaped variable (mustache.js emits "&" for both).
 					const raw = source.slice(start, end);
 					cursor = end;
-					if (value === ".") {
-						out.push({ kind: "unescaped", raw, path: value, valid: true });
-						break;
-					}
-					const r = resolveAt(stack, value);
-					out.push(
-						r
-							? {
-									kind: "unescaped",
-									raw,
-									path: value,
-									field: r.field,
-									href: r.href,
-									valid: true,
-								}
-							: { kind: "unescaped", raw, path: value, valid: false },
-					);
+					out.push(makeVarToken("unescaped", raw, value, stack));
 					break;
 				}
 				case "#":
