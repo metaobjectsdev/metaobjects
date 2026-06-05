@@ -21,6 +21,37 @@
 //                        — ONLY when @format is json/xml (extractor generator gate)
 //       - render       : render<Name> (templates/render-helper.ts) — document →
 //                        string, email → EmailDocument (@kind gate)
+//   • ENTITY (additional, T5 — relationships / callable / Hono):
+//       - relation     : the `<var>Relations` drizzle relations() export the
+//                        entity file composes (relations-block.ts), one per entity
+//                        that has relations; the per-navigation accessors (1:N
+//                        one() / M:N many(junction)) ride in its field shape, named
+//                        + cardinality-tagged + target-tagged. ONLY when the
+//                        relation-resolver derives a relations() block for it.
+//       - callable     : call<Entity> (templates/callable-file.ts) — ONLY when the
+//                        entity is backed by a stored-proc / table-function source
+//                        (isCallableEntity); the typed proc wrapper.
+//       - rest-hono    : the Hono CRUD registrar register<Entity>Routes
+//                        (templates/routes-file-hono.ts) — the OPT-IN Hono variant
+//                        of the Fastify REST surface. Documented ONLY when the
+//                        adopter wires routesFileHono() (ctx.includeHonoRoutes), and
+//                        gated by the SAME @emitRoutes:false filter.
+//   • template.prompt (T5):
+//       - prompt       : render<Name> (payload, provider): string — the prompt
+//                        render handle promptRender() emits into a single
+//                        aggregated `prompts.ts` (payload-codegen generateRenderHandle).
+//                        ONLY for TOP-LEVEL template.prompt nodes (matching
+//                        prompt-render-file.ts's `ctx.loadedRoot.ownChildren()`).
+//
+// DEFERRALS (tracked follow-ups — NOT documented by this builder yet, stated here
+// so the gap is known + intentional):
+//   • TanStack / React generator surface — formFile / tanstackQuery / grid + hooks
+//     are framework ADD-ONS (a separate front-end-codegen effort); their emitted
+//     symbols are out of scope for the back-end public-API IR this builder models.
+//   • TPH BASE per-subtype write helpers (create<Sub> / update<Sub>ById /
+//     delete<Sub>ById scoped to the shared table) + the subtype REST subpaths —
+//     the prior deliberate deferral (see the TPH skip note below). Under-documented
+//     (allowed), never invented.
 //
 // SKIP rules honored (matching the real generators' filters):
 //   • object.value records have no primary identity → the queries generator skips
@@ -56,11 +87,14 @@ import {
   OBJECT_SUBTYPE_VALUE,
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_FORMAT,
   TEMPLATE_ATTR_KIND,
   TEMPLATE_KIND_EMAIL,
   TEMPLATE_KIND_DEFAULT,
+  TYPE_SOURCE,
+  SOURCE_ATTR_PARAMETER_REF,
 } from "@metaobjectsdev/metadata";
 import {
   findByIdFnName,
@@ -69,14 +103,17 @@ import {
   updateFnName,
   deleteByIdFnName,
   routesHandlerName,
+  variableNameFromEntity,
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
+import { isCallableEntity } from "../templates/callable-file.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
+import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
 import { effectivePackage } from "../docs-paths.js";
 import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
@@ -99,7 +136,12 @@ export type ApiSymbolKind =
   | "rest"
   | "validation"
   | "extractor"
-  | "render";
+  | "render"
+  // T5 additions:
+  | "relation" // the drizzle relations() export + per-nav accessors (1:N / M:N)
+  | "callable" // call<Entity> stored-proc / table-function wrapper
+  | "rest-hono" // the opt-in Hono CRUD registrar variant
+  | "prompt"; // render<Name> prompt-render handle for a template.prompt
 
 export interface ApiSymbol {
   /** The exact symbol the real generator emits (function/type/schema name, or
@@ -202,11 +244,22 @@ export interface ApiModel {
 export interface ApiModelContext {
   loadedRoot: MetaRoot;
   pkMap?: Map<string, PkInfo>;
+  /** The relation map (relation-resolver) the entity file's relations() block is
+   *  derived from. Derived from `loadedRoot` when absent — keeps the builder
+   *  callable from a thin docs entrypoint. */
+  relationMap?: RelationMap;
   /** The output layout the codegen run uses. The per-symbol `importPath` mirrors
    *  the emitting generator's own path computation under this layout (flat →
    *  `Product.queries`; package → folded under the entity's package path iff the
    *  generator folds). Defaults to "flat" (today's byte-identical placement). */
   outputLayout?: OutputLayout;
+  /** Whether to ALSO document the OPT-IN Hono CRUD variant (routesFileHono).
+   *  Hono is not in the default generator suite — it is an alternative wired by
+   *  the adopter — so its symbols are documented ONLY when the adopter opts in
+   *  (mirrors "match the generator's filters": don't over-document a surface the
+   *  run didn't configure). The Fastify REST surface is always documented (it is
+   *  the default-suite routes generator). Defaults to false. */
+  includeHonoRoutes?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,15 +272,21 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // shim is sufficient (and avoids forcing callers to build a full context).
   const pkCtx = { pkMap } as RenderContext;
   const layout = ctx.outputLayout ?? "flat";
+  const relationMap = ctx.relationMap ?? buildRelationMap(root);
+  const includeHono = ctx.includeHonoRoutes ?? false;
 
   const units: ApiUnitDoc[] = [];
 
   for (const obj of root.objects()) {
-    units.push(buildEntityUnit(obj, pkCtx, root, layout));
+    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono));
   }
 
   for (const tmpl of templateOutputs(root)) {
     units.push(buildTemplateUnit(tmpl, root, layout));
+  }
+
+  for (const tmpl of templatePrompts(root)) {
+    units.push(buildPromptUnit(tmpl, root));
   }
 
   return { units };
@@ -301,6 +360,8 @@ function buildEntityUnit(
   ctx: RenderContext,
   root: MetaRoot,
   layout: OutputLayout,
+  relationMap: RelationMap,
+  includeHono: boolean,
 ): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
@@ -327,8 +388,24 @@ function buildEntityUnit(
     // REST is additionally gated: @emitRoutes:false suppresses routes only.
     if (emitsRoutes(obj)) {
       symbols.push(...restSymbols(obj, layout));
+      // The OPT-IN Hono variant mounts the SAME CRUD verbs under the SAME
+      // @emitRoutes filter — documented only when the adopter wired it.
+      if (includeHono) symbols.push(...restHonoSymbols(obj, layout));
     }
   }
+
+  // --- relation: the drizzle relations() export, when the resolver derives a
+  //     relations() block for this entity (1:N belongs-to + inverse many, M:N
+  //     @through). Independent of isQueryable — a relations() block is emitted by
+  //     the entity file regardless. ---
+  const relationSym = relationSymbol(obj, entityMod, relationMap);
+  if (relationSym !== undefined) symbols.push(relationSym);
+
+  // --- callable: call<Entity>, only when the entity is backed by a stored-proc /
+  //     table-function source (matching the callable generator's isCallableEntity
+  //     filter). ---
+  const callableSym = callableSymbol(obj, root, layout);
+  if (callableSym !== undefined) symbols.push(callableSym);
 
   const unit: ApiUnitDoc = {
     node: name,
@@ -530,6 +607,194 @@ function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
 }
 
 // ---------------------------------------------------------------------------
+// T5: relations / callable / Hono (entity-level), then prompt (template.prompt).
+// ---------------------------------------------------------------------------
+
+/**
+ * The drizzle relations() export the entity file composes for an entity that has
+ * relations. The relations-block generator emits
+ *   `export const <var>Relations = relations(<var>, ({ one, many }) => ({ … }))`
+ * where `<var> = variableNameFromEntity(name)` (so `Post` → `postRelations`) and
+ * the body is one accessor per RelationEntry the resolver derived — `author:
+ * one(User, …)` for a 1:N belongs-to, `tags: many(PostTag)` for an M:N @through,
+ * and the inverse `posts: many(…)` registered on the target. We document the
+ * EXPORT (the importable symbol) and ride each navigation in the field shape
+ * (name → cardinality-tagged target), all derived from the SAME RelationMap the
+ * generator emits from — never invented. Returns undefined when the resolver
+ * derived no relations() block for this entity (the entity file emits none).
+ */
+function relationSymbol(
+  obj: MetaObject,
+  entityMod: string,
+  relationMap: RelationMap,
+): ApiSymbol | undefined {
+  const entries = relationMap.get(obj.name);
+  if (entries === undefined || entries.length === 0) return undefined;
+
+  const varName = variableNameFromEntity(obj.name);
+  const relationsExport = `${varName}Relations`;
+
+  // One field-shape row per navigation: name is the relation accessor key the
+  // block emits; type carries the cardinality + the entity you traverse to; note
+  // explains how to query it via the relational API.
+  const navFields: FieldShape[] = entries.map((e) => relationNavField(e));
+
+  return {
+    name: relationsExport,
+    kind: "relation",
+    importPath: entityMod,
+    signature: `const ${relationsExport}: Relations<"${tableName(varName)}", …>`,
+    returns: relationsExport,
+    usage:
+      `Drizzle relations() for ${obj.name} — register it with your schema, then ` +
+      `traverse via the relational query API (db.query.${varName}.findMany({ with: { … } })).`,
+    fields: navFields,
+  };
+}
+
+/** Drizzle's relations() first arg is the table var; we only need a stable label
+ *  here for the signature, so reuse the entity's table var name. */
+function tableName(varName: string): string {
+  return varName;
+}
+
+/** A field-shape row describing ONE relation navigation: accessor name + a
+ *  cardinality-tagged target "type" + a how-to-traverse note. Mirrors the
+ *  RelationEntry the resolver produced (1:N one() / M:N many(junction) / inverse
+ *  many()), never restated. */
+function relationNavField(e: RelationEntry): FieldShape {
+  if (e.cardinality === "one") {
+    return {
+      name: e.name,
+      type: `${e.targetEntity} (1:1 / N:1)`,
+      optional: true,
+      note: `belongs-to → ${e.targetEntity}${e.fkField ? ` via ${e.fkField}` : ""}`,
+    };
+  }
+  // many — either a M:N through a junction or a 1:N inverse.
+  if (e.junctionEntity !== undefined) {
+    return {
+      name: e.name,
+      type: `${e.targetEntity}[] (M:N via ${e.junctionEntity})`,
+      optional: true,
+      note: `many-to-many → ${e.targetEntity} through ${e.junctionEntity}`,
+    };
+  }
+  return {
+    name: e.name,
+    type: `${e.targetEntity}[] (1:N)`,
+    optional: true,
+    note: `has-many → ${e.targetEntity}`,
+  };
+}
+
+/**
+ * The callable wrapper `call<Entity>` the callable generator emits for an entity
+ * backed by a stored-proc / table-function source (isCallableEntity — the SAME
+ * filter the generator factory uses). The wrapper takes `(db, args: <argsVO>)`
+ * (or just `(db)` for a zero-arg proc) and returns `Promise<<Entity>[]>`, emitted
+ * into a FLAT-OR-PACKAGE-FOLDED `<Entity>.callable.ts` (entityOutputPath, same as
+ * the generator). Returns undefined for a non-callable entity (no file emitted).
+ */
+function callableSymbol(
+  obj: MetaObject,
+  root: MetaRoot,
+  layout: OutputLayout,
+): ApiSymbol | undefined {
+  if (!isCallableEntity(obj)) return undefined;
+
+  const name = obj.name;
+  const fn = `call${name}`;
+  const mod = entityModulePath(layout, obj, `${name}.callable`);
+
+  // Resolve the @parameterRef args value-object name (same resolution the
+  // callable template uses) to type the `args` param — undefined ⇒ zero-arg proc.
+  const argsRef = callableArgsRef(obj, root);
+  const signature = argsRef
+    ? `${fn}(db: NodePgDatabase, args: ${argsRef}): Promise<${name}[]>`
+    : `${fn}(db: NodePgDatabase): Promise<${name}[]>`;
+  const params = argsRef
+    ? [`db: NodePgDatabase`, `args: ${argsRef}`]
+    : [`db: NodePgDatabase`];
+
+  return {
+    name: fn,
+    kind: "callable",
+    importPath: mod,
+    signature,
+    params,
+    returns: `${name}[]`,
+    usage: `Call the ${name} stored procedure / table function and parse each row into a typed ${name}.`,
+  };
+}
+
+/** The @parameterRef value-object name for a callable entity's source, or
+ *  undefined for a zero-arg proc. Mirrors the callable template's resolution
+ *  (the source child's SOURCE_ATTR_PARAMETER_REF). */
+function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
+  for (const child of obj.ownChildren()) {
+    if (child.type !== TYPE_SOURCE) continue;
+    const ref = child.ownAttr(SOURCE_ATTR_PARAMETER_REF);
+    if (typeof ref === "string" && ref !== "") {
+      // Only count it when it resolves to a value object (the template's guard).
+      const vo = root
+        .ownChildren()
+        .find((c) => c.subType === OBJECT_SUBTYPE_VALUE && c.name === ref);
+      if (vo !== undefined) return ref;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The OPT-IN Hono CRUD registrar `register<Entity>Routes(app, deps)` the
+ * routesFileHono generator emits into `<Entity>.routes.hono.ts`. Parallels the
+ * Fastify restSymbols (same verb set, same resourcePath, read-only for
+ * projections) but carries the Hono registrar name + import module. Documented
+ * only when the adopter opts into the Hono variant (includeHonoRoutes).
+ */
+function restHonoSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
+  const name = obj.name;
+  const path = resourcePath(obj);
+  const readOnly = isProjection(obj);
+
+  const honoMod = entityModulePath(layout, obj, `${name}.routes.hono`);
+  const registrar = `register${name}Routes`;
+
+  const modelShape = modelFieldShapes(obj);
+  const createShape = createFieldShapes(obj);
+  const updateShape = updateFieldShapes(obj);
+
+  const ep = (method: string, p: string, desc: string, fields?: FieldShape[]): ApiSymbol => {
+    const sym: ApiSymbol = {
+      name: `${method} ${p}`,
+      kind: "rest-hono",
+      importPath: honoMod,
+      registrar,
+      signature: `${method} ${p}`,
+      usage: desc,
+    };
+    if (fields !== undefined) sym.fields = fields;
+    return sym;
+  };
+
+  const symbols: ApiSymbol[] = [
+    ep("GET", path, `[Hono] List ${name} (filter/sort/paging query params).`, modelShape),
+    ep("GET", `${path}/:id`, `[Hono] Fetch a single ${name} by id (404 when not found).`, modelShape),
+  ];
+
+  if (!readOnly) {
+    symbols.push(
+      ep("POST", path, `[Hono] Create a ${name} (body validated by ${name}InsertSchema).`, createShape),
+      ep("PATCH", `${path}/:id`, `[Hono] Partially update a ${name} by id (body validated by ${name}UpdateSchema).`, updateShape),
+      ep("DELETE", `${path}/:id`, `[Hono] Delete a ${name} by id.`),
+    );
+  }
+
+  return symbols;
+}
+
+// ---------------------------------------------------------------------------
 // template.output nodes.
 // ---------------------------------------------------------------------------
 
@@ -615,6 +880,63 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   const example = templateExample(name, symbols);
   if (example !== undefined) unit.example = example;
   return unit;
+}
+
+// ---------------------------------------------------------------------------
+// template.prompt nodes — the prompt-render handle.
+// ---------------------------------------------------------------------------
+
+/** TOP-LEVEL template.prompt nodes — matching the promptRender generator's own
+ *  collection (`ctx.loadedRoot.ownChildren()` filtered to TYPE_TEMPLATE +
+ *  TEMPLATE_SUBTYPE_PROMPT). A prompt nested INSIDE an entity is not collected by
+ *  the generator, so the builder must not document it either (no over-doc). */
+function templatePrompts(root: MetaRoot): MetaData[] {
+  return root
+    .ownChildren()
+    .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
+}
+
+/**
+ * The render handle promptRender() emits per template.prompt — generateRenderHandle
+ * (payload-codegen.ts) produces
+ *   `export function render<Name>(payload: <payloadRef>, provider: Provider): string`
+ * and promptRender aggregates every handle into a SINGLE file (default outFile
+ * "prompts.ts"), so the import module is the bare `prompts` (no package folding;
+ * the generator writes the outFile verbatim). The payload field shape is the
+ * @payloadRef VO interface (same walk the payload-interface emitter uses), so an
+ * agent sees what to pass.
+ */
+function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
+  const name = tmpl.name;
+  const symbols: ApiSymbol[] = [];
+  // promptRender writes the aggregated handles to `outFile` (default "prompts.ts").
+  const promptsMod = templateModulePath("prompts");
+
+  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  const payload = typeof payloadRef === "string" ? payloadRef : undefined;
+
+  if (payload) {
+    const render = `render${name}`;
+    const sym: ApiSymbol = {
+      name: render,
+      kind: "prompt",
+      importPath: promptsMod,
+      signature: `${render}(payload: ${payload}, provider: Provider): string`,
+      params: [`payload: ${payload}`, `provider: Provider`],
+      returns: "string",
+      usage: `Render the ${name} prompt text from a typed ${payload} payload (ready to send to an LLM).`,
+    };
+    const payloadShape = payloadFieldShapes(root, payload);
+    if (payloadShape !== undefined) sym.fields = payloadShape;
+    symbols.push(sym);
+  }
+
+  return {
+    node: name,
+    package: effectivePackage(tmpl),
+    nodeKind: "template",
+    symbols,
+  };
 }
 
 // ---------------------------------------------------------------------------

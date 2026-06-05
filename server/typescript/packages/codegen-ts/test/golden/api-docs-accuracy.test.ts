@@ -41,6 +41,9 @@ import {
   entityFile,
   queriesFile,
   routesFile,
+  routesFileHono,
+  callableFile,
+  promptRender,
   extractor,
   renderHelper,
 } from "../../src/generators/index.js";
@@ -515,6 +518,11 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
           return extractorFiles;
         case "render":
           return renderFiles;
+        default:
+          // The T5 kinds (relation / callable / rest-hono / prompt) are covered by
+          // the dedicated T5 describe block below; this original block's fixture
+          // exercises none of them, so they never reach here.
+          return [];
       }
     }
 
@@ -561,6 +569,9 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
             ? { ok: true, why: "" }
             : { ok: false, why: `routes module "${expectedFile}" does not export ${registrar}()` };
         }
+        default:
+          // T5 kinds are validated in the dedicated T5 block; unreachable here.
+          return { ok: true, why: "" };
       }
     }
   });
@@ -750,5 +761,289 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     expect([...docFieldNames(extract)].sort()).toEqual([...emitted].sort());
     // @required field is documented required.
     expect(extract.fields!.find((x) => x.name === "headline")!.optional).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Task 5 — the ADDED surfaces: relations / callable / prompt-render / Hono.
+//
+// Same accuracy discipline as above: a rich fixture, the REAL generators run
+// (relations live in the entity file; callableFile / promptRender / routesFileHono
+// run as opt-in generators), the ApiModel built on the same root, and every new
+// documented symbol asserted ∈ its owning generated file at the documented import
+// path — plus inverse checks (no callable on a non-callable entity, etc.).
+// ===========================================================================
+
+const T5_FIXTURE = JSON.stringify({
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      // User — target of a 1:N (Post.author) and inverse many(posts).
+      {
+        "object.entity": {
+          name: "User",
+          children: [
+            { "source.rdb": { "@table": "users" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "email", "@required": true } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+          ],
+        },
+      },
+      // Tag — target of the M:N (Post.tags through PostTag).
+      {
+        "object.entity": {
+          name: "Tag",
+          children: [
+            { "source.rdb": { "@table": "tags" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "label", "@required": true } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+          ],
+        },
+      },
+      // PostTag — the M:N junction (two identity.references → Post, Tag).
+      {
+        "object.entity": {
+          name: "PostTag",
+          children: [
+            { "source.rdb": { "@table": "post_tags" } },
+            { "field.long": { name: "postId", "@required": true } },
+            { "field.long": { name: "tagId", "@required": true } },
+            { "identity.reference": { name: "ref_post", "@fields": ["postId"], "@references": "Post" } },
+            { "identity.reference": { name: "ref_tag", "@fields": ["tagId"], "@references": "Tag" } },
+          ],
+        },
+      },
+      // Post — declares a 1:N belongs-to (author → User) AND a M:N (tags → Tag
+      // through PostTag). The relations() block emits author: one(...) + tags:
+      // many(postTags). It inverse-registers posts: many(...) on User.
+      {
+        "object.entity": {
+          name: "Post",
+          children: [
+            { "source.rdb": { "@table": "posts" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "title", "@required": true } },
+            { "field.long": { name: "authorId", "@required": true } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { name: "ref_author", "@fields": ["authorId"], "@references": "User" } },
+            { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "User" } },
+            { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
+          ],
+        },
+      },
+      // PhaseSummaryArgs — the @parameterRef value-object for the callable.
+      {
+        "object.value": {
+          name: "PhaseSummaryArgs",
+          children: [
+            { "field.long": { name: "caseId", "@required": true } },
+            { "field.string": { name: "asOfDate", "@required": true } },
+          ],
+        },
+      },
+      // PhaseSummary — a projection entity backed by a stored procedure → the
+      // callable generator emits callPhaseSummary(db, args): Promise<PhaseSummary[]>.
+      {
+        "object.entity": {
+          name: "PhaseSummary",
+          children: [
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
+            { "field.long": { name: "caseId" } },
+            { "field.string": { name: "phase" } },
+            { "identity.primary": { "@fields": "caseId" } },
+          ],
+        },
+      },
+      // ClassifyRequest — the @payloadRef value-object for the prompt.
+      {
+        "object.value": {
+          name: "ClassifyRequest",
+          children: [{ "field.string": { name: "text", "@required": true } }],
+        },
+      },
+      // A TOP-LEVEL template.prompt → promptRender emits renderClassifyPrompt
+      // (payload, provider): string into prompts.ts.
+      {
+        "template.prompt": {
+          name: "ClassifyPrompt",
+          "@payloadRef": "ClassifyRequest",
+          "@textRef": "p/classify",
+          "@format": "xml",
+        },
+      },
+    ],
+  },
+});
+
+async function loadT5Root() {
+  const res = await new MetaDataLoader().load([
+    new InMemoryStringSource(T5_FIXTURE, { id: "t5.json", format: "json" }),
+  ]);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
+describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono", () => {
+  let root: Awaited<ReturnType<typeof loadT5Root>>;
+  let model: ApiModel;
+  let entityFiles: EmittedFile[];
+  let callableFiles: EmittedFile[];
+  let promptFiles: EmittedFile[];
+  let honoFiles: EmittedFile[];
+
+  test("setup: run the real generators + build the ApiModel (with Hono enabled)", async () => {
+    const projectRoot = makeProjectRoot();
+    root = await loadT5Root();
+
+    entityFiles = await runGenerator(entityFile(), root, projectRoot);
+    callableFiles = await runGenerator(callableFile(), root, projectRoot);
+    promptFiles = await runGenerator(promptRender(), root, projectRoot);
+    honoFiles = await runGenerator(routesFileHono(), root, projectRoot);
+
+    // Hono is the opt-in variant → the builder documents it only when asked.
+    model = buildApiModel(root, { loadedRoot: root, includeHonoRoutes: true });
+
+    expect(entityFiles.length).toBeGreaterThan(0);
+    // Exactly one callable entity in the fixture (PhaseSummary).
+    expect(callableFiles.length).toBe(1);
+    // One aggregated prompts.ts.
+    expect(promptFiles.length).toBe(1);
+    expect(honoFiles.length).toBeGreaterThan(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // RELATIONS: the <var>Relations export + each navigation appears in the
+  // entity file, at the documented (entity-module) import path.
+  // -----------------------------------------------------------------------
+  test("RELATIONS: <var>Relations is documented + emitted, with each navigation named", () => {
+    const postUnit = model.units.find((u) => u.node === "Post")!;
+    const rel = postUnit.symbols.find((s) => s.kind === "relation");
+    expect(rel, "Post carries a relation symbol").toBeDefined();
+
+    // The exact export name the relations-block emits: variableNameFromEntity + Relations.
+    const expectedConst = `${variableNameFromEntity("Post")}Relations`; // postRelations
+    expect(rel!.name).toBe(expectedConst);
+
+    // It is an exported const in the entity file at the documented importPath.
+    const f = fileFor(entityFiles, "Post.ts")!;
+    expect(hasExportedDecl(f.content, expectedConst)).toBe(true);
+    expect(rel!.importPath).toBe("Post"); // entity module (flat layout)
+    expect(`${rel!.importPath}.ts`).toBe(f.path.split("/").pop() ?? f.path);
+
+    // Each documented navigation (author 1:N, tags M:N) appears as a relation
+    // key in the emitted relations() block — never invented.
+    const navNames = (rel!.fields ?? []).map((x) => x.name);
+    expect(navNames).toContain("author");
+    expect(navNames).toContain("tags");
+    for (const nav of navNames) {
+      // The key appears as `<nav>: one(`/`many(` in the emitted block.
+      expect(new RegExp(`\\b${nav}\\s*:\\s*(?:one|many)\\s*\\(`).test(f.content)).toBe(true);
+    }
+    // Cardinality + target captured in the field note/type.
+    const authorNav = rel!.fields!.find((x) => x.name === "author")!;
+    expect(authorNav.type).toContain("User");
+    const tagsNav = rel!.fields!.find((x) => x.name === "tags")!;
+    expect(tagsNav.type).toContain("Tag");
+  });
+
+  test("RELATIONS: User inverse many(posts) is documented (inverse side registered)", () => {
+    const userUnit = model.units.find((u) => u.node === "User")!;
+    const rel = userUnit.symbols.find((s) => s.kind === "relation");
+    expect(rel, "User carries the inverse relation").toBeDefined();
+    expect(rel!.name).toBe(`${variableNameFromEntity("User")}Relations`); // userRelations
+    const navNames = (rel!.fields ?? []).map((x) => x.name);
+    expect(navNames).toContain("posts");
+  });
+
+  test("RELATIONS inverse: an entity with no relations carries no relation symbol", () => {
+    // Tag is only a many() TARGET via the junction; it declares no relationship
+    // children and (FR-018) the junction holds the FK, so Tag has no relations()
+    // block. The builder must not invent one.
+    const tagUnit = model.units.find((u) => u.node === "Tag")!;
+    const rel = tagUnit.symbols.find((s) => s.kind === "relation");
+    // Tag has no relations() block emitted → no relation symbol documented.
+    const f = fileFor(entityFiles, "Tag.ts")!;
+    const hasBlock = hasExportedDecl(f.content, `${variableNameFromEntity("Tag")}Relations`);
+    expect(rel !== undefined).toBe(hasBlock);
+  });
+
+  // -----------------------------------------------------------------------
+  // CALLABLE: call<Entity> in <Entity>.callable.ts at the documented path.
+  // -----------------------------------------------------------------------
+  test("CALLABLE: callPhaseSummary documented + emitted at PhaseSummary.callable", () => {
+    const unit = model.units.find((u) => u.node === "PhaseSummary")!;
+    const callable = unit.symbols.find((s) => s.kind === "callable");
+    expect(callable, "PhaseSummary carries a callable symbol").toBeDefined();
+    expect(callable!.name).toBe("callPhaseSummary");
+
+    const f = fileFor(callableFiles, "PhaseSummary.callable.ts")!;
+    expect(f, "callable file emitted").toBeDefined();
+    expect(hasExportedFn(f.content, "callPhaseSummary")).toBe(true);
+    expect(callable!.importPath).toBe("PhaseSummary.callable");
+    expect(`${callable!.importPath}.ts`).toBe(f.path);
+
+    // Signature: takes the @parameterRef args VO + returns the projection array.
+    expect(callable!.signature).toContain("PhaseSummaryArgs");
+    expect(callable!.returns).toBe("PhaseSummary[]");
+  });
+
+  test("CALLABLE inverse: a non-callable entity carries no callable symbol", () => {
+    // Post / User / Tag are vanilla tables → the callable generator skips them.
+    for (const node of ["Post", "User", "Tag"]) {
+      const unit = model.units.find((u) => u.node === node)!;
+      expect(unit.symbols.some((s) => s.kind === "callable")).toBe(false);
+      expect(fileFor(callableFiles, `${node}.callable.ts`)).toBeUndefined();
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // PROMPT-RENDER: render<Name> in prompts.ts.
+  // -----------------------------------------------------------------------
+  test("PROMPT: renderClassifyPrompt documented + emitted in prompts.ts", () => {
+    const unit = model.units.find((u) => u.node === "ClassifyPrompt")!;
+    expect(unit, "ClassifyPrompt unit present").toBeDefined();
+    const prompt = unit.symbols.find((s) => s.kind === "prompt");
+    expect(prompt, "ClassifyPrompt carries a prompt symbol").toBeDefined();
+    expect(prompt!.name).toBe("renderClassifyPrompt");
+
+    const f = promptFiles[0]!;
+    expect(hasExportedFn(f.content, "renderClassifyPrompt")).toBe(true);
+    // promptRender emits a single aggregated file (default outFile "prompts.ts").
+    expect(prompt!.importPath).toBe("prompts");
+    expect(`${prompt!.importPath}.ts`).toBe(f.path);
+    expect(prompt!.signature).toContain("ClassifyRequest");
+    expect(prompt!.returns).toBe("string");
+  });
+
+  // -----------------------------------------------------------------------
+  // HONO: register<Entity>Routes in <Entity>.routes.hono.ts (opt-in variant).
+  // -----------------------------------------------------------------------
+  test("HONO: register<Entity>Routes documented + emitted at <Entity>.routes.hono", () => {
+    const postUnit = model.units.find((u) => u.node === "Post")!;
+    const hono = postUnit.symbols.filter((s) => s.kind === "rest-hono");
+    expect(hono.length, "Post carries Hono REST symbols").toBeGreaterThan(0);
+
+    const f = fileFor(honoFiles, "Post.routes.hono.ts")!;
+    expect(f, "Hono routes file emitted").toBeDefined();
+    const registrar = "registerPostRoutes";
+    expect(hasExportedFn(f.content, registrar)).toBe(true);
+
+    for (const ep of hono) {
+      // The registrar is the import target; the importPath is the hono module.
+      expect(ep.registrar).toBe(registrar);
+      expect(ep.importPath).toBe("Post.routes.hono");
+      expect(`${ep.importPath}.ts`).toBe(f.path);
+      // "METHOD /path" name.
+      expect(/^[A-Z]+ \//.test(ep.name)).toBe(true);
+    }
+  });
+
+  test("HONO inverse: when includeHonoRoutes is NOT set, no Hono symbols are documented", () => {
+    const noHono = buildApiModel(root, { loadedRoot: root });
+    for (const u of noHono.units) {
+      expect(u.symbols.some((s) => s.kind === "rest-hono")).toBe(false);
+    }
   });
 });

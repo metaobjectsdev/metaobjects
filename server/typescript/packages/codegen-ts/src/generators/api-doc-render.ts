@@ -34,19 +34,27 @@ const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 // (so two runs over the same model are byte-stable regardless of symbol order).
 const KIND_ORDER: readonly ApiSymbolKind[] = [
   "model",
+  "relation",
   "data-access",
+  "callable",
   "rest",
+  "rest-hono",
   "validation",
   "extractor",
   "render",
+  "prompt",
 ];
 const KIND_HEADING: Record<ApiSymbolKind, string> = {
   model: "Model",
+  relation: "Relations",
   "data-access": "Data access",
+  callable: "Callable",
   rest: "REST",
+  "rest-hono": "REST (Hono)",
   validation: "Validation",
   extractor: "Extractor",
   render: "Render",
+  prompt: "Prompt",
 };
 
 /** A docs-page name for the index href helper. The API index lives at the docs
@@ -168,8 +176,10 @@ interface SymbolVM {
 function fieldsCaptionFor(s: ApiSymbol): string {
   if (s.kind === "model") return "Fields";
   if (s.kind === "validation") return "Accepted fields";
-  if (s.kind === "extractor") return "Returns";
-  if (s.kind === "rest") {
+  if (s.kind === "extractor" || s.kind === "prompt") return s.kind === "prompt" ? "Payload" : "Returns";
+  if (s.kind === "relation") return "Navigations";
+  if (s.kind === "callable") return "Returns";
+  if (s.kind === "rest" || s.kind === "rest-hono") {
     return s.name.startsWith("GET ") ? "Response body" : "Request body";
   }
   // data-access: a create/update takes a body; reads return the model.
@@ -198,7 +208,10 @@ function fieldRows(fields: FieldShape[]): FieldRowVM[] {
  *  paths are RELATIVE to the adopter's generated-output dir (a note at the top of
  *  the page states this once). */
 function importLineFor(s: ApiSymbol): string {
-  const imported = s.kind === "rest" ? s.registrar ?? s.name : s.name;
+  // REST + Hono endpoints aren't importable functions — import the route
+  // registrar named on the symbol instead of the "METHOD /path" name.
+  const isRouteKind = s.kind === "rest" || s.kind === "rest-hono";
+  const imported = isRouteKind ? s.registrar ?? s.name : s.name;
   return `import { ${imported} } from "${s.importPath}"`;
 }
 
@@ -257,6 +270,10 @@ function symbolVM(s: ApiSymbol): SymbolVM {
   if (s.kind === "rest" && s.registrar !== undefined) {
     vm.mountNote = `\`await ${s.registrar}(fastify)\``;
   }
+  // Hono: the registrar mounts onto the Hono app with a per-request deps object.
+  if (s.kind === "rest-hono" && s.registrar !== undefined) {
+    vm.mountNote = `\`${s.registrar}(app, { db })\``;
+  }
   if (s.throws !== undefined) vm.throws = s.throws;
   if (s.example !== undefined) vm.example = s.example;
   // Field shape → a Field / Type / Required / Notes table (only when there is at
@@ -296,11 +313,15 @@ interface IndexRowVM {
  *  intact rather than ".toLowerCase()"-ing it to "rest"). */
 const KIND_SUMMARY_LABEL: Record<ApiSymbolKind, string> = {
   model: "model",
+  relation: "relations",
   "data-access": "data access",
+  callable: "callable",
   rest: "REST",
+  "rest-hono": "REST (Hono)",
   validation: "validation",
   extractor: "extractor",
   render: "render",
+  prompt: "prompt",
 };
 
 /** A one-line summary for a unit's index row: the count of each present kind,
@@ -410,9 +431,19 @@ function agentSignature(s: ApiSymbol): string {
     case "validation":
       return s.signature.replace("ZodType", `ZodType<${shape}>`);
     case "rest":
+    case "rest-hono":
       return s.name.startsWith("GET ") ? `${s.signature} -> ${shape}` : `${s.signature} body: ${shape}`;
     case "extractor":
+    case "prompt":
       return `${s.signature} // ${s.returns ?? "payload"}: ${shape}`;
+    case "relation":
+      // The navigations ride in the shape; show them inline after the const decl.
+      return `const ${s.name} ${shape}`;
+    case "callable":
+      // Callable returns a typed row array; the model shape isn't its param, so
+      // keep the bare signature (its `args` shape is the @parameterRef VO, shown
+      // on that VO's own unit).
+      return s.signature;
     default:
       return s.signature;
   }
@@ -429,9 +460,10 @@ function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
       byModule.set(s.importPath, g);
       order.push(s.importPath);
     }
-    // The identifier an adopter imports: the symbol name, or — for REST — the
-    // shared route registrar (deduped across the entity's endpoints).
-    const imported = s.kind === "rest" ? s.registrar ?? s.name : s.name;
+    // The identifier an adopter imports: the symbol name, or — for REST / Hono —
+    // the shared route registrar (deduped across the entity's endpoints).
+    const isRouteKind = s.kind === "rest" || s.kind === "rest-hono";
+    const imported = isRouteKind ? s.registrar ?? s.name : s.name;
     if (!g.names.includes(imported)) g.names.push(imported);
 
     const sym: AgentSymbolVM = { signature: agentSignature(s), usage: s.usage };
