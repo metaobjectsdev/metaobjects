@@ -55,6 +55,12 @@ From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):
 | `barrel()` | `index.ts` re-exporting each `<Entity>.ts` (one-shot, not per-entity) |
 | `promptRender()` | `render<Name>()` per `template.prompt` |
 | `outputParser()` | `<Name>.output.ts` (`parse*` / `safeParse*`) per `template.output` |
+| `apiDocsFile()` | `docs/api/<Entity>.md` + `docs/api/README.md` index + `docs/api/AGENT-API.md` (condensed agent-facing API reference) |
+
+When `apiDocsFile()` is enabled (it is in the default scaffold), **read
+`docs/api/AGENT-API.md` before calling any generated code** — it has the exact
+imports, function signatures, payload field shapes, and runnable examples for this
+project's generated API, so you don't have to guess them.
 
 From `@metaobjectsdev/codegen-ts-react`: `formFile()` → `<Entity>.form.tsx`.
 From `@metaobjectsdev/codegen-ts-tanstack`: `tanstackQuery()` → `<Entity>.hooks.ts`

@@ -18,6 +18,7 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(body).toContain(`queriesFile()`);
     expect(body).toContain(`routesFile()`);
     expect(body).toContain(`barrel()`);
+    expect(body).toContain(`apiDocsFile()`);
     expect(result.created).toContain("metaobjects.config.ts");
   });
 

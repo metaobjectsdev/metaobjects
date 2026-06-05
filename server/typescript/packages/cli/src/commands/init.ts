@@ -34,6 +34,7 @@ import {
   routesFile,
   // formFile,        // opt-in: emit React form components
   barrel,
+  apiDocsFile,
 } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
@@ -47,6 +48,7 @@ export default defineConfig({
     queriesFile(),
     routesFile(),
     barrel(),
+    apiDocsFile(),
   ],
 });
 `;
