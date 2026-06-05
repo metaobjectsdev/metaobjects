@@ -45,6 +45,7 @@ import {
   renderHelper,
 } from "../../src/generators/index.js";
 import { buildApiModel, type ApiModel, type ApiSymbol } from "../../src/generators/api-model.js";
+import { routesHandlerName } from "../../src/naming.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -401,6 +402,108 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
       }
       return { ok: true, why: "" };
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // IMPORT PATH: every symbol's documented importPath corresponds to the file
+  // the REAL generator emits that symbol into. A wrong import path (an adopter
+  // could not import the symbol) FAILS the gate. The importPath is the emitted
+  // file path WITHOUT the `.ts` extension; the gate appends `.ts` and confirms
+  //   (a) the generator emitted a file at exactly that path, AND
+  //   (b) that file exports the symbol (function / decl, or — for REST — the
+  //       route registrar named in the symbol's importPath).
+  // -----------------------------------------------------------------------
+  test("IMPORT PATH: every symbol's importPath is the file the real generator emits it into", () => {
+    const failures: string[] = [];
+
+    for (const unit of model.units) {
+      for (const sym of unit.symbols) {
+        const r = assertImportPath(unit.node, sym);
+        if (!r.ok) failures.push(`[${unit.node}] ${sym.kind} "${sym.name}": ${r.why}`);
+      }
+    }
+
+    expect(
+      failures,
+      `\nIMPORT-PATH DRIFT (documented import != real emitted file):\n${failures.join("\n")}\n`,
+    ).toEqual([]);
+
+    // The generator that OWNS each kind's emitted file (for the file-exists check).
+    function ownerFiles(kind: ApiSymbol["kind"]): EmittedFile[] {
+      switch (kind) {
+        case "model":
+        case "validation":
+        case "rest": // REST carries the routes registrar import; routes file owns it.
+          return kind === "rest" ? routesFiles : entityFiles;
+        case "data-access":
+          return queriesFiles;
+        case "extractor":
+          return extractorFiles;
+        case "render":
+          return renderFiles;
+      }
+    }
+
+    function assertImportPath(node: string, sym: ApiSymbol): { ok: boolean; why: string } {
+      const importPath = (sym as ApiSymbol & { importPath?: string }).importPath;
+      if (typeof importPath !== "string" || importPath === "") {
+        return { ok: false, why: `no importPath on the documented symbol` };
+      }
+      // The importPath must be extension-less (an importable module specifier).
+      if (importPath.endsWith(".ts")) {
+        return { ok: false, why: `importPath "${importPath}" carries a .ts extension` };
+      }
+
+      const expectedFile = `${importPath}.ts`;
+      const files = ownerFiles(sym.kind);
+      const f = files.find((x) => x.path === expectedFile);
+      if (!f) {
+        const emitted = files.map((x) => x.path).join(", ");
+        return {
+          ok: false,
+          why: `no emitted file at "${expectedFile}" (generator emitted: [${emitted}])`,
+        };
+      }
+
+      // The file must EXPORT the symbol an adopter would import from it.
+      switch (sym.kind) {
+        case "model":
+        case "validation":
+          return hasExportedDecl(f.content, sym.name)
+            ? { ok: true, why: "" }
+            : { ok: false, why: `"${expectedFile}" does not export ${sym.name}` };
+        case "data-access":
+        case "extractor":
+        case "render":
+          return hasExportedFn(f.content, sym.name)
+            ? { ok: true, why: "" }
+            : { ok: false, why: `"${expectedFile}" does not export fn ${sym.name}` };
+        case "rest": {
+          // REST symbols are not importable functions — the importPath is the
+          // routes module, and the registrar the agent mounts is the camelCase
+          // <entity>Routes handler. Assert the routes module exports it.
+          const registrar = routesHandlerName(node);
+          return hasExportedFn(f.content, registrar)
+            ? { ok: true, why: "" }
+            : { ok: false, why: `routes module "${expectedFile}" does not export ${registrar}()` };
+        }
+      }
+    }
+  });
+
+  // A WRONG importPath must FAIL the gate — prove the check has teeth, not just
+  // that the real builder happens to pass.
+  test("IMPORT PATH: a deliberately-wrong importPath is rejected", () => {
+    const productData = model.units
+      .find((u) => u.node === "Product")!
+      .symbols.find((s) => s.kind === "data-access")!;
+    const expectedFile = `${(productData as ApiSymbol & { importPath: string }).importPath}.ts`;
+    // The real one resolves.
+    expect(queriesFiles.some((f) => f.path === expectedFile)).toBe(true);
+    // A tampered one (point at the entity module instead of the queries module)
+    // does NOT — there is no `Product.ts` queries file exporting findProductById.
+    const wrong = "Product"; // entity module, not Product.queries
+    expect(queriesFiles.some((f) => f.path === `${wrong}.ts`)).toBe(false);
   });
 
   // -----------------------------------------------------------------------

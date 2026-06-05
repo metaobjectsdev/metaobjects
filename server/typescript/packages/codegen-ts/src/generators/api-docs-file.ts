@@ -59,6 +59,7 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
       // run always provides it) and derived otherwise.
       const model = buildApiModel(ctx.loadedRoot, {
         loadedRoot: ctx.loadedRoot,
+        outputLayout: layout,
         ...(ctx.renderContext?.pkMap !== undefined && { pkMap: ctx.renderContext.pkMap }),
       });
 

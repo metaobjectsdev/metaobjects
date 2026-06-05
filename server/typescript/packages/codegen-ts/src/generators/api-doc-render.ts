@@ -64,12 +64,35 @@ interface SectionVM {
 interface SymbolVM {
   signature: string;
   usage: string;
+  /** The exact import an adopter writes to call this symbol (e.g.
+   *  `import { findProductById } from "Product.queries"`). For REST it's the
+   *  route-registrar import + a one-line mount note. */
+  importLine: string;
+  /** REST-only: the mount one-liner shown under the registrar import. */
+  mountNote?: string;
+  /** When/why the symbol throws — surfaced as a "Throws:" line. */
+  throws?: string;
   example?: string;
 }
 
+/** The exact `import { … } from "<importPath>"` an adopter writes for a symbol.
+ *  REST endpoints aren't importable functions — the import is the entity's route
+ *  registrar (`<entity>Routes`) from the routes module; the symbol's `name` is a
+ *  "METHOD /path", not an identifier, so we import the registrar instead. Import
+ *  paths are RELATIVE to the adopter's generated-output dir (a note at the top of
+ *  the page states this once). */
+function importLineFor(s: ApiSymbol): string {
+  const imported = s.kind === "rest" ? s.registrar ?? s.name : s.name;
+  return `import { ${imported} } from "${s.importPath}"`;
+}
+
 /** Group a unit's symbols into ordered sections (one per present kind), each a
- *  list of {signature, usage, example}. Empty kinds are omitted. */
-function entityPageVM(unit: ApiUnitDoc): { generatedMarker: string; node: string; sections: SectionVM[] } {
+ *  list of {signature, usage, import, throws, example}. Empty kinds are omitted. */
+function entityPageVM(unit: ApiUnitDoc): {
+  generatedMarker: string;
+  node: string;
+  sections: SectionVM[];
+} {
   const sections: SectionVM[] = [];
   for (const kind of KIND_ORDER) {
     const ofKind = unit.symbols.filter((s) => s.kind === kind);
@@ -83,7 +106,12 @@ function entityPageVM(unit: ApiUnitDoc): { generatedMarker: string; node: string
 }
 
 function symbolVM(s: ApiSymbol): SymbolVM {
-  const vm: SymbolVM = { signature: s.signature, usage: s.usage };
+  const vm: SymbolVM = { signature: s.signature, usage: s.usage, importLine: importLineFor(s) };
+  // REST: tell the agent how to actually wire the endpoints once imported.
+  if (s.kind === "rest" && s.registrar !== undefined) {
+    vm.mountNote = `\`await ${s.registrar}(fastify)\``;
+  }
+  if (s.throws !== undefined) vm.throws = s.throws;
   if (s.example !== undefined) vm.example = s.example;
   return vm;
 }
@@ -173,22 +201,70 @@ export function renderApiIndex(model: ApiModel, layout: OutputLayout, provider: 
 // Condensed AGENT/LLM form.
 // ---------------------------------------------------------------------------
 
+interface AgentSymbolVM {
+  signature: string;
+  usage: string;
+  /** Compact `[throws: …]` marker appended after the usage, when the symbol
+   *  throws — so an agent knows the failure mode without a prose page. */
+  throwsMarker?: string;
+}
+interface AgentGroupVM {
+  /** One `import { a, b, c } from "<module>"` header covering every symbol below
+   *  it — the exact import for each, in a single token-frugal line. */
+  importHeader: string;
+  symbols: AgentSymbolVM[];
+}
 interface AgentUnitVM {
   node: string;
-  symbols: { signature: string; usage: string }[];
+  groups: AgentGroupVM[];
 }
 
-/** Render the condensed agent/LLM form: one compact `signature — usage` line per
- *  symbol, grouped by unit, NO prose/examples (token budget). Units keep their
- *  ApiModel order; symbols keep their per-unit order (the canonical generator
- *  emission order). */
+/** Group a unit's symbols by their import MODULE (first-appearance order),
+ *  emitting ONE `import { … } from "<module>"` header per module then the
+ *  symbols under it. This is the token-frugal form that still tells the agent the
+ *  exact import for EVERY symbol (one header amortized over N symbols, vs. an
+ *  import line per symbol). REST endpoints aren't importable identifiers — they
+ *  collapse under their entity's single route-registrar import (the registrar is
+ *  the imported name; the endpoints list the verbs/paths it mounts). */
+function agentGroups(unit: ApiUnitDoc): AgentGroupVM[] {
+  const order: string[] = [];
+  const byModule = new Map<string, { names: string[]; symbols: AgentSymbolVM[] }>();
+
+  for (const s of unit.symbols) {
+    let g = byModule.get(s.importPath);
+    if (!g) {
+      g = { names: [], symbols: [] };
+      byModule.set(s.importPath, g);
+      order.push(s.importPath);
+    }
+    // The identifier an adopter imports: the symbol name, or — for REST — the
+    // shared route registrar (deduped across the entity's endpoints).
+    const imported = s.kind === "rest" ? s.registrar ?? s.name : s.name;
+    if (!g.names.includes(imported)) g.names.push(imported);
+
+    const sym: AgentSymbolVM = { signature: s.signature, usage: s.usage };
+    if (s.throws !== undefined) sym.throwsMarker = `[throws: ${s.throws}]`;
+    g.symbols.push(sym);
+  }
+
+  return order.map((mod) => {
+    const g = byModule.get(mod)!;
+    return {
+      importHeader: `import { ${g.names.join(", ")} } from "${mod}"`,
+      symbols: g.symbols,
+    };
+  });
+}
+
+/** Render the condensed agent/LLM form: per unit, symbols grouped under a single
+ *  `import { … } from "<module>"` header then one compact `signature — usage`
+ *  line each (with a `[throws: …]` marker when it throws), NO prose/examples
+ *  (token budget). Units keep their ApiModel order; symbols keep their per-unit
+ *  order (the canonical generator emission order). */
 export function renderAgentApi(model: ApiModel, provider: Provider): string {
   const units: AgentUnitVM[] = model.units
     .filter((u) => u.symbols.length > 0)
-    .map((u) => ({
-      node: u.node,
-      symbols: u.symbols.map((s) => ({ signature: s.signature, usage: s.usage })),
-    }));
+    .map((u) => ({ node: u.node, groups: agentGroups(u) }));
   const payload = {
     generatedMarker: GENERATED_MARKER,
     title: "Agent API Reference",
@@ -197,6 +273,8 @@ export function renderAgentApi(model: ApiModel, provider: Provider): string {
     // root's package can be layered in by the Task-3 emission entrypoint, which
     // has the root.)
     project: "this project",
+    // Import paths are RELATIVE to the adopter's generated-output dir.
+    importNote: "Imports are relative to your generated-output directory.",
     units,
   };
   return render({ ref: AGENT_REF, payload, provider, format: "markdown" });

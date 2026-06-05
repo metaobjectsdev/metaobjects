@@ -68,6 +68,7 @@ import {
   createFnName,
   updateFnName,
   deleteByIdFnName,
+  routesHandlerName,
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
@@ -77,6 +78,7 @@ import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
 import { buildPkMap } from "../pk-resolver.js";
 import { effectivePackage } from "../docs-paths.js";
+import { entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
 import type { PkInfo } from "../pk-resolver.js";
 
@@ -97,6 +99,23 @@ export interface ApiSymbol {
    *  a "METHOD /path" for a REST endpoint). Never invented. */
   name: string;
   kind: ApiSymbolKind;
+  /**
+   * The module specifier an adopter imports this symbol from — the generated
+   * file's path WITHOUT the `.ts` extension, exactly as the EMITTING generator
+   * writes it (so it can't drift): e.g. `Product.queries`, `Product`,
+   * `ProductSummary.extractor`, `ProductSummary.render`. Package layout folds
+   * entity-derived modules under the package path (`acme/shop/Product.queries`)
+   * iff the emitting generator does (it keys off the entity's OWN package).
+   *
+   * REST symbols are NOT importable functions — their importPath is the entity's
+   * routes MODULE; `registrar` carries the camelCase `<entity>Routes` handler an
+   * adopter mounts (`await <registrar>(fastify)`) to wire the endpoints.
+   */
+  importPath: string;
+  /** REST-only: the route-registrar function exported from `importPath` that an
+   *  adopter mounts to wire the endpoints (`<entity>Routes`). Undefined for
+   *  importable-symbol kinds (their `name` IS the import). */
+  registrar?: string;
   /** A human-readable one-line signature (composed; the param/return SHAPE
    *  mirrors the generated code). For REST symbols this is "METHOD /path". */
   signature: string;
@@ -133,6 +152,11 @@ export interface ApiModel {
 export interface ApiModelContext {
   loadedRoot: MetaRoot;
   pkMap?: Map<string, PkInfo>;
+  /** The output layout the codegen run uses. The per-symbol `importPath` mirrors
+   *  the emitting generator's own path computation under this layout (flat →
+   *  `Product.queries`; package → folded under the entity's package path iff the
+   *  generator folds). Defaults to "flat" (today's byte-identical placement). */
+  outputLayout?: OutputLayout;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,18 +168,55 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // getPkInfo wants a RenderContext; it only reads `.pkMap`, so a structural
   // shim is sufficient (and avoids forcing callers to build a full context).
   const pkCtx = { pkMap } as RenderContext;
+  const layout = ctx.outputLayout ?? "flat";
 
   const units: ApiUnitDoc[] = [];
 
   for (const obj of root.objects()) {
-    units.push(buildEntityUnit(obj, pkCtx, root));
+    units.push(buildEntityUnit(obj, pkCtx, root, layout));
   }
 
   for (const tmpl of templateOutputs(root)) {
-    units.push(buildTemplateUnit(tmpl, root));
+    units.push(buildTemplateUnit(tmpl, root, layout));
   }
 
   return { units };
+}
+
+// ---------------------------------------------------------------------------
+// importPath derivation — the SINGLE place a documented symbol's import module
+// is computed. It mirrors the EMITTING generator's own path logic exactly so a
+// documented import can never drift from where the code actually lands:
+//
+//   • entity / queries / routes files use
+//       entityOutputPath(layout, entity.package, "<Name>.<suffix>.ts")
+//     (queries-file.ts / entity-file.ts / routes-file.ts) — note they key off
+//     the entity's OWN bare `.package` (often undefined for objects, FR5d), so
+//     in package layout they only fold when the object actually carries a
+//     package. We pass the SAME `obj.package` here, not effectivePackage.
+//   • extractor / render-helper files emit a FLAT `<Name>.extractor.ts` /
+//     `<Name>.render.ts` regardless of layout (extractor-file.ts /
+//     render-helper-file.ts: `${t.name}.<suffix>.ts`, no package folding).
+//
+// The importPath is the emitted path WITHOUT the trailing `.ts`.
+// ---------------------------------------------------------------------------
+
+/** Extension-less module specifier for an entity-derived file
+ *  (`<Name>` / `<Name>.queries` / `<Name>.routes`), folded by the SAME
+ *  entityOutputPath logic the emitting generator uses. */
+function entityModulePath(layout: OutputLayout, obj: MetaObject, basename: string): string {
+  return stripTs(entityOutputPath(layout, obj.package, `${basename}.ts`));
+}
+
+/** Extension-less module specifier for a template-derived file
+ *  (`<Name>.extractor` / `<Name>.render`) — always flat (the generators do not
+ *  fold these by package). */
+function templateModulePath(basename: string): string {
+  return basename;
+}
+
+function stripTs(path: string): string {
+  return path.endsWith(".ts") ? path.slice(0, -3) : path;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,25 +246,36 @@ function emitsRoutes(obj: MetaObject): boolean {
   return obj.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
 }
 
-function buildEntityUnit(obj: MetaObject, ctx: RenderContext, root: MetaRoot): ApiUnitDoc {
+function buildEntityUnit(
+  obj: MetaObject,
+  ctx: RenderContext,
+  root: MetaRoot,
+  layout: OutputLayout,
+): ApiUnitDoc {
   const name = obj.name;
   const symbols: ApiSymbol[] = [];
+
+  // The entity MODEL + its zod schemas are emitted into `<Name>.ts` (entity-file
+  // composes drizzle-schema + inferred-types + zod-validators), so model AND
+  // validation share the entity module's importPath.
+  const entityMod = entityModulePath(layout, obj, name);
 
   // --- model: the entity type/const the entity-file generator emits (bare name). ---
   symbols.push({
     name,
     kind: "model",
+    importPath: entityMod,
     signature: `interface ${name}`,
     returns: name,
     usage: `The typed shape of a ${name} row, generated from its metadata.`,
   });
 
   if (isQueryable(obj)) {
-    symbols.push(...dataAccessSymbols(obj, ctx, root));
-    symbols.push(...validationSymbols(obj));
+    symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
+    symbols.push(...validationSymbols(obj, entityMod));
     // REST is additionally gated: @emitRoutes:false suppresses routes only.
     if (emitsRoutes(obj)) {
-      symbols.push(...restSymbols(obj));
+      symbols.push(...restSymbols(obj, layout));
     }
   }
 
@@ -223,9 +295,17 @@ function buildEntityUnit(obj: MetaObject, ctx: RenderContext, root: MetaRoot): A
  *  OVER-documentation (the api-docs accuracy gate catches exactly this). The
  *  per-subtype write helpers themselves are a tracked deferral (module header),
  *  so we under-document (allowed) rather than invent names. */
-function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot): ApiSymbol[] {
+function dataAccessSymbols(
+  obj: MetaObject,
+  ctx: RenderContext,
+  root: MetaRoot,
+  layout: OutputLayout,
+): ApiSymbol[] {
   const name = obj.name;
   const { fieldName: pk, tsType: pkType } = getPkInfo(obj, ctx);
+
+  // All CRUD helpers are emitted into `<Name>.queries.ts` (queries-file.ts).
+  const mod = entityModulePath(layout, obj, `${name}.queries`);
 
   const find = findByIdFnName(name);
   const list = listFnName(name);
@@ -237,6 +317,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
     {
       name: find,
       kind: "data-access",
+      importPath: mod,
       signature: `${find}(db: Db, ${pk}: ${pkType}): Promise<${name} | null>`,
       params: [`db: Db`, `${pk}: ${pkType}`],
       returns: `Promise<${name} | null>`,
@@ -245,6 +326,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
     {
       name: list,
       kind: "data-access",
+      importPath: mod,
       signature: `${list}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${name}[]>`,
       params: [`db: Db`, `opts?: { limit?: number; offset?: number }`],
       returns: `Promise<${name}[]>`,
@@ -263,6 +345,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
     {
       name: create,
       kind: "data-access",
+      importPath: mod,
       signature: `${create}(db: Db, data: unknown): Promise<${name}>`,
       params: [`db: Db`, `data: unknown`],
       returns: `Promise<${name}>`,
@@ -272,6 +355,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
     {
       name: update,
       kind: "data-access",
+      importPath: mod,
       signature: `${update}(db: Db, ${pk}: ${pkType}, data: unknown): Promise<${name} | null>`,
       params: [`db: Db`, `${pk}: ${pkType}`, `data: unknown`],
       returns: `Promise<${name} | null>`,
@@ -281,6 +365,7 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
     {
       name: del,
       kind: "data-access",
+      importPath: mod,
       signature: `${del}(db: Db, ${pk}: ${pkType}): Promise<boolean>`,
       params: [`db: Db`, `${pk}: ${pkType}`],
       returns: `Promise<boolean>`,
@@ -292,12 +377,15 @@ function dataAccessSymbols(obj: MetaObject, ctx: RenderContext, root: MetaRoot):
 /** The two zod schemas the validator generator emits per entity. The route +
  *  queries generators import these exact names (<Name>InsertSchema /
  *  <Name>UpdateSchema), so the spelling is verified against their usage. */
-function validationSymbols(obj: MetaObject): ApiSymbol[] {
+function validationSymbols(obj: MetaObject, entityMod: string): ApiSymbol[] {
   const name = obj.name;
+  // The zod schemas are composed INTO the entity file (entity-file.ts calls
+  // renderZodValidators), so they import from the same `<Name>` module.
   return [
     {
       name: `${name}InsertSchema`,
       kind: "validation",
+      importPath: entityMod,
       signature: `${name}InsertSchema: ZodType`,
       returns: `ZodType`,
       usage: `Zod schema validating the body of a create<${name}> / POST request (auto-generated PKs excluded).`,
@@ -305,6 +393,7 @@ function validationSymbols(obj: MetaObject): ApiSymbol[] {
     {
       name: `${name}UpdateSchema`,
       kind: "validation",
+      importPath: entityMod,
       signature: `${name}UpdateSchema: ZodType`,
       returns: `ZodType`,
       usage: `Zod schema validating the body of an update / PATCH request (all fields optional).`,
@@ -322,43 +411,38 @@ function validationSymbols(obj: MetaObject): ApiSymbol[] {
  * match the generated routes exactly. The verb→path mapping mirrors the runtime
  * mountCrudRoutes contract referenced in routes-file.ts's comments.
  */
-function restSymbols(obj: MetaObject): ApiSymbol[] {
+function restSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
   const name = obj.name;
   const path = resourcePath(obj);
   const readOnly = isProjection(obj);
 
-  const get = (p: string, desc: string): ApiSymbol => ({
-    name: `GET ${p}`,
+  // REST endpoints are not importable functions — to WIRE them an adopter
+  // imports the entity's route registrar (`<entity>Routes`) from the routes
+  // module the routes generator emits (`<Name>.routes.ts`) and mounts it:
+  //   import { <registrar> } from "<routesMod>"; await <registrar>(fastify);
+  // Every endpoint of one entity shares that single registrar import.
+  const routesMod = entityModulePath(layout, obj, `${name}.routes`);
+  const registrar = routesHandlerName(name);
+
+  const ep = (method: string, p: string, desc: string): ApiSymbol => ({
+    name: `${method} ${p}`,
     kind: "rest",
-    signature: `GET ${p}`,
+    importPath: routesMod,
+    registrar,
+    signature: `${method} ${p}`,
     usage: desc,
   });
 
   const symbols: ApiSymbol[] = [
-    get(path, `List ${name} (supports filter/sort/paging query params).`),
-    get(`${path}/:id`, `Fetch a single ${name} by id (404 when not found).`),
+    ep("GET", path, `List ${name} (supports filter/sort/paging query params).`),
+    ep("GET", `${path}/:id`, `Fetch a single ${name} by id (404 when not found).`),
   ];
 
   if (!readOnly) {
     symbols.push(
-      {
-        name: `POST ${path}`,
-        kind: "rest",
-        signature: `POST ${path}`,
-        usage: `Create a ${name} (body validated by ${name}InsertSchema).`,
-      },
-      {
-        name: `PATCH ${path}/:id`,
-        kind: "rest",
-        signature: `PATCH ${path}/:id`,
-        usage: `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`,
-      },
-      {
-        name: `DELETE ${path}/:id`,
-        kind: "rest",
-        signature: `DELETE ${path}/:id`,
-        usage: `Delete a ${name} by id.`,
-      },
+      ep("POST", path, `Create a ${name} (body validated by ${name}InsertSchema).`),
+      ep("PATCH", `${path}/:id`, `Partially update a ${name} by id (body validated by ${name}UpdateSchema).`),
+      ep("DELETE", `${path}/:id`, `Delete a ${name} by id.`),
     );
   }
 
@@ -375,9 +459,13 @@ function templateOutputs(root: MetaRoot): MetaData[] {
     .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
 }
 
-function buildTemplateUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
+function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout): ApiUnitDoc {
   const name = tmpl.name;
   const symbols: ApiSymbol[] = [];
+  // extractor + render-helper generators emit FLAT `<Name>.extractor.ts` /
+  // `<Name>.render.ts` (no package folding), so importPath ignores layout.
+  const extractorMod = templateModulePath(`${name}.extractor`);
+  const renderMod = templateModulePath(`${name}.render`);
 
   const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
@@ -393,6 +481,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
       {
         name: extract,
         kind: "extractor",
+        importPath: extractorMod,
         signature: `${extract}(root: MetaRoot, text: string): ${payload}`,
         params: [`root: MetaRoot`, `text: string`],
         returns: payload,
@@ -402,6 +491,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
       {
         name: extractLenient,
         kind: "extractor",
+        importPath: extractorMod,
         signature: `${extractLenient}(root: MetaRoot, text: string): ExtractionResult<${name}Extracted>`,
         params: [`root: MetaRoot`, `text: string`],
         returns: `ExtractionResult<${name}Extracted>`,
@@ -420,6 +510,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     symbols.push({
       name: render,
       kind: "render",
+      importPath: renderMod,
       signature: `${render}(payload: ${payload}, provider: Provider): ${returns}`,
       params: [`payload: ${payload}`, `provider: Provider`],
       returns,

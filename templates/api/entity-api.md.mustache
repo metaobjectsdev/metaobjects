@@ -1,6 +1,8 @@
 {{{generatedMarker}}}
 
 # {{node}} API
+
+> Import paths are relative to your generated-output directory.
 {{#sections}}
 
 ## {{heading}}
@@ -9,6 +11,18 @@
 ### `{{signature}}`
 
 {{usage}}
+
+```ts
+{{importLine}}
+```
+{{#mountNote}}
+
+Mount: {{{mountNote}}}
+{{/mountNote}}
+{{#throws}}
+
+Throws: {{throws}}
+{{/throws}}
 {{#example}}
 
 ```ts

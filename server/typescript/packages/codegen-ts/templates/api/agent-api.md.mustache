@@ -2,11 +2,15 @@
 
 # {{title}}
 
-Generated API reference for {{project}}; call these exactly as written.
+Generated API reference for {{project}}; call these exactly as written. {{importNote}}
 {{#units}}
 
 ## {{node}}
+{{#groups}}
+
+`{{importHeader}}`
 {{#symbols}}
-- `{{signature}}` — {{usage}}
+- `{{signature}}` — {{usage}}{{#throwsMarker}} {{throwsMarker}}{{/throwsMarker}}
 {{/symbols}}
+{{/groups}}
 {{/units}}
