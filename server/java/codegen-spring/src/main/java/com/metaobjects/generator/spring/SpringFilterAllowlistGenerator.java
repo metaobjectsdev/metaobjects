@@ -97,7 +97,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     }
 
     /** True iff {@code field} carries {@code @filterable: true} as a metadata attribute. */
-    private static boolean isFilterable(MetaField field) {
+    protected static boolean isFilterable(MetaField field) {
         if (!field.hasMetaAttr(ATTR_FILTERABLE)) return false;
         Object raw = field.getMetaAttr(ATTR_FILTERABLE).getValue();
         if (raw instanceof Boolean b) return b;
@@ -112,7 +112,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         return com.metaobjects.query.FilterOps.opsForSubType(subType);
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];

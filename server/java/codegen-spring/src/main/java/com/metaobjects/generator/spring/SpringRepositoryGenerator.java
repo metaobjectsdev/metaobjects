@@ -66,7 +66,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];

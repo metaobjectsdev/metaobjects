@@ -95,7 +95,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
-    private void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
         // Only emit for json/xml formats.
         String format = template.getFormat();
         boolean supported = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
@@ -175,7 +175,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    private static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         for (MetaObject obj : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
             if (obj.getName().equals(ref)) return obj;

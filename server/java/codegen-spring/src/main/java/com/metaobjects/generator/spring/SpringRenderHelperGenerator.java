@@ -121,7 +121,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
-    private void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       FilesystemProvider provider) {
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) {
@@ -252,7 +252,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
      * ({@link Verify#ERR_REQUIRED_SLOT_UNUSED}) are tolerated. Matches the TS
      * port's {@code gateRef} message style exactly.
      */
-    private static void gateRef(String templateName, String ref,
+    protected static void gateRef(String templateName, String ref,
                                 FilesystemProvider provider, List<PayloadField> fields) {
         String text = provider.resolve(ref);
         if (text == null) {
@@ -314,7 +314,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
      * each {@code object.value}'s own short name. Returns {@code null} if the field
      * has no {@code @objectRef} or no matching {@code object.value} is found.
      */
-    private static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
+    protected static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
         String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
@@ -332,7 +332,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
      * {@code PayloadField.object("nested", List.of(...))}. An empty tree emits
      * {@code java.util.List.of()}.
      */
-    private static String fieldTreeLiteral(List<PayloadField> fields) {
+    protected static String fieldTreeLiteral(List<PayloadField> fields) {
         if (fields.isEmpty()) return "java.util.List.of()";
         StringBuilder sb = new StringBuilder("java.util.List.of(");
         for (int i = 0; i < fields.size(); i++) {
@@ -374,7 +374,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    private static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         for (MetaObject obj : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
             if (obj.getName().equals(ref)) return obj;

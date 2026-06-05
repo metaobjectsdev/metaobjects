@@ -132,7 +132,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         }
     }
 
-    private void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       Set<String> emittedNestedFqns) {
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) {
@@ -167,7 +167,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * recursively emits its nested payload record first (per-run deduped via
      * {@code emittedNestedFqns}).
      */
-    private void emitPayloadRecord(String outPkg,
+    protected void emitPayloadRecord(String outPkg,
                                    String recordName,
                                    String banner,
                                    MetaObject voObject,
@@ -258,7 +258,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code field.object} routes through the nested-payload emission arm; (3)
      * otherwise the scalar fallback via {@link SpringTypeMapper#javaTypeName}.
      */
-    private String resolveFieldType(MetaField<?> field,
+    protected String resolveFieldType(MetaField<?> field,
                                     MetaObject owner,
                                     MetaDataLoader loader,
                                     String nestedPkg,
@@ -296,7 +296,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code isArray: true}. Mirrors Kotlin's plain-{@code ObjectField} arm in
      * {@code KotlinPayloadGenerator.resolveFieldType}.
      */
-    private String resolveObjectFieldType(ObjectField field,
+    protected String resolveObjectFieldType(ObjectField field,
                                           MetaDataLoader loader,
                                           String nestedPkg,
                                           Path outRoot,
@@ -318,7 +318,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * dotted ref can't be resolved (defensive — the loader's ValidationPhase
      * already gates {@code @from} being present and well-formed).
      */
-    private String resolvePassthroughType(PassthroughOrigin origin,
+    protected String resolvePassthroughType(PassthroughOrigin origin,
                                           MetaDataLoader loader,
                                           MetaField<?> fallbackField) {
         String from = origin.getFrom();
@@ -336,7 +336,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      *   <li>sum/min/max → type of the {@code @of} field</li>
      * </ul>
      */
-    private String resolveAggregateType(AggregateOrigin origin,
+    protected String resolveAggregateType(AggregateOrigin origin,
                                         MetaDataLoader loader,
                                         MetaField<?> fallbackField) {
         String agg = origin.getAgg();
@@ -361,7 +361,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code nestedPkg}, and return {@code List<TargetPayload>}. Dedupe across
      * the whole run via {@code emittedNestedFqns}.
      */
-    private String resolveCollectionType(CollectionOrigin origin,
+    protected String resolveCollectionType(CollectionOrigin origin,
                                          MetaDataLoader loader,
                                          String nestedPkg,
                                          Path outRoot,
@@ -406,7 +406,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * potential {@code List} import collision in generated code) when
      * {@code asList} is true, else just {@code TargetPayload}.
      */
-    private String emitNestedAndReturnType(MetaObject target,
+    protected String emitNestedAndReturnType(MetaObject target,
                                            MetaDataLoader loader,
                                            String nestedPkg,
                                            Path outRoot,
@@ -456,7 +456,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /** First {@link MetaOrigin} child of {@code field}, or {@code null} when absent. */
-    private static MetaOrigin firstOriginChild(MetaField<?> field) {
+    protected static MetaOrigin firstOriginChild(MetaField<?> field) {
         for (MetaData child : field.getChildren()) {
             if (child instanceof MetaOrigin o) return o;
         }
@@ -486,7 +486,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * Resolve a {@link MetaObject} (entity OR value) by exact FQN or by short
      * name. Returns {@code null} when neither matches.
      */
-    private static MetaObject resolveObjectByShortOrFqn(MetaDataLoader loader, String ref) {
+    protected static MetaObject resolveObjectByShortOrFqn(MetaDataLoader loader, String ref) {
         for (MetaObject obj : loader.getMetaObjects()) {
             if (obj.getName().equals(ref) || shortName(obj.getName()).equals(ref)) {
                 return obj;
@@ -496,7 +496,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    private static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         MetaObject obj = resolveObjectByShortOrFqn(loader, ref);
         if (obj == null) return null;
         return MetaObject.SUBTYPE_VALUE.equals(obj.getSubType()) ? obj : null;
@@ -548,7 +548,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      *
      * <p>Returns {@code null} when no helper should be emitted.
      */
-    private static String hasHelperBody(String type, String name) {
+    protected static String hasHelperBody(String type, String name) {
         if ("String".equals(type)) {
             return "return " + name + " != null && !" + name + ".isBlank();";
         }

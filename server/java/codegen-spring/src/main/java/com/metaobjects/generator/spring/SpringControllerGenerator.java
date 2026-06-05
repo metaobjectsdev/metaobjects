@@ -110,7 +110,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    private void logSkip(String entityName, String kind) {
+    protected void logSkip(String entityName, String kind) {
         if (MetaSource.KIND_VIEW.equals(kind) || MetaSource.KIND_MATERIALIZED_VIEW.equals(kind)) {
             LOG.debug("skipping controller for {} — source.rdb @kind='{}' is read-only", entityName, kind);
         } else if (MetaSource.KIND_STORED_PROC.equals(kind)) {
@@ -122,7 +122,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
