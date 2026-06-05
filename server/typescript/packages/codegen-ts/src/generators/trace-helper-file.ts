@@ -35,6 +35,7 @@ import {
 import { generatePayloadInterfacesBatch } from "../payload-codegen.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { LLM_CALL_BASE } from "../ai/derive-trace-fields.js";
+import { tphDiscriminatorPin } from "../templates/zod-validators.js";
 
 export interface TraceHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */
@@ -81,6 +82,13 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
 
       const entityName = entity.name;
       const fnName = `record${pascal(entityName)}`;
+
+      // STI: a trace entity that is a TPH subtype stamps its declared
+      // discriminator value as callType and drops callType from the caller input
+      // (industry-standard STI — the discriminator is framework-managed).
+      const tphPin = tphDiscriminatorPin(entity);
+      const sti = tphPin !== undefined;
+      const callTypeValue = sti ? tphPin.value : entityName;
 
       // Derive the parse format from the prompt's @format attr.
       // "xml" → Format.XML; absent or any other value → Format.JSON.
@@ -166,9 +174,9 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `export async function ${fnName}(`,
         `  om: ObjectManager,`,
         `  responseMo: MetaObject,`,
-        `  input: Omit<LlmCallInput, "llmRequest"> & { llmRequest: ${requestType} },`,
+        `  input: Omit<LlmCallInput, ${sti ? `"llmRequest" | "callType"` : `"llmRequest"`}> & { llmRequest: ${requestType} },`,
         `): Promise<${entityName}TraceResult> {`,
-        `  const result = await recordLlmCall(input, {`,
+        `  const result = await recordLlmCall(${sti ? `{ ...input, callType: ${JSON.stringify(callTypeValue)} }` : `input`}, {`,
         `    recorder: new LlmCallDbRecorder(om, "${entityName}"),`,
         `    responseMo,`,
         `    format: ${formatLiteral},`,
@@ -216,7 +224,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `  const request: LlmRequest = { prompt, model: deps.model };`,
           `  if (deps.system !== undefined) request.system = deps.system;`,
           `  if (deps.params !== undefined) request.params = deps.params;`,
-          `  const callInput: CallLlmInput = { callType: ${JSON.stringify(entityName)}, payload, request };`,
+          `  const callInput: CallLlmInput = { callType: ${JSON.stringify(callTypeValue)}, payload, request };`,
           `  if (deps.traceId !== undefined) callInput.traceId = deps.traceId;`,
           `  if (deps.parentSpanId !== undefined) callInput.parentSpanId = deps.parentSpanId;`,
           `  if (deps.sessionId !== undefined) callInput.sessionId = deps.sessionId;`,
