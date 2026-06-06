@@ -74,6 +74,10 @@ static int RunGen(string[] rest)
         return 2;
     }
 
+    // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
+    // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
+    AgentContextStalenessCheck.WarnIfStale(Directory.GetCurrentDirectory());
+
     var generatorNames = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -155,6 +159,10 @@ static int RunVerify(string[] rest)
         Console.Error.WriteLine("   --namespace is inferred from the committed output when omitted)");
         return 2;
     }
+
+    // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
+    // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
+    AgentContextStalenessCheck.WarnIfStale(Directory.GetCurrentDirectory());
 
     var generators = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

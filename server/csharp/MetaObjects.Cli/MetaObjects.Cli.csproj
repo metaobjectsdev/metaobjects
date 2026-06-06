@@ -20,6 +20,11 @@
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
   </ItemGroup>
 
+  <!-- The test project drives the internal command entry points (e.g. AgentDocsCommand). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="MetaObjects.Cli.Tests" />
+  </ItemGroup>
+
   <!-- Bundle the repo-root agent-context/ content tree so `dotnet meta agent-docs`
        resolves it both in dev (run-from-output) and when installed as a .NET tool.
        Copied under <output>/agent-context/, where ContentRoot.Resolve looks first. -->

@@ -85,7 +85,7 @@ internal static class AgentDocsCommand
         var prior = ReadPriorManifest(manifestPath);
 
         var decision = AgentContextScaffold.Plan(stack, assembled, prior,
-            rel => ReadCurrent(target, rel));
+            rel => ReadCurrent(target, rel), AgentContextStalenessCheck.CurrentVersion());
 
         foreach (var w in decision.Writes)
         {
@@ -121,11 +121,12 @@ internal static class AgentDocsCommand
             using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
             var root = doc.RootElement;
             var version = root.TryGetProperty("version", out var v) ? v.GetInt32() : 1;
+            var generatedBy = root.TryGetProperty("generatedBy", out var g) ? g.GetString() : null;
             var files = new Dictionary<string, string>();
             if (root.TryGetProperty("files", out var f) && f.ValueKind == JsonValueKind.Object)
                 foreach (var prop in f.EnumerateObject())
                     files[prop.Name] = prop.Value.GetString() ?? "";
-            return new AgentContextScaffold.Manifest(version, JsonStrings(root, "servers"),
+            return new AgentContextScaffold.Manifest(version, generatedBy, JsonStrings(root, "servers"),
                 JsonStrings(root, "clients"), files);
         }
         catch (JsonException)
@@ -162,6 +163,10 @@ internal static class AgentDocsCommand
         var doc = new
         {
             version = manifest.Version,
+            // Same JSON key as the TS/Java/Python references ("generatedBy") so a polyglot
+            // repo can cross-read the stamp. The installed MetaObjects version, read from
+            // the assembly — nudges a re-scaffold once the package moves ahead.
+            generatedBy = manifest.GeneratedBy,
             servers = manifest.Servers,
             clients = manifest.Clients,
             files = manifest.Files,
