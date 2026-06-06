@@ -77,4 +77,11 @@ public final class PromptTemplate extends MetaTemplate {
             ? getMetaAttr(ATTR_RESPONSE_REF, false).getValueAsString()
             : null;
     }
+
+    /** Returns the raw value of {@code @payloadRef}, or {@code null} if absent. */
+    public String getPayloadRef() {
+        return hasMetaAttr(ATTR_PAYLOAD_REF, false)
+            ? getMetaAttr(ATTR_PAYLOAD_REF, false).getValueAsString()
+            : null;
+    }
 }

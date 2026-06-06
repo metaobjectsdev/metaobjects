@@ -1,6 +1,7 @@
 package com.metaobjects.integration;
 
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.ai.LlmTraceFieldDeriver;
 import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.db.ObjectManagerDB;
@@ -208,7 +209,12 @@ final class LlmCallTraceRoundTripTest {
         Path libraryYaml = findRepoFile("library/ai/llm-call.yaml");
         URI libUri = URIHelper.toURI("model:file:" + libraryYaml.toAbsolutePath());
         URI entityUri = URIHelper.toURI("model:resource:meta.ai-trace.yaml");
-        return MetaDataLoader.fromUris("test-ai-trace", List.of(libUri, entityUri));
+        // Wire the AI-trace deriver as a preFreeze hook: voRequest/voResponse are
+        // NOT authored in the fixture — they are derived in-load from the prompt's
+        // @payloadRef/@responseRef, so the OMDB runtime sees the typed jsonb
+        // columns (Slice 3, the metadata-driven-runtime divergence from TS).
+        return MetaDataLoader.fromUris("test-ai-trace", List.of(libUri, entityUri),
+            null, LlmTraceFieldDeriver::deriveTraceFields);
     }
 
     /** Walk up from the working dir to locate a repo-relative file. */
@@ -245,6 +251,7 @@ final class LlmCallTraceRoundTripTest {
                     + "  \"startedAt\" timestamp,\n"
                     + "  \"llmRequest\" jsonb,\n"
                     + "  \"llmResponse\" jsonb,\n"
+                    + "  \"voRequest\" jsonb,\n"
                     + "  \"voResponse\" jsonb\n"
                     + ")");
         }

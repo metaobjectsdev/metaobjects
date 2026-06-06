@@ -110,6 +110,15 @@ public class MetaDataLoader implements LoaderConfigurable {
     // ClassLoader used for resolving metadata-referenced Java classes.
     private ClassLoader metaDataClassLoader = null;
 
+    // Optional pre-freeze enrichment hook. Mirrors the TypeScript loader's
+    // generic `preFreeze` option: a callback that runs inside {@link #load} once
+    // the tree is parsed and {@code extends} refs are resolved, but before the
+    // validation passes. This is the designated injection point for programmatic
+    // tree enrichment (e.g. codegen/runtime pre-passes that DERIVE additional
+    // nodes from validated metadata). The injected nodes participate in the
+    // subsequent validation passes. Null by default (no enrichment).
+    private java.util.function.Consumer<MetaDataLoader> preFreeze = null;
+
     // v6.0.0: Unified registry
     private MetaDataRegistry typeRegistry = null;
     private MetaDataLoaderRegistry loaderRegistry = null;
@@ -391,9 +400,26 @@ public class MetaDataLoader implements LoaderConfigurable {
      * @return a fully-initialized loader with all URIs loaded
      */
     public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts) {
+        return fromUris(name, uris, opts, null);
+    }
+
+    /**
+     * Build + load with a pre-freeze enrichment hook (see {@link #setPreFreeze}).
+     * The hook runs in-load (after extends-resolution, before validation), so any
+     * derived nodes are validated and registered atomically with this build.
+     *
+     * @param name      the loader name
+     * @param uris      model URIs to load
+     * @param opts      loader options (may be {@code null} for defaults)
+     * @param preFreeze pre-freeze enrichment hook (may be {@code null})
+     * @return a fully-initialized loader with all URIs loaded
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
+                                          java.util.function.Consumer<MetaDataLoader> preFreeze) {
         MetaDataLoader loader = (opts == null)
             ? createManual(false, name)
             : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
+        if (preFreeze != null) loader.setPreFreeze(preFreeze);
         try {
             loader.init();
             List<MetaDataSource> sources = new ArrayList<>(uris.size());
@@ -670,6 +696,19 @@ public class MetaDataLoader implements LoaderConfigurable {
             return metaDataClassLoader;
         }
         return getDefaultMetaDataClassLoader();
+    }
+
+    /**
+     * Register a pre-freeze enrichment hook (mirrors the TS loader's generic
+     * {@code preFreeze} option). The hook runs inside {@link #load} after
+     * {@code extends} refs are resolved and before the validation passes, so any
+     * nodes it injects are validated like hand-authored ones. Fluent; pass
+     * {@code null} to clear. Must be set before {@link #load} runs.
+     */
+    @SuppressWarnings("unchecked")
+    public <T extends MetaDataLoader> T setPreFreeze(java.util.function.Consumer<MetaDataLoader> hook) {
+        this.preFreeze = hook;
+        return (T) this;
     }
 
     ///////////////////////////////////////////////////////////////////////
@@ -1249,6 +1288,14 @@ public class MetaDataLoader implements LoaderConfigurable {
         // cross-file forward references show up here. Anything still unresolved
         // becomes ERR_UNRESOLVED_SUPER.
         resolvePendingExtends();
+
+        // Pre-freeze enrichment hook (mirrors TS): runs after extends-resolution
+        // and before validation, so DERIVED nodes (e.g. AI-trace voRequest/
+        // voResponse jsonb columns) are visible to the validation passes and to
+        // every downstream reader (codegen + runtime) just like authored nodes.
+        if (preFreeze != null) {
+            preFreeze.accept(this);
+        }
 
         // Run post-load validation passes after all sources in this batch are parsed.
         // Fires both when called from init() (via loadSourceURIsIfPresent) and when
