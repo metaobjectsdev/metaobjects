@@ -5,6 +5,7 @@ import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
+import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators, deriveTraceFields } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
@@ -31,6 +32,9 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
   if (flags.list) {
     return listGeneratorsCommand();
   }
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  warnIfAgentContextStale(cwd);
 
   const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);

@@ -10,6 +10,7 @@ import {
 import { resolveStack } from "../lib/detect-stack.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { cliVersion } from "../lib/version.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 
 const META_COMMON_JSON = JSON.stringify(
@@ -107,6 +108,7 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
       const abs = join(opts.cwd, rel);
       return existsSyncWrap(abs) ? readFileSyncWrap(abs, "utf8") : undefined;
     },
+    generatedBy: cliVersion(),
   });
 
   for (const w of decision.writes) {
