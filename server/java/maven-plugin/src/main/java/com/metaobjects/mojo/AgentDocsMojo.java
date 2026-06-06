@@ -98,8 +98,9 @@ public class AgentDocsMojo extends AbstractMojo {
         Path manifestPath = outDir.resolve(AgentContextScaffold.MANIFEST_PATH);
         AgentContextScaffold.Manifest prior = readPriorManifest(manifestPath);
 
-        AgentContextScaffold.ScaffoldDecision decision =
-                AgentContextScaffold.plan(stack, assembled, prior, rel -> readCurrent(outDir, rel));
+        AgentContextScaffold.ScaffoldDecision decision = AgentContextScaffold.plan(
+                stack, assembled, prior, rel -> readCurrent(outDir, rel),
+                AgentContextScaffold.installedVersion());
 
         try {
             for (AgentContextScaffold.Write w : decision.writes()) {
@@ -156,7 +157,9 @@ public class AgentDocsMojo extends AbstractMojo {
         List<String> srv = jsonStrings(obj, "servers");
         List<String> cli = jsonStrings(obj, "clients");
         int version = obj.has("version") ? obj.get("version").getAsInt() : 1;
-        return new AgentContextScaffold.Manifest(version, srv, cli, files);
+        String generatedBy = obj.has("generatedBy") && obj.get("generatedBy").isJsonPrimitive()
+                ? obj.get("generatedBy").getAsString() : null;
+        return new AgentContextScaffold.Manifest(version, generatedBy, srv, cli, files);
     }
 
     private static List<String> jsonStrings(JsonObject obj, String key) {
@@ -186,9 +189,12 @@ public class AgentDocsMojo extends AbstractMojo {
 
     private void writeManifest(Path manifestPath, AgentContextScaffold.Manifest manifest)
             throws IOException {
-        // Build an ordered JSON object: version, servers, clients, files.
+        // Build an ordered JSON object: version, generatedBy, servers, clients, files.
         Map<String, Object> doc = new LinkedHashMap<>();
         doc.put("version", manifest.version());
+        if (manifest.generatedBy() != null) {
+            doc.put("generatedBy", manifest.generatedBy());
+        }
         doc.put("servers", manifest.servers());
         doc.put("clients", manifest.clients());
         doc.put("files", manifest.files());

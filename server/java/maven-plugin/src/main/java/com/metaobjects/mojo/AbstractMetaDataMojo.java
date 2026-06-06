@@ -1,6 +1,9 @@
 package com.metaobjects.mojo;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.loader.LoaderConfigurable;
 import com.metaobjects.loader.LoaderOptions;
@@ -17,8 +20,12 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -73,6 +80,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if ( getLoader() == null ) {
             throw new MojoExecutionException( "No <loader> element was defined");
         }
+        warnIfAgentContextStale();
+
         ClassLoader projectClassLoader = createProjectClassLoader();
 
         MetaDataLoader loader = createLoader(projectClassLoader);
@@ -152,6 +161,43 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
 
         return allargs;
+    }
+
+    /**
+     * Advisory nudge: if the consumer's copied-in agent context
+     * ({@code .metaobjects/.agent-context.json} under the project basedir) was scaffolded
+     * by a different MetaObjects version than the one running, print ONE warning line
+     * suggesting {@code mvn metaobjects:agent-docs}.
+     *
+     * <p>Strictly advisory — never throws, never fails the build, never writes. A missing
+     * or corrupt manifest is silently ignored (no agent context here → nothing to say).
+     */
+    protected void warnIfAgentContextStale() {
+        try {
+            File basedir = project != null ? project.getBasedir() : null;
+            Path cwd = basedir != null ? basedir.toPath()
+                    : Path.of(System.getProperty("user.dir"));
+            Path manifestPath = cwd.resolve(AgentContextScaffold.MANIFEST_PATH);
+            if (!Files.isRegularFile(manifestPath)) {
+                return; // no agent context scaffolded here → nothing to nudge
+            }
+            JsonObject obj = JsonParser.parseString(
+                    new String(Files.readAllBytes(manifestPath), StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            int version = obj.has("version") ? obj.get("version").getAsInt() : 1;
+            String generatedBy = obj.has("generatedBy") && obj.get("generatedBy").isJsonPrimitive()
+                    ? obj.get("generatedBy").getAsString() : null;
+            AgentContextScaffold.Manifest manifest = new AgentContextScaffold.Manifest(
+                    version, generatedBy, new ArrayList<>(), new ArrayList<>(),
+                    new LinkedHashMap<>());
+            String nudge = AgentContextScaffold.staleness(
+                    manifest, AgentContextScaffold.installedVersion());
+            if (nudge != null) {
+                getLog().warn(nudge);
+            }
+        } catch (Exception ignored) {
+            // Advisory only — any failure to read/parse the manifest is silently ignored.
+        }
     }
 
     protected abstract void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls);
