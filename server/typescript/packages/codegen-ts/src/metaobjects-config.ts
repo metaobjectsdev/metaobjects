@@ -70,6 +70,8 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
    * governs the shape, mirroring the cross-port `emitAbstractShapes` option.
    */
   emitAbstractShapes?: boolean;
+  /** Docs-output config consumed by the `meta docs` door. See {@link DocsConfig}. */
+  docs?: DocsConfig;
   /** Named output destinations. Generators reference one via `target`. */
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
@@ -95,6 +97,41 @@ export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfi
   emitAbstractShapes: boolean;
   outputLayout: OutputLayout;
   targets: Record<string, ResolvedTarget>;
+}
+
+export type DocsSurface = "model" | "api";
+
+/** The single docs-output config: where ALL doc surfaces go, how pages are laid
+ *  out, and which surfaces to emit. Read by the `meta docs` door (and, when the
+ *  api surface fans out, by each port's docs command). */
+export interface DocsConfig {
+  outDir?: string;
+  layout?: OutputLayout;
+  baseUrl?: string;
+  surfaces?: DocsSurface[];
+}
+
+export interface ResolvedDocsConfig {
+  outDir: string;
+  layout: OutputLayout;
+  baseUrl: string;
+  surfaces: DocsSurface[];
+}
+
+/** Merge the config `docs:` block with CLI overrides over documented defaults.
+ *  `fallbackLayout` is the project's `outputLayout` so docs default to the same
+ *  page placement as codegen when `docs.layout` is unset. */
+export function resolveDocsConfig(
+  block: DocsConfig | undefined,
+  cli: Partial<ResolvedDocsConfig>,
+  fallbackLayout: OutputLayout,
+): ResolvedDocsConfig {
+  return {
+    outDir: cli.outDir ?? block?.outDir ?? "./docs",
+    layout: cli.layout ?? block?.layout ?? fallbackLayout,
+    baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
+    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api"],
+  };
 }
 
 /** Identity passthrough; exists for IDE type-inference + autocomplete. */
