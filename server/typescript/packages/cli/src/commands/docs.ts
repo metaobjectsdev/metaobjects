@@ -22,9 +22,15 @@ import {
   makeRenderContext,
   buildPkMap,
   buildRelationMap,
+  resolveDocsConfig,
 } from "@metaobjectsdev/codegen-ts";
-import type { GenContext } from "@metaobjectsdev/codegen-ts";
-import { docsFile } from "@metaobjectsdev/codegen-ts/generators";
+import type {
+  GenContext,
+  EmittedFile,
+  ResolvedDocsConfig,
+  DocsSurface,
+} from "@metaobjectsdev/codegen-ts";
+import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 
 type DocsLayout = "flat" | "package";
 
@@ -40,6 +46,17 @@ interface DocsFlags {
   /** Optional override for the project root used to resolve adopter
    *  `templates/` overrides. Defaults to the metadata root. */
   templates?: string;
+  /** Which doc surfaces to emit, when overridden on the CLI. `--model` ⇒
+   *  ["model"], `--api` ⇒ ["api"], both ⇒ ["model","api"]. Unset ⇒ defer to the
+   *  resolved `docs:` config (default both). */
+  surfaces?: DocsSurface[];
+  /** Optional base URL override for cross-surface links (resolveDocsConfig). */
+  baseUrl?: string;
+  /** Whether `--out` was explicitly passed (so the resolver knows to override
+   *  the config's `docs.outDir` rather than fall back to the parse default). */
+  outProvided: boolean;
+  /** Whether `--layout` was explicitly passed (same override semantics). */
+  layoutProvided: boolean;
 }
 
 function parseLayout(v: string | undefined, flag: string): DocsLayout {
@@ -55,18 +72,37 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let out: string | undefined;
   let templates: string | undefined;
   let layout: DocsLayout | undefined;
+  let baseUrl: string | undefined;
+  let wantModel = false;
+  let wantApi = false;
+  let outProvided = false;
+  let layoutProvided = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--out" || a === "-o") {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${a} requires a directory argument`);
       out = v;
+      outProvided = true;
     } else if (a.startsWith("--out=")) {
       out = a.slice("--out=".length);
+      outProvided = true;
     } else if (a === "--layout") {
       layout = parseLayout(argv[++i], a);
+      layoutProvided = true;
     } else if (a.startsWith("--layout=")) {
       layout = parseLayout(a.slice("--layout=".length), "--layout");
+      layoutProvided = true;
+    } else if (a === "--model") {
+      wantModel = true;
+    } else if (a === "--api") {
+      wantApi = true;
+    } else if (a === "--base-url") {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${a} requires a URL argument`);
+      baseUrl = v;
+    } else if (a.startsWith("--base-url=")) {
+      baseUrl = a.slice("--base-url=".length);
     } else if (a === "--templates") {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${a} requires a directory argument`);
@@ -81,6 +117,11 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       throw new Error(`unexpected argument: ${a}`);
     }
   }
+  // --model and/or --api narrow the surfaces; both flags (or neither) leave the
+  // surfaces unset so the resolved `docs:` config decides (default both).
+  const surfaces: DocsSurface[] = [];
+  if (wantModel) surfaces.push("model");
+  if (wantApi) surfaces.push("api");
   return {
     // `<metadata>` is the project root that contains metaobjects/; default cwd
     // (mirrors how migrate/gen treat the working directory as the root).
@@ -89,6 +130,10 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     out: out ?? "./docs",
     // Default flat preserves today's single-package output (+ existing goldens).
     layout: layout ?? "flat",
+    outProvided,
+    layoutProvided,
+    ...(surfaces.length > 0 ? { surfaces } : {}),
+    ...(baseUrl !== undefined ? { baseUrl } : {}),
     ...(templates !== undefined ? { templates } : {}),
   };
 }
@@ -108,7 +153,6 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   const projectRoot = flags.templates !== undefined
     ? resolvePath(cwd, flags.templates)
     : metaRoot;
-  const outDir = resolvePath(metaRoot, flags.out);
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
   // providers (e.g. a project's custom field/object subtypes). Unlike `gen`,
@@ -116,7 +160,12 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // hold for config-less projects. If the config is absent or invalid, fall
   // back to defaults; the loader still surfaces a stable unknown-subtype error
   // if the metadata genuinely uses an unregistered type.
+  let loadedConfig: Awaited<ReturnType<typeof loadMetaobjectsConfig>> | undefined;
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
+  // hasConfig gates the api surface: api docs describe the GENERATED REST
+  // surface, which only exists when there is a (loadable) gen config. A config
+  // that EXISTS but fails to load degrades to model-only with a warning.
+  const hasConfig = existsSync(join(metaRoot, "metaobjects.config.ts"));
   // The config lives alongside metaobjects/ at the metadata root (metaRoot);
   // projectRoot only diverges when --templates overrides the template lookup.
   // Only attempt the load when the file is actually present: absence is the
@@ -124,18 +173,33 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // to load is surfaced as a warning rather than silently degrading to
   // provider-less docs — otherwise a custom-type project would later fail with a
   // cryptic unknown-subtype error instead of the real config error.
-  if (existsSync(join(metaRoot, "metaobjects.config.ts"))) {
+  if (hasConfig) {
     try {
-      const forgeConfig = await loadMetaobjectsConfig(metaRoot);
-      configProviders = forgeConfig.providers;
+      loadedConfig = await loadMetaobjectsConfig(metaRoot);
+      configProviders = loadedConfig.providers;
     } catch (err) {
       log.warn(
         `docs: metaobjects.config.ts failed to load (${(err as Error).message}); ` +
           `generating docs without its providers`,
       );
+      loadedConfig = undefined;
       configProviders = undefined;
     }
   }
+
+  // Merge the config `docs:` block with CLI overrides over documented defaults.
+  // CLI --out/--layout only override when explicitly passed; surfaces/baseUrl
+  // override whenever present. The resolver supplies defaults (outDir ./docs,
+  // layout = fallback, surfaces = both) so config-less + flag-less runs are
+  // unchanged.
+  const cliOverrides: Partial<ResolvedDocsConfig> = {
+    ...(flags.outProvided ? { outDir: flags.out } : {}),
+    ...(flags.layoutProvided ? { layout: flags.layout } : {}),
+    ...(flags.surfaces ? { surfaces: flags.surfaces } : {}),
+    ...(flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {}),
+  };
+  const docsCfg = resolveDocsConfig(loadedConfig?.docs, cliOverrides, flags.layout);
+  const outDir = resolvePath(metaRoot, docsCfg.outDir);
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
   // consumer providers from the config so custom types resolve.
@@ -174,44 +238,81 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
       extStyle: "none",
       dbImport: "",
       dialect: "sqlite",
-      outputLayout: flags.layout,
+      outputLayout: docsCfg.layout,
+      // api-docs reads this to decide whether to document the opt-in Hono CRUD
+      // surface; default false mirrors the default Fastify-only suite.
+      includeHonoRoutes: loadedConfig?.includeHonoRoutes ?? false,
     } as never,
     renderContext,
     projectRoot,
     warn: (msg) => log.warn(`docs: ${msg}`),
   };
 
-  let files;
-  try {
-    files = await docsFile().generate(ctx);
-  } catch (err) {
-    const msg = (err as Error).message;
-    // Duplicate output path (silent-overwrite backstop): the generator already
-    // names both colliding FQNs + the path and starts with "docs:". Surface it
-    // verbatim as a clean non-zero exit (no double prefix, no stack trace).
-    if (msg.startsWith("docs: duplicate output path")) {
-      log.error(msg);
+  const emit: EmittedFile[] = [];
+  let modelFiles: EmittedFile[] = [];
+
+  // MODEL surface — the neutral metadata pages (<Entity>.md / <Template>.md +
+  // README.md). Keep the render-error handling tight around docsFile() only.
+  if (docsCfg.surfaces.includes("model")) {
+    try {
+      modelFiles = await docsFile().generate(ctx);
+    } catch (err) {
+      const msg = (err as Error).message;
+      // Duplicate output path (silent-overwrite backstop): the generator already
+      // names both colliding FQNs + the path and starts with "docs:". Surface it
+      // verbatim as a clean non-zero exit (no double prefix, no stack trace).
+      if (msg.startsWith("docs: duplicate output path")) {
+        log.error(msg);
+        return 1;
+      }
+      // The framework templates resolve from disk; inside the compiled `meta`
+      // binary they live on a virtual fs the provider cannot read. Surface that
+      // as an actionable message rather than a cryptic render failure.
+      if (/entity-page|template-page|failed rendering|ENOENT|not found/i.test(msg)) {
+        log.error(
+          `docs: failed to render — templates not found. ` +
+          `Run 'meta docs' from an installed package layout (with on-disk ` +
+          `templates/), not the standalone binary, OR drop your own ` +
+          `templates/docs/entity-page.md.mustache + template-page.md.mustache. (${msg})`,
+        );
+      } else {
+        log.error(`docs: ${msg}`);
+      }
       return 1;
     }
-    // The framework templates resolve from disk; inside the compiled `meta`
-    // binary they live on a virtual fs the provider cannot read. Surface that
-    // as an actionable message rather than a cryptic render failure.
-    if (/entity-page|template-page|failed rendering|ENOENT|not found/i.test(msg)) {
-      log.error(
-        `docs: failed to render — templates not found. ` +
-        `Run 'meta docs' from an installed package layout (with on-disk ` +
-        `templates/), not the standalone binary, OR drop your own ` +
-        `templates/docs/entity-page.md.mustache + template-page.md.mustache. (${msg})`,
-      );
+    emit.push(...modelFiles);
+  }
+
+  // API surface — the SDK reference for the GENERATED REST surface, side by side
+  // under api/. Only meaningful with a loadable gen config (there is nothing
+  // generated to document otherwise), so skip gracefully when absent.
+  let apiFiles: EmittedFile[] = [];
+  if (docsCfg.surfaces.includes("api")) {
+    if (loadedConfig !== undefined) {
+      try {
+        apiFiles = await apiDocsFile({ subDir: "api" }).generate(ctx);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg.startsWith("docs: duplicate output path")) {
+          log.error(msg);
+          return 1;
+        }
+        log.error(`docs: ${msg}`);
+        return 1;
+      }
+      emit.push(...apiFiles);
+    } else if (hasConfig) {
+      // Config present but failed to load — already warned above; don't claim an
+      // api surface we couldn't build.
+      log.info("meta docs: api surface skipped — metaobjects.config.ts failed to load.");
     } else {
-      log.error(`docs: ${msg}`);
+      log.info("meta docs: api surface skipped — no metaobjects.config.ts (nothing generated to document).");
     }
-    return 1;
   }
 
   try {
     await mkdir(outDir, { recursive: true });
-    for (const f of files) {
+    for (const f of emit) {
       const path = resolvePath(outDir, f.path);
       await mkdir(resolvePath(path, ".."), { recursive: true });
       await writeFile(path, f.content, "utf8");
@@ -223,12 +324,18 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // Summary: docsFile() emits ONE overview/index page (README.md) plus one page
   // per entity and one per template.output. The entity count is the matched
-  // object count; the remaining non-overview pages are template pages.
+  // object count; the remaining non-overview model pages are template pages.
   const entityCount = root.objects().filter(ctx.matches).length;
-  const overviewCount = files.filter((f) => f.path === "README.md").length;
-  const templateCount = files.length - entityCount - overviewCount;
-  log.info(
-    `meta docs — wrote ${overviewCount} overview + ${entityCount} entity page(s) + ${templateCount} template page(s) → ${outDir}`,
-  );
+  const modelOverview = modelFiles.filter((f) => f.path === "README.md").length;
+  const modelTemplates = modelFiles.length > 0
+    ? modelFiles.length - entityCount - modelOverview
+    : 0;
+  const modelSummary = docsCfg.surfaces.includes("model")
+    ? `${modelOverview} overview + ${entityCount} entity page(s) + ${modelTemplates} template page(s)`
+    : "model surface skipped";
+  const apiSummary = apiFiles.length > 0
+    ? `${apiFiles.length} api page(s)`
+    : "no api pages";
+  log.info(`meta docs — wrote ${modelSummary}; ${apiSummary} → ${outDir}`);
   return 0;
 }

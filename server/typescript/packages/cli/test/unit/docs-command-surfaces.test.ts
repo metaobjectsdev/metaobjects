@@ -1,0 +1,101 @@
+import { describe, test, expect, afterAll } from "bun:test";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { docsCommand } from "../../src/commands/docs.js";
+
+// One entity (object.value Widget) so both the model surface (Widget.md +
+// README.md) and the api surface (api/Widget.md) have a unit to document.
+const META = {
+  "metadata.root": {
+    package: "acme::shop",
+    children: [
+      {
+        "object.value": {
+          name: "Widget",
+          children: [
+            { "field.string": { name: "name" } },
+            { "field.string": { name: "color" } },
+          ],
+        },
+      },
+    ],
+  },
+};
+
+// A minimal valid metaobjects.config.ts (no custom types) — its presence is what
+// gates the api surface (api docs describe the GENERATED REST surface, which only
+// exists when there is a gen config).
+const CONFIG = [
+  `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
+  `export default defineConfig({`,
+  `  outDir: "out",`,
+  `  dialect: "sqlite",`,
+  `  generators: [entityFile()],`,
+  `});`,
+].join("\n");
+
+const dirs: string[] = [];
+
+/** Project root with metadata + a metaobjects.config.ts present. */
+async function projectWithConfig(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-docs-surf-"));
+  dirs.push(root);
+  await mkdir(join(root, "metaobjects"), { recursive: true });
+  await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
+  await writeFile(join(root, "metaobjects.config.ts"), CONFIG, "utf8");
+  return root;
+}
+
+/** Project root with metadata but NO metaobjects.config.ts. */
+async function projectNoConfig(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-docs-surf-nocfg-"));
+  dirs.push(root);
+  await mkdir(join(root, "metaobjects"), { recursive: true });
+  await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
+  return root;
+}
+
+afterAll(async () => {
+  for (const d of dirs) await rm(d, { recursive: true, force: true });
+});
+
+describe("meta docs — model + api surfaces from one docs: config", () => {
+  test("emits BOTH surfaces when a config is present", async () => {
+    const root = await projectWithConfig();
+    const out = join(root, "out-both");
+
+    const code = await docsCommand([root, "--out", out], root);
+    expect(code).toBe(0);
+
+    // Model surface.
+    expect(existsSync(join(out, "Widget.md"))).toBe(true);
+    expect(existsSync(join(out, "README.md"))).toBe(true);
+    // Api surface, side by side under api/.
+    expect(existsSync(join(out, "api", "Widget.md"))).toBe(true);
+  });
+
+  test("--model emits ONLY the model surface (no api dir)", async () => {
+    const root = await projectWithConfig();
+    const out = join(root, "out-model-only");
+
+    const code = await docsCommand([root, "--out", out, "--model"], root);
+    expect(code).toBe(0);
+
+    expect(existsSync(join(out, "Widget.md"))).toBe(true);
+    expect(existsSync(join(out, "api"))).toBe(false);
+  });
+
+  test("no config → model surface only, exit 0 (api skipped)", async () => {
+    const root = await projectNoConfig();
+    const out = join(root, "out-nocfg");
+
+    const code = await docsCommand([root, "--out", out], root);
+    expect(code).toBe(0);
+
+    expect(existsSync(join(out, "Widget.md"))).toBe(true);
+    expect(existsSync(join(out, "api"))).toBe(false);
+  });
+});
