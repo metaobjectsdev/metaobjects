@@ -38,17 +38,28 @@ export class NullRecorder implements LlmRecorder {
 // LlmCallDbRecorder — persists via ObjectManager
 // =============================================================================
 
+export interface LlmCallDbRecorderOpts {
+  /** Called when om.create throws. Default: swallow. Telemetry never breaks the app. */
+  onError?: (error: unknown) => void;
+}
+
 export class LlmCallDbRecorder implements LlmRecorder {
   private readonly om: ObjectManager;
   private readonly entityName: string;
+  private readonly onError: (error: unknown) => void;
 
-  constructor(om: ObjectManager, entityName: string) {
+  constructor(om: ObjectManager, entityName: string, opts?: LlmCallDbRecorderOpts) {
     this.om = om;
     this.entityName = entityName;
+    this.onError = opts?.onError ?? (() => {});
   }
 
   async record(call: LlmCallRow): Promise<void> {
-    await this.om.create(this.entityName, call);
+    try {
+      await this.om.create(this.entityName, call);
+    } catch (err) {
+      this.onError(err);
+    }
   }
 }
 
@@ -130,6 +141,15 @@ export async function persistLlmCallRow(
   opts?: { redact?: (row: LlmCallRow) => LlmCallRow },
 ): Promise<void> {
   await recorder.record(opts?.redact ? opts.redact(row) : row);
+}
+
+/** Cap the raw `llmRequest`/`llmResponse` string columns to `maxChars`.
+ *  Adopters compose this into a `redact` to bound trace-row size. Only the two
+ *  raw string columns are touched; all other fields pass through unchanged. */
+export function truncateRow(row: LlmCallRow, maxChars: number): LlmCallRow {
+  const cap = (v: unknown): unknown =>
+    typeof v === "string" && v.length > maxChars ? v.slice(0, maxChars) : v;
+  return { ...row, llmRequest: cap(row.llmRequest), llmResponse: cap(row.llmResponse) };
 }
 
 /** Persist one base trace row (envelope + raw I/O). Generic — does not extract. */

@@ -261,6 +261,62 @@ describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
 });
 
 // =============================================================================
+// Task 2 (P0) — redaction seam + truncateRow helper
+// =============================================================================
+
+import { truncateRow } from "../src/llm-recorder.js";
+
+class CaptureRedact extends NullRecorder {
+  last: LlmCallRow | null = null;
+  override async record(c: LlmCallRow): Promise<void> { this.last = c; }
+}
+
+describe("recorder redaction + truncation", () => {
+  test("redact is applied before persist", async () => {
+    const rec = new CaptureRedact();
+    await recordLlmCall(
+      { spanId:"s", traceId:"t", callType:"X", startedAt:"2026-06-06T00:00:00Z",
+        llmRequest:{ secret:"sk-123" }, llmResponseText:"{}", status:"ok", errorDetail:null },
+      { recorder: rec, redact: (row) => ({ ...row, llmRequest: "[redacted]" }) },
+    );
+    expect(rec.last?.llmRequest).toBe("[redacted]");
+  });
+
+  test("truncateRow caps the raw llmRequest/llmResponse strings", () => {
+    const row: LlmCallRow = { llmRequest: "0123456789abcdef", llmResponse: "xxxxxxxxxx", callType: "X" };
+    const capped = truncateRow(row, 5);
+    expect(capped.llmRequest).toBe("01234");
+    expect(capped.llmResponse).toBe("xxxxx");
+    expect(capped.callType).toBe("X"); // non-raw fields untouched
+  });
+});
+
+// =============================================================================
+// Task 3 (P0) — LlmCallDbRecorder never-throw
+// =============================================================================
+
+import { LlmCallDbRecorder as LlmCallDbRecorderImport } from "../src/llm-recorder.js";
+import type { ObjectManager as ObjectManagerType } from "../src/object-manager.js";
+
+describe("LlmCallDbRecorder never-throw", () => {
+  test("swallows om.create failure via onError, never throws", async () => {
+    const om = { create: async () => { throw new Error("db down"); } } as unknown as ObjectManagerType;
+    const errs: unknown[] = [];
+    const rec = new LlmCallDbRecorderImport(om, "TraceCall", { onError: (e) => errs.push(e) });
+    await rec.record({ spanId: "s" }); // must NOT throw
+    expect(errs.length).toBe(1);
+    expect(String((errs[0] as Error).message)).toContain("db down");
+  });
+
+  test("default onError swallows (no throw, no crash)", async () => {
+    const om = { create: async () => { throw new Error("x"); } } as unknown as ObjectManagerType;
+    const rec = new LlmCallDbRecorderImport(om, "TraceCall");
+    await rec.record({ spanId: "s" }); // must resolve, not reject
+    expect(true).toBe(true);
+  });
+});
+
+// =============================================================================
 // Task 1 (P0) — buildLlmCallRow: base-row factory (exactly LlmCallBase fields)
 // =============================================================================
 
