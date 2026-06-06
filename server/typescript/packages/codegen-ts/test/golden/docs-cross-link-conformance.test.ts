@@ -85,9 +85,9 @@ async function loadFixture(fixture: string) {
 async function emitBoth(fixture: string, layout: OutputLayout): Promise<Emitted[]> {
 	const { root, inputDir } = await loadFixture(fixture);
 	const ctx = makeCtx(root, inputDir, layout);
-	const model = (await docsFile({ apiSurface: { subDir: "api" } }).generate(
-		ctx,
-	)) as Emitted[];
+	const model = (await docsFile({
+		apiSurfaces: [{ label: "TypeScript", subDir: "api" }],
+	}).generate(ctx)) as Emitted[];
 	const api = (await apiDocsFile({
 		subDir: "api",
 		modelSurface: true,

@@ -178,9 +178,7 @@ export interface EntityDocData {
   /** Present flag for the storage section. */
   hasStorage?: boolean;
 
-  /** @markdown — relative href to this entity's GENERATED-SDK api page, when the
-   *  api surface is emitted alongside the model surface (cross-link). ABSENT for
-   *  model-only runs, so default output stays byte-identical. Computed via the
-   *  shared `surfaceCrossHref` so it resolves in BOTH flat and package layouts. */
-  apiPageHref?: string;
+  /** Cross-links to this entity's generated-SDK api page, one per api surface
+   *  (per language). Present only when api surfaces are emitted with the model. */
+  apiRefs?: Array<{ label: string; href: string; last?: boolean }>;
 }
