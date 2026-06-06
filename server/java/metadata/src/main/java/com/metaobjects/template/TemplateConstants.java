@@ -78,6 +78,16 @@ public final class TemplateConstants {
     public static final String ATTR_REQUIRED_SLOTS = "requiredSlots";
     public static final String ATTR_MODEL = "model";
 
+    /**
+     * {@code @responseRef} — optional single-valued string on {@code template.prompt}
+     * ONLY (the AI prompt-derived-trace vertical; mirrors TS {@code promptOverlayAttrs}).
+     * Names a nested template whose payload VO shapes the LLM-call trace's typed
+     * response column. NOT on the shared template base (so it is absent from
+     * {@code template.output}). A TS-pilot vocab carved out of the cross-port
+     * registry manifest until promoted to all five ports.
+     */
+    public static final String ATTR_RESPONSE_REF = "responseRef";
+
     // --- Toolcall-specific attributes (template.toolcall only — ADR-0011) ---
     //
     // Vendor-agnostic in core; vendor wire details (retry semantics, fallback

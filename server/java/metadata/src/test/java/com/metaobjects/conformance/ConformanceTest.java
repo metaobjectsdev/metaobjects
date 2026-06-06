@@ -146,6 +146,15 @@ public class ConformanceTest {
             // physical RDB attributes (@column / @dbType / @dbColumnType / ...).
             "metaobjects-db", List.of(
                 "database-extensions"
+            ),
+            // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
+            // under this canonical name — template.* / @responseRef / @xmlText, the
+            // AI prompt-construction vocab) maps to Java's TemplateTypesMetaDataProvider
+            // (id "template-types"). Java also folds template-types into the
+            // "metaobjects-core-types" alias; the two checks are independent set
+            // memberships, so a fixture listing both still resolves.
+            "metaobjects-template", List.of(
+                "template-types"
             )
         );
 

@@ -39,6 +39,8 @@ public final class PromptTemplate extends MetaTemplate {
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_MODEL)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_RESPONSE_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
 
@@ -66,6 +68,13 @@ public final class PromptTemplate extends MetaTemplate {
     public String getModel() {
         return hasMetaAttr(ATTR_MODEL, false)
             ? getMetaAttr(ATTR_MODEL, false).getValueAsString()
+            : null;
+    }
+
+    /** Returns the raw value of {@code @responseRef}, or {@code null} if absent. */
+    public String getResponseRef() {
+        return hasMetaAttr(ATTR_RESPONSE_REF, false)
+            ? getMetaAttr(ATTR_RESPONSE_REF, false).getValueAsString()
             : null;
     }
 }
