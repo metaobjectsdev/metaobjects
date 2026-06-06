@@ -27,6 +27,7 @@ import {
   docPageOutputPath,
   docPageHref,
   docPageNode,
+  surfaceCrossHref,
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
@@ -47,6 +48,13 @@ const INDEX_NODE: DocPageNode = { name: "README" };
 export interface DocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
+  /** When set, the api surface is emitted alongside the model surface under the
+   *  given sub-directory (e.g. `"api"`). docsFile then cross-links each model
+   *  entity page to its api page and adds an "API reference" section to the
+   *  index, all hrefs computed via the shared `surfaceCrossHref` /
+   *  `docPageHref` so they resolve in BOTH layouts. ABSENT ⇒ model-only output
+   *  (byte-identical to historical behaviour). */
+  apiSurface?: { subDir: string };
 }
 
 const TEMPLATE_REF = "docs/entity-page.md";
@@ -101,6 +109,14 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
           entityNodes.push(node);
           const path = docPageOutputPath(layout, node);
           placements.push({ path, fqn: entity.resolutionKey() });
+          // Cross-link to the sibling api surface, when emitted. The api page for
+          // this node lives at `<subDir>/<same placement>`; the href is derived
+          // from the SAME docPageOutputPath placement via surfaceCrossHref so it
+          // resolves in both flat and package layout. ABSENT otherwise.
+          const apiPageHref =
+            opts?.apiSurface !== undefined
+              ? surfaceCrossHref(path, `${opts.apiSurface.subDir}/${path}`)
+              : undefined;
           const payload = buildEntityDocData(entity, {
             dialect: rc.dialect,
             layout,
@@ -108,6 +124,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
               columnNamingStrategy: rc.columnNamingStrategy,
             }),
             loadedRoot: rc.loadedRoot,
+            ...(apiPageHref !== undefined && { apiPageHref }),
           });
           return { path, content: renderDocPage(TEMPLATE_REF, payload, provider, path) };
         });
@@ -137,7 +154,22 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // Only emitted when at least one page exists — an all-filtered/empty run
       // produces nothing (no orphan landing page with an empty diagram).
       if (files.length > 0) {
-        const indexContent = renderIndexPage(ctx.loadedRoot, layout, entityNodes, templateNodes);
+        // The api index lives at `<subDir>/README.md`; the model index lives at
+        // the docs root, so the cross-link href is simply `./<subDir>/README.md`
+        // (computed via surfaceCrossHref from the root-level index path so the
+        // relative-path rule is shared, never hand-rolled). ABSENT when the api
+        // surface isn't emitted → index output byte-identical.
+        const apiIndexHref =
+          opts?.apiSurface !== undefined
+            ? surfaceCrossHref(INDEX_FILENAME, `${opts.apiSurface.subDir}/${INDEX_FILENAME}`)
+            : undefined;
+        const indexContent = renderIndexPage(
+          ctx.loadedRoot,
+          layout,
+          entityNodes,
+          templateNodes,
+          apiIndexHref,
+        );
         placements.push({ path: INDEX_FILENAME, fqn: "<the auto-generated overview/index page>" });
         files.unshift({ path: INDEX_FILENAME, content: indexContent });
       }
@@ -166,6 +198,7 @@ function renderIndexPage(
   layout: OutputLayout,
   entityNodes: DocPageNode[],
   templateNodes: DocPageNode[],
+  apiIndexHref?: string,
 ): string {
   const pkg = root.package;
   const out: string[] = [];
@@ -202,6 +235,15 @@ function renderIndexPage(
     for (const node of [...templateNodes].sort(byName)) {
       out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
     }
+    out.push("");
+  }
+
+  // Cross-link to the GENERATED-SDK api reference index, when the api surface is
+  // emitted alongside the model surface. ABSENT otherwise → index byte-identical.
+  if (apiIndexHref !== undefined) {
+    out.push("## API reference");
+    out.push("");
+    out.push(`[Generated SDK reference](${apiIndexHref})`);
     out.push("");
   }
 

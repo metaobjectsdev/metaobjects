@@ -72,12 +72,19 @@ export function docPageHref(
 ): string {
   const toPath = docPageOutputPath(layout, toNode);
   if (layout === "flat") return `./${toPath}`;
-  const fromPath = docPageOutputPath(layout, fromNode);
-  // Relative path from the FROM page's directory to the TO page.
-  const fromDir = fromPath.includes("/") ? fromPath.slice(0, fromPath.lastIndexOf("/")) : "";
-  let rel = posixRelative(fromDir, toPath);
-  if (!rel.startsWith(".")) rel = `./${rel}`;
-  return rel;
+  // Relative path from the FROM page's directory to the TO page — the same
+  // raw-path rule surfaceCrossHref uses, so the two can never diverge.
+  return surfaceCrossHref(docPageOutputPath(layout, fromNode), toPath);
+}
+
+/** Relative href between two doc pages whose output paths (relative to the shared
+ *  docs outDir) may sit under different surface sub-roots — e.g. model `Order.md`
+ *  and api `api/Order.md`. The shared relative-path rule, over raw paths;
+ *  docPageHref delegates its package-layout branch here. */
+export function surfaceCrossHref(fromOutputPath: string, toOutputPath: string): string {
+  const fromDir = fromOutputPath.includes("/") ? fromOutputPath.slice(0, fromOutputPath.lastIndexOf("/")) : "";
+  const rel = posixRelative(fromDir, toOutputPath);
+  return rel.startsWith(".") ? rel : `./${rel}`;
 }
 
 /** A page about to be emitted, paired with the FQN of the node that produced it

@@ -63,17 +63,37 @@ From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):
 | `barrel()` | `index.ts` re-exporting each `<Entity>.ts` (one-shot, not per-entity) |
 | `promptRender()` | `render<Name>()` per `template.prompt` |
 | `outputParser()` | `<Name>.output.ts` (`parse*` / `safeParse*`) per `template.output` |
-| `apiDocsFile()` | `docs/api/<Entity>.md` + `docs/api/README.md` index + `docs/api/AGENT-API.md` (condensed agent-facing API reference) |
 
-When `apiDocsFile()` is enabled (it is in the default scaffold), **read
-`docs/api/AGENT-API.md` before calling any generated code** — it has the exact
-imports, function signatures, payload field shapes, and runnable examples for this
+## Docs — `meta docs` (one door, two surfaces)
+
+Documentation is NOT a `meta gen` generator. The single door is the `meta docs`
+command, which emits two cross-linked **surfaces** under one output dir (default
+`./docs`):
+
+- **model surface** (`./docs/<Entity>.md`, `./docs/<Template>.md`) — the neutral
+  metadata reference: one page per entity and per template, including the linked
+  template-source section.
+- **api surface** (`./docs/api/<Entity>.md`, `./docs/api/README.md`,
+  `./docs/api/AGENT-API.md`) — the SDK/API reference: the concrete imports,
+  function signatures, payload field shapes, and runnable examples for *this*
+  project's generated code.
+
+```bash
+npx meta docs                     # both surfaces → ./docs (model) + ./docs/api (api)
+npx meta docs --model             # model surface only
+npx meta docs --api               # api surface only
+npx meta docs --out ./site-docs   # write under a different root
+```
+
+Other flags: `--layout flat|package`, `--base-url <url>`. Configure defaults in a
+`docs:` block in `metaobjects.config.ts` (`outDir`, `layout`, `baseUrl`,
+`surfaces`); CLI flags override it. The api surface needs the gen config
+(it documents what the codegen produced); with no config it is skipped with a note,
+and the model surface still emits from metadata alone.
+
+**Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
+exact imports, signatures, payload field shapes, and runnable examples for this
 project's generated API, so you don't have to guess them.
-
-`apiDocsFile()` (a generator → `docs/api/`) is the SDK/API reference. The neutral
-model docs (one page per entity and per template, including the linked template
-source) are different: they come from the separate `meta docs` command (→ `docs/`),
-which is the single door for neutral docs — not a `meta gen` generator.
 
 From `@metaobjectsdev/codegen-ts-react`: `formFile()` → `<Entity>.form.tsx`.
 From `@metaobjectsdev/codegen-ts-tanstack`: `tanstackQuery()` → `<Entity>.hooks.ts`

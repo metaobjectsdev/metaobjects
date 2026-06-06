@@ -369,23 +369,22 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
     expect((fastify as Generator & { emitsHonoRoutes?: boolean }).emitsHonoRoutes).not.toBe(true);
   });
 
-  // END-TO-END through the REAL runner: the runner aggregates emitsHonoRoutes
-  // across the suite into ctx.config.includeHonoRoutes, so wiring routesFileHono()
-  // makes api-docs document Hono with NO explicit opt — it "just works".
-  test("runGen: api-docs auto-documents Hono ONLY when routesFileHono() is in the suite", async () => {
+  // ADR-0025: `meta docs` is the single docs door. apiDocsFile() left in a `meta gen`
+  // config is WARNED + SKIPPED by the runner — it no longer emits docs/api/ here. The
+  // Hono auto-documentation behavior (ctx.config.includeHonoRoutes driving the api model)
+  // is still gated by the three sibling tests above, which invoke apiDocsFile() directly.
+  // (Previously this test ran apiDocsFile() through runGen and asserted docs/api/AGENT-API.md
+  // contents — that exercised the now-deprecated generator-in-config door.)
+  test("runGen: api-docs in a meta gen config is warned + skipped (no docs/api output) — ADR-0025", async () => {
     const root = await loadRoot();
     const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-rungen-"));
     TEMP_DIRS.push(projectRoot);
 
-    const read = (outDir: string) =>
-      require("node:fs").readFileSync(join(outDir, "docs/api/AGENT-API.md"), "utf-8") as string;
-
-    // (a) WITH the Hono generator wired → Hono is documented.
-    const withDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-with-"));
-    TEMP_DIRS.push(withDir);
-    await runGen({
+    const outDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-skip-"));
+    TEMP_DIRS.push(outDir);
+    const result = await runGen({
       config: defineConfig({
-        outDir: withDir,
+        outDir,
         extStyle: "none",
         dbImport: "~/db",
         dialect: "sqlite",
@@ -394,26 +393,17 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
       metadata: root,
       projectRoot,
     });
-    const withAgent = read(withDir);
-    expect(withAgent).toContain("registerProductRoutes");
-    expect(withAgent).toContain(`./Product.routes.hono`);
 
-    // (b) WITHOUT it (Fastify-only default suite) → no Hono symbols.
-    const withoutDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-without-"));
-    TEMP_DIRS.push(withoutDir);
-    await runGen({
-      config: defineConfig({
-        outDir: withoutDir,
-        extStyle: "none",
-        dbImport: "~/db",
-        dialect: "sqlite",
-        generators: [entityFile(), queriesFile(), routesFile(), apiDocsFile()],
-      }),
-      metadata: root,
-      projectRoot,
-    });
-    const withoutAgent = read(withoutDir);
-    expect(withoutAgent).not.toContain("registerProductRoutes");
-    expect(withoutAgent).not.toContain("routes.hono");
+    // (a) the deprecated generator was warned + pointed at `meta docs`.
+    const warn = result.warnings.find((w) => /api-docs/.test(w) && /meta docs/.test(w));
+    expect(warn).toBeDefined();
+
+    // (b) it was SKIPPED — no docs/api/ output exists.
+    const fs = require("node:fs");
+    expect(fs.existsSync(join(outDir, "docs/api/AGENT-API.md"))).toBe(false);
+    expect(result.files.some((f) => f.path.includes(`docs${require("node:path").sep}api`))).toBe(false);
+
+    // (c) the normal generators still ran.
+    expect(result.files.some((f) => f.path.endsWith("Product.ts"))).toBe(true);
   });
 });

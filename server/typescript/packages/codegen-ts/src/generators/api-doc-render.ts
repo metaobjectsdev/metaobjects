@@ -180,6 +180,10 @@ interface SectionVM {
 interface EntityPageVM {
   generatedMarker: string;
   node: string;
+  /** Relative href back to this entity's MODEL/metadata page, when the model
+   *  surface is emitted alongside the api surface (cross-link). ABSENT otherwise
+   *  → default api output byte-identical. */
+  modelPageHref?: string;
   hasSetup: boolean;
   setup: SetupHandleVM[];
   unitExample?: string;
@@ -318,11 +322,18 @@ function symbolVM(s: ApiSymbol): SymbolVM {
 }
 
 /** Render ONE per-unit human reference page from an ApiUnitDoc, via the shared
- *  render() engine + the canonical `api/entity-api.md` template. */
-export function renderEntityApiPage(unit: ApiUnitDoc, provider: Provider): string {
+ *  render() engine + the canonical `api/entity-api.md` template. `modelPageHref`
+ *  (when given) cross-links the page back to the entity's model/metadata page. */
+export function renderEntityApiPage(
+  unit: ApiUnitDoc,
+  provider: Provider,
+  modelPageHref?: string,
+): string {
+  const payload = entityPageVM(unit);
+  if (modelPageHref !== undefined) payload.modelPageHref = modelPageHref;
   return render({
     ref: ENTITY_PAGE_REF,
-    payload: entityPageVM(unit),
+    payload,
     provider,
     format: "markdown",
   });

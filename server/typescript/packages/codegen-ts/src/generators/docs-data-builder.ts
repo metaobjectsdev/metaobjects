@@ -65,6 +65,11 @@ export interface BuildDocDataOpts {
   loadedRoot: MetaRoot;
   /** Page-placement layout. Defaults to "flat" (back-compat: same-dir links). */
   layout?: OutputLayout;
+  /** Relative href to this entity's GENERATED-SDK api page, when the api surface
+   *  is emitted alongside the model surface. Computed by the caller (docsFile)
+   *  via the shared `surfaceCrossHref` so it resolves in BOTH layouts. ABSENT for
+   *  model-only runs → default output byte-identical. */
+  apiPageHref?: string;
 }
 
 /** Whether a field is required — `@required` true OR a `validator.required`
@@ -466,6 +471,11 @@ export function buildEntityDocData(
   if (usedBy !== undefined) {
     data.usedBy = usedBy;
     data.hasUsedBy = true;
+  }
+  // Cross-link to the api surface — present ONLY when the caller computed the
+  // href (api surface emitted alongside model); model-only runs stay identical.
+  if (opts.apiPageHref !== undefined) {
+    data.apiPageHref = opts.apiPageHref;
   }
 
   return data;

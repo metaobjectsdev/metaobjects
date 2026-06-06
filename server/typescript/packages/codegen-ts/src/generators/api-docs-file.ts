@@ -29,6 +29,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import {
   docPageOutputPath,
+  surfaceCrossHref,
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
@@ -45,21 +46,42 @@ import {
 // Per-unit pages fold further under their package path (package layout); the
 // index + agent form stay at the api root (their links are computed relative to
 // it via the same docPageHref the renderers use).
-const API_DIR = "docs/api";
-const INDEX_FILENAME = `${API_DIR}/README.md`;
-const AGENT_FILENAME = `${API_DIR}/AGENT-API.md`;
+//
+// The DEFAULT prefix is `docs/api` — byte-identical to the historical `meta gen`
+// behaviour + goldens. The unified `meta docs` command (which writes everything
+// under one docs root, `./docs`) overrides it via `subDir:'api'` so the api
+// surface emits `api/<Node>.md` rather than doubling to `./docs/docs/api`.
+const DEFAULT_API_DIR = "docs/api";
 
 export interface ApiDocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
+  /** Output prefix for all api-docs artifacts. Default `docs/api`. */
+  subDir?: string;
+  /** When true, the model surface is emitted alongside the api surface (at the
+   *  docs root), so each api entity page cross-links back to its model page. The
+   *  href is computed via the shared `surfaceCrossHref` so it resolves in BOTH
+   *  layouts. ABSENT/false ⇒ default api output byte-identical. */
+  modelSurface?: boolean;
 }
 
+/**
+ * @deprecated ADR-0025: `meta docs` is the single door for ALL docs. `apiDocsFile()`
+ * stays as the INTERNAL engine of the docs door's api surface — do NOT add it to a
+ * `meta gen` config / the generators array. Use `meta docs` (it emits the api surface
+ * alongside the model surface). A `meta gen` config that lists it is warned + skipped.
+ */
 export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
   const generator: Generator = {
     name: "api-docs",
     generate(ctx) {
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
+
+      // Per-call output prefix. Default `docs/api`; `meta docs` passes `api`.
+      const apiDir = opts?.subDir ?? DEFAULT_API_DIR;
+      const indexFilename = `${apiDir}/README.md`;
+      const agentFilename = `${apiDir}/AGENT-API.md`;
 
       // ONE ApiModel feeds every form (Task-1 builder; Task-2 renderers). The
       // pkMap is reused from the run's renderContext when present (the real gen
@@ -87,19 +109,27 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
       // link always points at the page's real location in BOTH layouts.
       const files: EmittedFile[] = model.units.map((unit) => {
         const node: DocPageNode = { name: unit.node, package: unit.package };
-        const path = `${API_DIR}/${docPageOutputPath(layout, node)}`;
+        const path = `${apiDir}/${docPageOutputPath(layout, node)}`;
         placements.push({ path, fqn: unit.package ? `${unit.package}::${unit.node}` : unit.node });
-        return { path, content: renderEntityApiPage(unit, provider) };
+        // Cross-link back to the sibling model page, when emitted. The model page
+        // lives at the docs root at `<placement>`; this api page lives at
+        // `<apiDir>/<placement>`. The href is derived from the SAME
+        // docPageOutputPath placement via surfaceCrossHref so it resolves in both
+        // layouts. ABSENT otherwise.
+        const modelPageHref = opts?.modelSurface
+          ? surfaceCrossHref(path, docPageOutputPath(layout, node))
+          : undefined;
+        return { path, content: renderEntityApiPage(unit, provider, modelPageHref) };
       });
 
       // The consolidated human index (README.md) + the condensed agent form,
       // both at the api root. Only emitted when at least one unit page exists.
       if (files.length > 0) {
-        placements.push({ path: INDEX_FILENAME, fqn: "<the api-docs index page>" });
-        placements.push({ path: AGENT_FILENAME, fqn: "<the api-docs agent form>" });
+        placements.push({ path: indexFilename, fqn: "<the api-docs index page>" });
+        placements.push({ path: agentFilename, fqn: "<the api-docs agent form>" });
         files.unshift(
-          { path: INDEX_FILENAME, content: renderApiIndex(model, layout, provider) },
-          { path: AGENT_FILENAME, content: renderAgentApi(model, provider) },
+          { path: indexFilename, content: renderApiIndex(model, layout, provider) },
+          { path: agentFilename, content: renderAgentApi(model, provider) },
         );
       }
 
