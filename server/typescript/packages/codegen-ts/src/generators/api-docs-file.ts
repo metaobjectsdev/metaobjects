@@ -29,6 +29,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import {
   docPageOutputPath,
+  surfaceCrossHref,
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
@@ -57,6 +58,11 @@ export interface ApiDocsFileOpts {
   target?: string;
   /** Output prefix for all api-docs artifacts. Default `docs/api`. */
   subDir?: string;
+  /** When true, the model surface is emitted alongside the api surface (at the
+   *  docs root), so each api entity page cross-links back to its model page. The
+   *  href is computed via the shared `surfaceCrossHref` so it resolves in BOTH
+   *  layouts. ABSENT/false ⇒ default api output byte-identical. */
+  modelSurface?: boolean;
 }
 
 export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
@@ -99,7 +105,15 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
         const node: DocPageNode = { name: unit.node, package: unit.package };
         const path = `${apiDir}/${docPageOutputPath(layout, node)}`;
         placements.push({ path, fqn: unit.package ? `${unit.package}::${unit.node}` : unit.node });
-        return { path, content: renderEntityApiPage(unit, provider) };
+        // Cross-link back to the sibling model page, when emitted. The model page
+        // lives at the docs root at `<placement>`; this api page lives at
+        // `<apiDir>/<placement>`. The href is derived from the SAME
+        // docPageOutputPath placement via surfaceCrossHref so it resolves in both
+        // layouts. ABSENT otherwise.
+        const modelPageHref = opts?.modelSurface
+          ? surfaceCrossHref(path, docPageOutputPath(layout, node))
+          : undefined;
+        return { path, content: renderEntityApiPage(unit, provider, modelPageHref) };
       });
 
       // The consolidated human index (README.md) + the condensed agent form,

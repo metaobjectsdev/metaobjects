@@ -80,6 +80,16 @@ export function docPageHref(
   return rel;
 }
 
+/** Relative href between two doc pages whose output paths (relative to the shared
+ *  docs outDir) may sit under different surface sub-roots — e.g. model `Order.md`
+ *  and api `api/Order.md`. Same relative-path rule docPageHref uses, over raw paths. */
+export function surfaceCrossHref(fromOutputPath: string, toOutputPath: string): string {
+  const fromDir = fromOutputPath.includes("/") ? fromOutputPath.slice(0, fromOutputPath.lastIndexOf("/")) : "";
+  let rel = posixRelative(fromDir, toOutputPath);
+  if (!rel.startsWith(".")) rel = `./${rel}`;
+  return rel;
+}
+
 /** A page about to be emitted, paired with the FQN of the node that produced it
  *  (for a precise collision diagnostic). */
 export interface DocPagePlacement {

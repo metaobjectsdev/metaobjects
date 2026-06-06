@@ -251,11 +251,24 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   const emit: EmittedFile[] = [];
   let modelFiles: EmittedFile[] = [];
 
+  // Both surfaces emitted together → cross-link them. The api surface only
+  // materializes with a loadable gen config, so guard on that too: when both are
+  // requested AND the config loaded, the model pages cross-link to `api/` and the
+  // api pages cross-link back to the model root. Otherwise each surface emits its
+  // historical, byte-identical standalone output.
+  const bothSurfaces =
+    docsCfg.surfaces.includes("model") &&
+    docsCfg.surfaces.includes("api") &&
+    loadedConfig !== undefined;
+
   // MODEL surface — the neutral metadata pages (<Entity>.md / <Template>.md +
   // README.md). Keep the render-error handling tight around docsFile() only.
   if (docsCfg.surfaces.includes("model")) {
     try {
-      modelFiles = await docsFile().generate(ctx);
+      modelFiles = await (bothSurfaces
+        ? docsFile({ apiSurface: { subDir: "api" } })
+        : docsFile()
+      ).generate(ctx);
     } catch (err) {
       const msg = (err as Error).message;
       // Duplicate output path (silent-overwrite backstop): the generator already
@@ -290,7 +303,10 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   if (docsCfg.surfaces.includes("api")) {
     if (loadedConfig !== undefined) {
       try {
-        apiFiles = await apiDocsFile({ subDir: "api" }).generate(ctx);
+        apiFiles = await apiDocsFile({
+          subDir: "api",
+          modelSurface: docsCfg.surfaces.includes("model"),
+        }).generate(ctx);
       } catch (err) {
         const msg = (err as Error).message;
         if (msg.startsWith("docs: duplicate output path")) {
