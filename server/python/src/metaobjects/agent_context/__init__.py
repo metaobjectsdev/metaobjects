@@ -22,7 +22,9 @@ from .scaffold import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
     ScaffoldDecision,
+    agent_context_staleness,
     hash_contents,
+    installed_metaobjects_version,
     plan_scaffold,
 )
 from .types import (
@@ -43,8 +45,10 @@ __all__ = [
     "SKILL_NAMES",
     "ScaffoldDecision",
     "Stack",
+    "agent_context_staleness",
     "assemble",
     "hash_contents",
+    "installed_metaobjects_version",
     "make_stack",
     "plan_scaffold",
     "resolve_agent_context_root",

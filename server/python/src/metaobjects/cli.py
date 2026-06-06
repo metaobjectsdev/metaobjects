@@ -44,7 +44,9 @@ from metaobjects import MetaDataLoader
 from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
+    agent_context_staleness,
     assemble,
+    installed_metaobjects_version,
     make_stack,
     plan_scaffold,
     resolve_agent_context_root,
@@ -161,10 +163,34 @@ def _cmd_list(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _warn_if_agent_context_stale() -> None:
+    """Print ONE advisory line to stderr if the scaffolded agent context is stale.
+
+    Reads ``<cwd>/.metaobjects/.agent-context.json`` (if present), compares its
+    stamped ``generatedBy`` to the installed version, and nudges a re-scaffold on
+    any drift. Advisory only: never raises, never changes the exit code, never
+    writes — a missing or corrupt manifest is silently ignored.
+    """
+    try:
+        manifest_path = Path.cwd() / AGENT_CONTEXT_MANIFEST_PATH
+        if not manifest_path.is_file():
+            return
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            return
+        msg = agent_context_staleness(manifest, installed_metaobjects_version())
+        if msg is not None:
+            print(msg, file=sys.stderr)
+    except Exception:  # noqa: BLE001 — advisory; any failure is silently ignored
+        return
+
+
 def _cmd_gen(args: argparse.Namespace) -> int:
     # `--list` is a pure discoverability path: print the registry and exit, no codegen.
     if getattr(args, "list", False):
         return _cmd_list(args)
+
+    _warn_if_agent_context_stale()
 
     if args.metadata_dir is None or args.out is None:
         print(
@@ -395,6 +421,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
     historical default = ``--codegen`` + a one-line note advertising the subverbs.
     """
+    _warn_if_agent_context_stale()
+
     run_db = args.db is not None
     run_templates = bool(args.templates)
     run_codegen = bool(args.codegen)
@@ -505,7 +533,13 @@ def _cmd_agent_docs(args: argparse.Namespace) -> int:
         p = out_dir / rel
         return p.read_bytes().decode("utf-8") if p.is_file() else None
 
-    decision = plan_scaffold(stack, assembled, prior, _read_current)
+    decision = plan_scaffold(
+        stack,
+        assembled,
+        prior,
+        _read_current,
+        generated_by=installed_metaobjects_version(),
+    )
 
     for w in decision.writes:
         dest = out_dir / w.path
