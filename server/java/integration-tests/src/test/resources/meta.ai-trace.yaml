@@ -1,0 +1,28 @@
+# Test-only trace entity for the AI-trace recorder PG round-trip.
+# Extends the SHIPPED metaobjects::ai::LlmCallBase (loaded from
+# library/ai/llm-call.yaml) and adds a typed voResponse jsonb column.
+metadata:
+  package: metaobjects::ai
+  children:
+    # Typed value object stored in the voResponse jsonb column.
+    - object.value:
+        name: GreetingResponse
+        object: com.metaobjects.object.value.ValueObject
+        children:
+          - field.string: { name: greeting, column: greeting }
+          - field.int:    { name: score,    column: score }
+
+    # Concrete trace entity: inherits the 18 LlmCallBase fields, declares its
+    # table + primary identity + a typed voResponse jsonb column (@objectRef +
+    # @storage:jsonb — the owned-object typed-jsonb codec path).
+    - object.entity:
+        name: GreetingCall
+        extends: metaobjects::ai::LlmCallBase
+        children:
+          - source.rdb:       { table: llm_call, role: primary }
+          - identity.primary: { name: primary, fields: ["spanId"] }
+          - field.object:
+              name: voResponse
+              column: voResponse
+              storage: jsonb
+              objectRef: metaobjects::ai::GreetingResponse
