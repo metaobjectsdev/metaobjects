@@ -51,10 +51,12 @@ async function genTrace(): Promise<{ classify: string; summarize: string }> {
 
 describe("ai-trace #1c — STI callType stamping", () => {
   test("record<Entity> omits callType from input and stamps the discriminator value", async () => {
-    const { classify } = await genTrace();
+    const { classify, summarize } = await genTrace();
+    // both subtypes drop callType from the caller input and stamp their own value
     expect(classify).toContain('Omit<LlmCallInput, "llmRequest" | "callType">');
-    expect(classify).toContain('callType: "classify"');
-    expect(classify).toContain("...input,");
+    expect(classify).toContain('{ ...input, callType: "classify" }');
+    expect(summarize).toContain('Omit<LlmCallInput, "llmRequest" | "callType">');
+    expect(summarize).toContain('{ ...input, callType: "summarize" }');
   });
 
   test("call<Entity> stamps the discriminator value (not the entity name)", async () => {

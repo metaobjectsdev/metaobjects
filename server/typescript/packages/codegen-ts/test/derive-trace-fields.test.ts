@@ -60,6 +60,10 @@ describe("derive trace fields", () => {
     const h = readFileSync(join(tmp, "ClassifyCall.trace.ts"), "utf-8");
     expect(h).toContain("recordClassifyCall");
     expect(h).toContain("recordLlmCall");
+    // non-STI invariant: a trace entity that is NOT a TPH subtype keeps callType
+    // caller-supplied (no "| callType" omission, no spread-injection).
+    expect(h).toContain('Omit<LlmCallInput, "llmRequest">');
+    expect(h).not.toContain('"llmRequest" | "callType"');
   });
 
   test("trace-helper emits both record and call helpers for a renderable prompt", async () => {

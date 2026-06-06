@@ -90,6 +90,11 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const sti = tphPin !== undefined;
       const callTypeValue = sti ? tphPin.value : entityName;
 
+      // Emitted record<Entity> fragments: the keys Omit'd from the caller input,
+      // and the first argument passed to recordLlmCall.
+      const recordInputOmit = sti ? `"llmRequest" | "callType"` : `"llmRequest"`;
+      const recordArg = sti ? `{ ...input, callType: ${JSON.stringify(callTypeValue)} }` : `input`;
+
       // Derive the parse format from the prompt's @format attr.
       // "xml" → Format.XML; absent or any other value → Format.JSON.
       const promptFormat = prompt.ownAttr(TEMPLATE_ATTR_FORMAT);
@@ -174,9 +179,9 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `export async function ${fnName}(`,
         `  om: ObjectManager,`,
         `  responseMo: MetaObject,`,
-        `  input: Omit<LlmCallInput, ${sti ? `"llmRequest" | "callType"` : `"llmRequest"`}> & { llmRequest: ${requestType} },`,
+        `  input: Omit<LlmCallInput, ${recordInputOmit}> & { llmRequest: ${requestType} },`,
         `): Promise<${entityName}TraceResult> {`,
-        `  const result = await recordLlmCall(${sti ? `{ ...input, callType: ${JSON.stringify(callTypeValue)} }` : `input`}, {`,
+        `  const result = await recordLlmCall(${recordArg}, {`,
         `    recorder: new LlmCallDbRecorder(om, "${entityName}"),`,
         `    responseMo,`,
         `    format: ${formatLiteral},`,
