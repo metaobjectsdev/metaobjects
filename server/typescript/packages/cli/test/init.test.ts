@@ -214,4 +214,14 @@ describe("init --d1", () => {
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
     expect(configTs).toContain('dialect:   "sqlite"');
   });
+
+  test("scaffolds metaobjects.config.ts with outDir = 'src/generated' (not the ambiguous src/db)", async () => {
+    const code = await initCommand([], cwd);
+    expect(code).toBe(0);
+    const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configTs).toContain('outDir:    "src/generated"');
+    // "./src/db" as outDir collides with the user-created src/db.ts that the
+    // generated routes import via dbImport "../db" — keep them distinct.
+    expect(configTs).not.toContain('"./src/db"');
+  });
 });

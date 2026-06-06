@@ -38,7 +38,7 @@ import {
 } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
-  outDir:    "./src/db",
+  outDir:    "src/generated",
   extStyle:  "none",
   dbImport:  "../db",
   dialect:   "${dialect}",
