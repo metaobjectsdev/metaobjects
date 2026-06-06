@@ -1,6 +1,6 @@
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { docsCommand } from "../../src/commands/docs.js";
@@ -37,6 +37,25 @@ const CONFIG = [
   `});`,
 ].join("\n");
 
+// A config whose docs block declares TWO api surfaces: one this port owns
+// (lang "ts") and one another port owns (lang "java"). This command should emit
+// only the owned (ts) surface but link BOTH from the model page.
+const CONFIG_TWO_SURFACES = [
+  `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+  `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";`,
+  `export default defineConfig({`,
+  `  outDir: "out",`,
+  `  dialect: "sqlite",`,
+  `  generators: [entityFile()],`,
+  `  docs: {`,
+  `    apiSurfaces: [`,
+  `      { lang: "ts", subDir: "api/ts" },`,
+  `      { lang: "java", subDir: "api/java" },`,
+  `    ],`,
+  `  },`,
+  `});`,
+].join("\n");
+
 const dirs: string[] = [];
 
 /** Project root with metadata + a metaobjects.config.ts present. */
@@ -46,6 +65,16 @@ async function projectWithConfig(): Promise<string> {
   await mkdir(join(root, "metaobjects"), { recursive: true });
   await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
   await writeFile(join(root, "metaobjects.config.ts"), CONFIG, "utf8");
+  return root;
+}
+
+/** Project root whose docs config declares two api surfaces (ts + java). */
+async function projectTwoSurfaces(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "meta-docs-surf-2-"));
+  dirs.push(root);
+  await mkdir(join(root, "metaobjects"), { recursive: true });
+  await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
+  await writeFile(join(root, "metaobjects.config.ts"), CONFIG_TWO_SURFACES, "utf8");
   return root;
 }
 
@@ -86,6 +115,23 @@ describe("meta docs — model + api surfaces from one docs: config", () => {
 
     expect(existsSync(join(out, "Widget.md"))).toBe(true);
     expect(existsSync(join(out, "api"))).toBe(false);
+  });
+
+  test("emits only the owned (ts) surface but links ALL declared surfaces", async () => {
+    const root = await projectTwoSurfaces();
+    const out = join(root, "out-two");
+
+    const code = await docsCommand([root, "--out", out], root);
+    expect(code).toBe(0);
+
+    // TS surface IS emitted (this port owns lang "ts"):
+    expect(existsSync(join(out, "api", "ts", "Widget.md"))).toBe(true);
+    // Java surface is NOT emitted by THIS command:
+    expect(existsSync(join(out, "api", "java"))).toBe(false);
+    // the model entity page links BOTH surfaces:
+    const page = readFileSync(join(out, "Widget.md"), "utf8");
+    expect(page).toContain("api/ts/");
+    expect(page).toContain("api/java/");
   });
 
   test("no config → model surface only, exit 0 (api skipped)", async () => {

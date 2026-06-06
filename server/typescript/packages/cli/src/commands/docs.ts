@@ -23,6 +23,7 @@ import {
   buildPkMap,
   buildRelationMap,
   resolveDocsConfig,
+  apiLabel,
 } from "@metaobjectsdev/codegen-ts";
 import type {
   GenContext,
@@ -265,24 +266,33 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   const emit: EmittedFile[] = [];
   let modelFiles: EmittedFile[] = [];
 
-  // Both surfaces emitted together → cross-link them. The api surface only
-  // materializes with a loadable gen config, so guard on that too: when both are
-  // requested AND the config loaded, the model pages cross-link to `api/` and the
-  // api pages cross-link back to the model root. Otherwise each surface emits its
-  // historical, byte-identical standalone output.
-  const bothSurfaces =
-    docsCfg.surfaces.includes("model") &&
-    docsCfg.surfaces.includes("api") &&
-    loadedConfig !== undefined;
+  // The declared api surfaces, each tagged with its human label (apiLabel maps
+  // the language key → label; never hardcode labels). The model page links one
+  // reference per declared surface — across ALL ports, not just the surfaces
+  // THIS command emits — so a polyglot model page points at every port's docs.
+  const labeled = docsCfg.apiSurfaces.map((s) => ({ ...s, label: apiLabel(s.lang) }));
+
+  // The api surface only materializes with a loadable gen config (there is
+  // nothing generated to document otherwise), so gate api emit + cross-linking
+  // on that. When false, the model surface emits its historical standalone form.
+  const apiSelected = docsCfg.surfaces.includes("api") && loadedConfig !== undefined;
 
   // MODEL surface — the neutral metadata pages (<Entity>.md / <Template>.md +
   // README.md). Keep the render-error handling tight around docsFile() only.
   if (docsCfg.surfaces.includes("model")) {
+    // When api is selected, link EVERY declared surface from the model page (so a
+    // polyglot model page references each port's api docs). Otherwise no api refs.
+    const modelOpts = apiSelected
+      ? {
+          apiSurfaces: labeled.map(({ label, subDir, baseUrl }) => ({
+            label,
+            subDir,
+            ...(baseUrl ? { baseUrl } : {}),
+          })),
+        }
+      : {};
     try {
-      modelFiles = await (bothSurfaces
-        ? docsFile({ apiSurface: { subDir: "api" } })
-        : docsFile()
-      ).generate(ctx);
+      modelFiles = await docsFile(modelOpts).generate(ctx);
     } catch (err) {
       const msg = (err as Error).message;
       // Duplicate output path (silent-overwrite backstop): the generator already
@@ -311,16 +321,24 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   }
 
   // API surface — the SDK reference for the GENERATED REST surface, side by side
-  // under api/. Only meaningful with a loadable gen config (there is nothing
-  // generated to document otherwise), so skip gracefully when absent.
+  // under each surface's subDir. THIS command only OWNS the surfaces it can
+  // generate — i.e. its own port (lang "ts"). Surfaces owned by other ports are
+  // linked (above) but produced by running that port's docs command; we just log
+  // a pointer. Only meaningful with a loadable gen config, so skip when absent.
   let apiFiles: EmittedFile[] = [];
   if (docsCfg.surfaces.includes("api")) {
     if (loadedConfig !== undefined) {
       try {
-        apiFiles = await apiDocsFile({
-          subDir: "api",
-          modelSurface: docsCfg.surfaces.includes("model"),
-        }).generate(ctx);
+        // Emit every surface THIS port owns (loop so it generalizes beyond the
+        // single ts surface owned today).
+        for (const s of labeled.filter((s) => s.lang === "ts")) {
+          apiFiles.push(
+            ...(await apiDocsFile({
+              subDir: s.subDir,
+              modelSurface: docsCfg.surfaces.includes("model"),
+            }).generate(ctx)),
+          );
+        }
       } catch (err) {
         const msg = (err as Error).message;
         if (msg.startsWith("docs: duplicate output path")) {
@@ -331,6 +349,13 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
         return 1;
       }
       emit.push(...apiFiles);
+      // Surfaces owned by other ports: link only, with a pointer to where they
+      // get produced.
+      for (const s of labeled.filter((s) => s.lang !== "ts")) {
+        log.info(
+          `meta docs: api surface '${s.lang}' (${s.subDir}) is produced by that port's docs command — run it to populate those pages.`,
+        );
+      }
     } else if (hasConfig) {
       // Config present but failed to load — already warned above; don't claim an
       // api surface we couldn't build.
