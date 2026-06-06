@@ -1,14 +1,15 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
-import type { MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
-import { Format } from "@metaobjectsdev/render";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
 import {
   NullRecorder,
   LlmCallDbRecorder,
   recordLlmCall,
+  buildLlmCallRow,
   type LlmCallRow,
+  type LlmCallInput,
 } from "../src/llm-recorder.js";
 
 // =============================================================================
@@ -36,6 +37,7 @@ const META_JSON = {
             { "field.string": { name: "parentSpanId" } },
             { "field.string": { name: "sessionId" } },
             { "field.string": { name: "callType" } },
+            { "field.string": { name: "system" } },
             { "field.string": { name: "requestModel" } },
             { "field.string": { name: "responseModel" } },
             { "field.long": { name: "inputTokens" } },
@@ -50,6 +52,8 @@ const META_JSON = {
             // ObjectManager writes the JSON.stringify'd string; in-memory driver
             // keeps it as a string on read-back.
             { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
+            // llmResponse: raw response body as jsonb string (matches LlmCallBase).
+            { "field.string": { name: "llmResponse", "@dbColumnType": "jsonb" } },
             // voResponse: typed VO stored as jsonb via @objectRef + @storage.
             // ObjectManager validates the object against VerdictResponse and stores it.
             { "field.object": { name: "voResponse", "@objectRef": "VerdictResponse", "@storage": "jsonb" } },
@@ -133,13 +137,11 @@ describe("LlmCallDbRecorder", () => {
 // Task 2 — recordLlmCall
 // =============================================================================
 
-describe("recordLlmCall", () => {
-  test("good response → status ok, voResponse populated, row persisted", async () => {
+describe("recordLlmCall (generic base-row path)", () => {
+  test("status ok → base row persisted (raw llmRequest/llmResponse, no voResponse)", async () => {
     const root = await loadFixture();
     const om = makeOm(root);
     const recorder = new LlmCallDbRecorder(om, "TraceCall");
-    const verdictMo = root.findObject("VerdictResponse") as MetaObject;
-    expect(verdictMo).toBeDefined();
 
     const result = await recordLlmCall(
       {
@@ -149,29 +151,34 @@ describe("recordLlmCall", () => {
         startedAt: "2026-01-01T00:00:00Z",
         llmRequest: { prompt: "hello" },
         llmResponseText: '{"verdict":"approve","score":90}',
+        status: "ok",
+        errorDetail: null,
       },
-      { recorder, responseMo: verdictMo, format: Format.JSON },
+      { recorder },
     );
 
+    // recordLlmCall echoes the caller-supplied outcome; it does not extract.
     expect(result.status).toBe("ok");
     expect(result.errorDetail).toBeNull();
-    expect(result.voResponse).toEqual({ verdict: "approve", score: 90 });
 
-    // Row must have been persisted
+    // Row must have been persisted with the raw envelope + I/O.
     const row = await om.findById("TraceCall", 1);
     expect(row).not.toBeNull();
     expect(row!.spanId).toBe("span-ok");
     expect(row!.status).toBe("ok");
-    expect(row!.voResponse).toEqual({ verdict: "approve", score: 90 });
+    // The generic path never writes voResponse — TraceCall declares it nullable,
+    // so it stays absent/null in the stored row.
+    expect(row!.voResponse ?? null).toBeNull();
     // In-memory driver stores llmRequest as the JSON string (field.string + @dbColumnType jsonb).
     expect(JSON.parse(row!.llmRequest as string)).toEqual({ prompt: "hello" });
+    // llmResponse stores the JSON-encoded raw response text.
+    expect(JSON.parse(row!.llmResponse as string)).toBe('{"verdict":"approve","score":90}');
   });
 
-  test("bad response (missing required verdict) → status error, voResponse null, row still persisted", async () => {
+  test("caller-supplied error outcome is threaded onto the persisted row", async () => {
     const root = await loadFixture();
     const om = makeOm(root);
     const recorder = new LlmCallDbRecorder(om, "TraceCall");
-    const verdictMo = root.findObject("VerdictResponse") as MetaObject;
 
     const result = await recordLlmCall(
       {
@@ -181,44 +188,27 @@ describe("recordLlmCall", () => {
         startedAt: "2026-01-01T00:00:00Z",
         llmRequest: { prompt: "hello" },
         llmResponseText: '{"score":50}',
+        status: "error",
+        errorDetail: "lost required: verdict",
       },
-      { recorder, responseMo: verdictMo, format: Format.JSON },
+      { recorder },
     );
 
     expect(result.status).toBe("error");
-    expect(result.voResponse).toBeNull();
-    expect(typeof result.errorDetail).toBe("string");
-    expect(result.errorDetail).toContain("verdict");
+    expect(result.errorDetail).toBe("lost required: verdict");
 
-    // Row must STILL have been persisted (failure-resilient contract)
+    // Row must STILL have been persisted (every call is observable).
     const row = await om.findById("TraceCall", 1);
     expect(row).not.toBeNull();
     expect(row!.spanId).toBe("span-bad");
     expect(row!.status).toBe("error");
-    expect(row!.voResponse).toBeNull();
-    expect(typeof row!.errorDetail).toBe("string");
+    expect(row!.errorDetail).toBe("lost required: verdict");
   });
 });
 
 // =============================================================================
 // Task 4 — parentSpanId + sessionId envelope fields
 // =============================================================================
-
-// Minimal metadata: a value object with one required string field.
-// Mirrors the VerdictResponse shape used in the integration test.
-const ENVELOPE_META = JSON.stringify({
-  "metadata.root": {
-    package: "test::ai",
-    children: [
-      {
-        "object.value": {
-          name: "Resp",
-          children: [{ "field.string": { name: "verdict", "@required": true } }],
-        },
-      },
-    ],
-  },
-});
 
 // A capturing recorder that stores the last row written by recordLlmCall.
 class CaptureRecorder extends NullRecorder {
@@ -228,16 +218,9 @@ class CaptureRecorder extends NullRecorder {
   }
 }
 
-async function loadRespMo() {
-  const res = await MetaDataLoader.fromString(ENVELOPE_META, "json");
-  expect(res.errors).toEqual([]);
-  return res.root.findObject("Resp")!;
-}
-
 describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
   test("threads parentSpanId + sessionId into the persisted row", async () => {
     const rec = new CaptureRecorder();
-    const responseMo = await loadRespMo();
     await recordLlmCall(
       {
         spanId: "s1",
@@ -248,8 +231,10 @@ describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
         startedAt: "2026-06-05T00:00:00Z",
         llmRequest: { a: 1 },
         llmResponseText: JSON.stringify({ verdict: "ok" }),
+        status: "ok",
+        errorDetail: null,
       },
-      { recorder: rec, responseMo },
+      { recorder: rec },
     );
     expect(rec.last?.parentSpanId).toBe("p1");
     expect(rec.last?.sessionId).toBe("sess1");
@@ -257,7 +242,6 @@ describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
 
   test("omitted parentSpanId + sessionId default to null in the row", async () => {
     const rec = new CaptureRecorder();
-    const responseMo = await loadRespMo();
     await recordLlmCall(
       {
         spanId: "s2",
@@ -266,10 +250,36 @@ describe("recordLlmCall envelope fields — parentSpanId + sessionId", () => {
         startedAt: "2026-06-05T00:00:00Z",
         llmRequest: {},
         llmResponseText: JSON.stringify({ verdict: "ok" }),
+        status: "ok",
+        errorDetail: null,
       },
-      { recorder: rec, responseMo },
+      { recorder: rec },
     );
     expect(rec.last?.parentSpanId).toBeNull();
     expect(rec.last?.sessionId).toBeNull();
+  });
+});
+
+// =============================================================================
+// Task 1 (P0) — buildLlmCallRow: base-row factory (exactly LlmCallBase fields)
+// =============================================================================
+
+const BASE_INPUT: LlmCallInput = {
+  spanId: "s", traceId: "t", callType: "X",
+  startedAt: "2026-06-06T00:00:00Z",
+  llmRequest: { q: 1 }, llmResponseText: '{"a":1}',
+  status: "ok", errorDetail: null,
+};
+
+describe("buildLlmCallRow", () => {
+  test("row keys exactly match LlmCallBase's 18 fields (no voResponse; with llmResponse + system)", () => {
+    const row = buildLlmCallRow({ ...BASE_INPUT, system: "anthropic" });
+    const base = ["traceId","spanId","parentSpanId","sessionId","callType","system",
+      "requestModel","responseModel","inputTokens","outputTokens","costMinor",
+      "latencyMs","finishReason","status","errorDetail","startedAt","llmRequest","llmResponse"];
+    expect(Object.keys(row).sort()).toEqual([...base].sort());
+    expect("voResponse" in row).toBe(false);
+    expect(row.system).toBe("anthropic");
+    expect(row.llmRequest).toBe('{"q":1}');
   });
 });

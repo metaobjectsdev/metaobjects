@@ -1,20 +1,18 @@
-// LLM call recorder seam + parse-then-persist helper.
+// LLM call recorder seam + base-row factory + shared persist helper.
 //
 // LlmRecorder is a thin write-side interface for persisting LLM call rows.
 // LlmCallDbRecorder writes via ObjectManager.create (using an entity declared
 // in the caller's own metadata).  NullRecorder is the no-op implementation
 // used in unit tests or when tracing is disabled.
 //
-// recordLlmCall combines the extract step (LLM response text → typed VO via
-// the FR-010 extractObject engine) with the persist step in a single
-// failure-resilient transaction: a lost-required field still writes a row
-// (status="error") so every call is observable.
+// recordLlmCall is the GENERIC trace path: it builds the base trace row (the
+// envelope + the raw `llmRequest`/`llmResponse` columns declared on the shipped
+// `LlmCallBase`) and persists it.  It does NOT parse the response into a typed
+// VO — that extract step + the typed voRequest/voResponse columns live on the
+// generated typed helper (a later layer), so this generic path only ever writes
+// the base field set.
 
 import type { ObjectManager } from "./object-manager.js";
-import { extractSchemaFor } from "./extract-object.js";
-import { Format, extract } from "@metaobjectsdev/render";
-import type { ExtractOptions } from "@metaobjectsdev/render";
-import type { MetaObject } from "@metaobjectsdev/metadata";
 
 // =============================================================================
 // Public types
@@ -55,7 +53,7 @@ export class LlmCallDbRecorder implements LlmRecorder {
 }
 
 // =============================================================================
-// recordLlmCall — parse-then-persist
+// recordLlmCall — generic base-row persist
 // =============================================================================
 
 export interface LlmCallInput {
@@ -66,9 +64,12 @@ export interface LlmCallInput {
   /** Logical session/conversation id (gen_ai session grouping). */
   sessionId?: string;
   callType: string;
+  /** gen_ai.system — provider name, caller-supplied. */
+  system?: string;
   /** ISO 8601 timestamp, supplied by the caller before the LLM call was made. */
   startedAt: string;
   llmRequest: unknown;
+  /** Raw response text/body — stored as the raw `llmResponse` column. */
   llmResponseText: string;
   requestModel?: string;
   /** gen_ai.response.model — the model the provider actually used. */
@@ -78,55 +79,34 @@ export interface LlmCallInput {
   costMinor?: number;
   latencyMs?: number;
   finishReason?: string;
+  /** Call outcome, caller-supplied (provider/parse failure → "error"). */
+  status: "ok" | "error";
+  /** Failure detail (null on success). */
+  errorDetail: string | null;
 }
 
 export interface RecordLlmCallOptions {
   recorder: LlmRecorder;
-  responseMo: MetaObject;
-  format?: Format;
-  extractOpts?: Partial<ExtractOptions>;
+  /** Optional scrub/cap applied immediately before persist (PII/secrets). */
+  redact?: (row: LlmCallRow) => LlmCallRow;
 }
 
 export interface RecordLlmCallResult {
-  voResponse: Record<string, unknown> | null;
   status: "ok" | "error";
   errorDetail: string | null;
 }
 
-/**
- * Parse `input.llmResponseText` into a typed VO, then persist a trace row via
- * `opts.recorder` regardless of whether parsing succeeded.
- *
- * Contract:
- * - A lost-required field → status "error", voResponse null, errorDetail set,
- *   row STILL persisted.
- * - A successful parse → status "ok", voResponse is the plain-object form,
- *   row persisted with voResponse populated.
- * - DB errors propagate (never swallowed).
- */
-export async function recordLlmCall(
-  input: LlmCallInput,
-  opts: RecordLlmCallOptions,
-): Promise<RecordLlmCallResult> {
-  // Use the lower-level extract() to get a plain Record (no cyclic back-ref).
-  // extractSchemaFor builds the field descriptors; extract() runs the engine.
-  const schema = extractSchemaFor(opts.responseMo, opts.format ?? Format.JSON);
-  const outcome = extract(input.llmResponseText, schema, opts.extractOpts);
-
-  const failed = outcome.report.hasLostRequired();
-  const status: "ok" | "error" = failed ? "error" : "ok";
-  const errorDetail: string | null = failed
-    ? `lost required: ${outcome.report.lostRequired().join(", ")}`
-    : null;
-  // outcome.data is already a plain Record<string,unknown> — safe to store.
-  const voResponse: Record<string, unknown> | null = failed ? null : outcome.data;
-
-  const row: LlmCallRow = {
-    spanId: input.spanId,
+/** Build the base trace row (envelope + raw llmRequest/llmResponse) — key set
+ *  is exactly LlmCallBase's fields. Typed voRequest/voResponse are added by the
+ *  generated typed helper, never here. */
+export function buildLlmCallRow(input: LlmCallInput): LlmCallRow {
+  return {
     traceId: input.traceId,
+    spanId: input.spanId,
     parentSpanId: input.parentSpanId ?? null,
     sessionId: input.sessionId ?? null,
     callType: input.callType,
+    system: input.system ?? null,
     requestModel: input.requestModel ?? null,
     responseModel: input.responseModel ?? null,
     inputTokens: input.inputTokens ?? null,
@@ -134,14 +114,33 @@ export async function recordLlmCall(
     costMinor: input.costMinor ?? null,
     latencyMs: input.latencyMs ?? null,
     finishReason: input.finishReason ?? null,
-    status,
-    errorDetail,
+    status: input.status,
+    errorDetail: input.errorDetail,
     startedAt: input.startedAt,
     llmRequest: JSON.stringify(input.llmRequest),
-    voResponse,
+    llmResponse: JSON.stringify(input.llmResponseText),
   };
+}
 
-  await opts.recorder.record(row);
+/** Shared persist step: redact then record. Used by recordLlmCall AND (later) the
+ *  generated typed helper, so redaction applies on both paths. */
+export async function persistLlmCallRow(
+  recorder: LlmRecorder,
+  row: LlmCallRow,
+  opts?: { redact?: (row: LlmCallRow) => LlmCallRow },
+): Promise<void> {
+  await recorder.record(opts?.redact ? opts.redact(row) : row);
+}
 
-  return { voResponse, status, errorDetail };
+/** Persist one base trace row (envelope + raw I/O). Generic — does not extract. */
+export async function recordLlmCall(
+  input: LlmCallInput,
+  opts: RecordLlmCallOptions,
+): Promise<RecordLlmCallResult> {
+  await persistLlmCallRow(
+    opts.recorder,
+    buildLlmCallRow(input),
+    opts.redact ? { redact: opts.redact } : undefined,
+  );
+  return { status: input.status, errorDetail: input.errorDetail };
 }

@@ -37,5 +37,5 @@ export {
 // Format is re-exported here so callers of recordLlmCall can import it from a
 // single location rather than reaching into @metaobjectsdev/render directly.
 export { Format } from "@metaobjectsdev/render";
-export { LlmCallDbRecorder, NullRecorder, recordLlmCall } from "./llm-recorder.js";
+export { LlmCallDbRecorder, NullRecorder, recordLlmCall, buildLlmCallRow, persistLlmCallRow } from "./llm-recorder.js";
 export type { LlmRecorder, LlmCallRow, LlmCallInput, RecordLlmCallOptions, RecordLlmCallResult } from "./llm-recorder.js";
