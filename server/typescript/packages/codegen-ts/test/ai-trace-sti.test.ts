@@ -53,10 +53,10 @@ describe("ai-trace #1c — STI callType stamping", () => {
   test("record<Entity> omits callType from input and stamps the discriminator value", async () => {
     const { classify, summarize } = await genTrace();
     // both subtypes drop callType from the caller input and stamp their own value
-    expect(classify).toContain('Omit<LlmCallInput, "llmRequest" | "callType">');
-    expect(classify).toContain('{ ...input, callType: "classify" }');
-    expect(summarize).toContain('Omit<LlmCallInput, "llmRequest" | "callType">');
-    expect(summarize).toContain('{ ...input, callType: "summarize" }');
+    expect(classify).toContain('Omit<LlmCallInput, "llmRequest" | "status" | "errorDetail" | "callType">');
+    expect(classify).toContain('buildLlmCallRow({ ...input, callType: "classify", status, errorDetail })');
+    expect(summarize).toContain('Omit<LlmCallInput, "llmRequest" | "status" | "errorDetail" | "callType">');
+    expect(summarize).toContain('buildLlmCallRow({ ...input, callType: "summarize", status, errorDetail })');
   });
 
   test("call<Entity> stamps the discriminator value (not the entity name)", async () => {

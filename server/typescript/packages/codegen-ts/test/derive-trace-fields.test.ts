@@ -59,11 +59,19 @@ describe("derive trace fields", () => {
     expect(files).toContain("ClassifyCall.trace.ts");
     const h = readFileSync(join(tmp, "ClassifyCall.trace.ts"), "utf-8");
     expect(h).toContain("recordClassifyCall");
-    expect(h).toContain("recordLlmCall");
+    // The generated record helper now owns extract + writes base + typed row.
+    expect(h).toContain("extractSchemaFor(");
+    expect(h).toContain("const outcome = extract(input.llmResponseText, schema);");
+    expect(h).toContain("buildLlmCallRow(");
+    expect(h).toContain("voRequest: input.llmRequest");
+    expect(h).toContain("voResponse:");
+    expect(h).toContain('persistLlmCallRow(new LlmCallDbRecorder(om, "ClassifyCall"), row)');
+    // stale generic-path entry point must be gone.
+    expect(h).not.toContain("recordLlmCall(");
     // non-STI invariant: a trace entity that is NOT a TPH subtype keeps callType
     // caller-supplied (no "| callType" omission, no spread-injection).
-    expect(h).toContain('Omit<LlmCallInput, "llmRequest">');
-    expect(h).not.toContain('"llmRequest" | "callType"');
+    expect(h).toContain('Omit<LlmCallInput, "llmRequest" | "status" | "errorDetail">');
+    expect(h).not.toContain('| "callType"');
   });
 
   test("trace-helper emits both record and call helpers for a renderable prompt", async () => {
@@ -84,11 +92,19 @@ describe("derive trace fields", () => {
     expect(h).toContain('from "@metaobjectsdev/ai-runtime"');
     expect(h).toContain('from "@metaobjectsdev/render"');
     expect(h).toContain('render({ ref: "p/x"');
+    // call<Entity> now drives the CALL via runLlmCall, then extracts itself.
+    expect(h).toContain("runLlmCall(");
+    expect(h).toContain("voRequest: payload");
     // exactOptionalPropertyTypes-safe shape: request built then optionals added.
     expect(h).toContain("const request: LlmRequest = { prompt, model: deps.model };");
-    expect(h).toContain("const callInput: CallLlmInput = { callType: \"ClassifyCall\", payload, request };");
+    expect(h).toContain('const runInput: RunLlmCallInput = { callType: "ClassifyCall", request };');
     expect(h).toContain("if (deps.system !== undefined) request.system = deps.system;");
-    expect(h).toContain("const result = await callLlm(callInput, callDeps);");
+    expect(h).toContain("const { input: recInput, completion } = await runLlmCall(runInput, runDeps);");
+    // stale generic call-loop entry point must be gone.
+    expect(h).not.toContain("callLlm(");
+    expect(h).not.toContain("CallLlmInput");
+    // extract + render must be a single de-duplicated import from render.
+    expect(h).toContain('import { extract, render, type Provider } from "@metaobjectsdev/render";');
     // imports must all be at the top: no `import ` after the first export.
     const firstExport = h.indexOf("export ");
     const lastImport = h.lastIndexOf("\nimport ");

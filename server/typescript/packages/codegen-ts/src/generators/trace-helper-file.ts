@@ -5,9 +5,10 @@
 // template.prompt with @payloadRef and/or @responseRef.
 //
 // The emitted helper exports an async function `record<Entity>(om, responseMo, input)`
-// that calls `recordLlmCall` from @metaobjectsdev/runtime-ts.  The helper is typed
-// against the generated payload interfaces (request + response VOs) so call-sites
-// get compile-time checks.
+// that EXTRACTS the typed response VO itself and persists ONE row = base envelope +
+// raw I/O (via buildLlmCallRow) PLUS the typed voRequest/voResponse columns. The
+// helper is typed against the generated payload interfaces (request + response VOs)
+// so call-sites get compile-time checks.
 //
 // NOTE: ObjectManager does not expose its loaded metadata root, so the caller must
 // pass the resolved `responseMo: MetaObject` explicitly.  The generated helper
@@ -90,10 +91,17 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const sti = tphPin !== undefined;
       const callTypeValue = sti ? tphPin.value : entityName;
 
-      // Emitted record<Entity> fragments: the keys Omit'd from the caller input,
-      // and the first argument passed to recordLlmCall.
-      const recordInputOmit = sti ? `"llmRequest" | "callType"` : `"llmRequest"`;
-      const recordArg = sti ? `{ ...input, callType: ${JSON.stringify(callTypeValue)} }` : `input`;
+      // Emitted record<Entity> fragments. The caller never supplies the derived
+      // status/errorDetail (the helper computes them from extraction), and an STI
+      // subtype additionally drops the framework-managed callType discriminator.
+      const recordInputOmit = sti
+        ? `"llmRequest" | "status" | "errorDetail" | "callType"`
+        : `"llmRequest" | "status" | "errorDetail"`;
+      // The object spread passed to buildLlmCallRow: STI subtypes stamp their
+      // discriminator value, all helpers fold in the derived status/errorDetail.
+      const recordBuildArg = sti
+        ? `{ ...input, callType: ${JSON.stringify(callTypeValue)}, status, errorDetail }`
+        : `{ ...input, status, errorDetail }`;
 
       // Derive the parse format from the prompt's @format attr.
       // "xml" → Format.XML; absent or any other value → Format.JSON.
@@ -119,26 +127,32 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const renderFormat = typeof promptFormat === "string" ? promptFormat : "text";
 
       // Build the import block — all imports MUST stay at the top of the emitted file.
+      // `extract` + `render` both live in @metaobjectsdev/render: import them together
+      // (one de-duplicated statement) when the prompt is renderable, else import only
+      // `extract`.
       const importLines: string[] = [
         `import type { ObjectManager } from "@metaobjectsdev/runtime-ts";`,
         `import {`,
         `  LlmCallDbRecorder,`,
-        `  recordLlmCall,`,
+        `  buildLlmCallRow,`,
+        `  persistLlmCallRow,`,
+        `  extractSchemaFor,`,
+        `  Format,`,
         `  type LlmCallInput,`,
-        `  type RecordLlmCallResult,`,
         `} from "@metaobjectsdev/runtime-ts";`,
-        `import { Format } from "@metaobjectsdev/runtime-ts";`,
+        renderable
+          ? `import { extract, render, type Provider } from "@metaobjectsdev/render";`
+          : `import { extract } from "@metaobjectsdev/render";`,
         `import type { MetaObject } from "@metaobjectsdev/metadata";`,
       ];
       if (renderable) {
         importLines.push(
-          `import { render, type Provider } from "@metaobjectsdev/render";`,
           `import {`,
-          `  callLlm,`,
+          `  runLlmCall,`,
+          `  type RunLlmCallInput,`,
+          `  type RunLlmCallDeps,`,
           `  type LlmClient,`,
           `  type LlmRequest,`,
-          `  type CallLlmInput,`,
-          `  type CallLlmDeps,`,
           `  type CostFn,`,
           `  type Clock,`,
           `  type IdGen,`,
@@ -157,7 +171,9 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         ``,
         `// ---- Typed result -----------------------------------------------------------`,
         ``,
-        `export interface ${entityName}TraceResult extends RecordLlmCallResult {`,
+        `export interface ${entityName}TraceResult {`,
+        `  status: "ok" | "error";`,
+        `  errorDetail: string | null;`,
         `  /** Parsed response VO, or null when extraction reported a lost-required field. */`,
         `  /** Note: voResponse is the plain extracted record typed as the response shape (structural, not an instance). */`,
         `  voResponse: ${responseRef} | null;`,
@@ -181,12 +197,15 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `  responseMo: MetaObject,`,
         `  input: Omit<LlmCallInput, ${recordInputOmit}> & { llmRequest: ${requestType} },`,
         `): Promise<${entityName}TraceResult> {`,
-        `  const result = await recordLlmCall(${recordArg}, {`,
-        `    recorder: new LlmCallDbRecorder(om, "${entityName}"),`,
-        `    responseMo,`,
-        `    format: ${formatLiteral},`,
-        `  });`,
-        `  return result as ${entityName}TraceResult;`,
+        `  const schema = extractSchemaFor(responseMo, ${formatLiteral});`,
+        `  const outcome = extract(input.llmResponseText, schema);`,
+        `  const failed = outcome.report.hasLostRequired();`,
+        `  const status = failed ? ("error" as const) : ("ok" as const);`,
+        '  const errorDetail = failed ? `lost required: ${outcome.report.lostRequired().join(", ")}` : null;',
+        `  const base = buildLlmCallRow(${recordBuildArg});`,
+        `  const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };`,
+        `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row);`,
+        `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as ${responseRef}) };`,
         `}`,
         ``,
       ];
@@ -229,21 +248,30 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `  const request: LlmRequest = { prompt, model: deps.model };`,
           `  if (deps.system !== undefined) request.system = deps.system;`,
           `  if (deps.params !== undefined) request.params = deps.params;`,
-          `  const callInput: CallLlmInput = { callType: ${JSON.stringify(callTypeValue)}, payload, request };`,
-          `  if (deps.traceId !== undefined) callInput.traceId = deps.traceId;`,
-          `  if (deps.parentSpanId !== undefined) callInput.parentSpanId = deps.parentSpanId;`,
-          `  if (deps.sessionId !== undefined) callInput.sessionId = deps.sessionId;`,
-          `  const callDeps: CallLlmDeps = {`,
-          `    client: deps.client,`,
-          `    recorder: new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}),`,
-          `    responseMo: deps.responseMo,`,
-          `    format: ${formatLiteral},`,
-          `  };`,
-          `  if (deps.cost !== undefined) callDeps.cost = deps.cost;`,
-          `  if (deps.clock !== undefined) callDeps.clock = deps.clock;`,
-          `  if (deps.ids !== undefined) callDeps.ids = deps.ids;`,
-          `  const result = await callLlm(callInput, callDeps);`,
-          `  return result as ${entityName}TraceResult;`,
+          `  const runInput: RunLlmCallInput = { callType: ${JSON.stringify(callTypeValue)}, request };`,
+          `  if (deps.traceId !== undefined) runInput.traceId = deps.traceId;`,
+          `  if (deps.parentSpanId !== undefined) runInput.parentSpanId = deps.parentSpanId;`,
+          `  if (deps.sessionId !== undefined) runInput.sessionId = deps.sessionId;`,
+          `  const runDeps: RunLlmCallDeps = { client: deps.client };`,
+          `  if (deps.cost !== undefined) runDeps.cost = deps.cost;`,
+          `  if (deps.clock !== undefined) runDeps.clock = deps.clock;`,
+          `  if (deps.ids !== undefined) runDeps.ids = deps.ids;`,
+          `  const { input: recInput, completion } = await runLlmCall(runInput, runDeps);`,
+          `  let voResponse: ${responseRef} | null = null;`,
+          `  let status = recInput.status;`,
+          `  let errorDetail = recInput.errorDetail;`,
+          `  if (completion !== undefined) {`,
+          `    const outcome = extract(completion.body, extractSchemaFor(deps.responseMo, ${formatLiteral}));`,
+          `    if (outcome.report.hasLostRequired()) {`,
+          `      status = "error";`,
+          '      errorDetail = `lost required: ${outcome.report.lostRequired().join(", ")}`;',
+          `    } else {`,
+          `      voResponse = outcome.data as ${responseRef};`,
+          `    }`,
+          `  }`,
+          `  const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };`,
+          `  await persistLlmCallRow(new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}), row);`,
+          `  return { status, errorDetail, voResponse };`,
           `}`,
         );
       }
