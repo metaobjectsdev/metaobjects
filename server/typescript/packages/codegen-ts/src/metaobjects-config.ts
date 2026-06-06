@@ -101,6 +101,12 @@ export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfi
 
 export type DocsSurface = "model" | "api";
 
+export interface ApiSurface {
+  lang: string;
+  subDir: string;
+  baseUrl?: string;
+}
+
 /** The single docs-output config: where ALL doc surfaces go, how pages are laid
  *  out, and which surfaces to emit. Read by the `meta docs` door (and, when the
  *  api surface fans out, by each port's docs command). */
@@ -109,6 +115,7 @@ export interface DocsConfig {
   layout?: OutputLayout;
   baseUrl?: string;
   surfaces?: DocsSurface[];
+  apiSurfaces?: ApiSurface[];
 }
 
 export interface ResolvedDocsConfig {
@@ -116,6 +123,7 @@ export interface ResolvedDocsConfig {
   layout: OutputLayout;
   baseUrl: string;
   surfaces: DocsSurface[];
+  apiSurfaces: ApiSurface[];
 }
 
 /** Merge the config `docs:` block with CLI overrides over documented defaults.
@@ -131,6 +139,7 @@ export function resolveDocsConfig(
     layout: cli.layout ?? block?.layout ?? fallbackLayout,
     baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
     surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api"],
+    apiSurfaces: cli.apiSurfaces ?? block?.apiSurfaces ?? [{ lang: "ts", subDir: "api" }],
   };
 }
 
