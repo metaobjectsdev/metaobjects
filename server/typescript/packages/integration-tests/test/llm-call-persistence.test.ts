@@ -1,197 +1,172 @@
 // Real-Postgres round-trip for the LLM-call trace model.
 //
-// Proves that recordLlmCall() correctly:
-//   1. Parses the LLM response text into a typed VO (good path).
-//   2. Persists the row with status "ok" + the parsed VO stored as jsonb.
-//   3. Persists a row with status "error" + voResponse null when a required
-//      field is missing from the LLM response (failure path).
+// Two gates, both against a fresh Testcontainers Postgres:
 //
-// Mirrors the structure of query.test.ts: start a fresh Postgres container,
-// synthesise the schema via the migrate-ts helpers, run assertions, stop.
+//   B1 — shipped-base regression test (the headline bug). An adopter entity that
+//        `extends metaobjects::ai::LlmCallBase` (loaded via the loader's
+//        `libraries: ["ai"]` option — the REAL shipped base, not a hand-rolled
+//        18-field copy) is driven through the GENERIC recordLlmCall (envelope +
+//        raw I/O only). Before this branch, recordLlmCall wrote a `voResponse`
+//        key the base doesn't declare, so this exact path threw
+//        `Unknown field 'voResponse'`. Now it persists and reads back with the
+//        raw llmRequest/llmResponse present.
+//
+//   B2 — raw + typed round-trip. An entity that extends the base AND declares
+//        typed `voRequest`/`voResponse` (field.object + @objectRef + @storage:jsonb)
+//        alongside the inherited raw columns. A row built from buildLlmCallRow()
+//        spread with voRequest/voResponse objects persists; the read-back carries
+//        BOTH the raw llmRequest/llmResponse AND the typed VOs, all correct.
+//
+// Mirrors query.test.ts: start a fresh Postgres container, synthesise the schema
+// via the migrate-ts helpers, run assertions, stop.
 
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
 import {
-  Format,
+  buildLlmCallRow,
   LlmCallDbRecorder,
   ObjectManager,
   recordLlmCall,
 } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
-import { callLlm } from "@metaobjectsdev/ai-runtime";
-import type { LlmClient, IdGen } from "@metaobjectsdev/ai-runtime";
 
 import { startPostgres } from "../src/postgres-container.ts";
 import { executeSql } from "../src/postgres-sql.ts";
 
 // ---------------------------------------------------------------------------
-// Inline metadata — VerdictResponse value object + TraceCall entity
-// ---------------------------------------------------------------------------
+// App metadata authored as YAML, loaded with `libraries: ["ai"]` so the entities
+// extend the SHIPPED metaobjects::ai::LlmCallBase (not a bespoke field-by-field
+// re-declaration). fromDirectory is the only factory that accepts `libraries`,
+// so we write the YAML to a temp dir and load that.
 //
-// TraceCall declares all 17 fields that recordLlmCall() writes into every row.
-// ObjectManager.create() throws on any key not declared as a field on the
-// entity, so the declaration must be exhaustive.
+//   ApiCall     — B1: extends the base, no extra columns. Pure generic path.
+//   VerdictCall — B2: extends the base + typed voRequest/voResponse columns.
+// ---------------------------------------------------------------------------
 
-const META = JSON.stringify({
-  "metadata.root": {
-    package: "test::ai",
-    children: [
-      {
-        "object.value": {
-          name: "VerdictResponse",
-          children: [
-            { "field.string": { name: "verdict", "@required": true } },
-            { "field.int": { name: "score" } },
-          ],
-        },
-      },
-      {
-        "object.entity": {
-          name: "TraceCall",
-          children: [
-            { "source.rdb": { "@table": "trace_call" } },
-            // identity fields
-            { "field.uuid": { name: "spanId" } },
-            { "field.uuid": { name: "traceId" } },
-            { "field.uuid": { name: "parentSpanId" } },
-            { "field.string": { name: "sessionId" } },
-            // call metadata
-            { "field.string": { name: "callType" } },
-            { "field.string": { name: "requestModel" } },
-            { "field.string": { name: "responseModel" } },
-            { "field.int": { name: "inputTokens" } },
-            { "field.int": { name: "outputTokens" } },
-            { "field.currency": { name: "costMinor", "@currency": "USD" } },
-            { "field.int": { name: "latencyMs" } },
-            { "field.string": { name: "finishReason" } },
-            // trace outcome
-            { "field.string": { name: "status" } },
-            { "field.string": { name: "errorDetail" } },
-            { "field.string": { name: "startedAt" } },
-            // llmRequest: raw jsonb stored as a JSON string via field.string + @dbColumnType.
-            // recordLlmCall() calls JSON.stringify before writing; Postgres stores as JSONB
-            // and node-postgres returns it as a parsed object on read-back.
-            { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
-            // voResponse: typed VO stored as jsonb via @objectRef + @storage.
-            // ObjectManager validates against VerdictResponse and stores as JSONB;
-            // node-postgres returns it as a parsed object on read-back.
-            { "field.object": { name: "voResponse", "@objectRef": "VerdictResponse", "@storage": "jsonb" } },
-            { "identity.primary": { "@fields": "spanId" } },
-          ],
-        },
-      },
-    ],
-  },
-});
+const APP_YAML = [
+  "metadata:",
+  "  package: app::ops",
+  "  children:",
+  "    - object.value:",
+  "        name: VerdictReq",
+  "        children:",
+  "          - field.string: { name: question }",
+  "    - object.value:",
+  "        name: VerdictRes",
+  "        children:",
+  "          - field.string: { name: verdict, required: true }",
+  "          - field.int: { name: score }",
+  // B1 entity — base only.
+  "    - object.entity:",
+  "        name: ApiCall",
+  "        extends: metaobjects::ai::LlmCallBase",
+  "        children:",
+  "          - source.rdb: { table: api_call, role: primary }",
+  '          - identity.primary: { fields: ["spanId"] }',
+  // B2 entity — base + typed VO columns.
+  "    - object.entity:",
+  "        name: VerdictCall",
+  "        extends: metaobjects::ai::LlmCallBase",
+  "        children:",
+  "          - source.rdb: { table: verdict_call, role: primary }",
+  "          - field.object: { name: voRequest, objectRef: VerdictReq, storage: jsonb }",
+  "          - field.object: { name: voResponse, objectRef: VerdictRes, storage: jsonb }",
+  '          - identity.primary: { fields: ["spanId"] }',
+].join("\n");
 
-// Valid UUIDs (v4-format) used as test IDs.
-const SPAN_OK  = "11111111-1111-4111-8111-111111111111";
-const TRACE_OK = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const SPAN_ERR  = "22222222-2222-4222-8222-222222222222";
-const TRACE_ERR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+// Valid v4-format UUIDs used as test ids.
+const SPAN_B1  = "11111111-1111-4111-8111-111111111111";
+const TRACE_B1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SPAN_B2  = "22222222-2222-4222-8222-222222222222";
+const TRACE_B2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+/** Load the app YAML with the shipped ai library, asserting a clean load. */
+async function loadWithAiLibrary(): Promise<MetaRoot> {
+  const dir = mkdtempSync(join(tmpdir(), "llm-persist-"));
+  writeFileSync(join(dir, "meta.app.yaml"), APP_YAML);
+  try {
+    const result = await MetaDataLoader.fromDirectory(dir, { libraries: ["ai"] });
+    expect(result.errors, "app + shipped ai library must load with zero errors").toEqual([]);
+    return result.root;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Synthesise CREATE TABLE DDL for the whole root via migrate-ts. */
+async function ddlFor(root: MetaRoot): Promise<string> {
+  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
+  const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
+  const { up } = emit(diffResult.changes, { dialect: "postgres" });
+  expect(up.trim().length, "DDL must be non-empty").toBeGreaterThan(0);
+  return up;
+}
 
 describe("LLM call persistence — real Postgres round-trip", () => {
-  test("recordLlmCall: good path persists VO jsonb, failure path stores null + errorDetail", async () => {
-    // -----------------------------------------------------------------------
-    // 1. Load metadata; assert no errors.
-    // -----------------------------------------------------------------------
-    const result = await MetaDataLoader.fromString(META, "json");
-    expect(result.errors, "metadata should load with zero errors").toHaveLength(0);
-    const root = result.root;
+  // -------------------------------------------------------------------------
+  // B1 — the regression test: shipped base + generic recordLlmCall.
+  // -------------------------------------------------------------------------
+  test("B1: generic recordLlmCall persists against a shipped-base entity (no throw)", async () => {
+    const root = await loadWithAiLibrary();
+    const ddl = await ddlFor(root);
 
-    const verdictMo = root.findObject("VerdictResponse");
-    expect(verdictMo, "VerdictResponse MetaObject must be found").toBeTruthy();
-
-    // -----------------------------------------------------------------------
-    // 2. Synthesise CREATE TABLE DDL via migrate-ts.
-    // -----------------------------------------------------------------------
-    const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
-    const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
-    const { up: ddl } = emit(diffResult.changes, { dialect: "postgres" });
-    expect(ddl.trim().length, "DDL must be non-empty").toBeGreaterThan(0);
-
-    // -----------------------------------------------------------------------
-    // 3. Start Postgres, execute DDL.
-    // -----------------------------------------------------------------------
     const pgc = await startPostgres();
     let kysely: Kysely<Record<string, never>> | null = null;
     try {
       await executeSql(pgc.connectionUri, ddl);
 
-      // ---------------------------------------------------------------------
-      // 4. Wire up ObjectManager + recorder.
-      // ---------------------------------------------------------------------
       kysely = new Kysely<Record<string, never>>({
         dialect: new PostgresDialect({
           pool: new Pool({ connectionString: pgc.connectionUri, options: "-c timezone=UTC" }),
         }),
       });
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-      const om = new ObjectManager({
-        metadata: root,
-        driver,
-        columnNamingStrategy: "literal",
+      const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+      const rec = new LlmCallDbRecorder(om, "ApiCall", {
+        // Surface any persist failure as a test failure rather than the
+        // recorder's default swallow — we are explicitly asserting "no throw".
+        onError: (err) => {
+          throw err instanceof Error ? err : new Error(String(err));
+        },
       });
-      const rec = new LlmCallDbRecorder(om, "TraceCall");
 
-      // ---------------------------------------------------------------------
-      // 5. Good path — valid LLM response, all required fields present.
-      // ---------------------------------------------------------------------
-      const goodResult = await recordLlmCall(
+      const out = await recordLlmCall(
         {
-          spanId: SPAN_OK,
-          traceId: TRACE_OK,
+          spanId: SPAN_B1,
+          traceId: TRACE_B1,
           callType: "Verdict",
-          costMinor: 1299,
+          system: "openai",
+          requestModel: "gpt-4o-mini",
           startedAt: "2026-06-03T00:00:00.000Z",
           llmRequest: { question: "ship it?" },
           llmResponseText: '{"verdict":"approve","score":90}',
+          status: "ok",
+          errorDetail: null,
         },
-        { recorder: rec, responseMo: verdictMo!, format: Format.JSON },
+        { recorder: rec },
       );
+      expect(out.status).toBe("ok");
+      expect(out.errorDetail).toBeNull();
 
-      expect(goodResult.status).toBe("ok");
-      expect(goodResult.voResponse).toEqual({ verdict: "approve", score: 90 });
-
-      const goodRow = await om.findById("TraceCall", SPAN_OK) as Record<string, unknown>;
-      expect(goodRow, "good row must exist in DB").not.toBeNull();
-      expect(goodRow.status).toBe("ok");
-      // jsonb round-trip: node-postgres returns JSONB already parsed as an object.
-      expect(goodRow.voResponse).toEqual({ verdict: "approve", score: 90 });
-      expect(goodRow.llmRequest).toEqual({ question: "ship it?" });
-      // field.currency stores as BIGINT; node-postgres returns BIGINT as string.
-      expect(Number(goodRow.costMinor)).toBe(1299);
+      const row = (await om.findById("ApiCall", SPAN_B1)) as Record<string, unknown>;
+      expect(row, "B1 row must exist in DB").not.toBeNull();
+      expect(row.status).toBe("ok");
+      expect(row.callType).toBe("Verdict");
+      // Raw I/O columns present. jsonb round-trips through node-postgres parsed.
+      expect(row.llmRequest).toEqual({ question: "ship it?" });
+      // llmResponse: buildLlmCallRow JSON.stringify's the response TEXT, so the
+      // jsonb cell holds a JSON string scalar — read back as that same string.
+      expect(row.llmResponse).toBe('{"verdict":"approve","score":90}');
       // UUIDs are lowercased through the runtime.
-      expect(goodRow.traceId).toBe(TRACE_OK.toLowerCase());
-
-      // ---------------------------------------------------------------------
-      // 6. Failure path — missing required "verdict" field.
-      // ---------------------------------------------------------------------
-      const errResult = await recordLlmCall(
-        {
-          spanId: SPAN_ERR,
-          traceId: TRACE_ERR,
-          callType: "Verdict",
-          startedAt: "2026-06-03T00:00:00.000Z",
-          llmRequest: { question: "ship it?" },
-          llmResponseText: '{"score":50}',
-        },
-        { recorder: rec, responseMo: verdictMo!, format: Format.JSON },
-      );
-
-      expect(errResult.status).toBe("error");
-      expect(errResult.voResponse).toBeNull();
-      expect(typeof errResult.errorDetail).toBe("string");
-
-      const errRow = await om.findById("TraceCall", SPAN_ERR) as Record<string, unknown>;
-      expect(errRow, "error row must exist in DB").not.toBeNull();
-      expect(errRow.status).toBe("error");
-      expect(errRow.voResponse).toBeNull();
-      expect(typeof errRow.errorDetail).toBe("string");
+      expect(row.traceId).toBe(TRACE_B1.toLowerCase());
 
       await kysely.destroy();
       kysely = null;
@@ -201,20 +176,18 @@ describe("LLM call persistence — real Postgres round-trip", () => {
     }
   }, { timeout: 60_000 });
 
-  test("callLlm: GENERATE->CALL->record round-trips a typed trace + error path", async () => {
-    const result = await MetaDataLoader.fromString(META, "json");
-    expect(result.errors).toHaveLength(0);
-    const root = result.root;
-    const verdictMo = root.findObject("VerdictResponse");
-
-    const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
-    const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
-    const { up: ddl } = emit(diffResult.changes, { dialect: "postgres" });
+  // -------------------------------------------------------------------------
+  // B2 — raw + typed round-trip on one row.
+  // -------------------------------------------------------------------------
+  test("B2: one row carries raw llmRequest/llmResponse AND typed voRequest/voResponse", async () => {
+    const root = await loadWithAiLibrary();
+    const ddl = await ddlFor(root);
 
     const pgc = await startPostgres();
     let kysely: Kysely<Record<string, never>> | null = null;
     try {
       await executeSql(pgc.connectionUri, ddl);
+
       kysely = new Kysely<Record<string, never>>({
         dialect: new PostgresDialect({
           pool: new Pool({ connectionString: pgc.connectionUri, options: "-c timezone=UTC" }),
@@ -222,66 +195,37 @@ describe("LLM call persistence — real Postgres round-trip", () => {
       });
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
       const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
-      const rec = new LlmCallDbRecorder(om, "TraceCall");
 
-      // Deterministic ids so we can read the generated row back. callLlm pulls
-      // spanId first, then traceId (only when input.traceId is absent).
-      const CALL_SPAN  = "33333333-3333-4333-8333-333333333333";
-      const CALL_TRACE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-      const okIds: IdGen = (() => {
-        const q = [CALL_SPAN, CALL_TRACE];
-        let i = 0;
-        return { next: () => q[i++]! };
-      })();
+      const voRequest = { question: "ship it?" };
+      const voResponse = { verdict: "approve", score: 90 };
 
-      // ---- good path ----
-      const goodClient: LlmClient = {
-        async complete() {
-          return {
-            body: '{"verdict":"ship","score":9}',
-            model: "gpt-4o-mini",
-            usage: { inputTokens: 1_000_000, outputTokens: 1_000_000 },
-            finishReason: "stop",
-          };
-        },
+      // The generated typed helper builds exactly this shape: the base row
+      // (envelope + raw I/O) spread with the typed VO columns.
+      const row = {
+        ...buildLlmCallRow({
+          spanId: SPAN_B2,
+          traceId: TRACE_B2,
+          callType: "Verdict",
+          startedAt: "2026-06-03T00:00:00.000Z",
+          llmRequest: voRequest,
+          llmResponseText: JSON.stringify(voResponse),
+          status: "ok",
+          errorDetail: null,
+        }),
+        voRequest,
+        voResponse,
       };
-      const okRes = await callLlm(
-        { callType: "TraceCall", payload: { q: "ready?" },
-          request: { prompt: "decide", model: "gpt-4o-mini" } },
-        { client: goodClient, recorder: rec, responseMo: verdictMo!, format: Format.JSON, ids: okIds },
-      );
-      expect(okRes.status).toBe("ok");
+      await om.create("VerdictCall", row);
 
-      const okRow = await om.findById("TraceCall", CALL_SPAN) as Record<string, unknown>;
-      expect(okRow, "callLlm row must exist").not.toBeNull();
-      expect(okRow.status).toBe("ok");
-      expect(okRow.voResponse).toEqual({ verdict: "ship", score: 9 });
-      expect(okRow.traceId).toBe(CALL_TRACE);
-      expect(okRow.callType).toBe("TraceCall");
-      // responseModel captured from the completion (provider-reported model).
-      expect(okRow.responseModel).toBe("gpt-4o-mini");
-      // builtinCost gpt-4o-mini @ 1M input + 1M output = 0.15 + 0.60 = $0.75 = 75 cents
-      expect(Number(okRow.costMinor)).toBe(75);
-
-      // ---- error path: client throws ----
-      const ERR_SPAN  = "44444444-4444-4444-8444-444444444444";
-      const ERR_TRACE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-      const errIds: IdGen = (() => {
-        const q = [ERR_SPAN, ERR_TRACE];
-        let i = 0;
-        return { next: () => q[i++]! };
-      })();
-      const badClient: LlmClient = { async complete() { throw new Error("provider-503"); } };
-      const errRes = await callLlm(
-        { callType: "TraceCall", payload: {}, request: { prompt: "x", model: "gpt-4o-mini" } },
-        { client: badClient, recorder: rec, responseMo: verdictMo!, format: Format.JSON, ids: errIds },
-      );
-      expect(errRes.status).toBe("error");
-
-      const errRow = await om.findById("TraceCall", ERR_SPAN) as Record<string, unknown>;
-      expect(errRow.status).toBe("error");
-      expect(String(errRow.errorDetail)).toContain("provider-503");
-      expect(errRow.voResponse).toBeNull();
+      const back = (await om.findById("VerdictCall", SPAN_B2)) as Record<string, unknown>;
+      expect(back, "B2 row must exist in DB").not.toBeNull();
+      // Raw columns (stringified -> jsonb).
+      expect(back.llmRequest).toEqual(voRequest);
+      expect(back.llmResponse).toBe(JSON.stringify(voResponse));
+      // Typed VO columns (objects -> jsonb), validated through ObjectManager.
+      expect(back.voRequest).toEqual(voRequest);
+      expect(back.voResponse).toEqual(voResponse);
+      expect(back.status).toBe("ok");
 
       await kysely.destroy();
       kysely = null;

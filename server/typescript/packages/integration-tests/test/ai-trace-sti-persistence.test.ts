@@ -22,12 +22,7 @@ import { Pool } from "pg";
 
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
-import {
-  Format,
-  LlmCallDbRecorder,
-  ObjectManager,
-  recordLlmCall,
-} from "@metaobjectsdev/runtime-ts";
+import { buildLlmCallRow, ObjectManager } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 
 import { startPostgres } from "../src/postgres-container.ts";
@@ -65,6 +60,9 @@ const META = JSON.stringify({
             { "field.uuid": { name: "parentSpanId" } },
             { "field.string": { name: "sessionId" } },
             { "field.string": { name: "callType" } },
+            // `system` (gen_ai.system) is part of the 18-field base row that
+            // buildLlmCallRow writes; the hand-rolled TPH base must declare it.
+            { "field.string": { name: "system" } },
             { "field.string": { name: "requestModel" } },
             { "field.string": { name: "responseModel" } },
             { "field.int": { name: "inputTokens" } },
@@ -76,6 +74,7 @@ const META = JSON.stringify({
             { "field.string": { name: "errorDetail" } },
             { "field.string": { name: "startedAt" } },
             { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
+            { "field.string": { name: "llmResponse", "@dbColumnType": "jsonb" } },
             { "identity.primary": { "@fields": "spanId" } },
           ],
         },
@@ -114,8 +113,6 @@ describe("ai-trace #1c — shared-table persistence (real Postgres)", () => {
     const result = await MetaDataLoader.fromString(META, "json");
     expect(result.errors).toHaveLength(0);
     const root = result.root;
-    const classifyRes = root.findObject("ClassifyRes")!;
-    const summarizeRes = root.findObject("SummarizeRes")!;
 
     // ONE-TABLE assertion: the STI subtypes do NOT each get their own table —
     // exactly one prompt_llm_call table is synthesised for the whole hierarchy.
@@ -137,28 +134,35 @@ describe("ai-trace #1c — shared-table persistence (real Postgres)", () => {
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
       const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
 
-      await recordLlmCall(
-        {
+      // The generic recorder writes only the base envelope + raw I/O; the typed
+      // voResponse is supplied by the generated typed helper. Here we model that
+      // helper's output directly: buildLlmCallRow(base) spread with the typed VO.
+      await om.create("ClassifyCall", {
+        ...buildLlmCallRow({
           spanId: C_SPAN,
           traceId: C_TRACE,
           callType: "classify",
           startedAt: "2026-06-05T00:00:00.000Z",
           llmRequest: { text: "hi" },
           llmResponseText: '{"label":"greeting","score":1}',
-        },
-        { recorder: new LlmCallDbRecorder(om, "ClassifyCall"), responseMo: classifyRes, format: Format.JSON },
-      );
-      await recordLlmCall(
-        {
+          status: "ok",
+          errorDetail: null,
+        }),
+        voResponse: { label: "greeting", score: 1 },
+      });
+      await om.create("SummarizeCall", {
+        ...buildLlmCallRow({
           spanId: S_SPAN,
           traceId: S_TRACE,
           callType: "summarize",
           startedAt: "2026-06-05T00:00:00.000Z",
           llmRequest: { doc: "..." },
           llmResponseText: '{"summary":"short"}',
-        },
-        { recorder: new LlmCallDbRecorder(om, "SummarizeCall"), responseMo: summarizeRes, format: Format.JSON },
-      );
+          status: "ok",
+          errorDetail: null,
+        }),
+        voResponse: { summary: "short" },
+      });
 
       const c = await om.findById("ClassifyCall", C_SPAN) as Record<string, unknown>;
       expect(c.callType).toBe("classify");
