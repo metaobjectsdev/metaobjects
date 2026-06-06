@@ -5,6 +5,7 @@
 > historical record; ADR-0022 is the current canonical statement.
 
 **Status:** Superseded by ADR-0022
+**Extended by ADR-0025:** D1 (the single docs door) now covers ALL documentation, via two cross-linked surfaces (`model` / `api`) — see [ADR-0025](ADR-0025-unified-docs-door.md).
 **Date:** 2026-06-02
 **Relates to:** ADR-0020 (codegen tiering), ADR-0015/0016 (migrate engine)
 
