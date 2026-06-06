@@ -61,6 +61,12 @@ class ExclusionReason(str, Enum):
     INHERITANCE_ANCHOR = "inheritance-anchor"
     #: TS-web-presentation-only facet (the generic ``view.*`` controls).
     PRESENTATION_ONLY = "presentation-only"
+    #: A feature genuinely absent in other ports — a deliberate TS-pilot vocabulary
+    #: item carried by a port that has begun the cross-port rollout. The exclusion
+    #: can only be REMOVED (clean end state) once ALL five ports register it and the
+    #: shared expected-registry.json adds it (atomic flip). AI LLM-call trace
+    #: persistence: ``@responseRef`` on template.prompt.
+    TS_PILOT_VOCAB = "ts-pilot-vocab"
 
 
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
@@ -70,6 +76,9 @@ _ATTR_NAME_IS_INTERFACE = "isInterface"
 # ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam.
 _ATTR_NAME_OBJECT = "object"
 _ATTR_NAME_OBJECT_ADAPTER = "objectAdapter"
+# AI LLM-call trace persistence — template.prompt @responseRef (TS pilot, rolling
+# out cross-port). Excluded from the emitted manifest until the atomic flip.
+_ATTR_NAME_RESPONSE_REF = "responseRef"
 
 # Per-type attr names carved out of the agreed vocabulary, each mapped to its
 # PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the
@@ -84,6 +93,7 @@ _EXCLUDED_PER_TYPE_ATTRS: dict[str, ExclusionReason] = {
     _ATTR_NAME_OBJECT: ExclusionReason.NATIVE_BINDING,
     _ATTR_NAME_OBJECT_ADAPTER: ExclusionReason.NATIVE_BINDING,
     DOC_ATTR_DESCRIPTION: ExclusionReason.COMMON_ATTR_DUP,
+    _ATTR_NAME_RESPONSE_REF: ExclusionReason.TS_PILOT_VOCAB,
 }
 
 

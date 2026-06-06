@@ -26,6 +26,10 @@ class MetaTemplate(MetaData):
         v = self.attr(tc.TEMPLATE_ATTR_TEXT_REF)
         return v if isinstance(v, str) and v else None
 
+    def response_ref(self) -> str | None:
+        v = self.attr(tc.TEMPLATE_ATTR_RESPONSE_REF)
+        return v if isinstance(v, str) and v else None
+
     def format_(self) -> str:
         v = self.attr(tc.TEMPLATE_ATTR_FORMAT)
         return v if isinstance(v, str) and v else tc.TEMPLATE_FORMAT_DEFAULT

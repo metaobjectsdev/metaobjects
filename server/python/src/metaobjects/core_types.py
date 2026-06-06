@@ -210,6 +210,10 @@ _OBJECT_CHILD_RULES = [
     ChildRule(TYPE_SOURCE, "*"),
     ChildRule(TYPE_RELATIONSHIP, "*"),
     ChildRule(TYPE_LAYOUT, "*"),
+    # template.* under object.entity — a declared prompt/output lives WITH its
+    # entity (AI LLM-call trace persistence; the trace entity carries a nested
+    # template.prompt). Mirrors Java MetaObject.optionalChild("template","*","*").
+    ChildRule(TYPE_TEMPLATE, "*"),
 ]
 # FR-014: @discriminator / @discriminatorValue (TPH single-table inheritance) are
 # registered on EVERY object subtype (base/entity/value) — cross-port contract.
@@ -733,6 +737,9 @@ _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
     AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
+    # @responseRef — template.prompt ONLY (AI trace; peer of @payloadRef). Carved
+    # out of the cross-port registry manifest (TS_PILOT_VOCAB) until promoted.
+    AttrSchema(name=tc.TEMPLATE_ATTR_RESPONSE_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 _TEMPLATE_TOOLCALL_ATTRS = [
     AttrSchema(name=tc.TEMPLATE_ATTR_TOOL_NAME, value_type=ATTR_SUBTYPE_STRING, required=True),
