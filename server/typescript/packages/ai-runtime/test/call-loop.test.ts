@@ -1,27 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { NullRecorder, type LlmCallRow } from "@metaobjectsdev/runtime-ts";
-import { callLlm } from "../src/call-loop.js";
+import { callLlm, runLlmCall } from "../src/call-loop.js";
 import type { LlmClient, Clock, IdGen } from "../src/client.js";
-
-const META = JSON.stringify({
-  "metadata.root": {
-    package: "test::ai",
-    children: [
-      {
-        "object.value": {
-          name: "Resp",
-          children: [{ "field.string": { name: "verdict", "@required": true } }],
-        },
-      },
-    ],
-  },
-});
-
-async function respMo() {
-  const { root } = await MetaDataLoader.fromString(META, "json");
-  return root.findObject("Resp")!;
-}
 
 class Capture extends NullRecorder {
   rows: LlmCallRow[] = [];
@@ -31,7 +11,7 @@ class Capture extends NullRecorder {
 }
 
 describe("callLlm", () => {
-  test("happy path: CALL then record, captures latency/cost/ids", async () => {
+  test("happy path: CALL then persist the base row, captures latency/cost/ids", async () => {
     // Deterministic seams.
     let t = 1000;
     const clock: Clock = { now: () => (t += 500) };
@@ -50,10 +30,9 @@ describe("callLlm", () => {
     const res = await callLlm(
       {
         callType: "Verdict",
-        payload: { q: "x" },
         request: { prompt: "P", model: "gpt-4o-mini" },
       },
-      { client, recorder: rec, responseMo: await respMo(), clock, ids },
+      { client, recorder: rec, clock, ids },
     );
     expect(res.status).toBe("ok");
     expect(rec.rows.length).toBe(1);
@@ -64,6 +43,10 @@ describe("callLlm", () => {
     expect(row.costMinor).toBe(75); // builtinCost gpt-4o-mini @1M+1M
     expect(typeof row.latencyMs).toBe("number");
     expect(row.status).toBe("ok");
+    expect(row.requestModel).toBe("gpt-4o-mini");
+    // The persisted row is the BASE row: raw llmResponse, no typed voResponse.
+    expect(row.llmResponse).toBe(JSON.stringify(JSON.stringify({ verdict: "ok" })));
+    expect("voResponse" in row).toBe(false);
   });
 
   test("supplied traceId is preserved (no new trace id)", async () => {
@@ -78,11 +61,10 @@ describe("callLlm", () => {
     await callLlm(
       {
         callType: "V",
-        payload: {},
         request: { prompt: "P", model: "m" },
         traceId: "T-EXIST",
       },
-      { client, recorder: rec, responseMo: await respMo(), ids },
+      { client, recorder: rec, ids },
     );
     expect(rec.rows[0]!.traceId).toBe("T-EXIST");
     expect(rec.rows[0]!.spanId).toBe("s1");
@@ -96,33 +78,18 @@ describe("callLlm", () => {
     };
     const rec = new Capture();
     const res = await callLlm(
-      { callType: "V", payload: {}, request: { prompt: "P", model: "m" } },
-      { client, recorder: rec, responseMo: await respMo() },
+      { callType: "V", request: { prompt: "P", model: "m" } },
+      { client, recorder: rec },
     );
     expect(res.status).toBe("error");
-    expect(res.voResponse).toBeNull();
+    expect(res.errorDetail).toContain("boom");
     expect(rec.rows.length).toBe(1);
-    expect(rec.rows[0]!.status).toBe("error");
-    expect(String(rec.rows[0]!.errorDetail)).toContain("boom");
-    // NOTE: the row has NO llmResponse key (recordLlmCall's shape) — do not assert on it.
-    expect(rec.rows[0]!.voResponse).toBeNull();
-  });
-
-  test("parse failure (lost required): error row, still persisted", async () => {
-    const client: LlmClient = {
-      async complete() {
-        return { body: JSON.stringify({ wrong: "shape" }) };
-      },
-    };
-    const rec = new Capture();
-    const res = await callLlm(
-      { callType: "V", payload: {}, request: { prompt: "P", model: "m" } },
-      { client, recorder: rec, responseMo: await respMo() },
-    );
-    expect(res.status).toBe("error");
-    expect(res.voResponse).toBeNull();
-    expect(rec.rows.length).toBe(1);
-    expect(rec.rows[0]!.status).toBe("error");
+    const row = rec.rows[0]!;
+    expect(row.status).toBe("error");
+    expect(String(row.errorDetail)).toContain("boom");
+    // Raw llmResponse is JSON.stringify of the empty body.
+    expect(row.llmResponse).toBe('""');
+    expect("voResponse" in row).toBe(false);
   });
 
   test("threads parentSpanId + sessionId into the row", async () => {
@@ -131,9 +98,9 @@ describe("callLlm", () => {
     };
     const rec = new Capture();
     await callLlm(
-      { callType: "V", payload: {}, request: { prompt: "P", model: "m" },
+      { callType: "V", request: { prompt: "P", model: "m" },
         parentSpanId: "parent-1", sessionId: "sess-1" },
-      { client, recorder: rec, responseMo: await respMo() },
+      { client, recorder: rec },
     );
     expect(rec.rows[0]!.parentSpanId).toBe("parent-1");
     expect(rec.rows[0]!.sessionId).toBe("sess-1");
@@ -143,12 +110,74 @@ describe("callLlm", () => {
     const client: LlmClient = { async complete() { throw new Error("boom"); } };
     const rec = new Capture();
     await callLlm(
-      { callType: "V", payload: {}, request: { prompt: "P", model: "m" },
+      { callType: "V", request: { prompt: "P", model: "m" },
         parentSpanId: "parent-2", sessionId: "sess-2" },
-      { client, recorder: rec, responseMo: await respMo() },
+      { client, recorder: rec },
     );
     expect(rec.rows[0]!.status).toBe("error");
     expect(rec.rows[0]!.parentSpanId).toBe("parent-2");
     expect(rec.rows[0]!.sessionId).toBe("sess-2");
+  });
+
+  test("system prompt flows into the row's system column", async () => {
+    const client: LlmClient = {
+      async complete() { return { body: JSON.stringify({ verdict: "ok" }) }; },
+    };
+    const rec = new Capture();
+    await callLlm(
+      { callType: "V", request: { prompt: "P", model: "m", system: "you are X" } },
+      { client, recorder: rec },
+    );
+    expect(rec.rows[0]!.system).toBe("you are X");
+  });
+});
+
+describe("runLlmCall", () => {
+  test("success: returns ok input + completion, envelope populated", async () => {
+    let t = 1000;
+    const clock: Clock = { now: () => (t += 500) };
+    let n = 0;
+    const ids: IdGen = { next: () => `id${++n}` };
+    const client: LlmClient = {
+      async complete(req) {
+        return {
+          body: JSON.stringify({ verdict: "ok" }),
+          model: req.model,
+          usage: { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        };
+      },
+    };
+    const result = await runLlmCall(
+      { callType: "Verdict", request: { prompt: "P", model: "gpt-4o-mini" } },
+      { client, clock, ids },
+    );
+    expect(result.input.status).toBe("ok");
+    expect(result.input.errorDetail).toBeNull();
+    expect(result.completion).toBeDefined();
+    expect(result.completion!.body).toBe(JSON.stringify({ verdict: "ok" }));
+    // Envelope fields populated.
+    expect(result.input.spanId).toBe("id1");
+    expect(result.input.traceId).toBe("id2");
+    expect(result.input.callType).toBe("Verdict");
+    expect(result.input.requestModel).toBe("gpt-4o-mini");
+    expect(typeof result.input.latencyMs).toBe("number");
+    expect(typeof result.input.startedAt).toBe("string");
+    expect(result.input.costMinor).toBe(75);
+    expect(result.input.llmResponseText).toBe(JSON.stringify({ verdict: "ok" }));
+  });
+
+  test("client throw: error input, no completion, never rethrows", async () => {
+    const client: LlmClient = {
+      async complete() { throw new Error("kaboom"); },
+    };
+    const result = await runLlmCall(
+      { callType: "V", request: { prompt: "P", model: "m" } },
+      { client },
+    );
+    expect(result.input.status).toBe("error");
+    expect(result.input.errorDetail).toContain("kaboom");
+    expect(result.completion).toBeUndefined();
+    // On a throw, the raw response text falls back to "".
+    expect(result.input.llmResponseText).toBe("");
   });
 });

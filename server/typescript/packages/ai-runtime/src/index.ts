@@ -14,6 +14,13 @@ export {
 
 export { builtinCost, type CostFn } from "./cost.js";
 
-export { callLlm, type CallLlmInput, type CallLlmDeps } from "./call-loop.js";
+export {
+  callLlm,
+  runLlmCall,
+  type CallLlmDeps,
+  type RunLlmCallInput,
+  type RunLlmCallDeps,
+  type RunLlmCallResult,
+} from "./call-loop.js";
 
 export { CompositeRecorder, type CompositeRecorderOpts } from "./composite.js";
