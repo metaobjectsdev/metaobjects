@@ -26,7 +26,9 @@ Tools that do precisely "one neutral model → many idiomatic language outputs" 
 
 ## Design
 
-### 1. Config: additive `apiSurfaces[]` (back-compat)
+### 1. Config: `apiSurfaces[]` is the canonical api-target list
+
+> **No backwards compatibility required** — the docs door is unreleased / unused, so SP-1 replaces the single-api notion outright rather than carrying a dual path. Goldens update once to the new shape; there is no "byte-identical default" constraint.
 
 Extend `DocsConfig` (`packages/codegen-ts/src/metaobjects-config.ts`):
 ```ts
@@ -37,20 +39,19 @@ export interface ApiSurface {
 }
 export interface DocsConfig {
   outDir?: string; layout?: OutputLayout; baseUrl?: string;
-  surfaces?: DocsSurface[];          // existing — unchanged
-  apiSurfaces?: ApiSurface[];        // NEW — polyglot api surface list
+  surfaces?: DocsSurface[];          // model/api on-off selector (drives --model/--api)
+  apiSurfaces?: ApiSurface[];        // the api targets; default [{ lang:"ts", subDir:"api" }]
 }
 ```
-- **Absent `apiSurfaces` → today's behavior, byte-identical** (single model + single `api/` surface via the existing path).
-- **Present `apiSurfaces` → it supersedes the single default:** the model page links to every entry; each language's `docs` command emits the surface whose `lang` it owns into that entry's `subDir`.
-- `resolveDocsConfig` resolves `apiSurfaces` from config + (future) any manifest into one `ResolvedDocsConfig.apiSurfaces` list — the source-agnostic seam.
+- `apiSurfaces` is **the** api-target list. The model page links to every entry; each language's `docs` command emits the surface whose `lang` it owns into that entry's `subDir`. The TS api surface is just `{ lang:"ts", subDir:"api" }` in that list (no special single-surface path).
+- `resolveDocsConfig` resolves `apiSurfaces` (default the single TS entry) into one `ResolvedDocsConfig.apiSurfaces` list — the source-agnostic seam a future manifest can also feed.
+- `surfaces` stays only as the model/api on-off selector (CLI `--model`/`--api`); whether the api side emits = `"api" ∈ surfaces && apiSurfaces` non-empty.
 
 ### 2. Model page links to the SET of api surfaces
 
-The model entity page's single `apiPageHref` generalizes to `apiRefs: { label: string; href: string }[]`:
-- rendered as `**API reference:** [TypeScript](api/ts/Order.md) · [Java](api/java/Order.md)`
+The model entity page's single `apiPageHref` is **replaced** by `apiRefs: { label: string; href: string }[]` (one rendering path, no special-case):
+- rendered as `**API reference:** [TypeScript](api/ts/Order.md) · [Java](api/java/Order.md)`; a single-entry list renders one labeled link.
 - `label` from a small `lang → label` map (`ts`→`TypeScript`, `java`→`Java`, `kotlin`→`Kotlin`, `csharp`→`C#`, `python`→`Python`; unknown → the `lang` verbatim, capitalized).
-- When `apiSurfaces` is absent, the existing single `apiPageHref` path is used unchanged (one-entry case need not route through `apiRefs` — keep the byte-identical default).
 
 ### 3. Cross-link base: relative (one tree) or `baseUrl` (federated)
 
@@ -79,9 +80,9 @@ Because one command cannot emit another language's pages, the gate emits **all d
 - include a `baseUrl` case asserting a surface with `baseUrl` produces absolute links (and is therefore NOT expected in the local tree);
 - a teeth unit proving the checker flags a missing target.
 
-### 6. Byte-stability
+### 6. No back-compat constraint
 
-No `apiSurfaces` declared → zero output change (the single-surface path is untouched). Multi-surface behavior activates only on opt-in. Existing goldens unchanged except where a fixture opts into `apiSurfaces`.
+The docs door is unreleased, so SP-1 need not preserve current output. The model/api page goldens update **once** to the new `apiRefs` shape (the default single TS surface now renders `**API reference:** [TypeScript](api/Order.md)`). One rendering path; no dual single-vs-list special case.
 
 ## Fixture placement (fixes a cross-port landmine)
 
@@ -109,7 +110,7 @@ A new ADR (next free number, ~ADR-0026) records the **polyglot docs composition 
 
 - `resolveDocsConfig` resolves `apiSurfaces` (config → resolved list); absent → single-surface default.
 - multi-surface cross-link integrity (flat + package), baseUrl federation case, teeth.
-- byte-stability: no-`apiSurfaces` output unchanged (existing goldens green, no churn).
+- the default single-TS-surface case renders the `apiRefs` shape; goldens updated once to it.
 - all TS docs gates green after fixture relocation; the shared-corpus cross-port harnesses no longer glob the docs input-only fixtures.
 
 ## YAGNI / non-goals
