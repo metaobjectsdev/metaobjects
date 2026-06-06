@@ -11,16 +11,6 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./anthropic": {
-      "bun": "./src/anthropic.ts",
-      "types": "./dist/anthropic.d.ts",
-      "default": "./dist/anthropic.js"
-    },
-    "./openai": {
-      "bun": "./src/openai.ts",
-      "types": "./dist/openai.d.ts",
-      "default": "./dist/openai.js"
-    },
     "./langfuse": {
       "bun": "./src/langfuse.ts",
       "types": "./dist/langfuse.d.ts",
@@ -54,14 +44,10 @@
     "@metaobjectsdev/runtime-ts": "workspace:*"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": ">=0.30.0",
-    "openai": ">=4.0.0",
     "langfuse": ">=3.0.0",
     "@opentelemetry/api": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "@anthropic-ai/sdk": { "optional": true },
-    "openai": { "optional": true },
     "langfuse": { "optional": true },
     "@opentelemetry/api": { "optional": true }
   },

@@ -12,7 +12,7 @@ export {
   type IdGen,
 } from "./client.js";
 
-export { builtinCost, type CostFn } from "./cost.js";
+export type { CostFn } from "./cost.js";
 
 export {
   callLlm,

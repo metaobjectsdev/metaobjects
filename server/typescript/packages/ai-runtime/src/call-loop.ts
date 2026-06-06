@@ -15,7 +15,7 @@ import {
   type LlmRequest,
   type LlmCompletion,
 } from "./client.js";
-import { builtinCost, type CostFn } from "./cost.js";
+import type { CostFn } from "./cost.js";
 
 export interface RunLlmCallInput {
   /** Discriminator / call identity. */
@@ -54,7 +54,6 @@ export async function runLlmCall(
 ): Promise<RunLlmCallResult> {
   const clock = deps.clock ?? systemClock;
   const ids = deps.ids ?? uuidIds;
-  const cost = deps.cost ?? builtinCost;
 
   const spanId = ids.next();
   const traceId = input.traceId ?? ids.next();
@@ -92,8 +91,8 @@ export async function runLlmCall(
   if (completion?.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;
   if (completion?.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;
   if (completion?.finishReason !== undefined) recInput.finishReason = completion.finishReason;
-  if (completion !== undefined) {
-    const c = cost(completion.model ?? input.request.model, completion.usage);
+  if (completion !== undefined && deps.cost !== undefined) {
+    const c = deps.cost(completion.model ?? input.request.model, completion.usage);
     if (c !== null) recInput.costMinor = c;
   }
 

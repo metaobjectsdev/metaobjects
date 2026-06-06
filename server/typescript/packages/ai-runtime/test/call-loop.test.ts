@@ -11,7 +11,7 @@ class Capture extends NullRecorder {
 }
 
 describe("callLlm", () => {
-  test("happy path: CALL then persist the base row, captures latency/cost/ids", async () => {
+  test("happy path: CALL then persist the base row, captures latency/ids", async () => {
     // Deterministic seams.
     let t = 1000;
     const clock: Clock = { now: () => (t += 500) };
@@ -40,13 +40,48 @@ describe("callLlm", () => {
     expect(row.callType).toBe("Verdict");
     expect(row.spanId).toBe("id1"); // first id → span
     expect(row.traceId).toBe("id2"); // second id → trace (none supplied)
-    expect(row.costMinor).toBe(75); // builtinCost gpt-4o-mini @1M+1M
     expect(typeof row.latencyMs).toBe("number");
     expect(row.status).toBe("ok");
     expect(row.requestModel).toBe("gpt-4o-mini");
     // The persisted row is the BASE row: raw llmResponse, no typed voResponse.
     expect(row.llmResponse).toBe(JSON.stringify(JSON.stringify({ verdict: "ok" })));
     expect("voResponse" in row).toBe(false);
+  });
+
+  test("injected CostFn is called and costMinor is set", async () => {
+    const client: LlmClient = {
+      async complete(req) {
+        return {
+          body: JSON.stringify({ verdict: "ok" }),
+          model: req.model,
+          usage: { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        };
+      },
+    };
+    const rec = new Capture();
+    await callLlm(
+      { callType: "X", request: { prompt: "p", model: "m" } },
+      { client, recorder: rec, cost: () => 75 },
+    );
+    expect(rec.rows[0]!.costMinor).toBe(75);
+  });
+
+  test("no CostFn → costMinor is null (no built-in rate table)", async () => {
+    const client: LlmClient = {
+      async complete(req) {
+        return {
+          body: JSON.stringify({ verdict: "ok" }),
+          model: req.model,
+          usage: { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        };
+      },
+    };
+    const rec = new Capture();
+    await callLlm(
+      { callType: "X", request: { prompt: "p", model: "m" } },
+      { client, recorder: rec },
+    );
+    expect(rec.rows[0]!.costMinor).toBeNull();
   });
 
   test("supplied traceId is preserved (no new trace id)", async () => {
@@ -162,7 +197,8 @@ describe("runLlmCall", () => {
     expect(result.input.requestModel).toBe("gpt-4o-mini");
     expect(typeof result.input.latencyMs).toBe("number");
     expect(typeof result.input.startedAt).toBe("string");
-    expect(result.input.costMinor).toBe(75);
+    // No CostFn injected → costMinor absent on input (no built-in rate table, ADR-0024).
+    expect(result.input.costMinor).toBeUndefined();
     expect(result.input.llmResponseText).toBe(JSON.stringify({ verdict: "ok" }));
   });
 
