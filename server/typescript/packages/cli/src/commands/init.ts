@@ -34,7 +34,6 @@ import {
   routesFile,
   // formFile,        // opt-in: emit React form components
   barrel,
-  apiDocsFile,
 } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
@@ -48,8 +47,12 @@ export default defineConfig({
     queriesFile(),
     routesFile(),
     barrel(),
-    apiDocsFile(),  // SDK/API reference -> <outDir>/docs/api/ (for neutral model docs, run: meta docs)
   ],
+  docs: {
+    outDir:   "./docs",        // model + api surfaces both land here (run: meta docs)
+    layout:   "flat",          // or "package" for multi-package models
+    surfaces: ["model", "api"],
+  },
 });
 `;
 }

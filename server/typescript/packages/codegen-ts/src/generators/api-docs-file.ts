@@ -65,6 +65,12 @@ export interface ApiDocsFileOpts {
   modelSurface?: boolean;
 }
 
+/**
+ * @deprecated ADR-0025: `meta docs` is the single door for ALL docs. `apiDocsFile()`
+ * stays as the INTERNAL engine of the docs door's api surface — do NOT add it to a
+ * `meta gen` config / the generators array. Use `meta docs` (it emits the api surface
+ * alongside the model surface). A `meta gen` config that lists it is warned + skipped.
+ */
 export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
   const generator: Generator = {
     name: "api-docs",

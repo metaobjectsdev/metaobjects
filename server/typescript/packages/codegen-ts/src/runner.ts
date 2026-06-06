@@ -20,6 +20,10 @@ import {
  *  from untrusted sources (e.g. MCP). Mirrors the guard in legacy generate.ts. */
 const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** ADR-0025: doc generators whose single door is `meta docs`. If a `meta gen`
+ *  config still lists one (by its stable `name`), the runner warns + skips it. */
+const DEPRECATED_DOC_GENERATORS = new Set(["docs-file", "api-docs"]);
+
 export interface RunGenOpts {
   config: MetaobjectsGenConfig;
   metadata: MetaData;
@@ -151,6 +155,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];
   for (const generator of config.generators) {
+    // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
+    // still lists a deprecated doc generator is warned + skipped, not run — the
+    // generator stays as `meta docs`'s internal engine.
+    if (DEPRECATED_DOC_GENERATORS.has(generator.name)) {
+      warnings.push(
+        `[${generator.name}] docs are produced by 'meta docs' (ADR-0025); ` +
+        `remove ${generator.name === "api-docs" ? "apiDocsFile()" : "docsFile()"} from generators. Skipped.`,
+      );
+      continue;
+    }
     const selfTarget = targetOf(generator);
     const renderContext = makeRenderContext({
       dialect: config.dialect,

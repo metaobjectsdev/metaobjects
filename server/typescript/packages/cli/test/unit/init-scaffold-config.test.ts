@@ -18,7 +18,6 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(body).toContain(`queriesFile()`);
     expect(body).toContain(`routesFile()`);
     expect(body).toContain(`barrel()`);
-    expect(body).toContain(`apiDocsFile()`);
     expect(result.created).toContain("metaobjects.config.ts");
   });
 
@@ -31,6 +30,12 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     await init({ cwd: tmp, quiet: true });
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
     expect(body).not.toContain("docsFile");
+    // ADR-0025: apiDocsFile() likewise is the INTERNAL engine of `meta docs`'s api
+    // surface, not a generators-array entry. The scaffold expresses docs intent via a
+    // `docs:` config block consumed by `meta docs`, not via a deprecated generator.
+    expect(body).not.toContain("apiDocsFile");
+    expect(body).toContain("docs:");
+    expect(body).toContain("surfaces:");
     expect(nextStepsBlock()).toContain("meta docs");
   });
 
