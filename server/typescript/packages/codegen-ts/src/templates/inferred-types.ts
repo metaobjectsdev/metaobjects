@@ -31,6 +31,9 @@ import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { sharedEnumForField } from "../enum-shared.js";
+import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
+import type { RenderContext } from "../render-context.js";
 
 /**
  * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
@@ -79,12 +82,23 @@ export function enumUnionString(values: string[]): string {
 }
 
 /**
- * Emit one `export type <Name> = "A" | "B";` line per field.enum field on the entity.
- * - If the field extends an abstract field.enum (super), use the super field's PascalCase name.
- * - Otherwise use `<Entity><FieldPascal>` for inline enums.
- * Returns null if the entity has no enum fields.
+ * Emit the enum type-alias section for an entity file. Three cases per field:
+ *
+ *  • inline enum (members declared directly on the field; no root-abstract super)
+ *    → `export type <Entity><Field> = "A" | "B";` — UNCHANGED (byte-identical).
+ *  • shared materialized enum (extends a NON-@provided root-level abstract
+ *    field.enum) → re-export the materialized type from the shared `./enums`
+ *    module (`export { type E } from "./enums"`) instead of redeclaring it. The
+ *    type is materialized ONCE in enums.ts (FR-019).
+ *  • provided enum (extends a @provided root-level abstract field.enum) →
+ *    re-export the type from the configured external module
+ *    (`export { type E } from "<providedEnumModule>"`); metaobjects emits no
+ *    declaration for it. A missing config is a codegen-time error.
+ *
+ * `ctx` is required to compute the shared/provided import specifiers. Returns
+ * null when the entity has no enum-alias lines to emit.
  */
-export function renderEnumTypeAliases(entity: MetaObject): Code | null {
+export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): Code | null {
   // De-duplicate by type-alias name — multiple fields can extend the same abstract enum.
   const seen = new Set<string>();
   const lines: string[] = [];
@@ -99,7 +113,21 @@ export function renderEnumTypeAliases(entity: MetaObject): Code | null {
     if (seen.has(typeName)) continue;
     seen.add(typeName);
 
-    lines.push(`export type ${typeName} = ${enumUnionString(values)};`);
+    // Without a RenderContext (bare unit-test calls) the shared/provided import
+    // specifiers can't be computed — fall back to inline emission. Real runs
+    // always pass ctx (entity-file template), so shared materialization applies.
+    const shared = ctx !== undefined ? sharedEnumForField(field) : undefined;
+    if (shared === undefined) {
+      // Inline enum — emit the literal union exactly as before.
+      lines.push(`export type ${typeName} = ${enumUnionString(values)};`);
+      continue;
+    }
+    // Shared / provided enum — re-export from the materialized module or the
+    // configured external module; never redeclare the union here.
+    const spec = shared.provided
+      ? providedEnumImportSpecifier(ctx!, shared.name)
+      : sharedEnumImportSpecifier(ctx!, entity.package);
+    lines.push(`export { type ${shared.name} } from ${JSON.stringify(spec)};`);
   }
 
   return lines.length > 0 ? code`${lines.join("\n")}` : null;
@@ -172,7 +200,7 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
  * Returns a `Code` so cross-module `field.object` refs can be hoisted via
  * ts-poet `imp(...)` — matching how the Zod emitter hoists `<Ref>InsertSchema`.
  */
-function valueObjectFieldType(entity: MetaObject, field: MetaField): Code {
+function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: RenderContext): Code {
   // field.object: import the referenced TS interface from its sibling module
   // so ts-poet hoists the import. Mirrors zod-validators.ts's `<Ref>InsertSchema`
   // import strategy, just for the type alias instead of the schema constant.
@@ -190,6 +218,20 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField): Code {
     const values = enumValues(field);
     if (values !== undefined) {
       const alias = enumUnionAliasName(entity.name, field);
+      // FR-019: a shared/provided enum's type lives in another module (./enums or
+      // the provided module). Use imp() so ts-poet hoists `import { type E }` —
+      // the local interface can then reference E. Inline enums reference the
+      // locally-declared `<Entity><Field>` alias as before.
+      if (ctx !== undefined) {
+        const shared = sharedEnumForField(field);
+        if (shared !== undefined) {
+          const spec = shared.provided
+            ? providedEnumImportSpecifier(ctx, shared.name)
+            : sharedEnumImportSpecifier(ctx, entity.package);
+          const sym = imp(`${shared.name}@${spec}`);
+          return field.isArray ? code`${sym}[]` : code`${sym}`;
+        }
+      }
       return field.isArray ? code`${alias}[]` : code`${alias}`;
     }
     return field.isArray ? code`string[]` : code`string`;
@@ -207,7 +249,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField): Code {
  * trip through Drizzle nullable columns, so the null-bridge is unnecessary
  * here — and forces consumers into a residual cast at the call site.
  */
-export function renderValueObjectInterface(entity: MetaObject): Code {
+export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderContext): Code {
   const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
 
@@ -215,7 +257,7 @@ export function renderValueObjectInterface(entity: MetaObject): Code {
   for (const field of entity.fields()) {
     const required = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
-    const tsType = valueObjectFieldType(entity, field);
+    const tsType = valueObjectFieldType(entity, field, ctx);
     lines.push(code`  ${field.name}${optional}: ${tsType};`);
   }
 

@@ -47,6 +47,15 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /**
+   * FR-019 / ADR-0026: the module specifier from which an externally-PROVIDED
+   * shared enum (`@provided: true` on an abstract package-level `field.enum`) is
+   * imported. metaobjects emits NO type for a provided enum — consuming entity
+   * files `import { <EnumName> } from "<providedEnumModule>"`. The per-port
+   * namespace/module is codegen config, never a metadata attr (ADR-0001). A model
+   * that references a provided enum without this set is a codegen-time error.
+   */
+  providedEnumModule?: string;
 }
 
 export interface MetaobjectsGenConfig extends ResolvedGenConfig {

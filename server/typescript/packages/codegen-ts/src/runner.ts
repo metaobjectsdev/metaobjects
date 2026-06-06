@@ -181,6 +181,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       packageOf,
       selfTarget,
       entityModuleTarget,
+      ...(config.providedEnumModule !== undefined && { providedEnumModule: config.providedEnumModule }),
     });
     const ctx: GenContext = {
       entities: safeEntities,

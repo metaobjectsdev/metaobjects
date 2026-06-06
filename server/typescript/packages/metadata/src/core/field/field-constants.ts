@@ -123,6 +123,13 @@ export const FIELD_ATTR_VALUES = "values";
  */
 export const ENUM_MEMBER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** FR-019: marks a named-type declaration (an abstract package-level field.enum)
+ *  as externally PROVIDED — codegen references the type instead of materializing
+ *  it. Optional boolean, default false; meaningful only on an abstract (declaration)
+ *  field.enum (a concrete consuming field does not carry it). Per ADR-0026, no
+ *  per-port namespace lives in metadata — the reference target is codegen config. */
+export const FIELD_ATTR_PROVIDED = "provided";
+
 /** FR-010: map of off-vocabulary token → canonical enum member, feeding the
  *  tolerant extract alias-fold. `properties`-shaped; only on field.enum. */
 export const FIELD_ATTR_ENUM_ALIAS = "enumAlias";

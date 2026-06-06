@@ -36,7 +36,7 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, enumAliasAttr, enumDocAttr, coerceDefaultAttr, normalizeAttr } from "./core/field/field-schema.js";
+import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, providedFieldAttr, enumAliasAttr, enumDocAttr, coerceDefaultAttr, normalizeAttr } from "./core/field/field-schema.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -215,6 +215,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
           ? [
               ...commonFieldAttrs,
               { ...enumFieldAttr },
+              { ...providedFieldAttr },
               { ...enumAliasAttr },
               { ...enumDocAttr },
               { ...coerceDefaultAttr },

@@ -59,6 +59,7 @@ import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
 import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
 import { TEMPLATE_ATTR_RESPONSE_REF } from "./template/template-constants.js";
+import { FIELD_ATTR_PROVIDED } from "./core/field/field-constants.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
@@ -78,9 +79,11 @@ export enum ExclusionReason {
    * ports have not ported the foundation behind it), so it is carved out of the
    * cross-port manifest until the feature is promoted to all five ports. The
    * liveness tripwire still requires it to be genuinely registered in TS — this
-   * is an explicit, reasoned carve-out, not a silent default. Today the sole
-   * member is `template.prompt`'s `@responseRef` (the AI prompt-derived-trace
-   * vertical, sibling of the cross-port `@payloadRef`).
+   * is an explicit, reasoned carve-out, not a silent default. Members today:
+   * `template.prompt`'s `@responseRef` (the AI prompt-derived-trace vertical,
+   * sibling of the cross-port `@payloadRef`) and `field.enum`'s `@provided`
+   * (FR-019 shared/provided enums — TS reference slice; the C#/Java/Kotlin/Python
+   * fan-out promotes it to the cross-port manifest later).
    */
   TsPilotVocab = "ts-pilot-vocab",
 }
@@ -111,6 +114,7 @@ export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new
   [ATTR_NAME_OBJECT_ADAPTER, ExclusionReason.NativeBinding],
   [DOC_ATTR_DESCRIPTION, ExclusionReason.CommonAttrDup],
   [TEMPLATE_ATTR_RESPONSE_REF, ExclusionReason.TsPilotVocab],
+  [FIELD_ATTR_PROVIDED, ExclusionReason.TsPilotVocab],
 ]);
 
 /**

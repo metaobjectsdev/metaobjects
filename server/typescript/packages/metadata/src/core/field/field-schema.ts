@@ -28,6 +28,7 @@ import {
   FIELD_ATTR_AUTO_SET,
   AUTO_SET_VALUES,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_PROVIDED,
   FIELD_ATTR_ENUM_ALIAS,
   FIELD_ATTR_ENUM_DOC,
   FIELD_ATTR_EXAMPLE,
@@ -180,6 +181,20 @@ export const enumFieldAttr: AttrSchema = {
   required: true,
   description:
     "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.",
+};
+
+/** FR-019: the @provided attr — only on field.enum. Optional boolean. When true on
+ *  an abstract (declaration) field.enum, codegen REFERENCES the type from per-port
+ *  config instead of materializing it (ADR-0026). A non-boolean value is rejected at
+ *  load with ERR_BAD_ATTR_VALUE. No namespace/FQN lives in metadata (ADR-0001). */
+export const providedFieldAttr: AttrSchema = {
+  name: FIELD_ATTR_PROVIDED,
+  valueType: ATTR_SUBTYPE_BOOLEAN,
+  required: false,
+  description:
+    "FR-019: marks an abstract package-level field.enum as externally provided — " +
+    "codegen references the type (resolved via per-port codegen config) instead of " +
+    "materializing it. Default false. Not a field attr — it lives on the type declaration.",
 };
 
 /** The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical

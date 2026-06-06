@@ -54,7 +54,7 @@ export function renderEntityFile(
   // it. The entity-file generator suppresses this entirely when
   // emitAbstractShapes is off; here we only guarantee "shape, never table".
   if (isAbstract(entity)) {
-    return renderValueObjectFile(entity, ctx.apiPrefix);
+    return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
 
   // --- Projection path (read-only: view-backed entity with no table source) ---
@@ -73,11 +73,11 @@ export function renderEntityFile(
   // the shape (LLM tool_use input_schema, REST body parsing) use the Zod
   // schema; consumers that need the type use the interface.
   if (!hasWritableRdbSource(entity)) {
-    return renderValueObjectFile(entity, ctx.apiPrefix);
+    return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
 
   // --- Vanilla / write-through entity path ---
-  const enumAliases = renderEnumTypeAliases(entity);
+  const enumAliases = renderEnumTypeAliases(entity, ctx);
   // FR-017 Tier 1: when this entity carries @discriminator AND has concrete
   // subtypes, append the discriminated-union type alias, type guards, and
   // the parse<Base>(row) dispatcher. Returns null otherwise (no subtypes, or
@@ -91,7 +91,7 @@ export function renderEntityFile(
     renderDrizzleSchema(entity, ctx),
     renderInferredTypes(entity, tphBase),
     ...(enumAliases !== null ? [enumAliases] : []),
-    renderZodValidators(entity),
+    renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix),
     ...(allowlists ? [renderFilterAllowlist(entity), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),

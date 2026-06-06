@@ -10,6 +10,7 @@
 
 import { joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import type { RenderContext } from "../render-context.js";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
 import {
   renderInsertSchemaOnly,
@@ -22,8 +23,8 @@ import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.j
 import { renderFilterType } from "./filter-type.js";
 import { GENERATED_HEADER } from "../constants.js";
 
-export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
-  const enumAliases = renderEnumTypeAliases(obj);
+export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
+  const enumAliases = renderEnumTypeAliases(obj, ctx);
   // FR-017 Tier 2: a TPH subtype lands here (it inherits the base's source.rdb
   // but declares none of its own). In addition to the insert schema it emits a
   // full read schema `<Sub>Schema` so parse<Base>(row) can dispatch to it.
@@ -45,7 +46,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = ""): string {
   // `<Sub>Filter` can't express a filter the server allowlist would 400.
   const tphFilterType = tphSubtype ? renderFilterType(obj, discField) : null;
   const sections: Code[] = [
-    renderValueObjectInterface(obj),
+    renderValueObjectInterface(obj, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
     ...(tphReadSchema !== null ? [tphReadSchema] : []),
     renderInsertSchemaOnly(obj),

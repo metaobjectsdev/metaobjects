@@ -28,6 +28,10 @@ import {
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { sharedEnumForField } from "../enum-shared.js";
+import { sharedEnumImportSpecifier } from "../enum-import.js";
+import { sharedEnumZodConstName } from "./enums-file.js";
+import type { RenderContext } from "../render-context.js";
 
 /**
  * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
@@ -244,7 +248,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   return out;
 }
 
-export function renderZodValidators(obj: MetaObject): Code {
+export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -278,7 +282,7 @@ export function renderZodValidators(obj: MetaObject): Code {
         code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child)}`);
+      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     }
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
@@ -292,7 +296,7 @@ export function renderZodValidators(obj: MetaObject): Code {
       // All non-autoSet fields are optional in the update schema (PATCH semantics).
       // zodFieldExpr already appends .optional() when the field is non-required
       // OR has a default; only append once more when it didn't.
-      const baseExpr = zodFieldExpr(child);
+      const baseExpr = zodFieldExpr(child, obj, ctx);
       updateFieldLines.push(
         fieldWillBeOptional(child) ? code`  ${child.name}: ${baseExpr}` : code`  ${child.name}: ${baseExpr}.optional()`,
       );
@@ -316,7 +320,7 @@ ${joinCode(updateFieldLines, { on: ",\n" })}
 `;
 }
 
-function zodFieldExpr(field: MetaField): Code {
+function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
   // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
   // via an imp() so ts-poet hoists the cross-module import. Without this the
   // field used to collapse to z.string() / z.array(z.string()) and downstream
@@ -357,7 +361,27 @@ function zodFieldExpr(field: MetaField): Code {
       break;
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);
-      baseStr = values !== undefined ? zodEnumExpr(values) : "z.string()";
+      if (values === undefined) {
+        baseStr = "z.string()";
+        break;
+      }
+      // FR-019: a field extending a MATERIALIZED root-level abstract enum uses the
+      // shared `<E>Enum` Zod const (imported from ./enums) instead of inlining
+      // z.enum([...]). A @provided enum keeps inline z.enum([...]) — validation
+      // stays metaobjects-owned (the @values SSOT); only the TS type is external.
+      // Inline enums (and bare-ctx unit-test calls) keep inlining as before.
+      if (ctx !== undefined) {
+        const shared = sharedEnumForField(field);
+        if (shared !== undefined && !shared.provided) {
+          const constName = sharedEnumZodConstName(shared.name);
+          const spec = sharedEnumImportSpecifier(ctx, owner?.package);
+          const sharedConst = imp(`${constName}@${spec}`);
+          let base: Code = code`${sharedConst}`;
+          if (field.isArray) base = code`z.array(${base})`;
+          return appendValidatorChain(base, field);
+        }
+      }
+      baseStr = zodEnumExpr(values);
       break;
     }
     case FIELD_SUBTYPE_STRING:
