@@ -66,6 +66,24 @@ describe("ai-trace #1c — STI callType stamping", () => {
   });
 });
 
+describe("ai-trace — redaction threaded through the generated typed path", () => {
+  test("record<Entity> exposes an opts.redact param and threads it to persist", async () => {
+    const { classify } = await genTrace();
+    // The emitted file must import the LlmCallRow type used by the redact callback.
+    expect(classify).toContain("type LlmCallRow,");
+    // Optional 4th param exposing redact.
+    expect(classify).toContain("opts?: { redact?: (row: LlmCallRow) => LlmCallRow }");
+    // Threaded into persistLlmCallRow (exactOptionalPropertyTypes-safe guard).
+    expect(classify).toContain("opts?.redact ? { redact: opts.redact } : undefined");
+  });
+
+  test("call<Entity> exposes redact on CallDeps and threads it to persist", async () => {
+    const { summarize } = await genTrace();
+    expect(summarize).toContain("redact?: (row: LlmCallRow) => LlmCallRow;");
+    expect(summarize).toContain("deps.redact ? { redact: deps.redact } : undefined");
+  });
+});
+
 describe("ai-trace #1c — STI table collapse", () => {
   test("N trace subtypes collapse to one prompt_llm_call table", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ai1c-schema-"));

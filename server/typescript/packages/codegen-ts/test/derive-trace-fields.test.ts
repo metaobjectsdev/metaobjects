@@ -65,7 +65,7 @@ describe("derive trace fields", () => {
     expect(h).toContain("buildLlmCallRow(");
     expect(h).toContain("voRequest: input.llmRequest");
     expect(h).toContain("voResponse:");
-    expect(h).toContain('persistLlmCallRow(new LlmCallDbRecorder(om, "ClassifyCall"), row)');
+    expect(h).toContain('persistLlmCallRow(new LlmCallDbRecorder(om, "ClassifyCall"), row, opts?.redact ? { redact: opts.redact } : undefined)');
     // stale generic-path entry point must be gone.
     expect(h).not.toContain("recordLlmCall(");
     // non-STI invariant: a trace entity that is NOT a TPH subtype keeps callType

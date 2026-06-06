@@ -45,7 +45,7 @@ export interface TraceHelperOpts {
   target?: string;
 }
 
-/** Walk the super chain looking for a node whose name matches `baseName`. */
+/** Walk the super chain looking for a node named LLM_CALL_BASE. */
 function extendsBase(obj: MetaObject): boolean {
   let cur = obj.superResolved;
   while (cur !== undefined) {
@@ -124,6 +124,9 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       // that renders the prompt text, calls the LLM, then parses + persists a trace row.
       const textRef = prompt.ownAttr(TEMPLATE_ATTR_TEXT_REF);
       const renderable = typeof textRef === "string";
+      // Same @format attr, two intentionally different shapes: extract() takes the
+      // Format enum (formatLiteral, above → Format.XML/Format.JSON), render() takes the
+      // raw format string (renderFormat, here → e.g. "json"/"xml", default "text").
       const renderFormat = typeof promptFormat === "string" ? promptFormat : "text";
 
       // Build the import block — all imports MUST stay at the top of the emitted file.
@@ -139,6 +142,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         `  extractSchemaFor,`,
         `  Format,`,
         `  type LlmCallInput,`,
+        `  type LlmCallRow,`,
         `} from "@metaobjectsdev/runtime-ts";`,
         renderable
           ? `import { extract, render, type Provider } from "@metaobjectsdev/render";`
@@ -191,11 +195,15 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         ` *                     Passed explicitly because ObjectManager does not expose`,
         ` *                     its loaded metadata root.`,
         ` * @param input      - LLM call inputs; type \`llmRequest\` as \`${requestType}\`.`,
+        ` * @param opts       - Optional \`redact\` hook applied to the row before persist`,
+        ` *                     (scrub PII/secrets on the typed path, same as the generic`,
+        ` *                     recordLlmCall/callLlm helpers).`,
         ` */`,
         `export async function ${fnName}(`,
         `  om: ObjectManager,`,
         `  responseMo: MetaObject,`,
         `  input: Omit<LlmCallInput, ${recordInputOmit}> & { llmRequest: ${requestType} },`,
+        `  opts?: { redact?: (row: LlmCallRow) => LlmCallRow },`,
         `): Promise<${entityName}TraceResult> {`,
         `  const schema = extractSchemaFor(responseMo, ${formatLiteral});`,
         `  const outcome = extract(input.llmResponseText, schema);`,
@@ -204,7 +212,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         '  const errorDetail = failed ? `lost required: ${outcome.report.lostRequired().join(", ")}` : null;',
         `  const base = buildLlmCallRow(${recordBuildArg});`,
         `  const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };`,
-        `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row);`,
+        `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row, opts?.redact ? { redact: opts.redact } : undefined);`,
         `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as ${responseRef}) };`,
         `}`,
         ``,
@@ -231,6 +239,8 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `  traceId?: string;`,
           `  parentSpanId?: string;`,
           `  sessionId?: string;`,
+          `  /** Optional row-redaction hook applied before persist (scrub PII/secrets). */`,
+          `  redact?: (row: LlmCallRow) => LlmCallRow;`,
           `}`,
           ``,
           `/**`,
@@ -270,7 +280,7 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
           `    }`,
           `  }`,
           `  const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };`,
-          `  await persistLlmCallRow(new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}), row);`,
+          `  await persistLlmCallRow(new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}), row, deps.redact ? { redact: deps.redact } : undefined);`,
           `  return { status, errorDetail, voResponse };`,
           `}`,
         );
