@@ -22,6 +22,7 @@ import type { GenContext } from "../../src/generator.js";
 import { docsFile } from "../../src/generators/docs-file.js";
 import { apiDocsFile } from "../../src/generators/api-docs-file.js";
 import type { OutputLayout } from "../../src/import-path.js";
+import { apiSurfaceHref } from "../../src/docs-paths.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
@@ -93,6 +94,21 @@ async function emitBoth(fixture: string, layout: OutputLayout): Promise<Emitted[
 		modelSurface: true,
 	}).generate(ctx)) as Emitted[];
 	return [...model, ...api];
+}
+
+const TWO_SURFACES = [
+	{ label: "TypeScript", subDir: "api/ts" },
+	{ label: "Java", subDir: "api/java" },
+];
+/** Emit the model + BOTH api surfaces (the 2nd simulates another language's
+ *  port by re-running the api engine under a second subDir). */
+async function emitMulti(fixture: string, layout: OutputLayout): Promise<Emitted[]> {
+	const { root, inputDir } = await loadFixture(fixture);
+	const ctx = makeCtx(root, inputDir, layout);
+	const model = (await docsFile({ apiSurfaces: TWO_SURFACES }).generate(ctx)) as Emitted[];
+	const tsApi = (await apiDocsFile({ subDir: "api/ts", modelSurface: true }).generate(ctx)) as Emitted[];
+	const javaApi = (await apiDocsFile({ subDir: "api/java", modelSurface: true }).generate(ctx)) as Emitted[];
+	return [...model, ...tsApi, ...javaApi];
 }
 
 // ── Cross-link finder (pure — unit-testable for teeth) ───────────────────────
@@ -185,5 +201,39 @@ describe("unified-docs-door cross-link integrity", () => {
 		expect(broken).toEqual([
 			{ from: "Order.md", href: "./api/Order.md", resolved: "api/Order.md" },
 		]);
+	});
+});
+
+// ── Polyglot: model + TWO api surfaces (e.g. a TS + Java solution) ────────────
+
+describe("polyglot multi-surface cross-links", () => {
+	for (const [label, fixture, layout] of [
+		["flat", FIXTURE, "flat"],
+		["package", FIXTURE_PACKAGE, "package"],
+	] as const) {
+		it(`every cross-link resolves with 2 api surfaces (${label})`, async () => {
+			const files = await emitMulti(fixture, layout);
+			const present = new Set(files.map((f) => f.path));
+			expect(findBrokenCrossLinks(files, present), `broken (${label})`).toEqual([]);
+
+			// a model ENTITY page links BOTH surfaces:
+			const entity = files.find((f) => !isApi(f.path) && f.path !== "README.md" && f.path.endsWith(".md"))!;
+			expect(entity.content).toContain("api/ts/");
+			expect(entity.content).toContain("api/java/");
+
+			// both api surfaces are present + each links back to the model:
+			expect([...present].some((p) => p.startsWith("api/ts/"))).toBe(true);
+			expect([...present].some((p) => p.startsWith("api/java/"))).toBe(true);
+			const apiTs = files.find((f) => f.path.startsWith("api/ts/") && f.path.endsWith(".md") && !f.path.endsWith("README.md") && !f.path.endsWith("AGENT-API.md"))!;
+			const apiJava = files.find((f) => f.path.startsWith("api/java/") && f.path.endsWith(".md") && !f.path.endsWith("README.md") && !f.path.endsWith("AGENT-API.md"))!;
+			expect(apiTs.content).toMatch(/Model|metadata/i);
+			expect(apiJava.content).toMatch(/Model|metadata/i);
+		});
+	}
+
+	it("a baseUrl surface yields an absolute (federated) link", () => {
+		const href = apiSurfaceHref("Order.md", { subDir: "api/java", baseUrl: "https://docs.example/java" }, "Order.md");
+		expect(href).toBe("https://docs.example/java/Order.md");
+		expect(href.startsWith("http")).toBe(true); // not in the local tree → not a broken local link
 	});
 });
