@@ -78,8 +78,12 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const payloadRef = prompt.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
       const responseRef = prompt.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
 
-      // Need at least @responseRef to type the result; @payloadRef types the request.
+      // @responseRef types the result; @payloadRef types the request. @payloadRef
+      // is loader-required on template.prompt, so this guard is belt-and-suspenders:
+      // it keeps us from ever emitting a voRequest write for a column that
+      // deriveTraceFields (which also keys off @payloadRef) didn't inject.
       if (typeof responseRef !== "string") return [];
+      if (typeof payloadRef !== "string") return [];
 
       const entityName = entity.name;
       const fnName = `record${pascal(entityName)}`;
@@ -111,14 +115,10 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         : "Format.JSON";
 
       // Collect VO names for interface emission (dedupe via batch emitter).
-      const voNames: string[] = [];
-      if (typeof payloadRef === "string") voNames.push(payloadRef);
-      voNames.push(responseRef);
+      // Both refs are guaranteed strings by the guards above.
+      const interfaces = generatePayloadInterfacesBatch(ctx.loadedRoot, [payloadRef, responseRef]);
 
-      // Emit the shared payload interfaces inline (same approach as prompt-render-file).
-      const interfaces = generatePayloadInterfacesBatch(ctx.loadedRoot, voNames);
-
-      const requestType = typeof payloadRef === "string" ? payloadRef : "unknown";
+      const requestType = payloadRef;
 
       // A renderable prompt (carries @textRef) gets an additional call<Entity> helper
       // that renders the prompt text, calls the LLM, then parses + persists a trace row.

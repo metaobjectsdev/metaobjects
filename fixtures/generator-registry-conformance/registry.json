@@ -78,7 +78,7 @@
       "ports": ["typescript"]
     },
     "trace-helper": {
-      "concept": "Per-entity typed record<Entity> helper wrapping recordLlmCall (LlmCallBase-derived entities only).",
+      "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
       "tier": "native",
       "ports": ["typescript"]
     },
