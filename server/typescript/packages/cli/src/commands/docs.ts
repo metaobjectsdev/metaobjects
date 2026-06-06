@@ -198,7 +198,14 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     ...(flags.surfaces ? { surfaces: flags.surfaces } : {}),
     ...(flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {}),
   };
-  const docsCfg = resolveDocsConfig(loadedConfig?.docs, cliOverrides, flags.layout);
+  // Layout fallback chain: --layout (override, gated above) → docs.layout block →
+  // the project's top-level outputLayout → flat. So docs default to the SAME page
+  // placement as codegen when neither the docs block nor the CLI sets it.
+  const docsCfg = resolveDocsConfig(
+    loadedConfig?.docs,
+    cliOverrides,
+    loadedConfig?.outputLayout ?? "flat",
+  );
   const outDir = resolvePath(metaRoot, docsCfg.outDir);
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -240,8 +247,15 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
       dialect: "sqlite",
       outputLayout: docsCfg.layout,
       // api-docs reads this to decide whether to document the opt-in Hono CRUD
-      // surface; default false mirrors the default Fastify-only suite.
-      includeHonoRoutes: loadedConfig?.includeHonoRoutes ?? false,
+      // surface. Aggregate it from the generator set exactly as the gen runner
+      // does (a generator opts in via emitsHonoRoutes), so `meta docs` auto-detects
+      // routesFileHono() rather than relying on a field users don't normally set.
+      includeHonoRoutes:
+        loadedConfig?.includeHonoRoutes ??
+        (loadedConfig?.generators?.some(
+          (g) => typeof g !== "string" && g.emitsHonoRoutes === true,
+        ) ??
+          false),
     } as never,
     renderContext,
     projectRoot,
