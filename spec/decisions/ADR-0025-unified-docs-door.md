@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-06-06
+**Extended by:** ADR-0027 (polyglot docs composition — the single api surface generalizes to a per-language `apiSurfaces[]` list)
 **Extends:** ADR-0021 D1 (single docs door — now covers ALL docs, not just neutral)
 **Revises:** ADR-0022 Part 3 (api-docs is the *api surface* of the docs door, not a
 standalone `meta gen` generator)
