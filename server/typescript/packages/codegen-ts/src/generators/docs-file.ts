@@ -94,6 +94,14 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       const rc = ctx.renderContext;
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
+      // One {label, href} per api surface, every href computed via the shared
+      // `apiSurfaceHref` from the FROM page's own output path (so it resolves
+      // relative in BOTH layouts, or absolute when the surface declares a
+      // baseUrl). The api page for a node lives at `<subDir>/<same placement>`,
+      // so the from-path doubles as the page placement. ABSENT/empty surfaces ⇒
+      // undefined → output byte-identical to historical model-only runs.
+      const apiRefsFor = (fromPath: string): Array<{ label: string; href: string }> | undefined =>
+        opts?.apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
       // Track every (path, fqn) so we can hard-error on a collision (defense
       // against silent doc-page overwrite) AFTER all pages are placed.
       const placements: DocPagePlacement[] = [];
@@ -110,15 +118,8 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
           entityNodes.push(node);
           const path = docPageOutputPath(layout, node);
           placements.push({ path, fqn: entity.resolutionKey() });
-          // Cross-link to the sibling api surfaces, when emitted. The api page for
-          // this node lives at `<subDir>/<same placement>` per surface; each href
-          // is derived from the SAME docPageOutputPath placement via apiSurfaceHref
-          // so it resolves in both flat and package layout (or absolute when the
-          // surface declares a baseUrl). ABSENT otherwise.
-          const apiRefs = opts?.apiSurfaces?.map((s) => ({
-            label: s.label,
-            href: apiSurfaceHref(path, s, path),
-          }));
+          // Cross-link to the sibling api surfaces, when emitted (shared builder).
+          const apiRefs = apiRefsFor(path);
           const payload = buildEntityDocData(entity, {
             dialect: rc.dialect,
             layout,
@@ -157,14 +158,9 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // produces nothing (no orphan landing page with an empty diagram).
       if (files.length > 0) {
         // The api index lives at `<subDir>/README.md` per surface; the model index
-        // lives at the docs root, so each cross-link href is computed via the
-        // shared `apiSurfaceHref` from the root-level index path (relative-path
-        // rule shared, never hand-rolled; absolute when a baseUrl is given).
-        // ABSENT when no api surface is emitted → index output byte-identical.
-        const apiIndexRefs = opts?.apiSurfaces?.map((s) => ({
-          label: s.label,
-          href: apiSurfaceHref(INDEX_FILENAME, s, INDEX_FILENAME),
-        }));
+        // lives at the docs root, so the from-path is the root-level index path
+        // (shared builder — same relative/absolute rule as the entity refs).
+        const apiIndexRefs = apiRefsFor(INDEX_FILENAME);
         const indexContent = renderIndexPage(
           ctx.loadedRoot,
           layout,

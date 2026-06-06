@@ -281,16 +281,10 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // README.md). Keep the render-error handling tight around docsFile() only.
   if (docsCfg.surfaces.includes("model")) {
     // When api is selected, link EVERY declared surface from the model page (so a
-    // polyglot model page references each port's api docs). Otherwise no api refs.
-    const modelOpts = apiSelected
-      ? {
-          apiSurfaces: labeled.map(({ label, subDir, baseUrl }) => ({
-            label,
-            subDir,
-            ...(baseUrl ? { baseUrl } : {}),
-          })),
-        }
-      : {};
+    // polyglot model page references each port's api docs). `labeled` already
+    // carries {label, subDir, baseUrl?} (docsFile ignores the extra `lang`), so
+    // pass it straight through. Otherwise no api refs.
+    const modelOpts = apiSelected ? { apiSurfaces: labeled } : {};
     try {
       modelFiles = await docsFile(modelOpts).generate(ctx);
     } catch (err) {
