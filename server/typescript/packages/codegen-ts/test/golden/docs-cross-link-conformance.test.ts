@@ -26,7 +26,7 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
 
-const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance");
+const CORPUS = resolve(import.meta.dir, "../fixtures/docs-conformance");
 const FIXTURE = "template-source-conformance";
 const FIXTURE_PACKAGE = "template-source-conformance-package";
 

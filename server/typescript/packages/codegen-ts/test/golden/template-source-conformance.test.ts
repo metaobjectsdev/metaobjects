@@ -54,10 +54,7 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { projectProvider } from "../../src/render-engine/framework-provider.js";
 
-const CORPUS = resolve(
-	import.meta.dir,
-	"../../../../../../fixtures/conformance",
-);
+const CORPUS = resolve(import.meta.dir, "../fixtures/docs-conformance");
 const FIXTURE = "template-source-conformance";
 // Multi-package mirror of FIXTURE: the payload VOs live in `acme::shop`, the
 // two template.output nodes in `acme::comms`. Under package layout the doc
