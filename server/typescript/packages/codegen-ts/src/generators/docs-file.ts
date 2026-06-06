@@ -27,7 +27,7 @@ import {
   docPageOutputPath,
   docPageHref,
   docPageNode,
-  surfaceCrossHref,
+  apiSurfaceHref,
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
@@ -48,13 +48,14 @@ const INDEX_NODE: DocPageNode = { name: "README" };
 export interface DocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
-  /** When set, the api surface is emitted alongside the model surface under the
-   *  given sub-directory (e.g. `"api"`). docsFile then cross-links each model
-   *  entity page to its api page and adds an "API reference" section to the
-   *  index, all hrefs computed via the shared `surfaceCrossHref` /
-   *  `docPageHref` so they resolve in BOTH layouts. ABSENT ⇒ model-only output
-   *  (byte-identical to historical behaviour). */
-  apiSurface?: { subDir: string };
+  /** When set, one or more api surfaces are emitted alongside the model surface,
+   *  each under its own sub-directory (e.g. `"api/ts"`) with a per-language label.
+   *  docsFile then cross-links each model entity page to ALL its api pages and
+   *  adds an "API reference" section to the index, every href computed via the
+   *  shared `apiSurfaceHref` so it resolves relative in BOTH layouts (or absolute
+   *  when a `baseUrl` is given). ABSENT/empty ⇒ model-only output (byte-identical
+   *  to historical behaviour). */
+  apiSurfaces?: Array<{ label: string; subDir: string; baseUrl?: string }>;
 }
 
 const TEMPLATE_REF = "docs/entity-page.md";
@@ -93,6 +94,14 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       const rc = ctx.renderContext;
       const provider = projectProvider(ctx.projectRoot ?? process.cwd());
       const layout = ctx.config.outputLayout ?? "flat";
+      // One {label, href} per api surface, every href computed via the shared
+      // `apiSurfaceHref` from the FROM page's own output path (so it resolves
+      // relative in BOTH layouts, or absolute when the surface declares a
+      // baseUrl). The api page for a node lives at `<subDir>/<same placement>`,
+      // so the from-path doubles as the page placement. ABSENT/empty surfaces ⇒
+      // undefined → output byte-identical to historical model-only runs.
+      const apiRefsFor = (fromPath: string): Array<{ label: string; href: string }> | undefined =>
+        opts?.apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
       // Track every (path, fqn) so we can hard-error on a collision (defense
       // against silent doc-page overwrite) AFTER all pages are placed.
       const placements: DocPagePlacement[] = [];
@@ -109,14 +118,8 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
           entityNodes.push(node);
           const path = docPageOutputPath(layout, node);
           placements.push({ path, fqn: entity.resolutionKey() });
-          // Cross-link to the sibling api surface, when emitted. The api page for
-          // this node lives at `<subDir>/<same placement>`; the href is derived
-          // from the SAME docPageOutputPath placement via surfaceCrossHref so it
-          // resolves in both flat and package layout. ABSENT otherwise.
-          const apiPageHref =
-            opts?.apiSurface !== undefined
-              ? surfaceCrossHref(path, `${opts.apiSurface.subDir}/${path}`)
-              : undefined;
+          // Cross-link to the sibling api surfaces, when emitted (shared builder).
+          const apiRefs = apiRefsFor(path);
           const payload = buildEntityDocData(entity, {
             dialect: rc.dialect,
             layout,
@@ -124,7 +127,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
               columnNamingStrategy: rc.columnNamingStrategy,
             }),
             loadedRoot: rc.loadedRoot,
-            ...(apiPageHref !== undefined && { apiPageHref }),
+            ...(apiRefs !== undefined && { apiRefs }),
           });
           return { path, content: renderDocPage(TEMPLATE_REF, payload, provider, path) };
         });
@@ -154,21 +157,16 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // Only emitted when at least one page exists — an all-filtered/empty run
       // produces nothing (no orphan landing page with an empty diagram).
       if (files.length > 0) {
-        // The api index lives at `<subDir>/README.md`; the model index lives at
-        // the docs root, so the cross-link href is simply `./<subDir>/README.md`
-        // (computed via surfaceCrossHref from the root-level index path so the
-        // relative-path rule is shared, never hand-rolled). ABSENT when the api
-        // surface isn't emitted → index output byte-identical.
-        const apiIndexHref =
-          opts?.apiSurface !== undefined
-            ? surfaceCrossHref(INDEX_FILENAME, `${opts.apiSurface.subDir}/${INDEX_FILENAME}`)
-            : undefined;
+        // The api index lives at `<subDir>/README.md` per surface; the model index
+        // lives at the docs root, so the from-path is the root-level index path
+        // (shared builder — same relative/absolute rule as the entity refs).
+        const apiIndexRefs = apiRefsFor(INDEX_FILENAME);
         const indexContent = renderIndexPage(
           ctx.loadedRoot,
           layout,
           entityNodes,
           templateNodes,
-          apiIndexHref,
+          apiIndexRefs,
         );
         placements.push({ path: INDEX_FILENAME, fqn: "<the auto-generated overview/index page>" });
         files.unshift({ path: INDEX_FILENAME, content: indexContent });
@@ -198,7 +196,7 @@ function renderIndexPage(
   layout: OutputLayout,
   entityNodes: DocPageNode[],
   templateNodes: DocPageNode[],
-  apiIndexHref?: string,
+  apiIndexRefs?: Array<{ label: string; href: string }>,
 ): string {
   const pkg = root.package;
   const out: string[] = [];
@@ -238,12 +236,15 @@ function renderIndexPage(
     out.push("");
   }
 
-  // Cross-link to the GENERATED-SDK api reference index, when the api surface is
-  // emitted alongside the model surface. ABSENT otherwise → index byte-identical.
-  if (apiIndexHref !== undefined) {
+  // Cross-link to the GENERATED-SDK api reference indexes, when api surfaces are
+  // emitted alongside the model surface — one bullet per language surface. ABSENT
+  // or empty → no section (index byte-identical to model-only runs).
+  if (apiIndexRefs !== undefined && apiIndexRefs.length > 0) {
     out.push("## API reference");
     out.push("");
-    out.push(`[Generated SDK reference](${apiIndexHref})`);
+    for (const ref of apiIndexRefs) {
+      out.push(`- [${ref.label}](${ref.href})`);
+    }
     out.push("");
   }
 

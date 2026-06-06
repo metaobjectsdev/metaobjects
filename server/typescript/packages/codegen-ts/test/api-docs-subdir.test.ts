@@ -23,7 +23,7 @@ import { buildRelationMap } from "../src/relation-resolver.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { apiDocsFile } from "../src/generators/api-docs-file.js";
 
-const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/conformance");
+const CORPUS = resolve(import.meta.dir, "./fixtures/docs-conformance");
 const FIXTURE = "template-source-conformance";
 
 function makeCtx(
