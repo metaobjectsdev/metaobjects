@@ -6,6 +6,14 @@ it consumes any backend (TS / Java / Kotlin / C# / Python) that speaks the
 cross-port REST contract. It pairs with `codegen-ts-tanstack`, which emits
 `<Entity>.hooks.ts` and `<Entity>.columns.tsx` that import from this package.
 
+## Contents
+- Install
+- Key exports
+- The `EntityFetcher` contract
+- Generated hooks (`tanstackQuery()`)
+- Generated grid (`tanstackGrid()`)
+- Cell renderer overrides
+
 ## Install
 
 ```bash

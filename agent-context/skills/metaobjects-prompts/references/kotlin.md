@@ -7,6 +7,14 @@ a **typed parser** that validates an LLM/raw response against the template's
 class itself comes from `KotlinPayloadGenerator` (a `@Serializable data class`), so
 the parser and the payload VO can't silently drift.
 
+## Contents
+- Wire the generators
+- What it emits
+- The three-step consumer pattern
+- Consumer dependency
+- Recommended LLM caller (bring-your-own)
+- Drift gate
+
 ## Wire the generators
 
 Add `KotlinOutputParserGenerator` (alongside `KotlinPayloadGenerator`, which emits

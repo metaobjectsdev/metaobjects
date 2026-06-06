@@ -5,6 +5,13 @@ a **typed parser** that validates an LLM/raw response against the template's
 `@payloadRef` payload record. This is the receive side only — codegen emits **no**
 provider/LLM-call layer; you compose the call yourself.
 
+## Contents
+- Wire the generator
+- What it emits
+- The three-step consumer pattern
+- Recommended LLM caller (bring-your-own)
+- Drift gate
+
 ## Wire the generator
 
 Add `SpringOutputParserGenerator` (alongside `SpringPayloadGenerator`, which emits

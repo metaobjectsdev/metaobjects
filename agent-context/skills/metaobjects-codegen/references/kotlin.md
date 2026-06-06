@@ -8,6 +8,12 @@ build-time Maven plugin goal the Java port uses — there is no standalone `meta
 binary on the JVM side (the Node `meta` is for schema migrations only; see the
 migration reference).
 
+## Contents
+- Maven coordinates
+- Plugin config in `pom.xml`
+- Run
+- `codegen-kotlin` generators
+
 ## Maven coordinates
 
 All artifacts share `groupId` `com.metaobjects` and one version property:

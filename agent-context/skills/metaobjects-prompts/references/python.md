@@ -7,6 +7,14 @@ emits a **typed parser** that validates an LLM/raw response against the template
 from the sibling `payload` generator, so the parser and the payload VO can't silently
 drift.
 
+## Contents
+- Wire the generators
+- What it emits
+- The three-step consumer pattern
+- Recommended LLM caller (bring-your-own)
+- Consumer dependency
+- Drift gate
+
 ## Wire the generators
 
 Select `output-parser` (the `payload` generator that emits the `<Name>Payload` it

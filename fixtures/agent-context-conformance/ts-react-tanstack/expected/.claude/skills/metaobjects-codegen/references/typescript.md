@@ -4,6 +4,14 @@ The TS port is the reference implementation, published to npm as `@metaobjectsde
 packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binary
 `meta`).
 
+## Contents
+- Install
+- `metaobjects.config.ts`
+- The generators
+- Run
+- Multiple output targets
+- Field subtype → column mapping
+
 ## Install
 
 ```bash

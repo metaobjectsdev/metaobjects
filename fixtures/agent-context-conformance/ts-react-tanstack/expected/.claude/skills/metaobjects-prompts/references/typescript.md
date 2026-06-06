@@ -6,6 +6,14 @@ LLM/raw response against the template's `@payloadRef` payload value-object. This
 the receive side; codegen emits **no** provider/LLM-call layer — you compose the
 call yourself.
 
+## Contents
+- Wire the generator
+- What it emits
+- The three-step consumer pattern
+- Recommended LLM caller (bring-your-own)
+- Drift gate
+- See which fields a template consumes
+
 ## Wire the generator
 
 ```ts

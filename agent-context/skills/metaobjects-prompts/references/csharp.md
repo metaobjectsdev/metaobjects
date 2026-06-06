@@ -6,6 +6,14 @@ For every `template.output`, `MetaObjects.Codegen`'s `OutputParserGenerator` emi
 provider/LLM-call layer; you compose the call yourself. The payload record comes from
 the payload generator, so the parser and the payload VO can't silently drift.
 
+## Contents
+- Wire the generator
+- What it emits
+- The three-step consumer pattern
+- Recommended LLM caller (bring-your-own)
+- Consumer dependency
+- Drift gate
+
 ## Wire the generator
 
 `OutputParserGenerator` (stable name `output-parser`) runs as part of
