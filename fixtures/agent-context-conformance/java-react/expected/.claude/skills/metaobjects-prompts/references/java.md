@@ -57,6 +57,33 @@ String llmResponse = myLlmClient.call(promptText);     // YOUR code — no gener
 NpcResponsePayload npc = NpcResponseParser.parse(llmResponse);   // throws on bad shape
 ```
 
+## Recommended LLM caller (bring-your-own)
+
+`codegen-spring` emits **no** provider/LLM-call layer and never will — calling is a
+commodity the ecosystem already solves, and a maintained vendor wrapper would chase
+SDK churn (ADR-0024). You bring the caller; MetaObjects owns the typed render →
+parse (above) → record. For the call step use the idiomatic JVM library:
+
+```java
+// Spring AI (recommended) — provider-agnostic ChatClient; YOUR code, no generated provider
+String response = chatClient.prompt()
+    .system(systemText)
+    .user(promptText)
+    .call()
+    .content();
+
+NpcResponsePayload npc = NpcResponseParser.parse(response);   // the generated parser, above
+```
+
+**Recommended: Spring AI** (`ChatClient`) — Spring-native, provider-agnostic
+(Anthropic / OpenAI / Azure / Bedrock / Ollama), fits an OMDB + Spring-tx app.
+Non-Spring JVM apps: **LangChain4j** (`ChatLanguageModel.generate(prompt)`) is the
+equivalent one-call seam.
+
+> The typed-trace recorder + render→call→record convenience loop ship in TypeScript
+> today; the JVM port is planned (ADR-0024). Until then the call is your code and the
+> generated parser is the typed receive side.
+
 ## Drift gate
 
 The render module's static `Verify.check(String templateText, List<PayloadField> fields, VerifyOptions options)`

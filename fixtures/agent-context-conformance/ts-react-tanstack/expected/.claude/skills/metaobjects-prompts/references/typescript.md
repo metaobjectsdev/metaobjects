@@ -88,6 +88,39 @@ if (!r.success) log.warn("malformed LLM payload", r.error);
 else handle(r.data);
 ```
 
+## Recommended LLM caller (bring-your-own)
+
+MetaObjects generates **no** provider/LLM-call layer and never will — the call is a
+commodity the ecosystem already solves, and a maintained vendor wrapper would just
+chase SDK churn (ADR-0024). You bring the caller; MetaObjects owns the typed
+render → parse → record. For the call step, plug the idiomatic library into the
+one-method `LlmClient` seam from `@metaobjectsdev/ai-runtime`:
+
+```ts
+import { generateText } from "ai";              // Vercel AI SDK — recommended
+import { anthropic } from "@ai-sdk/anthropic";
+import type { LlmClient } from "@metaobjectsdev/ai-runtime";
+
+export const llm: LlmClient = {
+  async complete({ prompt, model, system }) {
+    const { text } = await generateText({ model: anthropic(model), system, prompt });
+    return { body: text };  // also map usage/model/finishReason from the result → cost + token columns
+  },
+};
+```
+
+**Recommended: the Vercel AI SDK (`ai`)** — provider-agnostic (`generateText` /
+`generateObject` over Anthropic / OpenAI / Google / …), first-class structured
+output, the de-facto TS standard. Single-provider apps can implement `complete`
+directly over `@anthropic-ai/sdk` / `openai`; heavy chains can use LangChain.js —
+the seam is one method either way.
+
+With a client in hand, the generated `record<Entity>` helper (the `trace-helper`
+generator) and `@metaobjectsdev/ai-runtime`'s `callLlm` do render → call → **typed
+trace persist** in one call, recording request/response as typed value objects in
+your own DB. The parser above is the standalone receive side if you don't want the
+recorder.
+
 ## Drift gate
 
 `meta verify` walks every `template.output`'s `@payloadRef` resolution and fails the

@@ -85,6 +85,32 @@ dependencies {
 }
 ```
 
+## Recommended LLM caller (bring-your-own)
+
+`codegen-kotlin` emits **no** provider/LLM-call layer and never will — calling is a
+commodity the ecosystem already solves (ADR-0024). You bring the caller; MetaObjects
+owns the typed render → parse (above) → record. For the call step use the idiomatic
+JVM library — Kotlin calls either directly:
+
+```kotlin
+// Spring AI (recommended) — provider-agnostic ChatClient; YOUR code, no generated provider
+val response: String = chatClient.prompt()
+    .system(systemText)
+    .user(promptText)
+    .call()
+    .content()
+
+val npc = NpcResponseParser.parseNpcResponse(response)   // the generated parser, above
+```
+
+**Recommended: Spring AI** (`ChatClient`) for a Spring app, or **LangChain4j**
+(`ChatLanguageModel.generate(prompt)`) for non-Spring JVM — both provider-agnostic,
+both a one-call seam Kotlin uses idiomatically.
+
+> The typed-trace recorder + render→call→record convenience loop ship in TypeScript
+> today; the JVM port is planned (ADR-0024). Until then the call is your code and the
+> generated parser is the typed receive side.
+
 ## Drift gate
 
 The render engine is the Java `metaobjects-render` module (Kotlin wraps it). Its
