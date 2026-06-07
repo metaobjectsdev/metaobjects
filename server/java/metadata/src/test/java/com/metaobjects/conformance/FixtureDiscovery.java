@@ -128,7 +128,8 @@ public final class FixtureDiscovery {
                 && !hasExpectedEffective
                 && !hasExpectedErrors
                 && !hasExpectedWarnings
-                && !hasScript;
+                && !hasScript
+                && !hasDocsExpected;
         }
 
         @Override

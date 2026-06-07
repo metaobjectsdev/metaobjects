@@ -95,8 +95,9 @@ holds one shared model (`input/meta.json`) + `expected-paths.json`; the TS and J
 api-docs conformance tests BOTH assert their emitted page paths + cross-link hrefs
 against that single manifest, so a TS+Java solution's `api/ts` and `api/java` surfaces
 resolve into one cross-linked tree (no divergence found). A contract-only fixture
-(`expected-paths.json`, no standard `expected*`) is skipped by the strict
-metadata-conformance runners in both ports (`isContractOnlyFixture`).
+(`expected-paths.json`, no standard `expected*`) is skipped by the ported strict
+metadata-conformance runners (TS, Java, C#) via their shared `isContractOnly`
+flag (`isContractOnlyFixture`).
 
 The Java api-docs is a Maven **goal** (`metaobjects:docs`), not a `meta gen`
 registry generator, so the generator-registry manifest keeps `api-docs` as
