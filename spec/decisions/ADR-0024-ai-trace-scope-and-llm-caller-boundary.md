@@ -1,8 +1,34 @@
 # ADR-0024 — AI-trace scope: the typed trace + recorder is the standard; the LLM caller is bring-your-own
 
-**Status:** Accepted (2026-06-06)
+**Status:** Accepted (2026-06-06); **amended 2026-06-07** — see Amendment below.
 **Deciders:** human (project owner) + Claude
 **Relates to:** ADR-0020 (codegen tiering — native per-port vs. language-neutral), ADR-0023 (strict metadata provenance), and the AI LLM-trace design docs (`docs/superpowers/specs/2026-06-02-ai-llm-call-trace-persistence-design.md`, `2026-06-05-ai-runtime-call-loop-and-recorders-design.md`, `2026-06-05-ai-trace-1c-shared-table-sti-design.md`).
+
+## Amendment (2026-06-07) — typed columns are AUTHORED, not derived; no loader mutation
+
+The original decision listed **`deriveTraceFields`** (a load-time pass that injected
+synthetic `voRequest`/`voResponse` `field.object` nodes into the validated metadata
+tree via a generic **`preFreeze` loader hook**) in the KEEP set. **That mechanism is
+removed in all five ports.** Mutating the loaded metadata tree contradicts
+"metadata is the declared, durable spine" — it is the structural-node analogue of
+ADR-0023's *never invent an attribute*. A generic "mutate the validated tree before
+freeze" hook is also a leaky, dangerous extension point.
+
+**Revised rule:** the loader NEVER mutates the tree post-load; there is no
+`preFreeze` hook in any port. Trace entities **author** their typed columns
+explicitly — `field.object voResponse @objectRef:<VO> @storage:jsonb` (and
+`voRequest`) — exactly like any other entity field. The prompt's `@responseRef`
+still names the response VO for the extractor; the `voResponse` column is authored
+storage alongside it (a small, *visible* overlap — no magic). For the codegen-only
+ports (C# EF, Kotlin Exposed) the authored columns simply flow through the normal
+entity generators; the metadata-driven runtimes (Java OMDB, Python ObjectManager)
+read the authored field to map the jsonb column.
+
+Everything else in this ADR stands: the typed-trace data model, the recorder seam,
+`recordLlmCall`, `record<Entity>`/`call<Entity>` codegen, the `LlmClient` glue,
+`@responseRef` as first-class cross-port vocabulary (the carve-out was still closed),
+and STI all remain. Only the derivation mechanism + the `preFreeze` hook are gone.
+(Shipped: Python `378db17f`, Java `7ce05527`, TS+C#+Kotlin `7d6552c7`.)
 
 ## Context
 
