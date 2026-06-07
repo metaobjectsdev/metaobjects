@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "package": "acme::shop",
+          "@description": "A customer order.",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+            { "field.enum": { "name": "status", "@required": true, "@values": ["open", "shipped", "closed"] } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "package": "acme::shop",
+          "@description": "A shop customer.",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "OrderSummaryPayload",
+          "package": "acme::shop",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } },
+            { "field.string": { "name": "status", "@required": true } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "OrderSummary",
+          "package": "acme::shop",
+          "@payloadRef": "OrderSummaryPayload",
+          "@textRef": "shop/order-summary",
+          "@format": "json",
+          "@promptStyle": "inline"
+        }
+      }
+    ]
+  }
+}
