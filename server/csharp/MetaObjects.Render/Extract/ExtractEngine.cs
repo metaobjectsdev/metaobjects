@@ -99,6 +99,15 @@ public static class ExtractEngine
                 continue;
             }
 
+            if (ReferenceEquals(present, JsonForgivingReader.NullLiteral))
+            {
+                // The JSON null literal is the caller's explicit "no value": leave the field null
+                // (do NOT apply @default — an explicit null is a value, not an omission), matching
+                // a standard JSON bind. Without this the bare `null` token leaks as the string "null".
+                report.Set(path, f.Required ? FieldExtraction.LOST_REQUIRED : FieldExtraction.LOST_OPTIONAL);
+                continue;
+            }
+
             if (f.Array)
             {
                 // An array field: a single non-list value is treated as a one-element array
@@ -186,6 +195,12 @@ public static class ExtractEngine
         ExtractOptions o,
         bool ci)
     {
+        if (ReferenceEquals(present, JsonForgivingReader.NullLiteral))
+        {
+            // A JSON null array element (e.g. [1, null, 3]) carries no value → drop it as malformed
+            // rather than letting the sentinel stringify.
+            return Coerce.Malformed;
+        }
         if (f.Kind == FieldKind.Object)
         {
             if (f.Nested != null && present is Dictionary<string, object?> m)

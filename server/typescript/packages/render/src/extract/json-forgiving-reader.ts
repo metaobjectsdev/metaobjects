@@ -4,6 +4,14 @@
 /** Sentinel: a key appeared in the text but its value was empty/cut-off (present-but-garbled). */
 export const TRUNCATED: unique symbol = Symbol("extract.json.TRUNCATED");
 
+/**
+ * Sentinel: the JSON `null` literal. Distinct from a JS `null` return (which this reader uses
+ * internally for "no token / garbled") and from the 4-char string "null". The extract phase maps
+ * this to an actual null field value (JSON null → null), instead of letting the bare `null` literal
+ * leak through as the text "null".
+ */
+export const NULL_LITERAL: unique symbol = Symbol("extract.json.NULL_LITERAL");
+
 /** A character is JSON-insignificant whitespace. Mirrors Java Character.isWhitespace closely enough for the corpus. */
 function isWhitespace(c: string): boolean {
   return c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f" || c === "\v" || /\s/.test(c);
@@ -132,11 +140,13 @@ class Reader {
     return sb; // unterminated string → return what we have
   }
 
-  private readBareScalar(): string | null {
+  private readBareScalar(): string | null | typeof NULL_LITERAL {
     const start = this.i;
     while (this.i < this.s.length && ",}]".indexOf(this.s.charAt(this.i)) < 0) this.i++;
     const result = this.s.substring(start, this.i).trim();
-    return result.length === 0 ? null : result; // null = no token read (zero-width)
+    if (result.length === 0) return null; // no token read (zero-width)
+    if (result === "null") return NULL_LITERAL; // JSON null literal → explicit null, NOT the string "null"
+    return result;
   }
 
   private ws(): void {

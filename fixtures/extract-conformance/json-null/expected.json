@@ -1,0 +1,1 @@
+{ "empty": false, "states": { "a": "LOST_OPTIONAL", "b": "EXTRACTED", "c": "EXTRACTED" }, "data": { "b": "keep", "c": "null" } }

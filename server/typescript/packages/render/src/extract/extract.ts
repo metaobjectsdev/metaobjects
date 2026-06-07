@@ -11,7 +11,7 @@ import type { FieldSpec, ExtractOptions, ExtractionOutcome, ExtractSchema } from
 import { ExtractionReport } from "./types.js";
 import { strip } from "./strip.js";
 import { locateJson, locateXml } from "./locate.js";
-import { readJson, TRUNCATED } from "./json-forgiving-reader.js";
+import { readJson, TRUNCATED, NULL_LITERAL } from "./json-forgiving-reader.js";
 import { readXml, readXmlRootless, TEXT_KEY } from "./xml-forgiving-reader.js";
 import { coerceValue, scalarCoerce, MALFORMED } from "./coerce.js";
 
@@ -90,6 +90,13 @@ function extractFields(
       report.set(path, FieldExtraction.MALFORMED);
       continue;
     }
+    if (present === NULL_LITERAL) {
+      // The JSON null literal is the caller's explicit "no value": leave the field null
+      // (do NOT apply @default — an explicit null is a value, not an omission), matching a
+      // standard JSON bind. Without this the bare `null` token leaks as the string "null".
+      report.set(path, f.required ? FieldExtraction.LOST_REQUIRED : FieldExtraction.LOST_OPTIONAL);
+      continue;
+    }
     if (f.array) {
       // An array field: a single non-list value is treated as a one-element array
       // (e.g. a single repeated-XML tag). Each element is coerced/recursed independently.
@@ -157,6 +164,11 @@ function extractValue(
   o: ExtractOptions,
   ci: boolean,
 ): unknown | typeof MALFORMED {
+  if (present === NULL_LITERAL) {
+    // A JSON null array element (e.g. [1, null, 3]) carries no value → drop it as malformed
+    // rather than letting the sentinel stringify.
+    return MALFORMED;
+  }
   if (f.kind === FieldKind.OBJECT) {
     if (f.nested != null && isPlainObject(present)) {
       const nestedData: Record<string, unknown> = {};

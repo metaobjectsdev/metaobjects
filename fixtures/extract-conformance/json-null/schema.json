@@ -1,0 +1,4 @@
+{ "format": "JSON", "rootName": "answer", "fields": [
+  { "name": "a", "kind": "STRING", "required": false },
+  { "name": "b", "kind": "STRING", "required": true },
+  { "name": "c", "kind": "STRING", "required": true } ] }

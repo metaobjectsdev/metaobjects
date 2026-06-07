@@ -13,6 +13,12 @@ from typing import Final
 # Sentinel: a key appeared in the text but its value was empty/cut-off (present-but-garbled).
 TRUNCATED: Final = object()
 
+# Sentinel: the JSON ``null`` literal. Distinct from a Python ``None`` return (which this reader
+# uses internally for "no token / garbled") and from the 4-char string ``"null"``. The extract
+# phase maps this to an actual null field value (JSON null -> None), instead of letting the bare
+# ``null`` literal leak through as the text ``"null"``.
+NULL_LITERAL: Final = object()
+
 # Max container nesting before the reader stops recursing. Python's recursion limit is far
 # lower than the JVM/.NET stack, so a pathologically deep input (hundreds of nested brackets
 # in adversarial LLM output) would raise RecursionError — violating the never-throws contract.
@@ -171,12 +177,16 @@ class JsonForgivingReader:
                 out.append(c)
         return "".join(out)  # unterminated string → return what we have
 
-    def _read_bare_scalar(self) -> str | None:
+    def _read_bare_scalar(self) -> object | None:
         start = self._i
         while self._i < len(self._s) and self._s[self._i] not in ",}]":
             self._i += 1
         result = self._s[start : self._i].strip()
-        return result if result else None  # None = no token read (zero-width)
+        if not result:
+            return None  # no token read (zero-width)
+        if result == "null":
+            return NULL_LITERAL  # JSON null literal -> explicit null, NOT the string "null"
+        return result
 
     def _ws(self) -> None:
         while self._i < len(self._s) and self._s[self._i].isspace():

@@ -11,6 +11,14 @@ public sealed class JsonForgivingReader
     /// </summary>
     public static readonly object Truncated = new();
 
+    /// <summary>
+    /// Sentinel: the JSON <c>null</c> literal. Distinct from a C# <c>null</c> return (which this
+    /// reader uses internally for "no token / garbled") and from the 4-char string <c>"null"</c>.
+    /// The extract phase maps this to an actual null field value (JSON null → null), instead of
+    /// letting the bare <c>null</c> literal leak through as the text <c>"null"</c>.
+    /// </summary>
+    public static readonly object NullLiteral = new();
+
     private string _s = "";
     private int _i;
 
@@ -140,7 +148,9 @@ public sealed class JsonForgivingReader
         int start = _i;
         while (_i < _s.Length && ",}]".IndexOf(_s[_i]) < 0) _i++;
         string result = _s[start.._i].Trim();
-        return result.Length == 0 ? null : result; // null = no token read (zero-width)
+        if (result.Length == 0) return null;            // no token read (zero-width)
+        if (result == "null") return NullLiteral;       // JSON null literal → explicit null, NOT the string "null"
+        return result;
     }
 
     private void Ws()

@@ -60,7 +60,7 @@ def _cases() -> list[str]:
 def test_discovers_all_extract_conformance_cases() -> None:
     """FR-011: lock the corpus size so a deleted fixture fails CI rather than
     silently reducing coverage. Mirrors the TS / Java / C# count guards."""
-    assert len(_cases()) == 30
+    assert len(_cases()) == 31
 
 
 _NORMALIZE_MODES = {"none", "collapse", "strip"}

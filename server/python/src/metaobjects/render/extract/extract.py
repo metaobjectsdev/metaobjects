@@ -6,6 +6,7 @@ from metaobjects.render.extract import locate as _locate
 from metaobjects.render.extract import strip as _strip
 from metaobjects.render.extract.coerce import MALFORMED
 from metaobjects.render.extract.json_forgiving_reader import (
+    NULL_LITERAL,
     TRUNCATED,
     JsonForgivingReader,
 )
@@ -100,6 +101,15 @@ def _extract(
         if present is TRUNCATED:  # present-but-garbled (empty/cut-off value)
             report.set(path, FieldExtraction.MALFORMED)
             continue
+        if present is NULL_LITERAL:
+            # The JSON null literal is the caller's explicit "no value": leave the field null
+            # (do NOT apply @default — an explicit null is a value, not an omission), matching a
+            # standard JSON bind. Without this the bare ``null`` token leaks as the string "null".
+            report.set(
+                path,
+                FieldExtraction.LOST_REQUIRED if f.required else FieldExtraction.LOST_OPTIONAL,
+            )
+            continue
         if f.array:
             # A single non-list value is treated as a one-element array (e.g. a single
             # repeated-XML tag). Each element is coerced/recursed independently.
@@ -170,6 +180,10 @@ def _extract_value(
     ci: bool,
 ) -> object:
     """Coerce one (non-array) element: nested recursion or scalar coercion."""
+    if present is NULL_LITERAL:
+        # A JSON null array element (e.g. [1, null, 3]) carries no value → drop it as malformed
+        # rather than letting the sentinel stringify.
+        return MALFORMED
     if f.kind == FieldKind.OBJECT:
         if f.nested is not None and isinstance(present, dict):
             nested_data: dict[str, object] = {}
