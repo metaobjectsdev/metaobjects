@@ -1,22 +1,10 @@
 # Test-only trace entity for the AI-trace recorder PG round-trip.
 # Extends the SHIPPED metaobjects::ai::LlmCallBase (loaded from
-# library/ai/llm-call.yaml). The typed voRequest/voResponse jsonb columns are
-# NOT declared here — they are DERIVED by LlmTraceFieldDeriver (Slice 3) from the
-# nested template.prompt's @payloadRef/@responseRef when the loader runs with the
-# deriver wired as a preFreeze hook. This proves derivation reaches the
-# metadata-driven OMDB runtime (the Java-specific divergence from the TS
-# codegen-only reference).
+# library/ai/llm-call.yaml) and adds a typed voResponse jsonb column.
 metadata:
   package: metaobjects::ai
   children:
-    # Typed request payload VO (referenced by @payloadRef → derived voRequest).
-    - object.value:
-        name: GreetingRequest
-        object: com.metaobjects.object.value.ValueObject
-        children:
-          - field.string: { name: prompt }
-
-    # Typed response VO (referenced by @responseRef → derived voResponse).
+    # Typed value object stored in the voResponse jsonb column.
     - object.value:
         name: GreetingResponse
         object: com.metaobjects.object.value.ValueObject
@@ -25,15 +13,16 @@ metadata:
           - field.int:    { name: score,    column: score }
 
     # Concrete trace entity: inherits the 18 LlmCallBase fields, declares its
-    # table + primary identity + a template.prompt. The deriver injects
-    # voRequest/voResponse field.object jsonb columns from the prompt refs.
+    # table + primary identity + a typed voResponse jsonb column (@objectRef +
+    # @storage:jsonb — the owned-object typed-jsonb codec path).
     - object.entity:
         name: GreetingCall
         extends: metaobjects::ai::LlmCallBase
         children:
           - source.rdb:       { table: llm_call, role: primary }
           - identity.primary: { name: primary, fields: ["spanId"] }
-          - template.prompt:
-              name: greet
-              payloadRef: metaobjects::ai::GreetingRequest
-              responseRef: metaobjects::ai::GreetingResponse
+          - field.object:
+              name: voResponse
+              column: voResponse
+              storage: jsonb
+              objectRef: metaobjects::ai::GreetingResponse

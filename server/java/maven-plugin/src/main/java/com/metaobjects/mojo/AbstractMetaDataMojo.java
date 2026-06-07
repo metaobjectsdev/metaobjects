@@ -86,14 +86,6 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         MetaDataLoader loader = createLoader(projectClassLoader);
 
-        // AI-trace pre-pass: derive typed voRequest/voResponse jsonb columns onto
-        // LlmCallBase-derived entities so the trace-helper generator (and any
-        // entity/schema codegen) sees them without the author restating them.
-        // Idempotent + a no-op for projects with no trace entities. The loader is
-        // already loaded here (no hard freeze in Java); generators re-read children
-        // fresh, so post-load derivation is sufficient for codegen.
-        com.metaobjects.loader.ai.LlmTraceFieldDeriver.deriveTraceFields( loader );
-
         List<Generator> generatorImpls = buildGenerators( projectClassLoader, null );
 
         executeGenerators( loader, generatorImpls );
