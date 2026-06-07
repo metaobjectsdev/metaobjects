@@ -74,6 +74,13 @@ public final class Extract {
                 report.set(path, FieldExtraction.MALFORMED);
                 continue;
             }
+            if (present == JsonForgivingReader.NULL_LITERAL) {  // explicit JSON null → field is null
+                // The JSON null literal is the caller's explicit "no value": leave the field null
+                // (do NOT apply @default — an explicit null is a value, not an omission), matching
+                // a standard JSON bind. Without this the bare `null` token leaks as the string "null".
+                report.set(path, f.required() ? FieldExtraction.LOST_REQUIRED : FieldExtraction.LOST_OPTIONAL);
+                continue;
+            }
             if (f.array()) {
                 // An array field: a single non-list value is treated as a one-element array
                 // (e.g. a single repeated-XML tag). Each element is coerced/recursed independently.
@@ -138,6 +145,11 @@ public final class Extract {
     /** Coerce one (non-array) element: nested-object recursion or scalar coercion. Returns Coerce.MALFORMED on failure. */
     private static Object extractValue(FieldSpec f, Object present, String path,
                                        ExtractionReport report, ExtractOptions o, boolean ci) {
+        if (present == JsonForgivingReader.NULL_LITERAL) {
+            // A JSON null array element (e.g. [1, null, 3]) carries no value → drop it as malformed
+            // rather than letting String.valueOf stringify the sentinel.
+            return Coerce.MALFORMED;
+        }
         if (f.kind() == FieldKind.OBJECT) {
             if (f.nested() != null && present instanceof Map<?, ?> m) {
                 Map<String, Object> nestedData = new LinkedHashMap<>();

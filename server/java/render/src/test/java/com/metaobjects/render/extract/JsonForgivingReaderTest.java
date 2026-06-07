@@ -43,6 +43,28 @@ public class JsonForgivingReaderTest {
     }
 
     @Test
+    public void jsonNullLiteralIsNullSentinelNotTheStringNull() {
+        Map<String, Object> m = read("{\"a\":null}");
+        assertSame("bare JSON null must be the NULL_LITERAL sentinel, not the string \"null\"",
+                JsonForgivingReader.NULL_LITERAL, m.get("a"));
+        assertNotEquals("null", m.get("a"));
+    }
+
+    @Test
+    public void jsonNullDoesNotTruncateTheRestOfTheObject() {
+        Map<String, Object> m = read("{\"a\":null,\"b\":\"x\"}");
+        assertSame(JsonForgivingReader.NULL_LITERAL, m.get("a"));
+        assertEquals("a null-valued field must not stop parsing subsequent fields", "x", m.get("b"));
+    }
+
+    @Test
+    public void quotedNullStaysTheStringNull() {
+        // A *quoted* "null" is a genuine string value and must NOT be confused with the null literal.
+        Map<String, Object> m = read("{\"a\":\"null\"}");
+        assertEquals("null", m.get("a"));
+    }
+
+    @Test
     public void arrayValues() {
         Map<String, Object> m = read("{\"xs\":[\"a\",\"b\"]}");
         assertEquals(List.of("a", "b"), m.get("xs"));

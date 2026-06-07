@@ -10,6 +10,14 @@ public final class JsonForgivingReader {
     /** Sentinel: a key appeared in the text but its value was empty/cut-off (present-but-garbled). */
     static final Object TRUNCATED = new Object();
 
+    /**
+     * Sentinel: the JSON {@code null} literal. Distinct from a Java {@code null} return (which this
+     * reader uses internally for "no token / garbled") and from the 4-char string {@code "null"}.
+     * The extract phase maps this to an actual null field value (JSON null → null), instead of
+     * letting the bare {@code null} literal leak through as the text {@code "null"}.
+     */
+    static final Object NULL_LITERAL = new Object();
+
     private String s;
     private int i;
 
@@ -118,7 +126,9 @@ public final class JsonForgivingReader {
         int start = i;
         while (i < s.length() && ",}]".indexOf(s.charAt(i)) < 0) i++;
         String result = s.substring(start, i).trim();
-        return result.isEmpty() ? null : result;   // null = no token read (zero-width)
+        if (result.isEmpty()) return null;                  // no token read (zero-width)
+        if (result.equals("null")) return NULL_LITERAL;     // JSON null literal → explicit null, NOT the string "null"
+        return result;
     }
 
     private void ws() { while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++; }
