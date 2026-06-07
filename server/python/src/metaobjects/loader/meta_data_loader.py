@@ -15,7 +15,6 @@ them with Pythonic ergonomics.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -83,17 +82,10 @@ class MetaDataLoader:
         self,
         providers: list[Provider] | None = None,
         strict: bool = False,
-        pre_freeze: Callable[[MetaData], None] | None = None,
     ) -> None:
         self._registry: TypeRegistry = compose_registry(
             providers if providers is not None else list(core_providers)
         )
-        # Optional pre-freeze enrichment hook (mirrors the TS loader's `preFreeze`
-        # option and the Java MetaDataLoader.setPreFreeze). Runs inside `load`
-        # after extends-resolution and before the validation passes, so any nodes
-        # it injects (e.g. AI-trace voRequest/voResponse jsonb columns) are
-        # validated like authored ones and reach BOTH codegen and the runtime.
-        self._pre_freeze = pre_freeze
         # ADR-0023 — strict load closes the open-attr policy: an authored own
         # @-attr matching no per-type schema and no commonAttr → ERR_UNKNOWN_ATTR
         # (alongside Python's always-on unknown TYPE/SUBTYPE rejection). Defaults
@@ -140,12 +132,6 @@ class MetaDataLoader:
             )
             resolve_supers(result.root, result.errors)
 
-        # Pre-freeze enrichment hook (mirrors TS/Java): runs after extends-
-        # resolution and before validation, so DERIVED nodes (e.g. AI-trace
-        # voRequest/voResponse jsonb columns) are validated + reach codegen+runtime.
-        if self._pre_freeze is not None:
-            self._pre_freeze(result.root)
-
         run_validations(
             result.root,
             self._registry,
@@ -167,15 +153,13 @@ class MetaDataLoader:
         exclude: list[str] | None = None,
         recurse: bool = True,
         strict: bool = False,
-        pre_freeze: Callable[[MetaData], None] | None = None,
     ) -> LoadResult:
         """Load every JSON/YAML file under ``directory`` (recursive by default).
 
         ``strict`` (ADR-0023) — when True, an undeclared own ``@-attr`` →
         ``ERR_UNKNOWN_ATTR``. Defaults False (downstream-friendly open policy).
-        ``pre_freeze`` — optional in-load tree-enrichment hook (see ``__init__``).
         """
-        loader = cls(providers=providers, strict=strict, pre_freeze=pre_freeze)
+        loader = cls(providers=providers, strict=strict)
         sources = list(
             DirectorySource(directory, exclude=exclude, recurse=recurse).expand()
         )

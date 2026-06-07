@@ -41,7 +41,6 @@ import tempfile
 from pathlib import Path
 
 from metaobjects import MetaDataLoader
-from metaobjects.loader.derive_trace_fields import derive_trace_fields
 from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
@@ -107,10 +106,7 @@ def _default_generators() -> list[Generator]:
 
 def _load_root(metadata_dir: str) -> tuple[MetaData | None, list[str]]:
     """Load metadata; return ``(root, error_messages)``. ``root`` is None on error."""
-    # AI-trace pre-pass: derive typed voRequest/voResponse jsonb columns onto
-    # LlmCallBase-derived entities so the trace-helper generator (and gen/verify)
-    # see them without the author restating them. No-op when no trace entities.
-    result = MetaDataLoader.from_directory(metadata_dir, pre_freeze=derive_trace_fields)
+    result = MetaDataLoader.from_directory(metadata_dir)
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
