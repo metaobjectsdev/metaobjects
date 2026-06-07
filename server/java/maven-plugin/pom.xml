@@ -101,6 +101,12 @@
             <artifactId>metaobjects-codegen-plantuml</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- api-docs IR/builder/renderer/DocsPaths for the metaobjects:docs goal. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-spring</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.maven.plugin-tools</groupId>
             <artifactId>maven-plugin-annotations</artifactId>
