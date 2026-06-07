@@ -69,13 +69,25 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
-            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
-            RdbSource sourceRdb = firstRdbSource(entity);
-            if (sourceRdb == null) continue;
-            if (!MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind())) continue;
+            if (!appliesTo(entity)) continue;
             emit(entity, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a filter allowlist for {@code entity}: a
+     * concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
+     * child is {@code @kind="table"} (writable). Same table guard as
+     * {@link SpringControllerGenerator#appliesTo(MetaObject)} — the controller's
+     * list handler reads this allowlist. Extracted verbatim from the
+     * {@link #execute(MetaDataLoader)} per-node guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
+        RdbSource sourceRdb = firstRdbSource(entity);
+        if (sourceRdb == null) return false;
+        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
     }
 
     /**

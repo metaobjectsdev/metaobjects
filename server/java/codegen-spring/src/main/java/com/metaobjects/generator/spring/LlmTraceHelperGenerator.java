@@ -109,9 +109,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         // Stable name order — deterministic emission, matching the other generators.
         java.util.List<MetaObject> entities = new java.util.ArrayList<>();
         for (MetaObject mo : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(mo.getSubType())) continue;
-            if (GeneratorUtil.isAbstract(mo)) continue;
-            if (!extendsBase(mo)) continue;
+            if (!appliesTo(mo)) continue;
             entities.add(mo);
         }
         entities.sort(Comparator.comparing(MetaObject::getName));
@@ -119,6 +117,29 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         for (MetaObject entity : entities) {
             emit(entity, loader, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a trace helper for {@code entity}: a concrete
+     * (non-abstract) {@code object.entity} that transitively {@code extends}
+     * {@code LlmCallBase}, nests a {@code template.prompt}, AND that prompt carries
+     * {@code @responseRef} (the typed-result contract requires it). Extracted
+     * verbatim from the combined {@link #execute(MetaDataLoader)} +
+     * {@link #emit(MetaObject, MetaDataLoader, java.nio.file.Path)} skip guards.
+     *
+     * <p>Note: this predicate only asks whether {@code @responseRef} is PRESENT.
+     * A present-but-unresolvable {@code @responseRef} is an authoring error the
+     * {@code emit} path raises as a {@link GeneratorException} — it is not a
+     * silent skip, so it is intentionally outside this inclusion predicate.</p>
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (GeneratorUtil.isAbstract(entity)) return false;
+        if (!extendsBase(entity)) return false;
+        PromptTemplate prompt = firstPrompt(entity);
+        if (prompt == null) return false;
+        String responseRef = prompt.getResponseRef();
+        return responseRef != null && !responseRef.isEmpty();
     }
 
     protected void emit(MetaObject entity, MetaDataLoader loader, Path outRoot) {

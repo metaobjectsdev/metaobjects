@@ -57,13 +57,25 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
-            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
-            RdbSource sourceRdb = firstRdbSource(entity);
-            if (sourceRdb == null) continue;
-            if (!MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind())) continue;
+            if (!appliesTo(entity)) continue;
             emit(entity, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a repository for {@code entity}: a concrete
+     * (non-abstract) {@code object.entity} whose first {@code source.rdb} child
+     * is {@code @kind="table"} (writable). View / materializedView / storedProc /
+     * tableFunction kinds — and entities with no {@code source.rdb} at all — are
+     * excluded. Extracted verbatim from the {@link #execute(MetaDataLoader)}
+     * per-node guard so the api-docs IR builder can reuse the same decision.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
+        RdbSource sourceRdb = firstRdbSource(entity);
+        if (sourceRdb == null) return false;
+        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
     }
 
     protected void emit(MetaObject entity, Path outRoot) {

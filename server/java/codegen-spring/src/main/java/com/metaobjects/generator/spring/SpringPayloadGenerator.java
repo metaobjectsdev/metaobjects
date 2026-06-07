@@ -132,16 +132,27 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         }
     }
 
+    /**
+     * True iff this generator emits a payload record for {@code node}: the node is
+     * a {@code template.*} ({@code prompt} / {@code output} / {@code toolcall})
+     * carrying a {@code @payloadRef} that resolves (against {@code loader}) to an
+     * {@code object.value}. Extracted verbatim from the per-template
+     * {@link #emit(MetaTemplate, MetaDataLoader, Path, Set)} skip guard so the
+     * api-docs IR builder reuses the same decision.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        String payloadRef = template.getPayloadRef();
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       Set<String> emittedNestedFqns) {
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (!appliesTo(template, loader)) {
+            return; // missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as Kotlin / C# / Python
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];

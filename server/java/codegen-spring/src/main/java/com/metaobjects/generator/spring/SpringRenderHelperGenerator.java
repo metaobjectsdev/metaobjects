@@ -121,16 +121,28 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
+    /**
+     * True iff this generator emits a render helper for {@code node}: the node is a
+     * {@code template.output} carrying a {@code @payloadRef} that resolves (against
+     * {@code loader}) to an {@code object.value}. The render helper wraps the JVM
+     * Renderer for {@code @kind=document|email} output templates. Extracted from
+     * the {@link #execute(MetaDataLoader)} {@code SUBTYPE_OUTPUT} filter combined
+     * with the per-template {@link #emit} skip guard.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
+        String payloadRef = template.getPayloadRef();
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       FilesystemProvider provider) {
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (!appliesTo(template, loader)) {
+            return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as SpringPayloadGenerator
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];

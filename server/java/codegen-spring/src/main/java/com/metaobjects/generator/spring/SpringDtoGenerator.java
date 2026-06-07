@@ -73,6 +73,21 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
     }
 
+    /**
+     * True iff this generator emits a concrete DTO {@code record} for
+     * {@code entity}: any {@code object.entity} that is not {@code abstract}.
+     * Unlike the controller/repository, the DTO is emitted for EVERY concrete
+     * entity regardless of {@code source.rdb} kind (a view-kind entity still gets
+     * a wire DTO). Abstract entities are excluded here — they only get the opt-in
+     * interface shape via {@code emitAbstractShape} when the {@code emitAbstractShapes}
+     * arg is set, which is a separate emit path, not part of this predicate.
+     * Extracted verbatim from the {@link #execute(MetaDataLoader)} concrete-emit guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        return !GeneratorUtil.isAbstract(entity);
+    }
+
     protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];

@@ -95,23 +95,31 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
-    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
-        // Only emit for json/xml formats.
+    /**
+     * True iff this generator emits an output-format prompt for {@code node}: the
+     * node is a {@code template.output} whose {@code @format} is {@code json} or
+     * {@code xml} AND whose {@code @payloadRef} resolves (against {@code loader})
+     * to an {@code object.value}. Extracted from the {@link #execute(MetaDataLoader)}
+     * {@code SUBTYPE_OUTPUT} filter combined with the per-template {@link #emit}
+     * format + payload guards.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
         String format = template.getFormat();
         boolean supported = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
                 || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
-        if (!supported) {
-            return;
-        }
-
+        if (!supported) return false;
         String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
+        if (!appliesTo(template, loader)) {
+            return; // unsupported @format, missing @payloadRef, or not a VO
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as SpringPayloadGenerator
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];

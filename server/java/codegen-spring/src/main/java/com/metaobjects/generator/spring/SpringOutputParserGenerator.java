@@ -138,15 +138,30 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
-    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
+    /**
+     * True iff this generator emits a parser for {@code node}: the node is a
+     * {@code template.output} (NOT a prompt) carrying a {@code @payloadRef} that
+     * resolves (against {@code loader}) to an {@code object.value}. The
+     * tolerant {@code extractLenient} overloads are only added for json/xml
+     * formats, but the parser FILE itself is emitted for every output template
+     * with a valid VO payload — so format is intentionally NOT part of this
+     * inclusion predicate. Extracted from the {@link #execute(MetaDataLoader)}
+     * {@code SUBTYPE_OUTPUT} filter combined with the per-template {@link #emit}
+     * payload guard.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
         String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
+        if (!appliesTo(template, loader)) {
+            return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as SpringPayloadGenerator
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
