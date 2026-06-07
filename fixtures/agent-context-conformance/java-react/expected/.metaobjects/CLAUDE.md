@@ -9,6 +9,7 @@ spine; generated code is the disposable artifact. Regenerate with `mvn metaobjec
 - Pattern-derivable from metadata = codegen, never hand-write (FKs, CRUD, validators, finders).
 - Never hand-edit generated files — change the metadata and regenerate (three-way merge preserves hand-written regions).
 - Use the generated constants for any string that names metadata.
+- The loaded metadata model is READ-ONLY — never inject nodes or mutate the tree at load time (no "enrich the model on load" hooks). Need an extra field/column? Author it in the metadata, or derive it during codegen (read the metadata, emit output). Mutating the loaded model makes it diverge from what's declared — a bad practice reserved for very rare cases.
 
 ## Authoring rules you must not violate
 - Nodes are fused-key maps: `{"<type>.<subType>": { ... }}` (e.g. `{"field.string": {"name": "email"}}`) — never split the type and subtype into separate keys.
