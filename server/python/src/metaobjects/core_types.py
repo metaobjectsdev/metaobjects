@@ -737,8 +737,8 @@ _TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
     AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
     AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
-    # @responseRef — template.prompt ONLY (AI trace; peer of @payloadRef). Carved
-    # out of the cross-port registry manifest (TS_PILOT_VOCAB) until promoted.
+    # @responseRef — template.prompt ONLY (AI trace; peer of @payloadRef).
+    # Cross-port vocabulary (registered in all five ports).
     AttrSchema(name=tc.TEMPLATE_ATTR_RESPONSE_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 _TEMPLATE_TOOLCALL_ATTRS = [

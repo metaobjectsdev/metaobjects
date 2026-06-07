@@ -20,7 +20,6 @@ using MetaObjects.Core.Attr;
 using MetaObjects.Core.Documentation;
 using MetaObjects.Presentation.View;
 using MetaObjects.Shared;
-using MetaObjects.Template;
 
 namespace MetaObjects;
 
@@ -69,11 +68,6 @@ public static class RegistryManifest
         InheritanceAnchor,
         /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
         PresentationOnly,
-        /// <summary>A deliberate TS-pilot vocabulary item carried by a port mid cross-port
-        /// rollout. Removed only once ALL five ports register it and the shared
-        /// expected-registry.json adds it (atomic flip). AI LLM-call trace persistence:
-        /// <c>@responseRef</c> on template.prompt.</summary>
-        TsPilotVocab,
     }
 
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
@@ -97,10 +91,6 @@ public static class RegistryManifest
             [AttrNameObject] = ExclusionReason.NativeBinding,
             [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
             [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
-            // AI LLM-call trace persistence — template.prompt @responseRef (TS pilot,
-            // rolling out cross-port). Excluded from the emitted manifest until the
-            // atomic flip (all ports register it + expected-registry.json adds it).
-            [TemplateConstants.TEMPLATE_ATTR_RESPONSE_REF] = ExclusionReason.TsPilotVocab,
         };
 
     /// <summary>Classify a per-type attr: an <see cref="ExclusionReason"/> (carved out) or <see cref="ExclusionReason.Included"/> (logical). Total — no silent default.</summary>

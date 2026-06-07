@@ -229,11 +229,7 @@ public final class RegistryManifest {
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
         /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
-        PRESENTATION_ONLY,
-        /** A TS-pilot-only attr not yet promoted to all five ports (e.g. @responseRef —
-         *  the AI prompt-derived-trace vertical). Registered for load, carved out of the
-         *  cross-port manifest until the vertical ships in every port. Mirrors TS TsPilotVocab. */
-        TS_PILOT_VOCAB
+        PRESENTATION_ONLY
     }
 
     /**
@@ -262,8 +258,7 @@ public final class RegistryManifest {
             com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_OBJECT, ExclusionReason.NATIVE_BINDING,
             com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING,
-            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP,
-            com.metaobjects.template.TemplateConstants.ATTR_RESPONSE_REF, ExclusionReason.TS_PILOT_VOCAB);
+            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP);
 
     /**
      * Classify a per-type attr: an {@link ExclusionReason} (carved out) or

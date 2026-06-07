@@ -53,8 +53,7 @@ TEMPLATE_ATTR_MODEL = "model"
 # @responseRef — peer of @payloadRef on template.prompt ONLY (NOT shared, NOT on
 # template.output): names the typed VO an LLM RESPONSE is extracted into, driving
 # the derived voResponse jsonb trace column (AI LLM-call trace persistence).
-# TS-pilot vocabulary — carved out of the cross-port registry manifest
-# (registry_manifest.ExclusionReason.TS_PILOT_VOCAB) until promoted to all ports.
+# Cross-port vocabulary (registered in all five ports).
 TEMPLATE_ATTR_RESPONSE_REF = "responseRef"
 
 # Toolcall-specific attrs (template.toolcall only — see ADR-0011).

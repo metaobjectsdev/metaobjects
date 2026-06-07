@@ -2505,6 +2505,12 @@
           "required": false
         },
         {
+          "name": "responseRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
           "name": "since",
           "valueType": "string",
           "isArray": false,
