@@ -17,6 +17,7 @@ from contextlib import closing
 from pathlib import Path
 
 from metaobjects import FileSource, MetaDataLoader
+from metaobjects.loader.derive_trace_fields import derive_trace_fields
 from metaobjects.runtime import (
     LlmCallInput,
     ObjectManager,
@@ -49,6 +50,7 @@ CREATE TABLE llm_call (
   "startedAt" timestamp,
   "llmRequest" jsonb,
   "llmResponse" jsonb,
+  "voRequest" jsonb,
   "voResponse" jsonb
 )
 """
@@ -71,7 +73,10 @@ def _connect(info):
 
 
 def test_typed_trace_round_trips_through_postgres() -> None:
-    loader = MetaDataLoader(strict=True)
+    # voRequest/voResponse are NOT authored in the fixture — they are DERIVED
+    # in-load from the prompt's @payloadRef/@responseRef via the pre_freeze hook,
+    # proving derivation reaches the metadata-driven ObjectManager runtime.
+    loader = MetaDataLoader(strict=True, pre_freeze=derive_trace_fields)
     result = loader.load([
         FileSource(_repo_file("library/ai/llm-call.yaml")),
         FileSource(Path(__file__).parent / "meta_ai_trace.yaml"),

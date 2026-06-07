@@ -1,11 +1,19 @@
-# Test-only trace entity for the AI-trace recorder PG round-trip (Python, Slice 1).
-# Loaded alongside the shipped library/ai/llm-call.yaml (LlmCallBase). Declares a
-# typed voResponse jsonb column by hand (Slice 3 will switch this to derivation
-# from a nested template.prompt).
+# Test-only trace entity for the AI-trace recorder PG round-trip (Python).
+# Loaded alongside the shipped library/ai/llm-call.yaml (LlmCallBase). The typed
+# voRequest/voResponse jsonb columns are NOT declared here — they are DERIVED by
+# derive_trace_fields (Slice 3) from the nested template.prompt's
+# @payloadRef/@responseRef when the loader runs with the pre_freeze hook. This
+# proves derivation reaches the metadata-driven ObjectManager runtime.
 metadata:
   package: metaobjects::ai
   children:
-    # Typed value object stored in the voResponse jsonb column.
+    # Typed request payload VO (referenced by @payloadRef → derived voRequest).
+    - object.value:
+        name: GreetingRequest
+        children:
+          - field.string: { name: prompt }
+
+    # Typed response VO (referenced by @responseRef → derived voResponse).
     - object.value:
         name: GreetingResponse
         children:
@@ -13,14 +21,15 @@ metadata:
           - field.int:    { name: score }
 
     # Concrete trace entity: inherits the 18 LlmCallBase fields, declares its
-    # table + primary identity + a typed voResponse jsonb column.
+    # table + primary identity + a template.prompt. The deriver injects
+    # voRequest/voResponse field.object jsonb columns from the prompt refs.
     - object.entity:
         name: GreetingCall
         extends: metaobjects::ai::LlmCallBase
         children:
           - source.rdb:       { table: llm_call, role: primary }
           - identity.primary: { name: primary, fields: ["spanId"] }
-          - field.object:
-              name: voResponse
-              storage: jsonb
-              objectRef: metaobjects::ai::GreetingResponse
+          - template.prompt:
+              name: greet
+              payloadRef: metaobjects::ai::GreetingRequest
+              responseRef: metaobjects::ai::GreetingResponse
