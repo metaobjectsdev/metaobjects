@@ -4,6 +4,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
+import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.loader.MetaDataLoader;
@@ -97,9 +98,8 @@ public final class JavaFieldShapes {
         SpringPayloadGenerator gen = new SpringPayloadGenerator();
         Path scratch = scratchDir();
         Set<String> emittedNestedFqns = new HashSet<>();
-        String[] split = com.metaobjects.generator.spring.SpringNaming.splitFqn(tmpl.getName());
-        String nestedPkg = com.metaobjects.generator.spring.SpringNaming
-            .promptsPackage(split[0]);
+        String[] split = SpringNaming.splitFqn(tmpl.getName());
+        String nestedPkg = SpringNaming.promptsPackage(split[0]);
 
         List<FieldShape> out = new ArrayList<>();
         for (MetaField field : vo.getMetaFields()) {
