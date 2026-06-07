@@ -72,9 +72,9 @@ def value(
         case FieldKind.ENUM:
             return _coerce_enum(raw, spec, opts, field_path, report, ci)
         case FieldKind.INT | FieldKind.LONG:
-            return _coerce_int(raw, spec, field_path, report)
+            return _coerce_int(raw, spec, field_path, report, ci)
         case FieldKind.DOUBLE:
-            return _coerce_double(raw, spec, field_path, report)
+            return _coerce_double(raw, spec, field_path, report, ci)
         case FieldKind.BOOLEAN:
             return _coerce_bool(raw, ci)
         case _:
@@ -208,24 +208,28 @@ def _lookup_alias_in(raw: str, aliases: dict[str, str] | None, mode: str) -> str
     return None
 
 
-def _coerce_int(raw: str, spec: FieldSpec, path: str, report: ExtractionReport) -> object:
+def _coerce_int(
+    raw: str, spec: FieldSpec, path: str, report: ExtractionReport, lenient: bool
+) -> object:
     trimmed = raw.strip()
     if not _ASCII_NUMERIC.match(trimmed):
         return MALFORMED
     # Integer parse first (matches Java Long.parseLong / C# long.TryParse), then a
     # float fallback (matches Java's Double.parseDouble fallback).
     try:
-        return _clamp(float(int(trimmed)), spec, path, report, as_long=True)
+        return _clamp(float(int(trimmed)), spec, path, report, as_long=True, lenient=lenient)
     except ValueError:
         pass
     try:
         d = float(trimmed)
     except ValueError:
         return MALFORMED
-    return _clamp(d, spec, path, report, as_long=True)
+    return _clamp(d, spec, path, report, as_long=True, lenient=lenient)
 
 
-def _coerce_double(raw: str, spec: FieldSpec, path: str, report: ExtractionReport) -> object:
+def _coerce_double(
+    raw: str, spec: FieldSpec, path: str, report: ExtractionReport, lenient: bool
+) -> object:
     trimmed = raw.strip()
     if not _ASCII_NUMERIC.match(trimmed):
         return MALFORMED
@@ -233,12 +237,16 @@ def _coerce_double(raw: str, spec: FieldSpec, path: str, report: ExtractionRepor
         d = float(trimmed)
     except ValueError:
         return MALFORMED
-    return _clamp(d, spec, path, report, as_long=False)
+    return _clamp(d, spec, path, report, as_long=False, lenient=lenient)
 
 
 def _clamp(
-    n: float, spec: FieldSpec, path: str, report: ExtractionReport, as_long: bool
+    n: float, spec: FieldSpec, path: str, report: ExtractionReport, as_long: bool, lenient: bool
 ) -> object:
+    """Apply the field's @min/@max range (sourced from its numeric validator). Under LENIENT
+    tolerance an out-of-range value is CLAMPED to the bound (recorded as a "clamp" coercion);
+    under STRICT tolerance it is MALFORMED (the validator's "value out of range" contract).
+    Cross-port: ports must match the lenient-clamp / strict-reject split."""
     # Non-finite (NaN, ±Infinity) → MALFORMED (cross-port classification parity).
     if not math.isfinite(n):
         return MALFORMED
@@ -248,6 +256,8 @@ def _clamp(
     if spec.max is not None and c > spec.max:
         c = spec.max
     if c != n:
+        if not lenient:  # STRICT: out-of-range is invalid, not silently clamped
+            return MALFORMED
         report.add_coercion(Coercion(path, _num_str(n), _num_str(c), "clamp"))
     # Truncate toward zero for integer kinds (math.trunc / int()).
     return math.trunc(c) if as_long else c

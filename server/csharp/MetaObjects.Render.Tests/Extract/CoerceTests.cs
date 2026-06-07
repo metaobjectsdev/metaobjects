@@ -102,6 +102,17 @@ public class CoerceTests
     }
 
     [Fact]
+    public void IntOutOfRangeRejectedUnderStrict()
+    {
+        var f = FieldSpec.Range("score", FieldKind.Int, required: true, min: 0.0, max: 10.0);
+        // STRICT: an out-of-range value is the validator's failure → MALFORMED (not silently clamped).
+        Assert.Same(Coerce.Malformed,
+            Coerce.Value("42", f, Normal().WithTolerance(Tolerance.Strict), "score", _rep));
+        // …but an in-range value still coerces cleanly under STRICT.
+        Assert.Equal(5L, Coerce.Value("5", f, Normal().WithTolerance(Tolerance.Strict), "score", _rep));
+    }
+
+    [Fact]
     public void IntUnparseableMalformed()
     {
         var f = FieldSpec.Scalar("score", FieldKind.Int, required: true);

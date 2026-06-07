@@ -49,9 +49,9 @@ export function coerceValue(
       return coerceEnum(raw, spec, opts, fieldPath, report, ci);
     case FieldKind.INT:
     case FieldKind.LONG:
-      return coerceInt(raw, spec, fieldPath, report);
+      return coerceInt(raw, spec, fieldPath, report, ci);
     case FieldKind.DOUBLE:
-      return coerceDouble(raw, spec, fieldPath, report);
+      return coerceDouble(raw, spec, fieldPath, report, ci);
     case FieldKind.BOOLEAN:
       return coerceBool(raw, ci);
     default:
@@ -171,16 +171,16 @@ function lookupAliasIn(raw: string, aliases: Readonly<Record<string, string>>, m
   return null;
 }
 
-function coerceInt(raw: string, spec: FieldSpec, path: string, report: ExtractionReport): unknown | typeof MALFORMED {
+function coerceInt(raw: string, spec: FieldSpec, path: string, report: ExtractionReport, lenient: boolean): unknown | typeof MALFORMED {
   const n = parseFiniteNumber(raw);
   if (n === null) return MALFORMED;
-  return clamp(Math.trunc(n), spec, path, report);
+  return clamp(Math.trunc(n), spec, path, report, lenient);
 }
 
-function coerceDouble(raw: string, spec: FieldSpec, path: string, report: ExtractionReport): unknown | typeof MALFORMED {
+function coerceDouble(raw: string, spec: FieldSpec, path: string, report: ExtractionReport, lenient: boolean): unknown | typeof MALFORMED {
   const n = parseFiniteNumber(raw);
   if (n === null) return MALFORMED;
-  return clamp(n, spec, path, report);
+  return clamp(n, spec, path, report, lenient);
 }
 
 /** Parse a trimmed numeric string; null if empty, non-numeric, or non-finite (NaN/±Infinity). */
@@ -194,11 +194,20 @@ function parseFiniteNumber(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function clamp(n: number, spec: FieldSpec, path: string, report: ExtractionReport): number {
+/**
+ * Apply the field's min/max range (sourced from its numeric validator). Under LENIENT tolerance an
+ * out-of-range value is CLAMPED to the bound (recorded as a "clamp" coercion); under STRICT tolerance
+ * it is MALFORMED (the validator's "value out of range" contract). Cross-port: ports must match the
+ * lenient-clamp / strict-reject split.
+ */
+function clamp(n: number, spec: FieldSpec, path: string, report: ExtractionReport, lenient: boolean): number | typeof MALFORMED {
   let c = n;
   if (spec.min != null && c < spec.min) c = spec.min;
   if (spec.max != null && c > spec.max) c = spec.max;
-  if (c !== n) report.addCoercion({ fieldPath: path, from: stringify(n), to: stringify(c), kind: "clamp" });
+  if (c !== n) {
+    if (!lenient) return MALFORMED; // STRICT: out-of-range is invalid, not silently clamped
+    report.addCoercion({ fieldPath: path, from: stringify(n), to: stringify(c), kind: "clamp" });
+  }
   return c;
 }
 

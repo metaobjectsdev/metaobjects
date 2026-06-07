@@ -52,6 +52,7 @@ import {
   FIELD_ATTR_NORMALIZE,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_XML_TEXT,
+  VALIDATOR_SUBTYPE_NUMERIC,
   NORMALIZE_DEFAULT,
   type NormalizeMode,
 } from "@metaobjectsdev/metadata";
@@ -60,6 +61,7 @@ import {
   Format,
   FieldKind,
   scalar,
+  range,
   textContentField,
   enumField,
   enumArray,
@@ -177,6 +179,14 @@ function fieldSpecFor(
   // @xmlText: a (non-array) scalar field marked to receive its element's XML text content.
   if (ownAttrString(field, FIELD_ATTR_XML_TEXT) === "true") {
     return textContentField(name, kind, required);
+  }
+  // Numeric range: source the bound from the field's numeric validator (@min/@max) — the single
+  // source of truth — so the engine clamps (lenient) / rejects (strict) out-of-range values.
+  if (kind === FieldKind.INT || kind === FieldKind.LONG || kind === FieldKind.DOUBLE) {
+    const numeric = field.validators().find((v) => v.subType === VALIDATOR_SUBTYPE_NUMERIC);
+    if (numeric !== undefined && (numeric.min !== undefined || numeric.max !== undefined)) {
+      return range(name, kind, required, numeric.min ?? null, numeric.max ?? null);
+    }
   }
   return scalar(name, kind, required, dv);
 }

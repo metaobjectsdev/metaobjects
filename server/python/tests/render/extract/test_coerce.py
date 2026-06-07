@@ -77,6 +77,15 @@ def test_int_clamp_to_range() -> None:
     assert "clamp" in _kinds(rep)
 
 
+def test_int_out_of_range_rejected_under_strict() -> None:
+    f = FieldSpec.range_("score", FieldKind.INT, True, 0.0, 10.0)
+    opts = _normal().with_tolerance(Tolerance.STRICT)
+    # STRICT: an out-of-range value is the validator's failure → MALFORMED (not silently clamped).
+    assert _coerce.value("42", f, opts, "score", ExtractionReport()) is MALFORMED
+    # …but an in-range value still coerces cleanly under STRICT.
+    assert _coerce.value("5", f, opts, "score", ExtractionReport()) == 5
+
+
 def test_int_unparseable_malformed() -> None:
     rep = ExtractionReport()
     f = FieldSpec.scalar("score", FieldKind.INT, True)

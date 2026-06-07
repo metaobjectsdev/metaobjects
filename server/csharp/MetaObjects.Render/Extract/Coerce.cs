@@ -64,9 +64,9 @@ public static class Coerce
         return spec.Kind switch
         {
             FieldKind.Enum    => CoerceEnum(raw, spec, opts, fieldPath, report, ci),
-            FieldKind.Int     => CoerceInt(raw, spec, fieldPath, report),
-            FieldKind.Long    => CoerceInt(raw, spec, fieldPath, report),
-            FieldKind.Double  => CoerceDouble(raw, spec, fieldPath, report),
+            FieldKind.Int     => CoerceInt(raw, spec, fieldPath, report, ci),
+            FieldKind.Long    => CoerceInt(raw, spec, fieldPath, report, ci),
+            FieldKind.Double  => CoerceDouble(raw, spec, fieldPath, report, ci),
             FieldKind.Decimal => CoerceDecimal(raw),
             FieldKind.Boolean => CoerceBool(raw, ci),
             _                 => raw,
@@ -213,34 +213,34 @@ public static class Coerce
         return null;
     }
 
-    private static object CoerceInt(string raw, FieldSpec spec, string path, ExtractionReport report)
+    private static object CoerceInt(string raw, FieldSpec spec, string path, ExtractionReport report, bool lenient)
     {
         string trimmed = raw.Trim();
 
         // Try integer parse first (matches Java's Long.parseLong).
         if (long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out long n))
         {
-            return Clamp((double)n, spec, path, report, asLong: true);
+            return Clamp((double)n, spec, path, report, asLong: true, lenient);
         }
 
         // Fallback: try double parse (matches Java's Double.parseDouble fallback).
         // Use Number style without AllowThousands to match Java's strict numeric format.
         if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
         {
-            return Clamp(d, spec, path, report, asLong: true);
+            return Clamp(d, spec, path, report, asLong: true, lenient);
         }
 
         return Malformed;
     }
 
-    private static object CoerceDouble(string raw, FieldSpec spec, string path, ExtractionReport report)
+    private static object CoerceDouble(string raw, FieldSpec spec, string path, ExtractionReport report, bool lenient)
     {
         // Use Float style (no thousands separator) with InvariantCulture to match
         // Java's Double.parseDouble behavior. NaN and Infinity parse successfully under
         // NumberStyles.Float, so the finite guard in Clamp() is essential.
         if (double.TryParse(raw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
         {
-            return Clamp(d, spec, path, report, asLong: false);
+            return Clamp(d, spec, path, report, asLong: false, lenient);
         }
         return Malformed;
     }
@@ -255,7 +255,13 @@ public static class Coerce
         return Malformed;
     }
 
-    private static object Clamp(double n, FieldSpec spec, string path, ExtractionReport report, bool asLong)
+    /// <summary>
+    /// Apply the field's @min/@max range (sourced from its NumericValidator). Under LENIENT tolerance
+    /// an out-of-range value is CLAMPED to the bound (recorded as a "clamp" coercion); under STRICT
+    /// tolerance it is <see cref="Malformed"/> (the validator's "value out of range" contract — surfaced
+    /// via ExtractionResult.OrThrow). Cross-port: ports must match the lenient-clamp / strict-reject split.
+    /// </summary>
+    private static object Clamp(double n, FieldSpec spec, string path, ExtractionReport report, bool asLong, bool lenient)
     {
         // Non-finite values (NaN, ±Infinity) → MALFORMED. Load-bearing cross-port parity fix.
         if (!double.IsFinite(n)) return Malformed;
@@ -266,8 +272,11 @@ public static class Coerce
 
         // ReSharper disable once CompareOfFloatsByEqualityOperator
         if (c != n)
+        {
+            if (!lenient) return Malformed;   // STRICT: out-of-range is invalid, not silently clamped
             report.AddCoercion(new Coercion(path, n.ToString(CultureInfo.InvariantCulture),
                 c.ToString(CultureInfo.InvariantCulture), "clamp"));
+        }
 
         return asLong ? (object)(long)c : c;
     }

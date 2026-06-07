@@ -36,8 +36,10 @@ from __future__ import annotations
 
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.meta.template.template_constants import TEMPLATE_ATTR_XML_TEXT
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.shared.base_types import TYPE_VALIDATOR
 from metaobjects.render.extract import (
     FieldKind,
     FieldSpec,
@@ -178,8 +180,26 @@ def _field_spec_for(
     # child. Mirrors the TS fieldSpecFor textContentField branch. No effect for JSON.
     if _text_content(field):
         return FieldSpec.text_content_field(name, kind, required)
+    # Numeric range: source the bound from the field's numeric validator (@min/@max) — the single
+    # source of truth — so the engine clamps (lenient) / rejects (strict) out-of-range values.
+    if kind in (FieldKind.INT, FieldKind.LONG, FieldKind.DOUBLE):
+        num_min = _numeric_bound(field, vc.VALIDATOR_ATTR_MIN)
+        num_max = _numeric_bound(field, vc.VALIDATOR_ATTR_MAX)
+        if num_min is not None or num_max is not None:
+            return FieldSpec.range_(name, kind, required, num_min, num_max)
     dv = _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
     return FieldSpec.scalar(name, kind, required, dv)
+
+
+def _numeric_bound(field: MetaField, attr_name: str) -> float | None:
+    """Read a numeric bound (@min/@max) from the field's ``validator.numeric`` child — the
+    canonical range source — or ``None`` if there is no such validator/bound."""
+    for c in field.children():
+        if c.type == TYPE_VALIDATOR and c.sub_type == vc.VALIDATOR_SUBTYPE_NUMERIC:
+            val = c.attr(attr_name)
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                return float(val)
+    return None
 
 
 # =============================================================================

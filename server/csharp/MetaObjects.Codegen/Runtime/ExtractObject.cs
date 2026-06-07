@@ -140,6 +140,14 @@ public static class ExtractObject
         // (the template/output domain marker — registered by TemplateTypesProvider).
         if (IsXmlText(field))
             return FieldSpec.TextContentField(name, kind, required);
+        // Numeric range: source the bound from the field's numeric validator (@min/@max) — the single
+        // source of truth — so the engine clamps (lenient) / rejects (strict) out-of-range values.
+        if (kind is FieldKind.Int or FieldKind.Long or FieldKind.Double)
+        {
+            var numeric = field.Validators().OfType<MetaNumericValidator>().FirstOrDefault();
+            if (numeric is not null && (numeric.Min is not null || numeric.Max is not null))
+                return FieldSpec.Range(name, kind, required, (double?)numeric.Min, (double?)numeric.Max);
+        }
         return FieldSpec.Scalar(name, kind, required, scalarDefault);
     }
 

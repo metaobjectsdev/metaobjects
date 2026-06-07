@@ -104,6 +104,15 @@ describe("coerce", () => {
     expect(rep.coercions().some((c) => c.kind === "clamp")).toBe(true);
   });
 
+  test("int out of range rejected under strict", () => {
+    const f = range("score", FieldKind.INT, true, 0, 10);
+    const opts = normalizeOptions({ tolerance: Tolerance.STRICT });
+    // STRICT: an out-of-range value is the validator's failure → MALFORMED (not silently clamped).
+    expect(coerceValue("42", f, opts, "score", new ExtractionReport())).toBe(MALFORMED);
+    // …but an in-range value still coerces cleanly under STRICT.
+    expect(coerceValue("5", f, opts, "score", new ExtractionReport())).toBe(5);
+  });
+
   test("int unparseable malformed", () => {
     const f = scalar("score", FieldKind.INT, true);
     expect(coerceValue("abc", f, defaults(), "score", new ExtractionReport())).toBe(MALFORMED);
