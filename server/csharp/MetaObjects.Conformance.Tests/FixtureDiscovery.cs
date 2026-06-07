@@ -65,7 +65,8 @@ public sealed record Fixture(
         !HasExpectedEffective &&
         !HasExpectedErrors &&
         !HasExpectedWarnings &&
-        !HasScript;
+        !HasScript &&
+        !HasDocsExpected;
 }
 
 /// <summary>
