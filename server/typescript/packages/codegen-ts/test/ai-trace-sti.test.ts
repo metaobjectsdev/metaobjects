@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, barrel, traceHelperFile } from "../src/generators/index.js";
-import { deriveTraceFields } from "../src/ai/derive-trace-fields.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 
@@ -24,9 +23,13 @@ const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children
   ] } },
   { "object.entity": { name: "ClassifyCall", extends: "PromptTrace", "@discriminatorValue": "classify", children: [
     { "template.prompt": { name: "ClassifyPrompt", "@textRef": "p/classify", "@payloadRef": "ClassifyReq", "@responseRef": "ClassifyRes", "@format": "json" } },
+    { "field.object": { name: "voRequest", "@objectRef": "ClassifyReq", "@storage": "jsonb" } },
+    { "field.object": { name: "voResponse", "@objectRef": "ClassifyRes", "@storage": "jsonb" } },
   ] } },
   { "object.entity": { name: "SummarizeCall", extends: "PromptTrace", "@discriminatorValue": "summarize", children: [
     { "template.prompt": { name: "SummarizePrompt", "@textRef": "p/summarize", "@payloadRef": "SummarizeReq", "@responseRef": "SummarizeRes", "@format": "json" } },
+    { "field.object": { name: "voRequest", "@objectRef": "SummarizeReq", "@storage": "jsonb" } },
+    { "field.object": { name: "voResponse", "@objectRef": "SummarizeRes", "@storage": "jsonb" } },
   ] } },
 ] } });
 
@@ -34,7 +37,7 @@ async function genTrace(): Promise<{ classify: string; summarize: string }> {
   const tmp = mkdtempSync(join(tmpdir(), "ai1c-out-"));
   const dir = mkdtempSync(join(tmpdir(), "ai1c-model-"));
   writeFileSync(join(dir, "m.json"), STI_MODEL);
-  const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+  const loaded = await MetaDataLoader.fromDirectory(dir);
   rmSync(dir, { recursive: true, force: true });
   expect(loaded.errors).toEqual([]);
   const out = await runGen({
@@ -88,7 +91,7 @@ describe("ai-trace #1c — STI table collapse", () => {
   test("N trace subtypes collapse to one prompt_llm_call table", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ai1c-schema-"));
     writeFileSync(join(dir, "m.json"), STI_MODEL);
-    const loaded = await MetaDataLoader.fromDirectory(dir, { preFreeze: deriveTraceFields });
+    const loaded = await MetaDataLoader.fromDirectory(dir);
     rmSync(dir, { recursive: true, force: true });
     expect(loaded.errors).toEqual([]);
 

@@ -35,8 +35,10 @@ import {
 } from "../generator.js";
 import { generatePayloadInterfacesBatch } from "../payload-codegen.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { LLM_CALL_BASE } from "../ai/derive-trace-fields.js";
 import { tphDiscriminatorPin } from "../templates/zod-validators.js";
+
+/** Short name of the shipped abstract base every trace entity extends. */
+const LLM_CALL_BASE = "LlmCallBase";
 
 export interface TraceHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */
@@ -78,10 +80,10 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       const payloadRef = prompt.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
       const responseRef = prompt.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
 
-      // @responseRef types the result; @payloadRef types the request. @payloadRef
-      // is loader-required on template.prompt, so this guard is belt-and-suspenders:
-      // it keeps us from ever emitting a voRequest write for a column that
-      // deriveTraceFields (which also keys off @payloadRef) didn't inject.
+      // @responseRef types the result; @payloadRef types the request. Both gate
+      // the helper: the entity must declare voRequest/voResponse field.object
+      // columns (authored) for these writes to land, and the prompt's refs name
+      // the VOs to render/extract into.
       if (typeof responseRef !== "string") return [];
       if (typeof payloadRef !== "string") return [];
 

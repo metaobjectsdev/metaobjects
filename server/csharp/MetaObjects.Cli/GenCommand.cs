@@ -46,10 +46,7 @@ public static class GenCommand
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot)
     {
-        // AI-trace pre-pass: derive typed voRequest/voResponse jsonb columns onto
-        // LlmCallBase-derived entities so the EF Core entity codegen emits them
-        // without the author restating them. No-op when no trace entities.
-        var load = MetaDataLoader.FromDirectory(metadataDir, preFreeze: DeriveTraceFields.Apply);
+        var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);

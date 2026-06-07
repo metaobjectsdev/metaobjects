@@ -60,19 +60,12 @@ public class MetaDataLoader
         : this(DefaultRegistry()) { }
 
     /// <summary>Full constructor — registry required; freeze and strict configurable (defaults: freeze=true, strict=false).</summary>
-    /// <param name="preFreeze">Optional in-load tree-enrichment hook (mirrors the TS/Java/Python
-    /// pre-freeze hook). Runs after extends-resolution and before the validation passes + freeze,
-    /// so injected nodes (e.g. AI-trace voRequest/voResponse jsonb columns) are validated like
-    /// authored ones. Wired into the codegen/verify path only — NOT conformance.</param>
-    public MetaDataLoader(TypeRegistry registry, bool freeze = true, bool strict = false, Action<MetaData>? preFreeze = null)
+    public MetaDataLoader(TypeRegistry registry, bool freeze = true, bool strict = false)
     {
         _registry = registry;
         Freeze = freeze;
         _strict = strict;
-        _preFreeze = preFreeze;
     }
-
-    private readonly Action<MetaData>? _preFreeze;
 
     private static TypeRegistry DefaultRegistry() =>
         Provider.ComposeRegistry([
@@ -93,8 +86,8 @@ public class MetaDataLoader
     /// Convenience: build a <see cref="DirectorySource"/> for <paramref name="directory"/>
     /// and load all discovered files in deterministic order.
     /// </summary>
-    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null, Action<MetaData>? preFreeze = null)
-        => FromDirectory(directory, DefaultRegistry(), opts, preFreeze: preFreeze);
+    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null)
+        => FromDirectory(directory, DefaultRegistry(), opts);
 
     /// <summary>
     /// Registry-aware overload: build a <see cref="DirectorySource"/> and load
@@ -102,7 +95,7 @@ public class MetaDataLoader
     /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
     /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
     /// </summary>
-    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null, bool strict = false, Action<MetaData>? preFreeze = null)
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null, bool strict = false)
     {
         var src = new DirectorySource(directory, opts);
         List<IMetaDataSource> sources;
@@ -128,7 +121,7 @@ public class MetaDataLoader
             };
             return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
-        return new MetaDataLoader(registry, strict: strict, preFreeze: preFreeze).Load(sources);
+        return new MetaDataLoader(registry, strict: strict).Load(sources);
     }
 
     /// <summary>
@@ -151,16 +144,16 @@ public class MetaDataLoader
     /// <summary>
     /// Convenience: load a single in-memory string of the given format.
     /// </summary>
-    public static LoadResult FromString(string content, MetaDataFormat format, Action<MetaData>? preFreeze = null)
-        => FromString(content, format, DefaultRegistry(), preFreeze);
+    public static LoadResult FromString(string content, MetaDataFormat format)
+        => FromString(content, format, DefaultRegistry());
 
     /// <summary>
     /// Registry-aware overload: load a single in-memory string of the given
     /// format using the supplied <paramref name="registry"/>.
     /// </summary>
-    public static LoadResult FromString(string content, MetaDataFormat format, TypeRegistry registry, Action<MetaData>? preFreeze = null)
+    public static LoadResult FromString(string content, MetaDataFormat format, TypeRegistry registry)
     {
-        var loader = new MetaDataLoader(registry, preFreeze: preFreeze);
+        var loader = new MetaDataLoader(registry);
         return loader.Load(new IMetaDataSource[] { new InMemoryStringSource(content, format: format) });
     }
 
@@ -333,13 +326,6 @@ public class MetaDataLoader
                     ErrorCode.ERR_UNRESOLVED_SUPER,
                     Envelope: envelope));
             }
-
-            // Pre-freeze enrichment hook (mirrors TS/Java/Python): runs after
-            // extends-resolution and before the validation passes, so DERIVED nodes
-            // (e.g. AI-trace voRequest/voResponse jsonb columns) are validated like
-            // authored ones and reach the EF Core codegen. Codegen/verify-only — the
-            // conformance loader passes no hook, so the metamodel corpus is unchanged.
-            _preFreeze?.Invoke(root);
 
             // Pass 2: subtype rules (value must not have primary identity; entity should have one)
             var subtypeResult = ValidationPasses.ValidateSubtypeRules(root);
