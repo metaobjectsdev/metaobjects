@@ -134,7 +134,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** Repository finder name for an M:N relationship: {@code tags} → {@code findTags}. */
-    static String m2mFinderName(String relationName) {
+    public static String m2mFinderName(String relationName) {
         if (relationName.isEmpty()) return "find";
         return "find" + Character.toUpperCase(relationName.charAt(0)) + relationName.substring(1);
     }

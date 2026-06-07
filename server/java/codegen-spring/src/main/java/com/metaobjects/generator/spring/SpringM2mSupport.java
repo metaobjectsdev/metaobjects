@@ -33,7 +33,7 @@ import java.util.List;
  * ({@code Person} → {@code persons}); the relation segment is the relationship
  * {@code name}; related-row order is not contractual.
  */
-final class SpringM2mSupport {
+public final class SpringM2mSupport {
 
     private SpringM2mSupport() { /* no instances */ }
 
@@ -49,7 +49,7 @@ final class SpringM2mSupport {
      * @param targetField      the junction FK field holding the target key (derived)
      * @param symmetric        {@code true} for an undirected self-join (union-on-read)
      */
-    record M2mNav(
+    public record M2mNav(
         String relationName,
         String targetShortName,
         String targetDtoType,
@@ -67,7 +67,7 @@ final class SpringM2mSupport {
      * @param loader the loader (for the model root, to find junction + target entities)
      * @return the resolved M:N navigations, in declaration order
      */
-    static List<M2mNav> resolve(MetaObject entity, MetaDataLoader loader) {
+    public static List<M2mNav> resolve(MetaObject entity, MetaDataLoader loader) {
         MetaRoot root = loader.getRoot();
         String sourcePkg = SpringNaming.splitFqn(entity.getName())[0];
         List<M2mNav> out = new ArrayList<>();
