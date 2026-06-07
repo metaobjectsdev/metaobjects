@@ -35,6 +35,10 @@
           { "field.string": { "name": "zip" } }
       ] } },
 
+      { "object.entity": { "name": "BaseNode", "abstract": true, "children": [
+          { "field.long": { "name": "id" } }
+      ] } },
+
       { "object.value": { "name": "SummaryPayloadVo", "children": [
           { "field.string": { "name": "summary", "@required": true } }
       ] } },

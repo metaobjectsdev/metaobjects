@@ -1,6 +1,7 @@
 package com.metaobjects.generator.apidocs;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -75,7 +76,10 @@ public final class JavaApiModelBuilder {
         // Objects: one unit per object.entity / object.value (entity vs value drives
         // which symbol categories appliesTo lets through).
         for (MetaObject obj : loader.getMetaObjects()) {
-            units.add(buildObjectUnit(obj, loader));
+            ApiUnit unit = buildObjectUnit(obj, loader);
+            if (unit != null) {
+                units.add(unit);
+            }
         }
 
         // Templates: one unit per template.* node under the model root.
@@ -99,11 +103,15 @@ public final class JavaApiModelBuilder {
 
         List<ApiSymbol> symbols = new ArrayList<>();
 
-        // MODEL — always, for every object (value objects → MODEL only).
-        symbols.add(symbol(
-            shortName, ApiSymbolKind.MODEL, fqn(javaPkg, shortName),
-            "class " + shortName,
-            entity ? "the in-memory model object" : "the in-memory value object"));
+        // MODEL — gated by the model generator's real inclusion predicate. Abstract
+        // objects emit no instance class, so they get no MODEL symbol (documented ==
+        // generated). A concrete value object → MODEL only.
+        if (JavaObjectCodeGenerator.appliesTo(obj)) {
+            symbols.add(symbol(
+                shortName, ApiSymbolKind.MODEL, fqn(javaPkg, shortName),
+                "class " + shortName,
+                entity ? "the in-memory model object" : "the in-memory value object"));
+        }
 
         if (entity) {
             // DTO — the wire shape.
@@ -162,6 +170,12 @@ public final class JavaApiModelBuilder {
             }
         }
 
+        // An object that yields no symbols (e.g. an abstract object: no MODEL, and
+        // every entity generator's appliesTo also skips abstracts) produces no unit
+        // at all — never an empty unit.
+        if (symbols.isEmpty()) {
+            return null;
+        }
         return new ApiUnit(shortName, javaPkg, unitKind, symbols);
     }
 

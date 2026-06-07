@@ -276,6 +276,26 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void abstractObjectIsNeitherDocumentedNorGenerated() {
+        // An abstract entity cannot be instantiated and emits no instance/write
+        // artifacts (abstract-codegen invariant) — every entity generator's
+        // appliesTo skips it, and the MODEL branch must too. So it yields NO
+        // symbols and therefore NO unit at all (not an empty unit).
+        boolean hasUnit = model.units().stream().anyMatch(u -> u.node().equals("BaseNode"));
+        assertFalse("abstract object BaseNode must NOT produce a unit (no symbols → no unit)", hasUnit);
+
+        // And nothing for it appears in the generated Java either: no model class,
+        // no DTO, no controller, no repository.
+        assertFalse("no class BaseNode should be generated for an abstract object",
+            containsIdentifier(allGenerated, "BaseNode"));
+        assertFalse("no BaseNodeDto should be generated", containsIdentifier(allGenerated, "BaseNodeDto"));
+        assertFalse("no BaseNodeController should be generated",
+            containsIdentifier(allGenerated, "BaseNodeController"));
+        assertFalse("no BaseNodeRepository should be generated",
+            containsIdentifier(allGenerated, "BaseNodeRepository"));
+    }
+
+    @Test
     public void promptTemplateIsDocumentedAsPayloadOnly() {
         // template.prompt → PAYLOAD only; RENDER/PROMPT/OUTPUT_PARSER require SUBTYPE_OUTPUT.
         ApiUnit classify = unit("ClassifyPrompt");

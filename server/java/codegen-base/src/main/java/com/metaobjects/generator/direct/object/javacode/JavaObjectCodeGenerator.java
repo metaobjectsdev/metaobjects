@@ -1,6 +1,8 @@
 package com.metaobjects.generator.direct.object.javacode;
 
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.GeneratorIOException;
+import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.GenerationContext;
 import com.metaobjects.generator.direct.object.BaseObjectCodeWriter;
 import com.metaobjects.generator.util.GeneratorUtil;
@@ -52,6 +54,45 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         return getArg(ARG_FLAVOR, "");
     }
 
+    /**
+     * The per-object inclusion predicate for the instantiable MODEL artifact: whether
+     * this generator emits an instance class (and a binding/extractor) for {@code mo}.
+     *
+     * <p>Abstract objects cannot be instantiated via {@code newInstance()}, so the
+     * generator skips them (honors the abstract-codegen invariant: no instance
+     * artifacts for abstracts). This is the single source of truth for that skip
+     * decision — both the emission loop here and any api-docs builder that documents
+     * the MODEL symbol gate on it, so documented == generated (drift-proof).</p>
+     */
+    public static boolean appliesTo(MetaObject mo) {
+        return !IOUtil.isAbstract(mo);
+    }
+
+    /**
+     * Per-object class-file emission, gated by {@link #appliesTo(MetaObject)}.
+     *
+     * <p>The multi-file framework iterates EVERY filtered {@link MetaObject} and creates
+     * a placeholder file before calling this. For an abstract object we emit nothing and
+     * remove that placeholder, so an abstract object yields no model class file at all
+     * (honors the abstract-codegen invariant: no instance artifacts for abstracts — the
+     * same rule the binding/extractor loop and {@code appliesTo} enforce, now applied to
+     * the model class too so documented == generated).</p>
+     */
+    @Override
+    protected void writeSingleFile(MetaObject mo, GeneratorIOWriter<?> writer)
+            throws GeneratorIOException {
+        if (!appliesTo(mo)) {
+            // Drop the empty placeholder the framework created for this abstract object.
+            File placeholder = new File(
+                    new File(getOutputDir(), getSingleOutputFilePath(mo)),
+                    getSingleOutputFilename(mo));
+            //noinspection ResultOfMethodCallIgnored
+            placeholder.delete();
+            return;
+        }
+        super.writeSingleFile(mo, writer);
+    }
+
     /** Whether this run emits CONCRETE classes (and therefore a binding provider). */
     private boolean isConcreteFlavor() {
         return FLAVOR_POJO_AWARE.equals(getFlavor()) || FLAVOR_VALUE_OBJECT.equals(getFlavor());
@@ -93,7 +134,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
                 // a non-instantiable type — and an extractor for one could never produce a typed
                 // graph. Skip BOTH the binding entry and the extractor for abstract metadata
                 // (honors the abstract-codegen invariant: no instance artifacts for abstracts).
-                if (IOUtil.isAbstract(mo)) {
+                if (!appliesTo(mo)) {
                     continue;
                 }
                 String javaPkg = namer.getLanguagePackage(mo);
