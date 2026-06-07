@@ -181,7 +181,9 @@ public static class VerifyCommand
                         "generated output to diff against.",
             };
 
-        var load = MetaDataLoader.FromDirectory(opts.MetadataDir);
+        // Match the codegen path: derive AI-trace voRequest/voResponse columns so
+        // the re-generated EF code matches the committed output (no false drift).
+        var load = MetaDataLoader.FromDirectory(opts.MetadataDir, preFreeze: DeriveTraceFields.Apply);
         if (load.Errors.Count > 0)
             return new Codegen.CodegenDrift.Result
             {
