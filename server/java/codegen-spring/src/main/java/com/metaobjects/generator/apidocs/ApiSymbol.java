@@ -9,6 +9,7 @@ public record ApiSymbol(
     String signature,       // human-readable Java signature
     List<String> params,    // param descriptions (may be empty)
     String usage,           // one-line "what you use this for"
+    String returns,         // description of the symbol's return surface (nullable)
     String throwsNote,      // when/why it throws (nullable)
     UnitExample example,    // nullable
     List<FieldShape> fields // payload/dto field shapes (may be empty)

@@ -13,6 +13,7 @@ import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -125,6 +126,19 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertTrue("RENDER SummaryOutputRenderHelper", has(tmpl, ApiSymbolKind.RENDER, "SummaryOutputRenderHelper"));
         assertTrue("PROMPT SummaryOutputPrompt", has(tmpl, ApiSymbolKind.PROMPT, "SummaryOutputPrompt"));
         assertTrue("OUTPUT_PARSER SummaryOutputParser", has(tmpl, ApiSymbolKind.OUTPUT_PARSER, "SummaryOutputParser"));
+
+        // returns: a document render helper returns String.
+        ApiSymbol render = symbol(summary, ApiSymbolKind.RENDER, "SummaryOutputRenderHelper");
+        assertEquals("String", render.returns());
+
+        // returns: a repository reports an Optional return surface (substring ok).
+        ApiSymbol da = symbol(author, ApiSymbolKind.DATA_ACCESS, "AuthorRepository");
+        assertNotNull(da.returns());
+        assertTrue("DATA_ACCESS returns mentions Optional; saw: " + da.returns(),
+            da.returns().contains("Optional"));
+
+        // unit-level example slot exists, empty (null) for now.
+        assertNull(unit(m, "Author").example());
     }
 
     // ----- test helpers ------------------------------------------------------

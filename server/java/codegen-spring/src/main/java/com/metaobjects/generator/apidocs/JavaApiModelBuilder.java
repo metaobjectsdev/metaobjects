@@ -16,6 +16,8 @@ import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.template.OutputTemplate;
+import com.metaobjects.template.TemplateConstants;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +66,9 @@ import java.util.List;
  *       choice not present in the loaded metadata, and there is no
  *       {@code appliesTo} predicate for it. To stay drift-proof (document only
  *       what the loaded model determines), no EXTRACTOR symbol is emitted here.</li>
- *   <li>{@code example}/{@code throwsNote} are null — filled in later phases.</li>
+ *   <li>{@code example} (symbol- and unit-level) and {@code throwsNote} are null
+ *       — filled in later phases. {@code returns} is populated where a single
+ *       return surface is meaningful (DATA_ACCESS, RENDER); null otherwise.</li>
  * </ul>
  */
 public final class JavaApiModelBuilder {
@@ -142,7 +146,8 @@ public final class JavaApiModelBuilder {
                 symbols.add(symbol(
                     repo, ApiSymbolKind.DATA_ACCESS, fqn(javaPkg, repo),
                     repositorySignature(repo, dto, obj, loader),
-                    "data access — consumer implements this interface"));
+                    "data access — consumer implements this interface",
+                    "Optional<" + dto + "> / List<" + dto + "> / boolean"));
             }
 
             // REST — one symbol per verb+path the controller registers.
@@ -176,7 +181,7 @@ public final class JavaApiModelBuilder {
         if (symbols.isEmpty()) {
             return null;
         }
-        return new ApiUnit(shortName, javaPkg, unitKind, symbols);
+        return new ApiUnit(shortName, javaPkg, unitKind, symbols, null);
     }
 
     private void addRestSymbols(List<ApiSymbol> symbols, MetaObject obj,
@@ -237,10 +242,15 @@ public final class JavaApiModelBuilder {
         }
         if (SpringRenderHelperGenerator.appliesTo(tmpl, loader)) {
             String render = SpringNaming.renderHelperName(shortName);
+            // The render helper's return type keys off @kind: email → EmailDocument,
+            // document (the default) → String. Read the own attr the same way the
+            // render-helper generator does (default document) to stay drift-proof.
+            String renderReturns = isEmailKind(tmpl) ? "EmailDocument" : "String";
             symbols.add(symbol(
                 render, ApiSymbolKind.RENDER, fqn(promptsPkg, render),
                 "final class " + render,
-                "renders the output template against a payload"));
+                "renders the output template against a payload",
+                renderReturns));
         }
         if (SpringOutputPromptGenerator.appliesTo(tmpl, loader)) {
             String prompt = SpringNaming.promptName(shortName);
@@ -257,21 +267,42 @@ public final class JavaApiModelBuilder {
                 "parses model output back into the typed payload"));
         }
 
-        return new ApiUnit(shortName, javaPkg, "template", symbols);
+        return new ApiUnit(shortName, javaPkg, "template", symbols, null);
+    }
+
+    /** True when the template's {@code @kind} (own attr, default {@code document}) is {@code email}. */
+    private static boolean isEmailKind(MetaTemplate tmpl) {
+        if (tmpl instanceof OutputTemplate
+                && tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
+            String v = tmpl.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString();
+            return TemplateConstants.KIND_EMAIL.equals(v);
+        }
+        return false;
     }
 
     // ----- helpers -----------------------------------------------------------
 
     private static ApiSymbol symbol(String name, ApiSymbolKind kind, String importFqn,
                                     String signature, String usage) {
-        return symbolWithFields(name, kind, importFqn, signature, usage, List.of());
+        return symbol(name, kind, importFqn, signature, usage, null);
+    }
+
+    private static ApiSymbol symbol(String name, ApiSymbolKind kind, String importFqn,
+                                    String signature, String usage, String returns) {
+        return symbolWithFields(name, kind, importFqn, signature, usage, returns, List.of());
     }
 
     private static ApiSymbol symbolWithFields(String name, ApiSymbolKind kind, String importFqn,
                                               String signature, String usage, List<FieldShape> fields) {
+        return symbolWithFields(name, kind, importFqn, signature, usage, null, fields);
+    }
+
+    private static ApiSymbol symbolWithFields(String name, ApiSymbolKind kind, String importFqn,
+                                              String signature, String usage, String returns,
+                                              List<FieldShape> fields) {
         return new ApiSymbol(
             name, kind, importFqn, signature,
-            List.of(), usage, null, null, fields);
+            List.of(), usage, returns, null, null, fields);
     }
 
     private static String fqn(String javaPkg, String shortName) {
