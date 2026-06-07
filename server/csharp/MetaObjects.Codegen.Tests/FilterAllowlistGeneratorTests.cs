@@ -83,6 +83,31 @@ public class FilterAllowlistGeneratorTests
     }
 
     [Fact]
+    public void Per_subtype_operator_gating_uuid_and_currency()
+    {
+        // SP-H Unit9 — uuid: eq, ne, in, isNull (no like, no ordering);
+        //              currency: numeric band (orderable money in minor units).
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Order", "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.uuid":     { "name": "ref",   "@filterable": true } },
+            { "field.currency": { "name": "total", "@currency": "USD", "@filterable": true } },
+            { "identity.primary": { "@fields": "ref" } }
+          ]}}
+        ]}}
+        """;
+        var src = Assert.Single(new FilterAllowlistGenerator().Generate(Ctx(Load(model)))).Content;
+
+        Assert.Contains("\"ref\",", src);
+        Assert.Contains("\"total\",", src);
+        // uuid — identity-comparison only, no like.
+        Assert.Contains("[\"ref\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" }", src);
+        // currency — numeric ops.
+        Assert.Contains("[\"total\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
+    }
+
+    [Fact]
     public void View_kind_projection_entity_gets_no_allowlist()
     {
         // A read-only projection (source.rdb @kind=view) is filtered out by

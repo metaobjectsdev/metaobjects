@@ -93,6 +93,138 @@
           ]}},
           { "identity.primary": { "@fields": "programId" } }
         ]
+      }},
+
+      { "object.entity": {
+        "name": "Post",
+        "children": [
+          { "source.rdb": { "@table": "posts" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "title", "@required": true, "@maxLength": 200 } },
+          { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Tag",
+        "children": [
+          { "source.rdb": { "@table": "tags" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name", "@required": true, "@maxLength": 80 } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "PostTag",
+        "children": [
+          { "source.rdb": { "@table": "post_tags" } },
+          { "field.long": { "name": "postId", "@required": true } },
+          { "field.long": { "name": "tagId",  "@required": true } },
+          { "identity.primary":   { "@fields": ["postId", "tagId"] } },
+          { "identity.reference": { "name": "fkPost", "@fields": "postId", "@references": "Post" } },
+          { "identity.reference": { "name": "fkTag",  "@fields": "tagId",  "@references": "Tag" } }
+        ]
+      }},
+
+      { "object.entity": {
+        "name": "Person",
+        "children": [
+          { "source.rdb": { "@table": "people" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name", "@required": true, "@maxLength": 80 } },
+          { "relationship.association": { "name": "following", "@cardinality": "many", "@objectRef": "Person", "@through": "Follow", "@sourceRefField": "followerId" } },
+          { "relationship.association": { "name": "friends",   "@cardinality": "many", "@objectRef": "Person", "@through": "Friendship", "@symmetric": true } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Follow",
+        "children": [
+          { "source.rdb": { "@table": "follows" } },
+          { "field.long": { "name": "followerId", "@required": true } },
+          { "field.long": { "name": "followeeId", "@required": true } },
+          { "identity.primary":   { "@fields": ["followerId", "followeeId"] } },
+          { "identity.reference": { "name": "fkFollower", "@fields": "followerId", "@references": "Person" } },
+          { "identity.reference": { "name": "fkFollowee", "@fields": "followeeId", "@references": "Person" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Friendship",
+        "children": [
+          { "source.rdb": { "@table": "friendships" } },
+          { "field.long": { "name": "personAId", "@required": true } },
+          { "field.long": { "name": "personBId", "@required": true } },
+          { "identity.primary":   { "@fields": ["personAId", "personBId"] } },
+          { "identity.reference": { "name": "fkPersonA", "@fields": "personAId", "@references": "Person" } },
+          { "identity.reference": { "name": "fkPersonB", "@fields": "personBId", "@references": "Person" } }
+        ]
+      }},
+
+      { "object.entity": {
+        "name": "Auth",
+        "@discriminator": "type",
+        "children": [
+          { "source.rdb": { "@table": "auths" } },
+          { "field.long":   { "name": "id" } },
+          { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+          { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "BridgeAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "Bridge",
+        "children": [
+          { "field.int": { "name": "quantity", "@required": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "CopayAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "Copay",
+        "children": [
+          { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "PriorAuthAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "PriorAuth",
+        "children": [
+          { "field.string": { "name": "approver", "@maxLength": 80 } }
+        ]
+      }},
+      { "object.value": {
+        "name": "Settings",
+        "children": [
+          { "field.string":  { "name": "theme" } },
+          { "field.boolean": { "name": "notify" } },
+          { "field.int":     { "name": "retries" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "AllTypes",
+        "children": [
+          { "source.rdb": { "@table": "all_types" } },
+          { "field.uuid":      { "name": "id" } },
+          { "field.string":    { "name": "sVal",   "@required": true, "@maxLength": 200 } },
+          { "field.int":       { "name": "iVal",   "@required": true } },
+          { "field.long":      { "name": "lVal",   "@required": true } },
+          { "field.double":    { "name": "dVal",   "@required": true } },
+          { "field.float":     { "name": "fVal",   "@required": true } },
+          { "field.decimal":   { "name": "decVal", "@required": true, "@precision": 18, "@scale": 6 } },
+          { "field.boolean":   { "name": "bVal",   "@required": true } },
+          { "field.date":      { "name": "dateVal", "@required": true } },
+          { "field.time":      { "name": "timeVal", "@required": true } },
+          { "field.timestamp": { "name": "tsVal",   "@required": true } },
+          { "field.timestamp": { "name": "tsTzVal", "@required": true, "@dbColumnType": "timestamp_with_tz" } },
+          { "field.currency":  { "name": "moneyVal", "@required": true, "@currency": "USD" } },
+          { "field.enum":      { "name": "enumVal", "@required": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
+          { "field.uuid":      { "name": "uuidVal", "@required": true } },
+          { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
+          { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
+        ]
       }}
     ]
   }

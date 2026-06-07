@@ -23,4 +23,11 @@ internal static class CorpusPaths
     /// </summary>
     public static readonly string CanonicalSchemaSql =
         Path.Combine(CanonicalDir, "schema.postgres.sql");
+
+    /// <summary>
+    /// The canonical entity metadata for the corpus. The M:N runtime resolver
+    /// (<see cref="M2MResolver"/>) loads it to derive junction FK fields from the
+    /// junction entity's <c>identity.reference</c> children (FR-017).
+    /// </summary>
+    public static readonly string CanonicalMetadataDir = CanonicalDir;
 }

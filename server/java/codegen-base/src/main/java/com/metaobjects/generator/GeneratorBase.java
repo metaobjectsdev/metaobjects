@@ -21,7 +21,7 @@ import java.util.*;
  *   <li>Script execution support</li>
  * </ul>
  * 
- * @author Draagon Software  
+ * @author Doug Mealing  
  * @since 4.4.0
  */
 public abstract class GeneratorBase implements Generator {

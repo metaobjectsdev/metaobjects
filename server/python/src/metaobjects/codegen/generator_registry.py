@@ -39,6 +39,7 @@ from metaobjects.codegen.generators.render_helper_generator import (
 )
 from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.generators.template_generator import template_generator
+from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
 from metaobjects.render.verify import InMemoryProvider
 
 GeneratorTier = str  # "native" | "neutral"
@@ -86,7 +87,7 @@ def _render_helper_default() -> Generator:
     return render_helper_generator(template_root="templates")
 
 
-#: Stable name -> GeneratorEntry. The 9 native generators whose manifest `ports`
+#: Stable name -> GeneratorEntry. The 10 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set-equality conformance-tested vs the manifest.
 GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
     "entity": GeneratorEntry(
@@ -142,6 +143,12 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         description="Per-template payload value object (the strict payload type).",
         tier="native",
         factory=payload_vo_generator,
+    ),
+    "trace-helper": GeneratorEntry(
+        name="trace-helper",
+        description="Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist).",
+        tier="native",
+        factory=trace_helper_generator,
     ),
 }
 

@@ -94,6 +94,9 @@ object ScenarioLoader {
             sort = sorts,
             limit = (q["limit"] as? Number)?.toInt(),
             offset = (q["offset"] as? Number)?.toInt(),
+            relation = q["relation"] as? String,
+            insert = q["insert"] as? Map<String, Any?>,
+            data = q["data"] as? Map<String, Any?>,
             expect = q["expect"],
         )
     }

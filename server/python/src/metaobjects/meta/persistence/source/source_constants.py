@@ -39,6 +39,10 @@ SOURCE_ATTR_FUNCTION = "function"
 SOURCE_ATTR_KIND = "kind"
 SOURCE_ATTR_ROLE = "role"
 SOURCE_ATTR_SCHEMA = "schema"
+# @parameterRef — name/FQN of an object.value describing the input shape of a
+# stored-proc / table-function source. Cross-port (FR-015). Mirrors TS
+# SOURCE_ATTR_PARAMETER_REF.
+SOURCE_ATTR_PARAMETER_REF = "parameterRef"
 
 # --- @kind values + read-only derivation ------------------------------------
 SOURCE_KIND_TABLE = "table"

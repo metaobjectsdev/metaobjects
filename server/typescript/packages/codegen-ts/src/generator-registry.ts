@@ -31,6 +31,7 @@ import {
   extractor,
   outputPrompt,
   renderHelper,
+  apiDocsFile,
   docsFile,
   templateGenerator,
   traceHelperFile,
@@ -152,10 +153,18 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => templatePrimitive(),
     options: "name, walk, template, format?, filter?, provider?, target?",
   },
+  "api-docs": {
+    name: "api-docs",
+    description:
+      "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
+    tier: "native",
+    factory: () => apiDocsFile(),
+    options: "filter?, target?",
+  },
 
   "trace-helper": {
     name: "trace-helper",
-    description: "Per-entity typed record<Entity> helper wrapping recordLlmCall (LlmCallBase-derived entities only).",
+    description: "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
     tier: "native",
     factory: () => traceHelperFile(),
     options: "outDir?, target?",

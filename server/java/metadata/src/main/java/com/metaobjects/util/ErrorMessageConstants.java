@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.metaobjects.util;
@@ -56,6 +65,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN";
 
     /**
+     * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
+     * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
+     * does not match one of them, or a M:N-only attr ({@code @through}/{@code @sourceRefField}/
+     * {@code @symmetric}) is set on a non-M:N (1:N / {@code @cardinality:one}) relationship.
+     * Cross-language contract: {@code ERR_INVALID_RELATIONSHIP}.
+     */
+    public static final String ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP";
+
+    /**
      * Error code emitted when an object declares one or more sources but none has
      * role {@code "primary"}.
      * Cross-language contract: {@code ERR_SOURCE_NO_PRIMARY}.
@@ -96,6 +114,14 @@ public final class ErrorMessageConstants {
     public static final String WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
 
     /**
+     * FR-013 warning: {@code @readOnly: true} on a field child of an
+     * {@code object.value}. Value-objects have no persistence semantics, so the
+     * read-only contract is advisory (codegen may use it for record/struct
+     * treatment). Cross-language contract: {@code WARN_READONLY_VALUE_OBJECT}.
+     */
+    public static final String WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
+
+    /**
      * Error code emitted when the YAML metadata input is not valid YAML, or cannot be
      * desugared into canonical metadata (ADR-0006).
      * Cross-language contract: {@code ERR_MALFORMED_YAML}.
@@ -126,12 +152,29 @@ public final class ErrorMessageConstants {
     public static final String ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF";
 
     /**
+     * Error code emitted when a {@code field.object} declares no {@code @objectRef}
+     * (ADR-0013). A field.object models a typed nested value and REQUIRES @objectRef;
+     * an open/untyped JSON map uses the physical {@code @dbColumnType: jsonb} escape
+     * hatch on a {@code field.string} instead of a bare object.
+     * Cross-language contract: {@code ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF}.
+     */
+    public static final String ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @filter} clause references
      * a field that is not declared filterable, or applies an operator the field's
      * subtype does not support.
      * Cross-language contract: {@code ERR_BAD_ATTR_FILTER}.
      */
     public static final String ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER";
+
+    /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     * Cross-language contract: {@code ERR_FILTERABLE_UNSUPPORTED_SUBTYPE}.
+     */
+    public static final String ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE";
 
     /**
      * Error code emitted when a {@code layout.dataGrid @defaultSortField} value

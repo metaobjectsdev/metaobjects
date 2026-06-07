@@ -95,7 +95,7 @@ public class MetaDataLoader
     /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
     /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
     /// </summary>
-    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null)
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null, bool strict = false)
     {
         var src = new DirectorySource(directory, opts);
         List<IMetaDataSource> sources;
@@ -108,7 +108,7 @@ public class MetaDataLoader
             // Directory-read failure: synthesize an error result directly so
             // state reflects "error" (calling Load([]) would set state to
             // "loaded" because no errors had been collected yet at that point).
-            var loader = new MetaDataLoader(registry);
+            var loader = new MetaDataLoader(registry, strict: strict);
             loader.SetState("error");
             var root = MakeSyntheticRoot();
             if (loader.Freeze)
@@ -121,7 +121,7 @@ public class MetaDataLoader
             };
             return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
-        return new MetaDataLoader(registry).Load(sources);
+        return new MetaDataLoader(registry, strict: strict).Load(sources);
     }
 
     /// <summary>
@@ -338,11 +338,15 @@ public class MetaDataLoader
             // Pass 4: filterable-without-index drift warning
             warnings.AddRange(ValidationPasses.ValidateFilterableHasIndex(root));
 
+            // Pass 4b: @filterable on a subtype with no operator band → error (SP-H Unit9)
+            errors.AddRange(ValidationPasses.ValidateFilterableHasSupportedOps(root));
+
             // Pass 5: origin path validation
             errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
 
-            // Pass 6: attribute-schema validation
-            var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry);
+            // Pass 6: attribute-schema validation. Under strict load (ADR-0023) an
+            // own @-attr declared by no provider -> ERR_UNKNOWN_ATTR (Check 0).
+            var attrResult = ValidationPasses.ValidateAttrSchema(root, _registry, _strict);
             errors.AddRange(attrResult.Errors);
             warnings.AddRange(attrResult.Warnings);
 
@@ -384,6 +388,30 @@ public class MetaDataLoader
                     warnings.Add(w.Message);
                 }
             }
+
+            // FR-013: field-level @readOnly cross-attribute rules.
+            var roResult = ValidationPasses.ValidateFieldReadOnly(root);
+            errors.AddRange(roResult.Errors);
+            if (roResult.Warnings.Count > 0)
+            {
+                envelopeWarnings.AddRange(roResult.Warnings);
+                foreach (var w in roResult.Warnings)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
+
+            // FR-014: TPH discriminator cross-attribute rules.
+            errors.AddRange(ValidationPasses.ValidateDiscriminator(root));
+
+            // FR-015: source.rdb @parameterRef typed-input rules.
+            errors.AddRange(ValidationPasses.ValidateSourceParameterRef(root));
+
+            // Pass 14 (FR-017): M:N relationship slim-vocabulary validation —
+            // symmetric-self-join-only / symmetric⊕sourceRefField (ERR_BAD_ATTR_VALUE);
+            // junction-two-references / sourceRefField-match / M:N-attr-on-1:N
+            // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
+            errors.AddRange(ValidationPasses.ValidateRelationships(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

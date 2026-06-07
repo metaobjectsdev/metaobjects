@@ -90,15 +90,9 @@ public class MetaRelationshipTest {
         cardAttr.setValueAsString(MetaRelationship.CARDINALITY_ONE);
         relationship.addChild(cardAttr);
 
-        // Add referenced by attribute
-        StringAttribute refAttr = new StringAttribute(MetaRelationship.ATTR_REFERENCED_BY);
-        refAttr.setValueAsString("profileId");
-        relationship.addChild(refAttr);
-
         // Test accessors
         assertEquals("Target object should be Profile", "Profile", relationship.getObjectRef());
         assertEquals("Cardinality should be one", MetaRelationship.CARDINALITY_ONE, relationship.getCardinality());
-        assertEquals("Referenced by should be profileId", "profileId", relationship.getReferencedBy());
     }
 
     @Test
@@ -111,7 +105,6 @@ public class MetaRelationshipTest {
 
         // Test null values for non-defaulted attributes
         assertNull("Target object should be null by default", relationship.getObjectRef());
-        assertNull("Referenced by should be null by default", relationship.getReferencedBy());
     }
 
     @Test
@@ -178,10 +171,6 @@ public class MetaRelationshipTest {
         cardAttr.setValueAsString(MetaRelationship.CARDINALITY_MANY);
         relationship.addChild(cardAttr);
 
-        StringAttribute refAttr = new StringAttribute(MetaRelationship.ATTR_REFERENCED_BY);
-        refAttr.setValueAsString("orderId");
-        relationship.addChild(refAttr);
-
         String toString = relationship.toString();
 
         // Verify the toString format includes key information
@@ -203,10 +192,9 @@ public class MetaRelationshipTest {
         assertEquals("Aggregation subtype constant should be 'aggregation'", "aggregation", AggregationRelationship.SUBTYPE_AGGREGATION);
         assertEquals("Association subtype constant should be 'association'", "association", AssociationRelationship.SUBTYPE_ASSOCIATION);
 
-        // Verify attribute constants (3 essential attributes)
+        // Verify attribute constants (essential attributes)
         assertEquals("Object ref attribute", "objectRef", MetaRelationship.ATTR_OBJECT_REF);
         assertEquals("Cardinality attribute", "cardinality", MetaRelationship.ATTR_CARDINALITY);
-        assertEquals("Referenced by attribute", "referencedBy", MetaRelationship.ATTR_REFERENCED_BY);
 
         // Verify cardinality constants
         assertEquals("One cardinality", "one", MetaRelationship.CARDINALITY_ONE);

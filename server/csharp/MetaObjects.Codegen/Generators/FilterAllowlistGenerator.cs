@@ -9,7 +9,8 @@
 //
 // Operators-per-subtype mapping (FR-009 §5, identical across ports):
 //   string / enum                              → eq, ne, in, like, isNull
-//   int / long / short / byte / float / double /
+//   uuid                                       → eq, ne, in, isNull  (no like — not a substring type)
+//   int / long / float / double /
 //   decimal / currency / date / timestamp / time → eq, ne, gt, gte, lt, lte, in, isNull
 //   boolean                                    → eq, isNull
 //
@@ -23,13 +24,17 @@ using static MetaObjects.Core.Field.FieldConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>Generates one <c>&lt;Entity&gt;FilterAllowlist.cs</c> per writable entity.</summary>
-public sealed class FilterAllowlistGenerator : PerEntityGenerator
+public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
     /// <summary>Operator set for string-shaped subtypes.</summary>
     internal static readonly string[] OpsString =
         { "eq", "ne", "in", "like", "isNull" };
+
+    /// <summary>Operator set for uuid — identity comparison only, no <c>like</c> (not a substring type) and no ordering.</summary>
+    internal static readonly string[] OpsUuid =
+        { "eq", "ne", "in", "isNull" };
 
     /// <summary>Operator set for numeric / date / timestamp / currency subtypes.</summary>
     internal static readonly string[] OpsNumeric =
@@ -99,12 +104,12 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     /// FR-009 vocabulary (object/class) collapse to the empty op-set and are
     /// dropped.
     /// </summary>
-    internal static Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity)
+    protected virtual Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity)
     {
         var out_ = new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.Ordinal);
         foreach (var field in entity.Fields())
         {
-            if (field.SubType == FIELD_SUBTYPE_OBJECT || field.SubType == FIELD_SUBTYPE_CLASS) continue;
+            if (field.SubType == FIELD_SUBTYPE_OBJECT) continue;
             if (!IsFilterable(field)) continue;
             var ops = OpsForSubtype(field.SubType);
             if (ops.Count == 0) continue;
@@ -125,7 +130,8 @@ public sealed class FilterAllowlistGenerator : PerEntityGenerator
     internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch
     {
         FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM => OpsString,
-        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE
+        FIELD_SUBTYPE_UUID => OpsUuid,
+        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_DECIMAL
             or FIELD_SUBTYPE_CURRENCY
             or FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP or FIELD_SUBTYPE_TIME => OpsNumeric,

@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "package": "metaobjects::ai",
+    "children": [
+      {
+        "object.entity": {
+          "name": "LlmCallBase",
+          "abstract": true,
+          "children": [
+            { "field.uuid":      { "name": "traceId" } },
+            { "field.uuid":      { "name": "spanId" } },
+            { "field.uuid":      { "name": "parentSpanId" } },
+            { "field.string":    { "name": "sessionId" } },
+            { "field.string":    { "name": "callType" } },
+            { "field.string":    { "name": "system" } },
+            { "field.string":    { "name": "requestModel" } },
+            { "field.string":    { "name": "responseModel" } },
+            { "field.int":       { "name": "inputTokens" } },
+            { "field.int":       { "name": "outputTokens" } },
+            { "field.currency":  { "name": "costMinor", "@currency": "USD" } },
+            { "field.int":       { "name": "latencyMs" } },
+            { "field.string":    { "name": "finishReason" } },
+            { "field.string":    { "name": "status" } },
+            { "field.string":    { "name": "errorDetail" } },
+            { "field.timestamp": { "name": "startedAt" } },
+            { "field.string":    { "name": "llmRequest",  "@dbColumnType": "jsonb" } },
+            { "field.string":    { "name": "llmResponse", "@dbColumnType": "jsonb" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "GreetingResponse",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            { "field.string": { "name": "greeting", "@column": "greeting" } },
+            { "field.int":    { "name": "score",    "@column": "score" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "GreetingCall",
+          "extends": "metaobjects::ai::LlmCallBase",
+          "children": [
+            { "source.rdb":      { "@table": "llm_call", "@role": "primary" } },
+            { "identity.primary": { "name": "primary", "@fields": ["spanId"] } },
+            {
+              "field.object": {
+                "name": "voResponse",
+                "@column": "voResponse",
+                "@storage": "jsonb",
+                "@objectRef": "metaobjects::ai::GreetingResponse"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

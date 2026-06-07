@@ -19,7 +19,7 @@
                 "name": "productId",
                 "subType": "long",
                 "@column": "product_id",
-                "@dbNullable": false,
+                "@required": true,
                 "children": [
                   {
                     "validator": {
@@ -59,7 +59,7 @@
                 "name": "price",
                 "subType": "double",
                 "@column": "price",
-                "@dbScale": 2,
+                "@scale": 2,
                 "children": [
                   {
                     "validator": {
@@ -90,7 +90,6 @@
                 "name": "categoryId",
                 "subType": "int",
                 "@column": "category_id",
-                "@dbForeignKey": "categories.id",
                 "@isOptional": true
               }
             },

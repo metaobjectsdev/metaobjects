@@ -282,6 +282,10 @@ public class YamlConformanceTests
                 foreach (var e in ValidationPasses.ValidateSubtypeRules(root).Errors) AddEnvelope(e);
                 foreach (var e in ValidationPasses.ValidateDataGridSortFields(root)) AddEnvelope(e);
                 foreach (var e in ValidationPasses.ValidateOriginPaths(root)) AddEnvelope(e);
+                // ADR-0023 — the YAML conformance runner loads LAX (strict defaults
+                // false), matching the cross-port reference (the Python YAML runner
+                // calls run_validations without strict). The dedicated strict-attr
+                // fixtures + the JSON metadata corpus exercise the strict gate.
                 foreach (var e in ValidationPasses.ValidateAttrSchema(root, registry).Errors) AddEnvelope(e);
                 foreach (var e in ValidationPasses.ValidateDataGridFilterValues(root)) AddEnvelope(e);
                 foreach (var e in ValidationPasses.ValidateFieldObjectStorage(root)) AddEnvelope(e);

@@ -42,10 +42,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "profileRef",
+                "@fields": "profileId",
+                "@references": "AuthorProfile"
+              }
+            },
+            {
               "relationship.composition": {
                 "name": "posts",
                 "@cardinality": "many",
-                "@referencedBy": "postIds",
                 "@objectRef": "BlogPost"
               }
             },
@@ -53,7 +59,6 @@
               "relationship.composition": {
                 "name": "profile",
                 "@cardinality": "one",
-                "@referencedBy": "profileId",
                 "@objectRef": "AuthorProfile"
               }
             }
@@ -168,10 +173,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "categoryRef",
+                "@fields": "categoryId",
+                "@references": "Category"
+              }
+            },
+            {
               "relationship.composition": {
                 "name": "comments",
                 "@cardinality": "many",
-                "@referencedBy": "commentIds",
                 "@objectRef": "Comment"
               }
             },
@@ -179,7 +190,6 @@
               "relationship.association": {
                 "name": "tags",
                 "@cardinality": "many",
-                "@referencedBy": "tagIds",
                 "@objectRef": "Tag"
               }
             },
@@ -187,7 +197,6 @@
               "relationship.association": {
                 "name": "category",
                 "@cardinality": "one",
-                "@referencedBy": "categoryId",
                 "@objectRef": "Category"
               }
             }
@@ -248,10 +257,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "parentCommentRef",
+                "@fields": "parentCommentId",
+                "@references": "Comment"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "parentComment",
                 "@cardinality": "one",
-                "@referencedBy": "parentCommentId",
                 "@objectRef": "Comment"
               }
             },
@@ -259,7 +274,6 @@
               "relationship.association": {
                 "name": "replies",
                 "@cardinality": "many",
-                "@referencedBy": "replyIds",
                 "@objectRef": "Comment"
               }
             }
@@ -348,10 +362,16 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "parentCategoryRef",
+                "@fields": "parentCategoryId",
+                "@references": "Category"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "parentCategory",
                 "@cardinality": "one",
-                "@referencedBy": "parentCategoryId",
                 "@objectRef": "Category"
               }
             }

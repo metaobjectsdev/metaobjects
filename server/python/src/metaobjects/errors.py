@@ -36,6 +36,10 @@ class ErrorCode(str, Enum):
     # declared attr valueType (ADR-0006 D2). Authors should quote the value.
     ERR_YAML_COERCION = "ERR_YAML_COERCION"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
+    # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
+    # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
+    # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.
+    ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
     # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).
     ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR"
@@ -68,10 +72,19 @@ class ErrorCode(str, Enum):
     ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"
     ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY"
     ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF"
+    # ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
+    # physical @dbColumnType: jsonb escape hatch on field.string).
+    ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF = "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF"
     ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"
     ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
     ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
+    # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+    # band (e.g. field.object). Would silently generate an empty-ops filter.
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE"
+    # ADR-0023 — a registration was attempted against a registry sealed after its
+    # agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
+    ERR_REGISTRY_SEALED = "ERR_REGISTRY_SEALED"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

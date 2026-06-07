@@ -456,8 +456,15 @@ def _emit_payload_class(
 def render_payload_vo(
     template: MetaTemplate,
     root: MetaData,
+    *,
+    generator: "PayloadVoGenerator | None" = None,
 ) -> str | None:
     """Render one payload module for a ``template.*`` node.
+
+    When *generator* is supplied, its ``_emit_payload_class`` override is used for
+    each emitted class (the extension seam). When ``None`` (the module-level
+    back-compat call path), the module-level :func:`_emit_payload_class` is used —
+    output is byte-identical to the pre-refactor behavior.
 
     Returns ``None`` when the ``@payloadRef`` can't be resolved to an
     ``object.value`` (defensive — the loader validation pass normally catches
@@ -485,9 +492,13 @@ def render_payload_vo(
     # emitted once at module scope before the classes that reference them.
     enum_aliases: dict[str, str] = {}
 
+    # The class-block emitter: the generator's overridable hook when an instance is
+    # supplied, else the module-level default (byte-identical back-compat path).
+    emit_class = generator._emit_payload_class if generator is not None else _emit_payload_class
+
     # The PRIMARY class (the one named after the template). Its docstring
     # mirrors Kotlin's KDoc.
-    primary_block = _emit_payload_class(
+    primary_block = emit_class(
         class_name=class_name,
         payload_vo=payload,
         root=root,
@@ -508,7 +519,7 @@ def render_payload_vo(
     nested_class_names: list[str] = []
     while nested_emit_queue:
         target, nested_class = nested_emit_queue.pop(0)
-        block = _emit_payload_class(
+        block = emit_class(
             class_name=nested_class,
             payload_vo=target,
             root=root,
@@ -593,6 +604,39 @@ class PayloadVoGenerator:
         # this generator iterates templates (not entities).
         self.filter = filter
 
+    def _emit_payload_class(
+        self,
+        class_name: str,
+        payload_vo: MetaObject,
+        root: MetaData,
+        nested_emit_queue: list[tuple[MetaObject, str]],
+        emitted_nested_fqns: set[str],
+        extra_imports: set[str],
+        enum_aliases: dict[str, str],
+        docstring: str,
+    ) -> list[str]:
+        """EXTENSION SEAM — the source lines for one Pydantic ``BaseModel`` subclass
+        (primary OR a nested collection target). Defaults to the module-level
+        :func:`_emit_payload_class`; override to customize the emitted class body
+        (e.g. inject ``model_config``, change optionality, add validators)."""
+        return _emit_payload_class(
+            class_name,
+            payload_vo,
+            root,
+            nested_emit_queue,
+            emitted_nested_fqns,
+            extra_imports,
+            enum_aliases,
+            docstring,
+        )
+
+    def _render_module(self, template: MetaTemplate, root: MetaData) -> str | None:
+        """EXTENSION SEAM — render the whole payload module for one ``template.*``.
+        Defaults to :func:`render_payload_vo` (passing this instance so the
+        ``_emit_payload_class`` override is honored). Override to pre/post-process
+        the emitted source, or replace the render path entirely."""
+        return render_payload_vo(template, root, generator=self)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
         if root is None:
@@ -605,7 +649,7 @@ class PayloadVoGenerator:
         # Nested-payload dedupe is per-file (inside render_payload_vo). Each
         # template's emitted module is self-contained — see module docstring.
         for tmpl in templates:
-            content = render_payload_vo(tmpl, root)
+            content = self._render_module(tmpl, root)
             if content is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: skipping template "

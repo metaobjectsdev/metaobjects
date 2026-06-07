@@ -1,16 +1,5 @@
 {
   "language": "python",
-  "fixtures": [
-    "error-field-readonly-assigned-primary",
-    "error-field-readonly-downgrade",
-    "error-parameter-ref-unresolved",
-    "error-parameter-ref-not-value-object",
-    "error-parameter-ref-on-table-kind",
-    "error-parameter-ref-passthrough-type-mismatch",
-    "error-tph-discriminator-field-not-found",
-    "error-tph-discriminator-value-duplicate",
-    "error-tph-discriminator-value-missing",
-    "error-tph-discriminator-value-type-mismatch"
-  ],
-  "notes": "FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) are implemented in the TS reference but the Python port has not yet shipped them. These fixtures are deferred until each per-port fan-out lands."
+  "fixtures": [],
+  "notes": "No expected conformance failures. The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti — previously ledgered TS-pilot gaps — now load + canonical-serialize cleanly in the Python port: @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip), and template.* is admitted as an object.entity child (_OBJECT_CHILD_RULES). The sibling ai-llm-call-extends has always passed cross-port."
 }

@@ -10,7 +10,6 @@ import type { AttrSchema } from "../registry.js";
 import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
-  ATTR_SUBTYPE_STRINGARRAY,
 } from "../core/attr/attr-constants.js";
 import { SUBTYPE_BASE } from "../shared/base-types.js";
 import {
@@ -88,7 +87,8 @@ const genericAttrs: AttrSchema[] = [
   },
   {
     name: TEMPLATE_ATTR_REQUIRED_TAGS,
-    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    valueType: ATTR_SUBTYPE_STRING,
+    isArray: true,
     required: false,
     description: "Output tags the rendered text must contain (drives the verify output-tag check).",
   },
@@ -152,7 +152,8 @@ const promptOverlayAttrs: AttrSchema[] = [
   },
   {
     name: TEMPLATE_ATTR_REQUIRED_SLOTS,
-    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    valueType: ATTR_SUBTYPE_STRING,
+    isArray: true,
     required: false,
     description: "Slots that must resolve at render time (drives the verify check).",
   },

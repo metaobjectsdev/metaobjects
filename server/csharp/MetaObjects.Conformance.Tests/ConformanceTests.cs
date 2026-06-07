@@ -16,9 +16,16 @@ public class ConformanceTests
     // Fixture discovery (shared)
     // -------------------------------------------------------------------------
 
-    /// <summary>xUnit MemberData source — one entry per discovered fixture.</summary>
+    /// <summary>
+    /// xUnit MemberData source — one entry per discovered fixture. Docs-only
+    /// fixtures (an <c>expected/*.md</c> directory, no strict expectation files)
+    /// and contract-only fixtures (an <c>expected-paths.json</c> cross-port layout
+    /// manifest, no strict expectation files) drive bespoke conformance runners
+    /// only and are skipped here.
+    /// </summary>
     public static IEnumerable<object[]> Fixtures() =>
         FixtureDiscovery.DiscoverFixtures(CorpusRoot.Path)
+            .Where(f => !f.IsDocsOnly && !f.IsContractOnly)
             .Select(f => new object[] { f });
 
     // -------------------------------------------------------------------------
@@ -204,23 +211,46 @@ public class ConformanceTests
             }
         }
 
+        // ── ADR-0023 strict hard-fail: happy-path fixtures load error-free ───
+        // A fixture that declares NO expected-errors.json is a happy-path fixture:
+        // under strict load it MUST load with zero errors. Any recorded error (e.g.
+        // ERR_UNKNOWN_ATTR from a made-up attribute) fails the fixture with a message
+        // naming the unexpected error(s). Previously this was silently tolerated — the
+        // runner only byte-compared the tree and never asserted the error set was empty,
+        // so a made-up attr passed. (Warnings stay on the expected-warnings.json path;
+        // this is about ERRORS only.) Gated on the fixture declaring at least one
+        // metadata-expectation file so docs-only / config-error fixtures are handled by
+        // their own checks below. Mirrors the TS reference runner (runner.ts).
+        if (!fix.HasExpectedErrors &&
+            (fix.HasExpected || fix.HasExpectedEffective || fix.HasExpectedWarnings || fix.HasScript) &&
+            outcome.ErrorCodes.Count > 0)
+        {
+            var sorted = outcome.ErrorCodes.Order(StringComparer.Ordinal).ToList();
+            failures.Add(
+                $"happy-path fixture loaded with unexpected error(s): [{string.Join(", ", sorted)}] — " +
+                "under strict, a fixture with no expected-errors.json must load with zero errors (ADR-0023)");
+        }
+
         // ── tree-required checks: guard with a synthetic failure if tree absent ─
-        // (The tree is always non-null in C# — LoadDirectory always returns a root.
-        //  Check error count instead: if errors are non-empty and we need tree checks,
-        //  the serializer will just serialize the empty root, which won't match — that's
-        //  a legitimate test failure, not a special case. Mirror the TS runner's logic:
-        //  if there are errors AND tree-dependent checks, push a synthetic failure only
-        //  when the outcome has errors but no expected-errors check.)
+        // Mirror the TS reference runner (runner.ts): the ONLY condition that
+        // blocks the tree-dependent checks is a genuinely-absent tree (the
+        // provider-composition-error path, where the adapter returns Tree: null!).
+        // A load that collected non-fatal errors but still built a tree gets its
+        // tree compared — canonical serialization emits whatever subtree the loader
+        // built, and the comparison surfaces any real divergence. This is the
+        // cross-port-aligned behavior: under ADR-0023 strict load a fixture using
+        // tolerated-but-undeclared vocabulary (no expected-errors.json) collects
+        // ERR_UNKNOWN_ATTR yet still serializes its tree identically to TS/Python,
+        // so it must NOT be force-failed here (TS/Python skip the error-set check
+        // when there is no expected-errors.json and run the tree check regardless).
         bool treeCheckBlocked =
-            outcome.ErrorCodes.Count > 0 &&
-            !fix.HasExpectedErrors &&
+            outcome.Tree is null &&
             (fix.HasExpected || fix.HasExpectedEffective || fix.HasScript);
 
         if (treeCheckBlocked)
         {
             failures.Add(
-                $"load produced errors [{string.Join(", ", outcome.ErrorCodes)}]" +
-                " — cannot run tree-dependent checks");
+                "load produced no tree — cannot run tree-dependent checks");
         }
 
         // ── expected.json check ───────────────────────────────────────────────

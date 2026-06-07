@@ -95,57 +95,60 @@ public class UnifiedFieldRegistryTest {
 
     @Test
     public void testStringFieldRegistration() {
-        // Test StringField registration and child requirements
-        assertTrue("StringField should accept pattern attribute",
-                  registry.acceptsChild("field", "string", "attr", "string", "pattern"));
+        // Test StringField registration and child requirements. maxLength is the
+        // StringField-specific (cross-port canonical) attr; pattern/length validation
+        // is expressed via validator CHILD nodes — the field-level @pattern attr was
+        // dropped in SP-G Unit 6c.
+        assertTrue("StringField should accept maxLength attribute",
+                  registry.acceptsChild("field", "string", "attr", "int", "maxLength"));
+        // Absence is asserted on the NAMED requirement — field.base's open wildcard
+        // attr policy makes acceptsChild() true for an arbitrary attr name.
+        assertNull("StringField should NOT register a NAMED field-level pattern requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "string").getChildRequirement("pattern"));
         assertTrue("StringField should accept validator children",
                   registry.acceptsChild("field", "string", "validator", "required", "*"));
         assertTrue("StringField should accept LengthValidator children",
                   registry.acceptsChild("field", "string", "validator", "length", "*"));
-        
+
         String description = registry.getSupportedChildrenDescription("field", "string");
         assertNotNull("Should have supported children description", description);
-        assertTrue("Description should mention pattern", description.toLowerCase().contains("pattern"));
         assertTrue("Description should mention validator support", description.toLowerCase().contains("validator"));
     }
 
     @Test
     public void testIntegerFieldRegistration() {
-        // Test IntegerField registration and child requirements
-        assertTrue("IntegerField should accept minValue attribute",
-                  registry.acceptsChild("field", "int", "attr", "int", "minValue"));
-        assertTrue("IntegerField should accept maxValue attribute",
-                  registry.acceptsChild("field", "int", "attr", "int", "maxValue"));
-        
-        String description = registry.getSupportedChildrenDescription("field", "int");
-        assertNotNull("Should have supported children description", description);
-        assertTrue("Description should mention minValue", description.toLowerCase().contains("minvalue"));
-        assertTrue("Description should mention maxValue", description.toLowerCase().contains("maxvalue"));
+        // Range validation is expressed via validator.numeric @min/@max children — the
+        // field-level @minValue/@maxValue attrs were dropped in SP-G Unit 6c.
+        assertTrue("IntegerField should be registered",
+                  registry.isRegistered("field", "int"));
+        assertNull("IntegerField should NOT register a NAMED field-level minValue requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "int").getChildRequirement("minValue"));
+        assertTrue("IntegerField should accept validator.numeric children",
+                  registry.acceptsChild("field", "int", "validator", "numeric", "*"));
     }
 
     @Test
     public void testLongFieldRegistration() {
-        // Test LongField registration and child requirements
-        assertTrue("LongField should accept minValue attribute",
-                  registry.acceptsChild("field", "long", "attr", "long", "minValue"));
-        assertTrue("LongField should accept maxValue attribute",
-                  registry.acceptsChild("field", "long", "attr", "long", "maxValue"));
-        
-        String description = registry.getSupportedChildrenDescription("field", "long");
-        assertNotNull("Should have supported children description", description);
-        assertTrue("Description should mention numeric validation", description.toLowerCase().contains("numeric"));
+        // Range validation is expressed via validator.numeric @min/@max children — the
+        // field-level @minValue/@maxValue attrs were dropped in SP-G Unit 6c.
+        assertTrue("LongField should be registered",
+                  registry.isRegistered("field", "long"));
+        assertNull("LongField should NOT register a NAMED field-level minValue requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "long").getChildRequirement("minValue"));
+        assertTrue("LongField should accept validator.numeric children",
+                  registry.acceptsChild("field", "long", "validator", "numeric", "*"));
     }
 
-    @Test 
+    @Test
     public void testDoubleFieldRegistration() {
-        // Test DoubleField registration and child requirements
-        assertTrue("DoubleField should accept minValue attribute",
-                  registry.acceptsChild("field", "double", "attr", "double", "minValue"));
-        assertTrue("DoubleField should accept maxValue attribute",
-                  registry.acceptsChild("field", "double", "attr", "double", "maxValue"));
+        // precision is the DoubleField-specific (cross-port canonical) attr; range
+        // validation is expressed via validator.numeric @min/@max children — the
+        // field-level @minValue/@maxValue attrs were dropped in SP-G Unit 6c.
+        assertNull("DoubleField should NOT register a NAMED field-level minValue requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "double").getChildRequirement("minValue"));
         assertTrue("DoubleField should accept precision attribute",
                   registry.acceptsChild("field", "double", "attr", "int", "precision"));
-        
+
         String description = registry.getSupportedChildrenDescription("field", "double");
         assertNotNull("Should have supported children description", description);
         assertTrue("Description should mention precision", description.toLowerCase().contains("precision"));
@@ -164,17 +167,18 @@ public class UnifiedFieldRegistryTest {
 
     @Test
     public void testDateFieldRegistration() {
-        // Test DateField registration and child requirements
-        assertTrue("DateField should accept dateFormat attribute",
-                  registry.acceptsChild("field", "date", "attr", "string", "dateFormat"));
-        assertTrue("DateField should accept minDate attribute",
-                  registry.acceptsChild("field", "date", "attr", "string", "minDate"));
-        assertTrue("DateField should accept maxDate attribute",
-                  registry.acceptsChild("field", "date", "attr", "string", "maxDate"));
-        
-        String description = registry.getSupportedChildrenDescription("field", "date");
-        assertNotNull("Should have supported children description", description);
-        assertTrue("Description should mention format", description.toLowerCase().contains("format"));
+        // DateField carries no date-specific per-field attrs in the cross-port
+        // vocabulary: @dateFormat/@format (presentation) and @minDate/@maxDate (range)
+        // were vestigial (no canonical peer, no consumer) and dropped in SP-G Unit 6c.
+        // Range validation is expressed via validator.numeric children.
+        assertTrue("DateField should be registered",
+                  registry.isRegistered("field", "date"));
+        assertNull("DateField should NOT register a NAMED field-level dateFormat requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "date").getChildRequirement("dateFormat"));
+        assertNull("DateField should NOT register a NAMED field-level minDate requirement (SP-G Unit 6c)",
+                  registry.getTypeDefinition("field", "date").getChildRequirement("minDate"));
+        assertTrue("DateField should accept validator children",
+                  registry.acceptsChild("field", "date", "validator", "required", "*"));
     }
 
     @Test
@@ -271,15 +275,15 @@ public class UnifiedFieldRegistryTest {
             }
             assertNotNull("Test object should be loaded", testObject);
             
-            // Test string field with attributes
+            // Test string field with attributes. maxLength is the canonical (cross-port)
+            // string attr; the field-level @pattern attr was dropped in SP-G Unit 6c
+            // (pattern validation is expressed via validator.regex children).
             StringField emailField = (StringField) testObject.getMetaField("email");
             assertNotNull("Email field should be loaded", emailField);
-            assertTrue("Email field should have maxLength attribute", 
+            assertTrue("Email field should have maxLength attribute",
                       emailField.hasMetaAttr("maxLength"));
-            assertTrue("Email field should have pattern attribute", 
-                      emailField.hasMetaAttr("pattern"));
-            
-            // Test double field with attributes  
+
+            // Test double field with attributes
             DoubleField priceField = (DoubleField) testObject.getMetaField("price");
             assertNotNull("Price field should be loaded", priceField);
             assertTrue("Price field should have precision attribute",
@@ -403,22 +407,18 @@ public class UnifiedFieldRegistryTest {
                         {
                           "field.string": {
                             "name": "email",
-                            "@maxLength": 255,
-                            "@pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$"
+                            "@maxLength": 255
                           }
                         },
                         {
                           "field.double": {
                             "name": "price",
-                            "@precision": 2,
-                            "@minValue": 0.0
+                            "@precision": 2
                           }
                         },
                         {
                           "field.long": {
-                            "name": "quantity",
-                            "@minValue": 1,
-                            "@maxValue": 1000
+                            "name": "quantity"
                           }
                         }
                       ]

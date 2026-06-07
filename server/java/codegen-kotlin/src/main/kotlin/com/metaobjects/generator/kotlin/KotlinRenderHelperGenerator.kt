@@ -61,7 +61,7 @@ import java.nio.file.Paths
  *  - `templateRoot` (required): on-disk template dir the build-time drift gate
  *    resolves each referenced mustache against.
  */
-class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -88,7 +88,7 @@ class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path,
+    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path,
                      provider: FilesystemProvider) {
         val payloadRef = template.payloadRef
         if (payloadRef.isNullOrEmpty()) {

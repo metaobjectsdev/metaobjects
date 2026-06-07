@@ -246,16 +246,23 @@ export type OnField = (fieldPath: string, rawValue: string, spec: FieldSpec) => 
 /**
  * Bounded runtime override surface. aliases/normalizers are MERGED with the
  * schema's, runtime winning on key conflict. onField is the single hook.
+ *
+ * `rootless` (XML only): when `true`, the input has NO enclosing root element — the payload's
+ * fields ARE the top-level elements (a flat sequence like `<a>..</a><b>..</b>`). The engine
+ * parses those top-level elements directly instead of locating a `<rootName>` span, so the caller
+ * need not synthesize a wrapper. No effect for JSON. Default `false` (a single root element is
+ * expected, as before). Mirrors Java ExtractOptions.rootless.
  */
 export interface ExtractOptions {
   readonly tolerance: Tolerance;
   readonly aliases: Readonly<Record<string, string>>;
   readonly normalizers: Readonly<Record<string, (raw: string) => unknown | null>>;
   readonly onField: OnField | null;
+  readonly rootless: boolean;
 }
 
 export function defaults(): ExtractOptions {
-  return { tolerance: Tolerance.NORMAL, aliases: {}, normalizers: {}, onField: null };
+  return { tolerance: Tolerance.NORMAL, aliases: {}, normalizers: {}, onField: null, rootless: false };
 }
 
 /** Normalize a partial / undefined options bag into a complete ExtractOptions. */
@@ -266,6 +273,7 @@ export function normalizeOptions(opts?: Partial<ExtractOptions> | null): Extract
     aliases: opts.aliases == null ? {} : { ...opts.aliases },
     normalizers: opts.normalizers == null ? {} : { ...opts.normalizers },
     onField: opts.onField ?? null,
+    rootless: opts.rootless ?? false,
   };
 }
 

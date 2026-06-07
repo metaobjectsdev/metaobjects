@@ -46,6 +46,23 @@ function renderRelationEntry(
   thisVarName: string,
   thisEntityPackage: string | undefined,
 ): Code {
+  // FR-018 M:N: the source navigates through the junction table, so the Drizzle
+  // many() targets the JUNCTION, not the target entity (the relational query API
+  // then hops junction → target via the junction's one() sides). The
+  // mountM2mRoute the routes generator emits performs the flattened two-stage
+  // traversal for the REST contract.
+  if (entry.cardinality === CARDINALITY_MANY && entry.junctionEntity !== undefined) {
+    const junctionSpec = crossEntitySpecifier(
+      ctx.outputLayout,
+      thisEntityPackage,
+      ctx.packageOf.get(entry.junctionEntity),
+      entry.junctionEntity,
+      ctx.extStyle,
+    );
+    const junctionVarSym = imp(`${variableNameFromEntity(entry.junctionEntity)}@${junctionSpec}`);
+    return code`  ${entry.name}: many(${junctionVarSym})`;
+  }
+
   // Use imp() for cross-entity references so ts-poet tracks and emits the import.
   const targetSpec = crossEntitySpecifier(
     ctx.outputLayout,

@@ -5,8 +5,6 @@ import {
   FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -14,18 +12,19 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_CURRENCY,
   opsForSubType,
 } from "@metaobjectsdev/metadata";
 import { sortableFields } from "./filter-shared.js";
 
 const NUMBER_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
+  // currency is integer minor units — coerces as a number on the wire.
+  FIELD_SUBTYPE_CURRENCY,
 ]);
 
 const DATETIME_SUBTYPES = new Set<string>([
@@ -42,13 +41,20 @@ function filterSubTypeFor(fieldSubType: string): "string" | "number" | "boolean"
   return "string";
 }
 
-function filterableFields(entity: MetaObject): MetaField[] {
+function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
-  return entity.fields().filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true);
+  return entity
+    .fields()
+    .filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
 }
 
-export function renderFilterAllowlist(entity: MetaObject): Code {
-  const fields = filterableFields(entity);
+/**
+ * `exclude` (FR-017): drop a field from the allowlist. Used by per-subtype TPH
+ * allowlists to omit the discriminator — it's pinned by the per-subtype route
+ * path, so a client must not filter on it.
+ */
+export function renderFilterAllowlist(entity: MetaObject, exclude?: string): Code {
+  const fields = filterableFields(entity, exclude);
   if (fields.length === 0) {
     return code`
 import type { FilterAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
@@ -72,11 +78,12 @@ ${rows}
 `;
 }
 
-export function renderSortAllowlist(entity: MetaObject): Code {
+export function renderSortAllowlist(entity: MetaObject, exclude?: string): Code {
   // Sortable = explicit @sortable === true, OR (no @sortable AND @filterable === true).
   // @sortable: false explicitly opts out.
   // Uses shared isSortableField predicate — must stay in sync with renderFilterType.
-  const sortable = sortableFields(entity);
+  // `exclude` (FR-017): per-subtype TPH allowlists omit the discriminator.
+  const sortable = sortableFields(entity).filter((f) => f.name !== exclude);
   if (sortable.length === 0) {
     return code`
 import type { SortAllowlist } from "@metaobjectsdev/runtime-ts/drizzle-fastify";

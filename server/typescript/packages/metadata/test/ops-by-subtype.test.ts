@@ -28,6 +28,15 @@ describe("OPS_BY_SUBTYPE — operator gating per field subtype", () => {
     expect(OPS_BY_SUBTYPE.date).toContain("gte");
     expect(OPS_BY_SUBTYPE.date).not.toContain("like");
   });
+  // SP-H Unit9 — cross-port op-band reconciliation.
+  test("currency is an orderable number — numeric ops, no like", () => {
+    expect(OPS_BY_SUBTYPE.currency).toEqual([
+      "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull",
+    ]);
+  });
+  test("uuid supports identity-comparison ops only (no like, no ordering)", () => {
+    expect(OPS_BY_SUBTYPE.uuid).toEqual(["eq", "ne", "in", "isNull"]);
+  });
 });
 
 // Suppress unused-type lint warning — FilterOp is exported for consumer use

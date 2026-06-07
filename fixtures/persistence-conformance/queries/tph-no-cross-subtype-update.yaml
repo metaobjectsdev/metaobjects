@@ -1,0 +1,43 @@
+name: tph-no-cross-subtype-update
+description: |
+  FR-017 TPH: a subtype's update surface is its OWN columns only, scoped to its
+  own rows. Two cross-subtype writes must FAIL through the runtime:
+    (a) patching a BridgeAuth with a Copay-only column (copayAmount) — that
+        column is not a field of BridgeAuth, so the write is rejected;
+    (b) patching id 2 (a Copay) through BridgeAuth — the row is invisible to the
+        subtype scope, so it's not found.
+  After both rejected writes the Bridge row is unchanged.
+
+  PORT STATUS: TS-only until each port's runtime TPH lands (see corpus README).
+queries:
+  - name: insert-bridge
+    op: create
+    entity: BridgeAuth
+    data: { reference: "REF-1", quantity: 5 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 5 }
+
+  - name: insert-copay
+    op: create
+    entity: CopayAuth
+    data: { reference: "REF-2", copayAmount: "1.00" }
+    expect: { id: "2", type: "Copay", reference: "REF-2", copayAmount: "1" }
+
+  - name: cross-subtype-column-rejected
+    op: update
+    entity: BridgeAuth
+    by: { id: 1 }
+    data: { copayAmount: "9.99" }
+    expect-error: true
+
+  - name: cross-subtype-id-not-found
+    op: update
+    entity: BridgeAuth
+    by: { id: 2 }
+    data: { quantity: 7 }
+    expect-error: true
+
+  - name: bridge-unchanged
+    op: get
+    entity: BridgeAuth
+    by: { id: 1 }
+    expect: { id: "1", type: "Bridge", reference: "REF-1", quantity: 5 }

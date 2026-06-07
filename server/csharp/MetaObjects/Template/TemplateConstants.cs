@@ -84,6 +84,10 @@ public static class TemplateConstants
     public const string TEMPLATE_ATTR_MAX_TOKENS     = "maxTokens";
     public const string TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
     public const string TEMPLATE_ATTR_MODEL          = "model";
+    // @responseRef — template.prompt ONLY (peer of @payloadRef): names the typed VO
+    // an LLM RESPONSE is extracted into, driving the derived voResponse jsonb trace
+    // column (AI LLM-call trace persistence). Cross-port vocabulary (all five ports).
+    public const string TEMPLATE_ATTR_RESPONSE_REF   = "responseRef";
 
     // Toolcall-specific attrs (template.toolcall only — ADR-0011). Vendor-agnostic
     // in core; vendor wire details (retry semantics, fallback shapes, parallel

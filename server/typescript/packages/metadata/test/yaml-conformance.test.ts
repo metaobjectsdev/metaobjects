@@ -134,11 +134,11 @@ for (const fix of fixtures) {
         const g = errors[i];
         expect(g).toBeInstanceOf(ParseError);
         const pe = g as ParseError;
-        expect(pe.code).toBe(w.code);
+        expect(pe.code as string).toBe(w.code);
         if (w.source !== undefined) {
           // Force the format that the fixture expects (yaml) — TS emits this
           // when loading a yaml InMemoryStringSource.
-          expect(pe.source.format).toBe(w.source.format);
+          expect(pe.source.format as string).toBe(w.source.format);
           // Files: the YAML fixture's source id is "input.yaml", so we
           // compare directly. ParseError envelopes carry the source id as the
           // sole entry of files[].

@@ -469,6 +469,17 @@ public static class Parser
             }
         }
 
+        // --- Capture the file-default package for resolution ---
+        // The effective package of the DECLARING file (inheritedContextPkg)
+        // captured at parse time, so super resolution can match this node by its
+        // EFFECTIVE qualified key <fileDefaultPackage>::<name> even after the
+        // node merges (with no own package) into an accumulating root carrying a
+        // DIFFERENT file's package. Mirrors the TS parser's setFileDefaultPackage.
+        if (model.Package is null && inheritedContextPkg != "")
+        {
+            model.SetFileDefaultPackage(inheritedContextPkg);
+        }
+
         // --- Determine the effective context package for super resolution ---
         string effectivePkg = model.Package ?? inheritedContextPkg;
 
@@ -930,7 +941,11 @@ public static class Parser
         if (value is not string s) return value;
         // Per-type wins, common attrs (e.g. doc attrs) fill the rest.
         AttrSchema? spec = registry.FindAttrSchema(type, subType, attrName);
-        if (spec is null || spec.ValueType != ATTR_SUBTYPE_STRINGARRAY) return value;
+        // Array-ness is the orthogonal IsArray flag (the retired `stringarray`
+        // subtype); also tolerate a legacy stringarray valueType token.
+        bool isArray = spec is not null
+            && (spec.IsArray || spec.ValueType == ATTR_SUBTYPE_STRINGARRAY);
+        if (!isArray) return value;
         return new List<string> { s }.AsReadOnly();
     }
 

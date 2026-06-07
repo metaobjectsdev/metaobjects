@@ -11,6 +11,10 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.type_map import py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators.m2m_codegen import (
+    build_object_index,
+    resolve_m2m_descriptors,
+)
 
 
 def _is_int(value: object) -> bool:
@@ -124,55 +128,120 @@ def _effective_fqn(entity: MetaObject) -> str:
     return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
 
 
-def render_entity_model(entity: MetaObject) -> str:
-    """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff)."""
-    imports: set[str] = set()
-    base_class = "BaseModel"
-    if entity.super_data is not None:
-        base_class = entity.super_data.name
-        imports.add(f"from .{base_class} import {base_class}")
+class EntityModelGenerator:
+    """``object.*`` → a Pydantic v2 model module per object.
 
-    uses_field = False
-    lines: list[str] = []
-    for f in entity.own_fields():
-        line, used = _field_line(f, imports)
-        uses_field = uses_field or used
-        lines.append(line)
-    body = lines if lines else ["    pass"]
+    EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
+    the protected ``_emit_*`` hooks (or ``render_entity_model``) to customize the
+    emitted model without forking the generator. The factory ``entity_model()`` and
+    the module-level ``render_entity_model()`` both delegate to a default instance,
+    so subclassing changes nothing for the default suite (output stays byte-identical).
 
-    # Import only the pydantic names actually referenced.
-    pyd_names: list[str] = []
-    if entity.super_data is None:
-        pyd_names.append("BaseModel")
-    if uses_field:
-        pyd_names.append("Field")
+    Override points (in emission order):
 
-    parts: list[str] = [
-        generated_header(entity.name, _effective_fqn(entity)),
-        "from __future__ import annotations",
-        "",
-    ]
-    extra_imports = sorted(imports)
-    if extra_imports:
-        parts += [*extra_imports, ""]
-    if pyd_names:
-        parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
-    parts += ["", f"class {entity.name}({base_class}):", *body, ""]
-    return "\n".join(parts)
+    * ``_emit_class_header(entity, base_class)`` — the ``class <Name>(<Base>):`` line.
+    * ``_emit_field_lines(entity, imports)`` — the body field lines (scalars + M:N
+      collections); collect any extra imports into the ``imports`` set.
+    * ``render_entity_model(entity, object_index)`` — the whole module (last resort).
+    """
+
+    name = "entity-model"
+
+    def _emit_class_header(self, entity: MetaObject, base_class: str) -> str:
+        """The ``class <Name>(<Base>):`` declaration line. Override to inject a
+        decorator, a metaclass, or an alternate base."""
+        return f"class {entity.name}({base_class}):"
+
+    def _emit_field_lines(
+        self,
+        entity: MetaObject,
+        imports: set[str],
+        object_index: dict[str, MetaObject] | None,
+    ) -> tuple[list[str], bool]:
+        """The model body: one line per own field, then M:N nested collections when
+        *object_index* is supplied. Returns ``(lines, uses_field)`` where
+        ``uses_field`` is True iff any line used a pydantic ``Field(...)`` (so the
+        caller knows to import ``Field``). Required imports are collected into
+        *imports*. Override to add/transform body lines."""
+        uses_field = False
+        lines: list[str] = []
+        for f in entity.own_fields():
+            line, used = _field_line(f, imports)
+            uses_field = uses_field or used
+            lines.append(line)
+
+        # M:N nested collections (FR-018). Element type is the target entity; a
+        # self-join element type is a forward-ref string so the model can name itself.
+        if object_index is not None:
+            for d in resolve_m2m_descriptors(entity, object_index):
+                if d.target_entity == entity.name:
+                    element = f'"{entity.name}"'
+                else:
+                    element = d.target_entity
+                    imports.add(f"from .{d.target_entity} import {d.target_entity}")
+                lines.append(f"    {d.relation_name}: list[{element}] = []")
+        return lines, uses_field
+
+    def render_entity_model(
+        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+    ) -> str:
+        """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff).
+
+        When *object_index* is supplied, M:N navigations (``relationship.*``
+        ``@cardinality:"many" + @through``) are emitted as nested Pydantic
+        collections (``tags: list[Tag] = []``); a self-join uses a forward-ref string
+        (``following: list["Person"] = []``). Without an index, only scalar/object
+        fields are emitted (back-compat)."""
+        imports: set[str] = set()
+        base_class = "BaseModel"
+        if entity.super_data is not None:
+            base_class = entity.super_data.name
+            imports.add(f"from .{base_class} import {base_class}")
+
+        lines, uses_field = self._emit_field_lines(entity, imports, object_index)
+        body = lines if lines else ["    pass"]
+
+        # Import only the pydantic names actually referenced.
+        pyd_names: list[str] = []
+        if entity.super_data is None:
+            pyd_names.append("BaseModel")
+        if uses_field:
+            pyd_names.append("Field")
+
+        parts: list[str] = [
+            generated_header(entity.name, _effective_fqn(entity)),
+            "from __future__ import annotations",
+            "",
+        ]
+        extra_imports = sorted(imports)
+        if extra_imports:
+            parts += [*extra_imports, ""]
+        if pyd_names:
+            parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
+        parts += ["", self._emit_class_header(entity, base_class), *body, ""]
+        return "\n".join(parts)
+
+    def generate(self, ctx: GenContext) -> list[EmittedFile]:
+        index = build_object_index(ctx.entities)
+        return per_entity(
+            lambda e, _c: EmittedFile(
+                path=f"{e.name}.py",
+                content=ruff_format(self.render_entity_model(e, index)),
+            )
+        )(ctx)
+
+
+def render_entity_model(
+    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+) -> str:
+    """Module-level back-compat wrapper. Delegates to a default
+    :class:`EntityModelGenerator` instance so existing callers (and the golden
+    tests) are unaffected. Subclass :class:`EntityModelGenerator` to customize."""
+    return EntityModelGenerator().render_entity_model(entity, object_index)
 
 
 def entity_model() -> Generator:
-    """Generator: object.* → a Pydantic model module per object."""
+    """Generator factory: object.* → a Pydantic model module per object.
 
-    class _Gen:
-        name = "entity-model"
-
-        def generate(self, ctx: GenContext) -> list[EmittedFile]:
-            return per_entity(
-                lambda e, _c: EmittedFile(
-                    path=f"{e.name}.py",
-                    content=ruff_format(render_entity_model(e)),
-                )
-            )(ctx)
-
-    return _Gen()
+    Returns an :class:`EntityModelGenerator` (subclassable extension seam)."""
+    return EntityModelGenerator()

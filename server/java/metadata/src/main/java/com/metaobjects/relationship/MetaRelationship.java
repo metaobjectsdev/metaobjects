@@ -39,8 +39,25 @@ public abstract class MetaRelationship extends MetaData {
     /** Cardinality of relationship: "one" or "many" */
     public final static String ATTR_CARDINALITY = "cardinality";
 
-    /** Field name that implements the relationship */
-    public final static String ATTR_REFERENCED_BY = "referencedBy";
+    // SP-G: the legacy {@code @referencedBy} attr (the own FK-field name implementing
+    // an N:1/1:1 association) was REMOVED. FK direction is the SSOT of
+    // {@code identity.reference} ({@code @fields} / {@code @references}); consumers
+    // derive FK-field-ness from those references (see codegen-mustache HelperRegistry).
+
+    // === FR-017 M:N SLIM VOCABULARY ===
+    /** Junction (through) entity name for M:N relationships — a third entity declaring two
+     *  {@code identity.reference} children, one per FK side. The relationship's FK fields are
+     *  derived from those references (never restated). Renamed from the retired {@code @joinEntity}. */
+    public final static String ATTR_THROUGH = "through";
+
+    /** Directed self-join disambiguator: names the source-side FK field on the junction
+     *  (the other reference is the target side). Required only for directed/ambiguous self-join
+     *  M:N. Mutually exclusive with {@code @symmetric}. */
+    public final static String ATTR_SOURCE_REF_FIELD = "sourceRefField";
+
+    /** Undirected self-join flag (union-on-read). Valid only when {@code @objectRef} == the
+     *  declaring entity. Mutually exclusive with {@code @sourceRefField}. */
+    public final static String ATTR_SYMMETRIC = "symmetric";
 
     // === CARDINALITY CONSTANTS ===
     public static final String CARDINALITY_ONE = "one";
@@ -109,8 +126,17 @@ public abstract class MetaRelationship extends MetaData {
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
 
-            def.optionalAttributeWithConstraints(ATTR_REFERENCED_BY)
+            // FR-017 M:N slim vocabulary — through / sourceRefField (string) + symmetric (boolean).
+            def.optionalAttributeWithConstraints(ATTR_THROUGH)
                .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            def.optionalAttributeWithConstraints(ATTR_SOURCE_REF_FIELD)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .asSingle();
+
+            def.optionalAttributeWithConstraints(ATTR_SYMMETRIC)
+               .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                .asSingle();
 
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)
@@ -144,9 +170,26 @@ public abstract class MetaRelationship extends MetaData {
                getMetaAttr(ATTR_CARDINALITY).getValueAsString() : CARDINALITY_ONE;
     }
 
-    public String getReferencedBy() {
-        return hasMetaAttr(ATTR_REFERENCED_BY) ?
-               getMetaAttr(ATTR_REFERENCED_BY).getValueAsString() : null;
+    // === FR-017 M:N ACCESSORS ===
+
+    /** Junction (through) entity name for M:N relationships, or {@code null} if not set. */
+    public String getThrough() {
+        return hasMetaAttr(ATTR_THROUGH) ?
+               getMetaAttr(ATTR_THROUGH).getValueAsString() : null;
+    }
+
+    /** Source-side FK field on the junction (directed self-join disambiguator),
+     *  or {@code null} if not set. */
+    public String getSourceRefField() {
+        return hasMetaAttr(ATTR_SOURCE_REF_FIELD) ?
+               getMetaAttr(ATTR_SOURCE_REF_FIELD).getValueAsString() : null;
+    }
+
+    /** Whether this M:N relationship is an undirected (symmetric) self-join.
+     *  {@code false} when the attr is absent. */
+    public boolean isSymmetric() {
+        return hasMetaAttr(ATTR_SYMMETRIC)
+            && Boolean.parseBoolean(getMetaAttr(ATTR_SYMMETRIC).getValueAsString());
     }
 
     /** Raw value of {@code @onDelete} attr, or {@code null} if not set.

@@ -177,4 +177,8 @@ export interface EntityDocData {
 
   /** Present flag for the storage section. */
   hasStorage?: boolean;
+
+  /** Cross-links to this entity's generated-SDK api page, one per api surface
+   *  (per language). Present only when api surfaces are emitted with the model. */
+  apiRefs?: Array<{ label: string; href: string; last?: boolean }>;
 }

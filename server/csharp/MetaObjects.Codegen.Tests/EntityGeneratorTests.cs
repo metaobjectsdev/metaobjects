@@ -250,6 +250,9 @@ public class EntityGeneratorTests
     [Fact]
     public void Enum_abstract_extends_uses_super_name_as_enum_type_name()
     {
+        // FR-019: a ROOT-level abstract field.enum is a SHARED enum — materialized ONCE
+        // in a dedicated Enums.g.cs (namespace-level), and the entity REFERENCES it (no
+        // nested redeclaration). The type name is the super's name ("Status").
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "field.enum": { "name": "Status", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
@@ -264,10 +267,16 @@ public class EntityGeneratorTests
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "m.json")]);
         Assert.Empty(r.Errors);
         var ctx = EnumCtx(r.Root);
-        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        // Type name is "Status" (the super's name), not "OrderStatus"
-        Assert.Contains("public enum Status { DRAFT, PUBLISHED }", src);
-        Assert.Contains("public Status? Status { get; set; }", src);
+        var files = new EntityGenerator().Generate(ctx).ToList();
+
+        // Shared enum materialized once in Enums.g.cs (type name is the super's "Status").
+        var enums = Assert.Single(files, f => f.Path == "Enums.g.cs");
+        Assert.Contains("public enum Status { DRAFT, PUBLISHED }", enums.Content);
+
+        // The entity references the shared type — no nested redeclaration.
+        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
+        Assert.DoesNotContain("public enum Status", order.Content);
+        Assert.Contains("public Status? Status { get; set; }", order.Content);
     }
 
     [Fact]
@@ -305,10 +314,9 @@ public class EntityGeneratorTests
     [Fact]
     public void Two_fields_extending_same_abstract_enum_emit_declaration_exactly_once()
     {
-        // Regression: without dedup, two fields both resolving to "OrderStatus" produce
-        // two `public enum OrderStatus { ... }` declarations → CS0102 (duplicate type).
-        // Field names differ from the abstract name so the property names don't shadow
-        // the nested enum type (avoiding a separate CS0102 from property/type collision).
+        // FR-019: two fields both resolving to the ROOT-level abstract "OrderStatus" share
+        // ONE materialized type in Enums.g.cs (the entity references it from both props, no
+        // nested redeclaration). Regression guard against a duplicate-type (CS0102) emit.
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
@@ -324,26 +332,31 @@ public class EntityGeneratorTests
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "m.json")]);
         Assert.Empty(r.Errors);
         var ctx = EnumCtx(r.Root);
-        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        var files = new EntityGenerator().Generate(ctx).ToList();
 
-        // Exactly one enum declaration, not two.
-        var occurrences = System.Text.RegularExpressions.Regex.Matches(src, @"public enum OrderStatus").Count;
+        // Exactly one enum declaration across the whole emitted set (in the shared file).
+        var occurrences = files.Sum(f =>
+            System.Text.RegularExpressions.Regex.Matches(f.Content, @"public enum OrderStatus\b").Count);
         Assert.Equal(1, occurrences);
+        Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }",
+            Assert.Single(files, f => f.Path == "Enums.g.cs").Content);
 
-        // Both properties exist and are typed by the shared enum.
-        Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", src);
-        Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", src);
+        // Both properties exist on the entity, typed by the shared enum (no nested decl).
+        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
+        Assert.DoesNotContain("public enum OrderStatus", order.Content);
+        Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", order.Content);
+        Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", order.Content);
 
-        // Output must compile cleanly (no CS0102).
-        var tree = CSharpSyntaxTree.ParseText(src, new CSharpParseOptions(LanguageVersion.CSharp12));
+        // The whole set must compile cleanly (no CS0102 / unresolved type).
+        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))).ToList();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("enumdedup_" + Guid.NewGuid().ToString("N"),
-            [tree], refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            trees, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
-        Assert.True(errors.Count == 0, "deduped enum entity should compile, got: " + string.Join("; ", errors));
+        Assert.True(errors.Count == 0, "deduped enum set should compile, got: " + string.Join("; ", errors));
     }
 
     [Fact]

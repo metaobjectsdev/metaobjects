@@ -33,6 +33,13 @@ expect:
     - '"ownerId" UUID'
     - '"externalId" UUID'
     - '"payload" JSONB'
+    # all_types — the WRITE-roundtrip kitchen-sink (every persistable subtype).
+    # Assert the subtypes whose physical mapping is otherwise unexercised here:
+    # boolean → BOOLEAN, and the enum CHECK referencing a QUOTED mixed-case column
+    # (a bare `enumVal` would fold to `enumval` and reference a missing column).
+    - 'CREATE TABLE "all_types"'
+    - '"bVal" BOOLEAN'
+    - 'CHECK ("enumVal" IN (''LOW'', ''MEDIUM'', ''HIGH''))'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)
@@ -47,7 +54,19 @@ expect:
        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
        ORDER BY table_name
     rows:
+      # all_types backs the op:roundtrip WRITE-conformance scenario (every
+      # persistable field subtype in one table — SP-H Unit 3).
+      - { table_name: "all_types" }
       - { table_name: "assets" }
+      # auths backs the FR-017 table-per-hierarchy (TPH) polymorphic corpus —
+      # the discriminator base + its subtypes collapse to one physical table.
+      - { table_name: "auths" }
+      - { table_name: "follows" }
+      - { table_name: "friendships" }
       - { table_name: "measurements" }
+      - { table_name: "people" }
+      - { table_name: "post_tags" }
+      - { table_name: "posts" }
       - { table_name: "programs" }
+      - { table_name: "tags" }
       - { table_name: "weeks" }

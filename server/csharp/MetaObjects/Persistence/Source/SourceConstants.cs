@@ -78,6 +78,13 @@ public static class SourceConstants
     /// <summary>Default Postgres schema when @schema is omitted from a source.</summary>
     public const string DEFAULT_DB_SCHEMA_POSTGRES = "public";
 
+    /// <summary>
+    /// FR-015: name or FQN of an object.value describing the input shape of a
+    /// callable source (@kind: "storedProc" / "tableFunction"). Symmetric with
+    /// template.@payloadRef. Permitted only on callable kinds.
+    /// </summary>
+    public const string SOURCE_ATTR_PARAMETER_REF = "parameterRef";
+
     // -----------------------------------------------------------------------
     // Kind values (closed enum)
     // -----------------------------------------------------------------------

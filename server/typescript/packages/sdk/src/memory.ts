@@ -43,13 +43,6 @@ export interface LoadMemoryOptions {
    * Throws if `providers` is absent or empty.
    */
   replaceDefaults?: boolean;
-  /**
-   * Called after validation, before the root is frozen. Use to inject
-   * derived nodes (e.g. computed fields) that must appear in the frozen tree
-   * seen by generators. The callback receives the mutable root and may add
-   * or modify children; it must not throw for benign no-op cases.
-   */
-  preFreeze?: (root: MetaRoot) => void;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -106,7 +99,6 @@ export async function loadMemory(
 
   const loader = new MetaDataLoader({
     registry,
-    ...(options?.preFreeze !== undefined ? { preFreeze: options.preFreeze } : {}),
   });
   const result = await loader.load(paths.map((p) => new FileSource(p)));
 

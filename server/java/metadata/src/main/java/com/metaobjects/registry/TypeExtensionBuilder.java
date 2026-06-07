@@ -14,7 +14,7 @@ import com.metaobjects.MetaDataTypeId;
  * // Service provider extending string fields with database attributes
  * registry.findType("field", "string")
  *     .optionalAttribute("column", "string")
- *     .optionalAttribute("dbNullable", "boolean")
+ *     .optionalAttribute("maxLength", "int")
  *     .optionalChild("validator", "required", "*");
  * }</pre>
  *
@@ -136,6 +136,12 @@ public class TypeExtensionBuilder {
             // Update the registry with the extended definition
             registry.register(extendedDefinition);
 
+        } catch (com.metaobjects.MetaDataException e) {
+            // ADR-0023: a sealed-registry violation is a HARD failure (the
+            // registration-time gate — codegen must not invent metamodel attrs
+            // post-bootstrap). Propagate it rather than swallowing it. Other
+            // MetaDataExceptions also propagate (a malformed extension is a real bug).
+            throw e;
         } catch (Exception e) {
             // Log warning but don't fail - service provider pattern should be resilient
             System.err.println("Warning: Failed to extend type " + typeId + ": " + e.getMessage());

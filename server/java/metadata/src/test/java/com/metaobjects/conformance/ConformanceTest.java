@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.conformance;
 
@@ -78,9 +87,11 @@ import static org.junit.Assert.fail;
  *       so canonical round-trips produce the right top-level {@code package}.</li>
  *   <li>Warnings: the Java loader has no warning surface yet. Fixtures with
  *       {@code expected-warnings.json} are ledgered as gaps.</li>
- *   <li>Effective serialization + script execution: not implemented in the
- *       Java harness yet. Fixtures using {@code expected-effective.json} or
- *       {@code script.json} are ledgered.</li>
+ *   <li>Effective serialization: supported. A fixture's
+ *       {@code expected-effective.json} (extends RESOLVED — inherited members
+ *       inlined) is byte-compared against
+ *       {@link CanonicalJsonSerializer#canonicalSerializeEffective(MetaData)}
+ *       when present.</li>
  * </ul>
  */
 @RunWith(Parameterized.class)
@@ -135,6 +146,15 @@ public class ConformanceTest {
             // physical RDB attributes (@column / @dbType / @dbColumnType / ...).
             "metaobjects-db", List.of(
                 "database-extensions"
+            ),
+            // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
+            // under this canonical name — template.* / @responseRef / @xmlText, the
+            // AI prompt-construction vocab) maps to Java's TemplateTypesMetaDataProvider
+            // (id "template-types"). Java also folds template-types into the
+            // "metaobjects-core-types" alias; the two checks are independent set
+            // memberships, so a fixture listing both still resolves.
+            "metaobjects-template", List.of(
+                "template-types"
             )
         );
 
@@ -153,6 +173,18 @@ public class ConformanceTest {
         List<FixtureDiscovery.Fixture> all = FixtureDiscovery.discover(CORPUS);
         List<Object[]> rows = new ArrayList<>(all.size());
         for (FixtureDiscovery.Fixture f : all) {
+            // Docs-only fixtures (an expected/*.md directory, no strict expectation
+            // files) drive the docs-conformance runner only and are skipped here.
+            if (f.isDocsOnly()) {
+                continue;
+            }
+            // Contract-only fixtures (a cross-port expected-paths.json layout manifest,
+            // no strict expectation files) drive the dedicated api-docs cross-port
+            // conformance runner only (ApiDocsCrossPortConformanceTest in codegen-spring,
+            // and the TS equivalent) and are skipped here. Mirrors the TS strict runner.
+            if (f.isContractOnly()) {
+                continue;
+            }
             rows.add(new Object[]{f.name, f});
         }
         return rows;
@@ -208,7 +240,7 @@ public class ConformanceTest {
      * Mirrors {@code ConformanceTests.RunChecks} in the C# runner, restricted
      * to the checks the Java harness currently supports.
      */
-    private static void runConformanceChecks(FixtureDiscovery.Fixture fix,
+    static void runConformanceChecks(FixtureDiscovery.Fixture fix,
                                               List<String> failures) {
         // -- Unsupported-feature fast-fails (honest gaps) --------------------
         // The Java harness does not yet implement effective serialization,
@@ -266,9 +298,9 @@ public class ConformanceTest {
                 }
             }
         }
-        if (fix.hasExpectedEffective) {
-            failures.add("expected-effective.json (effective serialization) not supported by Java harness");
-        }
+        // expected-effective.json is now supported — the assertion lives below,
+        // after the loader has run and built the tree (so the effective
+        // serialization can resolve the extends chain).
         // expected-warnings.json is now supported — the assertion lives below,
         // after the loader has run (so loader.getWarnings() has a value to
         // compare against).
@@ -408,17 +440,33 @@ public class ConformanceTest {
             return;
         }
 
+        // ADR-0023 — strict hard-fail. A fixture that declares NO
+        // expected-errors.json is a happy-path fixture: under strict load it MUST
+        // load with ZERO errors. Any recorded error (e.g. ERR_UNKNOWN_ATTR from a
+        // made-up attribute, recorded non-fatally by the strict parser) fails the
+        // fixture with a message naming the unexpected error(s). Mirrors the TS
+        // reference (commit 9269f0ef): previously this was silently tolerated —
+        // the runner only byte-compared the tree and never asserted the error set
+        // was empty, so a made-up attr passed. (Warnings stay separate — they are
+        // asserted via expected-warnings.json below; this is about ERRORS only.)
+        // Gated on the fixture declaring at least one metadata expectation file so
+        // docs-only / no-expectation fixtures are handled by their own checks.
+        if (!fix.hasExpectedErrors
+                && (fix.hasExpected || fix.hasExpectedEffective
+                    || fix.hasExpectedWarnings || fix.hasScript)
+                && !errorCodesSeen.isEmpty()) {
+            TreeSet<String> unexpected = new TreeSet<>(errorCodesSeen);
+            failures.add("happy-path fixture loaded with unexpected error(s): " + unexpected
+                + " — under strict, a fixture with no expected-errors.json must load with "
+                + "zero errors (ADR-0023)");
+            return;
+        }
+
         // If the fixture is NOT an expected-errors fixture but the loader
         // THREW (vs. recorded errors via {@link MetaDataLoader#addError}),
-        // the tree is mid-build and we can't run tree-dependent checks.
-        //
-        // FR5c — errors recorded via {@code addError} (e.g.
-        // {@code ERR_MERGE_CONFLICT} from the merge-attribution site) do NOT
-        // halt tree building. Existing happy-path fixtures (e.g.
-        // {@code overlay-attr-last-writer-wins}) exercise scenarios that now
-        // surface a recorded error AND a valid tree; TS conformance behaves
-        // the same way (no error-set check unless {@code expected-errors.json}
-        // is declared). Only a thrown exception means the tree is unsafe.
+        // the tree is mid-build and we can't run tree-dependent checks. (A
+        // recorded-but-not-thrown error is already caught by the ADR-0023
+        // hard-fail above; this guards the eager-throw path that leaves no tree.)
         if (thrown != null) {
             failures.add("load threw " + extractErrorCode(thrown)
                 + " — cannot run tree-dependent checks");
@@ -438,6 +486,26 @@ public class ConformanceTest {
             String got = CanonicalJsonSerializer.canonicalSerialize(loader.getRoot()).trim();
             if (!want.equals(got)) {
                 failures.add("canonical serialization mismatch:\n--- expected ---\n"
+                    + want + "\n--- got ---\n" + got);
+            }
+        }
+
+        // -- expected-effective.json check ----------------------------------
+        // Mirrors the TS runner: when a fixture ships expected-effective.json,
+        // emit the EFFECTIVE canonical serialization (extends resolved —
+        // inherited members inlined) and byte-compare (newline-normalized).
+        if (fix.hasExpectedEffective) {
+            String want;
+            try {
+                want = new String(Files.readAllBytes(fix.dir.resolve("expected-effective.json")),
+                    StandardCharsets.UTF_8).trim();
+            } catch (IOException ex) {
+                failures.add("expected-effective.json read error: " + ex.getMessage());
+                return;
+            }
+            String got = CanonicalJsonSerializer.canonicalSerializeEffective(loader.getRoot()).trim();
+            if (!want.equals(got)) {
+                failures.add("effective serialization mismatch:\n--- expected ---\n"
                     + want + "\n--- got ---\n" + got);
             }
         }

@@ -1,0 +1,29 @@
+name: m2m-symmetric-self-join-traversal
+description: >
+  FR-018 symmetric self-join over HTTP: GET /people/:id/friends traverses the
+  Friendship junction with @symmetric: true. Single-row storage, union on read:
+  a row (a,b) answers the friends lookup from BOTH a and b. The resolver queries
+  WHERE personAId = X OR personBId = X and, per row, returns the column that is
+  NOT the source id.
+requests:
+  - id: r1
+    method: GET
+    path: /api/persons/1/friends
+    expect:
+      status: 200
+      body:
+        namesUnordered: [Bob, Carol]   # stored (1,2) forward + (3,1) reverse
+  - id: r2
+    method: GET
+    path: /api/persons/2/friends
+    expect:
+      status: 200
+      body:
+        namesUnordered: [Alice, Dave]  # stored (1,2) reverse + (2,4) forward
+  - id: r3
+    method: GET
+    path: /api/persons/4/friends
+    expect:
+      status: 200
+      body:
+        namesUnordered: [Bob]

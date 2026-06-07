@@ -50,7 +50,7 @@ import static com.metaobjects.util.MetaDataUtil.expandPackageForPath;
  *   <li>Tracking parsing statistics and information</li>
  * </ul>
  * 
- * @author Draagon Software
+ * @author Doug Mealing
  * @since 4.4.0
  */
 public abstract class BaseMetaDataParser {

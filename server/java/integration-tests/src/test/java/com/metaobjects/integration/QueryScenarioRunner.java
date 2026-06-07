@@ -77,7 +77,20 @@ public final class QueryScenarioRunner {
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
                 Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
                     mc, m -> probeColumnSqlTypes(pg, m));
-                Object actual = ObjectManagerDbAdapter.execute(omdb, oc, mc, spec, columnSqlTypes);
+                // op:roundtrip — INSERT via the OMDB write path, read back by PK, drop the PK,
+                // assert the normalized read-back == `expect` (the WRITE codec + read gate).
+                if ("roundtrip".equals(spec.op())) {
+                    Object written = RoundtripWriter.execute(omdb, oc, mc, spec, columnSqlTypes);
+                    assertResult(scenario.sourcePath(), spec, written);
+                    continue;
+                }
+                // op:relate normalizes the TARGET entity's rows, so the adapter needs
+                // to probe column types for an entity other than `mc`; hand it a probe
+                // that hits the same per-scenario cache.
+                ObjectManagerDbAdapter.ColumnTypeProbe probe =
+                    m -> columnTypeCache.computeIfAbsent(m, x -> probeColumnSqlTypes(pg, x));
+                Object actual = ObjectManagerDbAdapter.execute(
+                    omdb, oc, mc, spec, columnSqlTypes, loader.getRoot(), probe);
                 assertResult(scenario.sourcePath(), spec, actual);
             }
         } finally {
@@ -147,10 +160,19 @@ public final class QueryScenarioRunner {
                 : Long.parseLong(String.valueOf(expect));
             return Long.toString(n);
         }
-        if ("get".equals(op)) {
+        // op:delete asserts a boolean (true = a row was deleted).
+        if ("delete".equals(op)) return Boolean.toString(asBoolean(expect));
+        // op:relate is an ORDER-INDEPENDENT set (M:N navigation) — sort both sides.
+        if ("relate".equals(op)) {
+            if (expect == null) return "[]";
+            return Normalization.canonicalRowSet((List<Map<String, Object>>) expect);
+        }
+        // op:get / op:roundtrip / op:update each assert a single bare object (roundtrip drops the
+        // PK; get + update retain it).
+        if (isSingleObjectOp(op)) {
             if (expect == null) return "null";
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) expect))
-                // canonicalRowsJson always wraps in [...]; the get path expects the bare object.
+                // canonicalRowsJson always wraps in [...]; the single-object path expects the bare object.
                 .replaceAll("^\\[", "").replaceAll("\\]$", "");
         }
         // op:list
@@ -161,12 +183,27 @@ public final class QueryScenarioRunner {
     @SuppressWarnings("unchecked")
     private static String canonicalizeActual(Object actual, String op) {
         if ("count".equals(op)) return Long.toString(actual instanceof Number n ? n.longValue() : 0L);
+        if ("delete".equals(op)) return Boolean.toString(asBoolean(actual));
+        if ("relate".equals(op)) {
+            if (actual == null) return "[]";
+            return Normalization.canonicalRowSet((List<Map<String, Object>>) actual);
+        }
         if (actual == null) return "null";
-        if ("get".equals(op)) {
+        if (isSingleObjectOp(op)) {
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) actual))
                 .replaceAll("^\\[", "").replaceAll("\\]$", "");
         }
         return Normalization.canonicalRowsJson((List<Map<String, Object>>) actual);
+    }
+
+    /** Single-bare-object ops: a read-by-PK ({@code get}), a write-then-read ({@code roundtrip} / {@code update}). */
+    private static boolean isSingleObjectOp(String op) {
+        return "get".equals(op) || "roundtrip".equals(op) || "update".equals(op);
+    }
+
+    private static boolean asBoolean(Object v) {
+        if (v instanceof Boolean b) return b;
+        return Boolean.parseBoolean(String.valueOf(v));
     }
 
     // -----------------------------------------------------------------------

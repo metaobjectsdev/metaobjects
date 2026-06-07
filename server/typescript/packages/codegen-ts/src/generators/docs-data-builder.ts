@@ -18,6 +18,9 @@ import {
   IDENTITY_ATTR_GENERATION,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  RELATIONSHIP_ATTR_SYMMETRIC,
   RELATIONSHIP_SUBTYPE_COMPOSITION,
   RELATIONSHIP_SUBTYPE_AGGREGATION,
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
@@ -43,6 +46,7 @@ import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode } from "../docs-paths.js";
+import { fieldAnchorHtml } from "./field-anchor.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
@@ -61,9 +65,19 @@ export interface BuildDocDataOpts {
   loadedRoot: MetaRoot;
   /** Page-placement layout. Defaults to "flat" (back-compat: same-dir links). */
   layout?: OutputLayout;
+  /** Cross-links to this entity's GENERATED-SDK api pages, one per api surface
+   *  (per language). Computed by the caller (docsFile) via the shared
+   *  `apiSurfaceHref` so each resolves in BOTH layouts. ABSENT for model-only
+   *  runs → default output byte-identical. */
+  apiRefs?: Array<{ label: string; href: string }>;
 }
 
-function isFieldRequired(field: MetaField): boolean {
+/** Whether a field is required — `@required` true OR a `validator.required`
+ *  child. The SINGLE source of truth for required-ness across the Constraints
+ *  table, the Storage nullable rule, and (via the api-docs field-shape builder)
+ *  the documented model-field optionality. Exported so the field-shape builder
+ *  reuses the EXACT same rule rather than re-deriving it. */
+export function isFieldRequired(field: MetaField): boolean {
   if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
@@ -122,7 +136,7 @@ function collectValidatorParts(field: MetaField): ValidatorParts {
  *  from declared metadata, never re-derived into ANSI/ORM SQL. Shared by the
  *  Constraints table (`neutralTypeCell`) and the Storage table's physical-type
  *  fallback (`storageTypeCell`). */
-function neutralTypeStr(field: MetaField): string {
+export function neutralTypeStr(field: MetaField): string {
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
@@ -201,7 +215,12 @@ function buildConstraintRow(
   if (sup !== undefined) rules.push(`extends \`${sup.name}\``);
 
   return {
-    field: `\`${field.name}\``,
+    // The Field cell carries a stable HTML anchor (`<a id="field-<name>">`)
+    // before the backticked name, so the template-source annotator's
+    // `#field-<name>` links resolve. Slug = `fieldAnchorSlug(name)` — the SINGLE
+    // source shared with the annotator so anchor and link can't drift. The
+    // anchor is a language-independent HTML id, so the page stays neutral.
+    field: `${fieldAnchorHtml(field.name)}\`${field.name}\``,
     required: required ? "yes" : "",
     type: neutralTypeCell(field),
     limits: limits.join(", "),
@@ -281,6 +300,27 @@ function relationshipBullet(r: ReturnType<MetaObject["relationships"]>[number]):
     case RELATIONSHIP_SUBTYPE_ASSOCIATION: label = "association"; break;
     default: label = subtype;
   }
+
+  // M:N (FR-018): the relationship traverses a junction (`@through`). Describe
+  // the edge as related-target THROUGH junction, and mark the self-join shape:
+  //   symmetric (undirected) → "symmetric self-join"
+  //   @sourceRefField set (directed) → "directed self-join via `<field>`"
+  // The junction/disambiguator are DECLARED facts (ADR-0020 — no re-derivation).
+  const throughRaw = r.ownAttr(RELATIONSHIP_ATTR_THROUGH);
+  if (typeof throughRaw === "string" && throughRaw.length > 0) {
+    const through = stripPackage(throughRaw);
+    const noteParts = [`${label}, through \`${through}\``];
+    if (r.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true) {
+      noteParts.push("symmetric self-join");
+    } else {
+      const srcRef = r.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      if (typeof srcRef === "string" && srcRef.length > 0) {
+        noteParts.push(`directed self-join via \`${srcRef}\``);
+      }
+    }
+    return `\`${r.name}\` — ${card} → \`${target}\` (${noteParts.join(", ")})`;
+  }
+
   return `\`${r.name}\` — ${card} → \`${target}\` (${label})`;
 }
 
@@ -431,6 +471,12 @@ export function buildEntityDocData(
   if (usedBy !== undefined) {
     data.usedBy = usedBy;
     data.hasUsedBy = true;
+  }
+  // Cross-link to the api surfaces — present ONLY when the caller computed the
+  // hrefs (api surfaces emitted alongside model); model-only runs stay identical.
+  // `last` flags the final ref so the template renders an inline ` · ` separator.
+  if (opts.apiRefs !== undefined) {
+    data.apiRefs = opts.apiRefs.map((r, i, arr) => ({ ...r, last: i === arr.length - 1 }));
   }
 
   return data;

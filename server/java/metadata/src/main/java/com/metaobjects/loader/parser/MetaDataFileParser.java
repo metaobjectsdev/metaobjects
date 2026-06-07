@@ -12,7 +12,7 @@ import com.metaobjects.loader.MetaDataLoader;
  * requiring inheritance from specific base classes, enabling a cleaner
  * architecture where all parsing logic is consolidated in the metadata module.</p>
  * 
- * @author Draagon Software
+ * @author Doug Mealing
  * @since 6.0.0 (replaces FileMetaDataParser inheritance)
  */
 public interface MetaDataFileParser {

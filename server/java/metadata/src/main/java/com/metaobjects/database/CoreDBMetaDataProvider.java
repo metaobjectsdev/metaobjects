@@ -1,37 +1,33 @@
 package com.metaobjects.database;
 
-import com.metaobjects.attr.BooleanAttribute;
-import com.metaobjects.attr.IntAttribute;
-import com.metaobjects.attr.StringAttribute;
-import com.metaobjects.field.DoubleField;
-import com.metaobjects.field.IntegerField;
-import com.metaobjects.field.LongField;
-import com.metaobjects.field.MetaField;
-import com.metaobjects.identity.MetaIdentity;
-import com.metaobjects.identity.PrimaryIdentity;
-import com.metaobjects.identity.SecondaryIdentity;
-import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
 /**
- * Core database MetaData type provider that registers common database attributes
- * used by both JPA code generation (mustache templates) and ObjectManagerDB.
+ * Core database MetaData type provider.
  *
- * This provider registers database-related attributes that are shared across
- * database functionality rather than being specific to one implementation.
+ * <p>Historically this provider registered a parallel <em>physical</em> {@code db*}
+ * attribute vocabulary on every field / object / identity type. As of SP-G Phase 2
+ * Unit 7 that vocabulary has been converged onto the cross-port <em>logical</em>
+ * attrs that {@link com.metaobjects.field.MetaField} already declares on
+ * {@code field.base} — {@code column}, {@code dbColumnType}, {@code db.indexed},
+ * {@code maxLength}, {@code precision}, {@code scale}, {@code unique} (+ nullability
+ * derived from {@code required}). Owned-object storage shape is expressed via
+ * {@code field.object @storage} ({@code flattened} / {@code jsonb} / {@code subdocument}).</p>
+ *
+ * <p>The DDL/migration-only remnants ({@code dbForeignKey}, {@code previousName},
+ * {@code dbIndexName}, {@code dbSequenceName}, {@code dbTablespace}) are dead under
+ * ADR-0015 (schema migrations are TypeScript-owned; OMDB is pure data-access) and
+ * were removed — they had no live runtime consumer.</p>
+ *
+ * <p>This provider therefore no longer registers any field/object/identity attrs.
+ * It is retained only as the home of the {@code @dbColumnType} value vocabulary
+ * (the physical column-type escape hatch, ADR-0013) consumed by OMDB + the codegens,
+ * keeping that closed value set in one cross-language place.</p>
  *
  * Priority: 150 (after core types, before code generation)
  */
 public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
-
-    // Common database attribute constants
-    //
-    // Source-v2 ADR-0007: the object-level {@code @dbTable} / {@code @dbView} attrs
-    // were dropped in Stage 2. An object declares storage ONLY via {@code source.*}
-    // children — the primary writable {@code source.rdb} child's {@code @table}
-    // attr is the table name; a read-only ({@code @kind: view / ...}) source
-    // names the view. See {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
 
     /**
      * Field physical column name. Source-v2 Tier-1 cross-language vocabulary
@@ -39,32 +35,24 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      *
      * <p>Paradigm-neutral key (no {@code db} prefix) to pair with
      * {@code source.rdb @table}: a future {@code source.docdb} would still use
-     * {@code @column} for the physical name. Prior to source-v2 this attr was
-     * {@code @dbColumn}; no backwards-compat alias.</p>
+     * {@code @column} for the physical name.</p>
+     *
+     * <p>Registered on {@code field.base} by {@link com.metaobjects.field.MetaField}
+     * ({@code ATTR_COLUMN}); kept here as the cross-port constant the persistence +
+     * codegen consumers reference.</p>
      */
     public static final String COLUMN = "column";
-    public static final String DB_NULLABLE = "dbNullable";
-    public static final String DB_PRIMARY_KEY = "dbPrimaryKey";
-    public static final String DB_FOREIGN_KEY = "dbForeignKey";
-    public static final String DB_INDEX = "dbIndex";
-    public static final String DB_UNIQUE = "dbUnique";
-    public static final String DB_LENGTH = "dbLength";
-    public static final String DB_PRECISION = "dbPrecision";
-    public static final String DB_SCALE = "dbScale";
-    public static final String DB_AUTO_INCREMENT = "dbAutoIncrement";
-    public static final String DB_TYPE = "dbType";
-
-    /** {@code @dbType} value that marks a field as a JSON document column. */
-    public static final String DB_TYPE_JSONB = "jsonb";
 
     /**
      * Physical column-type attribute (R6 Plan 2b, ADR-0013). Selects the DB column type
      * while leaving the logical field type and its idiomatic native binding untouched —
      * the canonical <em>physical</em> escape hatch for DB-specific column types.
      *
-     * <p>Closed value set ({@link #VALID_DB_COLUMN_TYPES}); each value is legal only on a
-     * specific logical field subtype (validated own-only by the loader, emitting
-     * {@code ERR_BAD_ATTR_VALUE} for an illegal pairing or unrecognized value):</p>
+     * <p>Registered on {@code field.base} by {@link com.metaobjects.field.MetaField}
+     * ({@code ATTR_DB_COLUMN_TYPE}). Closed value set ({@link #VALID_DB_COLUMN_TYPES});
+     * each value is legal only on a specific logical field subtype (validated own-only
+     * by the loader, emitting {@code ERR_BAD_ATTR_VALUE} for an illegal pairing or
+     * unrecognized value):</p>
      * <ul>
      *   <li>{@code uuid} → {@code field.string} → Postgres {@code UUID} column.</li>
      *   <li>{@code jsonb} → {@code field.string} → Postgres {@code JSONB} (genuinely-open JSON).</li>
@@ -84,14 +72,6 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final java.util.List<String> VALID_DB_COLUMN_TYPES = java.util.List.of(
         DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, DB_COLUMN_TYPE_TIMESTAMP_TZ);
 
-    // Identity-specific database attributes
-    public static final String DB_SEQUENCE_NAME = "dbSequenceName";
-    public static final String DB_INDEX_NAME = "dbIndexName";
-    public static final String DB_TABLESPACE = "dbTablespace";
-
-    /** Rename hint: the prior name of this object/field, so migration emits RENAME (not drop+add). */
-    public static final String PREVIOUS_NAME = "previousName";
-
     @Override
     public String getProviderId() {
         return "database-extensions";
@@ -99,83 +79,20 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // Depends on field types, object types, and identity types for extending them
+        // Depends on field types, object types, and identity types so it loads after them.
         return new String[]{"field-types", "object-types", "identity-types"};
     }
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        registerDatabaseAttributes(registry);
+        // No attrs to register: the cross-port logical field attrs (column,
+        // dbColumnType, db.indexed, maxLength, precision, scale, unique, storage)
+        // are declared on field.base by MetaField (SP-G Unit 4), and the legacy
+        // physical db* vocabulary was converged/dropped in SP-G Unit 7.
     }
 
     @Override
     public String getDescription() {
-        return "Database MetaData Provider - Common database attributes for JPA and ObjectManager";
-    }
-
-    /**
-     * Registers common database attributes used by both JPA code generation
-     * and ObjectManagerDB implementations.
-     */
-    public static void registerDatabaseAttributes(MetaDataRegistry registry) {
-        // Object-level database attributes
-        //
-        // Source-v2 ADR-0007: {@code @dbTable} / {@code @dbView} are NOT registered here.
-        // The table/view name is declared on {@code source.rdb @table}; see
-        // {@link com.metaobjects.object.MetaObject#getPrimaryRdbTableName()}.
-        registry.findType(MetaObject.TYPE_OBJECT, MetaObject.SUBTYPE_BASE)
-            .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_UNIQUE, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
-
-        // Field-level database attributes
-        registry.findType(MetaField.TYPE_FIELD, MetaField.SUBTYPE_BASE)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_NULLABLE, BooleanAttribute.SUBTYPE_BOOLEAN)
-            .optionalAttribute(DB_FOREIGN_KEY, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_INDEX, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_UNIQUE, BooleanAttribute.SUBTYPE_BOOLEAN)
-            .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_TYPE, StringAttribute.SUBTYPE_STRING)
-            // R6 Plan 2b: physical column-type escape hatch (validated own-only by the loader).
-            .optionalAttribute(DB_COLUMN_TYPE, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(PREVIOUS_NAME, StringAttribute.SUBTYPE_STRING);
-
-        // String field specific
-        // NOTE: DB_COLUMN_TYPE is intentionally NOT registered here — the field.base
-        // registration above already propagates it to every field subtype (intended
-        // "every subtype" parity with TS), so a @dbColumnType on a string field is
-        // accepted via inheritance. Re-registering it here would be redundant.
-        registry.findType(MetaField.TYPE_FIELD, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_LENGTH, IntAttribute.SUBTYPE_INT);
-
-        // UUID field specific (R6 Plan 2a): @column override, like the other scalars.
-        registry.findType(MetaField.TYPE_FIELD, com.metaobjects.field.UuidField.SUBTYPE_UUID)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
-
-        // Numeric field specific
-        registry.findType(MetaField.TYPE_FIELD, LongField.SUBTYPE_LONG)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
-
-        registry.findType(MetaField.TYPE_FIELD, IntegerField.SUBTYPE_INT)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING);
-
-        registry.findType(MetaField.TYPE_FIELD, DoubleField.SUBTYPE_DOUBLE)
-            .optionalAttribute(COLUMN, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_PRECISION, IntAttribute.SUBTYPE_INT)
-            .optionalAttribute(DB_SCALE, IntAttribute.SUBTYPE_INT);
-
-        // Identity-level database attributes (replaces deprecated key attributes)
-        registry.findType(MetaIdentity.TYPE_IDENTITY, PrimaryIdentity.SUBTYPE_PRIMARY)
-            .optionalAttribute(DB_SEQUENCE_NAME, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_INDEX_NAME, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_TABLESPACE, StringAttribute.SUBTYPE_STRING);
-
-        registry.findType(MetaIdentity.TYPE_IDENTITY, SecondaryIdentity.SUBTYPE_SECONDARY)
-            .optionalAttribute(DB_INDEX_NAME, StringAttribute.SUBTYPE_STRING)
-            .optionalAttribute(DB_TABLESPACE, StringAttribute.SUBTYPE_STRING);
+        return "Database MetaData Provider - cross-port @dbColumnType value vocabulary";
     }
 }

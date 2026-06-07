@@ -2,6 +2,19 @@ import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy, type MetaDat
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
+import { generatorRegistry } from "./generator-registry.js";
+
+/**
+ * A config `generators` entry. Either a typed generator (the primary, fully
+ * typed form — `entityFile()`) OR a STABLE-NAME STRING resolved via the
+ * {@link generatorRegistry} (e.g. `"entity"`). The string form is the
+ * cross-port-consistent selection mechanism (matches C#/Python
+ * `--generators entity,routes`); it always uses the generator's DEFAULT
+ * options. Adopters needing options use the factory form.
+ *
+ * ADR-0021 #1 (TS parity).
+ */
+export type GeneratorSpec = Generator | string;
 
 export type Dialect = "sqlite" | "postgres";
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
@@ -29,10 +42,30 @@ export interface ResolvedGenConfig {
   dialect: Dialect;
   /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each entity's metadata package. */
   outputLayout?: OutputLayout;
+  /** Whether the OPT-IN Hono routes generator (routesFileHono) is active in the
+   *  run — aggregated by the runner from the suite's `emitsHonoRoutes` markers.
+   *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
+   *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
+  includeHonoRoutes?: boolean;
+  /**
+   * FR-019 / ADR-0026: the module specifier from which an externally-PROVIDED
+   * shared enum (`@provided: true` on an abstract package-level `field.enum`) is
+   * imported. metaobjects emits NO type for a provided enum — consuming entity
+   * files `import { <EnumName> } from "<providedEnumModule>"`. The per-port
+   * namespace/module is codegen config, never a metadata attr (ADR-0001). A model
+   * that references a provided enum without this set is a codegen-time error.
+   */
+  providedEnumModule?: string;
 }
 
 export interface MetaobjectsGenConfig extends ResolvedGenConfig {
-  generators: Generator[];
+  /**
+   * Generators to run. Each entry is either a typed generator factory result
+   * (`entityFile()`) or a stable-name string (`"entity"`) resolved via the
+   * registry. Mixed arrays are allowed (`["entity", routesFile()]`). String
+   * entries use the generator's default options. ADR-0021 #1.
+   */
+  generators: GeneratorSpec[];
   /** How field names map to DB column names when @dbColumn is omitted. Defaults to "snake_case". */
   columnNamingStrategy?: ColumnNamingStrategy;
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
@@ -46,6 +79,8 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
    * governs the shape, mirroring the cross-port `emitAbstractShapes` option.
    */
   emitAbstractShapes?: boolean;
+  /** Docs-output config consumed by the `meta docs` door. See {@link DocsConfig}. */
+  docs?: DocsConfig;
   /** Named output destinations. Generators reference one via `target`. */
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
@@ -63,12 +98,58 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
  *  `targets` is Omitted from the base so it can narrow from the user-facing
  *  TargetConfig to the fully-resolved ResolvedTarget (incompatible under
  *  exactOptionalPropertyTypes otherwise). */
-export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets"> {
+export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets" | "generators"> {
+  /** Fully resolved — every string spec has been mapped to its factory result. */
+  generators: Generator[];
   columnNamingStrategy: ColumnNamingStrategy;
   apiPrefix: string;
   emitAbstractShapes: boolean;
   outputLayout: OutputLayout;
   targets: Record<string, ResolvedTarget>;
+}
+
+export type DocsSurface = "model" | "api";
+
+export interface ApiSurface {
+  lang: string;
+  subDir: string;
+  baseUrl?: string;
+}
+
+/** The single docs-output config: where ALL doc surfaces go, how pages are laid
+ *  out, and which surfaces to emit. Read by the `meta docs` door (and, when the
+ *  api surface fans out, by each port's docs command). */
+export interface DocsConfig {
+  outDir?: string;
+  layout?: OutputLayout;
+  baseUrl?: string;
+  surfaces?: DocsSurface[];
+  apiSurfaces?: ApiSurface[];
+}
+
+export interface ResolvedDocsConfig {
+  outDir: string;
+  layout: OutputLayout;
+  baseUrl: string;
+  surfaces: DocsSurface[];
+  apiSurfaces: ApiSurface[];
+}
+
+/** Merge the config `docs:` block with CLI overrides over documented defaults.
+ *  `fallbackLayout` is the project's `outputLayout` so docs default to the same
+ *  page placement as codegen when `docs.layout` is unset. */
+export function resolveDocsConfig(
+  block: DocsConfig | undefined,
+  cli: Partial<ResolvedDocsConfig>,
+  fallbackLayout: OutputLayout,
+): ResolvedDocsConfig {
+  return {
+    outDir: cli.outDir ?? block?.outDir ?? "./docs",
+    layout: cli.layout ?? block?.layout ?? fallbackLayout,
+    baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
+    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api"],
+    apiSurfaces: cli.apiSurfaces ?? block?.apiSurfaces ?? [{ lang: "ts", subDir: "api" }],
+  };
 }
 
 /** Identity passthrough; exists for IDE type-inference + autocomplete. */
@@ -102,10 +183,44 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
   return out;
 }
 
+/**
+ * Materialize the config `generators` array: pass typed generators through
+ * untouched and resolve each stable-name string via the {@link generatorRegistry}
+ * to its factory result (default options). ADR-0021 #1.
+ *
+ * Errors:
+ *  - a NEUTRAL name (`docs`, `mermaid-er`) is owned by `meta docs` (ADR-0021 D1)
+ *    and is not selectable in the gen suite.
+ *  - an UNKNOWN name throws listing the available NATIVE names.
+ */
+export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
+  return specs.map((spec) => {
+    if (typeof spec !== "string") return spec;
+    const entry = generatorRegistry[spec];
+    if (entry === undefined) {
+      const native = Object.values(generatorRegistry)
+        .filter((e) => e.tier === "native")
+        .map((e) => e.name)
+        .sort();
+      throw new Error(
+        `unknown generator "${spec}". Available native generators: ${native.join(", ")}.`,
+      );
+    }
+    if (entry.tier !== "native") {
+      throw new Error(
+        `generator "${spec}" is neutral (owned by 'meta docs'); ` +
+        `not selectable in the gen suite.`,
+      );
+    }
+    return entry.factory();
+  });
+}
+
 /** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   return {
     ...config,
+    generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,

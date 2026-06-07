@@ -25,8 +25,8 @@ describe("e2e: validator-derived checks in CREATE TABLE", () => {
   test("postgres CREATE TABLE inlines the numeric check exactly once", async () => {
     const expected = buildExpectedSchema(await load(ORDER), { dialect: "postgres" });
     const { up } = emit(await collectChanges(expected), { dialect: "postgres" });
-    expect(up).toContain(`CONSTRAINT "orders_qty_numeric_chk" CHECK (qty >= 1)`);
-    expect(up.split(`CHECK (qty >= 1)`).length - 1).toBe(1);
+    expect(up).toContain(`CONSTRAINT "orders_qty_numeric_chk" CHECK ("qty" >= 1)`);
+    expect(up.split(`CHECK ("qty" >= 1)`).length - 1).toBe(1);
   });
   test("enum + validator coexist with distinct names", async () => {
     const t = buildExpectedSchema(await load(ORDER), { dialect: "postgres" }).tables[0]!;

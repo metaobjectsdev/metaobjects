@@ -270,6 +270,14 @@ class OutputParserGenerator:
         # entity-level filters today.
         self.filter = filter
 
+    def _render_module(self, template: MetaData, root: MetaData) -> str | None:
+        """EXTENSION SEAM — render the whole parser module for one ``template.output``.
+        Defaults to :func:`render_output_parser` (the strict ``parse_*`` + the FR-010
+        tolerant ``extract_lenient_*`` twins). Override to pre/post-process the
+        emitted source, or to replace the strict-parser / lenient-extractor emission
+        entirely. Output is byte-identical to the default when not overridden."""
+        return render_output_parser(template, root)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
         if root is None:
@@ -284,7 +292,7 @@ class OutputParserGenerator:
             key=lambda c: c.name,
         )
         for tmpl in outputs:
-            content = render_output_parser(tmpl, root)
+            content = self._render_module(tmpl, root)
             if content is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: skipping template.output "

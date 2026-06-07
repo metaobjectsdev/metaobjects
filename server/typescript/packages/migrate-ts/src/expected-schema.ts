@@ -3,6 +3,9 @@ import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_ATTR_PATTERN,
   TYPE_OBJECT,
+  TYPE_FIELD,
+  OBJECT_ATTR_DISCRIMINATOR,
+  OBJECT_ATTR_DISCRIMINATOR_VALUE,
   MetaSource,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
@@ -14,8 +17,6 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DECIMAL,
@@ -25,7 +26,6 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
@@ -92,6 +92,9 @@ export function buildExpectedSchema(
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
     if (child.subType === "value") continue;
+    // FR-017 TPH: a subtype shares its discriminator base's single table, so it
+    // emits no table of its own. Its own columns are folded into the base below.
+    if (isTphSubtype(child)) continue;
     const hasReadOnlySource = child.ownChildren().some(
       (c) => c instanceof MetaSource && c.isReadOnly(),
     );
@@ -179,6 +182,41 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
   }
 }
 
+// ---------------------------------------------------------------------------
+// FR-017 TPH (table-per-hierarchy) — single-table schema emission.
+// ---------------------------------------------------------------------------
+
+/** The @discriminator-bearing ancestor of `entity`, or undefined for non-TPH. */
+function discriminatorBaseOf(entity: MetaData): MetaData | undefined {
+  let a = entity.superResolved;
+  while (a !== undefined) {
+    if (a.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) return a;
+    a = a.superResolved;
+  }
+  return undefined;
+}
+
+/** True if `entity` is a TPH SUBTYPE (declares @discriminatorValue + has a
+ *  discriminator-bearing ancestor). Such an entity emits no table of its own. */
+function isTphSubtype(entity: MetaData): boolean {
+  return (
+    entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+    discriminatorBaseOf(entity) !== undefined
+  );
+}
+
+/** Concrete TPH subtypes whose discriminator base is `base` (root-level scan). */
+function tphConcreteSubtypes(base: MetaObject, root: MetaData): MetaObject[] {
+  if (base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === undefined) return [];
+  return root.ownChildren().filter(
+    (c): c is MetaObject =>
+      c.type === TYPE_OBJECT &&
+      !c.isAbstract &&
+      c.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+      discriminatorBaseOf(c) === base,
+  );
+}
+
 function buildTable(
   entity: MetaObject,
   tableName: string,
@@ -213,6 +251,24 @@ function buildTable(
       columns.push(...flattenObjectField(field, root, strategy));
     } else {
       columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy));
+    }
+  }
+
+  // FR-017 TPH: if this is a discriminator base, fold each concrete subtype's
+  // OWN fields into the single table as NULLABLE columns (a row of any other
+  // subtype stores NULL there), even when the field is @required. Dedupe by
+  // column name so an inherited/overridden base column is not re-emitted.
+  if (entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
+    const existing = new Set(columns.map((c) => c.name));
+    for (const sub of tphConcreteSubtypes(entity, root)) {
+      for (const field of sub.ownChildren()) {
+        if (field.type !== TYPE_FIELD) continue;
+        const col = buildColumn(field, false, undefined, strategy);
+        if (existing.has(col.name)) continue;
+        col.nullable = true; // subtype-only columns are always nullable in TPH
+        columns.push(col);
+        existing.add(col.name);
+      }
     }
   }
 
@@ -297,20 +353,20 @@ function buildSecondaryIndexes(
  * column name verbatim (matching the enum-check convention).
  */
 function validatorCheck(
-  v: MetaValidator, col: string, tableName: string, dialect: Dialect | undefined,
+  v: MetaValidator, qcol: string, tableName: string, col: string, dialect: Dialect | undefined,
 ): CheckDescriptor | null {
   switch (v.subType) {
     case VALIDATOR_SUBTYPE_NUMERIC: {
       const parts: string[] = [];
-      if (v.min !== undefined) parts.push(`${col} >= ${v.min}`);
-      if (v.max !== undefined) parts.push(`${col} <= ${v.max}`);
+      if (v.min !== undefined) parts.push(`${qcol} >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`${qcol} <= ${v.max}`);
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_numeric_chk`, expression: parts.join(" AND ") };
     }
     case VALIDATOR_SUBTYPE_LENGTH: {
       const parts: string[] = [];
-      if (v.min !== undefined) parts.push(`length(${col}) >= ${v.min}`);
-      if (v.max !== undefined) parts.push(`length(${col}) <= ${v.max}`);
+      if (v.min !== undefined) parts.push(`length(${qcol}) >= ${v.min}`);
+      if (v.max !== undefined) parts.push(`length(${qcol}) <= ${v.max}`);
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_length_chk`, expression: parts.join(" AND ") };
     }
@@ -321,12 +377,25 @@ function validatorCheck(
       if (typeof pattern !== "string" || pattern.length === 0) return null;
       return {
         name: `${tableName}_${col}_regex_chk`,
-        expression: `${col} ~ '${pattern.replace(/'/g, "''")}'`,
+        expression: `${qcol} ~ '${pattern.replace(/'/g, "''")}'`,
       };
     }
     default:
       return null;
   }
+}
+
+/**
+ * Quote a column identifier for embedding in a CHECK expression. Both Postgres
+ * and SQLite quote identifiers with double-quotes, so the dialect-neutral
+ * expression text can carry a quoted column. Quoting is REQUIRED for a
+ * mixed-case column (e.g. `enumVal`): a bare `enumVal IN (...)` folds to
+ * lowercase `enumval` and references a non-existent column. The check-expression
+ * comparator (`normalizeCheckExpr`) strips quotes so an introspected check still
+ * compares equal.
+ */
+function quoteCheckCol(col: string): string {
+  return `"${col.replace(/"/g, '""')}"`;
 }
 
 function buildChecks(
@@ -335,18 +404,19 @@ function buildChecks(
   const checks: CheckDescriptor[] = [];
   for (const field of entity.fields()) {
     const col = resolveColumnName(field, strategy);
-    // Enum membership check (unchanged).
+    const qcol = quoteCheckCol(col);
+    // Enum membership check.
     if (field.subType === FIELD_SUBTYPE_ENUM) {
       const raw = field.attr(FIELD_ATTR_VALUES);
       if (Array.isArray(raw) && raw.length > 0) {
         const values = raw.map((v) => String(v));
-        const expression = `${col} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+        const expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
         checks.push({ name: `${tableName}_${col}_chk`, expression });
       }
     }
     // Validator-derived checks.
     for (const v of field.validators()) {
-      const check = validatorCheck(v, col, tableName, dialect);
+      const check = validatorCheck(v, qcol, tableName, col, dialect);
       if (check) checks.push(check);
     }
   }
@@ -489,9 +559,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
       const m = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
       return typeof m === "number" ? { kind: "text", maxLength: m } : { kind: "text" };
     }
-    case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:      return { kind: "integer", bits: 32 };
+    case FIELD_SUBTYPE_INT:       return { kind: "integer", bits: 32 };
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
     case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };
@@ -513,8 +581,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };
     case FIELD_SUBTYPE_TIME:      return { kind: "time" }; // Postgres native TIME (whole-second wire form)
     case FIELD_SUBTYPE_TIMESTAMP: return { kind: "timestamp", withTimezone: false };
-    case FIELD_SUBTYPE_OBJECT:
-    case FIELD_SUBTYPE_CLASS:     return { kind: "json" };
+    case FIELD_SUBTYPE_OBJECT:    return { kind: "json" };
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid
     default:                      return { kind: "text" }; // unknown → text fallback
   }

@@ -63,5 +63,53 @@ export function variableNameFromEntity(entityName: string): string {
   return pluralize(toCamelCase(entityName.charAt(0).toLowerCase() + entityName.slice(1)));
 }
 
+// ---------------------------------------------------------------------------
+// Generated CRUD-helper symbol names (single source of truth).
+//
+// The queries generator (templates/queries.ts) emits one exported async function
+// per CRUD verb whose NAME is derived purely from the entity name. These helpers
+// are the canonical spelling of those names so anything that needs to REFER to a
+// generated symbol (e.g. the api-docs ApiModel builder) derives the exact same
+// string the generator emits — no drift, no invented names. The queries template
+// itself uses these so the two can never disagree.
+// ---------------------------------------------------------------------------
+
+/** Generated read-by-PK helper name: `find<Entity>ById`. */
+export function findByIdFnName(entityName: string): string {
+  return `find${entityName}ById`;
+}
+
+/** Generated list helper name: `list<Plural>` (PascalCase plural). */
+export function listFnName(entityName: string): string {
+  return `list${pluralize(entityName)}`;
+}
+
+/** Generated create helper name: `create<Entity>`. */
+export function createFnName(entityName: string): string {
+  return `create${entityName}`;
+}
+
+/** Generated update helper name: `update<Entity>`. */
+export function updateFnName(entityName: string): string {
+  return `update${entityName}`;
+}
+
+/** Generated delete-by-PK helper name: `delete<Entity>ById`. */
+export function deleteByIdFnName(entityName: string): string {
+  return `delete${entityName}ById`;
+}
+
+/**
+ * Generated Fastify route-registrar name: camelCase `<entity>Routes`. The routes
+ * generator (templates/routes-file.ts) emits a single exported
+ * `export async function <entity>Routes(fastify)` that mounts the entity's CRUD
+ * verb set — this is the symbol an adopter imports to wire the endpoints. Kept
+ * here as the single source of truth so the routes template and the api-docs
+ * ApiModel builder derive the exact same spelling (no drift).
+ */
+export function routesHandlerName(entityName: string): string {
+  return `${entityName.charAt(0).toLowerCase()}${entityName.slice(1)}Routes`;
+}
+
 // Re-exported here for callers that import from codegen-ts's naming module.
 export { toKebabCase };

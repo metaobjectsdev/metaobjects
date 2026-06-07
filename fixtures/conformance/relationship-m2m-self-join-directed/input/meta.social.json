@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "acme::social",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            {
+              "relationship.association": {
+                "name": "follows",
+                "@cardinality": "many",
+                "@objectRef": "User",
+                "@through": "Follow",
+                "@sourceRefField": "followerId"
+              }
+            },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Follow",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "followerId" } },
+            { "field.long": { "name": "followeeId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "User" } },
+            { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "User" } }
+          ]
+        }
+      }
+    ]
+  }
+}

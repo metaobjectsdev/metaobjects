@@ -11,7 +11,7 @@ import pg8000.dbapi as pg8000
 from metaobjects import load_directory
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
-from .normalization import canonical_rows_json, normalize_row
+from .normalization import canonical_row_set_json, canonical_rows_json, normalize_row
 from .postgres_container import PostgresContainer
 from .scenarios import QueryScenario, QuerySpec
 
@@ -61,8 +61,46 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
         # by is a single-field PK lookup; pass first value.
         first_value = next(iter(spec.by.values()))
         return om.find_by_id(spec.entity, first_value)
+    if spec.op == "update":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:update requires 'by' (the record key)")
+        if not spec.data:
+            raise ValueError(f"{spec.name}: op:update requires 'data'")
+        ids = list(spec.by.values())
+        if len(ids) != 1:
+            raise ValueError(f"{spec.name}: op:update supports single-field 'by' only")
+        return om.update(spec.entity, ids[0], spec.data)
+    if spec.op == "delete":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:delete requires 'by' (the record key)")
+        ids = list(spec.by.values())
+        if len(ids) != 1:
+            raise ValueError(f"{spec.name}: op:delete supports single-field 'by' only")
+        # Returns a boolean (true = a row was deleted). `expect: true|false`.
+        return om.delete(spec.entity, ids[0])
     if spec.op == "count":
         return om.count(spec.entity, spec.filter)
+    if spec.op == "relate":
+        if not spec.by:
+            raise ValueError(f"{spec.name}: op:relate requires 'by' (source record key)")
+        if not spec.relation:
+            raise ValueError(f"{spec.name}: op:relate requires 'relation'")
+        return om.relate(spec.entity, spec.by, spec.relation)
+    if spec.op == "roundtrip":
+        # WRITE round-trip: INSERT the row through the runtime write path (NOT raw
+        # SQL), read it back by PK so the write codec + read path are both
+        # exercised. The inserted row's PK (server-generated or explicit) drives
+        # the read-back, so identity-generated PKs (gen_random_uuid / increment)
+        # are covered too. The PK is EXCLUDED from the comparison (a generated PK
+        # is non-deterministic) — op:get covers PK round-trip.
+        if not spec.insert:
+            raise ValueError(f"{spec.name}: op:roundtrip requires 'insert' (the row to write)")
+        created = om.create(spec.entity, spec.insert)
+        pk_field = om.primary_key_field(spec.entity)
+        read_back = om.find_by_id(spec.entity, created[pk_field])
+        if read_back is not None:
+            read_back.pop(pk_field, None)
+        return read_back
     # op:list
     sort = [(s.field, s.dir) for s in spec.sort] if spec.sort else None
     return om.find_many(
@@ -146,10 +184,21 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
     if op == "count":
         n = int(expect) if not isinstance(expect, int) else expect
         return str(n)
-    if op == "get":
+    # `delete` returns a boolean outcome (true = a row was deleted).
+    if op == "delete":
+        return str(expect is True)
+    # `roundtrip` reads the inserted row back by PK → a single-row result,
+    # asserted exactly like `get`. `update` reads the UPDATE ... RETURNING row
+    # back the same way.
+    if op in ("get", "roundtrip", "update"):
         if expect is None:
             return "null"
         return json.dumps(normalize_row(expect), sort_keys=True, separators=(",", ":"))
+    # `relate` (M:N navigation) is a SET — order is not part of the contract, so
+    # both sides sort by per-row canonical JSON for a deterministic, port-agnostic
+    # comparison. `list` keeps its order (the scenario pins it via `sort:`).
+    if op == "relate":
+        return canonical_row_set_json(expect or [])
     # op:list
     if expect is None:
         return "[]"
@@ -159,10 +208,17 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
 def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> str:
     if op == "count":
         return str(int(actual) if actual is not None else 0)
+    # `delete` returns a boolean — handle BEFORE the dict/normalize_row path
+    # (a bool has no ``.items()``; that is the normalization.py:48 AttributeError).
+    if op == "delete":
+        return str(actual is True)
     if actual is None:
-        return "null"
-    if op == "get":
+        return "null" if op != "relate" else "[]"
+    if op in ("get", "roundtrip", "update"):
         return json.dumps(
             normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
         )
+    if op == "relate":
+        rows = actual if isinstance(actual, list) else [actual]
+        return canonical_row_set_json(rows, column_oids)
     return canonical_rows_json(actual, column_oids)

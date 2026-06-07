@@ -10,6 +10,11 @@ export interface InitFlags {
   printOnly: boolean;
   refreshDocs: boolean;
   d1: boolean;
+  servers: string[];
+  clients: string[];
+  noSkills: boolean;
+  wireRoot: boolean;
+  docsOnly: boolean;
 }
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -21,6 +26,11 @@ export function parseInitArgs(argv: string[]): InitFlags {
       "print-only": { type: "boolean", default: false },
       "refresh-docs": { type: "boolean", default: false },
       d1: { type: "boolean", default: false },
+      server: { type: "string", multiple: true },
+      client: { type: "string", multiple: true },
+      "no-skills": { type: "boolean", default: false },
+      "no-wire-root": { type: "boolean", default: false },
+      "docs-only": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -31,6 +41,11 @@ export function parseInitArgs(argv: string[]): InitFlags {
     printOnly: !!values["print-only"],
     refreshDocs: !!values["refresh-docs"],
     d1: !!values.d1,
+    servers: (values.server as string[] | undefined) ?? [],
+    clients: (values.client as string[] | undefined) ?? [],
+    noSkills: !!values["no-skills"],
+    wireRoot: !values["no-wire-root"],
+    docsOnly: !!values["docs-only"],
   };
 }
 

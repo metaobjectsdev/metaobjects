@@ -301,7 +301,12 @@ function checkCoercion(
   const spec = schemaIndex.get(attrName);
   if (spec === undefined || spec.valueType === undefined) return;
 
-  switch (spec.valueType) {
+  // Array-valued attr (the `string` + `isArray` model that replaced the
+  // `stringarray` subtype): validate as a string-array regardless of the scalar
+  // valueType token.
+  const effectiveValueType = spec.isArray === true ? ATTR_SUBTYPE_STRINGARRAY : spec.valueType;
+
+  switch (effectiveValueType) {
     case ATTR_SUBTYPE_STRING:
     case ATTR_SUBTYPE_CLASS:
       if (typeof raw !== "string") emitCoercion(attrName, raw, "string", errors, path);

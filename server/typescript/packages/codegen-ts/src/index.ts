@@ -17,8 +17,9 @@ export {
 } from "./generator-registry.js";
 export type { GeneratorRegistryEntry, GeneratorTier } from "./generator-registry.js";
 
-export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig } from "./metaobjects-config.js";
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, resolveDocsConfig } from "./metaobjects-config.js";
+export { apiLabel } from "./generators/api-label.js";
 
 export type { ColumnSpec, DefaultExpr } from "./column-mapper.js";
 export { mapColumnType } from "./column-mapper.js";
@@ -42,7 +43,7 @@ export type {
 export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
-export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR } from "./constants.js";
+export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID, CODEGEN_ATTR_EMIT_FORM, CODEGEN_ATTR_EMIT_ROUTES } from "./constants.js";
 
 export { formatTs } from "./format.js";
 
@@ -61,6 +62,38 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
+// FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,
+// react) to dispatch polymorphic/per-subtype emission and skip subtype files.
+export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
+export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
+export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
+
+// Built-in template render functions — the composition seam for adopters who
+// want to call a built-in template, then post-process / append to its output
+// from their own Generator (added to `generators: [...]`) WITHOUT forking the
+// template. Mirrors the `renderZodValidators` export. Each is also reachable via
+// a dedicated subpath (e.g. `@metaobjectsdev/codegen-ts/templates/entity-file`).
+export { renderEntityFile } from "./templates/entity-file.js";
+export type { RenderEntityFileOpts } from "./templates/entity-file.js";
+export { renderZodValidators } from "./templates/zod-validators.js";
+export { renderDrizzleSchema } from "./templates/drizzle-schema.js";
+export {
+  renderInferredTypes,
+  renderEnumTypeAliases,
+  renderValueObjectInterface,
+  enumUnionAliasName,
+  enumUnionString,
+} from "./templates/inferred-types.js";
+export { renderBarrel } from "./templates/barrel.js";
+export type { BarrelEntry } from "./templates/barrel.js";
+export { renderFilterType } from "./templates/filter-type.js";
+export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-allowlist.js";
+export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
+export { renderQueriesFile } from "./templates/queries-file.js";
+export { renderRoutesFile } from "./templates/routes-file.js";
+export { renderValueObjectFile } from "./templates/value-object-file.js";
+export { renderProjectionDecl } from "./templates/projection-decl.js";
+export type { ProjectionDeclOpts } from "./templates/projection-decl.js";
 export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";
@@ -95,7 +128,3 @@ export type {
 export { buildEntityDocData } from "./generators/docs-data-builder.js";
 export type { TemplateDocData, TemplateOutputPart } from "./generators/template-doc-data.js";
 export { buildTemplateDocData } from "./generators/template-doc-builder.js";
-
-// AI trace-field derivation — pre-pass for meta gen (injects voRequest/voResponse
-// jsonb fields onto LlmCallBase-derived entities that nest a template.prompt).
-export { deriveTraceFields } from "./ai/derive-trace-fields.js";

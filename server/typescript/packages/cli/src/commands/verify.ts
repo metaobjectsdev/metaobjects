@@ -10,6 +10,7 @@
 import { join } from "node:path";
 import { parseVerifyArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -47,6 +48,9 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     log.error((err as Error).message);
     return 2;
   }
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  warnIfAgentContextStale(cwd);
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on

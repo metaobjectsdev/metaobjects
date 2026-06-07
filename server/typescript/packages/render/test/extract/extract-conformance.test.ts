@@ -139,7 +139,15 @@ function parseField(f: RawFieldJson): FieldSpec {
   return scalar(name, kind, required, f.default ?? null);
 }
 
-function parseSchema(n: { format: string; rootName: string; fields: RawFieldJson[] }): ExtractSchema {
+interface RawSchemaJson {
+  format: string;
+  rootName: string;
+  // Optional per-fixture parse option: rootless XML (the response has no wrapper root element).
+  rootless?: boolean;
+  fields: RawFieldJson[];
+}
+
+function parseSchema(n: RawSchemaJson): ExtractSchema {
   return {
     format: parseFormat(n.format),
     rootName: n.rootName,
@@ -181,16 +189,20 @@ describe("extract-conformance corpus", () => {
     .filter((n) => existsSync(join(corpus, n, "schema.json")))
     .sort();
 
-  expect(cases.length).toBe(27);
+  expect(cases.length).toBe(30);
 
   for (const caseName of cases) {
     test(caseName, () => {
       const caseDir = join(corpus, caseName);
-      const schema = parseSchema(JSON.parse(readFileSync(join(caseDir, "schema.json"), "utf8")));
+      const schemaNode = JSON.parse(readFileSync(join(caseDir, "schema.json"), "utf8")) as RawSchemaJson;
+      const schema = parseSchema(schemaNode);
       const input = readFileSync(join(caseDir, "input.txt"), "utf8");
       const expected = JSON.parse(readFileSync(join(caseDir, "expected.json"), "utf8")) as ExpectedJson;
 
-      const outcome = extract(input, schema);
+      // Optional per-fixture parse option: "rootless": true → the XML response has no wrapper root
+      // element (the payload's fields ARE the top-level elements). Mirrors the Java/Python runners.
+      // JSON fixtures ignore it.
+      const outcome = extract(input, schema, schemaNode.rootless === true ? { rootless: true } : null);
 
       // empty flag
       expect(outcome.report.isEmpty()).toBe(expected.empty);

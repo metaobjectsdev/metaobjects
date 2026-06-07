@@ -62,7 +62,7 @@ import org.slf4j.LoggerFactory
  * generic-type machinery, so the hand-rolled emit is clearer than the KotlinPoet equivalent — the
  * same trade-off [KotlinOutputParserGenerator] makes.</p>
  */
-class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -80,7 +80,7 @@ class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
+    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
         val payloadRef = template.payloadRef
         if (payloadRef.isNullOrEmpty()) {
             LOG.warn("skipping extractor for {} — missing @payloadRef", template.name)

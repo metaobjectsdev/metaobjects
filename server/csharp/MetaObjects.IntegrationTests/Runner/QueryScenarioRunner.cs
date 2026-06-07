@@ -18,6 +18,8 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using MetaObjects.IntegrationTests.Generated;
+using MetaObjects.Loader;
+using MetaObjects.Meta;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit.Sdk;
@@ -44,11 +46,84 @@ public static class QueryScenarioRunner
             .Options;
         await using var db = new AppDbContext(options);
 
+        // Metadata is loaded lazily — only `op: relate` (M:N traversal) needs it,
+        // and it drives the junction-FK derivation via the shared M2MDerivation
+        // helper. The non-M:N scenarios stay metadata-free (pure EF over the DDL).
+        MetaRoot? metaRoot = null;
+
         foreach (var spec in scenario.Queries)
         {
-            var actual = await DbContextAdapter.ExecuteAsync(db, spec);
-            AssertResult(scenario.SourcePath, spec, actual);
+            if (spec.Op == "relate")
+            {
+                metaRoot ??= LoadCorpusMetadata();
+                var actual = await ResolveRelateAsync(pg.ConnectionString, metaRoot, spec);
+                AssertResult(scenario.SourcePath, spec, actual);
+                continue;
+            }
+
+            // FR-017 TPH: an op marked `expectError: true` (a cross-subtype write) MUST
+            // be rejected by the runtime — a throw is the pass. EF's own
+            // DbUpdateException, our subtype-scope/column guards, and a not-found all
+            // count. Note: an `expectError` op may leave a tracked entity in a bad state,
+            // so clear the change tracker before the next op proceeds.
+            if (spec.ExpectError)
+            {
+                try
+                {
+                    await DbContextAdapter.ExecuteAsync(db, spec);
+                }
+                catch (Exception)
+                {
+                    db.ChangeTracker.Clear();
+                    continue; // rejected as required
+                }
+                db.ChangeTracker.Clear();
+                throw new XunitException(
+                    $"{scenario.SourcePath} / {spec.Name}: expected the op to be rejected (expectError: true) but it succeeded");
+            }
+
+            if (spec.Op == "roundtrip")
+            {
+                // WRITE round-trip: INSERT via the EF runtime, read back by PK, drop
+                // the PK, assert the normalized read-back == `expect`. Exercises the
+                // write codec + read path together (the structural complement to the
+                // read-only scenarios). See RoundtripWriter.
+                var written = await RoundtripWriter.ExecuteAsync(db, spec);
+                AssertResult(scenario.SourcePath, spec, written);
+                continue;
+            }
+
+            var efActual = await DbContextAdapter.ExecuteAsync(db, spec);
+            AssertResult(scenario.SourcePath, spec, efActual);
         }
+    }
+
+    /// <summary>Load the canonical corpus metadata (the M:N relationship + junction declarations).</summary>
+    private static MetaRoot LoadCorpusMetadata()
+    {
+        var result = MetaDataLoader.FromDirectory(CorpusPaths.CanonicalMetadataDir);
+        if (result.Errors.Count > 0)
+            throw new InvalidOperationException(
+                "failed to load corpus metadata: " + string.Join("; ", result.Errors.Select(e => e.Message)));
+        return result.Root;
+    }
+
+    /// <summary>Execute an <c>op: relate</c> M:N traversal via the runtime resolver.</summary>
+    private static async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> ResolveRelateAsync(
+        string connString, MetaRoot root, QuerySpec spec)
+    {
+        if (spec.By is null || spec.By.Count != 1)
+            throw new InvalidOperationException($"op:relate '{spec.Name}' requires a single-field `by` (the source record key)");
+        if (string.IsNullOrEmpty(spec.Relation))
+            throw new InvalidOperationException($"op:relate '{spec.Name}' requires `relation`");
+        var sourceId = spec.By.Values.First();
+        // Open the consumer-style ADO.NET connection and hand it to the SHIPPING
+        // resolver (MetaObjects.Codegen.Runtime.M2MResolver) — the same provider-
+        // neutral surface a real C# adopter calls. No resolver logic lives here.
+        await using var conn = new NpgsqlConnection(connString);
+        await conn.OpenAsync();
+        return await MetaObjects.Codegen.Runtime.M2MResolver.RelateAsync(
+            conn, root, spec.Entity, sourceId, spec.Relation!);
     }
 
     /// <summary>Read the committed canonical Postgres schema artifact (TS-produced).</summary>
@@ -94,7 +169,27 @@ public static class QueryScenarioRunner
                 throw new InvalidOperationException($"op:count expects an integer, got: {raw ?? "null"}");
             return n.ToString(CultureInfo.InvariantCulture);
         }
+        // `delete` returns a boolean outcome (true = a row was deleted); the `expect:`
+        // is the bare boolean scalar. Canonicalize both sides as a JSON bool string.
+        if (op == "delete")
+            return ((expect as YamlScalarNode)?.Value?.ToLowerInvariant()) == "true" ? "true" : "false";
+        // `relate` (M:N navigation) is a SET — order is not part of the contract,
+        // so sort both sides for a deterministic, port-agnostic comparison. The
+        // scenario does not (and must not) pin order via `sort:`.
+        if (op == "relate")
+            return CanonicalRowSet(YamlExpectToJsonNode(expect) as JsonArray ?? []);
         return Canonical(YamlExpectToJsonNode(expect));
+    }
+
+    /// <summary>
+    /// Canonical JSON of a row SET: each row canonicalized (keys sorted), then the
+    /// per-row strings sorted, so the comparison is order-independent. Mirrors the
+    /// TS runner's <c>canonicalRowSet</c>.
+    /// </summary>
+    private static string CanonicalRowSet(JsonArray rows)
+    {
+        var each = rows.Select(r => Canonical(r)).OrderBy(s => s, StringComparer.Ordinal);
+        return "[" + string.Join(",", each) + "]";
     }
 
     // Convert the raw `expect:` YAML subtree to a JsonNode, honoring scalar STYLE so
@@ -153,6 +248,17 @@ public static class QueryScenarioRunner
 
     private static string CanonicalizeActual(object? actual, string op)
     {
+        // `delete` returns a boolean (true = a row was deleted).
+        if (op == "delete")
+            return actual is true ? "true" : "false";
+        // `relate` is a SET: normalize each row, then sort the canonical row strings.
+        if (op == "relate")
+        {
+            var rows = actual as IReadOnlyList<IReadOnlyDictionary<string, object?>>
+                ?? throw new InvalidOperationException("op:relate result must be a list of rows");
+            return CanonicalRowSet(new JsonArray(rows.Select(RowToJsonNode).Cast<JsonNode?>().ToArray()));
+        }
+
         JsonNode? node = actual switch
         {
             null => null,

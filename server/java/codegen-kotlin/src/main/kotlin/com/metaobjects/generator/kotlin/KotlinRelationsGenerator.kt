@@ -54,7 +54,7 @@ import java.nio.file.Paths
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -75,15 +75,19 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     it.subType == CompositionRelationship.SUBTYPE_COMPOSITION &&
                         it.cardinality == MetaRelationship.CARDINALITY_MANY
                 }
-            if (manyRels.isEmpty()) continue
+            // FR-018: M:N navs (any subtype, @cardinality:"many" + @through). Derived
+            // junction FK fields via the cross-port SSOT (KotlinM2mSupport → M2MFields).
+            val m2mNavs = KotlinM2mSupport.resolve(entity, loader)
+            if (manyRels.isEmpty() && m2mNavs.isEmpty()) continue
 
-            emit(entity, manyRels, outRoot, loader)
+            emit(entity, manyRels, m2mNavs, outRoot, loader)
         }
     }
 
-    private fun emit(
+    protected open fun emit(
         entity: MetaObject,
         manyRels: List<MetaRelationship>,
+        m2mNavs: List<KotlinM2mSupport.M2mNav>,
         outRoot: Path,
         loader: MetaDataLoader,
     ) {
@@ -95,9 +99,9 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // FK column matches KotlinExposedTableGenerator.buildInverseFkSpec: <ownerShortLowercased>Id.
         val fkColName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
 
-        // Resolve each to-many target → (relShortName, targetShort). Skip relationships
-        // whose @objectRef cannot be resolved (defensive — the loader's validation phase
-        // already gates the attr being present).
+        // Resolve each to-many composition target → (relShortName, targetShort). Skip
+        // relationships whose @objectRef cannot be resolved (defensive — the loader's
+        // validation phase already gates the attr being present).
         data class Helper(val relShortName: String, val targetTable: String)
         val helpers = manyRels.mapNotNull { rel ->
             val ref = rel.objectRef ?: return@mapNotNull null
@@ -106,21 +110,75 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val relShort = rel.shortName ?: rel.name
             Helper(relShort, targetShort + "Table")
         }
-        if (helpers.isEmpty()) return
+        if (helpers.isEmpty() && m2mNavs.isEmpty()) return
 
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
             }
             append("import org.jetbrains.exposed.sql.Query\n")
+            if (m2mNavs.isNotEmpty()) {
+                append("import org.jetbrains.exposed.sql.JoinType\n")
+                append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
+                // and / or are only used by the symmetric union-on-read branch's directional
+                // ON clause (which keeps the self endpoint — no neq exclusion).
+                if (m2mNavs.any { it.symmetric }) {
+                    append("import org.jetbrains.exposed.sql.and\n")
+                    append("import org.jetbrains.exposed.sql.or\n")
+                }
+            }
             append("import org.jetbrains.exposed.sql.selectAll\n")
             append("\n")
             append("/** GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit. */\n")
-            for ((idx, h) in helpers.withIndex()) {
-                if (idx > 0) append("\n")
+            var first = true
+            for (h in helpers) {
+                if (!first) append("\n")
+                first = false
                 append("/** Query `$ownerShort.${h.relShortName}` (cardinality=many) on the ${h.targetTable.removeSuffix("Table")} side. */\n")
                 append("fun $ownerTable.${h.relShortName}Query($fkColName: $pkParamSimpleName): Query =\n")
                 append("    ${h.targetTable}.selectAll().where { ${h.targetTable}.$fkColName eq $fkColName }\n")
+            }
+
+            // FR-018 M:N junction-join query helpers. Each emits an Exposed Query that
+            // INNER-JOINs the target table to the junction on the derived target-side FK,
+            // returning the target rows whose junction row matches the source id. The
+            // junction FK columns are derived (KotlinM2mSupport → M2MFields), never restated.
+            //   * hetero / directed self-join: WHERE junction.<sourceField> = :id
+            //   * symmetric self-join:         WHERE junction.<sourceField> = :id
+            //                                     OR junction.<targetField> = :id (union-on-read)
+            // The join keys the target by its PRIMARY KEY against the junction's target-side
+            // FK; the source filter uses the junction's source-side FK. Related-row order is
+            // not contractual.
+            for (nav in m2mNavs) {
+                if (!first) append("\n")
+                first = false
+                val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
+                append("/** Query `$ownerShort.${nav.relationName}` (M:N via ${nav.junctionShortName})$symMarker — the related ${nav.targetShortName} rows. */\n")
+                append("fun $ownerTable.${nav.relationName}Query(sourceId: $pkParamSimpleName): Query =\n")
+                if (nav.symmetric) {
+                    // Symmetric storage is single-row; a friend appears via EITHER FK column.
+                    // Union-on-read: for each junction row touching the source, the related id is
+                    // the FK column that is NOT the source. We encode that directly in the join ON
+                    // clause as two directional disjuncts:
+                    //   * the target PK = sourceField  WHEN  targetField = sourceId   (source on B side)
+                    //   * the target PK = targetField  WHEN  sourceField = sourceId   (source on A side)
+                    // so each junction row contributes exactly its NON-source endpoint — and a
+                    // self-pair row (a,a) KEEPS the self endpoint (both disjuncts bind target.pk = a
+                    // when the source = a), matching the runtime M2mJoinResolver + every other port
+                    // (Alice is her own friend). No `neq sourceId` exclusion (that would drop (a,a)),
+                    // and the directional ON clause already constrains to junction rows touching the
+                    // source, so no extra WHERE is needed.
+                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) {\n")
+                    append("        ((${nav.junctionTableObj}.${nav.sourceField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.targetField} eq sourceId)) or\n")
+                    append("            ((${nav.junctionTableObj}.${nav.targetField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.sourceField} eq sourceId))\n")
+                    append("    }.selectAll()\n")
+                } else {
+                    // Hetero / directed self-join: join the target by its PK to the junction's
+                    // target-side FK, filter the junction on the derived source-side FK.
+                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) { ${nav.targetTableObj}.${nav.targetPkField} eq ${nav.junctionTableObj}.${nav.targetField} }\n")
+                    append("        .selectAll()\n")
+                    append("        .where { ${nav.junctionTableObj}.${nav.sourceField} eq sourceId }\n")
+                }
             }
         }
 
@@ -138,7 +196,7 @@ class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * generator: defensive defaults rather than throwing on partially-formed
      * metadata.
      */
-    private fun primaryKeyKotlinType(entity: MetaObject): TypeName {
+    protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
         val primary = entity.children
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary } ?: return LONG

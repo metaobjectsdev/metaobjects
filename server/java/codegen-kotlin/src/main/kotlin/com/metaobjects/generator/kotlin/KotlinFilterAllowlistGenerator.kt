@@ -1,19 +1,7 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.field.BooleanField
-import com.metaobjects.field.CurrencyField
-import com.metaobjects.field.DateField
-import com.metaobjects.field.DecimalField
-import com.metaobjects.field.DoubleField
-import com.metaobjects.field.EnumField
-import com.metaobjects.field.FloatField
-import com.metaobjects.field.IntegerField
-import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
-import com.metaobjects.field.StringField
-import com.metaobjects.field.TimeField
-import com.metaobjects.field.TimestampField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -40,6 +28,7 @@ import java.nio.file.Paths
  * <p>Operators-per-subtype mapping (FR-009 §5, identical across ports):
  * <ul>
  *   <li>`string` / `enum` → `eq, ne, in, like, isNull`</li>
+ *   <li>`uuid` → `eq, ne, in, isNull` (no `like` — not a substring type, no ordering)</li>
  *   <li>`int / long / float / double / decimal / currency / date / timestamp / time`
  *       → `eq, ne, gt, gte, lt, lte, in, isNull`</li>
  *   <li>`boolean` → `eq, isNull`</li>
@@ -56,7 +45,7 @@ import java.nio.file.Paths
  *   <li>`outputDir` (required): output directory root.</li>
  * </ul>
  */
-class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -74,7 +63,7 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path) {
+    protected open fun emit(entity: MetaObject, outRoot: Path) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val className = "${shortName}FilterAllowlist"
 
@@ -139,15 +128,6 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         /** Metadata attribute marking a field as filterable in the generated allowlist. */
         const val ATTR_FILTERABLE: String = "filterable"
 
-        /** Operator set for string-shaped subtypes. */
-        val OPS_STRING: Set<String> = linkedSetOf("eq", "ne", "in", "like", "isNull")
-
-        /** Operator set for numeric / date / timestamp / currency subtypes. */
-        val OPS_NUMERIC: Set<String> = linkedSetOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
-
-        /** Operator set for boolean subtype. */
-        val OPS_BOOLEAN: Set<String> = linkedSetOf("eq", "isNull")
-
         /**
          * Build the `(fieldName → opSet)` map for `entity`. Only fields with
          * `@filterable: true` are included; subtypes outside the FR-009 vocabulary
@@ -177,23 +157,12 @@ class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             }
         }
 
-        private fun opsForSubtype(subType: String?): Set<String> {
-            if (subType == null) return emptySet()
-            return when (subType) {
-                StringField.SUBTYPE_STRING, EnumField.SUBTYPE_ENUM -> OPS_STRING
-                IntegerField.SUBTYPE_INT,
-                LongField.SUBTYPE_LONG,
-                FloatField.SUBTYPE_FLOAT,
-                DoubleField.SUBTYPE_DOUBLE,
-                DecimalField.SUBTYPE_DECIMAL,
-                CurrencyField.SUBTYPE_CURRENCY,
-                DateField.SUBTYPE_DATE,
-                TimestampField.SUBTYPE_TIMESTAMP,
-                TimeField.SUBTYPE_TIME -> OPS_NUMERIC
-                BooleanField.SUBTYPE_BOOLEAN -> OPS_BOOLEAN
-                else -> emptySet()
-            }
-        }
+        // Single source of truth — com.metaobjects.query.FilterOps (the same band
+        // the loader's validation path + the Java codegen-spring generator read).
+        // Returns a canonical-ordered set so the emitted source is stable; an
+        // unbanded subtype → empty set, which computeFilterableOps drops.
+        private fun opsForSubtype(subType: String?): Set<String> =
+            com.metaobjects.query.FilterOps.opsForSubType(subType)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

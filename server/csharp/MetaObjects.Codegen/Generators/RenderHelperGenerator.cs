@@ -54,9 +54,14 @@ namespace MetaObjects.Codegen.Generators;
 /// BUILD time. Construct with the on-disk template root the drift gate resolves each
 /// referenced mustache against.
 /// </summary>
-public sealed class RenderHelperGenerator : IGenerator
+public class RenderHelperGenerator : IGenerator
 {
-    private readonly FilesystemProvider _provider;
+    /// <summary>
+    /// The on-disk template resolver the build-time drift gate runs each referenced
+    /// mustache through. <c>protected</c> so a subclass overriding <see cref="EmitHelper"/>
+    /// (or the gate) can reuse the same provider.
+    /// </summary>
+    protected readonly FilesystemProvider _provider;
 
     /// <param name="templateRoot">
     /// On-disk template dir the build-time drift gate resolves each referenced
@@ -72,9 +77,9 @@ public sealed class RenderHelperGenerator : IGenerator
         _provider = new FilesystemProvider(templateRoot);
     }
 
-    public string Name => "render-helper-generator";
+    public virtual string Name => "render-helper-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var outputs = ctx.Root.OwnChildren()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
@@ -102,7 +107,7 @@ public sealed class RenderHelperGenerator : IGenerator
         return files;
     }
 
-    private EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
+    protected virtual EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
         var helperClass = $"{templateName}RenderHelper";

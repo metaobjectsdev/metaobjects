@@ -21,6 +21,8 @@ namespace MetaObjects.Conformance.Tests;
 /// <param name="HasExpectedErrors">Whether expected-errors.json is present.</param>
 /// <param name="HasExpectedWarnings">Whether expected-warnings.json is present.</param>
 /// <param name="HasScript">Whether script.json is present.</param>
+/// <param name="HasDocsExpected">Whether expected/ holds at least one .md doc golden.</param>
+/// <param name="HasContractManifest">Whether a cross-port expected-paths.json layout contract is present.</param>
 public sealed record Fixture(
     string Name,
     string Dir,
@@ -30,7 +32,42 @@ public sealed record Fixture(
     bool HasExpectedEffective,
     bool HasExpectedErrors,
     bool HasExpectedWarnings,
-    bool HasScript);
+    bool HasScript,
+    bool HasDocsExpected,
+    bool HasContractManifest)
+{
+    /// <summary>
+    /// A fixture is "docs-only" when it ships an <c>expected/</c> directory of
+    /// <c>.md</c> doc goldens but NONE of the strict metadata expectation files.
+    /// Such fixtures drive the docs-conformance runner only; the strict metadata
+    /// conformance runner skips them rather than flagging "declares no expectation
+    /// files".
+    /// </summary>
+    public bool IsDocsOnly =>
+        HasDocsExpected &&
+        !HasExpected &&
+        !HasExpectedEffective &&
+        !HasExpectedErrors &&
+        !HasExpectedWarnings &&
+        !HasScript;
+
+    /// <summary>
+    /// A fixture is "contract-only" when it ships a cross-port layout manifest
+    /// (<c>expected-paths.json</c>) but NONE of the strict metadata expectation
+    /// files. Such fixtures drive the dedicated api-docs cross-port conformance
+    /// runner only; the strict metadata conformance runner skips them rather than
+    /// flagging "declares no expectation files". Mirrors the TS
+    /// <c>isContractOnlyFixture</c> and the Java <c>isContractOnly</c>.
+    /// </summary>
+    public bool IsContractOnly =>
+        HasContractManifest &&
+        !HasExpected &&
+        !HasExpectedEffective &&
+        !HasExpectedErrors &&
+        !HasExpectedWarnings &&
+        !HasScript &&
+        !HasDocsExpected;
+}
 
 /// <summary>
 /// Discovers all conformance fixtures under a corpus root.
@@ -88,9 +125,21 @@ public static class FixtureDiscovery
                 HasExpectedEffective: File.Exists(System.IO.Path.Combine(dir, "expected-effective.json")),
                 HasExpectedErrors: File.Exists(System.IO.Path.Combine(dir, "expected-errors.json")),
                 HasExpectedWarnings: File.Exists(System.IO.Path.Combine(dir, "expected-warnings.json")),
-                HasScript: File.Exists(System.IO.Path.Combine(dir, "script.json"))));
+                HasScript: File.Exists(System.IO.Path.Combine(dir, "script.json")),
+                HasDocsExpected: HasDocsExpectedDir(dir),
+                HasContractManifest: File.Exists(System.IO.Path.Combine(dir, "expected-paths.json"))));
         }
 
         return fixtures;
+    }
+
+    /// <summary>
+    /// True when <c>dir/expected/</c> exists and contains at least one <c>.md</c> file.
+    /// </summary>
+    private static bool HasDocsExpectedDir(string dir)
+    {
+        var expectedDir = System.IO.Path.Combine(dir, "expected");
+        return Directory.Exists(expectedDir) &&
+            Directory.EnumerateFiles(expectedDir, "*.md").Any();
     }
 }

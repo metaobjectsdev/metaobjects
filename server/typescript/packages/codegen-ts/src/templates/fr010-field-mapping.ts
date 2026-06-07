@@ -13,14 +13,11 @@ import {
   type MetaData,
   TYPE_FIELD,
   FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_CLASS,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DOUBLE,
@@ -43,7 +40,6 @@ import {
 export function scalarKind(subType: string): string | null {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:
-    case FIELD_SUBTYPE_CLASS:
     case FIELD_SUBTYPE_UUID:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
@@ -54,8 +50,6 @@ export function scalarKind(subType: string): string | null {
     case FIELD_SUBTYPE_DECIMAL:
       return "STRING";
     case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_SHORT:
-    case FIELD_SUBTYPE_BYTE:
       return "INT";
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:

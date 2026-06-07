@@ -73,11 +73,26 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    /**
+     * True iff this generator emits a concrete DTO {@code record} for
+     * {@code entity}: any {@code object.entity} that is not {@code abstract}.
+     * Unlike the controller/repository, the DTO is emitted for EVERY concrete
+     * entity regardless of {@code source.rdb} kind (a view-kind entity still gets
+     * a wire DTO). Abstract entities are excluded here — they only get the opt-in
+     * interface shape via {@code emitAbstractShape} when the {@code emitAbstractShapes}
+     * arg is set, which is a separate emit path, not part of this predicate.
+     * Extracted verbatim from the {@link #execute(MetaDataLoader)} concrete-emit guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        return !GeneratorUtil.isAbstract(entity);
+    }
+
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String recordName = shortName + "Dto";
+        String recordName = SpringNaming.dtoName(shortName);
 
         // Compute each component's validation annotations once (each call walks the
         // field's validator children), then derive whether the jakarta import is needed.
@@ -126,11 +141,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * records can later be wired to implement. Only emitted when the
      * {@code emitAbstractShapes} arg is {@code true} (default OFF for Java).
      */
-    private void emitAbstractShape(MetaObject entity, Path outRoot) {
+    protected void emitAbstractShape(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String typeName = shortName + "Dto";
+        String typeName = SpringNaming.dtoName(shortName);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
@@ -153,7 +168,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * directories, and write {@code body}. Shared file-IO tail for both the
      * concrete-record and abstract-interface emit paths.
      */
-    private void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
+    protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
             if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
@@ -169,7 +184,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * not an {@link ObjectField}. The {@code field.object} arm is deliberately
      * deferred (see class javadoc).
      */
-    private static List<MetaField> scalarFields(MetaObject entity) {
+    public static List<MetaField> scalarFields(MetaObject entity) {
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
             if (field instanceof ObjectField) continue;
@@ -186,7 +201,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * wrapped as {@code List<elementType>} (the wrapped element type so an
      * omitted JSON element deserialises to {@code null}).
      */
-    private static String componentType(MetaField<?> field) {
+    public static String componentType(MetaField<?> field) {
         String element = SpringTypeMapper.javaTypeName(field);
         return field.isArrayType() ? "java.util.List<" + element + ">" : element;
     }
@@ -210,7 +225,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      *   <li>{@code validator.array @min/@max} → {@code @Size(min=…, max=…)} on the {@code List}.</li>
      * </ul>
      */
-    private static String validationAnnotations(MetaField<?> field) {
+    public static String validationAnnotations(MetaField<?> field) {
         boolean isArray = field.isArrayType();
         boolean isString = field instanceof StringField;
         List<String> out = new ArrayList<>();
@@ -258,8 +273,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // Array element-count bounds → @Size on the List component.
         ArrayValidator array = validator(field, ArrayValidator.class);
         if (array != null) {
-            Integer min = attrInt(array, ArrayValidator.ATTR_MIN, ArrayValidator.ATTR_MINSIZE);
-            Integer max = attrInt(array, ArrayValidator.ATTR_MAX, ArrayValidator.ATTR_MAXSIZE);
+            Integer min = attrInt(array, ArrayValidator.ATTR_MIN);
+            Integer max = attrInt(array, ArrayValidator.ATTR_MAX);
             if (min != null || max != null) {
                 out.add(sizeAnnotation(min, max));
             }
@@ -268,7 +283,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return String.join(" ", out);
     }
 
-    private static String sizeAnnotation(Integer min, Integer max) {
+    protected static String sizeAnnotation(Integer min, Integer max) {
         StringBuilder b = new StringBuilder("@Size(");
         boolean wrote = false;
         if (min != null) { b.append("min = ").append(min); wrote = true; }
@@ -278,7 +293,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     // --- metadata read helpers ----------------------------------------------
 
-    private static boolean attrBool(MetaField<?> field, String attr) {
+    protected static boolean attrBool(MetaField<?> field, String attr) {
         if (!field.hasMetaAttr(attr)) return false;
         Object raw = field.getMetaAttr(attr).getValue();
         if (raw instanceof Boolean b) return b;
@@ -286,7 +301,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     }
 
     /** Read an int-valued attr from a node, trying each name in order; {@code null} when absent. */
-    private static Integer attrInt(MetaData node, String... attrNames) {
+    protected static Integer attrInt(MetaData node, String... attrNames) {
         for (String attr : attrNames) {
             if (node.hasMetaAttr(attr)) {
                 try {
@@ -307,12 +322,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return null;
     }
 
-    private static boolean hasValidator(MetaField<?> field, Class<? extends MetaValidator> type) {
+    protected static boolean hasValidator(MetaField<?> field, Class<? extends MetaValidator> type) {
         return validator(field, type) != null;
     }
 
     /** Escape a regex/string literal for safe embedding in generated Java source. */
-    private static String escapeJavaString(String s) {
+    protected static String escapeJavaString(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 

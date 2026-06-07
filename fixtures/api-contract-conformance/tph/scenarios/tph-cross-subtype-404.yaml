@@ -1,0 +1,36 @@
+name: tph-cross-subtype-404
+description: >
+  FR-017 Tier 4/5 TPH: a subtype-scoped route addresses ONLY rows of that
+  subtype. A row that exists in the single table but belongs to a different
+  subtype is invisible through the wrong segment — get/delete return 404, never
+  another subtype's data. The correct segment still resolves it.
+requests:
+  - id: r1
+    method: GET
+    path: /api/auths/bridge/2
+    expect:
+      status: 404
+  - id: r2
+    method: GET
+    path: /api/auths/copay/1
+    expect:
+      status: 404
+  - id: r3
+    method: DELETE
+    path: /api/auths/copay/1
+    expect:
+      status: 404
+  - id: r4
+    method: GET
+    path: /api/auths/copay/2
+    expect:
+      status: 200
+      body:
+        row: { id: 2, type: "Copay", reference: "REF-2" }
+  - id: r5
+    method: GET
+    path: /api/auths?sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1, 2, 3]

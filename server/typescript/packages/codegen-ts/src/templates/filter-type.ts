@@ -8,8 +8,6 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -23,8 +21,6 @@ import { isSortableField } from "./filter-shared.js";
 // matching the entity field representation (exact decimal string, not lossy number).
 const NUMBER_VALUE_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
@@ -49,9 +45,15 @@ function renderFieldUnion(field: MetaField): string {
   return `${tsName} | { ${opEntries.join("; ")} }`;
 }
 
-export function renderFilterType(entity: MetaObject): Code {
+/**
+ * `exclude` (FR-017): drop a field from the client filter type. Used by
+ * per-subtype TPH filter types to omit the discriminator (it's pinned by the
+ * per-subtype route path), keeping the client `<Sub>Filter` type aligned with
+ * the server's per-subtype allowlist.
+ */
+export function renderFilterType(entity: MetaObject, exclude?: string): Code {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
-  const allFields = entity.fields();
+  const allFields = entity.fields().filter((c) => c.name !== exclude);
   const filterableFieldsList = allFields.filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true);
   // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).

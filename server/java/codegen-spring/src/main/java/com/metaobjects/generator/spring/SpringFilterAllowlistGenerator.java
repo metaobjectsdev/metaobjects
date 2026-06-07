@@ -2,20 +2,8 @@ package com.metaobjects.generator.spring;
 
 import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 
-import com.metaobjects.field.BooleanField;
-import com.metaobjects.field.CurrencyField;
-import com.metaobjects.field.DateField;
-import com.metaobjects.field.DecimalField;
-import com.metaobjects.field.DoubleField;
-import com.metaobjects.field.EnumField;
-import com.metaobjects.field.FloatField;
-import com.metaobjects.field.IntegerField;
-import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
-import com.metaobjects.field.StringField;
-import com.metaobjects.field.TimeField;
-import com.metaobjects.field.TimestampField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -32,7 +20,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +39,7 @@ import java.util.Set;
  * <p>Operators-per-subtype mapping (FR-009 §5, identical across ports):</p>
  * <ul>
  *   <li>{@code string} / {@code enum} → {@code eq, ne, in, like, isNull}</li>
+ *   <li>{@code uuid} → {@code eq, ne, in, isNull} (no {@code like} — not a substring type, no ordering)</li>
  *   <li>{@code int / long / short / byte / float / double / decimal /
  *       currency / date / timestamp / time} →
  *       {@code eq, ne, gt, gte, lt, lte, in, isNull}</li>
@@ -71,23 +59,6 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     /** Metadata attribute marking a field as filterable in the generated allowlist. */
     static final String ATTR_FILTERABLE = "filterable";
 
-    /** Operator set for string-shaped subtypes. */
-    private static final Set<String> OPS_STRING =
-        ordered("eq", "ne", "in", "like", "isNull");
-    /** Operator set for numeric / date / timestamp / currency subtypes. */
-    private static final Set<String> OPS_NUMERIC =
-        ordered("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull");
-    /** Operator set for boolean subtype. */
-    private static final Set<String> OPS_BOOLEAN =
-        ordered("eq", "isNull");
-
-    private static Set<String> ordered(String... s) {
-        // LinkedHashSet so the emitted source has stable, spec-matching order.
-        Set<String> out = new LinkedHashSet<>(s.length);
-        for (String v : s) out.add(v);
-        return out;
-    }
-
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -98,13 +69,25 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
-            if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
-            RdbSource sourceRdb = firstRdbSource(entity);
-            if (sourceRdb == null) continue;
-            if (!MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind())) continue;
+            if (!appliesTo(entity)) continue;
             emit(entity, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a filter allowlist for {@code entity}: a
+     * concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
+     * child is {@code @kind="table"} (writable). Same table guard as
+     * {@link SpringControllerGenerator#appliesTo(MetaObject)} — the controller's
+     * list handler reads this allowlist. Extracted verbatim from the
+     * {@link #execute(MetaDataLoader)} per-node guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
+        RdbSource sourceRdb = firstRdbSource(entity);
+        if (sourceRdb == null) return false;
+        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
     }
 
     /**
@@ -126,7 +109,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     }
 
     /** True iff {@code field} carries {@code @filterable: true} as a metadata attribute. */
-    private static boolean isFilterable(MetaField field) {
+    protected static boolean isFilterable(MetaField field) {
         if (!field.hasMetaAttr(ATTR_FILTERABLE)) return false;
         Object raw = field.getMetaAttr(ATTR_FILTERABLE).getValue();
         if (raw instanceof Boolean b) return b;
@@ -134,23 +117,18 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
     }
 
     private static Set<String> opsForSubtype(String subType) {
-        if (subType == null) return Set.of();
-        return switch (subType) {
-            case StringField.SUBTYPE_STRING, EnumField.SUBTYPE_ENUM -> OPS_STRING;
-            case IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG,
-                 FloatField.SUBTYPE_FLOAT, DoubleField.SUBTYPE_DOUBLE, DecimalField.SUBTYPE_DECIMAL,
-                 CurrencyField.SUBTYPE_CURRENCY,
-                 DateField.SUBTYPE_DATE, TimestampField.SUBTYPE_TIMESTAMP, TimeField.SUBTYPE_TIME -> OPS_NUMERIC;
-            case BooleanField.SUBTYPE_BOOLEAN -> OPS_BOOLEAN;
-            default -> Set.of();
-        };
+        // Single source of truth — com.metaobjects.query.FilterOps (the same
+        // band the loader's validation path reads). Returns a canonical-ordered
+        // set so the emitted source is stable; an unbanded subtype → empty set,
+        // which computeFilterableOps drops.
+        return com.metaobjects.query.FilterOps.opsForSubType(subType);
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String className = shortName + "FilterAllowlist";
+        String className = SpringNaming.filterAllowlistName(shortName);
 
         Map<String, Set<String>> opsByField = computeFilterableOps(entity);
 

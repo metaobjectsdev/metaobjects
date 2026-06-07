@@ -93,6 +93,10 @@ public static class ScenarioLoader
                 Sort: q.Sort?.Select(s => new SortSpec(s.Field ?? "", s.Dir ?? "asc")).ToList(),
                 Limit: q.Limit,
                 Offset: q.Offset,
+                Relation: q.Relation,
+                Data: q.Data,
+                ExpectError: q.ExpectError ?? false,
+                Insert: q.Insert,
                 Expect: q.Expect)).ToList());
     }
 
@@ -109,6 +113,9 @@ public static class ScenarioLoader
     private sealed class QuerySpecYaml
     {
         public string? Name { get; set; }
+        // A per-query `description:` is documentation only (used by some relate
+        // scenarios to annotate the union-on-read direction); captured but unused.
+        public string? Description { get; set; }
         public string? Op { get; set; }
         public string? Entity { get; set; }
         public Dictionary<string, object?>? By { get; set; }
@@ -116,6 +123,23 @@ public static class ScenarioLoader
         public List<SortYaml>? Sort { get; set; }
         public int? Limit { get; set; }
         public int? Offset { get; set; }
+        public string? Relation { get; set; }
+        // For op: create / update — the field values to write through the EF runtime.
+        // Captured as a raw YamlNode (scalar style preserved) so the writer can honor
+        // the authoring forms (a quoted full-int64/decimal/uuid stays a string; a
+        // temporal string carries its Kind; a nested object is a mapping → owned POCO).
+        // Same rationale as Insert — UPDATE re-encode of every subtype is the point of
+        // update-delete-all-types.yaml, so it must use the same coercion as roundtrip.
+        public YamlNode? Data { get; set; }
+        // The corpus authors this key hyphenated (`expect-error:`, matching
+        // `seed-data:`); the HyphenatedNamingConvention maps ExpectError → expect-error
+        // automatically, so no explicit alias is needed (TS reads q["expect-error"]).
+        public bool? ExpectError { get; set; }
+        // For op: roundtrip — the field-keyed row to WRITE through the EF runtime.
+        // Captured as a raw YamlNode (scalar style preserved) so the writer can honor
+        // the authoring forms (a quoted decimal/uuid stays a string; a nested object is
+        // a mapping). Mirrors the Expect capture rationale above.
+        public YamlNode? Insert { get; set; }
         public YamlNode? Expect { get; set; }
     }
 

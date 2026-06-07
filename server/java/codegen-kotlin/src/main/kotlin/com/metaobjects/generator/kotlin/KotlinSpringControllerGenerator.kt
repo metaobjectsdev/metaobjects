@@ -75,7 +75,7 @@ import org.slf4j.LoggerFactory
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -116,11 +116,11 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
                 }
                 continue
             }
-            emit(entity, outRoot)
+            emit(entity, outRoot, loader)
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path) {
+    protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = shortName + "Table"
         val routePath = pluralLowercase(shortName)
@@ -152,6 +152,9 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
+        // FR-018: M:N navs declared on this entity (derived junction FK fields via the
+        // cross-port SSOT). Drives the GET /{id}/<relationName> traversal sub-resources.
+        val m2mNavs = KotlinM2mSupport.resolve(entity, loader)
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -339,6 +342,20 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
             append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        else ResponseEntity.noContent().build<Any>()\n")
             append("    }\n")
+
+            // FR-018 M:N traversal — GET /{id}/<relationName> exposes each
+            // @cardinality:"many" + @through relationship as a sub-resource of the source,
+            // returning the related target rows. The source URL segment is the entity name
+            // pluralized (handled by @RequestMapping above; getShortName() drives the
+            // segment, NOT the physical @table); the relation segment is the relationship
+            // name. Related-row order is not contractual. The traversal delegates to the
+            // <Source>Table.<relationName>Query(id) Exposed join helper emitted by
+            // KotlinRelationsGenerator (hetero / directed self-join / symmetric union-on-read,
+            // junction FK fields derived via the cross-port M2MFields SSOT).
+            for (nav in m2mNavs) {
+                emitM2mEndpoint(this, pkg, shortName, nav)
+            }
+
             append("}\n")
         }
 
@@ -365,7 +382,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      *       extensions; a {@code String} field only handles {@code like}).</li>
      * </ul>
      */
-    private fun emitFilterPipeline(
+    protected open fun emitFilterPipeline(
         out: StringBuilder,
         shortName: String,
         tableObjectName: String,
@@ -539,7 +556,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * field subtype shape: string-like fields skip the comparison ops; booleans
      * skip everything but eq/isNull.
      */
-    private fun emitPerFieldDispatchArm(
+    protected open fun emitPerFieldDispatchArm(
         out: StringBuilder,
         tableObjectName: String,
         fieldName: String,
@@ -580,7 +597,7 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
      * single string into the target type. Parse failure → null → propagates as
      * {@code invalid_filter_value}.
      */
-    private fun emitTypedCoercer(
+    protected open fun emitTypedCoercer(
         out: StringBuilder,
         shortName: String,
         typeSuffix: String,
@@ -609,12 +626,52 @@ class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>
         shortName.lowercase() + "s"
 
     /**
+     * Emit one M:N traversal sub-resource: {@code GET /{id}/<relationName>} returning
+     * the related target rows as the target's data class. Delegates the junction
+     * traversal to the {@code <Source>Table.<relationName>Query(id)} Exposed join helper
+     * (emitted by [KotlinRelationsGenerator]); maps each returned {@link ResultRow} to the
+     * target data class inline (the target's per-controller {@code rowTo<Target>} mapper
+     * is file-private, so the mapping is inlined here against the target's scalar fields).
+     *
+     * The target data class is referenced unqualified when it shares the source's package
+     * (the common case), else fully package-qualified so the generated file compiles across
+     * packages.
+     */
+    protected open fun emitM2mEndpoint(
+        out: StringBuilder,
+        sourcePkg: String,
+        sourceShort: String,
+        nav: KotlinM2mSupport.M2mNav,
+    ) {
+        val sourceTable = sourceShort + "Table"
+        val targetType = if (nav.targetPackage == sourcePkg || nav.targetPackage.isEmpty()) {
+            nav.targetShortName
+        } else {
+            nav.targetPackage + "." + nav.targetShortName
+        }
+        val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
+        out.append("\n")
+        out.append("    /** M:N traversal: the ${nav.targetShortName} rows related to this $sourceShort through ${nav.junctionShortName}$symMarker. */\n")
+        out.append("    @GetMapping(\"/{id}/${nav.relationName}\")\n")
+        out.append("    fun ${nav.relationName}(@PathVariable id: Long): ResponseEntity<List<$targetType>> = transaction {\n")
+        out.append("        val rows = $sourceTable.${nav.relationName}Query(id).map { row ->\n")
+        out.append("            $targetType(\n")
+        for (fname in nav.targetScalarFields) {
+            out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
+        }
+        out.append("            )\n")
+        out.append("        }\n")
+        out.append("        ResponseEntity.ok(rows)\n")
+        out.append("    }\n")
+    }
+
+    /**
      * A scalar (non-[ObjectField]) field's filter-dispatch metadata. [subType] drives the
      * arm shape + value-coercion path; [elementType] is the Exposed column's element Kotlin
      * type name, used to cast each predicate value in the `Column<T>.eq/neq/inList` calls
      * (Exposed's typed comparison ops reject a bare `Any?`).
      */
-    private data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
+    protected data class ScalarFieldSpec(val name: String, val subType: String?, val elementType: String)
 
     /**
      * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —

@@ -15,7 +15,7 @@
 //      tests; the embedded map is what the binary falls back to).
 
 import { describe, it, test, expect } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { EMBEDDED_FRAMEWORK_TEMPLATES } from "../src/render-engine/embedded-templates.generated.js";
@@ -38,20 +38,28 @@ function findRepoRoot(start: string): string {
 }
 
 const repoRoot = findRepoRoot(import.meta.dir);
-const canonicalDir = join(repoRoot, "templates", "docs");
+const templatesRoot = join(repoRoot, "templates");
 
-// Canonical *.mustache files and their resolve refs (path under templates/
-// minus the .mustache suffix). e.g. entity-page.md.mustache -> docs/entity-page.md
-const canonicalFiles = readdirSync(canonicalDir).filter((f) => f.endsWith(".mustache"));
-const canonicalRefs = canonicalFiles.map((f) => `docs/${f.slice(0, -".mustache".length)}`);
+// Every canonical *.mustache across all template GROUPS (docs, api, …) and its
+// resolve ref (path under templates/ minus the .mustache suffix).
+// e.g. templates/docs/entity-page.md.mustache -> docs/entity-page.md;
+//      templates/api/index.md.mustache        -> api/index.md.
+const groups = readdirSync(templatesRoot)
+  .filter((g) => statSync(join(templatesRoot, g)).isDirectory())
+  .sort();
+const canonical: { ref: string; file: string; group: string }[] = groups.flatMap((group) =>
+  readdirSync(join(templatesRoot, group))
+    .filter((f) => f.endsWith(".mustache"))
+    .map((file) => ({ ref: `${group}/${file.slice(0, -".mustache".length)}`, file, group })),
+);
+const canonicalRefs = canonical.map((c) => c.ref);
 
 describe("EMBEDDED_FRAMEWORK_TEMPLATES — drift gate", () => {
-  for (const file of canonicalFiles) {
-    const ref = `docs/${file.slice(0, -".mustache".length)}`;
-    it(`${ref} is byte-identical to canonical templates/docs/${file}`, () => {
-      const canonical = readFileSync(join(canonicalDir, file), "utf-8");
+  for (const { ref, file, group } of canonical) {
+    it(`${ref} is byte-identical to canonical templates/${group}/${file}`, () => {
+      const text = readFileSync(join(templatesRoot, group, file), "utf-8");
       expect(EMBEDDED_FRAMEWORK_TEMPLATES[ref]).toBeDefined();
-      expect(EMBEDDED_FRAMEWORK_TEMPLATES[ref]).toBe(canonical);
+      expect(EMBEDDED_FRAMEWORK_TEMPLATES[ref]).toBe(text);
     });
   }
 });
@@ -64,8 +72,15 @@ describe("EMBEDDED_FRAMEWORK_TEMPLATES — exact coverage", () => {
 });
 
 describe("EMBEDDED_FRAMEWORK_TEMPLATES — binary fallback", () => {
-  // The two framework refs the compiled `meta docs` path needs.
-  for (const ref of ["docs/entity-page.md", "docs/template-page.md"]) {
+  // Framework refs the compiled binary path needs: the docs pages + the api
+  // human/agent forms (so api-docs rendering works inside the standalone binary).
+  for (const ref of [
+    "docs/entity-page.md",
+    "docs/template-page.md",
+    "api/entity-api.md",
+    "api/index.md",
+    "api/agent-api.md",
+  ]) {
     test(`embedded map resolves ${ref} (the binary's source of truth)`, () => {
       const embedded = EMBEDDED_FRAMEWORK_TEMPLATES[ref];
       expect(typeof embedded).toBe("string");

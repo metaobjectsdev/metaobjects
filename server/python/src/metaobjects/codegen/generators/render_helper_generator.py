@@ -181,7 +181,21 @@ def _max_chars_of(tmpl: MetaData) -> int | None:
 class RenderHelperGenerator:
     """Generator wrapping the per-``template.output`` render-helper emit. Construct with
     the on-disk template root the build-time drift gate resolves each referenced
-    mustache against — required, without it the gate cannot run."""
+    mustache against — required, without it the gate cannot run.
+
+    EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
+    the protected emit hooks to customize the emitted helper without forking:
+
+    * ``_emit_document(header, template_name, snake, payload_ref, tmpl, fields)`` —
+      the ``document``-kind helper (single ``str`` return).
+    * ``_emit_email(header, template_name, snake, payload_ref, tmpl, fields)`` — the
+      ``email``-kind helper (``EmailDocument`` return).
+    * ``_emit_helper(tmpl, vo, payload_ref, root)`` — the per-template dispatch
+      (runs the build-time drift gate, then routes to document/email).
+
+    The build-time drift gate (``_gate_ref``) is also overridable, but tightening it
+    is the safer direction than loosening it. The factory ``render_helper_generator()``
+    returns a default instance, so the default suite stays byte-identical."""
 
     name = _GENERATOR_NAME
 

@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.metaobjects</groupId>
         <artifactId>metaobjects</artifactId>
-        <version>7.2.1-SNAPSHOT</version>
+        <version>7.3.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>metaobjects-codegen-spring</artifactId>
@@ -59,6 +59,17 @@
         <dependency>
             <groupId>com.metaobjects</groupId>
             <artifactId>metaobjects-om</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- compile-and-run test: the generated <Entity>TraceHelper references the Slice-1
+             OMDB recorder seam (com.metaobjects.manager.db.ai.LlmCallRecorder / LlmCallInput /
+             LlmTraceRowBuilder) by FQN string. omdb brings om + render + metadata transitively
+             onto the test classpath so the emitted helper compiles. -->
+        <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-omdb</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

@@ -26,7 +26,24 @@ _SOURCE_RDB_FUSED_KEY = f"{TYPE_SOURCE}{FUSED_KEY_SEP}{SOURCE_SUBTYPE_RDB}"
 
 
 def canonical_serialize(node: MetaData) -> str:
-    parsed = _to_canonical(node)
+    return _serialize(node, effective=False)
+
+
+def canonical_serialize_effective(node: MetaData) -> str:
+    """Like :func:`canonical_serialize`, but emits the EFFECTIVE tree —
+    ``children()`` + ``attrs()`` at every node (own + inherited via the super
+    chain), so the super-chain merge is materialized in the output.
+
+    Used by the conformance harness's ``expected-effective.json`` fixtures.
+    Mirrors the TS reference ``canonicalSerializeEffective``: ``extends`` is
+    still emitted on every node (the ref stays in the body), but inherited
+    members are inlined rather than referenced.
+    """
+    return _serialize(node, effective=True)
+
+
+def _serialize(node: MetaData, effective: bool) -> str:
+    parsed = _to_canonical(node, effective)
     # FR-016 / ADR-0018 — rewrite legacy @table → kind-matching alias on
     # source.rdb wrappers; run before serialization so the rewritten key sorts
     # naturally with the rest of the body (alphabetical at our depth).
@@ -35,11 +52,11 @@ def canonical_serialize(node: MetaData) -> str:
     return text + "\n"
 
 
-def _to_canonical(node: MetaData) -> dict[str, object]:
-    return {f"{node.type}{FUSED_KEY_SEP}{node.sub_type}": _body(node)}
+def _to_canonical(node: MetaData, effective: bool = False) -> dict[str, object]:
+    return {f"{node.type}{FUSED_KEY_SEP}{node.sub_type}": _body(node, effective)}
 
 
-def _body(node: MetaData) -> dict[str, object]:
+def _body(node: MetaData, effective: bool = False) -> dict[str, object]:
     body: dict[str, object] = {}
     if node.name:
         body[KEY_NAME] = node.name
@@ -52,12 +69,18 @@ def _body(node: MetaData) -> dict[str, object]:
     if node.is_array:
         body[KEY_IS_ARRAY] = True
 
-    for attr in sorted(node.own_meta_attrs(), key=lambda a: a.name):
-        body[f"{ATTR_PREFIX}{attr.name}"] = _normalize(getattr(attr, "value", None))
+    # In effective mode use attrs()/children() (own + inherited via the super
+    # chain); in own mode use own_meta_attrs()/own_children() (declared here).
+    if effective:
+        for name in sorted(node.attrs()):
+            body[f"{ATTR_PREFIX}{name}"] = _normalize(node.attrs()[name])
+    else:
+        for attr in sorted(node.own_meta_attrs(), key=lambda a: a.name):
+            body[f"{ATTR_PREFIX}{attr.name}"] = _normalize(getattr(attr, "value", None))
 
-    children = node.own_children()
+    children = node.children() if effective else node.own_children()
     if children:
-        body[KEY_CHILDREN] = [_to_canonical(c) for c in children]
+        body[KEY_CHILDREN] = [_to_canonical(c, effective) for c in children]
     return body
 
 

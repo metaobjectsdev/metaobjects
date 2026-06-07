@@ -24,8 +24,12 @@ export type RelationshipSubType = (typeof RELATIONSHIP_SUBTYPES)[number];
 
 export const RELATIONSHIP_ATTR_CARDINALITY = "cardinality";
 export const RELATIONSHIP_ATTR_OBJECT_REF = "objectRef";
-export const RELATIONSHIP_ATTR_JOIN_ENTITY = "joinEntity";    // N:M cardinality
-export const RELATIONSHIP_ATTR_JOIN_FIELDS = "joinFields";    // N:M cardinality
+/** M:N junction (through) entity — a third entity declaring two identity.reference children. */
+export const RELATIONSHIP_ATTR_THROUGH = "through";
+/** M:N directed-self-join disambiguator — names the source-side FK field on the junction. */
+export const RELATIONSHIP_ATTR_SOURCE_REF_FIELD = "sourceRefField";
+/** M:N undirected-self-join flag — union-on-read; valid only when objectRef == the declaring entity. */
+export const RELATIONSHIP_ATTR_SYMMETRIC = "symmetric";
 
 // ---------------------------------------------------------------------------
 // Relationship cardinality values (for RELATIONSHIP_ATTR_CARDINALITY)

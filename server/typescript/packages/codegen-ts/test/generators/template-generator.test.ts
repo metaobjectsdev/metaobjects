@@ -152,8 +152,13 @@ describe("buildEntityDocData() — public contract", () => {
     // Neutral Constraints replaces the old language-specific Validation/Generated
     // sections (ADR-0020): one row per field, built from the field metadata.
     expect(data.constraints.hasConstraints).toBe(true);
-    expect(data.constraints.rows.map((r) => r.field)).toEqual(["`id`", "`title`"]);
-    const idRow = data.constraints.rows.find((r) => r.field === "`id`")!;
+    // The Field cell carries a stable per-field anchor (`<a id="field-<name>">`)
+    // before the backticked name — the template-source link target (Task 2).
+    expect(data.constraints.rows.map((r) => r.field)).toEqual([
+      '<a id="field-id"></a>`id`',
+      '<a id="field-title"></a>`title`',
+    ]);
+    const idRow = data.constraints.rows.find((r) => r.field === '<a id="field-id"></a>`id`')!;
     expect(idRow.type).toBe("`long`");
     expect(idRow.required).toBe("yes");
     expect(idRow.rules).toContain("primary key");

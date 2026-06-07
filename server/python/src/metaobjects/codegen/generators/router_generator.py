@@ -35,6 +35,11 @@ from __future__ import annotations
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators.m2m_codegen import (
+    M2mDescriptor,
+    build_object_index,
+    resolve_m2m_descriptors,
+)
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -93,206 +98,321 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
 
 
-def render_router(entity: MetaObject) -> str | None:
-    """Render an entity as a FastAPI ``APIRouter`` module.
+class RouterGenerator:
+    """``object.entity`` + ``source.rdb @kind="table"`` → one
+    ``<entity_snake>_router.py`` per writable entity (FastAPI ``APIRouter``).
 
-    Returns ``None`` when the entity has no ``source.rdb`` child or the source
-    is not a writable table (view / materializedView / storedProc / tableFunction
-    are skipped — read-only kinds need a different shape).
+    EXTENSION SEAM (open-for-extension). Adopters subclass this and override one of
+    the protected ``_emit_*`` hooks to customize the emitted router without forking.
+    The factory ``router_generator()`` and the module-level ``render_router()`` both
+    delegate to a default instance, so the default suite stays byte-identical.
+
+    Override points:
+
+    * ``_emit_repository_protocol(repo_class, m2m)`` — the consumer-implemented
+      ``Repository`` ``Protocol`` block (CRUD finders + M:N ``find_related_*``).
+    * ``_emit_route_handler(name, ...)`` — the CRUD route handlers (list / get /
+      create / update / delete), keyed by ``name``.
+    * ``_emit_m2m_route(d, snake, pk_param, repo_class)`` — one M:N traversal route.
+    * ``render_router(entity, object_index)`` — the whole module (last resort).
+
+    Skips entities without a ``source.rdb`` child and read-only kinds
+    (view / materializedView / storedProc / tableFunction).
     """
-    if not emits_instance_artifacts(entity):
-        return None
-    src = _primary_source_rdb(entity)
-    if src is None:
-        return None
-    if src.effective_kind() != SOURCE_KIND_TABLE:
-        return None
 
-    short_name = entity.name
-    snake = _snake_case(short_name)
-    plural = _plural_lowercase(short_name)
-    pk_param = f"{snake}_id"
-    repo_class = f"{short_name}Repository"
-    sort_fields = [f.name for f in _scalar_fields(entity)]
-    upper = short_name.upper()
-    fields_const = f"{upper}_FILTER_FIELDS"
-    ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
-    allowlist_module = f"{snake}_filter_allowlist"
+    name = "router-generator"
 
-    sort_set_body = "set()" if not sort_fields else (
-        "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
-    )
+    def _emit_repository_protocol(
+        self, repo_class: str, m2m: list[M2mDescriptor]
+    ) -> list[str]:
+        """The repository ``Protocol`` block. Returns/accepts ``Any`` so this module
+        stays decoupled from the entity-model import. Override to add custom finder
+        signatures or change the seam shape."""
+        lines: list[str] = [
+            f"class {repo_class}(Protocol):",
+            '    """GENERATED — consumer implements with their preferred persistence layer."""',
+            "    def list(",
+            "        self,",
+            "        limit: int,",
+            "        offset: int,",
+            "        sort: _SortClause | None,",
+            "        filters: list[FilterPredicate],",
+            "    ) -> list[Any]: ...",
+            "    def count(self, filters: list[FilterPredicate]) -> int: ...",
+            "    def find_by_id(self, id: int) -> Any | None: ...",
+            "    def create(self, dto: Any) -> Any: ...",
+            "    def update(self, id: int, dto: Any) -> Any | None: ...",
+            "    def delete(self, id: int) -> bool: ...",
+        ]
+        for d in m2m:
+            lines.append(
+                f"    def find_related_{d.relation_name}(self, id: int) -> list[Any]: ..."
+            )
+        return lines
 
-    parts: list[str] = []
-    parts.append(
-        generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
-        + f'"""GENERATED — REST router for {short_name} entity. Implements the cross-port API contract."""\n'
-    )
-    parts.append("from __future__ import annotations")
-    parts.append("")
-    parts.append("from typing import Annotated, Any, Protocol")
-    parts.append("")
-    parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
-    parts.append("from fastapi.responses import JSONResponse")
-    parts.append("from pydantic import BaseModel")
-    parts.append("")
-    parts.append("from metaobjects.codegen.runtime.filter_parser import (")
-    parts.append("    FilterPredicate,")
-    parts.append("    parse_filter,")
-    parts.append(")")
-    parts.append("")
-    parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
-    parts.append("")
-    parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
-    parts.append("")
-    parts.append("")
-    # Sort allowlist + parse helper — per-entity, closed over the allowlist set so
-    # callers don't need to thread the set through a runtime argument.
-    parts.append("class _SortClause(BaseModel):")
-    parts.append('    """GENERATED — parsed sort directive (field + asc/desc)."""')
-    parts.append("    field: str")
-    parts.append("    direction: str")
-    parts.append("")
-    parts.append("")
-    parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
-    parts.append("")
-    parts.append("")
-    parts.append('def _parse_sort(raw: str) -> _SortClause | None:')
-    parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
-    parts.append('    parts = raw.split(":", 1)')
-    parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
-    parts.append("        return None")
-    parts.append('    direction = parts[1].lower() if len(parts) == 2 else "asc"')
-    parts.append('    if direction not in ("asc", "desc"):')
-    parts.append("        return None")
-    parts.append("    return _SortClause(field=parts[0], direction=direction)")
-    parts.append("")
-    parts.append("")
-    # Repository Protocol. Returns/accepts Any so this module stays decoupled
-    # from the entity-model import (the consumer is free to use the generated
-    # Pydantic model — or any duck-typed shape — without us forcing an import
-    # cycle between sibling generated files).
-    parts.append(f"class {repo_class}(Protocol):")
-    parts.append(f'    """GENERATED — consumer implements with their preferred persistence layer."""')
-    parts.append("    def list(")
-    parts.append("        self,")
-    parts.append("        limit: int,")
-    parts.append("        offset: int,")
-    parts.append("        sort: _SortClause | None,")
-    parts.append("        filters: list[FilterPredicate],")
-    parts.append("    ) -> list[Any]: ...")
-    parts.append("    def count(self, filters: list[FilterPredicate]) -> int: ...")
-    parts.append("    def find_by_id(self, id: int) -> Any | None: ...")
-    parts.append("    def create(self, dto: Any) -> Any: ...")
-    parts.append("    def update(self, id: int, dto: Any) -> Any | None: ...")
-    parts.append("    def delete(self, id: int) -> bool: ...")
-    parts.append("")
-    parts.append("")
-    parts.append(f"def get_repository() -> {repo_class}:")
-    parts.append('    """GENERATED — consumer overrides via `app.dependency_overrides[get_repository]`."""')
-    parts.append('    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides in the consumer app")')
-    parts.append("")
-    parts.append("")
-    # GET / — list with pagination, sort, filter, withCount envelope.
-    parts.append('@router.get("")')
-    parts.append(f"def list_{plural}(")
-    parts.append("    request: Request,")
-    parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-    parts.append("    limit: int | None = Query(None),")
-    parts.append("    offset: int | None = Query(None),")
-    parts.append("    sort: str | None = Query(None),")
-    parts.append('    with_count: int | None = Query(None, alias="withCount"),')
-    parts.append(") -> Any:")
-    parts.append("    actual_limit = limit if limit is not None else 50")
-    parts.append("    actual_offset = offset if offset is not None else 0")
-    parts.append("    sort_clause: _SortClause | None = None")
-    parts.append("    if sort is not None:")
-    parts.append("        sort_clause = _parse_sort(sort)")
-    parts.append("        if sort_clause is None:")
-    parts.append('            return JSONResponse(status_code=400, content={"error": "invalid_sort"})')
-    parts.append(f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})")
-    parts.append("    if filter_result.error_envelope is not None:")
-    parts.append("        return JSONResponse(status_code=400, content=filter_result.error_envelope)")
-    parts.append("    predicates = filter_result.predicates")
-    parts.append("    rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)")
-    parts.append("    if with_count == 1:")
-    parts.append("        total = repo.count(predicates)")
-    parts.append('        return {"rows": rows, "total": total}')
-    parts.append("    return rows")
-    parts.append("")
-    parts.append("")
-    # GET /{id}
-    parts.append(f'@router.get("/{{{pk_param}}}")')
-    parts.append(f"def get_{snake}(")
-    parts.append(f"    {pk_param}: int,")
-    parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-    parts.append(") -> Any:")
-    parts.append(f"    row = repo.find_by_id({pk_param})")
-    parts.append("    if row is None:")
-    parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-    parts.append("    return row")
-    parts.append("")
-    parts.append("")
-    # POST
-    parts.append('@router.post("", status_code=status.HTTP_201_CREATED)')
-    parts.append(f"def create_{snake}(")
-    parts.append("    dto: dict[str, Any],")
-    parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-    parts.append(") -> Any:")
-    parts.append("    return repo.create(dto)")
-    parts.append("")
-    parts.append("")
-    # PATCH + PUT — stacked on a single handler (per API contract).
-    parts.append(f'@router.patch("/{{{pk_param}}}")')
-    parts.append(f'@router.put("/{{{pk_param}}}")')
-    parts.append(f"def update_{snake}(")
-    parts.append(f"    {pk_param}: int,")
-    parts.append("    dto: dict[str, Any],")
-    parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-    parts.append(") -> Any:")
-    parts.append(f"    saved = repo.update({pk_param}, dto)")
-    parts.append("    if saved is None:")
-    parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-    parts.append("    return saved")
-    parts.append("")
-    parts.append("")
-    # DELETE
-    parts.append(f'@router.delete("/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)')
-    parts.append(f"def delete_{snake}(")
-    parts.append(f"    {pk_param}: int,")
-    parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-    parts.append(") -> None:")
-    parts.append(f"    if not repo.delete({pk_param}):")
-    parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-    parts.append("")
+    def _emit_route_handler(
+        self,
+        name: str,
+        *,
+        snake: str,
+        plural: str,
+        pk_param: str,
+        repo_class: str,
+        fields_const: str,
+        ops_const: str,
+    ) -> list[str]:
+        """One CRUD route handler block, dispatched by *name*
+        (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
+        change a handler's body / decorators / response shape."""
+        if name == "list":
+            return [
+                '@router.get("")',
+                f"def list_{plural}(",
+                "    request: Request,",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                "    limit: int | None = Query(None),",
+                "    offset: int | None = Query(None),",
+                "    sort: str | None = Query(None),",
+                '    with_count: int | None = Query(None, alias="withCount"),',
+                ") -> Any:",
+                "    actual_limit = limit if limit is not None else 50",
+                "    actual_offset = offset if offset is not None else 0",
+                "    sort_clause: _SortClause | None = None",
+                "    if sort is not None:",
+                "        sort_clause = _parse_sort(sort)",
+                "        if sort_clause is None:",
+                '            return JSONResponse(status_code=400, content={"error": "invalid_sort"})',
+                f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
+                "    if filter_result.error_envelope is not None:",
+                "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
+                "    predicates = filter_result.predicates",
+                "    rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)",
+                "    if with_count == 1:",
+                "        total = repo.count(predicates)",
+                '        return {"rows": rows, "total": total}',
+                "    return rows",
+            ]
+        if name == "get":
+            return [
+                f'@router.get("/{{{pk_param}}}")',
+                f"def get_{snake}(",
+                f"    {pk_param}: int,",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                ") -> Any:",
+                f"    row = repo.find_by_id({pk_param})",
+                "    if row is None:",
+                '        return JSONResponse(status_code=404, content={"error": "not_found"})',
+                "    return row",
+            ]
+        if name == "create":
+            return [
+                '@router.post("", status_code=status.HTTP_201_CREATED)',
+                f"def create_{snake}(",
+                "    dto: dict[str, Any],",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                ") -> Any:",
+                "    return repo.create(dto)",
+            ]
+        if name == "update":
+            return [
+                f'@router.patch("/{{{pk_param}}}")',
+                f'@router.put("/{{{pk_param}}}")',
+                f"def update_{snake}(",
+                f"    {pk_param}: int,",
+                "    dto: dict[str, Any],",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                ") -> Any:",
+                f"    saved = repo.update({pk_param}, dto)",
+                "    if saved is None:",
+                '        return JSONResponse(status_code=404, content={"error": "not_found"})',
+                "    return saved",
+            ]
+        if name == "delete":
+            return [
+                f'@router.delete("/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)',
+                f"def delete_{snake}(",
+                f"    {pk_param}: int,",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                ") -> None:",
+                f"    if not repo.delete({pk_param}):",
+                '        return JSONResponse(status_code=404, content={"error": "not_found"})',
+            ]
+        raise ValueError(f"unknown route handler '{name}'")
 
-    return "\n".join(parts)
+    def _emit_m2m_route(
+        self, d: M2mDescriptor, snake: str, pk_param: str, repo_class: str
+    ) -> list[str]:
+        """One M:N traversal route ``GET /{id}/<relationName>`` — a thin pass-through
+        to the repository's ``find_related_*`` finder. Override to add filtering /
+        pagination on the traversal."""
+        return [
+            f'@router.get("/{{{pk_param}}}/{d.relation_name}")',
+            f"def list_{snake}_{d.relation_name}(",
+            f"    {pk_param}: int,",
+            f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+            ") -> list[Any]:",
+            f"    return repo.find_related_{d.relation_name}({pk_param})",
+        ]
+
+    def render_router(
+        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+    ) -> str | None:
+        """Render an entity as a FastAPI ``APIRouter`` module.
+
+        Returns ``None`` when the entity has no ``source.rdb`` child or the source
+        is not a writable table (view / materializedView / storedProc / tableFunction
+        are skipped — read-only kinds need a different shape).
+
+        When *object_index* is supplied, each M:N navigation on the entity
+        (``relationship.* @cardinality:"many" + @through``) also emits a FastAPI
+        traversal route ``GET /<source-plural>/{id}/<relationName>`` returning the
+        related target rows, plus a typed ``find_related_<relation>`` finder on the
+        repository ``Protocol`` seam (the consumer joins through the junction). The
+        source URL segment is the ENTITY name pluralized (cross-port grammar), NOT
+        the physical ``@table``. Without an index, only CRUD is emitted (back-compat).
+        """
+        if not emits_instance_artifacts(entity):
+            return None
+        src = _primary_source_rdb(entity)
+        if src is None:
+            return None
+        if src.effective_kind() != SOURCE_KIND_TABLE:
+            return None
+
+        m2m: list[M2mDescriptor] = (
+            resolve_m2m_descriptors(entity, object_index)
+            if object_index is not None
+            else []
+        )
+
+        short_name = entity.name
+        snake = _snake_case(short_name)
+        plural = _plural_lowercase(short_name)
+        pk_param = f"{snake}_id"
+        repo_class = f"{short_name}Repository"
+        sort_fields = [f.name for f in _scalar_fields(entity)]
+        upper = short_name.upper()
+        fields_const = f"{upper}_FILTER_FIELDS"
+        ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
+        allowlist_module = f"{snake}_filter_allowlist"
+
+        sort_set_body = "set()" if not sort_fields else (
+            "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
+        )
+
+        parts: list[str] = []
+        parts.append(
+            generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
+            + f'"""GENERATED — REST router for {short_name} entity. Implements the cross-port API contract."""\n'
+        )
+        parts.append("from __future__ import annotations")
+        parts.append("")
+        parts.append("from typing import Annotated, Any, Protocol")
+        parts.append("")
+        parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
+        parts.append("from fastapi.responses import JSONResponse")
+        parts.append("from pydantic import BaseModel")
+        parts.append("")
+        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append("    FilterPredicate,")
+        parts.append("    parse_filter,")
+        parts.append(")")
+        parts.append("")
+        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append("")
+        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append("")
+        parts.append("")
+        # Sort allowlist + parse helper — per-entity, closed over the allowlist set so
+        # callers don't need to thread the set through a runtime argument.
+        parts.append("class _SortClause(BaseModel):")
+        parts.append('    """GENERATED — parsed sort directive (field + asc/desc)."""')
+        parts.append("    field: str")
+        parts.append("    direction: str")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append('def _parse_sort(raw: str) -> _SortClause | None:')
+        parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
+        parts.append('    parts = raw.split(":", 1)')
+        parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
+        parts.append("        return None")
+        parts.append('    direction = parts[1].lower() if len(parts) == 2 else "asc"')
+        parts.append('    if direction not in ("asc", "desc"):')
+        parts.append("        return None")
+        parts.append("    return _SortClause(field=parts[0], direction=direction)")
+        parts.append("")
+        parts.append("")
+        parts.extend(self._emit_repository_protocol(repo_class, m2m))
+        parts.append("")
+        parts.append("")
+        parts.append(f"def get_repository() -> {repo_class}:")
+        parts.append('    """GENERATED — consumer overrides via `app.dependency_overrides[get_repository]`."""')
+        parts.append('    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides in the consumer app")')
+        parts.append("")
+        parts.append("")
+
+        _handler_kwargs = dict(
+            snake=snake,
+            plural=plural,
+            pk_param=pk_param,
+            repo_class=repo_class,
+            fields_const=fields_const,
+            ops_const=ops_const,
+        )
+        for i, hname in enumerate(("list", "get", "create", "update", "delete")):
+            if i > 0:
+                parts.append("")
+                parts.append("")
+            parts.extend(self._emit_route_handler(hname, **_handler_kwargs))
+        parts.append("")
+
+        # FR-018 — M:N traversal routes: GET /{id}/<relationName> returns the
+        # related target rows reached through the junction. The repository seam
+        # owns the join (derived source/target FK columns + symmetric union-on-read);
+        # the route is a thin pass-through returning the related collection (empty
+        # array for an orphan source — never a 404).
+        for d in m2m:
+            parts.append("")
+            parts.extend(self._emit_m2m_route(d, snake, pk_param, repo_class))
+            parts.append("")
+
+        return "\n".join(parts)
+
+    def generate(self, ctx: GenContext) -> list[EmittedFile]:
+        index = build_object_index(ctx.entities)
+
+        def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
+            source = self.render_router(entity, index)
+            if source is None:
+                return []
+            snake = _snake_case(entity.name)
+            return [
+                EmittedFile(
+                    path=f"{snake}_router.py",
+                    content=ruff_format(source),
+                )
+            ]
+
+        return per_entity(emit)(ctx)
+
+
+def render_router(
+    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+) -> str | None:
+    """Module-level back-compat wrapper. Delegates to a default
+    :class:`RouterGenerator` instance so existing callers (and tests) are
+    unaffected. Subclass :class:`RouterGenerator` to customize."""
+    return RouterGenerator().render_router(entity, object_index)
 
 
 def router_generator() -> Generator:
     """Generator factory: ``object.entity`` + ``source.rdb @kind="table"`` → one
     ``<entity_snake>_router.py`` per writable entity.
 
-    Skips entities without a ``source.rdb`` child and read-only kinds
-    (view / materializedView / storedProc / tableFunction).
-    """
-
-    class _Gen:
-        name = "router-generator"
-
-        def generate(self, ctx: GenContext) -> list[EmittedFile]:
-            def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
-                source = render_router(entity)
-                if source is None:
-                    return []
-                snake = _snake_case(entity.name)
-                return [
-                    EmittedFile(
-                        path=f"{snake}_router.py",
-                        content=ruff_format(source),
-                    )
-                ]
-
-            return per_entity(emit)(ctx)
-
-    return _Gen()
+    Returns a :class:`RouterGenerator` (subclassable extension seam). Skips entities
+    without a ``source.rdb`` child and read-only kinds (view / materializedView /
+    storedProc / tableFunction)."""
+    return RouterGenerator()

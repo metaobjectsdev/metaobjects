@@ -1,18 +1,26 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Draagon Software
- * LLC. Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.validator;
 
 import com.metaobjects.InvalidMetaDataException;
 import com.metaobjects.MetaData;
-import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
 import com.metaobjects.attr.BooleanAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.MetaAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.object.MetaObject;
@@ -29,7 +37,11 @@ public abstract class MetaValidator extends MetaData {
 
     public final static String TYPE_VALIDATOR = "validator";
     public final static String SUBTYPE_BASE = "base";
-    public final static String ATTR_MSG = "msg";
+
+    /** Cross-port minimum-bound attribute ({@code @min}). */
+    public final static String ATTR_MIN = "min";
+    /** Cross-port maximum-bound attribute ({@code @max}). */
+    public final static String ATTR_MAX = "max";
 
     /**
      * Register this type with the MetaDataRegistry (called by provider)
@@ -47,8 +59,13 @@ public abstract class MetaValidator extends MetaData {
                .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                .asSingle();
 
-            def.optionalAttributeWithConstraints(ATTR_MSG)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+            // Cross-port numeric-bound attrs declared on the base validator
+            // (subtypes that interpret them re-declare with their own semantics).
+            def.optionalAttributeWithConstraints(ATTR_MIN)
+               .ofType(IntAttribute.SUBTYPE_INT)
+               .asSingle();
+            def.optionalAttributeWithConstraints(ATTR_MAX)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }
@@ -137,16 +154,16 @@ public abstract class MetaValidator extends MetaData {
     // HELPER METHODS
 
     /**
-     * Retrieves the message to use for displaying errors
-     * @param defMsg the default message to use if no custom message is set
+     * Retrieves the message to use for displaying errors.
+     *
+     * <p>The cross-port validator vocabulary does not carry a custom-message attr,
+     * so this simply returns the supplied default. Kept as a seam so subtypes /
+     * downstream extensions can override messaging without touching call sites.</p>
+     *
+     * @param defMsg the default message to use
      * @return the error message to display
      */
     public String getMessage(String defMsg) {
-        String msg = defMsg;
-        try {
-            msg = getMetaAttr(ATTR_MSG).getValueAsString();
-        } catch (MetaDataNotFoundException ignoreException) {
-        }
-        return msg;
+        return defMsg;
     }
 }

@@ -22,12 +22,21 @@ using static MetaObjects.Persistence.Origin.OriginConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-/// <summary>Generates EF Core entity/projection classes + value-object POCOs.</summary>
-public sealed class EntityGenerator : IGenerator
+/// <summary>
+/// Generates EF Core entity/projection classes + value-object POCOs.
+///
+/// Open for extension (ADR-0002): the per-class emit methods are
+/// <c>protected virtual</c>, and two finer-grained hooks —
+/// <see cref="EmitClassHeader"/> (XML-doc + composite [PrimaryKey] + [Table] + the
+/// class declaration line) and <see cref="EmitPropertyAttributes"/> (per-property
+/// C# attributes appended after the framework attributes) — cover the bulk of
+/// adopter customizations. The default bodies leave emitted output byte-identical.
+/// </summary>
+public class EntityGenerator : IGenerator
 {
-    public string Name => "entity-generator";
+    public virtual string Name => "entity-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         // Entities + read-only projections get the full EF mapping.
         var mapped = ctx.Entities
@@ -40,6 +49,15 @@ public sealed class EntityGenerator : IGenerator
         var valueObjects = ReferencedValueObjects(mapped, ctx);
 
         var files = new List<EmittedFile>();
+
+        // FR-019 — materialized shared enums (root-level abstract field.enum, non-@provided,
+        // consumed by ≥1 field) are emitted ONCE in a dedicated Enums.g.cs at the entity-module
+        // namespace; consuming entity fields REFERENCE them (no nested redeclaration). @provided
+        // shared enums emit nothing here (referenced from configured external namespace). With no
+        // shared enums in the model (the common inline case) no file is emitted — byte-identical.
+        if (EmitSharedEnumsFile(ctx) is { } sharedEnums)
+            files.Add(sharedEnums);
+
         foreach (var e in mapped)
         {
             // Abstract entities never produce a table-mapped instance class. Gated
@@ -51,6 +69,14 @@ public sealed class EntityGenerator : IGenerator
                     files.Add(EmitAbstractShapeClass(e, ctx));
                 continue;
             }
+            // FR-017 TPH: a concrete subtype of a @discriminator base is NOT a standalone
+            // table — it is `class Sub : Base` whose only members are its own (subtype-only)
+            // fields, folded into the base's single physical table by EF as nullable columns.
+            if (TphPlanBuilder.IsTphSubtype(e, ctx.Root))
+            {
+                files.Add(EmitTphSubtypeClass(e, ctx));
+                continue;
+            }
             files.Add(EmitMappedClass(e, ctx));
         }
         foreach (var vo in valueObjects)
@@ -59,7 +85,7 @@ public sealed class EntityGenerator : IGenerator
     }
 
     // EF Core entity (table) or projection (view) class.
-    private EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
         var pk = entity.PrimaryIdentity();
@@ -76,23 +102,18 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // A composite PK emits a class-level [PrimaryKey(...)] which lives in the
+        // Microsoft.EntityFrameworkCore namespace (not a DataAnnotations attribute) —
+        // import it so the emitted class compiles standalone, without relying on the
+        // host project's ImplicitUsings.
+        if (pkFields.Count > 1)
+            sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
 
-        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
-        // Sandcastle, IDE hover-doc) require the doc comment to immediately
-        // precede the declaration, before any attributes.
-        XmlDocBuilder.AppendTo(sb, entity);
-        // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
-        if (pkFields.Count > 1)
-        {
-            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
-            sb.AppendLine($"[PrimaryKey({names})]");
-        }
-        if (!isProjection)
-            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
-        sb.AppendLine($"public class {className}");
+        EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -112,7 +133,7 @@ public sealed class EntityGenerator : IGenerator
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
-                member = EnumProperty(entity, field, strategy);
+                member = EnumProperty(entity, field, ctx.Config, strategy);
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -126,8 +147,17 @@ public sealed class EntityGenerator : IGenerator
                 member = ObjectNavProperty(entity, field, ctx);
             }
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
+
+        // FR-018 M:N navigation collections (entities only; the EF UsingEntity
+        // wiring + the REST traversal route are emitted by the DbContext + routes
+        // generators). One ICollection<Target> per @cardinality:"many" + @through
+        // relationship — for a self-join the member is named after the relationship.
+        if (!isProjection)
+            foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root))
+                members.Add(M2mNavProperty(nav));
 
         if (enumDecls.Count > 0)
         {
@@ -136,8 +166,229 @@ public sealed class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
+    }
+
+    // Extension hook — owns the per-class header for a mapped entity/projection: the
+    // XML doc comment, a composite class-level [PrimaryKey(...)], the [Table(...)] (on
+    // tables/write-through only, never a read-only projection view), and the
+    // `public [abstract] class <name>` declaration line. The default body reproduces
+    // exactly the inline emission, so the default output is byte-identical. Override to
+    // emit a `partial` class, add a marker interface, attach extra class-level
+    // attributes, etc. (ADR-0002, open-closed). Implementations MUST NOT emit the
+    // trailing `{` — the caller does.
+    protected virtual void EmitClassHeader(
+        StringBuilder sb, MetaObject entity, string className, bool isProjection,
+        IReadOnlyList<string> pkFields, GenContext ctx)
+    {
+        // XML doc + [Obsolete] FIRST — XML doc-extraction tools (docfx,
+        // Sandcastle, IDE hover-doc) require the doc comment to immediately
+        // precede the declaration, before any attributes.
+        XmlDocBuilder.AppendTo(sb, entity);
+        // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
+        if (pkFields.Count > 1)
+        {
+            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
+            sb.AppendLine($"[PrimaryKey({names})]");
+        }
+        if (!isProjection)
+            sb.AppendLine($"[Table(\"{CSharpNaming.Table(entity)}\")]");
+        // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
+        // through the single overridable seam shared by all four emitted class kinds, so an
+        // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
+        // attrs ([Table]/[PrimaryKey]) above stay here — they are mapped-entity-only.
+        EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
+    }
+
+    // The four emitted class kinds — the declaration-line seam dispatches on this so an
+    // override can tailor (or uniformly customize) each kind's `public ... class <Name>` line.
+    protected enum ClassDeclarationKind
+    {
+        MappedEntity,   // EF-mapped table/view entity or read-only projection
+        TphSubtype,     // FR-017 TPH subtype: `class <Sub> : <Base>`
+        AbstractShape,  // standalone `public abstract class` shape for an abstract entity
+        ValueObject,    // plain owned value-object POCO
+    }
+
+    // Extension hook — emits ONLY the `public [abstract] class <Name>[ : Base]` declaration
+    // line (no EF mapping attributes; those stay in EmitClassHeader for mapped entities).
+    // This is the single seam every emitted class kind routes its declaration line through,
+    // so an adopter override (e.g. emit `partial`, add a marker interface) applies uniformly
+    // to mapped entities, TPH subtypes, abstract shapes, and value-object POCOs. The default
+    // body reproduces exactly the inline emission per kind, so default output is byte-identical.
+    // Implementations MUST NOT emit the trailing `{` — the caller does. (ADR-0002, open-closed.)
+    protected virtual void EmitClassDeclarationLine(
+        StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
+    {
+        switch (kind)
+        {
+            case ClassDeclarationKind.MappedEntity:
+                // FR-017 TPH: the discriminator base is emitted `abstract` — every row is a
+                // concrete subtype (no plain-base rows exist), so EF Core must not require a
+                // base discriminator value. A concrete base with a discriminator but no
+                // HasValue<Base>(...) fails model validation ("has a discriminator property,
+                // but does not have a discriminator value configured").
+                var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
+                sb.AppendLine($"public {classKeyword} {className}");
+                break;
+            case ClassDeclarationKind.TphSubtype:
+                var baseClass = CSharpNaming.Pascal(TphBaseOf(entity).Name);
+                sb.AppendLine($"public class {className} : {baseClass}");
+                break;
+            case ClassDeclarationKind.AbstractShape:
+                sb.AppendLine($"public abstract class {className}");
+                break;
+            case ClassDeclarationKind.ValueObject:
+                sb.AppendLine($"public class {className}");
+                break;
+        }
+    }
+
+    // A M:N navigation collection property on the source entity. The collection is
+    // the relationship name PascalCased; its element type is the target entity.
+    //
+    // Hetero (source != target) is wired as an EF skip-navigation through the
+    // junction (DbContext UsingEntity<Through>). A self-join (directed or symmetric)
+    // is NOT an EF many-to-many: a self-referencing M:N over an explicit junction is
+    // not cleanly expressible, and a symmetric relation is union-on-read (no EF
+    // relationship at all). Those navs are [NotMapped] — the REST route + runtime
+    // resolver traverse the junction explicitly (the cross-port contract is the
+    // route behavior, not EF eager-loading).
+    protected static string M2mNavProperty(M2MNavigation nav)
+    {
+        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var prop = CSharpNaming.Pascal(nav.Name);
+        var notMapped = nav.IsSelfJoin ? "    [NotMapped]\n" : "";
+        return $"{notMapped}    public ICollection<{target}> {prop} {{ get; set; }} = new List<{target}>();";
+    }
+
+    // FR-017 TPH subtype class: `public class <Sub> : <Base>` carrying ONLY its
+    // subtype-only fields (those not already on the base). All are emitted NULLABLE
+    // and WITHOUT [Key]/[Required] — they map to nullable columns in the base's single
+    // physical table (a row of another subtype stores NULL there), so even an
+    // @required subtype field is nullable at the column level. The subtype carries NO
+    // [Table] (it shares the base's table) and no PK ([Key] lives on the base).
+    protected virtual EmittedFile EmitTphSubtypeClass(MetaObject entity, GenContext ctx)
+    {
+        var className = CSharpNaming.Pascal(entity.Name);
+        var baseFieldNames = new HashSet<string>(
+            TphBaseOf(entity).Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var strategy = ctx.Config.ColumnNamingStrategy;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated/>");
+        sb.AppendLine("// Generated by MetaObjects entity-generator (TPH subtype). Do not edit by hand.");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using System.ComponentModel.DataAnnotations;");
+        sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        EmitFileUsings(sb, entity, ctx);
+        sb.AppendLine();
+        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine();
+
+        XmlDocBuilder.AppendTo(sb, entity);
+        EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
+        sb.AppendLine("{");
+
+        // Subtype-only enum declarations (an enum field declared on the subtype, not the base).
+        var ownEnumDecls = new List<string>();
+        var seenEnum = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in entity.Fields())
+        {
+            if (baseFieldNames.Contains(field.Name)) continue;
+            if (field.SubType != FIELD_SUBTYPE_ENUM) continue;
+            if (Fr019SharedEnum.SharedEnumForField(field) is not null) continue; // FR-019 shared/provided → referenced
+            var values = field.EffectiveEnumValues;
+            if (values is null || values.Count == 0) continue;
+            var typeName = CSharpNaming.EnumTypeName(entity, field);
+            if (!seenEnum.Add(typeName)) continue;
+            ownEnumDecls.Add($"    public enum {typeName} {{ {string.Join(", ", values)} }}");
+        }
+
+        var members = new List<string>();
+        foreach (var field in entity.Fields())
+        {
+            if (baseFieldNames.Contains(field.Name)) continue; // inherited from the base
+            string? member = null;
+            if (CSharpNaming.ScalarFor(field.SubType) is not null)
+                member = TphSubtypeScalarProperty(field, strategy);
+            else if (field.SubType == FIELD_SUBTYPE_ENUM)
+                member = TphSubtypeEnumProperty(entity, field, ctx.Config, strategy);
+            else if (field.SubType == FIELD_SUBTYPE_OBJECT)
+                member = ObjectNavProperty(entity, field, ctx);
+            if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
+            members.Add(XmlDocBuilder.Prepend(member, field, "    "));
+        }
+
+        if (ownEnumDecls.Count > 0)
+        {
+            sb.Append(string.Join("\n", ownEnumDecls));
+            sb.AppendLine();
+        }
+        sb.Append(string.Join("\n", members));
+        sb.AppendLine();
+        EmitClassBodyTrailer(sb, entity, ctx);
+        sb.AppendLine("}");
+        return new EmittedFile($"{className}.g.cs", sb.ToString());
+    }
+
+    // A subtype-only scalar property: NULLABLE, [Column]-mapped, with the field's
+    // validator attributes (length/numeric/regex) but NEVER [Key]/[Required] (the
+    // column is nullable in the shared TPH table). Arrays keep the List<T> shape.
+    protected static string TphSubtypeScalarProperty(MetaField field, ColumnNamingStrategy strategy)
+    {
+        var baseType = CSharpNaming.ScalarFor(field.SubType)!;
+        var propName = CSharpNaming.Pascal(field.Name);
+
+        if (field.IsArray)
+        {
+            var arr = new StringBuilder();
+            arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+            AppendArrayValidatorAttributes(arr, field);
+            arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+            return arr.ToString();
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+        if (baseType == "string")
+            AppendStringValidatorAttributes(sb, field);
+        else
+            AppendNumericValidatorAttributes(sb, field);
+        // Always nullable — subtype-only columns are NULL for rows of other subtypes.
+        sb.Append($"    public {baseType}? {propName} {{ get; set; }}");
+        return sb.ToString();
+    }
+
+    // A subtype-only enum property: NULLABLE, [Column]-mapped (no [Required]).
+    protected static string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
+    {
+        var typeName = EnumPropertyTypeName(entity, field, config);
+        var propName = CSharpNaming.Pascal(field.Name);
+        var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
+        if (field.IsArray)
+            return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
+        return $"{colAttr}    public {typeName}? {propName} {{ get; set; }}";
+    }
+
+    // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).
+    protected static MetaObject TphBaseOf(MetaObject subtype)
+    {
+        MetaData? cursor = subtype.SuperData;
+        while (cursor is not null)
+        {
+            if (cursor.OwnAttr(MetaObjects.Core.Object.ObjectConstants.OBJECT_ATTR_DISCRIMINATOR) is string v
+                && v.Length > 0 && cursor is MetaObject mo)
+                return mo;
+            cursor = cursor.SuperData;
+        }
+        // Unreachable: IsTphSubtype guarantees a discriminator ancestor exists.
+        throw new InvalidOperationException($"TPH subtype \"{subtype.Name}\" has no @discriminator base.");
     }
 
     // Standalone shape class for an ABSTRACT entity (emitted only when
@@ -146,7 +397,7 @@ public sealed class EntityGenerator : IGenerator
     // ([Table]/[Key]/[Column]/[MaxLength]/[Required]) and is emitted as
     // `public abstract class`. C# concrete entities flatten inherited fields (they
     // do not reference the base), so the shape is standalone — never a base type.
-    private EmittedFile EmitAbstractShapeClass(MetaObject entity, GenContext ctx)
+    protected virtual EmittedFile EmitAbstractShapeClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
 
@@ -156,12 +407,13 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
-        sb.AppendLine($"public abstract class {className}");
+        EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         sb.AppendLine("{");
 
         var enumDecls = CollectEnumDecls(entity);
@@ -175,10 +427,11 @@ public sealed class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(entity, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(entity, field, ColumnNamingStrategy.Literal, withAttributes: false);
+                member = EnumProperty(entity, field, ctx.Config, ColumnNamingStrategy.Literal, withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(entity, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -189,6 +442,7 @@ public sealed class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
@@ -196,7 +450,7 @@ public sealed class EntityGenerator : IGenerator
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
     // [Key]; column names are set in the DbContext's OwnsOne config (flattened) or are
     // opaque JSON property names (jsonb), so the POCO carries no mapping attributes.
-    private EmittedFile EmitValueObjectPoco(MetaObject vo, GenContext ctx)
+    protected virtual EmittedFile EmitValueObjectPoco(MetaObject vo, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(vo.Name);
         var sb = new StringBuilder();
@@ -205,11 +459,12 @@ public sealed class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        EmitFileUsings(sb, vo, ctx);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         XmlDocBuilder.AppendTo(sb, vo);
-        sb.AppendLine($"public class {className}");
+        EmitClassDeclarationLine(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
         sb.AppendLine("{");
 
         var enumDeclsVo = CollectEnumDecls(vo);
@@ -221,10 +476,11 @@ public sealed class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(vo, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(vo, field, ctx.Config.ColumnNamingStrategy);
+                member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
+            member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
 
@@ -235,6 +491,7 @@ public sealed class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        EmitClassBodyTrailer(sb, vo, ctx);
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
@@ -242,13 +499,19 @@ public sealed class EntityGenerator : IGenerator
     // Collects nested C# enum declarations for all enum-subtype fields on an object,
     // deduplicating by type name so two fields that extend the same abstract enum emit
     // only one declaration (prevents CS0102 "already contains a definition for '<Name>'").
-    private static List<string> CollectEnumDecls(MetaObject owner)
+    //
+    // FR-019: a field resolving to a SHARED (root-level abstract field.enum) enum is
+    // SKIPPED here — that type is materialized once in Enums.g.cs (or, when @provided,
+    // not at all) and merely REFERENCED. Inline enums (no root-abstract super) keep their
+    // per-object nested declaration exactly as before (byte-identical default).
+    protected static List<string> CollectEnumDecls(MetaObject owner)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var decls = new List<string>();
         foreach (var field in owner.Fields())
         {
             if (field.SubType != FIELD_SUBTYPE_ENUM) continue;
+            if (Fr019SharedEnum.SharedEnumForField(field) is not null) continue; // shared/provided → referenced, not nested
             var values = field.EffectiveEnumValues;
             if (values is null || values.Count == 0) continue;
             var typeName = CSharpNaming.EnumTypeName(owner, field);
@@ -259,19 +522,112 @@ public sealed class EntityGenerator : IGenerator
         return decls;
     }
 
+    // FR-019 — the C# enum type a property of <field> is typed by:
+    //   • shared (root-level abstract, non-@provided) → the bare materialized type name
+    //     (same generated namespace as the entity).
+    //   • @provided → <cfg.ProvidedEnumNamespace>.<Name> (codegen error if unset).
+    //   • inline (the common case) → the per-object nested <Entity><Field> type name.
+    private static string EnumPropertyTypeName(MetaObject owner, MetaField field, GenConfig config)
+    {
+        if (Fr019SharedEnum.SharedEnumForField(field) is { } shared)
+            return Fr019SharedEnum.SharedEnumTypeReference(shared, config);
+        return CSharpNaming.EnumTypeName(owner, field);
+    }
+
+    // FR-019 — the materialized shared-enums file (Enums.g.cs), emitted ONCE per run when
+    // the model has ≥1 consumed, non-@provided root-level abstract field.enum. Returns null
+    // (no file) otherwise — so a model with only inline enums is byte-identical to pre-FR-019.
+    // Referencing a @provided enum with no ProvidedEnumNamespace configured throws here too
+    // (the collect walk constructs each consuming reference's type), surfacing the config gap
+    // as a codegen-time error before any file is written.
+    protected virtual EmittedFile? EmitSharedEnumsFile(GenContext ctx)
+    {
+        // Surface a missing ProvidedEnumNamespace for any consumed @provided enum as a
+        // codegen-time error (ADR-0026), even though @provided emits no file content.
+        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root))
+            if (shared.Provided)
+                _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
+
+        var materialized = Fr019SharedEnum.MaterializedSharedEnums(ctx.Root);
+        if (materialized.Count == 0) return null;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated/>");
+        sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enums). Do not edit by hand.");
+        sb.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine();
+        foreach (var e in materialized)
+            sb.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+        return new EmittedFile("Enums.g.cs", sb.ToString());
+    }
+
+    // Extension hook — invoked once per emitted property, AFTER the framework
+    // attributes ([Key]/[Column]/[Required]/[MaxLength]/validators) and immediately
+    // BEFORE the `public <type> <Prop> { get; ... }` line. The default body is empty
+    // (no-op), so default output is byte-identical. Override to append per-property C#
+    // attributes (e.g. `[ContainsPhi]`, `[ReportingField(...)]`) keyed off the field's
+    // metadata. Each line written should carry the 4-space property indent.
+    protected virtual void EmitPropertyAttributes(
+        StringBuilder sb, MetaObject owner, MetaField field, GenContext ctx)
+    {
+        // No-op by default.
+    }
+
+    // Extension hook — invoked once per emitted file, AFTER the framework `using`
+    // directives and BEFORE the blank line + `namespace`. The default body is empty
+    // (no-op), so default output is byte-identical. Override to add adopter `using`
+    // directives the emitted properties/attributes depend on (e.g. a namespace housing
+    // a custom marker interface or per-property attribute). Each line written should be
+    // a complete `using ...;` directive.
+    protected virtual void EmitFileUsings(StringBuilder sb, MetaObject entity, GenContext ctx)
+    {
+        // No-op by default.
+    }
+
+    // Extension hook — invoked once per emitted file at the END of the class body,
+    // immediately before the closing `}`. The default body is empty (no-op), so default
+    // output is byte-identical. Override to append adopter members (extra methods,
+    // partial-method hooks, computed properties) inside the generated class. Each line
+    // written should carry the 4-space class-body indent.
+    protected virtual void EmitClassBodyTrailer(StringBuilder sb, MetaObject entity, GenContext ctx)
+    {
+        // No-op by default.
+    }
+
+    // Splices the EmitPropertyAttributes hook output into an already-built member
+    // string, immediately before its `    public ` declaration line (after the
+    // framework attributes). When the hook is the default no-op the member is returned
+    // unchanged, keeping default output byte-identical.
+    private string ApplyPropertyAttributes(string member, MetaObject owner, MetaField field, GenContext ctx)
+    {
+        var hook = new StringBuilder();
+        EmitPropertyAttributes(hook, owner, field, ctx);
+        if (hook.Length == 0) return member;
+
+        const string decl = "    public ";
+        var idx = member.LastIndexOf(decl, StringComparison.Ordinal);
+        if (idx < 0) return member; // no recognizable property line — leave untouched
+        return member[..idx] + hook + member[idx..];
+    }
+
     // A property for an enum-subtype field. The property type is the nested enum name.
     // When the field is an array, emit List<EnumType> with an empty-list initializer;
     // the List is never nullable (the column stores a jsonb array, always present).
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
     // (shapes carry no EF mapping).
-    private static string EnumProperty(
-        MetaObject entity, MetaField field, ColumnNamingStrategy strategy, bool withAttributes = true)
+    protected static string EnumProperty(
+        MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy, bool withAttributes = true)
     {
-        var typeName = CSharpNaming.EnumTypeName(entity, field);
+        // FR-019 — a shared/provided enum is referenced (materialized once / external);
+        // an inline enum keeps the per-object nested <Entity><Field> type name.
+        var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = CSharpNaming.Pascal(field.Name);
         var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
         if (field.IsArray)
-            return $"{colAttr}    public List<{typeName}> {propName} {{ get; set; }} = new();";
+            return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
         return $"{colAttr}    public {type} {propName} {{ get; set; }}";
@@ -284,7 +640,7 @@ public sealed class EntityGenerator : IGenerator
     // When the field is an array (isArray: true), emit List<T> with an empty-list
     // initializer instead of a scalar T property. Arrays are always non-nullable
     // (the jsonb column holds the list; the list itself is never null in C#).
-    private static string ScalarProperty(
+    protected static string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
         string? baseTypeOverride = null)
@@ -304,7 +660,7 @@ public sealed class EntityGenerator : IGenerator
                 // validator.array @min/@max → element-count bounds on the collection.
                 AppendArrayValidatorAttributes(arr, field);
             }
-            arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
+            arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
@@ -326,8 +682,18 @@ public sealed class EntityGenerator : IGenerator
         }
 
         var type = required ? baseType : baseType + "?";
-        var init = required && !isValue ? " = default!;" : string.Empty;
-        sb.Append($"    public {type} {propName} {{ get; set; }}{init}");
+        // A literal-safe @default (bool / integer / floating / string) emits a property
+        // initializer (e.g. `= false;`), taking precedence over the `= default!;` filler
+        // for required reference types. @default is a cross-port metadata concept.
+        var defaultInit = DefaultInitializer(field, baseType);
+        var init = defaultInit.Length > 0
+            ? defaultInit
+            : (required && !isValue ? " = default!;" : string.Empty);
+        // FR-013 — a @readOnly scalar is read-after-insert-only: EF materializes it on
+        // read via a private setter; application code cannot write it, and the
+        // DbContext excludes the column from INSERT / UPDATE (SetAfterSaveBehavior.Ignore).
+        var setter = field.ReadOnly ? "get; private set;" : "get; set;";
+        sb.Append($"    public {type} {propName} {{ {setter} }}{init}");
         return sb.ToString();
     }
 
@@ -338,7 +704,7 @@ public sealed class EntityGenerator : IGenerator
     // validator.length @max) apply, emit a single [StringLength(max, MinimumLength = min)]
     // — the form TryValidateObject enforces on BOTH ends. Min-only → [MinLength]; max-only
     // → [MaxLength] (preserving the existing @maxLength semantics).
-    private static void AppendStringValidatorAttributes(StringBuilder sb, MetaField field)
+    protected static void AppendStringValidatorAttributes(StringBuilder sb, MetaField field)
     {
         long? min = null;
         long? max = field.MaxLength;
@@ -367,7 +733,7 @@ public sealed class EntityGenerator : IGenerator
     // Numeric value bounds for a non-string scalar: validator.numeric (@min/@max) →
     // [Range(min, max)]. Both bounds present in the canonical corpus; when only one is
     // declared the other defaults to the type's extreme so the single bound still gates.
-    private static void AppendNumericValidatorAttributes(StringBuilder sb, MetaField field)
+    protected static void AppendNumericValidatorAttributes(StringBuilder sb, MetaField field)
     {
         foreach (var v in field.Validators())
         {
@@ -382,7 +748,7 @@ public sealed class EntityGenerator : IGenerator
 
     // Element-count bounds for an array field: validator.array (@min/@max) →
     // [MinLength(min)] + [MaxLength(max)] on the List<T> property.
-    private static void AppendArrayValidatorAttributes(StringBuilder sb, MetaField field)
+    protected static void AppendArrayValidatorAttributes(StringBuilder sb, MetaField field)
     {
         foreach (var v in field.Validators())
         {
@@ -393,13 +759,60 @@ public sealed class EntityGenerator : IGenerator
         }
     }
 
+    // A C# property-initializer (` = <literal>;`) for a field's @default, or "" when
+    // there is no @default or the type isn't literal-safe. Scoped to bool / integer /
+    // floating / string (+ their nullable wrappers — the `?` is on the property type,
+    // not the initializer). enum / temporal / uuid / object defaults are NOT emitted as
+    // initializers here. The literal carries the right C# suffix (L / f / m) so it
+    // compiles for long / float / decimal targets.
+    protected static string DefaultInitializer(MetaField field, string baseType)
+    {
+        var raw = field.Default;
+        if (raw is null) return string.Empty;
+        switch (baseType)
+        {
+            case "bool":
+                var b = raw is bool bv
+                    ? bv
+                    : string.Equals(raw.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+                return b ? " = true;" : " = false;";
+            case "string":
+                return $" = \"{EscapeAttrString(raw.ToString() ?? string.Empty)}\";";
+            case "int":
+            case "short":
+            case "byte":
+                return NumericLiteral(raw) is { } i ? $" = {i};" : string.Empty;
+            case "long":
+                return NumericLiteral(raw) is { } l ? $" = {l}L;" : string.Empty;
+            case "double":
+                return NumericLiteral(raw) is { } d ? $" = {d};" : string.Empty;
+            case "float":
+                return NumericLiteral(raw) is { } f ? $" = {f}f;" : string.Empty;
+            case "decimal":
+                return NumericLiteral(raw) is { } m ? $" = {m}m;" : string.Empty;
+            default:
+                return string.Empty;
+        }
+    }
+
+    // The invariant string form of a numeric default, or null if it isn't a clean
+    // number (so a malformed @default never injects garbage into the initializer).
+    // Preserves the authored digits (e.g. "5.50") rather than round-tripping.
+    private static string? NumericLiteral(object raw)
+    {
+        var s = raw.ToString();
+        if (string.IsNullOrEmpty(s)) return null;
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out _) ? s : null;
+    }
+
     // Escapes a regex pattern for embedding in a C# string-literal attribute argument.
-    private static string EscapeAttrString(string s) =>
+    protected static string EscapeAttrString(string s) =>
         s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     // An owned-type navigation property for an object-typed field. Returns null (with
     // a warning) when the @objectRef can't be resolved.
-    private string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx)
+    protected string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx)
     {
         if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } target)
         {
@@ -408,6 +821,11 @@ public sealed class EntityGenerator : IGenerator
         }
         var typeName = CSharpNaming.Pascal(target.Name);
         var propName = CSharpNaming.Pascal(field.Name);
+        // An object-typed field with @isArray:true is a COLLECTION of the value object,
+        // not a single nullable ref. Emit a non-nullable ICollection<T> with an empty-list
+        // initializer (matching the scalar/enum array convention — the list is never null).
+        if (field.IsArray)
+            return $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(owner, field);
         return required
             ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
@@ -422,7 +840,7 @@ public sealed class EntityGenerator : IGenerator
     // BIGINT and AVG to NUMERIC, both already matched by the declared field.* type, so
     // only MIN/MAX need the source-type narrowing. Returns null (use the declared type)
     // for non-aggregate fields, non-MIN/MAX aggregates, or an unresolvable @of target.
-    private static string? AggregateResultScalar(MetaField field, GenContext ctx)
+    protected static string? AggregateResultScalar(MetaField field, GenContext ctx)
     {
         var agg = field.Children().OfType<MetaAggregateOrigin>().FirstOrDefault();
         if (agg?.Agg is not (AGGREGATE_FN_MIN or AGGREGATE_FN_MAX)) return null;
@@ -436,7 +854,7 @@ public sealed class EntityGenerator : IGenerator
     }
 
     // Transitive closure of plain value objects reachable through entity object-fields.
-    private static List<MetaObject> ReferencedValueObjects(IReadOnlyList<MetaObject> mapped, GenContext ctx)
+    protected static List<MetaObject> ReferencedValueObjects(IReadOnlyList<MetaObject> mapped, GenContext ctx)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var result = new List<MetaObject>();
@@ -446,6 +864,15 @@ public sealed class EntityGenerator : IGenerator
         foreach (var e in mapped.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
             foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_OBJECT))
                 Enqueue(f.ObjectRef);
+
+        // FR-015: a callable's args value object is referenced via source.rdb @parameterRef
+        // (not by any entity object-field), so the field-walk above never reaches it. Seed it
+        // too, or the CallableGenerator wrapper (which takes the args VO as a parameter) won't
+        // compile. All mapped objects are eligible — a callable entity is in `mapped`.
+        foreach (var e in mapped)
+            foreach (var src in e.Sources())
+                if (src.ParameterRef is { } pref)
+                    Enqueue(pref);
 
         while (queue.Count > 0)
         {

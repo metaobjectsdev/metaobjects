@@ -1,4 +1,8 @@
 // Agent reference docs body. Scaffolded into .metaobjects/AGENTS.md and CLAUDE.md by `meta init`.
+/**
+ * @deprecated The single-blob agent doc is replaced by the assembled agent-context
+ * (see `@metaobjectsdev/sdk/agent-context`). Kept only for back-compat; not scaffolded by `meta init`.
+ */
 export const AGENT_DOCS_BODY = `# Meta Forge — agent reference
 
 This file is scaffolded by \`meta init\` and lives alongside your \`metaobjects/\` records. It teaches AI coding assistants (Claude Code, Codex, etc.) how to read and modify MetaObjects metadata correctly. Refresh after CLI updates with \`meta init --refresh-docs\`.

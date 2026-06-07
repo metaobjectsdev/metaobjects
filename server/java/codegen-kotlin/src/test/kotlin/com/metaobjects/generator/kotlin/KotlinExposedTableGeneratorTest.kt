@@ -564,10 +564,14 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * Identity.reference may carry `@onDelete` / `@onUpdate` attrs (parity with
-     * the relationship.composition path); they map kebab-case → ReferenceOption.
+     * SP-G Unit 6a: `@onDelete` / `@onUpdate` are NOT part of `identity.reference`
+     * in the cross-port canonical — referential actions live only on
+     * `relationship.composition`. A reference-identity FK therefore emits a PLAIN
+     * `.references(...)` with no `ReferenceOption` suffix, even if the (now
+     * non-schema) `@onDelete` / `@onUpdate` attrs are present on the node.
+     * Declare a `relationship.composition` to drive `ReferenceOption` emission.
      */
-    @Test fun identityReferenceWithOnDeleteMapsToReferenceOption() {
+    @Test fun identityReferenceIgnoresOnDeletePerCanonical() {
         val refWithCascade = """{
           "metadata.root": { "package": "x", "children": [
             { "object.entity": { "name": "Program", "children": [
@@ -595,12 +599,13 @@ class KotlinExposedTableGeneratorTest {
             val weekTable = outDir.resolve("x/WeekTable.kt")
             assertTrue(Files.exists(weekTable))
             val src = Files.readString(weekTable)
-            assertTrue("import org.jetbrains.exposed.sql.ReferenceOption" in src,
-                "expected ReferenceOption import; saw:\n$src")
             assertTrue(
-                "val programId = long(\"program_id\").references(ProgramTable.id, onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)" in src,
-                "expected FK with onDelete + onUpdate options; saw:\n$src",
+                "val programId = long(\"program_id\").references(ProgramTable.id)" in src,
+                "expected plain FK reference with NO ReferenceOption suffix; saw:\n$src",
             )
+            assertTrue("ReferenceOption" !in src,
+                "reference-identity FK must NOT emit ReferenceOption (referential actions are " +
+                    "relationship.composition-only per the cross-port canonical); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

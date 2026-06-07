@@ -27,8 +27,16 @@ public enum ErrorCode
     ERR_YAML_COERCION,
     ERR_RESERVED_ATTR,
     ERR_INVALID_ORIGIN,
+    // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
+    // name a junction declaring two identity.reference children, @sourceRefField
+    // does not match one of them, or a M:N-only attr (@through/@sourceRefField/
+    // @symmetric) is set on a non-M:N (1:N / @cardinality:one) relationship.
+    ERR_INVALID_RELATIONSHIP,
     ERR_BAD_ATTR_FILTER,
     ERR_STORAGE_WITHOUT_OBJECT_REF,
+    // ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
+    // physical @dbColumnType: jsonb escape hatch on field.string).
+    ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
     ERR_STORAGE_FLATTENED_ARRAY,
     ERR_INVALID_TEMPLATE,
     ERR_SOURCE_NO_PRIMARY,
@@ -62,6 +70,12 @@ public enum ErrorCode
     ERR_DISCRIMINATOR_VALUE_DUPLICATE,
     ERR_DISCRIMINATOR_VALUE_MISSING,
     ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+    // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
+    // band (e.g. field.object). Would silently generate an empty-ops filter.
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+    // ADR-0023 — a registration was attempted against a registry sealed after its
+    // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
+    ERR_REGISTRY_SEALED,
     ERR_UNKNOWN,
 }
 
@@ -91,6 +105,13 @@ public static class WarningCodes
     /// serializer rewrites the attr key to the kind-matching alias.
     /// </summary>
     public const string WARN_LEGACY_PHYSICAL_NAME_ALIAS = "WARN_LEGACY_PHYSICAL_NAME_ALIAS";
+
+    /// <summary>
+    /// FR-013: <c>@readOnly: true</c> on a field child of an <c>object.value</c>.
+    /// Value-objects have no persistence semantics, so the read-only contract is
+    /// advisory (codegen may use it for record/struct treatment).
+    /// </summary>
+    public const string WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
 }
 
 /// <summary>

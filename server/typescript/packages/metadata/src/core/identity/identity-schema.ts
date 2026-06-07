@@ -5,7 +5,6 @@ import type { AttrSchema } from "../../registry.js";
 import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_STRINGARRAY,
 } from "../attr/attr-constants.js";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
@@ -22,7 +21,8 @@ import {
 /** Attrs on identity.primary / identity.secondary — @fields is required. */
 export const identityFieldsAttr: AttrSchema = {
   name: IDENTITY_ATTR_FIELDS,
-  valueType: ATTR_SUBTYPE_STRINGARRAY,
+  valueType: ATTR_SUBTYPE_STRING,
+  isArray: true,
   required: true,
   description:
     "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite.",

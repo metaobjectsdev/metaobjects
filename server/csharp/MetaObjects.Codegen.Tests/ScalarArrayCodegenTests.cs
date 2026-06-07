@@ -76,17 +76,19 @@ public class ScalarArrayCodegenTests
     };
 
     // -------------------------------------------------------------------------
-    // EntityGenerator — scalar array → List<T>
+    // EntityGenerator — scalar array → ICollection<T>
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Scalar_array_field_emits_List_property_with_initializer()
+    public void Scalar_array_field_emits_collection_property_with_initializer()
     {
         var ctx = Ctx(Load(ScalarArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // List<string> with empty-list initializer, NOT a plain "string? Tags"
-        Assert.Contains("public List<string> Tags { get; set; } = new();", src);
+        // ICollection<string> with an explicit List<string> initializer (uniform with
+        // the M:N-nav and object-isArray emission paths; the property type is the
+        // wider interface so adopters can assign string[]/HashSet/etc.).
+        Assert.Contains("public ICollection<string> Tags { get; set; } = new List<string>();", src);
         // Guard: the scalar form must NOT appear.
         Assert.DoesNotContain("public string? Tags", src);
         Assert.DoesNotContain("public string Tags", src);
@@ -103,17 +105,17 @@ public class ScalarArrayCodegenTests
     }
 
     // -------------------------------------------------------------------------
-    // EntityGenerator — enum array → List<EnumType>
+    // EntityGenerator — enum array → ICollection<EnumType>
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Enum_array_field_emits_List_of_enum_property()
+    public void Enum_array_field_emits_collection_of_enum_property()
     {
         var ctx = Ctx(Load(EnumArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // List<OrderStatuses> with empty-list initializer.
-        Assert.Contains("public List<OrderStatuses> Statuses { get; set; } = new();", src);
+        // ICollection<OrderStatuses> with an explicit List<OrderStatuses> initializer.
+        Assert.Contains("public ICollection<OrderStatuses> Statuses { get; set; } = new List<OrderStatuses>();", src);
         // Guard: the scalar form must NOT appear.
         Assert.DoesNotContain("public OrderStatuses? Statuses", src);
     }

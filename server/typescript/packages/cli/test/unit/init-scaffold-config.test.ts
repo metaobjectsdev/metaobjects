@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { init } from "../../src/commands/init.js";
+import { init, nextStepsBlock } from "../../src/commands/init.js";
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "forge-init-")); });
@@ -19,6 +19,24 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(body).toContain(`routesFile()`);
     expect(body).toContain(`barrel()`);
     expect(result.created).toContain("metaobjects.config.ts");
+  });
+
+  test("does NOT route neutral docs through meta gen (ADR-0021 D1: meta docs is the single door)", async () => {
+    // docsFile() is the INTERNAL engine of the `meta docs` command, not a `meta gen`
+    // config generator. Scaffolding it into metaobjects.config.ts would resurrect the
+    // exact second-door the @deprecated note on docsFile() forbids. Discoverability of
+    // neutral docs is via the `meta docs` command (surfaced in the next-steps block),
+    // not the generators array.
+    await init({ cwd: tmp, quiet: true });
+    const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
+    expect(body).not.toContain("docsFile");
+    // ADR-0025: apiDocsFile() likewise is the INTERNAL engine of `meta docs`'s api
+    // surface, not a generators-array entry. The scaffold expresses docs intent via a
+    // `docs:` config block consumed by `meta docs`, not via a deprecated generator.
+    expect(body).not.toContain("apiDocsFile");
+    expect(body).toContain("docs:");
+    expect(body).toContain("surfaces:");
+    expect(nextStepsBlock()).toContain("meta docs");
   });
 
   test("does not overwrite an existing metaobjects.config.ts on subsequent runs", async () => {

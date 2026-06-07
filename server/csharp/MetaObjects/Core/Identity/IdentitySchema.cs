@@ -12,8 +12,9 @@ public static class IdentitySchema
     /// <summary>@fields is required on identity.primary / identity.secondary.</summary>
     public static readonly AttrSchema IdentityFieldsAttr = new AttrSchema(
         Name: IdentityConstants.IDENTITY_ATTR_FIELDS,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true,
+        IsArray: true,
         Description: "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite.");
 
     private static readonly IReadOnlyList<AttrSchema> PrimaryIdentityAttrs =

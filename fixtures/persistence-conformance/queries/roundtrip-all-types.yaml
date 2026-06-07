@@ -1,0 +1,161 @@
+name: roundtrip-all-types
+description: |
+  SP-H Unit 3 — the WRITE round-trip keystone. Every other query scenario seeds
+  via raw SQL and only READS; this one INSERTS a row through the port's runtime /
+  ORM write path (NOT raw SQL), reads it back by primary key, and asserts the
+  read-back normalized values equal the wire-normalized `expect`. It therefore
+  exercises the WRITE codec + the read path together — the structural complement
+  to the read gate, and the gate that would have caught the byte/short hole, the
+  Java timestamp-write hazard, and native-uuid-write.
+
+  `op: roundtrip` carries an `insert:` block (the field-keyed row to write in the
+  runtime's native authoring forms) and an `expect:` block (the wire-normalized
+  read-back). The AllTypes entity covers EVERY persistable field subtype in one
+  row:
+
+    string / int / long / double / float / decimal / boolean /
+    date / time / timestamp / timestamp(tz) / currency / enum / uuid /
+    object(@objectRef, jsonb storage)
+
+  Tricky wire cases asserted here:
+    - decimal: exact, canonical (no trailing zeros) → "123.456".
+    - currency: integer minor units on the wire (a BIGINT) → "199900".
+    - int64 fidelity: a third query writes the full BIGINT max
+      (9223372036854775807, > 2^53) to field.long AND field.currency as a numeric
+      STRING, proving the write codec round-trips a 64-bit integer without
+      precision loss — a port routing these through a JS number / 32-bit int /
+      double corrupts the low bits and fails.
+    - uuid: written upper-case, reads back lowercase-canonical.
+    - id (uuid PK): NOT supplied on insert; gen_random_uuid() fills it, the
+      runtime returns it, and the read-back is by that generated PK — so a
+      server-generated PK is exercised on the write path too.
+    - temporal: tsVal (TIMESTAMP, no Z) + tsTzVal (TIMESTAMPTZ, always Z) +
+      timeVal (TIME) carry millisecond components; the whole-second omit-the-dot
+      rule is proven by the second query (a row with no sub-second part).
+    - float/double: in-band dyadic non-integers (1.5 / 0.125) so every port
+      renders the identical minimal plain-decimal string (see normalization.md).
+    - object: a typed @objectRef value-object stored as JSONB → re-serialized
+      with sorted keys.
+
+queries:
+  - name: write-all-subtypes-then-read-back
+    op: roundtrip
+    entity: AllTypes
+    insert:
+      sVal: "hello"
+      iVal: 42
+      # A BIGINT above 2^32 but within JS's safe-integer range, so a plain number
+      # round-trips exactly. The FULL int64 case (> 2^53) is the third query.
+      lVal: 9007199254740991
+      dVal: 0.125
+      fVal: 1.5
+      decVal: "123.456"
+      bVal: true
+      dateVal: "2026-06-03"
+      timeVal: "14:30:00.123"
+      tsVal: "2026-06-03T14:30:00.123"
+      tsTzVal: "2026-06-03T14:30:00.123Z"
+      moneyVal: 199900
+      enumVal: "MEDIUM"
+      uuidVal: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+      settings: { theme: "dark", notify: true, retries: 3 }
+    expect:
+      sVal: "hello"
+      iVal: 42
+      lVal: "9007199254740991"
+      dVal: "0.125"
+      fVal: "1.5"
+      decVal: "123.456"
+      bVal: true
+      dateVal: "2026-06-03"
+      timeVal: "14:30:00.123"
+      tsVal: "2026-06-03T14:30:00.123"
+      tsTzVal: "2026-06-03T14:30:00.123Z"
+      moneyVal: "199900"
+      enumVal: "MEDIUM"
+      uuidVal: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      settings: { notify: true, retries: 3, theme: "dark" }
+
+  - name: write-whole-second-temporal-then-read-back
+    op: roundtrip
+    entity: AllTypes
+    insert:
+      sVal: "second row"
+      iVal: -7
+      lVal: 1
+      dVal: -3.25
+      fVal: 0.5
+      decVal: "100"
+      bVal: false
+      dateVal: "2026-01-15"
+      timeVal: "09:00:00"
+      tsVal: "2026-01-15T09:00:00"
+      tsTzVal: "2026-01-15T09:00:00Z"
+      moneyVal: 0
+      enumVal: "LOW"
+      uuidVal: "11111111-1111-4111-8111-111111111111"
+      settings: { theme: "light", notify: false, retries: 0 }
+    expect:
+      sVal: "second row"
+      iVal: -7
+      lVal: "1"
+      dVal: "-3.25"
+      fVal: "0.5"
+      decVal: "100"
+      bVal: false
+      dateVal: "2026-01-15"
+      timeVal: "09:00:00"
+      tsVal: "2026-01-15T09:00:00"
+      tsTzVal: "2026-01-15T09:00:00Z"
+      moneyVal: "0"
+      enumVal: "LOW"
+      uuidVal: "11111111-1111-4111-8111-111111111111"
+      settings: { notify: false, retries: 0, theme: "light" }
+
+  - name: write-full-int64-then-read-back
+    description: |
+      Full int64 fidelity on the WRITE path for field.long + field.currency.
+      lVal/moneyVal carry 9223372036854775807 (2^63−1, the BIGINT max) which is
+      ABOVE JS's safe-integer ceiling (2^53−1). A port whose write codec routes a
+      `field.long`/`field.currency` through a 64-bit-lossy numeric type (a JS
+      `number`, a 32-bit int, a double) corrupts the low bits and FAILS here.
+
+      The values are authored as QUOTED STRINGS so the YAML loader itself does not
+      lose precision before the runtime ever sees them — the write contract for
+      these two subtypes accepts a base-10 integer string (or a bigint) precisely
+      so a full int64 can be expressed losslessly cross-port. The read-back is the
+      same string per the BIGINT→string wire rule (normalization.md / ADR-0019).
+    op: roundtrip
+    entity: AllTypes
+    insert:
+      sVal: "int64 row"
+      iVal: 1
+      lVal: "9223372036854775807"
+      dVal: 2.5
+      fVal: 0.25
+      decVal: "9999999999.999999"
+      bVal: true
+      dateVal: "2026-12-31"
+      timeVal: "23:59:59.999"
+      tsVal: "2026-12-31T23:59:59.999"
+      tsTzVal: "2026-12-31T23:59:59.999Z"
+      moneyVal: "9223372036854775807"
+      enumVal: "HIGH"
+      uuidVal: "ffffffff-ffff-4fff-bfff-ffffffffffff"
+      settings: { theme: "dark", notify: true, retries: 9 }
+    expect:
+      sVal: "int64 row"
+      iVal: 1
+      lVal: "9223372036854775807"
+      dVal: "2.5"
+      fVal: "0.25"
+      decVal: "9999999999.999999"
+      bVal: true
+      dateVal: "2026-12-31"
+      timeVal: "23:59:59.999"
+      tsVal: "2026-12-31T23:59:59.999"
+      tsTzVal: "2026-12-31T23:59:59.999Z"
+      moneyVal: "9223372036854775807"
+      enumVal: "HIGH"
+      uuidVal: "ffffffff-ffff-4fff-bfff-ffffffffffff"
+      settings: { notify: true, retries: 9, theme: "dark" }

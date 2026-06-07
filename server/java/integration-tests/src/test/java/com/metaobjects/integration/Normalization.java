@@ -72,14 +72,17 @@ public final class Normalization {
         }
         if (v instanceof LocalDateTime ts) return ts.format(TIMESTAMP_FMT) + fractionalSuffix(ts.getNano());
         // java.sql.Date / java.sql.Timestamp BOTH extend java.util.Date, so order
-        // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp and a
-        // plain util.Date carry a wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz
-        // column is handled by the OffsetDateTime branch above). The JVM default
-        // zone is pinned to UTC by QueryScenarioTests so the wall clock is the UTC
-        // wall clock the cross-port fixtures expect.
-        if (v instanceof java.sql.Date sd)  return sd.toLocalDate().format(DATE_FMT);
+        // matters: the sql.Date (DATE column) → "YYYY-MM-DD"; sql.Timestamp carries a
+        // wall clock → "YYYY-MM-DDTHH:MM:SS" (no Z; a tz column is handled by the
+        // OffsetDateTime branch above). The plain-TIMESTAMP codec reads via
+        // getTimestamp(UTC) so the Timestamp's INSTANT anchors the stored wall clock at
+        // UTC; recover the wall clock zone-free as instant @ UTC (NOT the default-zone
+        // toLocalDateTime), so the wire shape is independent of the JVM default zone — no
+        // UTC pin required. The DATE codec likewise reads via getDate(UTC), so a
+        // java.sql.Date's instant is midnight-UTC of the stored calendar date.
+        if (v instanceof java.sql.Date sd)  return sd.toInstant().atZone(ZoneOffset.UTC).toLocalDate().format(DATE_FMT);
         if (v instanceof Timestamp ts) {
-            LocalDateTime ldt = ts.toLocalDateTime();
+            LocalDateTime ldt = ts.toInstant().atZone(ZoneOffset.UTC).toLocalDateTime();
             return ldt.format(TIMESTAMP_FMT) + fractionalSuffix(ldt.getNano());
         }
         if (v instanceof java.util.Date d) {
@@ -158,5 +161,26 @@ public final class Normalization {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Canonical JSON for an ORDER-INDEPENDENT row set ({@code op:relate} — M:N
+     * navigation). Mirrors the TS runner's {@code canonicalRowSet}: each row is
+     * normalized + serialized, then the per-row JSON strings are sorted so the
+     * comparison is port-agnostic regardless of the order the resolver returns
+     * the related rows. ({@code op:list} keeps its order — the scenario pins it
+     * via {@code sort:}.)
+     */
+    public static String canonicalRowSet(List<Map<String, Object>> rows) {
+        List<String> each = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            try {
+                each.add(new String(MAPPER.writeValueAsBytes(normalizeRow(row)), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        each.sort(null);
+        return "[" + String.join(",", each) + "]";
     }
 }

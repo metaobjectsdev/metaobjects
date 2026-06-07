@@ -89,10 +89,7 @@ public static class CoreTypes
     {
         [SUBTYPE_BASE]            = DataType.String,
         [FIELD_SUBTYPE_STRING]    = DataType.String,
-        [FIELD_SUBTYPE_CLASS]     = DataType.String,
         [FIELD_SUBTYPE_INT]       = DataType.Int,
-        [FIELD_SUBTYPE_SHORT]     = DataType.Int,
-        [FIELD_SUBTYPE_BYTE]      = DataType.Int,
         [FIELD_SUBTYPE_LONG]      = DataType.Long,
         [FIELD_SUBTYPE_CURRENCY]  = DataType.Long,
         [FIELD_SUBTYPE_ENUM]      = DataType.String,
@@ -211,6 +208,10 @@ public static class CoreTypes
             Wildcard(TYPE_LAYOUT),
             Wildcard(TYPE_SOURCE),
             Wildcard(TYPE_ATTR),
+            // template.* under object.entity — a declared prompt/output lives WITH
+            // its entity (AI LLM-call trace persistence; the trace entity carries a
+            // nested template.prompt). Mirrors Java optionalChild("template","*","*").
+            Wildcard(TYPE_TEMPLATE),
         ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
@@ -243,7 +244,7 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs = subType switch
             {
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 

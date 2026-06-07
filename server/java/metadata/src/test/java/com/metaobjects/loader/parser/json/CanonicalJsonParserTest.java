@@ -394,24 +394,27 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         // Register a synthetic "widget" type using MetaData.class as the backing class.
         // MetaData has a public 3-param constructor (type, subType, name) which the
         // registry uses when creating instances — this ensures getType()="widget" (not "object").
-        // The registry is a singleton; this registration persists for the process lifetime
-        // (additive, no cross-test pollution since we never re-register).
-        MetaDataRegistry registry = MetaDataRegistry.getInstance();
-        if (!registry.isRegistered("widget", "fancy")) {
-            registry.registerType(MetaData.class, def -> def
-                .type("widget").subType("fancy")
-                .description("Synthetic widget type for provider-genericity test")
-                .optionalAttribute("label", "string")
-            );
-            // Extend MetaRoot to accept "widget" children — mirrors how a real provider would
-            // register both its type AND extend the root's acceptance list. This is the
-            // provider-genericity contract: register type + extend parent acceptance.
-            registry.extendType(com.metaobjects.MetaRoot.class, def ->
-                def.optionalChild("widget", "*", "*")
-            );
-        }
+        //
+        // ADR-0023: the library loader now defaults to the SEALED defined-provider-set
+        // registry, so a downstream "provider-contributed type" must be registered on an
+        // OWN (unsealed) registry that is handed to the loader via setTypeRegistry — the
+        // sanctioned extension path. Compose a fresh metamodel registry, extend it with the
+        // widget type, and run the loader against it.
+        MetaDataRegistry registry = com.metaobjects.registry.RegistryManifest.composeMetamodelRegistry();
+        registry.registerType(MetaData.class, def -> def
+            .type("widget").subType("fancy")
+            .description("Synthetic widget type for provider-genericity test")
+            .optionalAttribute("label", "string")
+        );
+        // Extend MetaRoot to accept "widget" children — mirrors how a real provider would
+        // register both its type AND extend the root's acceptance list. This is the
+        // provider-genericity contract: register type + extend parent acceptance.
+        registry.extendType(com.metaobjects.MetaRoot.class, def ->
+            def.optionalChild("widget", "*", "*")
+        );
 
         MetaDataLoader loader = newTestLoader();
+        loader.setTypeRegistry(registry);
 
         String canonical =
             "{ \"metadata.root\": { \"package\": \"x\", \"children\": [" +

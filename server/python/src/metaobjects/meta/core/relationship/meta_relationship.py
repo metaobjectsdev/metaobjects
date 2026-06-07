@@ -4,11 +4,12 @@ from __future__ import annotations
 from ...meta_data import MetaData
 from .relationship_constants import (
     RELATIONSHIP_ATTR_CARDINALITY,
-    RELATIONSHIP_ATTR_JOIN_ENTITY,
-    RELATIONSHIP_ATTR_JOIN_FIELDS,
     RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_ON_DELETE,
     RELATIONSHIP_ATTR_ON_UPDATE,
+    RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+    RELATIONSHIP_ATTR_SYMMETRIC,
+    RELATIONSHIP_ATTR_THROUGH,
 )
 
 
@@ -26,15 +27,19 @@ class MetaRelationship(MetaData):
         v = self.attr(RELATIONSHIP_ATTR_OBJECT_REF)
         return v if isinstance(v, str) else None
 
-    def join_entity(self) -> str | None:
-        """Join-table entity name for N:M relationships."""
-        v = self.attr(RELATIONSHIP_ATTR_JOIN_ENTITY)
+    def through(self) -> str | None:
+        """Junction (through) entity name for M:N relationships."""
+        v = self.attr(RELATIONSHIP_ATTR_THROUGH)
         return v if isinstance(v, str) else None
 
-    def join_fields(self) -> list[str]:
-        """Join-table column names for N:M relationships."""
-        v = self.attr(RELATIONSHIP_ATTR_JOIN_FIELDS)
-        return list(v) if isinstance(v, list) else []
+    def source_ref_field(self) -> str | None:
+        """Source-side FK field on the junction (directed self-join disambiguator)."""
+        v = self.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+        return v if isinstance(v, str) else None
+
+    def symmetric(self) -> bool:
+        """Whether this M:N relationship is an undirected (symmetric) self-join."""
+        return self.attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
 
     def on_delete(self) -> str | None:
         """Referential action on parent delete. ``None`` when not explicitly set

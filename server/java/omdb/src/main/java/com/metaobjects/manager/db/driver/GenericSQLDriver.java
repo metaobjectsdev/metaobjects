@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.manager.db.driver;
 
@@ -69,13 +78,16 @@ public class GenericSQLDriver implements DatabaseDriver {
     private final java.util.Map<MetaObject, Gson> fallbackGsonCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * Returns true if the field is declared as a jsonb column via {@code @dbType="jsonb"}.
-     * Uses the attr model so jsonb detection works even without a dedicated {@code JsonbField} class.
+     * Returns true if the field is declared as a typed-owned-object jsonb column via
+     * {@code @storage="jsonb"} (the cross-port owned-object storage shape; see
+     * {@link com.metaobjects.field.ObjectField#ATTR_STORAGE}). Uses the attr model so
+     * jsonb detection works even without a dedicated {@code JsonbField} class.
      */
     protected boolean isJsonbField(MetaField f) {
         try {
-            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_TYPE)
-                && CoreDBMetaDataProvider.DB_TYPE_JSONB.equals(f.getMetaAttr(CoreDBMetaDataProvider.DB_TYPE).getValueAsString());
+            return f.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)
+                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
+                    f.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValueAsString());
         } catch (Exception e) {
             return false;
         }
@@ -126,6 +138,27 @@ public class GenericSQLDriver implements DatabaseDriver {
      */
     protected String quoteIdent(String name) {
         return name;
+    }
+
+    /**
+     * Bind a JSON-text value to a {@code jsonb}/JSON column parameter. Dialect hook:
+     * the default (Derby and other backends with no native json type) stores the JSON as
+     * plain text via {@code setString} into a VARCHAR/CLOB column; {@link PostgresDriver}
+     * overrides to {@code setObject(.., Types.OTHER)} because a real Postgres {@code jsonb}
+     * column rejects a bare {@code setString} ("column is of type jsonb but expression is of
+     * type character varying"). Used by BOTH the open-JSON ({@code @dbColumnType: jsonb}) and
+     * the typed owned-object ({@code @storage: jsonb}) write paths so they agree per dialect.
+     *
+     * @param json the serialized JSON text, never {@code null} (null is bound by the caller)
+     */
+    protected void bindJsonbParameter(PreparedStatement s, int index, String json) throws SQLException {
+        s.setString(index, json);
+    }
+
+    /** The {@code java.sql.Types} code used to bind a NULL into a jsonb/JSON column for this
+     *  dialect. Default {@code VARCHAR} (text storage); Postgres overrides to {@code OTHER}. */
+    protected int jsonbNullSqlType() {
+        return Types.VARCHAR;
     }
 
     /**
@@ -1420,8 +1453,8 @@ public class GenericSQLDriver implements DatabaseDriver {
         // column accepts the JSON text (a bare setString is rejected by jsonb's strict
         // input typing).
         if (isOpenJsonbField(f)) {
-            if (value == null) s.setNull(index, Types.OTHER);
-            else s.setObject(index, serializeOpenJsonb(value), Types.OTHER);
+            if (value == null) s.setNull(index, jsonbNullSqlType());
+            else bindJsonbParameter(s, index, serializeOpenJsonb(value));
             return;
         }
         // Native uuid column (field.uuid OR @dbColumnType: uuid): bind a java.util.UUID
@@ -1439,8 +1472,13 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
         com.metaobjects.manager.db.codec.JdbcFieldCodec codec = com.metaobjects.manager.db.codec.JdbcCodecs.forField(f);
         if (codec == com.metaobjects.manager.db.codec.JdbcCodecs.defaultCodec() && isJsonbField(f)) {
-            if (value == null) s.setNull(index, Types.VARCHAR);
-            else s.setString(index, serializeJsonb(f, value));
+            // Typed owned-object jsonb (@storage: jsonb): serialize the value object to JSON
+            // text and bind through the per-dialect jsonb hook (Postgres → Types.OTHER, since
+            // a jsonb column rejects a bare setString; Derby → text VARCHAR). This mirrors the
+            // open-jsonb (@dbColumnType: jsonb) bind above; the SP-H roundtrip gate is the first
+            // write-path exercise of this branch against a real Postgres jsonb column.
+            if (value == null) s.setNull(index, jsonbNullSqlType());
+            else bindJsonbParameter(s, index, serializeJsonb(f, value));
             return;
         }
         codec.write(s, f, index, value);

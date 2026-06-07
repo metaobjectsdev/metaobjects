@@ -135,4 +135,18 @@ object Normalization {
         val normalized = rows.map { normalizeRow(it) }
         return String(mapper.writeValueAsBytes(normalized), StandardCharsets.UTF_8)
     }
+
+    /**
+     * Canonical JSON for an ORDER-INDEPENDENT row set (`op:relate` — M:N navigation).
+     * Mirrors the Java / TS runners' `canonicalRowSet`: each row is normalized +
+     * serialized, then the per-row JSON strings are sorted so the comparison is
+     * port-agnostic regardless of the order the resolver returns the related rows.
+     * (`op:list` keeps its order — the scenario pins it via `sort:`.)
+     */
+    fun canonicalRowSet(rows: List<Map<String, Any?>>): String {
+        val each = rows.map { row ->
+            String(mapper.writeValueAsBytes(normalizeRow(row)), StandardCharsets.UTF_8)
+        }.sorted()
+        return "[" + each.joinToString(",") + "]"
+    }
 }

@@ -548,9 +548,32 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                 // node (and any error raised below) carries the full canonical path.
                 jsonPathBuilder.pushKey(childKey);
                 try {
-                    // Registry check — skip unknown types with a warning
-                    if (!getTypeRegistry().hasType(type)) {
-                        log.warn("Unknown type '{}' in canonical JSON file [{}] — skipping", type, getFilename());
+                    // Registry check — ADR-0023 strict load: an undeclared child
+                    // type/subType is a made-up node. Mirrors the TS reference
+                    // (parser-core.ts): a CHILD node (unlike the document root) is
+                    // RECORDED (not thrown) and SKIPPED, so a happy-path tree can
+                    // still build around it and a multi-error fixture surfaces every
+                    // offending node. The code discriminates exactly as TS does:
+                    // a known type with an unknown EXPLICIT subType → ERR_UNKNOWN_SUBTYPE;
+                    // an entirely unknown type → ERR_UNKNOWN_TYPE. In lax mode the
+                    // legacy lenient skip+warn behavior is preserved so a downstream
+                    // app can tolerate unenforced types.
+                    boolean knownType = getTypeRegistry().hasType(type);
+                    boolean knownNode = knownType
+                        && getTypeRegistry().getTypeDefinition(type, subType) != null;
+                    if (!knownNode) {
+                        if (isStrictLoad()) {
+                            ErrorCode code = knownType
+                                ? ErrorCode.ERR_UNKNOWN_SUBTYPE
+                                : ErrorCode.ERR_UNKNOWN_TYPE;
+                            getLoader().addError(new MetaDataException(
+                                "Unknown type '" + type + "." + subType + "' in canonical JSON file ["
+                                    + getFilename() + "] — not declared by any registered provider",
+                                code, currentSourceEnvelope()));
+                            continue;
+                        }
+                        log.warn("Unknown type '{}.{}' in canonical JSON file [{}] — skipping",
+                            type, subType, getFilename());
                         continue;
                     }
 
@@ -654,6 +677,15 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // root's own package is tracked separately via setDefaultPackageName.)
         if (pkg != null) {
             md.setPackageAuthored(true);
+        }
+
+        // Preserve the raw, as-authored `extends` reference so the canonical
+        // serializer can echo it VERBATIM (matching the TS / C# / Python oracles
+        // which all re-emit the raw superRef). Without this Java would recompute
+        // a short-vs-FQN form and diverge on, e.g., a same-package extends that
+        // the author wrote as a full FQN.
+        if (md != null && superRef != null && !superRef.isEmpty()) {
+            md.setAuthoredSuperRef(superRef);
         }
 
         if (md == null) {
@@ -1097,6 +1129,30 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     ErrorCode.ERR_RESERVED_ATTR, currentSourceEnvelope());
             }
 
+            // ADR-0023 strict load: an own @-attr declared by NO registered
+            // provider (no per-type schema entry, no commonAttr) is a made-up
+            // attribute → ERR_UNKNOWN_ATTR. Closes the open-attr policy. Mirrors
+            // the TS reference: the error is RECORDED (not thrown) and parsing
+            // CONTINUES — the attr is still materialized so a happy-path tree
+            // serializes byte-identically (the open-policy tree shape is
+            // preserved; strict only ADDS the diagnostic). In lax mode this is a
+            // no-op so a downstream app can carry unenforced attributes silently.
+            //
+            // ADR-0023 attr.properties exemption: an undeclared @-attr whose value
+            // is a plain JSON object materializes to the sanctioned attr.properties
+            // subtype (an arbitrary-named property bag whose name IS the contract),
+            // so it is NOT a made-up attribute. See {@link #isExemptPropertiesAttr}.
+            if (isStrictLoad()
+                    && !isDeclaredAttribute(md, attrName)
+                    && !isExemptPropertiesAttr(entry.getValue())) {
+                getLoader().addError(new MetaDataException(
+                    "Unknown attribute '" + JSON_ATTR_PREFIX + attrName + "' on "
+                        + md.getType() + "." + md.getSubType() + " '" + md.getName()
+                        + "' in file [" + getFilename() + "] — not declared by any "
+                        + "registered provider for " + md.getType() + "." + md.getSubType(),
+                    ErrorCode.ERR_UNKNOWN_ATTR, currentSourceEnvelope()));
+            }
+
             // Canonical bare-string → JSON-array desugar for array-declared attributes.
             // If the raw JSON value is a string primitive (not already a JSON array) AND
             // the registry has an array constraint for this attribute (constraint ID:
@@ -1269,5 +1325,84 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
     @Override
     public MetaDataLoader getLoader() {
         return loader;
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-0023 — strict-load helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * ADR-0023 strict load: returns the loader's strict flag. Under strict the
+     * loader rejects any authored type/subType/attribute not declared by a
+     * registered provider; a downstream app may set {@code strict=false} to
+     * tolerate unenforced vocabulary. The library + conformance runner load
+     * strict (see {@link LoaderOptions#isStrict()}).
+     */
+    private boolean isStrictLoad() {
+        return getLoader().getLoaderOptions().isStrict();
+    }
+
+    /**
+     * ADR-0023 strict load: is {@code attrName} a declared attribute for this
+     * node? Mirrors the TS reference "Check 0" effective-schema lookup — an own
+     * {@code @}-attr counts as declared iff it matches EITHER an explicit per-type
+     * child attribute requirement (named, direct or inherited) OR a registered
+     * cross-language common attribute. Anything else is a made-up attribute →
+     * {@link ErrorCode#ERR_UNKNOWN_ATTR}.
+     *
+     * <p>Registry-driven (no hardcoded attribute names). A parent's catch-all
+     * {@code attr,*} wildcard is the LAX open-attr policy and is NOT honored here:
+     * under strict an attribute must be explicitly declared (matching TS), so the
+     * wildcard does not bless arbitrary names.</p>
+     */
+    private boolean isDeclaredAttribute(MetaData md, String attrName) {
+        com.metaobjects.registry.TypeDefinition typeDef =
+            getTypeRegistry().getTypeDefinition(md.getType(), md.getSubType());
+        if (typeDef == null) {
+            // No type definition to validate against — fall back to permissive
+            // (the node itself would already have failed an unknown-subtype check).
+            return true;
+        }
+
+        // 1) Named per-type attribute requirement (direct or inherited).
+        com.metaobjects.registry.ChildRequirement named = typeDef.getChildRequirement(attrName);
+        if (named != null && MetaAttribute.TYPE_ATTR.equals(named.getExpectedType())) {
+            return true;
+        }
+
+        // 2) Cross-language common attribute (valid on any node).
+        if (getTypeRegistry().getCommonAttribute(attrName) != null) {
+            return true;
+        }
+
+        // NOTE (ADR-0023): a parent's catch-all {@code attr,*} wildcard child
+        // requirement is the LAX open-attr policy and is deliberately NOT honored
+        // here — under strict load an attribute counts as declared only when it
+        // has an explicit per-type schema entry or is a registered common attr
+        // (matching the TS reference's effective-schema "Check 0"). The wildcard
+        // still governs lax loads via the normal placement path. (The
+        // attr.properties exemption is applied at the call site, keyed on the
+        // attr VALUE shape — see {@link #isExemptPropertiesAttr}.)
+        return false;
+    }
+
+    /**
+     * ADR-0023 attr.properties exemption (mirrors the TS reference's strict
+     * Check-0 + {@code inferUndeclaredAttrSubType}). An undeclared inline
+     * {@code @}-attr whose JSON value is a plain object materializes to the
+     * sanctioned {@code attr.properties} subtype — a registered, canonical attr
+     * subtype whose designed purpose is an arbitrary-named structural property
+     * bag (the bag's NAME is intentionally not declared by any per-type schema;
+     * the name IS the contract). It is sanctioned vocabulary, not a made-up
+     * attribute, so it is exempt from {@link ErrorCode#ERR_UNKNOWN_ATTR}.
+     *
+     * <p>Keyed on the VALUE shape, exactly as the TS reference keys on the
+     * materialized subType (object value → {@code ATTR_SUBTYPE_PROPERTIES}):
+     * a typo'd plain scalar/array {@code @}-attr does NOT resolve to properties
+     * and still records the error. A JSON array is the {@code stringarray}
+     * coercion axis, NOT a property bag, so it is not exempt.</p>
+     */
+    private boolean isExemptPropertiesAttr(JsonElement rawValue) {
+        return rawValue != null && rawValue.isJsonObject();
     }
 }

@@ -49,6 +49,24 @@ public static class FieldSchema
             Required: false,
             Description: "When true, the field gets a column-level UNIQUE constraint."),
 
+        // FR-013: read-only field. Codegen emits no setter; persistence skips the
+        // column on INSERT/UPDATE; input schemas mark it read-only. Cross-port attr.
+        new AttrSchema(
+            Name: FieldConstants.FIELD_ATTR_READ_ONLY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description:
+                "FR-013: when true, the field is read-only — codegen emits no setter / " +
+                "writable property, the persistence layer skips the column on INSERT/UPDATE, " +
+                "and Zod/Pydantic/class-validator schemas mark it read-only on input variants. " +
+                "The value is populated by the database (computed column, default expression, " +
+                "trigger), by replication, or by another external owner."),
+
+        // DB-domain attrs (@column / @db.indexed / @dbColumnType) are NOT here — they
+        // are registered onto every field subtype by DbMetaDataProvider (DbProvider.cs)
+        // via TypeRegistry.Extend, matching the TS dbProvider and Java CoreDBMetaDataProvider
+        // end-state (domain field-attrs live in domain providers, not on core FieldSchema).
+
         // @default is polymorphic: its value type follows the OWNING field's
         // subtype. No single fixed valueType can capture that, so ValueType is
         // intentionally null (declared-but-untyped). The parser stores the raw
@@ -136,9 +154,25 @@ public static class FieldSchema
     /// <summary>The @values attr — only on field.enum. Required string array.</summary>
     public static readonly AttrSchema EnumValuesAttr = new AttrSchema(
         Name: FieldConstants.FIELD_ATTR_VALUES,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true,
+        IsArray: true,
         Description: "Member symbols of an enum-subtype field; declaration order significant.");
+
+    /// <summary>
+    /// FR-019: the @provided attr — only on field.enum. Optional boolean. When true on
+    /// an abstract (declaration) field.enum, codegen REFERENCES the type from per-port
+    /// config instead of materializing it (ADR-0026). A non-boolean value is rejected at
+    /// load with ERR_BAD_ATTR_VALUE. No namespace/FQN lives in metadata (ADR-0001).
+    /// </summary>
+    public static readonly AttrSchema ProvidedAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_PROVIDED,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description:
+            "FR-019: marks an abstract package-level field.enum as externally provided — " +
+            "codegen references the type (resolved via per-port codegen config) instead of " +
+            "materializing it. Default false. Not a field attr — it lives on the type declaration.");
 
     /// <summary>
     /// The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical

@@ -1,0 +1,104 @@
+{
+  "metadata.root": {
+    "package": "acme::social",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "package": "acme::social",
+          "@description": "A member of the network.",
+          "@notes": "Internal-only rationale — must never be emitted to docs.",
+          "children": [
+            { "source.rdb": { "@table": "users" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "Tag",
+                "@through": "UserTag"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "friends",
+                "@cardinality": "many",
+                "@objectRef": "User",
+                "@through": "Friendship",
+                "@symmetric": true
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "follows",
+                "@cardinality": "many",
+                "@objectRef": "User",
+                "@through": "Follow",
+                "@sourceRefField": "followerId"
+              }
+            },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Tag",
+          "package": "acme::social",
+          "children": [
+            { "source.rdb": { "@table": "tags" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "label" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "UserTag",
+          "package": "acme::social",
+          "children": [
+            { "source.rdb": { "@table": "user_tags" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "userId" } },
+            { "field.long": { "name": "tagId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "User" } },
+            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "Tag" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Friendship",
+          "package": "acme::social",
+          "children": [
+            { "source.rdb": { "@table": "friendships" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "userAId" } },
+            { "field.long": { "name": "userBId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "User" } },
+            { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "User" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Follow",
+          "package": "acme::social",
+          "children": [
+            { "source.rdb": { "@table": "follows" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "followerId" } },
+            { "field.long": { "name": "followeeId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "User" } },
+            { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "User" } }
+          ]
+        }
+      }
+    ]
+  }
+}

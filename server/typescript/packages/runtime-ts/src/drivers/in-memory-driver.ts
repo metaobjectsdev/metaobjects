@@ -216,6 +216,8 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
     }
     case "and":
       return where.clauses.every((c) => matchesWhere(row, c));
+    case "or":
+      return where.clauses.some((c) => matchesWhere(row, c));
     default: {
       const exhaustive: never = where;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);

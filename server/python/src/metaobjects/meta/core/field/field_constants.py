@@ -1,4 +1,5 @@
 """Field subtype vocabulary (colocated)."""
+from ....shared.base_types import SUBTYPE_BASE
 
 FIELD_SUBTYPE_STRING = "string"
 FIELD_SUBTYPE_INT = "int"
@@ -11,7 +12,6 @@ FIELD_SUBTYPE_TIMESTAMP = "timestamp"
 FIELD_SUBTYPE_TIME = "time"
 FIELD_SUBTYPE_DECIMAL = "decimal"
 FIELD_SUBTYPE_OBJECT = "object"
-FIELD_SUBTYPE_CLASS = "class"
 FIELD_SUBTYPE_CURRENCY = "currency"
 FIELD_SUBTYPE_ENUM = "enum"
 # R6 Plan 2a — field.uuid is a logical identity scalar (ADR-0013). String-backed
@@ -21,6 +21,7 @@ FIELD_SUBTYPE_ENUM = "enum"
 FIELD_SUBTYPE_UUID = "uuid"
 
 FIELD_SUBTYPES = (
+    SUBTYPE_BASE,
     FIELD_SUBTYPE_STRING,
     FIELD_SUBTYPE_INT,
     FIELD_SUBTYPE_LONG,
@@ -32,7 +33,6 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_TIME,
     FIELD_SUBTYPE_DECIMAL,
     FIELD_SUBTYPE_OBJECT,
-    FIELD_SUBTYPE_CLASS,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_UUID,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
@@ -42,7 +42,13 @@ FIELD_SUBTYPES = (
 # Reserved field attribute names (read by codegen; open attrs at load time).
 # Mirrors server/typescript/packages/metadata/src/core/field/field-constants.ts.
 FIELD_ATTR_REQUIRED = "required"
+# @readOnly — boolean; the field is exposed read-only (omitted from create/update
+# input DTOs). On every field subtype. Mirrors TS FIELD_ATTR_READ_ONLY.
+FIELD_ATTR_READ_ONLY = "readOnly"
 FIELD_ATTR_UNIQUE = "unique"
+# @currency — ISO 4217 code on a field.currency. Storage is integer minor units;
+# defaults to "USD" when omitted. Only on field.currency. Mirrors TS FIELD_ATTR_CURRENCY.
+FIELD_ATTR_CURRENCY = "currency"
 FIELD_ATTR_DEFAULT = "default"
 FIELD_ATTR_MAX_LENGTH = "maxLength"
 FIELD_ATTR_PRECISION = "precision"

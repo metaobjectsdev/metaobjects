@@ -82,7 +82,7 @@ describe("FR-013 ERR_READONLY_ASSIGNED_PRIMARY", () => {
         ],
       },
     });
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_READONLY_ASSIGNED_PRIMARY");
   });
 
@@ -109,7 +109,7 @@ describe("FR-013 ERR_READONLY_ASSIGNED_PRIMARY", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_READONLY_ASSIGNED_PRIMARY");
   });
 });
@@ -144,7 +144,7 @@ describe("FR-013 ERR_READONLY_DOWNGRADE (extends inheritance)", () => {
         ],
       },
     });
-    const codes = errors.map((e) => (e as { code: string }).code);
+    const codes = errors.map((e) => (e as unknown as { code: string }).code);
     expect(codes).toContain("ERR_READONLY_DOWNGRADE");
   });
 
@@ -177,7 +177,7 @@ describe("FR-013 ERR_READONLY_DOWNGRADE (extends inheritance)", () => {
         ],
       },
     });
-    expect(errors.map((e) => (e as { code: string }).code))
+    expect(errors.map((e) => (e as unknown as { code: string }).code))
       .not.toContain("ERR_READONLY_DOWNGRADE");
   });
 });

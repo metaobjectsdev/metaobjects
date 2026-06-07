@@ -7,7 +7,6 @@ import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_BOOLEAN,
   ATTR_SUBTYPE_FILTER,
-  ATTR_SUBTYPE_STRINGARRAY,
 } from "../../core/attr/attr-constants.js";
 import { SORT_ORDER_VALUES } from "../../core/query/query-constants.js";
 import {
@@ -55,7 +54,8 @@ export const dataGridLayoutAttrs: AttrSchema[] = [
   },
   {
     name: LAYOUT_DATA_GRID_ATTR_COLUMNS,
-    valueType: ATTR_SUBTYPE_STRINGARRAY,
+    valueType: ATTR_SUBTYPE_STRING,
+    isArray: true,
     required: false,
     description: "Flat ordered list of field names to display as grid columns.",
   },

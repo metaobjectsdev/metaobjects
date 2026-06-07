@@ -198,6 +198,41 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 4b: ValidateFilterableHasSupportedOps (SP-H Unit9)
+    //   - @filterable: true on a field subtype with NO entry in OPS_BY_SUBTYPE
+    //     (e.g. field.object) → error ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+    //     Such a field would silently generate an empty-ops filter — a route
+    //     that rejects every request.
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateFilterableHasSupportedOps.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateFilterableHasSupportedOps(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Children() (effective) — inherited @filterable fields are visible.
+            foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                if (field.OwnAttr(FIELD_ATTR_FILTERABLE) is not true) continue;
+                if (OpsForSubType(field.SubType).Length > 0) continue;
+                errors.Add(new MetaError(
+                    $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but its subtype " +
+                    $"\"{field.SubType}\" has no filter-operator band. Remove @filterable, or use a " +
+                    "field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    Envelope: field.Source));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
     // Pass 5: ValidateOriginPaths
     //   - passthrough.@from / aggregate.@of must resolve to existing Entity.field
     //   - .@via must resolve through valid relationships, hopping entity-by-entity
@@ -473,11 +508,16 @@ public static class ValidationPasses
 
     public static AttrSchemaValidationResult ValidateAttrSchema(
         MetaData root,
-        TypeRegistry registry)
+        TypeRegistry registry,
+        // ADR-0023 — strict load closes the open-attr policy: an own @-attr matching
+        // no per-type schema and no commonAttr -> ERR_UNKNOWN_ATTR (Check 0). Defaults
+        // false so lax callers keep the legacy open policy; the library loader (and
+        // the conformance runner) load strict.
+        bool strict = false)
     {
         var errors = new List<MetaError>();
         var reportedConflicts = new HashSet<string>(StringComparer.Ordinal);
-        WalkAttrSchema(root, registry, errors, reportedConflicts);
+        WalkAttrSchema(root, registry, errors, reportedConflicts, strict);
         return new AttrSchemaValidationResult(errors.AsReadOnly(), []);
     }
 
@@ -584,12 +624,13 @@ public static class ValidationPasses
         MetaData node,
         TypeRegistry registry,
         List<MetaError> errors,
-        HashSet<string> reportedConflicts)
+        HashSet<string> reportedConflicts,
+        bool strict)
     {
-        ValidateAttrSchemaNode(node, registry, errors, reportedConflicts);
+        ValidateAttrSchemaNode(node, registry, errors, reportedConflicts, strict);
         foreach (var child in node.OwnChildren())
         {
-            WalkAttrSchema(child, registry, errors, reportedConflicts);
+            WalkAttrSchema(child, registry, errors, reportedConflicts, strict);
         }
     }
 
@@ -603,7 +644,8 @@ public static class ValidationPasses
         MetaData node,
         TypeRegistry registry,
         List<MetaError> errors,
-        HashSet<string> reportedConflicts)
+        HashSet<string> reportedConflicts,
+        bool strict)
     {
         var perType = registry.AttrsOf(node.Type, node.SubType);
         var common  = registry.GetCommonAttrs();
@@ -631,6 +673,53 @@ public static class ValidationPasses
             byName[ca.Name] = ca;
         }
 
+        // --- Check 0 (ADR-0023): strict-load undeclared-attr rejection ---
+        //
+        // Runs BEFORE the byName.Count early-return: a node type with no per-type
+        // schema and no common attrs (byName empty) must still reject an authored
+        // @-attr under strict. Own-attrs only — an inherited/overlaid declared attr
+        // was validated on its declaring node and never appears in OwnAttrs().
+        // An own attr matching neither a per-type schema entry nor a commonAttr is
+        // a made-up attribute -> ERR_UNKNOWN_ATTR (closing the open policy). In lax
+        // mode this stays a no-op (legacy open-attr behavior).
+        if (strict)
+        {
+            // attr.properties is a first-class, registered, canonical attr subtype
+            // whose designed purpose is an arbitrary-named structural property bag
+            // (its NAME is intentionally not declared by any per-type schema). It is
+            // sanctioned vocabulary, not a made-up attribute, so strict-attr exempts a
+            // materialized properties-attr from ERR_UNKNOWN_ATTR. (A typo'd plain @-attr
+            // still fails — only the `properties` subtype is exempt.) An own attr is
+            // dual-stored (a structural MetaAttr child + a SetAttr map entry), so the
+            // child's subType is the SSOT for the exemption. Mirrors the TS reference
+            // (attr-schema-validate.ts: `if (inst.subType === ATTR_SUBTYPE_PROPERTIES)`).
+            var propertyBagNames = node
+                .OwnChildrenOfSubType(TYPE_ATTR, ATTR_SUBTYPE_PROPERTIES)
+                .Select(c => c.Name)
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var (attrName, _) in node.OwnAttrs())
+            {
+                // The reserved structural key `value` is dual-stored on an attr
+                // node's _attrs map (parseAttrChild: SetAttr(RESERVED_KEY_VALUE, …)).
+                // It is the node's intrinsic value, never an authored @-attr, so it
+                // must not be mistaken for a made-up attribute. (In the TS reference
+                // an attr node's `value` is not a MetaAttr instance, so it never
+                // appears in ownMetaAttrs() — skipping it here gives identical walk
+                // behavior on this C#-port dual-storage representation.)
+                if (attrName == RESERVED_KEY_VALUE) continue;
+                if (propertyBagNames.Contains(attrName)) continue;
+                if (!byName.ContainsKey(attrName))
+                {
+                    errors.Add(new MetaError(
+                        $"Unknown attribute '@{attrName}' on {NodeLabel(node)} — " +
+                        $"not declared by any registered provider for {typeKey}",
+                        ErrorCode.ERR_UNKNOWN_ATTR,
+                        Envelope: node.Source));
+                }
+            }
+        }
+
         if (byName.Count == 0) return;
 
         // --- Check 1: required attrs present ---
@@ -655,11 +744,17 @@ public static class ValidationPasses
 
             // Check 2: value runtime type matches the declared valueType.
             // When valueType is absent (declared-but-untyped, e.g. @default), skip type check.
-            if (spec.ValueType is not null && !ValueMatchesType(value, spec.ValueType))
+            // An array-valued attr (the `string` + IsArray model that replaced the
+            // `stringarray` subtype) is validated as a string array.
+            string? effectiveValueType = spec.ValueType is not null
+                && (spec.IsArray || spec.ValueType == ATTR_SUBTYPE_STRINGARRAY)
+                ? ATTR_SUBTYPE_STRINGARRAY
+                : spec.ValueType;
+            if (effectiveValueType is not null && !ValueMatchesType(value, effectiveValueType))
             {
                 errors.Add(new MetaError(
                     $"{NodeLabel(node)} attribute '@{attrName}' must be of type " +
-                    $"'{spec.ValueType}' but got {RuntimeTypeName(value)}",
+                    $"'{effectiveValueType}' but got {RuntimeTypeName(value)}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     Envelope: node.Source));
                 // Skip allowedValues check when type is already wrong.
@@ -1176,8 +1271,17 @@ public static class ValidationPasses
 
     // =========================================================================
     // Pass 8: ValidateFieldObjectStorage
-    //   Cross-attribute validation for @storage on field.object:
-    //     - @storage requires @objectRef on the same field → ERR_STORAGE_WITHOUT_OBJECT_REF
+    //   Cross-attribute validation for field.object + @storage (ADR-0013):
+    //     - A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+    //       A field.object models a typed nested value; without @objectRef it is
+    //       "an oxymoron at the logical layer". Open/untyped JSON uses the physical
+    //       @dbColumnType: jsonb escape hatch on field.string, NOT a bare object.
+    //       This rule subsumes the legacy @storage-without-@objectRef check
+    //       (@storage is only meaningful on a field.object), so missing-@objectRef
+    //       now always reports this single, clearer error — one error per node
+    //       (the flattened/array check is skipped when @objectRef is absent).
+    //       (Previously C# SILENTLY DROPPED a bare field.object in codegen — it is
+    //       now a clear load-time error.)
     //     - @storage "flattened" requires isArray=false (cannot flatten a
     //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
     //
@@ -1193,17 +1297,22 @@ public static class ValidationPasses
         {
             foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
-                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
-                if (storage is null) continue;
-
                 var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
-                if (objectRef is not string refStr || refStr.Length == 0)
+                var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
+
+                if (field.SubType == FIELD_SUBTYPE_OBJECT && !hasObjectRef)
                 {
                     errors.Add(new MetaError(
-                        $"field \"{obj.Name}.{field.Name}\" sets @storage but has no @objectRef",
-                        ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                        $"field.object \"{obj.Name}.{field.Name}\" has no @objectRef; " +
+                        "a field.object requires @objectRef. For an open/untyped JSON map " +
+                        "use @dbColumnType: jsonb on a field.string instead of a bare object.",
+                        ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                         Envelope: field.Source));
+                    continue;
                 }
+
+                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                if (storage is null) continue;
 
                 if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
                 {
@@ -1212,6 +1321,169 @@ public static class ValidationPasses
                         "flattened storage requires a single nested value",
                         ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
                         Envelope: field.Source));
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
+    // Pass 14 (FR-017): ValidateRelationships — M:N slim-vocabulary rules.
+    //
+    // Deferred-resolution validation (runs after all files load + extends:
+    // resolution, like origin paths), enforcing the cross-port M:N contract.
+    // Own-relationships only (matches the own-attrs policy of the other passes):
+    //
+    //   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+    //       entity). Otherwise ERR_BAD_ATTR_VALUE.
+    //   (b) @symmetric and @sourceRefField are mutually exclusive -> ERR_BAD_ATTR_VALUE.
+    //   (c) When @through is present (and the relationship is M:N): the named entity
+    //       must exist and declare exactly two identity.reference children;
+    //       @sourceRefField (if present) must match one of those references' FK
+    //       fields -> ERR_INVALID_RELATIONSHIP.
+    //   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+    //       relationship (@cardinality != "many", or no @through) -> ERR_INVALID_RELATIONSHIP.
+    //
+    // Ported from validateRelationships in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    /// <summary>FK field names declared by an entity's identity.reference children.</summary>
+    private static List<string> JunctionReferenceFkFields(MetaData junction)
+    {
+        var output = new List<string>();
+        foreach (var id in junction.OwnChildren())
+        {
+            if (id.Type != TYPE_IDENTITY || id.SubType != IDENTITY_SUBTYPE_REFERENCE) continue;
+            var fields = id.OwnAttr(IDENTITY_ATTR_FIELDS);
+            if (fields is string s)
+            {
+                var first = s.Split(',')[0].Trim();
+                if (first.Length > 0) output.Add(first);
+            }
+            else if (fields is IReadOnlyList<string> list && list.Count > 0)
+            {
+                output.Add(list[0]);
+            }
+            else if (fields is IReadOnlyList<object?> objList && objList.Count > 0 && objList[0] is string os)
+            {
+                output.Add(os);
+            }
+        }
+        return output;
+    }
+
+    private static int CountJunctionReferences(MetaData junction) =>
+        junction.OwnChildren().Count(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_REFERENCE);
+
+    /// <summary>Last <c>::</c>-segment of a (possibly package-qualified) name.</summary>
+    private static string StripPackage(string name)
+    {
+        int idx = name.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        return idx < 0 ? name : name[(idx + PACKAGE_SEPARATOR.Length)..];
+    }
+
+    public static IReadOnlyList<MetaError> ValidateRelationships(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var rel in obj.OwnChildren().Where(c => c.Type == TYPE_RELATIONSHIP))
+            {
+                var through = rel.OwnAttr(RELATIONSHIP_ATTR_THROUGH);
+                var sourceRefField = rel.OwnAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+                bool symmetric = rel.OwnAttr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
+                var cardinality = rel.OwnAttr(RELATIONSHIP_ATTR_CARDINALITY);
+                var objectRef = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+
+                bool hasThrough = through is string ts && ts.Length > 0;
+                bool hasSourceRefField = sourceRefField is string srs && srs.Length > 0;
+                bool isMany = cardinality is string cs && cs == CARDINALITY_MANY;
+                bool isM2M = hasThrough && isMany;
+
+                // Rule (d): M:N-only attrs on a non-M:N relationship.
+                if (!isM2M)
+                {
+                    if (hasThrough)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_THROUGH} but is not a M:N " +
+                            $"relationship (requires @{RELATIONSHIP_ATTR_CARDINALITY}: \"{CARDINALITY_MANY}\").",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    if (hasSourceRefField)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    if (symmetric)
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
+                    continue;
+                }
+
+                // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+                if (symmetric && hasSourceRefField)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" sets both @{RELATIONSHIP_ATTR_SYMMETRIC} and " +
+                        $"@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: rel.Source));
+                }
+
+                // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+                bool isSelfJoin = objectRef is string objRefStr && StripPackage(objRefStr) == obj.Name;
+                if (symmetric && !isSelfJoin)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" sets @{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} " +
+                        $"\"{objectRef}\" is not the declaring entity \"{obj.Name}\"; @{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: rel.Source));
+                }
+
+                // Rule (c): @through must name an entity declaring exactly two identity.reference children.
+                var junction = FindObject(root, (string)through!);
+                if (junction is null)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" does not resolve to an entity.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: ResolvedSource.From(rel.Source, $"{obj.Fqn()}::{rel.Name}", (string)through!)));
+                    continue;
+                }
+                int refCount = CountJunctionReferences(junction);
+                if (refCount != 2)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" must declare exactly two " +
+                        $"identity.reference children (one per FK side); found {refCount}.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: rel.Source));
+                    continue;
+                }
+                // @sourceRefField (if present) must match one of the junction's reference FK fields.
+                if (hasSourceRefField)
+                {
+                    var fkFields = JunctionReferenceFkFields(junction);
+                    if (!fkFields.Contains((string)sourceRefField!, StringComparer.Ordinal))
+                    {
+                        errors.Add(new MetaError(
+                            $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} \"{sourceRefField}\" does not match " +
+                            $"any identity.reference FK field on junction \"{through}\". Available: {(fkFields.Count > 0 ? string.Join(", ", fkFields) : "(none)")}.",
+                            ErrorCode.ERR_INVALID_RELATIONSHIP,
+                            Envelope: rel.Source));
+                    }
                 }
             }
         }
@@ -1314,6 +1586,357 @@ public static class ValidationPasses
                         $"\"{payloadRef}\". Available fields: {string.Join(", ", fieldNames)}",
                         ErrorCode.ERR_INVALID_TEMPLATE,
                         Envelope: ResolvedSource.From(tmpl.Source, tmpl.Fqn(), $"{payloadRef}.{slot}")));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
+    // FR-013 — field-level @readOnly cross-attribute rules.
+    //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
+    // Mirrors TS core/field/validate-field-readonly.ts.
+    // =========================================================================
+
+    /// <summary>Result of the FR-013 @readOnly validation pass.</summary>
+    public sealed record ReadOnlyValidationResult(
+        IReadOnlyList<MetaError> Errors,
+        IReadOnlyList<LoaderWarning> Warnings);
+
+    public static ReadOnlyValidationResult ValidateFieldReadOnly(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var warnings = new List<LoaderWarning>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            bool isValueObject = obj.SubType == OBJECT_SUBTYPE_VALUE;
+            var ownFields = obj.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>().ToList();
+
+            // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
+            if (isValueObject)
+            {
+                foreach (var f in ownFields)
+                {
+                    if (ReadOnlyFlag(f) == true)
+                    {
+                        warnings.Add(new LoaderWarning(
+                            Code: WarningCodes.WARN_READONLY_VALUE_OBJECT,
+                            Message:
+                                $"field \"{f.Name}\" on object.value \"{obj.Name}\" declares " +
+                                "@readOnly: true; value-objects have no persistence semantics so " +
+                                "the read-only contract is advisory (codegen may use it for " +
+                                "record/struct treatment).",
+                            Source: f.Source));
+                    }
+                }
+            }
+
+            // 2) ERR_READONLY_DOWNGRADE — only the explicit own @readOnly: false case.
+            foreach (var ownField in ownFields)
+            {
+                if (ReadOnlyFlag(ownField) != false) continue;
+                var inherited = InheritedReadOnlyField(obj, ownField.Name);
+                if (inherited != null && ReadOnlyFlag(inherited) == true)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{ownField.Name}\" on \"{obj.Name}\" sets @readOnly: false, but the " +
+                        "extends-chain parent declares @readOnly: true. Read-only-ness can only be " +
+                        "upgraded, not downgraded (FR-013).",
+                        ErrorCode.ERR_READONLY_DOWNGRADE,
+                        Envelope: ownField.Source));
+                }
+            }
+
+            // 3) ERR_READONLY_ASSIGNED_PRIMARY — @readOnly: true on a field used in an
+            //    identity.primary with @generation: "assigned" (effective tree).
+            if (!isValueObject)
+            {
+                var assigned = PrimaryAssignedFieldNames(obj);
+                if (assigned.Count > 0)
+                {
+                    foreach (var f in ownFields)
+                    {
+                        if (!assigned.Contains(f.Name)) continue;
+                        if (ReadOnlyFlag(f) != true) continue;
+                        errors.Add(new MetaError(
+                            $"field \"{f.Name}\" on \"{obj.Name}\" is @readOnly: true AND the target " +
+                            "of identity.primary with @generation: \"assigned\"; the application has " +
+                            "no path to populate the identity value (FR-013).",
+                            ErrorCode.ERR_READONLY_ASSIGNED_PRIMARY,
+                            Envelope: f.Source));
+                    }
+                }
+            }
+        }
+
+        return new ReadOnlyValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
+    }
+
+    private static bool? ReadOnlyFlag(MetaField field) => field.OwnAttr(FIELD_ATTR_READ_ONLY) switch
+    {
+        bool b => b,
+        string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase),
+        _ => null,
+    };
+
+    private static MetaField? InheritedReadOnlyField(MetaData obj, string name)
+    {
+        var cursor = obj.SuperData;
+        while (cursor != null)
+        {
+            var f = cursor.OwnChildren()
+                .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+            if (f != null) return f;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    private static HashSet<string> PrimaryAssignedFieldNames(MetaData obj)
+    {
+        var outNames = new HashSet<string>();
+        foreach (var id in obj.Children().OfType<MetaIdentity>())
+        {
+            if (!id.IsPrimary()) continue;
+            if (id.OwnAttr(IDENTITY_ATTR_GENERATION) as string != GENERATION_ASSIGNED) continue;
+            foreach (var fn in id.Fields) outNames.Add(fn);
+        }
+        return outNames;
+    }
+
+    // =========================================================================
+    // FR-014 — TPH discriminator cross-attribute rules.
+    //   ERR_DISCRIMINATOR_FIELD_NOT_FOUND / _VALUE_DUPLICATE / _VALUE_MISSING /
+    //   _VALUE_TYPE_MISMATCH. Mirrors TS core/object/validate-discriminator.ts.
+    // =========================================================================
+
+    private static readonly HashSet<string> NumericDiscriminatorSubtypes = new()
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateDiscriminator(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var entities = root.OwnChildren()
+            .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_ENTITY)
+            .ToList();
+
+        // Pass 1: @discriminator name resolution (own + inherited fields).
+        foreach (var obj in entities)
+        {
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not string disc || disc.Length == 0) continue;
+            if (FindFieldOnEntity(obj, disc) == null)
+            {
+                errors.Add(new MetaError(
+                    $"object.entity \"{obj.Name}\" @discriminator: \"{disc}\" does not name a field on " +
+                    "this entity (checked own children and the extends chain)",
+                    ErrorCode.ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
+                    Envelope: obj.Source));
+            }
+        }
+
+        // Pass 2: @discriminatorValue type-check + collect bindings per root.
+        var bindingsByRoot = new Dictionary<MetaData, List<(MetaData Subtype, string Value)>>();
+        var order = new List<MetaData>();
+        foreach (var obj in entities)
+        {
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string value || value.Length == 0) continue;
+            var discRoot = FindDiscriminatorRoot(obj);
+            if (discRoot == null) continue;
+            if (discRoot.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not string fieldName) continue;
+            var field = FindFieldOnEntity(discRoot, fieldName);
+            if (field == null) continue; // root's own field-not-found already fires
+
+            if (field.SubType == FIELD_SUBTYPE_ENUM)
+            {
+                var members = field.EffectiveEnumValues ?? new List<string>();
+                if (!members.Contains(value))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{obj.Name}\" @discriminatorValue: \"{value}\" is not a member of " +
+                        $"the discriminator enum field \"{fieldName}\" @values [{string.Join(", ", members)}]",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+                        Envelope: obj.Source));
+                }
+            }
+            else if (NumericDiscriminatorSubtypes.Contains(field.SubType))
+            {
+                if (!Regex.IsMatch(value, "^-?\\d+$"))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{obj.Name}\" @discriminatorValue: \"{value}\" does not coerce to " +
+                        $"numeric discriminator field \"{fieldName}\" (field.{field.SubType})",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH,
+                        Envelope: obj.Source));
+                }
+            }
+            // string (and other) discriminator types accept any value.
+
+            if (!bindingsByRoot.TryGetValue(discRoot, out var list))
+            {
+                list = new List<(MetaData, string)>();
+                bindingsByRoot[discRoot] = list;
+                order.Add(discRoot);
+            }
+            list.Add((obj, value));
+        }
+
+        // Pass 3: ERR_DISCRIMINATOR_VALUE_DUPLICATE within each root's subtypes.
+        foreach (var discRoot in order)
+        {
+            var seen = new Dictionary<string, MetaData>();
+            foreach (var (subtype, value) in bindingsByRoot[discRoot])
+            {
+                if (seen.TryGetValue(value, out var prev))
+                {
+                    errors.Add(new MetaError(
+                        $"object.entity \"{subtype.Name}\" @discriminatorValue: \"{value}\" duplicates the " +
+                        $"value already claimed by \"{prev.Name}\"",
+                        ErrorCode.ERR_DISCRIMINATOR_VALUE_DUPLICATE,
+                        Envelope: subtype.Source));
+                }
+                else
+                {
+                    seen[value] = subtype;
+                }
+            }
+        }
+
+        // Pass 4: ERR_DISCRIMINATOR_VALUE_MISSING on concrete subtypes.
+        foreach (var obj in entities)
+        {
+            if (obj.IsAbstract) continue;
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is string) continue;
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string) continue; // a root
+            var discRoot = FindDiscriminatorRoot(obj);
+            if (discRoot == null || ReferenceEquals(discRoot, obj)) continue;
+            errors.Add(new MetaError(
+                $"object.entity \"{obj.Name}\" extends the @discriminator-bearing root \"{discRoot.Name}\" " +
+                "but is missing @discriminatorValue (required on every concrete subtype)",
+                ErrorCode.ERR_DISCRIMINATOR_VALUE_MISSING,
+                Envelope: obj.Source));
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    private static MetaField? FindFieldOnEntity(MetaData entity, string name)
+    {
+        var f = entity.OwnChildren().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+        if (f != null) return f;
+        var cursor = entity.SuperData;
+        while (cursor != null)
+        {
+            f = cursor.OwnChildren().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
+            if (f != null) return f;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    private static MetaData? FindDiscriminatorRoot(MetaData entity)
+    {
+        var cursor = entity;
+        while (cursor != null)
+        {
+            if (cursor.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string v && v.Length > 0) return cursor;
+            cursor = cursor.SuperData;
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // FR-015 — source.rdb @parameterRef typed-input rules.
+    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT /
+    //   _PASSTHROUGH_TYPE_MISMATCH. Mirrors TS persistence/source/validate-source-parameter-ref.ts.
+    // =========================================================================
+
+    private static readonly HashSet<string> CallableKinds = new()
+    {
+        SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateSourceParameterRef(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        // Pre-index every object by name AND fqn.
+        var index = new Dictionary<string, MetaData>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            index[obj.Name] = obj;
+            index[obj.Fqn()] = obj;
+        }
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var source in obj.OwnChildren()
+                .Where(c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_RDB && c is MetaSource)
+                .Cast<MetaSource>())
+            {
+                if (source.OwnAttr(SOURCE_ATTR_PARAMETER_REF) is not string refName || refName.Length == 0) continue;
+
+                // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — before resolution.
+                if (!CallableKinds.Contains(source.EffectiveKind))
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" has @parameterRef but @kind is " +
+                        $"\"{source.EffectiveKind}\"; only \"storedProc\" or \"tableFunction\" accept parameters",
+                        ErrorCode.ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                if (!index.TryGetValue(refName, out var target))
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" @parameterRef = \"{refName}\" does not resolve " +
+                        "to any known object",
+                        ErrorCode.ERR_PARAMETER_REF_UNRESOLVED,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                if (target.SubType != OBJECT_SUBTYPE_VALUE)
+                {
+                    string reason = target.SubType == OBJECT_SUBTYPE_ENTITY
+                        ? "an object.entity (entities have identity; parameter shapes are value-objects)"
+                        : $"an object.{target.SubType}";
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" @parameterRef = \"{refName}\" resolves to " +
+                        $"{reason}; use an object.value",
+                        ErrorCode.ERR_PARAMETER_REF_NOT_VALUE_OBJECT,
+                        Envelope: source.Source));
+                    continue;
+                }
+
+                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
+                foreach (var paramField in target.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>())
+                {
+                    var passthrough = paramField.OwnChildren()
+                        .FirstOrDefault(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH);
+                    if (passthrough == null) continue;
+                    if (passthrough.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) is not string from || from.Length == 0) continue;
+                    int dot = from.IndexOf('.');
+                    if (dot < 0) continue;
+                    string targetEntityName = from.Substring(0, dot);
+                    string targetFieldName = from.Substring(dot + 1);
+                    if (!index.TryGetValue(targetEntityName, out var targetEntity)) continue;
+                    var targetField = targetEntity.OwnChildren()
+                        .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == targetFieldName) as MetaField;
+                    if (targetField == null) continue;
+                    if (paramField.SubType != targetField.SubType)
+                    {
+                        errors.Add(new MetaError(
+                            $"parameter field \"{paramField.Name}\" (field.{paramField.SubType}) on @parameterRef " +
+                            $"\"{refName}\" uses origin.passthrough @from: \"{from}\", but " +
+                            $"{targetEntity.Name}.{targetFieldName} is field.{targetField.SubType}; types must match",
+                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+                            Envelope: paramField.Source));
+                    }
+                }
             }
         }
 

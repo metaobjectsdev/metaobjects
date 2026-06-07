@@ -1,6 +1,10 @@
 # @metaobjectsdev/codegen-ts-tanstack
 
-TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()`.
+TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks, plus a `use<Source><Relation>(sourceId, opts?)` collection hook per many-to-many relationship), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()`.
+
+### M:N collection hooks (FR-018)
+
+For each many-to-many relationship a source entity declares (`@cardinality: "many"` + `@through`), `tanstackQuery()` emits a `use<Source><Relation>(sourceId, opts?)` hook. It is a `useQuery` that fetches the REST sub-resource `GET /<source-plural>/{sourceId}/<relationName>` (the exact URL the generated route serves) and returns the typed target collection (`<Target>[]`). The query is enabled only when `sourceId` is present, so it is safe to call before the parent row loads. A symmetric self-join still produces a single collection hook (the server unions both junction columns on read).
 
 ## Install
 

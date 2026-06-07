@@ -89,25 +89,48 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return MetaObject.class;
     }
 
+    private MetaDataLoader loader;
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
             if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             RdbSource sourceRdb = firstRdbSource(entity);
             if (sourceRdb == null) continue;
-            String kind = sourceRdb.getEffectiveKind();
-            if (!MetaSource.KIND_TABLE.equals(kind)) {
-                logSkip(entity.getName(), kind);
+            if (!appliesTo(entity)) {
+                // Same shape (entity / non-abstract / has rdb source) but a non-table
+                // kind — log why no controller is emitted, then skip.
+                logSkip(entity.getName(), sourceRdb.getEffectiveKind());
                 continue;
             }
             emit(entity, outRoot);
         }
     }
 
-    private void logSkip(String entityName, String kind) {
+    /**
+     * True iff this generator emits a {@code @RestController} for {@code entity}:
+     * a concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
+     * child is {@code @kind="table"} (writable). Identical inclusion rule to
+     * {@link SpringRepositoryGenerator#appliesTo(MetaObject)} — the controller
+     * delegates to that repository, so the two emit sets coincide. View /
+     * materializedView / storedProc / tableFunction kinds (and entities with no
+     * {@code source.rdb}) are excluded. There is no {@code @emitRoutes}-style
+     * opt-out attribute today — emission is driven purely by the table guard.
+     * Extracted verbatim from the {@link #execute(MetaDataLoader)} per-node guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
+        RdbSource sourceRdb = firstRdbSource(entity);
+        if (sourceRdb == null) return false;
+        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
+    }
+
+    protected void logSkip(String entityName, String kind) {
         if (MetaSource.KIND_VIEW.equals(kind) || MetaSource.KIND_MATERIALIZED_VIEW.equals(kind)) {
             LOG.debug("skipping controller for {} — source.rdb @kind='{}' is read-only", entityName, kind);
         } else if (MetaSource.KIND_STORED_PROC.equals(kind)) {
@@ -119,15 +142,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
     }
 
-    private void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String dtoName = shortName + "Dto";
-        String repoName = shortName + "Repository";
-        String controllerName = shortName + "Controller";
-        String routePath = SpringNaming.pluralLowercase(shortName);
-        String routeBase = "/api/" + routePath;
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        String controllerName = SpringNaming.controllerName(shortName);
+        String routeBase = SpringNaming.controllerPath(shortName);
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface today; @storage controls a separate column shape).
@@ -187,7 +209,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        String allowlistName = shortName + "FilterAllowlist";
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
         src.append("            @RequestParam(required = false) Integer limit,\n");
@@ -255,6 +277,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
         src.append("    }\n\n");
+
+        // FR-018 M:N traversal — GET /{id}/<relationName> exposes each
+        // @cardinality:"many" + @through relationship as a sub-resource of the source,
+        // returning the related target rows. The source URL segment is the entity name
+        // pluralized (handled by @RequestMapping above); the relation segment is the
+        // relationship name. Related-row order is not contractual. The repository finder
+        // traverses the junction (hetero / directed self-join / symmetric union-on-read).
+        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
+            String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
+            src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
+            src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+               .append(finder).append("(@PathVariable Long id) {\n");
+            src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
+            src.append("    }\n\n");
+        }
 
         // parseSort — returns null on malformed/disallowed input. Returning null lets the
         // list handler emit the 400 envelope itself rather than throwing — cleaner

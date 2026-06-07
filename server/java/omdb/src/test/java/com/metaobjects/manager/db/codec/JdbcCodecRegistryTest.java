@@ -1,15 +1,32 @@
 /*
- * Copyright (c) 2026 Doug Mealing LLC. All Rights Reserved.
+ * Copyright 2026 Doug Mealing LLC dba Meta Objects
  *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/*
  * FR-003 Plan 4 (Debt 1) — codec registry contract test. Doesn't exercise JDBC
  * IO — that's already covered by the omdb round-trip suite (Derby + Postgres).
  */
 package com.metaobjects.manager.db.codec;
 
 import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 import org.junit.Test;
 
 import java.sql.Types;
@@ -25,6 +42,27 @@ public class JdbcCodecRegistryTest {
     public void builtInTypesResolve() {
         assertNotNull("StringField must resolve", JdbcCodecs.forField(new StringField("name")));
         assertNotNull("BooleanField must resolve", JdbcCodecs.forField(new BooleanField("flag")));
+    }
+
+    /**
+     * SP-H Unit 5 — every persistable subtype must resolve to a DEDICATED codec, never
+     * the generic {@link JdbcCodecs#defaultCodec()} fallback. Before this unit,
+     * {@code field.timestamp} / {@code field.currency} / {@code field.enum} /
+     * {@code field.uuid} all silently rode the default {@code ObjectCodec} (getObject /
+     * setObject), which is the write hazard the round-trip gate now covers (pgjdbc rejects
+     * {@code setObject(java.util.Date)} for timestamp).
+     */
+    @Test
+    public void sphSubtypesResolveToDedicatedCodecs() {
+        JdbcFieldCodec def = JdbcCodecs.defaultCodec();
+        assertNotSame("TimestampField must have a dedicated codec",
+                def, JdbcCodecs.forField(new TimestampField("ts")));
+        assertNotSame("CurrencyField must have a dedicated codec",
+                def, JdbcCodecs.forField(new CurrencyField("money")));
+        assertNotSame("EnumField must have a dedicated codec",
+                def, JdbcCodecs.forField(new EnumField("status")));
+        assertNotSame("UuidField must have a dedicated codec",
+                def, JdbcCodecs.forField(new UuidField("uid")));
     }
 
     @Test

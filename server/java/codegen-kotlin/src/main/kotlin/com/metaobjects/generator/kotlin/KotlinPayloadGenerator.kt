@@ -46,7 +46,7 @@ import java.nio.file.Paths
  *   <li>No origin child — fall back to {@link KotlinTypeMapper#kotlinTypeName(MetaField)}.</li>
  * </ul>
  */
-class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -67,7 +67,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(
+    protected open fun emit(
         template: MetaTemplate,
         loader: MetaDataLoader,
         outRoot: Path,
@@ -99,7 +99,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * `origin.collection`, recursively emits its nested payload class first (per-run
      * deduped via [emittedNestedFqns]).
      */
-    private fun emitPayloadClass(
+    protected open fun emitPayloadClass(
         outPkg: String,
         className: String,
         kdoc: String,
@@ -136,7 +136,7 @@ class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * `origin.*` child. Falls back to [KotlinTypeMapper.kotlinTypeName] when no
      * origin is present.
      */
-    private fun resolveFieldType(
+    protected open fun resolveFieldType(
         field: MetaField<*>,
         owner: MetaObject,
         loader: MetaDataLoader,

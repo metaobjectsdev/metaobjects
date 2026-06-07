@@ -198,7 +198,7 @@ if (!r.success) { /* handle r.error (a ZodError) */ } else { /* use r.data */ }
 | Field subtype | Emitted Zod |
 |---|---|
 | `field.string`, `field.class` | `z.string()` |
-| `field.int`, `field.long`, `field.short`, `field.byte` | `z.number().int()` |
+| `field.int`, `field.long` | `z.number().int()` |
 | `field.double`, `field.float` | `z.number()` |
 | `field.boolean` | `z.boolean()` |
 | `field.object` (with `@objectRef`) | nested `z.object({ ... })` |

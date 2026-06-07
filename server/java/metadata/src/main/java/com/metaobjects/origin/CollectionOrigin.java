@@ -1,5 +1,6 @@
 package com.metaobjects.origin;
 
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 /**
@@ -35,10 +36,14 @@ public class CollectionOrigin extends MetaOrigin {
      * {@link MetaOrigin#registerTypes(MetaDataRegistry)}.
      */
     public static void registerTypes(MetaDataRegistry registry) {
-        registry.registerType(CollectionOrigin.class, def -> def
-            .type(TYPE_ORIGIN).subType(SUBTYPE_COLLECTION)
-            .description("Collection origin — relationship-derived array of nested view-objects (FR-004 R4)")
-            .inheritsFrom(TYPE_ORIGIN, SUBTYPE_BASE)
-        );
+        registry.registerType(CollectionOrigin.class, def -> {
+            def.type(TYPE_ORIGIN).subType(SUBTYPE_COLLECTION)
+               .description("Collection origin — relationship-derived array of nested view-objects (FR-004 R4)")
+               .inheritsFrom(TYPE_ORIGIN, SUBTYPE_BASE);
+
+            // SP-G Unit 6a: collection carries ONLY @via (required) — cross-port canonical.
+            def.requiredAttributeWithConstraints(ATTR_VIA)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
     }
 }

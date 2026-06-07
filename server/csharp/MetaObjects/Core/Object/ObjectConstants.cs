@@ -25,6 +25,24 @@ public static class ObjectConstants
     public const string OBJECT_SUBTYPE_ENTITY = "entity";
     public const string OBJECT_SUBTYPE_VALUE  = "value";
 
+    // -----------------------------------------------------------------------
+    // FR-014 — TPH discriminator attrs (registered on every object subtype).
+    // The cross-port registry vocabulary declares these even where a port's
+    // discriminator VALIDATION pass has not yet shipped.
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-014: names the field on this entity (resolvable via extends:) that holds
+    /// the subtype-discriminator value. Subtypes declare @discriminatorValue.
+    /// </summary>
+    public const string OBJECT_ATTR_DISCRIMINATOR = "discriminator";
+
+    /// <summary>
+    /// FR-014: on a subtype of a @discriminator-bearing entity — the value that
+    /// identifies rows of this subtype in the shared discriminator field.
+    /// </summary>
+    public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
+
     public static readonly string[] OBJECT_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,

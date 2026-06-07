@@ -71,9 +71,12 @@ describe("renderEntityFile", () => {
     });
 
     const out = renderEntityFile(order, ctx);
-    // The type alias should use "Status" (the abstract super's name), not "OrderStatus"
-    expect(out).toContain('export type Status = "DRAFT" | "PUBLISHED" | "ARCHIVED";');
+    // FR-019: a field extending a root-level abstract field.enum no longer
+    // redeclares the union — it REFERENCES the shared materialized type "Status"
+    // (re-exported from the ./enums module), and never emits "OrderStatus".
+    expect(out).not.toContain('export type Status =');
     expect(out).not.toContain("export type OrderStatus");
+    expect(out).toContain('export { type Status } from "./enums"');
   });
 
   test("two fields extending the SAME abstract field.enum → ONE type alias", async () => {
@@ -110,10 +113,11 @@ describe("renderEntityFile", () => {
     });
 
     const out = renderEntityFile(order, ctx);
-    // De-duplicated by alias name: both fields share the "Status" super, so the
-    // alias is emitted exactly once.
-    const aliasCount = out.split('export type Status = "DRAFT" | "PUBLISHED";').length - 1;
-    expect(aliasCount).toBe(1);
+    // FR-019: both fields share the "Status" super → ONE re-export of the shared
+    // type, no inline redeclaration. De-duplicated by alias name.
+    const reexportCount = out.split('export { type Status } from "./enums"').length - 1;
+    expect(reexportCount).toBe(1);
+    expect(out).not.toContain('export type Status =');
   });
 
   test("two distinct inline enums on one entity → two <Entity><Field> aliases", () => {

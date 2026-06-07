@@ -1,0 +1,48 @@
+{
+  "$comment": "Cross-port api-docs layout contract; TS and Java api-docs conformance both assert against this. Layout: package.",
+  "layout": "package",
+  "apiTsSubDir": "api/ts",
+  "apiJavaSubDir": "api/java",
+  "units": [
+    {
+      "node": "Customer",
+      "modelPath": "acme/shop/Customer.md",
+      "apiTsPath": "api/ts/acme/shop/Customer.md",
+      "apiJavaPath": "api/java/acme/shop/Customer.md",
+      "modelToApiTs": "../../api/ts/acme/shop/Customer.md",
+      "modelToApiJava": "../../api/java/acme/shop/Customer.md",
+      "apiTsToModel": "../../../../acme/shop/Customer.md",
+      "apiJavaToModel": "../../../../acme/shop/Customer.md"
+    },
+    {
+      "node": "Order",
+      "modelPath": "acme/shop/Order.md",
+      "apiTsPath": "api/ts/acme/shop/Order.md",
+      "apiJavaPath": "api/java/acme/shop/Order.md",
+      "modelToApiTs": "../../api/ts/acme/shop/Order.md",
+      "modelToApiJava": "../../api/java/acme/shop/Order.md",
+      "apiTsToModel": "../../../../acme/shop/Order.md",
+      "apiJavaToModel": "../../../../acme/shop/Order.md"
+    },
+    {
+      "node": "OrderSummary",
+      "modelPath": "acme/shop/OrderSummary.md",
+      "apiTsPath": "api/ts/acme/shop/OrderSummary.md",
+      "apiJavaPath": "api/java/acme/shop/OrderSummary.md",
+      "modelToApiTs": "",
+      "modelToApiJava": "../../api/java/acme/shop/OrderSummary.md",
+      "apiTsToModel": "../../../../acme/shop/OrderSummary.md",
+      "apiJavaToModel": "../../../../acme/shop/OrderSummary.md"
+    },
+    {
+      "node": "OrderSummaryPayload",
+      "modelPath": "acme/shop/OrderSummaryPayload.md",
+      "apiTsPath": "api/ts/acme/shop/OrderSummaryPayload.md",
+      "apiJavaPath": "api/java/acme/shop/OrderSummaryPayload.md",
+      "modelToApiTs": "../../api/ts/acme/shop/OrderSummaryPayload.md",
+      "modelToApiJava": "../../api/java/acme/shop/OrderSummaryPayload.md",
+      "apiTsToModel": "../../../../acme/shop/OrderSummaryPayload.md",
+      "apiJavaToModel": "../../../../acme/shop/OrderSummaryPayload.md"
+    }
+  ]
+}

@@ -39,8 +39,10 @@ public class PrimaryIdentity extends MetaIdentity {
                .description("Primary identity for object identification")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // Configure each attribute separately to avoid method chaining conflicts
-            def.optionalAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            // Configure each attribute separately to avoid method chaining conflicts.
+            // @fields is REQUIRED on identity.primary (matches the cross-port canonical;
+            // the dedicated validateIdentityFieldsAndGeneration pass already enforces it).
+            def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_GENERATION).ofType(StringAttribute.SUBTYPE_STRING).withEnum(GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED);
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 

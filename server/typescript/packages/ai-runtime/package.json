@@ -1,0 +1,58 @@
+{
+  "name": "@metaobjectsdev/ai-runtime",
+  "version": "0.9.0",
+  "description": "LLM call loop + typed-trace recorder adapters for MetaObjects: provider-neutral LlmClient seam, callLlm bridge, Composite/Langfuse/OTel recorders.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./langfuse": {
+      "bun": "./src/langfuse.ts",
+      "types": "./dist/langfuse.d.ts",
+      "default": "./dist/langfuse.js"
+    },
+    "./otel": {
+      "bun": "./src/otel.ts",
+      "types": "./dist/otel.d.ts",
+      "default": "./dist/otel.js"
+    }
+  },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p tsconfig.typecheck.json"
+  },
+  "license": "Apache-2.0",
+  "author": "Doug Mealing <doug@dougmealing.com>",
+  "homepage": "https://metaobjects.dev",
+  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "server/typescript/packages/ai-runtime"
+  },
+  "keywords": ["metaobjects", "llm", "ai", "trace", "langfuse", "opentelemetry"],
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/render": "workspace:*",
+    "@metaobjectsdev/runtime-ts": "workspace:*"
+  },
+  "peerDependencies": {
+    "langfuse": ">=3.0.0",
+    "@opentelemetry/api": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "langfuse": { "optional": true },
+    "@opentelemetry/api": { "optional": true }
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}

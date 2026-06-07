@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Draagon Software
- * LLC. Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.validator;
 
@@ -10,7 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 import com.metaobjects.*;
-import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.apache.commons.validator.GenericValidator;
 
@@ -41,12 +50,13 @@ public class NumericValidator extends MetaValidator {
                .description("Numeric validator ensuring values are numbers within an optional min/max range")
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
-            // Cross-port value bounds (string-typed, parsed as needed — keeps decimal headroom).
+            // Cross-port int-typed value bounds (the value-under-test is still
+            // parsed as a double; the bound attrs are read via getValueAsString).
             def.optionalAttributeWithConstraints(ATTR_MIN)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
             def.optionalAttributeWithConstraints(ATTR_MAX)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }

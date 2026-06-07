@@ -1,0 +1,28 @@
+name: m2m-directed-self-join-traversal
+description: >
+  FR-018 directed self-join over HTTP: GET /people/:id/following traverses the
+  Follow junction. Both junction references resolve to Person, so
+  @sourceRefField ("followerId") names the source side; followeeId is the
+  target. Direction matters — (1→2) means 1 follows 2, NOT the reverse.
+requests:
+  - id: r1
+    method: GET
+    path: /api/persons/1/following
+    expect:
+      status: 200
+      body:
+        namesUnordered: [Bob, Carol]
+  - id: r2
+    method: GET
+    path: /api/persons/2/following
+    expect:
+      status: 200
+      body:
+        namesUnordered: [Alice]
+  - id: r3
+    method: GET
+    path: /api/persons/3/following
+    expect:
+      status: 200
+      body:
+        length: 0

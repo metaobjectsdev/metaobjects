@@ -1125,11 +1125,13 @@ describe("parseJson — deeply nested children", () => {
     expect(Array.isArray(identity.ownAttr("fields"))).toBe(true);
   });
 
-  it("child-node form of stringArray attr desugars consistently: parent map and MetaAttr node both carry the array", () => {
-    // Regression test for the dual-storage bug: when @fields is expressed as
-    // a bare string in the child-node form {"attr.stringarray": {name:"fields",value:"id"}},
-    // both the parent identity's attr map AND the child MetaAttr node's value
-    // must carry the desugared ["id"] array — not a mix of array + bare string.
+  it("declared array attr desugars consistently: parent map and MetaAttr node both carry the array", () => {
+    // Regression test for the dual-storage bug: when @fields (a declared array
+    // attr — `string` + isArray, the retired `stringarray` subtype) is authored
+    // as a bare string, both the parent identity's attr map AND the materialized
+    // MetaAttr node's value must carry the desugared ["id"] array — not a mix of
+    // array + bare string. The `attr.stringarray` child-node WRAPPER form is
+    // retired; the canonical authoring is the inline declared-attr form.
     const registry = makeRegistry();
     const input = JSON.stringify({
       "metadata.root": {
@@ -1141,10 +1143,9 @@ describe("parseJson — deeply nested children", () => {
                 {
                   "identity.primary": {
                     name: "primary",
-                    children: [
-                      // Child-node form: bare string "id" for a stringArray attr.
-                      { "attr.stringarray": { name: "fields", value: "id" } },
-                    ],
+                    // Inline declared-attr form: bare string "id" for the
+                    // array-flagged @fields attr (coerces to ["id"]).
+                    "@fields": "id",
                   },
                 },
               ],

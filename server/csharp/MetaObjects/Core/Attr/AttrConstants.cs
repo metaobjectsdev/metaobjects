@@ -20,8 +20,17 @@ public static class AttrConstants
     public const string ATTR_SUBTYPE_BOOLEAN     = "boolean";
     public const string ATTR_SUBTYPE_CLASS       = "class";
     public const string ATTR_SUBTYPE_PROPERTIES  = "properties";
-    public const string ATTR_SUBTYPE_STRINGARRAY = "stringarray";
     public const string ATTR_SUBTYPE_FILTER      = "filter";
+
+    /// <summary>
+    /// The retired <c>stringarray</c> array attr subtype. It is NO LONGER a
+    /// registered <c>(attr, subType)</c> (not in <see cref="ATTR_SUBTYPES"/>) —
+    /// array-ness is modeled as a <c>string</c> attr with the orthogonal
+    /// <c>AttrSchema.IsArray</c> flag (matching Java's <c>StringAttribute + @isArray</c>),
+    /// so <c>stringarray</c> never appears in the registry manifest. The constant
+    /// survives only as the array-coercion key (bare-string → one-element array).
+    /// </summary>
+    public const string ATTR_SUBTYPE_STRINGARRAY = "stringarray";
 
     public static readonly string[] ATTR_SUBTYPES =
     [
@@ -33,7 +42,6 @@ public static class AttrConstants
         ATTR_SUBTYPE_BOOLEAN,
         ATTR_SUBTYPE_CLASS,
         ATTR_SUBTYPE_PROPERTIES,
-        ATTR_SUBTYPE_STRINGARRAY,
         ATTR_SUBTYPE_FILTER,
     ];
 }

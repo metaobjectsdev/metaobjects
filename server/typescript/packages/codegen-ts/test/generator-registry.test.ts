@@ -26,6 +26,7 @@ const EXPECTED_NATIVE = [
   "output-prompt",
   "render-helper",
   "template",
+  "api-docs",
   "trace-helper",
 ] as const;
 

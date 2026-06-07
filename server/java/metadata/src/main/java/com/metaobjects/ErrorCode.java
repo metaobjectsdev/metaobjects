@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects;
 
@@ -100,6 +109,13 @@ public enum ErrorCode {
     /** A field origin (passthrough/aggregate) declares an invalid path or attribute. */
     ERR_INVALID_ORIGIN,
 
+    /**
+     * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
+     * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
+     * does not match one of them, or a M:N-only attr is set on a non-M:N relationship.
+     */
+    ERR_INVALID_RELATIONSHIP,
+
     /** A template declares a @payloadRef that does not resolve, or @requiredSlots that are not fields. */
     ERR_INVALID_TEMPLATE,
 
@@ -126,6 +142,9 @@ public enum ErrorCode {
 
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,
+
+    /** ADR-0013: a field.object declares no @objectRef (use @dbColumnType: jsonb for an open map). */
+    ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
 
     /** An object declares source nodes but none has role=primary. */
     ERR_SOURCE_NO_PRIMARY,
@@ -192,6 +211,23 @@ public enum ErrorCode {
      * {@code format: "merged"} with both contributors listed.
      */
     ERR_MERGE_CONFLICT,
+
+    /**
+     * SP-H Unit9 — a field carries {@code @filterable: true} but its subtype has
+     * no filter-operator band (e.g. {@code field.object}). Generating a filter
+     * for it would emit an empty operator set — a route that rejects every request.
+     */
+    ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+
+    /**
+     * ADR-0023 Decision 2: a registration ({@code register}/{@code extendType}/
+     * {@code registerCommonAttribute}/{@code addConstraint}/{@code registerType}/
+     * {@code setDefaultSubType}/{@code addGlobalChildRequirement}/{@code registerProviders})
+     * was attempted against a registry that has been sealed after its agreed
+     * metamodel-provider bootstrap. Made-up metamodel attributes/types are
+     * structurally impossible: codegen cannot register post-bootstrap.
+     */
+    ERR_REGISTRY_SEALED,
 
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,

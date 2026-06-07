@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Customer",
+          "package": "acme::shop",
+          "children": [
+            { "field.string": { "name": "name" } },
+            { "field.string": { "name": "email" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Order",
+          "package": "acme::shop",
+          "children": [
+            { "field.string": { "name": "ref" } },
+            { "field.string": { "name": "total" } },
+            {
+              "field.object": {
+                "name": "customer",
+                "@objectRef": "Customer"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "OrderPage",
+          "package": "acme::comms",
+          "@kind": "document",
+          "@payloadRef": "Order",
+          "@textRef": "site/order",
+          "@format": "html"
+        }
+      },
+      {
+        "template.output": {
+          "name": "OrderEmail",
+          "package": "acme::comms",
+          "@kind": "email",
+          "@payloadRef": "Order",
+          "@subjectRef": "email/order.subject",
+          "@htmlBodyRef": "email/order.html",
+          "@textBodyRef": "email/order.text"
+        }
+      }
+    ]
+  }
+}

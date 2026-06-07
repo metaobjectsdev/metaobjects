@@ -13,6 +13,9 @@ import re
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
 from .validate_source_physical_names import validate_source_physical_names
+from .validate_field_readonly import validate_field_readonly
+from .validate_discriminator import validate_discriminator
+from .validate_source_parameter_ref import validate_source_parameter_ref
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -43,6 +46,10 @@ from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
+from ..meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_PROPERTIES,
+    ATTR_SUBTYPE_STRINGARRAY,
+)
 from ..registry import AttrSchema, TypeRegistry
 from ..shared.base_types import (
     TYPE_FIELD,
@@ -67,7 +74,16 @@ from ..meta.persistence.origin.origin_constants import (
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
-from ..meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
+from ..meta.core.relationship.relationship_constants import (
+    CARDINALITY_MANY,
+    RELATIONSHIP_ATTR_CARDINALITY,
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+    RELATIONSHIP_ATTR_SYMMETRIC,
+    RELATIONSHIP_ATTR_THROUGH,
+)
+from ..meta.core.identity.identity_constants import IDENTITY_SUBTYPE_REFERENCE
+from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..source import resolved_source
@@ -83,6 +99,7 @@ def run_validations(
     errors: list[MetaError],
     warnings: list[str],
     envelope_warnings: list[LoaderWarning] | None = None,
+    strict: bool = False,
 ) -> None:
     """Run all validation passes in order.
 
@@ -94,20 +111,29 @@ def run_validations(
     push the warning code onto the legacy ``warnings`` channel so existing
     consumers see something.
     """
-    _validate_attr_schema(root, registry, errors)
+    _validate_attr_schema(root, registry, errors, strict)
     _validate_enum_values(root, errors)
     _validate_field_defaults(root, errors)
     _validate_db_column_type(root, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
+    _validate_relationships(root, errors)
     _validate_one_primary_source(root, errors)
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
+    # FR-013 — field-level @readOnly cross-attribute rules.
+    validate_field_readonly(root, errors, envelope_warnings, warnings)
+    # FR-014 — TPH discriminator cross-attribute rules.
+    validate_discriminator(root, errors)
+    # FR-015 — source.rdb @parameterRef typed-input rules.
+    validate_source_parameter_ref(root, errors)
     _validate_field_object_storage(root, errors)
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_filterable_has_index(root, warnings)
+    # SP-H Unit9 — @filterable on a subtype with no operator band → error.
+    _validate_filterable_has_supported_ops(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +176,7 @@ def _type_ok(value: object, value_type: str) -> bool:
         return isinstance(value, bool)
     if value_type == "string":
         return isinstance(value, str)
-    if value_type == "stringArray":
+    if value_type == "stringarray":
         return isinstance(value, list)
     if value_type in ("filter", "properties"):
         # Object-typed attrs must be a dict (not a string, not an array).
@@ -207,6 +233,7 @@ def _validate_attr_schema(
     root: MetaData,
     registry: TypeRegistry,
     errors: list[MetaError],
+    strict: bool = False,
 ) -> None:
     common_attrs = registry.get_common_attrs()
     # Cache effective schemas per (type, sub_type) — also dedupes the per-type-vs-common
@@ -220,6 +247,39 @@ def _validate_attr_schema(
             cached = _effective_schemas(node.type, node.sub_type, common_attrs, registry, errors, node)
             schema_cache[key] = cached
         schemas, schema_by_name = cached
+
+        # --- Check 0 (ADR-0023): strict-load undeclared-attr rejection ---
+        #
+        # Runs BEFORE the `not schemas` early-return: a node type with no
+        # per-type schema and no common attrs must still reject an authored
+        # @-attr under strict. Own-attrs only — an inherited/overlaid declared
+        # attr was validated on its declaring node and never appears in
+        # own_meta_attrs(). An own attr matching neither a per-type schema entry
+        # nor a commonAttr is a made-up attribute → ERR_UNKNOWN_ATTR (closing the
+        # open policy). In lax mode (the default) this is a no-op, preserving the
+        # legacy open-attr behavior so downstream apps can loosen.
+        if strict:
+            for attr_node in node.own_meta_attrs():
+                # attr.properties is a first-class, registered, canonical attr
+                # subtype whose designed purpose is an arbitrary-named structural
+                # property bag (its NAME is intentionally not declared by any
+                # per-type schema). It is sanctioned vocabulary, not a made-up
+                # attribute, so strict-attr exempts a materialized properties-attr
+                # from ERR_UNKNOWN_ATTR. (A typo'd plain @-attr still fails — only
+                # the `properties` subtype is exempt.) Mirrors the TS reference
+                # Check-0 in attr-schema-validate.ts.
+                if attr_node.sub_type == ATTR_SUBTYPE_PROPERTIES:
+                    continue
+                if attr_node.name not in schema_by_name:
+                    errors.append(
+                        MetaError(
+                            f"Unknown attribute '@{attr_node.name}' on "
+                            f"{_node_label(node)} — not declared by any registered "
+                            f"provider for {node.type}.{node.sub_type}",
+                            ErrorCode.ERR_UNKNOWN_ATTR,
+                            envelope=node.source,
+                        )
+                    )
 
         if not schemas:
             continue
@@ -251,13 +311,21 @@ def _validate_attr_schema(
             if raw_value is None:
                 continue
 
-            # Check 2: type validation
-            if schema.value_type is not None:
-                if not _type_ok(raw_value, schema.value_type):
+            # Check 2: type validation. An array-valued attr (the `string` +
+            # is_array model that replaced the `stringarray` subtype) is validated
+            # as a string array.
+            effective_value_type = (
+                ATTR_SUBTYPE_STRINGARRAY
+                if schema.value_type is not None
+                and (schema.is_array or schema.value_type == ATTR_SUBTYPE_STRINGARRAY)
+                else schema.value_type
+            )
+            if effective_value_type is not None:
+                if not _type_ok(raw_value, effective_value_type):
                     errors.append(
                         MetaError(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
-                            f"{raw_value!r} which does not match expected type '{schema.value_type}'",
+                            f"{raw_value!r} which does not match expected type '{effective_value_type}'",
                             ErrorCode.ERR_BAD_ATTR_VALUE,
                             envelope=node.source,
                         )
@@ -580,16 +648,21 @@ def _validate_datagrid_sort_fields(
 # ---------------------------------------------------------------------------
 # Ops-per-field-subtype allow-table (from query-constants.ts)
 # ---------------------------------------------------------------------------
-# string         → eq, ne, in, like, isNull
+# string / enum  → eq, ne, in, like, isNull
+# uuid           → eq, ne, in, isNull  (no like — not a substring type, no ordering)
 # boolean        → eq, isNull
-# numerics + temporal → eq, ne, gt, gte, lt, lte, in, isNull
+# numerics + currency + temporal → eq, ne, gt, gte, lt, lte, in, isNull
 
 _OPS_STRING: frozenset[str] = frozenset({"eq", "ne", "in", "like", "isNull"})
+_OPS_UUID: frozenset[str] = frozenset({"eq", "ne", "in", "isNull"})
 _OPS_BOOLEAN: frozenset[str] = frozenset({"eq", "isNull"})
 _OPS_NUMERIC_TEMPORAL: frozenset[str] = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
 
+# string-shaped subtypes (string op band): string + enum.
+_STRING_SUBTYPES: frozenset[str] = frozenset({"string", "enum"})
+# currency = integer minor units (an orderable number) → numeric band.
 _NUMERIC_TEMPORAL_SUBTYPES: frozenset[str] = frozenset(
-    {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    {"int", "long", "double", "float", "decimal", "currency", "date", "time", "timestamp"}
 )
 
 
@@ -598,8 +671,10 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
 
     Mirrors the ops-per-subtype allow-table from query-constants.ts.
     """
-    if field_subtype == "string":
+    if field_subtype in _STRING_SUBTYPES:
         return _OPS_STRING
+    if field_subtype == "uuid":
+        return _OPS_UUID
     if field_subtype == "boolean":
         return _OPS_BOOLEAN
     if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:
@@ -949,6 +1024,162 @@ def _validate_origin_paths(
 
 
 # ---------------------------------------------------------------------------
+# Pass: M:N relationship validation (FR-017 slim vocabulary)
+# ---------------------------------------------------------------------------
+# Deferred-resolution validation (runs after all files load + super-resolution,
+# like origin paths), enforcing the cross-port M:N contract:
+#
+#   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+#       entity). Otherwise ERR_BAD_ATTR_VALUE.
+#   (b) @symmetric and @sourceRefField are mutually exclusive → ERR_BAD_ATTR_VALUE.
+#   (c) When @through is present: the named entity must exist and declare exactly
+#       two identity.reference children; @sourceRefField (if present) must match
+#       one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
+#   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+#       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+#
+# Own-relationships only: a relationship is validated on the entity that declares
+# it (matching the own-attrs policy of the other passes). Mirrors the TS
+# reference (validation-passes.ts validateRelationships).
+
+
+def _strip_package(name: str) -> str:
+    idx = name.rfind(PACKAGE_SEP)
+    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
+
+
+def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
+    """FK field names declared by an entity's identity.reference children."""
+    out: list[str] = []
+    for child in junction.own_children():
+        if child.type != TYPE_IDENTITY or child.sub_type != IDENTITY_SUBTYPE_REFERENCE:
+            continue
+        fields = child.attr(IDENTITY_ATTR_FIELDS)
+        if isinstance(fields, str):
+            first = fields.split(",")[0].strip()
+            if first:
+                out.append(first)
+        elif isinstance(fields, (list, tuple)) and fields and isinstance(fields[0], str):
+            out.append(fields[0])
+    return out
+
+
+def _count_junction_references(junction: MetaData) -> int:
+    return sum(
+        1
+        for c in junction.own_children()
+        if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE
+    )
+
+
+def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
+    object_index = _build_object_index(root)
+
+    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
+        for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
+            through = rel.attr(RELATIONSHIP_ATTR_THROUGH)
+            source_ref_field = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+            symmetric = rel.attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
+            cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY)
+            object_ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)
+
+            has_through = isinstance(through, str) and through != ""
+            has_source_ref_field = (
+                isinstance(source_ref_field, str) and source_ref_field != ""
+            )
+            is_many = cardinality == CARDINALITY_MANY
+            is_m2m = has_through and is_many
+
+            # Rule (d): M:N-only attrs on a non-M:N relationship.
+            if not is_m2m:
+                if has_through:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_THROUGH} but is not a M:N relationship '
+                        f'(requires @{RELATIONSHIP_ATTR_CARDINALITY}: "{CARDINALITY_MANY}").',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                if has_source_ref_field:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                if symmetric:
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" sets '
+                        f'@{RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+                continue
+
+            # Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+            if symmetric and has_source_ref_field:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" sets both '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} and '
+                    f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.',
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=rel.source,
+                ))
+
+            # Rule (a): @symmetric valid only on a self-join (@objectRef == declaring entity).
+            is_self_join = (
+                isinstance(object_ref, str) and _strip_package(object_ref) == obj.name
+            )
+            if symmetric and not is_self_join:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" sets '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} but @{RELATIONSHIP_ATTR_OBJECT_REF} '
+                    f'"{object_ref}" is not the declaring entity "{obj.name}"; '
+                    f'@{RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.',
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=rel.source,
+                ))
+
+            # Rule (c): @through must name an entity declaring exactly two
+            # identity.reference children.
+            junction = object_index.get(_strip_package(through))  # type: ignore[arg-type]
+            if junction is None:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" '
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" does not resolve to an entity.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=resolved_source(
+                        rel.source, f"{obj.fqn()}::{rel.name}", str(through)
+                    ),
+                ))
+                continue
+            ref_count = _count_junction_references(junction)
+            if ref_count != 2:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" '
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" must declare exactly two '
+                    f'identity.reference children (one per FK side); found {ref_count}.',
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=rel.source,
+                ))
+                continue
+            # @sourceRefField (if present) must match one of the junction's
+            # reference FK fields.
+            if has_source_ref_field:
+                fk_fields = _junction_reference_fk_fields(junction)
+                if source_ref_field not in fk_fields:
+                    available = ", ".join(fk_fields) or "(none)"
+                    errors.append(MetaError(
+                        f'relationship "{obj.name}.{rel.name}" '
+                        f'@{RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "{source_ref_field}" '
+                        f'does not match any identity.reference FK field on junction '
+                        f'"{through}". Available: {available}.',
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        envelope=rel.source,
+                    ))
+
+
+# ---------------------------------------------------------------------------
 # Pass: one-primary multi-source rule (ADR-0007 source v2)
 # ---------------------------------------------------------------------------
 # Walks every object.entity / object.value; counts source own-children with
@@ -1085,32 +1316,72 @@ def _validate_filterable_has_index(
 
 
 # ---------------------------------------------------------------------------
+# Pass: @filterable on a subtype with no operator band (SP-H Unit9)
+# ---------------------------------------------------------------------------
+# A field marked @filterable: true whose subtype has no op band (e.g.
+# field.object) would silently generate a filter with an empty operator set —
+# a route that rejects every request. Error early.
+# → ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+
+
+def _validate_filterable_has_supported_ops(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT or not isinstance(node, MetaObject):
+            continue
+        for field in node.fields():
+            if field.attr("filterable") is not True:
+                continue
+            if ops_for_subtype(field.sub_type):
+                continue
+            errors.append(
+                MetaError(
+                    f'Field "{node.name}.{field.name}" has @filterable: true but its subtype '
+                    f'"{field.sub_type}" has no filter-operator band. Remove @filterable, or use a '
+                    f"field subtype that supports filtering "
+                    f"(string/enum/uuid/number/currency/date/boolean).",
+                    ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    envelope=field.source,
+                )
+            )
+
+
+# ---------------------------------------------------------------------------
 # Pass: field.object @storage validation
 # ---------------------------------------------------------------------------
-# Two cross-port rules:
-#   1. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
+# Cross-port rules (ADR-0013):
+#   1. A field.object ALWAYS requires @objectRef → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+#      A field.object models a typed nested value; without @objectRef it is an
+#      oxymoron at the logical layer. Open/untyped JSON uses the physical
+#      @dbColumnType: jsonb escape hatch on field.string, NOT a bare object. This
+#      rule subsumes the legacy @storage-without-@objectRef check (@storage is only
+#      meaningful on a field.object), so missing-@objectRef now always reports this
+#      single, clearer error — one error per node (the flattened/array check is
+#      skipped when @objectRef is absent).
+#   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
 #      materialises one-column-per-field; arrays require @storage="jsonb").
-#   2. @storage set without @objectRef → ERR_STORAGE_WITHOUT_OBJECT_REF
-#      (storage shape only applies to referenced objects).
 
 
 def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
     for node in _walk(root):
         if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_OBJECT:
             continue
-        storage = node.attr(FIELD_ATTR_STORAGE)
-        if storage is None:
-            continue
         object_ref = node.attr(FIELD_ATTR_OBJECT_REF)
         if not (isinstance(object_ref, str) and object_ref):
             errors.append(MetaError(
-                code=ErrorCode.ERR_STORAGE_WITHOUT_OBJECT_REF,
+                code=ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
                 message=(
-                    f"field.object '{node.name}' has @storage but no @objectRef — "
-                    f"@storage shape only applies to referenced objects"
+                    f"field.object '{node.name}' has no @objectRef — a field.object "
+                    f"requires @objectRef. For an open/untyped JSON map use "
+                    f"@dbColumnType: jsonb on a field.string instead of a bare object."
                 ),
                 envelope=node.source,
             ))
+            continue
+        storage = node.attr(FIELD_ATTR_STORAGE)
+        if storage is None:
             continue
         if storage == "flattened" and getattr(node, "is_array", False):
             errors.append(MetaError(
@@ -1186,15 +1457,10 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                     envelope=tpl.source,
                 ))
 
-        # R1 — prompt requires @payloadRef
-        if is_prompt and not has_payload_ref:
-            errors.append(MetaError(
-                code=ErrorCode.ERR_MISSING_REQUIRED_ATTR,
-                message=f"template.prompt '{tpl.name}' is missing required @payloadRef",
-                envelope=tpl.source,
-            ))
-            continue
-
+        # @payloadRef required-ness is enforced by the generic required-attr schema
+        # check (Check 1) — payloadRef is declared required on the concrete template
+        # subtypes. No separate manual emit here (matches TS). If absent, the
+        # reference-resolution checks below simply skip.
         if not has_payload_ref:
             continue
 

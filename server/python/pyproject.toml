@@ -66,6 +66,12 @@ build-backend = "hatchling.build"
 packages = ["src/metaobjects"]
 exclude = ["**/KNOWN_GAPS.md"]
 
+# Bundle the repo-root agent-context/ content tree into the wheel so the installed
+# `metaobjects agent-docs` command can resolve it offline (no Node, no monorepo).
+# In dev/test the resolver falls back to walking up to the monorepo agent-context/.
+[tool.hatch.build.targets.wheel.force-include]
+"../../agent-context" = "metaobjects/agent_context/_content"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

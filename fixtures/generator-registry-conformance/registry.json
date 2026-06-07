@@ -53,9 +53,9 @@
       "ports": ["typescript"]
     },
     "callable": {
-      "concept": "Per-entity callable/service surface wrapping the query helpers.",
+      "concept": "Per-entity callable wrapper for a callable source (storedProc / tableFunction); in TS it also covers the service surface wrapping the query helpers.",
       "tier": "native",
-      "ports": ["typescript"]
+      "ports": ["typescript", "csharp"]
     },
     "routes-hono": {
       "concept": "Per-entity Hono CRUD routes.",
@@ -72,10 +72,16 @@
       "tier": "native",
       "ports": ["typescript"]
     },
-    "trace-helper": {
-      "concept": "Per-entity typed record<Entity> helper wrapping recordLlmCall (LlmCallBase-derived entities only).",
+    "api-docs": {
+      "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "ports": ["typescript"]
+    },
+    "trace-helper": {
+      "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
+      "tier": "native",
+      "note": "TS emits record<Entity> + call<Entity>; Java (codegen-spring) emits record<Entity> only — the Java LlmClient seam is BYO/vendor-neutral and not ported (ADR-0024). Python emits record_<entity> only (same BYO-caller rationale).",
+      "ports": ["typescript", "java", "python"]
     },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",

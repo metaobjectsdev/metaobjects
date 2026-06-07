@@ -1,0 +1,80 @@
+{
+  "metadata.root": {
+    "package": "acme::blog",
+    "children": [
+
+      { "object.entity": { "name": "Author", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name", "@required": true, "@filterable": true } },
+          { "field.string": { "name": "bio" } },
+          { "field.enum":   { "name": "status", "@values": ["ACTIVE", "DISABLED"] } },
+          { "source.rdb":   { "@table": "authors" } },
+          { "relationship.association": { "name": "tags", "@cardinality": "many",
+              "@objectRef": "Tag", "@through": "AuthorTag" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } },
+
+      { "object.entity": { "name": "Tag", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "label" } },
+          { "source.rdb":   { "@table": "tags" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } },
+
+      { "object.entity": { "name": "AuthorTag", "children": [
+          { "field.long": { "name": "authorId" } },
+          { "field.long": { "name": "tagId" } },
+          { "source.rdb": { "@table": "author_tags" } },
+          { "identity.primary":   { "@fields": ["authorId", "tagId"] } },
+          { "identity.reference": { "name": "fkAuthor", "@fields": "authorId", "@references": "Author" } },
+          { "identity.reference": { "name": "fkTag",    "@fields": "tagId",    "@references": "Tag" } }
+      ] } },
+
+      { "object.value": { "name": "Address", "children": [
+          { "field.string": { "name": "city" } },
+          { "field.string": { "name": "zip" } }
+      ] } },
+
+      { "object.entity": { "name": "BaseNode", "abstract": true, "children": [
+          { "field.long": { "name": "id" } }
+      ] } },
+
+      { "object.value": { "name": "SummaryPayloadVo", "children": [
+          { "field.string": { "name": "summary", "@required": true } }
+      ] } },
+
+      { "object.value": { "name": "WelcomePayloadVo", "children": [
+          { "field.string": { "name": "name" } },
+          { "field.string": { "name": "headline" } }
+      ] } },
+
+      { "object.value": { "name": "ClassifyPayloadVo", "children": [
+          { "field.string": { "name": "question", "@required": true } }
+      ] } },
+
+      { "template.output": {
+          "name": "SummaryOutput",
+          "@payloadRef": "SummaryPayloadVo",
+          "@textRef": "blog/summary",
+          "@format": "json"
+      } },
+
+      { "template.output": {
+          "name": "WelcomeEmail",
+          "@kind": "email",
+          "@payloadRef": "WelcomePayloadVo",
+          "@subjectRef": "email/welcome.subject",
+          "@htmlBodyRef": "email/welcome.html",
+          "@textBodyRef": "email/welcome.text"
+      } },
+
+      { "template.prompt": {
+          "name": "ClassifyPrompt",
+          "@payloadRef": "ClassifyPayloadVo",
+          "@textRef": "blog/classify",
+          "@format": "xml"
+      } }
+
+    ]
+  }
+}

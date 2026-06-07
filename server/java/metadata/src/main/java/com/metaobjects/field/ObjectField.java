@@ -1,8 +1,17 @@
 /*
- * Copyright 2004 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2004 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.field;
 
@@ -10,7 +19,6 @@ import com.metaobjects.DataTypes;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.util.MetaDataUtil;
 import com.metaobjects.registry.MetaDataRegistry;
-import com.metaobjects.attr.StringAttribute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,17 +52,12 @@ public class ObjectField extends MetaField<Object>
                 def.type(TYPE_FIELD).subType(SUBTYPE_OBJECT)
                    .description("Object field with object reference support")
 
-                   // INHERIT FROM BASE FIELD
+                   // INHERIT FROM BASE FIELD.
+                   // @objectRef + @storage are now declared on field.base (SP-G
+                   // cross-port logical vocabulary — every field subtype carries
+                   // them), so ObjectField inherits both via the snapshot rather
+                   // than re-declaring them here.
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
-
-                // OBJECT-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_OBJECTREF)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_STORAGE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
             });
 
             log.debug("Registered ObjectField type with unified registry");

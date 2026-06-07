@@ -5,9 +5,11 @@ import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
+import { canonicalSerialize } from "../src/serializer-json.js";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_PROVIDED,
 } from "../src/core/field/field-constants.js";
 
 async function load(doc: unknown) {
@@ -162,6 +164,74 @@ describe("field.enum — abstract + extends inherits @values", () => {
     expect(sup).toBeInstanceOf(MetaField);
     expect(sup!.name).toBe("Status");
     expect(sup!.ownAttr(FIELD_ATTR_VALUES)).toEqual(["ACTIVE", "INACTIVE"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-019: @provided on an abstract field.enum declaration
+// ---------------------------------------------------------------------------
+
+describe("field.enum — @provided flag (FR-019)", () => {
+  it("@provided: true loads clean and round-trips through the canonical serializer", async () => {
+    const doc = {
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "field.enum": {
+              name: "Status",
+              abstract: true,
+              "@provided": true,
+              "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+            },
+          },
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.enum": { name: "status", extends: "Status" } },
+                { "identity.primary": { "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const { root, errors } = await load(doc);
+    expect(errors).toHaveLength(0);
+
+    const declaration = root.fields().find((f) => f.name === "Status");
+    expect(declaration).toBeInstanceOf(MetaField);
+    expect(declaration!.ownAttr(FIELD_ATTR_PROVIDED)).toBe(true);
+
+    // Round-trip: the canonical serializer must preserve @provided as a boolean,
+    // and a re-parse of the canonical JSON must serialize identically.
+    const serialized = canonicalSerialize(root);
+    expect(serialized).toContain('"@provided": true');
+    const reparsed = await load(JSON.parse(serialized));
+    expect(reparsed.errors).toHaveLength(0);
+    expect(canonicalSerialize(reparsed.root)).toBe(serialized);
+  });
+
+  it("emits ERR_BAD_ATTR_VALUE for a non-boolean @provided value", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "field.enum": {
+              name: "Status",
+              abstract: true,
+              "@provided": "yes",
+              "@values": ["DRAFT", "PUBLISHED"],
+            },
+          },
+        ],
+      },
+    });
+    const codes = errors.map((e) => (e as { code?: string }).code);
+    expect(codes).toContain("ERR_BAD_ATTR_VALUE");
   });
 });
 

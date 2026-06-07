@@ -1,0 +1,48 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "ProductPromptPayload",
+          "@description": "Typed projection passed to the product prompt/output/toolcall templates.",
+          "children": [
+            { "field.string": { "name": "sku" } },
+            { "field.string": { "name": "name" } },
+            { "field.string": {
+                "name": "tags",
+                "isArray": true,
+                "children": [ { "validator.array": { "@min": 1, "@max": 5 } } ]
+              }
+            },
+            { "field.enum": { "name": "status", "extends": "acme::common::Lifecycle" } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "describeProduct",
+          "@payloadRef": "ProductPromptPayload",
+          "@textRef": "product/describe",
+          "@format": "xml"
+        }
+      },
+      {
+        "template.output": {
+          "name": "productCard",
+          "@payloadRef": "ProductPromptPayload",
+          "@textRef": "product/card",
+          "@format": "html",
+          "@promptStyle": "guide"
+        }
+      },
+      {
+        "template.toolcall": {
+          "name": "lookupProduct",
+          "@toolName": "lookup_product",
+          "@payloadRef": "ProductPromptPayload"
+        }
+      }
+    ]
+  }
+}

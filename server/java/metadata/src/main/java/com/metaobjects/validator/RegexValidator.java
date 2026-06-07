@@ -1,12 +1,22 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Draagon Software
- * LLC. Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.validator;
 
 import com.metaobjects.*;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.apache.commons.validator.GenericValidator;
@@ -21,8 +31,6 @@ public class RegexValidator extends MetaValidator {
 
     public final static String SUBTYPE_REGEX = "regex";
 
-    /** Legacy mask attribute (pre-cross-port). Prefer {@link #ATTR_PATTERN}. */
-    public final static String ATTR_MASK = "mask";
     /**
      * Cross-port pattern attribute ({@code @pattern}) — the canonical regex source
      * shared with TS / C# / Python / Kotlin (see the SP-C validator-parity contract).
@@ -39,21 +47,23 @@ public class RegexValidator extends MetaValidator {
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             // REGEX-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-            // Both are optional; exactly one of @pattern (cross-port canonical) or
-            // @mask (legacy) supplies the regex. @pattern wins when both are present.
+            // @pattern (cross-port canonical) supplies the regex. The cross-port
+            // contract also declares the inherited int-typed @min/@max bounds here.
             def.optionalAttributeWithConstraints(ATTR_PATTERN)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
-            def.optionalAttributeWithConstraints(ATTR_MASK)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+            def.optionalAttributeWithConstraints(ATTR_MIN)
+               .ofType(IntAttribute.SUBTYPE_INT)
+               .asSingle();
+            def.optionalAttributeWithConstraints(ATTR_MAX)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }
 
-    /** Resolve the regex source — {@code @pattern} (canonical) preferred, falling back to {@code @mask}. */
+    /** Resolve the regex source — the cross-port canonical {@code @pattern}. */
     public String resolvePattern() {
         if (hasMetaAttr(ATTR_PATTERN)) return getMetaAttr(ATTR_PATTERN).getValueAsString();
-        if (hasMetaAttr(ATTR_MASK)) return getMetaAttr(ATTR_MASK).getValueAsString();
         return null;
     }
 

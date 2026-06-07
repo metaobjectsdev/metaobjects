@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Matrix",
+          "children": [
+            { "field.long":      { "name": "id" } },
+            { "field.string":    { "name": "fString",    "@filterable": true } },
+            { "field.int":       { "name": "fInt",       "@filterable": true } },
+            { "field.long":      { "name": "fLong",      "@filterable": true } },
+            { "field.double":    { "name": "fDouble",    "@filterable": true } },
+            { "field.float":     { "name": "fFloat",     "@filterable": true } },
+            { "field.decimal":   { "name": "fDecimal",   "@filterable": true } },
+            { "field.currency":  { "name": "fCurrency",  "@currency": "USD", "@filterable": true } },
+            { "field.boolean":   { "name": "fBoolean",   "@filterable": true } },
+            { "field.date":      { "name": "fDate",      "@filterable": true } },
+            { "field.time":      { "name": "fTime",      "@filterable": true } },
+            { "field.timestamp": { "name": "fTimestamp", "@filterable": true } },
+            { "field.enum":      { "name": "fEnum",      "@values": ["a", "b", "c"], "@filterable": true } },
+            { "field.uuid":      { "name": "fUuid",      "@filterable": true } },
+            { "source.rdb":      { "@table": "matrix" } },
+            { "identity.primary":   { "name": "pk",         "@fields": ["id"] } },
+            { "identity.secondary": { "name": "byString",    "@fields": ["fString"] } },
+            { "identity.secondary": { "name": "byInt",       "@fields": ["fInt"] } },
+            { "identity.secondary": { "name": "byLong",      "@fields": ["fLong"] } },
+            { "identity.secondary": { "name": "byDouble",    "@fields": ["fDouble"] } },
+            { "identity.secondary": { "name": "byFloat",     "@fields": ["fFloat"] } },
+            { "identity.secondary": { "name": "byDecimal",   "@fields": ["fDecimal"] } },
+            { "identity.secondary": { "name": "byCurrency",  "@fields": ["fCurrency"] } },
+            { "identity.secondary": { "name": "byBoolean",   "@fields": ["fBoolean"] } },
+            { "identity.secondary": { "name": "byDate",      "@fields": ["fDate"] } },
+            { "identity.secondary": { "name": "byTime",      "@fields": ["fTime"] } },
+            { "identity.secondary": { "name": "byTimestamp", "@fields": ["fTimestamp"] } },
+            { "identity.secondary": { "name": "byEnum",      "@fields": ["fEnum"] } },
+            { "identity.secondary": { "name": "byUuid",      "@fields": ["fUuid"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

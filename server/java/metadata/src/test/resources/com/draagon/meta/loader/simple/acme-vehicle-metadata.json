@@ -254,8 +254,8 @@
                     "validator.length": {
                       "name": "bedRange",
                       "package": "acme",
-                      "@max": 12.0,
-                      "@min": 3.0
+                      "@max": 12,
+                      "@min": 3
                     }
                   }
                 ]

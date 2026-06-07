@@ -1,0 +1,43 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <dependencies>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>4.13.1</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <directory>target/docs-mojo-test</directory>
+        <plugins>
+            <plugin>
+                <groupId>com.metaobjects</groupId>
+                <artifactId>metaobjects-maven-plugin</artifactId>
+                <configuration>
+                    <loader>
+                        <classname>com.metaobjects.loader.MetaDataLoader</classname>
+                        <name>docs-mojo-test-pom</name>
+                        <sourceDir>./src/test/resources</sourceDir>
+                        <sources>
+                            <source>mojo/mojo-test-metadata.json</source>
+                        </sources>
+                    </loader>
+                    <outputDirectory>target/docs-mojo-test/docs</outputDirectory>
+                    <apiSubDir>api/java</apiSubDir>
+                    <layout>package</layout>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>docs</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

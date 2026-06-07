@@ -1,6 +1,7 @@
 package com.metaobjects.identity;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -24,6 +25,9 @@ public class SecondaryIdentity extends MetaIdentity {
      * Create a secondary identity with the specified name.
      * The subType is automatically set to "secondary".
      */
+    /** Logical uniqueness marker (boolean) — cross-port canonical attr on identity.secondary. */
+    public static final String ATTR_UNIQUE = "unique";
+
     public SecondaryIdentity(String name) {
         super(SUBTYPE_SECONDARY, name);
     }
@@ -39,9 +43,12 @@ public class SecondaryIdentity extends MetaIdentity {
                .description("Secondary identity for business keys and alternate identifiers")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // Configure each attribute separately to avoid method chaining conflicts
-            def.optionalAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_GENERATION).ofType(StringAttribute.SUBTYPE_STRING).withEnum(GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED);
+            // Configure each attribute separately to avoid method chaining conflicts.
+            // @fields is REQUIRED on identity.secondary (cross-port canonical).
+            // @generation is NOT a secondary-identity attr in the canonical (it is
+            // primary-only) — intentionally not declared here.
+            def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_UNIQUE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)

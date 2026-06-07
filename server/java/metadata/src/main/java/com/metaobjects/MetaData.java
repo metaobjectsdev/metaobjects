@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects;
 
@@ -301,6 +310,15 @@ public class MetaData implements Cloneable, Serializable {
     // CanonicalJsonSerializer would suppress that re-declaration and break
     // byte-parity with the TS / Python oracles.
     private boolean packageAuthored = false;
+
+    // The raw `extends` (super) reference string EXACTLY as authored in the
+    // source file (e.g. "Product", "acme::catalog::Product", a relative ref).
+    // The parser resolves this string to a concrete super node (getSuperData),
+    // but the canonical serializer must echo the AUTHORED form verbatim — never
+    // a recomputed short-vs-FQN form — to stay byte-identical with the TS / C# /
+    // Python oracles (which all preserve and re-emit the raw `superRef`). See
+    // CanonicalJsonSerializer's `extends` emission and the TS `model.superRef`.
+    private String authoredSuperRef = null;
 
     /**
      * Constructs a MetaData object with enhanced type system integration.
@@ -872,6 +890,25 @@ public class MetaData implements Cloneable, Serializable {
     }
 
     /**
+     * Returns the raw {@code extends} (super) reference string exactly as it was
+     * authored in the source file, or {@code null} if no {@code extends} was
+     * authored on this node. The canonical serializer echoes this verbatim. See
+     * the {@code authoredSuperRef} field doc for context.
+     */
+    public String getAuthoredSuperRef() {
+        return authoredSuperRef;
+    }
+
+    /**
+     * Records the raw, as-authored {@code extends} (super) reference string.
+     * Called by the canonical JSON / YAML parser when the body declares an
+     * {@code "extends"} key, so the serializer can re-emit it verbatim.
+     */
+    public void setAuthoredSuperRef(String authoredSuperRef) {
+        this.authoredSuperRef = authoredSuperRef;
+    }
+
+    /**
      * Retrieve the MetaObject short name
      * @return the short name of this metadata without package prefix
      */
@@ -1215,6 +1252,13 @@ public class MetaData implements Cloneable, Serializable {
         // identical to prior behavior for every consumer that never sets a custom
         // registry (getTypeRegistry() defaults to getInstance()). See
         // docs/superpowers/specs/2026-05-29-java-per-loader-registry-design.md.
+        // The ADR-0023 pivot applies to the LOADER default (authored-metadata load
+        // measures the sealed, defined-provider-set vocabulary). A loader-detached
+        // node (no owning loader) is a programmatic runtime construction — e.g. a
+        // downstream module instantiating its own SPI-registered object type
+        // (object.managed in om). It keeps the SPI singleton fallback so those
+        // runtime types stay constructible. Authored metadata always has an owning
+        // loader, so it gets the sealed registry.
         MetaDataLoader owningLoader = getLoader();
         MetaDataRegistry registry = (owningLoader != null)
             ? owningLoader.getTypeRegistry()

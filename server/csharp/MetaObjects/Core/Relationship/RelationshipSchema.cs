@@ -29,28 +29,22 @@ public static class RelationshipSchema
             Description: "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_FK_FIELD,
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_THROUGH,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Name of the foreign-key field on the source entity (for one-to-many / many-to-one relationships)."),
+            Description: "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_PARENT_FIELD,
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Field name on the parent entity that the FK references. Defaults to the parent's primary identity field."),
+            Description: "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."),
 
         new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_JOIN_ENTITY,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Name: RelationshipConstants.RELATIONSHIP_ATTR_SYMMETRIC,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
             Required: false,
-            Description: "Join-table entity name for N:M relationships."),
-
-        new AttrSchema(
-            Name: RelationshipConstants.RELATIONSHIP_ATTR_JOIN_FIELDS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
-            Required: false,
-            Description: "Join-table column names for N:M relationships."),
+            Description: "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."),
 
         new AttrSchema(
             Name: RelationshipConstants.RELATIONSHIP_ATTR_ON_DELETE,

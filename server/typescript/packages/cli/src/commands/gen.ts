@@ -5,8 +5,9 @@ import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { log } from "../lib/log.js";
+import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
-import { runGen, listGenerators, deriveTraceFields } from "@metaobjectsdev/codegen-ts";
+import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
 function mapStatus(s: WriteStatus): GenFileStatus {
@@ -32,6 +33,9 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
     return listGeneratorsCommand();
   }
 
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  warnIfAgentContextStale(cwd);
+
   const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);
 
@@ -47,7 +51,6 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
   try {
     metadata = await loadMemory(projectRoot, {
       ...(forgeConfig.providers !== undefined ? { providers: forgeConfig.providers } : {}),
-      preFreeze: deriveTraceFields,
     });
   } catch (err) {
     const msg = (err as Error).message;

@@ -1,0 +1,29 @@
+name: m2m-hetero-traversal
+description: >
+  FR-018 hetero M:N over HTTP: GET /posts/:id/tags traverses the PostTag
+  junction (postId→Post, tagId→Tag derived from the junction's two
+  identity.reference children) and returns the related Tag rows. An orphan
+  source returns an empty array. The cross-port REST contract: the M:N
+  navigation is exposed as a sub-resource of the source.
+requests:
+  - id: r1
+    method: GET
+    path: /api/posts/1/tags
+    expect:
+      status: 200
+      body:
+        namesUnordered: [green, red]   # order-insensitive: runner sorts before compare
+  - id: r2
+    method: GET
+    path: /api/posts/2/tags
+    expect:
+      status: 200
+      body:
+        namesUnordered: [blue]
+  - id: r3
+    method: GET
+    path: /api/posts/3/tags
+    expect:
+      status: 200
+      body:
+        length: 0

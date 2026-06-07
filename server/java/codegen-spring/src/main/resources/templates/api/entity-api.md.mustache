@@ -1,0 +1,37 @@
+# {{node}} API
+{{#modelHref}}
+
+**Model / metadata:** [{{node}}]({{modelHref}})
+{{/modelHref}}
+
+> Import paths are fully-qualified; add them to your repository's source set.
+{{#sections}}
+
+## {{heading}}
+{{#symbols}}
+
+### `{{signature}}`
+
+{{usage}}
+
+```java
+{{importFqn}}
+```
+{{#returns}}
+
+Returns: {{returns}}
+{{/returns}}
+{{#throwsNote}}
+
+Throws: {{throwsNote}}
+{{/throwsNote}}
+{{#hasFields}}
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+{{#fieldRows}}
+| `{{field}}` | `{{type}}` | {{required}} | {{notes}} |
+{{/fieldRows}}
+{{/hasFields}}
+{{/symbols}}
+{{/sections}}

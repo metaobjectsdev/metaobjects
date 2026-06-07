@@ -28,8 +28,6 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
   FIELD_SUBTYPE_STRING,
   FIELD_ATTR_VALUES,
 } from "../field/field-constants.js";
@@ -37,8 +35,6 @@ import {
 const NUMERIC_DISCRIMINATOR_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_SHORT,
-  FIELD_SUBTYPE_BYTE,
 ]);
 
 export function validateDiscriminator(root: MetaData): ParseError[] {

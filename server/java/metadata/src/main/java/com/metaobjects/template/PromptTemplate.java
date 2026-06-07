@@ -27,12 +27,10 @@ public final class PromptTemplate extends MetaTemplate {
                .description("Template (LLM prompt) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
-            // @payloadRef is REQUIRED on template.prompt (matches TS / C# / Python:
-            // attrSchema marks payloadRef required:true on the prompt subtype). The
-            // inherited optional declaration on template.base is shadowed by this
-            // direct requirement — see TypeDefinition.populateInheritedRequirements.
-            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // SP-G Unit 6a: shared template attrs are declared here (not on the
+            // attr-free template.base). @payloadRef is REQUIRED on template.prompt
+            // (matches TS / C# / Python).
+            registerSharedAttrs(def, true);
 
             // Prompt-overlay attributes (template.prompt only)
             def.optionalAttributeWithConstraints(ATTR_MAX_TOKENS)
@@ -40,6 +38,8 @@ public final class PromptTemplate extends MetaTemplate {
             def.optionalAttributeWithConstraints(ATTR_REQUIRED_SLOTS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_MODEL)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_RESPONSE_REF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
@@ -68,6 +68,13 @@ public final class PromptTemplate extends MetaTemplate {
     public String getModel() {
         return hasMetaAttr(ATTR_MODEL, false)
             ? getMetaAttr(ATTR_MODEL, false).getValueAsString()
+            : null;
+    }
+
+    /** Returns the raw value of {@code @responseRef}, or {@code null} if absent. */
+    public String getResponseRef() {
+        return hasMetaAttr(ATTR_RESPONSE_REF, false)
+            ? getMetaAttr(ATTR_RESPONSE_REF, false).getValueAsString()
             : null;
     }
 }

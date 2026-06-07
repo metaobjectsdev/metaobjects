@@ -1,0 +1,2724 @@
+{
+  "types": [
+    {
+      "type": "attr",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "boolean",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "class",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "double",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "filter",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "int",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "long",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "properties",
+      "attrs": []
+    },
+    {
+      "type": "attr",
+      "subType": "string",
+      "attrs": []
+    },
+    {
+      "type": "field",
+      "subType": "base",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "boolean",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "currency",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "currency",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "date",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "decimal",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "double",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "enum",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "coerceDefault",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "enumAlias",
+          "valueType": "properties",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "enumDoc",
+          "valueType": "properties",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "normalize",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "values",
+          "valueType": "string",
+          "isArray": true,
+          "required": true
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "float",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "int",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "long",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "object",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "string",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "time",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "timestamp",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "uuid",
+      "attrs": [
+        {
+          "name": "autoSet",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "precision",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "readOnly",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "scale",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "storage",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "identity",
+      "subType": "primary",
+      "attrs": [
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true
+        },
+        {
+          "name": "generation",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "identity",
+      "subType": "reference",
+      "attrs": [
+        {
+          "name": "enforce",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true
+        },
+        {
+          "name": "references",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "identity",
+      "subType": "secondary",
+      "attrs": [
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "layout",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "layout",
+      "subType": "dataGrid",
+      "attrs": [
+        {
+          "name": "columns",
+          "valueType": "string",
+          "isArray": true,
+          "required": false
+        },
+        {
+          "name": "defaultSortField",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "defaultSortOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "pageSize",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "metadata",
+      "subType": "root",
+      "attrs": []
+    },
+    {
+      "type": "object",
+      "subType": "base",
+      "attrs": [
+        {
+          "name": "discriminator",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "discriminatorValue",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "entity",
+      "attrs": [
+        {
+          "name": "discriminator",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "discriminatorValue",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "value",
+      "attrs": [
+        {
+          "name": "discriminator",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "discriminatorValue",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "normalize",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "aggregate",
+      "attrs": [
+        {
+          "name": "agg",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "of",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "origin",
+      "subType": "collection",
+      "attrs": [
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "passthrough",
+      "attrs": [
+        {
+          "name": "from",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "aggregation",
+      "attrs": [
+        {
+          "name": "cardinality",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onDelete",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onUpdate",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "through",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "association",
+      "attrs": [
+        {
+          "name": "cardinality",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onDelete",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onUpdate",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "through",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "base",
+      "attrs": [
+        {
+          "name": "cardinality",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onDelete",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onUpdate",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "through",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "composition",
+      "attrs": [
+        {
+          "name": "cardinality",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "objectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onDelete",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "onUpdate",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "sourceRefField",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "symmetric",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "through",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "source",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "source",
+      "subType": "rdb",
+      "attrs": [
+        {
+          "name": "function",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "kind",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "materializedView",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "parameterRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "proc",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "role",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "schema",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "table",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "view",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "template",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "template",
+      "subType": "output",
+      "attrs": [
+        {
+          "name": "format",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "htmlBodyRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "kind",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxChars",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "owner",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "payloadRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "promptStyle",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "requiredTags",
+          "valueType": "string",
+          "isArray": true,
+          "required": false
+        },
+        {
+          "name": "since",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "subjectRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "textBodyRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "textRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "template",
+      "subType": "prompt",
+      "attrs": [
+        {
+          "name": "format",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxChars",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "maxTokens",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "model",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "owner",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "payloadRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "requiredSlots",
+          "valueType": "string",
+          "isArray": true,
+          "required": false
+        },
+        {
+          "name": "requiredTags",
+          "valueType": "string",
+          "isArray": true,
+          "required": false
+        },
+        {
+          "name": "responseRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "since",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "textRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "template",
+      "subType": "toolcall",
+      "attrs": [
+        {
+          "name": "owner",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "payloadRef",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        },
+        {
+          "name": "since",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "toolName",
+          "valueType": "string",
+          "isArray": false,
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "array",
+      "attrs": [
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "min",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "base",
+      "attrs": [
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "min",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "length",
+      "attrs": [
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "min",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "numeric",
+      "attrs": [
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "min",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "regex",
+      "attrs": [
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "min",
+          "valueType": "int",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "pattern",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "required",
+      "attrs": []
+    },
+    {
+      "type": "view",
+      "subType": "base",
+      "attrs": []
+    },
+    {
+      "type": "view",
+      "subType": "currency",
+      "attrs": [
+        {
+          "name": "locale",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    }
+  ],
+  "commonAttrs": [
+    {
+      "name": "aliases",
+      "valueType": "string",
+      "isArray": true,
+      "required": false
+    },
+    {
+      "name": "deprecated",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    },
+    {
+      "name": "description",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    },
+    {
+      "name": "notes",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    },
+    {
+      "name": "replacedBy",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    },
+    {
+      "name": "seeAlso",
+      "valueType": "string",
+      "isArray": true,
+      "required": false
+    },
+    {
+      "name": "title",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    }
+  ],
+  "defaultSubTypes": {
+    "metadata": "root",
+    "object": "entity"
+  }
+}

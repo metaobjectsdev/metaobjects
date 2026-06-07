@@ -10,6 +10,23 @@ jobs:
       - run: bun install
       - run: cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance
 
+  # TS type-safety gate. `bun test` transpiles per-file and does NOT typecheck,
+  # so a `tsc` error (e.g. a TS2300 duplicate-identifier, or a real type break)
+  # passes the test suite and ships green. This job runs the real compiler over
+  # the whole workspace. `build` first: cross-package imports resolve through each
+  # package's `dist/` (the `types`/`main` fields), so typecheck needs the deps
+  # built or it reports spurious TS2307 "cannot find module" across packages.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Build all workspace packages (emit dist/ for cross-package types)
+        run: bun run --filter '*' build
+      - name: Typecheck the whole workspace (fails on any tsc error)
+        run: bun run --filter '*' typecheck
+
   conformance:
     needs: fixture-lint
     runs-on: ubuntu-latest
@@ -47,10 +64,20 @@ jobs:
           bun install
           # Loader + YAML + object-model corpora (packages/metadata).
           cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts test/object-model-conformance.test.ts
+          # Registry-conformance gate (TS is the reference emitter — byte-matches
+          # the committed canonical) + untested-vocabulary coverage report.
+          # All five ports run the gate now (SP-G reconciliation landed): C#/Python
+          # via the whole-project/whole-dir scope below; Java + Kotlin via the
+          # RegistryManifestConformanceTest added to their scoped -Dtest= lists.
+          bun test test/registry-conformance.test.ts test/registry-coverage.test.ts
           # Byte-exact render / verify / extract / output-prompt corpora (packages/render).
           cd ../render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts
           # Validator-parity corpus (generated input validation). No Docker.
           cd ../integration-tests && bun test test/validation-conformance.test.ts
+          # migrate-ts — the sole cross-port schema-migration engine (ADR-0015).
+          # Its unit + integrity suites need no DB; the PG integration tests
+          # (gated on MIGRATE_TS_PG_URL) self-skip here and run in integration-tests.yml.
+          cd ../migrate-ts && bun test
           # Doc-template + CLI suites: byte-identity template gate, embedded-template
           # gate, neutrality / collision guards, and the docs golden corpus +
           # `meta docs` command. Whole-package so future tests auto-run. No Docker.
@@ -68,6 +95,11 @@ jobs:
           dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ValidationConformance" --nologo --verbosity quiet
           # Generator stable-name registry conformance (ADR-0021 D3).
           dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~GeneratorRegistryConformance" --nologo --verbosity quiet
+          # CLI (`dotnet meta`) — compiles MetaObjects.Cli + runs its tests. Without
+          # this the CLI is never built by any CI job, so a CLI compile break (or a
+          # gen --list registry drift) ships green. `dotnet test` only compiles the
+          # projects it actually runs, so this is what brings the CLI into the gate.
+          dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet
 
       - name: Java conformance
         if: matrix.language == 'java'
@@ -77,8 +109,9 @@ jobs:
           # ("No type registered for: field.uuid") when the render module's tests
           # reference the freshly-built metadata artifact.
           mvn -pl metadata,render,codegen-spring -am install -DskipTests -q
-          # Loader + YAML + object-model corpora (metadata module).
-          mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest' -q
+          # Loader + YAML + object-model corpora (metadata module)
+          # + registry-conformance gate (metamodel-vocabulary manifest byte-match, SP-G).
+          mvn -pl metadata test -Dtest='ConformanceTest,YamlConformanceTest,ObjectModelConformanceTest,RegistryManifestConformanceTest' -q
           # Byte-exact render / verify / extract / output-prompt corpora (render module).
           mvn -pl render test -Dtest='RenderCrossPortReportTest,VerifyConformanceTest,ExtractConformanceTest,OutputPromptConformanceTest' -q
           # Validator-parity corpus (generated DTO jakarta.validation, codegen-spring module)
@@ -122,8 +155,33 @@ jobs:
           # artifacts.
           mvn -pl codegen-kotlin -am install -DskipTests -q
           # object-model + output-prompt + validator-parity corpora (the corpora Kotlin has)
-          # + generator stable-name registry conformance (ADR-0021 D3).
-          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest' -q
+          # + generator stable-name registry conformance (ADR-0021 D3)
+          # + registry-conformance gate (metamodel-vocabulary manifest byte-match, SP-G;
+          #   composes the metamodel provider set so codegen-base/om classpath SPI does not pollute it).
+          mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest' -q
+
+  java-smoke-compile:
+    # The scoped `mvn -pl ... test` jobs above compile only metadata / render /
+    # codegen-spring / codegen-kotlin (+ their -am deps). Whole modules are
+    # otherwise NEVER built by CI: codegen-mustache, codegen-plantuml,
+    # maven-plugin, dynamic, core-spring, metadata-ktx, omdb-ktx,
+    # spring-boot-starter, om, omdb. A compile break in any of them ships green.
+    # A cheap reactor-wide `install -DskipTests` compiles + packages every module
+    # in the parent reactor (integration-tests* are intentionally out-of-reactor —
+    # they need Docker), so a break in the Maven plugin / Spring Boot starter /
+    # mustache/plantuml/ktx facades fails CI here.
+    needs: fixture-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: maven
+      - name: Reactor-wide compile (all modules, no tests)
+        run: cd server/java && mvn -q install -DskipTests
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]

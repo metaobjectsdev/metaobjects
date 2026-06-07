@@ -52,16 +52,26 @@ final class QueryScenarioTests {
      * runtime simply reads the TS-authored view through its projection-read
      * path.</p>
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
+        // TPH (table-per-hierarchy) runtime support — discriminator injection on create +
+        // subtype-scoped reads — is a separate deferred slice for the Java port (corpus README:
+        // "Java/Kotlin/Python/C# runtime TPH lands in their Tier-4 slice; until then those ports
+        // skip the tph-*.yaml scenarios"). Out of scope for the W2b write-ops/zone-codec unit.
+        "tph-insert-then-find-by-id", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
+        "tph-insert-three-subtypes-list", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
+        "tph-no-cross-subtype-update", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
+        "tph-update-subtype-only-column", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice");
 
     @BeforeAll
     static void beforeAll() {
-        // The cross-port persistence corpus is UTC-canonical: TIMESTAMP / TIMESTAMPTZ
-        // instants are seeded and asserted in UTC wall-clock (normalization.md). Pin the
-        // JVM default zone to UTC so java.sql.Timestamp → LocalDateTime yields the UTC
-        // wall clock the fixtures expect, instead of the agent host's local zone. (Mirrors
-        // the TS/C# runners, which normalize TIMESTAMPTZ to UTC.)
-        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+        // W2b zone-codec fix: the JVM default zone is INTENTIONALLY NOT pinned here. The
+        // cross-port persistence corpus is UTC-canonical (TIMESTAMP / DATE values are seeded and
+        // asserted as a UTC wall clock — normalization.md), and the OMDB date/timestamp codecs are
+        // now zone-free: the DATE + plain-TIMESTAMP codecs bind/read via getTimestamp/getDate with
+        // a UTC Calendar, and Normalization recovers the wall clock as `instant @ UTC` rather than
+        // the default-zone toLocalDateTime(). So the gate proves zone-independence — it must pass
+        // under the agent host's local zone (and any -Duser.timezone), with no UTC pin. (The
+        // tz-aware TIMESTAMPTZ path stores an absolute instant and was already zone-independent.)
 
         // Bind every canonical-package entity FQN to ValueObject so ObjectManagerDB
         // can instantiate rows without a project-specific POJO. Build the registry
@@ -70,14 +80,24 @@ final class QueryScenarioTests {
         // conflicting bindings, so we only set when none is set or the bindings
         // already include ours).
         ObjectClassRegistry reg = new ObjectClassRegistry();
-        reg.register(() -> Map.of(
-            "fitness::Program",     ValueObject.class,
-            "fitness::Week",        ValueObject.class,
-            "fitness::Measurement", ValueObject.class,
-            "fitness::Asset",       ValueObject.class,
-            "fitness::ProgramView", ValueObject.class,
-            "fitness::ProgramStat", ValueObject.class
-        ));
+        Map<String, Class<?>> bindings = new java.util.HashMap<>();
+        bindings.put("fitness::Program",     ValueObject.class);
+        bindings.put("fitness::Week",        ValueObject.class);
+        bindings.put("fitness::Measurement", ValueObject.class);
+        bindings.put("fitness::Asset",       ValueObject.class);
+        bindings.put("fitness::ProgramView", ValueObject.class);
+        bindings.put("fitness::ProgramStat", ValueObject.class);
+        // FR-017 M:N corpus entities (hetero + self-join junctions + targets).
+        bindings.put("fitness::Post",        ValueObject.class);
+        bindings.put("fitness::Tag",         ValueObject.class);
+        bindings.put("fitness::PostTag",     ValueObject.class);
+        bindings.put("fitness::Person",      ValueObject.class);
+        bindings.put("fitness::Follow",      ValueObject.class);
+        bindings.put("fitness::Friendship",  ValueObject.class);
+        // SP-H Unit 5 op:roundtrip — the every-subtype write keystone + its jsonb value object.
+        bindings.put("fitness::AllTypes",    ValueObject.class);
+        bindings.put("fitness::Settings",    ValueObject.class);
+        reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
     }
 

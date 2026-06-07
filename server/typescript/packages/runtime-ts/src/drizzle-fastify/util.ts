@@ -2,6 +2,12 @@
  * Shared utilities for drizzle-fastify route helpers.
  */
 
+/** Coerce a path-param id to number when numeric, else keep the string key. */
+export function parseId(raw: string): number | string {
+  const n = Number(raw);
+  return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
+}
+
 // Accepts "1" or boolean true (the qs serialization of withCount: 1 from buildFilterQs).
 export function isTruthyFlag(v: unknown): boolean {
   if (v === undefined || v === null) return false;

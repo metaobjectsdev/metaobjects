@@ -132,9 +132,9 @@ internal static class Fr010FieldMapping
     /// <summary>The render-engine <c>FieldKind</c> member name for a scalar field subtype, or null if non-scalar.</summary>
     public static string? ScalarKind(string subType) => subType switch
     {
-        FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_CLASS or
+        FIELD_SUBTYPE_STRING or
         FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP => "String",
-        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_SHORT or FIELD_SUBTYPE_BYTE => "Int",
+        FIELD_SUBTYPE_INT => "Int",
         FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_CURRENCY => "Long",
         FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT => "Double",
         FIELD_SUBTYPE_DECIMAL => "Decimal",

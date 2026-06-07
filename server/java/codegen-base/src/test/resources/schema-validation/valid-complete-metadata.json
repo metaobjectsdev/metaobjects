@@ -27,7 +27,6 @@
                 "name": "username",
                 "subType": "string",
                 "@maxLength": 50,
-                "@pattern": "^[a-zA-Z0-9_]+$",
                 "children": [
                   {
                     "attr": {
@@ -97,16 +96,7 @@
             {
               "field": {
                 "name": "createdDate",
-                "subType": "date",
-                "children": [
-                  {
-                    "attr": {
-                      "name": "format",
-                      "subType": "string",
-                      "value": "yyyy-MM-dd"
-                    }
-                  }
-                ]
+                "subType": "date"
               }
             },
             {

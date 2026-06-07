@@ -1,8 +1,17 @@
 /*
- * Copyright 2004 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2004 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.field;
 
@@ -44,25 +53,14 @@ public class DateField extends PrimitiveField<Date> {
     public static void registerTypes(MetaDataRegistry registry) {
         registry.registerType(DateField.class, def -> {
             def.type(TYPE_FIELD).subType(SUBTYPE_DATE)
-               .description("Date field with format and range validation")
+               .description("Date field")
                .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
-            // DATE-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-            def.optionalAttributeWithConstraints(ATTR_DATE_FORMAT)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_FORMAT)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_MIN_DATE)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_MAX_DATE)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .asSingle();
+            // No date-specific per-field attrs in the cross-port vocabulary: the
+            // field-level @format/@dateFormat (presentation) and @minDate/@maxDate
+            // (range) attrs had no canonical peer and no consumer (codegen / runtime /
+            // loader) — vestigial. Range validation is expressed via a validator child
+            // (validator.numeric @min/@max); dropped SP-G Unit 6c.
         });
 
         if (log != null) {

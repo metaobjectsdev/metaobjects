@@ -1,13 +1,22 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Draagon Software
- * LLC. Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.validator;
 
 import com.metaobjects.*;
-import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.apache.commons.validator.GenericValidator;
@@ -41,12 +50,14 @@ public class LengthValidator extends MetaValidator
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             // LENGTH-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
+            // Cross-port int-typed bounds (the Integer.parseInt read path below
+            // is compatible with both int- and string-backed attribute values).
             def.optionalAttributeWithConstraints(ATTR_MIN)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
 
             def.optionalAttributeWithConstraints(ATTR_MAX)
-               .ofType(StringAttribute.SUBTYPE_STRING)
+               .ofType(IntAttribute.SUBTYPE_INT)
                .asSingle();
         });
     }

@@ -60,7 +60,7 @@ import java.nio.file.Paths
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -78,7 +78,7 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    private fun emit(
+    protected open fun emit(
         entity: MetaObject,
         sourceRdb: RdbSource,
         outRoot: java.nio.file.Path,
@@ -107,7 +107,7 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * Render the Phase-L documented stub (entity carries metadata only — no fields):
      * just `PROC_NAME` plus a KDoc example showing the hand-write wrapper shape.
      */
-    private fun renderStub(
+    protected open fun renderStub(
         pkg: String,
         shortName: String,
         objectName: String,
@@ -142,7 +142,7 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * typed parameters (from `@param` fields, in authoring order) and a result-row
      * loop that maps each `ResultSet` column back into the companion entity data class.
      */
-    private fun renderCallObject(
+    protected open fun renderCallObject(
         pkg: String,
         shortName: String,
         objectName: String,
@@ -215,7 +215,7 @@ class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * source declared with {@code @proc} works without going through the
      * table-oriented physical-name chain.
      */
-    private fun resolveProcName(sourceRdb: RdbSource, entityShortName: String): String {
+    protected open fun resolveProcName(sourceRdb: RdbSource, entityShortName: String): String {
         readStringAttr(sourceRdb, ATTR_PROC_NAME)?.let { return it }
         readStringAttr(sourceRdb, "proc")?.let { return it }
         readStringAttr(sourceRdb, "table")?.let { return it }

@@ -192,7 +192,7 @@ export function renderRenderHelper(
 
     return `import { render } from "@metaobjectsdev/render";
 import type { Provider, EmailDocument } from "@metaobjectsdev/render";
-import type { ${payloadRef} } from "./payloads.js";
+import type { ${payloadRef} } from "./${payloadRef}.js";
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
@@ -230,7 +230,7 @@ export function ${fnName}(payload: ${payloadRef}, provider: Provider): EmailDocu
 
   return `import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
-import type { ${payloadRef} } from "./payloads.js";
+import type { ${payloadRef} } from "./${payloadRef}.js";
 
 /**
  * Render the ${templateName} document from a typed ${payloadRef} payload. Wraps the

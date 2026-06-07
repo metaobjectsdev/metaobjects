@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.object.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[2]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

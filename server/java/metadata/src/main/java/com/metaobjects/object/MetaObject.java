@@ -71,6 +71,12 @@ public abstract class MetaObject extends MetaData {
     /** Object type attribute for composition */
     public static final String ATTR_OBJECT = "object";
 
+    /** FR-014: name of the field whose value selects the concrete subtype (single-table inheritance). */
+    public static final String ATTR_DISCRIMINATOR = "discriminator";
+
+    /** FR-014: this subtype's discriminator value (matched against the root's {@code @discriminator} field). */
+    public static final String ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
+
     /**
      * Register MetaObject type and constraints with registry.
      * Called by ObjectTypesMetaDataProvider during service discovery.
@@ -94,7 +100,16 @@ public abstract class MetaObject extends MetaData {
             // OBJECT-SPECIFIC ATTRIBUTES
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_OBJECT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_OBJECT_REF).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // NOTE: @objectRef is NOT registered on object.base. It is a FIELD-level
+            // attr (registered on field.base — see MetaField) consumed by field.object
+            // / relationship.*; an object NODE never carries it. The former redundant
+            // object.base registration was removed in SP-G Unit 6b (it was a Java-only
+            // cross-port divergence; the field-level registration is the SSOT).
+
+            // FR-014 single-table-inheritance discriminator — cross-port logical vocabulary
+            // (declared on object.base, inherited by object.entity / object.value).
+            def.optionalAttributeWithConstraints(ATTR_DISCRIMINATOR).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_DISCRIMINATOR_VALUE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // Java-only runtime hint (never in the conformance corpus): the FQN of an
             // ObjectAdapter that takes over value access. Inherited by entity + value.
@@ -127,6 +142,10 @@ public abstract class MetaObject extends MetaData {
 
             // OBJECTS CAN CONTAIN SOURCES (source.rdb and future subtypes)
             def.optionalChild("source", "*", "*");
+
+            // OBJECTS CAN CONTAIN TEMPLATES (template.prompt/output/toolcall) — FR-004 AI-trace
+            // (a nested template.prompt under object.entity drives typed LLM-call trace derivation).
+            def.optionalChild("template", "*", "*");
         });
 
         if (log != null) {

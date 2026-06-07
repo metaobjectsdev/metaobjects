@@ -166,11 +166,29 @@ def test_ops_for_subtype_unknown_returns_empty() -> None:
     """An unknown field subtype must return an empty frozenset (closed allowlist).
 
     TS and C# both return [] for unrecognised subtypes; Python must match.
+    field.object (and any extension subtype) has no filter-operator band.
     """
-    assert ops_for_subtype("uuid") == frozenset()
+    assert ops_for_subtype("object") == frozenset()
     assert ops_for_subtype("blob") == frozenset()
     assert ops_for_subtype("") == frozenset()
     assert ops_for_subtype("custom.extension") == frozenset()
+
+
+def test_ops_for_subtype_uuid() -> None:
+    """SP-H Unit9 — uuid: identity-comparison only (no like, no ordering)."""
+    assert ops_for_subtype("uuid") == frozenset({"eq", "ne", "in", "isNull"})
+
+
+def test_ops_for_subtype_currency() -> None:
+    """SP-H Unit9 — currency is integer minor units: numeric/orderable band."""
+    assert ops_for_subtype("currency") == frozenset(
+        {"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"}
+    )
+
+
+def test_ops_for_subtype_enum() -> None:
+    """SP-H Unit9 — enum is string-backed: string op band."""
+    assert ops_for_subtype("enum") == frozenset({"eq", "ne", "in", "like", "isNull"})
 
 
 def test_ops_for_subtype_string() -> None:
@@ -187,7 +205,7 @@ def test_ops_for_subtype_boolean() -> None:
 
 def test_ops_for_subtype_numeric_subtypes() -> None:
     """Numeric and temporal subtypes must return the full numeric/temporal operator set."""
-    numeric_temporal = {"int", "short", "byte", "long", "double", "float", "decimal", "date", "time", "timestamp"}
+    numeric_temporal = {"int", "long", "double", "float", "decimal", "date", "time", "timestamp"}
     expected = frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})
     for subtype in numeric_temporal:
         assert ops_for_subtype(subtype) == expected, (

@@ -73,6 +73,9 @@ export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
 export { findReferenceBetween } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
+// FR-017 — M:N junction FK derivation (hetero / directed-self-join / symmetric)
+export { deriveM2MFields, M2MDerivationError } from "./core/relationship/derive-m2m-fields.js";
+export type { M2MFields } from "./core/relationship/derive-m2m-fields.js";
 // Validator: base + subtype-specific
 export {
   MetaValidator,
@@ -122,6 +125,18 @@ export type AnyMeta =
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
+
+// Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
+export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "./registry-manifest.js";
+export type { AttrClassification } from "./registry-manifest.js";
+export { ExclusionReason } from "./registry-manifest-exclusions.js";
+
+// Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs
+// fixture corpora). NODE-ONLY: registry-coverage.ts statically imports node:fs
+// to scan the fixture corpora, so it must NOT be re-exported from this
+// browser-facing barrel (it would drag node:fs into the root entry, breaking
+// browser-safety.test.ts). It is a build-time tooling module — consumers (and
+// its test) import it directly by path: `@metaobjectsdev/metadata/src/registry-coverage`.
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";

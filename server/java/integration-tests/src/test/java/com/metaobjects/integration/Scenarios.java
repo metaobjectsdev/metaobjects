@@ -14,13 +14,16 @@ public final class Scenarios {
 
     public record QuerySpec(
         String name,
-        String op,                                // list | get | count
+        String op,                                // list | get | count | relate | update | delete | roundtrip
         String entity,
         Map<String, Object> by,
         Map<String, Object> filter,
         List<SortSpec> sort,
         Integer limit,
         Integer offset,
+        String relation,                          // op:relate — the M:N relationship name to traverse
+        Map<String, Object> insert,               // op:roundtrip — the field-keyed row to WRITE
+        Map<String, Object> data,                 // op:update — the field-keyed patch to WRITE
         Object expect
     ) {}
 

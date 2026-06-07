@@ -27,11 +27,24 @@
               }
             },
             {
+              "identity.reference": {
+                "name": "profileRef",
+                "@fields": "profileId",
+                "@references": "CustomerProfile"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "preferredStoreRef",
+                "@fields": "preferredStoreId",
+                "@references": "Store"
+              }
+            },
+            {
               "relationship.composition": {
                 "name": "profile",
                 "@cardinality": "one",
                 "@description": "One-to-One Composition: Customer owns exactly one profile (dependent lifecycle)",
-                "@referencedBy": "profileId",
                 "@objectRef": "CustomerProfile"
               }
             },
@@ -39,8 +52,7 @@
               "relationship.composition": {
                 "name": "addresses",
                 "@cardinality": "many",
-                "@description": "One-to-Many Composition: Customer owns multiple addresses (dependent lifecycle)",
-                "@referencedBy": "addressIds",
+                "@description": "One-to-Many Composition: Customer owns multiple addresses (dependent lifecycle); the FK lives on Address",
                 "@objectRef": "Address"
               }
             },
@@ -49,7 +61,6 @@
                 "name": "preferredStore",
                 "@cardinality": "one",
                 "@description": "One-to-One Association: Customer references a preferred store (independent lifecycle)",
-                "@referencedBy": "preferredStoreId",
                 "@objectRef": "Store"
               }
             },
@@ -57,8 +68,7 @@
               "relationship.association": {
                 "name": "favoriteProducts",
                 "@cardinality": "many",
-                "@description": "One-to-Many Association: Customer references multiple favorite products (independent lifecycle)",
-                "@referencedBy": "favoriteProductIds",
+                "@description": "One-to-Many Association: Customer references multiple favorite products (independent lifecycle); modeled via a junction in RDB",
                 "@objectRef": "Product"
               }
             }

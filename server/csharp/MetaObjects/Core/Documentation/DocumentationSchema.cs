@@ -29,9 +29,11 @@ public static class DocumentationSchema
         new(DocumentationConstants.DOC_ATTR_REPLACED_BY, ATTR_SUBTYPE_STRING, Required: false,
             Description: "FQN reference to the replacement element. Only meaningful with `deprecated`. " +
                          "Codegen appends 'Replaced by <ref>' to deprecation messages."),
-        new(DocumentationConstants.DOC_ATTR_SEE_ALSO, ATTR_SUBTYPE_STRINGARRAY, Required: false,
+        new(DocumentationConstants.DOC_ATTR_SEE_ALSO, ATTR_SUBTYPE_STRING, Required: false,
+            IsArray: true,
             Description: "External documentation URLs. Codegen emits @see / <seealso href=...>."),
-        new(DocumentationConstants.DOC_ATTR_ALIASES, ATTR_SUBTYPE_STRINGARRAY, Required: false,
+        new(DocumentationConstants.DOC_ATTR_ALIASES, ATTR_SUBTYPE_STRING, Required: false,
+            IsArray: true,
             Description: "Alternate names for this element. Aids AI authoring disambiguation, search, migration."),
     };
 }

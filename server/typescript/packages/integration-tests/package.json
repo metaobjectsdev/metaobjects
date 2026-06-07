@@ -9,6 +9,7 @@
     "gen:schema": "bun run src/gen-canonical-schema.ts"
   },
   "dependencies": {
+    "@metaobjectsdev/ai-runtime": "workspace:*",
     "@metaobjectsdev/codegen-ts": "workspace:*",
     "@metaobjectsdev/metadata": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",

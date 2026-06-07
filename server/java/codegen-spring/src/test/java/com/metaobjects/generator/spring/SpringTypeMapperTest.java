@@ -8,6 +8,7 @@ import com.metaobjects.field.EnumField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Test;
@@ -78,6 +79,15 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
         TimestampField f = new TimestampField("createdAt");
         f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "TIMESTAMP_WITH_TZ"));
         assertEquals("java.time.Instant", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
+    public void timeFieldMapsToLocalTime() {
+        // `field.time` is a wall-clock time-of-day with no date or zone — the wire form
+        // is "HH:mm:ss[.fff]" (normalization.md), which round-trips as java.time.LocalTime.
+        // Previously the mapper had no TimeField arm and threw IllegalArgumentException
+        // for any entity carrying a time field (SP-H Unit 5 fix).
+        assertEquals("java.time.LocalTime", SpringTypeMapper.javaTypeName(new TimeField("startsAt")));
     }
 
     @Test

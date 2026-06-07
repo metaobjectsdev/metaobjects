@@ -10,6 +10,8 @@
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
 import type { MetaData } from "../shared/meta-data.js";
+import type { MetaObject } from "../core/object/meta-object.js";
+import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { ParseError } from "../errors.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
@@ -53,6 +55,7 @@ import {
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
+  FIELD_SUBTYPE_OBJECT,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
@@ -64,7 +67,15 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
 } from "../persistence/origin/origin-constants.js";
-import { RELATIONSHIP_ATTR_OBJECT_REF } from "../core/relationship/relationship-constants.js";
+import {
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  RELATIONSHIP_ATTR_SYMMETRIC,
+  CARDINALITY_MANY,
+} from "../core/relationship/relationship-constants.js";
+import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
@@ -263,6 +274,35 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
     }
   }
   return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// @filterable on a subtype with no operator band (SP-H Unit9)
+// ---------------------------------------------------------------------------
+// A field marked @filterable: true whose subtype has NO entry in OPS_BY_SUBTYPE
+// (e.g. field.object, or any extension subtype without a declared op band)
+// would silently generate a filter type/allowlist with an empty op set — a
+// filter route that rejects every request. Error early instead of shipping
+// broken codegen. → ERR_FILTERABLE_UNSUPPORTED_SUBTYPE.
+
+export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    // children() — inherited @filterable fields (via extends:/super:) are visible.
+    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      if (field.ownAttr(FIELD_ATTR_FILTERABLE) !== true) continue;
+      if (opsForSubType(field.subType).length > 0) continue;
+      errors.push(
+        new ParseError(
+          `Field "${obj.name}.${field.name}" has @filterable: true but its subtype ` +
+            `"${field.subType}" has no filter-operator band. Remove @filterable, or use a ` +
+            `field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).`,
+          { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+        ),
+      );
+    }
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------------------
@@ -502,34 +542,42 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
 }
 
 // ---------------------------------------------------------------------------
-// @storage cross-attribute validation
+// field.object + @storage cross-attribute validation
 //
-// Rules:
-//   1. @storage requires @objectRef to be present (storage is meaningless
-//      without a referenced object type).
+// Rules (ADR-0013):
+//   1. A field.object ALWAYS requires @objectRef. A field.object models a typed
+//      nested value; without @objectRef it is "an oxymoron at the logical layer".
+//      Genuinely open/untyped JSON uses the physical @dbColumnType: jsonb escape
+//      hatch on field.string, NOT a bare object. → ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+//      (This rule subsumes the legacy @storage-without-@objectRef check —
+//      @storage is only meaningful on a field.object, so the missing-@objectRef
+//      situation now always reports this single, clearer error. One error per
+//      node: when @objectRef is absent we skip the flattened/array check below.)
 //   2. @storage "flattened" requires isArray to be absent or false (cannot
 //      flatten a variable-length array into a fixed column set).
-//
-// Only field.object nodes carry @storage in practice, but the check is applied
-// to every field node that has @storage set — matching the permissive "check
-// what's there" model used by the other validation passes.
 // ---------------------------------------------------------------------------
 
 export function validateFieldObjectStorage(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
-      if (storage === undefined || storage === null) continue;
       const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
-      if (typeof objectRef !== "string" || objectRef.length === 0) {
+      const hasObjectRef = typeof objectRef === "string" && objectRef.length > 0;
+
+      if (field.subType === FIELD_SUBTYPE_OBJECT && !hasObjectRef) {
+        // A field.object with no @objectRef is rejected outright; reporting any
+        // further @storage error on the same node would be redundant.
         errors.push(
           new ParseError(
-            `field "${obj.name}.${field.name}" sets @storage but has no @objectRef`,
-            { code: "ERR_STORAGE_WITHOUT_OBJECT_REF", source: field.source },
+            `field.object "${obj.name}.${field.name}" has no @objectRef; a field.object requires @objectRef. For an open/untyped JSON map use @dbColumnType: jsonb on a field.string instead of a bare object.`,
+            { code: "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF", source: field.source },
           ),
         );
+        continue;
       }
+
+      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
+      if (storage === undefined || storage === null) continue;
       if (storage === STORAGE_FLATTENED && field.isArray === true) {
         errors.push(
           new ParseError(
@@ -664,6 +712,156 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
       // Type errors (e.g. legacy string form) are reported by validateAttrSchema.
       if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
       checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, layout.source, errors);
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// FR-017 — M:N relationship validation (slim vocabulary)
+//
+// Deferred-resolution validation (runs after all files load + extends:
+// resolution, like origin paths), enforcing the cross-port M:N contract:
+//
+//   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
+//       entity). Otherwise ERR_BAD_ATTR_VALUE.
+//   (b) @symmetric and @sourceRefField are mutually exclusive → ERR_BAD_ATTR_VALUE.
+//   (c) When @through is present: the named entity must exist and declare exactly
+//       two identity.reference children; @sourceRefField (if present) must match
+//       one of those references' FK fields → ERR_INVALID_RELATIONSHIP.
+//   (d) @through / @sourceRefField / @symmetric are invalid on a non-M:N
+//       relationship (@cardinality != "many", or no @through) → ERR_INVALID_RELATIONSHIP.
+//
+// Own-relationships only: a relationship is validated on the entity that declares
+// it (matching the own-attrs policy of the other passes).
+// ---------------------------------------------------------------------------
+
+// The junction's reference view: the validator and the runtime/codegen FK
+// derivation (deriveM2MFields) MUST agree on which references count. Both use
+// the EFFECTIVE view (own + inherited via extends) via referenceIdentities(),
+// so a junction defined through `extends` is treated identically here and at
+// resolution time. (For a junction with no extends, effective == own.)
+function _junctionReferences(junction: MetaData): MetaReferenceIdentity[] {
+  return (junction as MetaObject).referenceIdentities();
+}
+
+/** FK field names declared by a junction's effective identity.reference children. */
+function _junctionReferenceFkFields(junction: MetaData): string[] {
+  const out: string[] = [];
+  for (const ref of _junctionReferences(junction)) {
+    const first = ref.fields[0];
+    if (first) out.push(first);
+  }
+  return out;
+}
+
+function _countJunctionReferences(junction: MetaData): number {
+  return _junctionReferences(junction).length;
+}
+
+export function validateRelationships(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
+      const through = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH);
+      const sourceRefField = rel.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      const symmetric = rel.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true;
+      const cardinality = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
+      const objectRef = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+
+      const hasThrough = typeof through === "string" && through !== "";
+      const hasSourceRefField = typeof sourceRefField === "string" && sourceRefField !== "";
+      const isMany = cardinality === CARDINALITY_MANY;
+      const isM2M = hasThrough && isMany;
+
+      // Rule (d): M:N-only attrs on a non-M:N relationship.
+      if (!isM2M) {
+        if (hasThrough) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_THROUGH} but is not a M:N ` +
+                `relationship (requires @${RELATIONSHIP_ATTR_CARDINALITY}: "${CARDINALITY_MANY}").`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        if (hasSourceRefField) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} but is not a M:N relationship.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        if (symmetric) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but is not a M:N relationship.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+        continue;
+      }
+
+      // Rule (b): @symmetric and @sourceRefField are mutually exclusive.
+      if (symmetric && hasSourceRefField) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" sets both @${RELATIONSHIP_ATTR_SYMMETRIC} and ` +
+              `@${RELATIONSHIP_ATTR_SOURCE_REF_FIELD}; they are mutually exclusive.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
+          ),
+        );
+      }
+
+      // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+      const isSelfJoin = typeof objectRef === "string" && stripPackage(objectRef) === obj.name;
+      if (symmetric && !isSelfJoin) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" sets @${RELATIONSHIP_ATTR_SYMMETRIC} but @${RELATIONSHIP_ATTR_OBJECT_REF} ` +
+              `"${String(objectRef)}" is not the declaring entity "${obj.name}"; @${RELATIONSHIP_ATTR_SYMMETRIC} is self-join-only.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: rel.source },
+          ),
+        );
+      }
+
+      // Rule (c): @through must name an entity declaring exactly two identity.reference children.
+      const junction = _findObject(root, through as string);
+      if (!junction) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: resolvedSource(rel.source, `${obj.fqn()}::${rel.name}`, String(through)) },
+          ),
+        );
+        continue;
+      }
+      const refCount = _countJunctionReferences(junction);
+      if (refCount !== 2) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" must declare exactly two ` +
+              `identity.reference children (one per FK side); found ${refCount}.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+        continue;
+      }
+      // @sourceRefField (if present) must match one of the junction's reference FK fields.
+      if (hasSourceRefField) {
+        const fkFields = _junctionReferenceFkFields(junction);
+        if (!fkFields.includes(sourceRefField as string)) {
+          errors.push(
+            new ParseError(
+              `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_SOURCE_REF_FIELD} "${sourceRefField}" does not match ` +
+                `any identity.reference FK field on junction "${through}". Available: ${fkFields.join(", ") || "(none)"}.`,
+              { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+            ),
+          );
+        }
+      }
     }
   }
   return errors;

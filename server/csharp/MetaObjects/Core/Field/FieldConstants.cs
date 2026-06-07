@@ -16,13 +16,11 @@ namespace MetaObjects.Core.Field;
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (17)
+    // Field subtypes (15)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";
     public const string FIELD_SUBTYPE_INT       = "int";
-    public const string FIELD_SUBTYPE_SHORT     = "short";
-    public const string FIELD_SUBTYPE_BYTE      = "byte";
     public const string FIELD_SUBTYPE_LONG      = "long";
     public const string FIELD_SUBTYPE_DOUBLE    = "double";
     public const string FIELD_SUBTYPE_FLOAT     = "float";
@@ -32,7 +30,6 @@ public static class FieldConstants
     public const string FIELD_SUBTYPE_TIME      = "time";
     public const string FIELD_SUBTYPE_TIMESTAMP = "timestamp";
     public const string FIELD_SUBTYPE_OBJECT    = "object";
-    public const string FIELD_SUBTYPE_CLASS     = "class";
     public const string FIELD_SUBTYPE_CURRENCY  = "currency";
     public const string FIELD_SUBTYPE_ENUM      = "enum";
     /// <summary>
@@ -49,8 +46,6 @@ public static class FieldConstants
         BaseTypes.SUBTYPE_BASE,
         FIELD_SUBTYPE_STRING,
         FIELD_SUBTYPE_INT,
-        FIELD_SUBTYPE_SHORT,
-        FIELD_SUBTYPE_BYTE,
         FIELD_SUBTYPE_LONG,
         FIELD_SUBTYPE_DOUBLE,
         FIELD_SUBTYPE_FLOAT,
@@ -60,7 +55,6 @@ public static class FieldConstants
         FIELD_SUBTYPE_TIME,
         FIELD_SUBTYPE_TIMESTAMP,
         FIELD_SUBTYPE_OBJECT,
-        FIELD_SUBTYPE_CLASS,
         FIELD_SUBTYPE_CURRENCY,
         FIELD_SUBTYPE_ENUM,
         FIELD_SUBTYPE_UUID,
@@ -72,6 +66,13 @@ public static class FieldConstants
 
     public const string FIELD_ATTR_REQUIRED              = "required";
     public const string FIELD_ATTR_UNIQUE                = "unique";
+    /// <summary>
+    /// FR-013: when true, the field is read-only — codegen emits no setter, the
+    /// persistence layer skips the column on INSERT/UPDATE, and input schemas mark
+    /// it read-only. The value is populated by the database, replication, or an
+    /// external owner.
+    /// </summary>
+    public const string FIELD_ATTR_READ_ONLY            = "readOnly";
     public const string FIELD_ATTR_DEFAULT               = "default";
     public const string FIELD_ATTR_MAX_LENGTH            = "maxLength";
     public const string FIELD_ATTR_PRECISION             = "precision";
@@ -133,6 +134,15 @@ public static class FieldConstants
     /// <see cref="ENUM_MEMBER_PATTERN"/>; no duplicates.
     /// </summary>
     public const string FIELD_ATTR_VALUES = "values";
+
+    /// <summary>
+    /// FR-019: optional boolean on a (package-level abstract) <c>field.enum</c>. When
+    /// <c>true</c>, codegen REFERENCES the enum type from per-port codegen config instead
+    /// of materializing it (ADR-0026) — the type is provided by hand-written / third-party
+    /// code. Default <c>false</c> (metaobjects owns + emits it). It lives on the named-type
+    /// declaration, never on a consuming field; no namespace/FQN lives in metadata (ADR-0001).
+    /// </summary>
+    public const string FIELD_ATTR_PROVIDED = "provided";
 
     /// <summary>
     /// Regex pattern each enum member symbol must satisfy: must start with

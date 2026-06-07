@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -148,7 +148,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * record the package as needing the shared `MetaInstantWithTimeZoneColumnType.kt`
      * support file (emitted once per package, not per table).
      */
-    private fun emit(
+    protected open fun emit(
         entity: MetaObject,
         sourceRdb: RdbSource,
         outRoot: Path,
@@ -394,10 +394,10 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     // === field.object + @storage column emission ============================
 
-    private enum class ObjectColumnKind { FLATTENED, JSONB }
+    protected enum class ObjectColumnKind { FLATTENED, JSONB }
 
     /** A single Exposed column derived from a `field.object` (one per flattened sub-field, or one total for jsonb). */
-    private data class ObjectColumnSpec(
+    protected data class ObjectColumnSpec(
         val propertyName: String,
         val columnExpr: String,
         val kind: ObjectColumnKind,
@@ -418,7 +418,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * Skips field.object children whose `@objectRef` cannot be resolved (defensive — the loader's
      * validation phase already gates the attr being present).
      */
-    private fun buildObjectColumns(
+    protected open fun buildObjectColumns(
         entity: MetaObject,
         primaryFieldNames: Set<String>,
         loader: MetaDataLoader,
@@ -568,7 +568,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     // === FK column emission from relationship.composition ====================
 
     /** A foreign-key column derived from a `relationship.composition` child. */
-    private data class FkColumnSpec(
+    protected data class FkColumnSpec(
         val propertyName: String,
         val columnExpr: String,
         /**
@@ -625,7 +625,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * declared spec wins — the FK-owning entity authored its own physical name
      * and we don't double-emit.
      */
-    private fun buildGlobalFkMap(
+    protected open fun buildGlobalFkMap(
         loader: MetaDataLoader,
         refDecorationMap: Map<String, Map<String, RefDecoration>>,
     ): Map<String, List<FkColumnSpec>> {
@@ -765,7 +765,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * the entry still occupies the field-name key so dedup against an inferred FK works,
      * but the column emission pass skips the `.references(...)` decoration.
      */
-    private data class RefDecoration(
+    protected data class RefDecoration(
         /** Target table object name (e.g. {@code "ProgramTable"}); null for soft refs. */
         val targetTable: String?,
         /** Suffix portion after the target column — either "" or {@code ", onDelete = ..., onUpdate = ..."}. */
@@ -798,7 +798,7 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * inferred FK to the same column — but the column emission pass skips
      * decoration so no physical constraint is generated.
      */
-    private fun buildIdentityReferenceDecorations(
+    protected open fun buildIdentityReferenceDecorations(
         loader: MetaDataLoader,
     ): Map<String, Map<String, RefDecoration>> {
         val acc = linkedMapOf<String, MutableMap<String, RefDecoration>>()
@@ -824,8 +824,12 @@ class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 val targetTable = if (child.isEnforced)
                     PackageMapping.splitFqn(target.name).second + "Table" else null
                 val targetFqn = if (child.isEnforced) target.name else null
-                val refSuffix = if (child.isEnforced)
-                    referentialActionSuffix(child.onDeleteRaw, child.onUpdateRaw) else ""
+                // SP-G Unit 6a: @onDelete / @onUpdate are NOT part of identity.reference in
+                // the cross-port canonical (referential actions live only on
+                // relationship.composition). A reference-identity FK therefore emits no
+                // referential-action suffix; declare a composition relationship to drive
+                // ReferenceOption emission (see lines ~700/728, which read the relationship).
+                val refSuffix = ""
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
                     RefDecoration(targetTable, refSuffix, targetFqn)
             }

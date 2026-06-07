@@ -37,6 +37,13 @@ public sealed record ChildRule(string ChildType, string ChildSubType, string Chi
 /// ("base"). Polymorphic attrs (e.g. <c>@default</c>) must omit
 /// <paramref name="ValueType"/> (pass <see langword="null"/>).
 /// </para>
+/// <para>
+/// <paramref name="IsArray"/> marks an array-valued attr (a list of the scalar
+/// <paramref name="ValueType"/>) — the single orthogonal array axis that replaced
+/// the retired <c>stringarray</c> subtype, mirroring Java's
+/// <c>StringAttribute + @isArray</c>. The loader coerces an array-flagged attr
+/// through the array string-attr coercion (bare-string → one-element array).
+/// </para>
 /// </summary>
 public sealed record AttrSchema(
     string Name,
@@ -44,7 +51,8 @@ public sealed record AttrSchema(
     bool Required,
     object? Default = null,
     IReadOnlyList<object>? AllowedValues = null,
-    string Description = "");
+    string Description = "",
+    bool IsArray = false);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition
@@ -107,6 +115,41 @@ public sealed class TypeRegistry
     private readonly Dictionary<string, string> _defaultSubTypes = new();
 
     // ------------------------------------------------------------------
+    // Sealing (ADR-0023 Decision 2)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// ADR-0023 Decision 2 — sealed state. Once sealed, every mutating registration
+    /// method throws <see cref="ErrorCode.ERR_REGISTRY_SEALED"/>. C# composes from an
+    /// explicit immutable provider set (ComposeRegistry(CoreProviders)), so sealing is
+    /// the guard + negative test — no polluted singleton to pivot off. The library
+    /// seals after the metamodel bootstrap; a downstream app composes its own
+    /// (unsealed) registry.
+    /// </summary>
+    private bool _sealed;
+
+    /// <summary>Seal the registry: every subsequent mutating registration throws
+    /// <see cref="ErrorCode.ERR_REGISTRY_SEALED"/>. Idempotent. Reads are unaffected.</summary>
+    public void Seal() => _sealed = true;
+
+    /// <summary>Whether this registry has been sealed (ADR-0023).</summary>
+    public bool IsSealed => _sealed;
+
+    private void CheckNotSealed(string operation)
+    {
+        if (_sealed)
+        {
+            throw new MetaModelException(
+                $"TypeRegistry is sealed (ADR-0023): {operation} is not permitted after " +
+                "metamodel bootstrap. Made-up metamodel attributes/types are structurally " +
+                "disallowed — a new metamodel attribute requires a registered provider + " +
+                "human agreement. Downstream apps that need extra vocabulary must compose " +
+                "their own (unsealed) registry.",
+                ErrorCode.ERR_REGISTRY_SEALED);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Register
     // ------------------------------------------------------------------
 
@@ -117,6 +160,7 @@ public sealed class TypeRegistry
     /// </summary>
     public void Register(TypeDefinition def)
     {
+        CheckNotSealed($"Register(\"{def.TypeId}\")");
         string key = def.TypeId.ToString();
 
         if (_defs.ContainsKey(key))
@@ -176,8 +220,11 @@ public sealed class TypeRegistry
     // ------------------------------------------------------------------
 
     /// <summary>Designate the default subType for a bare type key (authoring sugar).</summary>
-    public void SetDefaultSubType(string type, string subType) =>
+    public void SetDefaultSubType(string type, string subType)
+    {
+        CheckNotSealed($"SetDefaultSubType(\"{type}\")");
         _defaultSubTypes[type] = subType;
+    }
 
     /// <summary>The designated default subType for a type, or null if none was set.</summary>
     public string? DefaultSubTypeOf(string type) =>
@@ -199,6 +246,7 @@ public sealed class TypeRegistry
     /// </summary>
     public void RegisterCommonAttrs(IEnumerable<AttrSchema> attrs)
     {
+        CheckNotSealed("RegisterCommonAttrs");
         foreach (AttrSchema attr in attrs)
         {
             if (attr.ValueType == SUBTYPE_BASE)
@@ -270,6 +318,7 @@ public sealed class TypeRegistry
     /// </summary>
     public void Extend(string type, string subType, IReadOnlyList<AttrSchema>? attributes = null, IReadOnlyList<ChildRule>? childRules = null)
     {
+        CheckNotSealed($"Extend(\"{type}.{subType}\")");
         TypeDefinition? def = Find(type, subType);
         if (def is null)
         {

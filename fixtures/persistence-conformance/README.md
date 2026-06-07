@@ -136,16 +136,126 @@ The DSL is intentionally small. Each port translates it to the most idiomatic
 call into its persistence layer (C#: `_db.Set<T>().Where(...).ToListAsync()`;
 TS: `om.findMany(entityName, filter, opts)`).
 
-| field      | type                        | notes |
-|------------|-----------------------------|-------|
-| `op`       | `list \| get \| count`      | required |
-| `entity`   | string                      | metadata name (Program, ProgramStat, …) |
-| `by`       | `{ id: scalar }`            | required for `op: get` |
-| `filter`   | filter object (below)       | optional; same vocabulary as Project D |
-| `sort`     | `[{ field, dir }]`          | optional; `dir` ∈ `asc | desc` |
-| `limit`    | integer                     | optional |
-| `offset`   | integer                     | optional |
-| `expect`   | row or row[] or integer     | required; the normalized expected result |
+| field      | type                                        | notes |
+|------------|---------------------------------------------|-------|
+| `op`       | `list \| get \| count \| relate \| create \| update \| delete \| roundtrip`| required |
+| `entity`   | string                                      | metadata name (Program, ProgramStat, …) |
+| `by`       | `{ id: scalar }`                            | required for `op: get`, `op: relate`, `op: update`, `op: delete` (the record key) |
+| `data`     | row object                                  | required for `op: create` / `op: update` (the row payload to write) |
+| `relation` | string                                      | required for `op: relate`; the relationship name to traverse |
+| `insert`   | row (field → value)                         | required for `op: roundtrip`; the row to WRITE through the runtime |
+| `filter`   | filter object (below)                       | optional; same vocabulary as Project D |
+| `sort`     | `[{ field, dir }]`                          | optional; `dir` ∈ `asc | desc` |
+| `limit`    | integer                                     | optional |
+| `offset`   | integer                                     | optional |
+| `expect`   | row or row[] or integer                     | required unless `expect-error`; the normalized expected result |
+| `expect-error` | boolean                                  | optional; when true the op must FAIL (throw/reject). `expect` is ignored. Portable: each runner asserts "the op raised an error", not a message. |
+
+### `op: create` / `op: update` — runtime writes (FR-017 TPH)
+
+`create` inserts a row (`om.create(entity, data)`); `update` patches a row by id
+(`om.update(entity, by.id, data)`). They exercise the **runtime write path**,
+including **TPH** (FR-017): a create on a discriminator SUBTYPE injects the
+discriminator value (omit it from `data`); reads/updates are scoped to the
+subtype; the discriminator is immutable; a subtype's write surface is its own
+columns only. A cross-subtype write (an unknown subtype column, or a
+different-subtype id) is expected to fail (`expect-error: true`).
+
+### `op: delete` — runtime delete-by-PK
+
+`delete` removes a row by id (`om.delete(entity, by.id)`) through the runtime
+write path. Its `expect` is the **boolean** outcome (`true` = a row was deleted,
+`false` = no matching row). The portable pattern for proving a delete actually
+removed the row is a follow-up `op: get` by the same PK asserting `expect: null`.
+`delete` is exercised end-to-end by `update-delete-all-types.yaml` (seed a fixed
+PK → update every subtype → read back → delete → get-returns-null).
+
+> **`update` / `delete` of the AllTypes row are TS-only until the per-port
+> write-codec units land** — same status as `roundtrip`. A port's UPDATE codec is
+> a distinct path from its INSERT codec (PATCH paths frequently skip the type
+> coercion the INSERT path applies), so `update-delete-all-types.yaml` is the gate
+> that catches an UPDATE-only re-encode regression per subtype. The TS runner
+> ships the verbs; Java / Kotlin / Python / C# implement `op: delete` (and the
+> AllTypes `op: update`) in their SP-H units, then run the scenario green.
+
+#### TPH (table-per-hierarchy) scenarios
+
+The `tph-*.yaml` scenarios exercise single-table inheritance through the runtime
+(`Auth` base + `BridgeAuth` / `CopayAuth` / `PriorAuthAuth` subtypes over the one
+`auths` table). They require the port's **runtime TPH support** (resolving a
+subtype's inherited fields/identity/table via `extends`, plus discriminator
+inject/scope/strip). **TypeScript** ships it (runtime-ts ObjectManager); the
+**Java / Kotlin / Python / C#** runtimes gain it in their Tier-4 slice. Until
+then those ports skip the `tph-*` scenarios — do not delete them; implement the
+runtime support, then run them green.
+
+### `op: roundtrip` — runtime WRITE round-trip
+
+`roundtrip` is the **all-types write** gate: the runner INSERTS the `insert:` row
+through the port's runtime / ORM write path (**not** raw SQL), reads the inserted
+row back **by primary key**, normalizes it, and asserts it equals `expect`. It
+therefore exercises the WRITE codec **and** the read path together — the
+structural complement to the read gate, and what would have caught the
+`field.byte`/`field.short` hole, the Java timestamp-write hazard, and
+native-uuid-write.
+
+- `insert:` carries field values in the runtime's **native authoring forms** (a
+  decimal as a string, a uuid as a string, a `field.object` as an object, a
+  boolean as a bool). `expect:` is the **wire-normalized** read-back (the same
+  per-type rules as every read scenario — BIGINT→string, decimal canonical,
+  uuid→lowercase, temporal→native, jsonb→sorted-keys).
+- The **primary key is excluded** from the comparison: a server-/runtime-generated
+  PK (`gen_random_uuid` / increment) is non-deterministic, so `expect` asserts the
+  written field VALUES, not the identity. (`op: get` covers PK round-trip.)
+- The `AllTypes` entity (`all_types` table) in the canonical model exists to cover
+  **every persistable field subtype** in one row — string / int / long / double /
+  float / decimal / boolean / date / time / timestamp / timestamp(tz) / currency /
+  enum / uuid / object(`@objectRef`, jsonb storage). No read scenario references
+  it, so it is inert for the read runners (it just adds a table to the schema).
+- **Full int64 fidelity:** one roundtrip query writes the BIGINT max
+  (`9223372036854775807`, > 2^53) to `field.long` AND `field.currency` as a
+  numeric **string** — the write contract for those two subtypes accepts a base-10
+  integer string (or a bigint) precisely so a 64-bit value survives the write codec
+  without precision loss. A port routing these through a 64-bit-lossy numeric type
+  (a JS `number`, a 32-bit int, a double) corrupts the low bits and fails.
+
+> **`roundtrip` is TS-only until the per-port write-codec units land.** The TS
+> runner (`runtime-ts` `ObjectManager.create` → Kysely insert) ships it; the
+> **Java / Kotlin / Python / C#** runners implement the verb in their SP-H units.
+> Those ports' integration runners will FAIL the `roundtrip-*` scenarios until
+> their unit is implemented — expected on the SP-H branch. When porting, implement
+> the verb (insert-via-ORM → read-back-by-PK → normalize → assert, PK excluded),
+> then run these scenarios green; do not delete them.
+
+### `op: relate` — relationship traversal (M:N)
+
+`relate` traverses a relationship from a single source record (`by`) and returns
+the **related rows**. It is how the corpus exercises **many-to-many (FR-017)**
+navigation through a junction: the port's runtime resolver derives the junction
+FK fields from the junction entity's two `identity.reference` children (no
+`@joinFields`) and handles all three modes — hetero, directed self-join
+(`@sourceRefField`), and symmetric self-join (`@symmetric`, union-on-read).
+
+Because M:N membership is a **set**, the runner compares `relate` results
+**order-independently** (rows sorted by canonical JSON on both sides) — a
+`relate` scenario does not need (or honor) `sort:`.
+
+> **M:N scenarios are TS-only until Units 6–9 land.** The `queries/m2n-*.yaml`
+> scenarios (`m2n-hetero`, `m2n-directed-self-join`, `m2n-symmetric-self-join`)
+> require the per-port runtime M:N resolver. **TypeScript** ships it (FR-017
+> Unit 5); the **Java / Kotlin / Python / C#** runtime resolvers land in Units
+> 6–9. Those ports' integration runners will FAIL the `m2n-*` scenarios until
+> their unit is implemented — expected on the FR-017 branch. When porting,
+> implement the resolver, then run these scenarios green; do not delete them.
+
+> **Symmetric self-pair `(a,a)` divergence (Kotlin RED).** `m2n-symmetric-self-join.yaml`
+> seeds a self-edge (Alice is her own friend, `(1,1)`) and asserts Alice's friends
+> **include Alice**. The contract is that the runtime resolver KEEPS the self
+> endpoint. A generated query that filters `personAId = X OR personBId = X` and
+> then takes "the column that is NOT the source" silently DROPS the self-pair
+> (both columns equal X). The TS runtime resolver keeps it (green); the **Kotlin**
+> generated self-join query currently drops it and is RED on this scenario until
+> its unit fixes the generated query to retain the `(a,a)` row.
 
 ### Filter operators
 
@@ -209,7 +319,10 @@ A runner walks the corpus and, for each scenario:
 3. **Query scenarios (every port):** execute the committed
    `canonical/schema.postgres.sql` to provision the schema, run `seed-data`, then
    for each `queries[*]` execute via the port's persistence layer, normalize,
-   assert.
+   assert. A `read` op (`get`/`list`/`count`/`relate`) queries the seeded rows; an
+   `op: roundtrip` instead INSERTS its `insert:` row through the port's runtime
+   write path, reads it back by PK, and asserts the normalized read-back (PK
+   excluded) — the WRITE gate.
 4. Tear down the container.
 
 Failure reports `(scenario file, query name, row index, expected, actual)`.

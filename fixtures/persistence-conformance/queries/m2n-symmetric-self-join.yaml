@@ -1,0 +1,54 @@
+name: m2n-symmetric-self-join
+description: |
+  FR-017 symmetric self-join: Person —friends→ Person through the Friendship
+  junction with @symmetric: true. Single-row storage, union on read: a row
+  (a,b) answers the friends lookup from BOTH a and b. The resolver queries
+  WHERE personAId = X OR personBId = X and, per row, takes the column that is
+  NOT the source id as the friend id.
+
+  PORT STATUS: TS only (Unit 5). Other ports land in Units 6–9.
+
+  SELF-PAIR (a,a) CONTRACT: a row where personAId == personBId (Alice is her own
+  friend, (1,1)) is a legitimate symmetric edge. The runtime resolver KEEPS the
+  self endpoint — Alice's friends include Alice. This gates a known cross-port
+  divergence: a generated query that filters `personAId = X OR personBId = X` and
+  then takes "the column that is NOT the source" silently DROPS the self-pair
+  (both columns equal X, so neither is "the other"). The runtime resolvers keep
+  it; the Kotlin GENERATED query currently drops it and will be RED on this
+  scenario until its unit fixes the generated self-join to retain the (a,a) row.
+seed-data: |
+  INSERT INTO "people" ("id", "name") VALUES
+    (1, 'Alice'), (2, 'Bob'), (3, 'Carol'), (4, 'Dave');
+  INSERT INTO "friendships" ("personAId", "personBId") VALUES
+    (1, 2), (3, 1), (2, 4), (1, 1);
+queries:
+  - name: alice-friends-both-directions-incl-self
+    description: |
+      stored as (1,2) forward, (3,1) reverse, and (1,1) self-pair — all surface
+      for Alice, INCLUDING Alice herself (the symmetric self-edge is kept).
+    op: relate
+    entity: Person
+    by: { id: 1 }
+    relation: friends
+    expect:
+      - { id: "1", name: "Alice" }
+      - { id: "2", name: "Bob" }
+      - { id: "3", name: "Carol" }
+
+  - name: bob-friends-union
+    description: stored as (1,2) reverse and (2,4) forward.
+    op: relate
+    entity: Person
+    by: { id: 2 }
+    relation: friends
+    expect:
+      - { id: "1", name: "Alice" }
+      - { id: "4", name: "Dave" }
+
+  - name: dave-single-friend
+    op: relate
+    entity: Person
+    by: { id: 4 }
+    relation: friends
+    expect:
+      - { id: "2", name: "Bob" }

@@ -62,8 +62,9 @@ import {
   RELATIONSHIP_SUBTYPE_AGGREGATION,
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
-  RELATIONSHIP_ATTR_JOIN_ENTITY,
-  RELATIONSHIP_ATTR_JOIN_FIELDS,
+  RELATIONSHIP_ATTR_THROUGH,
+  RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  RELATIONSHIP_ATTR_SYMMETRIC,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   VALIDATOR_SUBTYPE_REGEX,
@@ -412,26 +413,37 @@ describe("MetaRelationship", () => {
     expect(rel.objectRef).toBeUndefined();
   });
 
-  it("joinEntity returns @joinEntity attr", () => {
+  it("through returns @through attr (FR-017)", () => {
     const rel = makeRelationship("tags", RELATIONSHIP_SUBTYPE_AGGREGATION);
-    rel.setAttr(RELATIONSHIP_ATTR_JOIN_ENTITY, "PostTag");
-    expect(rel.joinEntity).toBe("PostTag");
+    rel.setAttr(RELATIONSHIP_ATTR_THROUGH, "PostTag");
+    expect(rel.through).toBe("PostTag");
   });
 
-  it("joinEntity returns undefined when absent", () => {
+  it("through returns undefined when absent", () => {
     const rel = makeRelationship("posts");
-    expect(rel.joinEntity).toBeUndefined();
+    expect(rel.through).toBeUndefined();
   });
 
-  it("joinFields returns @joinFields array attr", () => {
-    const rel = makeRelationship("tags", RELATIONSHIP_SUBTYPE_AGGREGATION);
-    rel.setAttr(RELATIONSHIP_ATTR_JOIN_FIELDS, ["postId", "tagId"]);
-    expect(rel.joinFields).toEqual(["postId", "tagId"]);
+  it("sourceRefField returns @sourceRefField attr (FR-017)", () => {
+    const rel = makeRelationship("follows", RELATIONSHIP_SUBTYPE_ASSOCIATION);
+    rel.setAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD, "followerId");
+    expect(rel.sourceRefField).toBe("followerId");
   });
 
-  it("joinFields defaults to empty array when absent", () => {
+  it("sourceRefField returns undefined when absent", () => {
     const rel = makeRelationship("posts");
-    expect(rel.joinFields).toEqual([]);
+    expect(rel.sourceRefField).toBeUndefined();
+  });
+
+  it("symmetric returns true only when @symmetric is true (FR-017)", () => {
+    const rel = makeRelationship("friends", RELATIONSHIP_SUBTYPE_ASSOCIATION);
+    rel.setAttr(RELATIONSHIP_ATTR_SYMMETRIC, true);
+    expect(rel.symmetric).toBe(true);
+  });
+
+  it("symmetric defaults to false when absent", () => {
+    const rel = makeRelationship("posts");
+    expect(rel.symmetric).toBe(false);
   });
 });
 
@@ -1314,10 +1326,11 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
 });
 
 // ---------------------------------------------------------------------------
-// stringArray desugar — single-string @fields / @columns / @joinFields
-// authored values are normalized to one-element arrays by the parser, so the
-// MetaIdentity.fields / MetaRelationship.joinFields getters work (previously
-// they returned [] for the universal single-string authoring form).
+// stringArray desugar — single-string @fields / @columns authored values are
+// normalized to one-element arrays by the parser, so the MetaIdentity.fields
+// getter works (previously it returned [] for the universal single-string
+// authoring form). (FR-017 removed @joinFields; FK fields are derived from the
+// junction's identity.reference children, which carry @fields.)
 // ---------------------------------------------------------------------------
 
 describe("stringArray attr desugar", () => {
@@ -1349,7 +1362,7 @@ describe("stringArray attr desugar", () => {
     expect(pk.isComposite()).toBe(false);
   });
 
-  it("MetaRelationship.joinFields returns ['vehicleId'] for @joinFields: 'vehicleId'", async () => {
+  it("identity.reference @fields returns ['vehicleId'] for @fields: 'vehicleId'", async () => {
     const json = JSON.stringify({
       "metadata.root": {
         package: "demo",
@@ -1360,13 +1373,17 @@ describe("stringArray attr desugar", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "identity.primary": { name: "pk", "@fields": "id" } },
-                {
-                  "relationship.association": {
-                    name: "owners",
-                    "@joinEntity": "VehicleOwner",
-                    "@joinFields": "vehicleId",
-                  },
-                },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "VehicleOwner",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.long": { name: "vehicleId" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+                { "identity.reference": { name: "vehicleRef", "@fields": "vehicleId", "@references": "Vehicle" } },
               ],
             },
           },
@@ -1376,13 +1393,10 @@ describe("stringArray attr desugar", () => {
     const loaderB = new MetaDataLoader();
     const { root, errors } = await loaderB.load([new InMemoryStringSource(json)]);
     expect(errors).toEqual([]);
-    const vehicle = root.ownChildByTypeAndName(TYPE_OBJECT, "Vehicle") as MetaObject;
-    const rel = vehicle
-      .ownChildren()
-      .find((c) => c instanceof MetaRelationship) as MetaRelationship;
-    expect(rel).toBeInstanceOf(MetaRelationship);
-    // The bug: a single-string @joinFields previously yielded [] here.
-    expect(rel.joinFields).toEqual(["vehicleId"]);
+    const owner = root.ownChildByTypeAndName(TYPE_OBJECT, "VehicleOwner") as MetaObject;
+    const ref = owner.referenceIdentities()[0]!;
+    // The bug: a single-string @fields previously yielded [] here.
+    expect(ref.fields).toEqual(["vehicleId"]);
   });
 
   it("an already-array @fields value is left untouched", async () => {

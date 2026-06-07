@@ -1,8 +1,17 @@
 /*
- * Copyright 2004 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2004 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.field;
 
@@ -59,24 +68,13 @@ public class StringField extends PrimitiveField<String> {
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
 
                 // STRING-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
-                def.optionalAttributeWithConstraints(ATTR_PATTERN)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .withCustom(value -> {
-                       if (value == null) return true;
-                       try {
-                           // Validate that the pattern is a valid regex
-                           java.util.regex.Pattern.compile(value.toString());
-                           return true;
-                       } catch (java.util.regex.PatternSyntaxException e) {
-                           return false;
-                       }
-                   });
-
+                // maxLength is the one canonical (cross-port) string attr. Field-level
+                // validation (pattern / min-length) is expressed via validator CHILD
+                // nodes (validator.regex @pattern, validator.length @min/@max) — the
+                // cross-port form. The redundant field-level @pattern / @minLength
+                // registrations were dropped in SP-G Unit 6c (validation already emits
+                // from validator children per the SP-C validator-parity work).
                 def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)
-                   .ofType(IntAttribute.SUBTYPE_INT)
-                   .asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_MIN_LENGTH)
                    .ofType(IntAttribute.SUBTYPE_INT)
                    .asSingle();
             });

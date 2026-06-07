@@ -90,6 +90,7 @@ def test_per_subtype_operator_gating() -> None:
             _f("createdAt", fc.FIELD_SUBTYPE_TIMESTAMP, filterable=True),
             _f("active", fc.FIELD_SUBTYPE_BOOLEAN, filterable=True),
             _f("price", fc.FIELD_SUBTYPE_CURRENCY, filterable=True),
+            _f("ref", fc.FIELD_SUBTYPE_UUID, filterable=True),
             _f("notFilterable", fc.FIELD_SUBTYPE_STRING),  # no @filterable
         ],
         package="acme::shop",
@@ -102,6 +103,7 @@ def test_per_subtype_operator_gating() -> None:
     assert '"createdAt"' in out
     assert '"active"' in out
     assert '"price"' in out
+    assert '"ref"' in out
     assert '"notFilterable"' not in out
 
     # Per-subtype operator gating — exact set, in spec order.
@@ -118,6 +120,8 @@ def test_per_subtype_operator_gating() -> None:
         '"price": frozenset({"eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"})'
         in out
     )
+    # uuid — identity-comparison only, no like, no ordering.
+    assert '"ref": frozenset({"eq", "ne", "in", "isNull"})' in out
 
 
 def test_view_kind_gets_no_allowlist() -> None:

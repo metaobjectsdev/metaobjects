@@ -28,7 +28,6 @@ public class SimpleFieldRegistrationTest {
             new FloatField("testFloat");
             new DecimalField("testDecimal");  // New high-precision decimal field
             new ObjectField("testObject");
-            new ClassField("testClass");
         } catch (Exception e) {
             // Ignore
         }
@@ -229,18 +228,6 @@ public class SimpleFieldRegistrationTest {
         TimeField storeHours = TimeField.create("storeHours", "HH:mm", "09:00", "21:00");
         assertTrue("Store hours should accept 10:00", storeHours.isValidTime("10:00"));
         assertFalse("Store hours should reject 08:00", storeHours.isValidTime("08:00"));
-
-        // Test validation successful - no verbose output needed;
-    }
-
-    @Test
-    public void testRemovedFieldTypes() {
-        // Verify that ByteField and ShortField are no longer registered
-        assertFalse("ByteField should not be registered",
-                   registry.isRegistered("field", "byte"));
-
-        assertFalse("ShortField should not be registered",
-                   registry.isRegistered("field", "short"));
 
         // Test validation successful - no verbose output needed;
     }

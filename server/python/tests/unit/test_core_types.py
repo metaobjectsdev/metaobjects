@@ -28,9 +28,12 @@ def test_core_provider_designates_default_sub_types_for_bare_keys() -> None:
     assert reg.default_sub_type_of("field") is None
 
 
-def test_identity_primary_declares_fields_as_stringarray_required() -> None:
+def test_identity_primary_declares_fields_as_string_array_required() -> None:
     reg = compose_registry([core_provider])
     schema = reg.attr_schema("identity", "primary", "fields")
     assert schema is not None
-    assert schema.value_type == "stringArray"
+    # Array attrs are now `string` + the orthogonal is_array flag (the retired
+    # `stringarray` subtype), matching Java's StringAttribute + @isArray.
+    assert schema.value_type == "string"
+    assert schema.is_array is True
     assert schema.required is True

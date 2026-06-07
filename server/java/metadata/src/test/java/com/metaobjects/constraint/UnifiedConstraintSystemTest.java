@@ -90,14 +90,20 @@ public class UnifiedConstraintSystemTest extends SharedRegistryTestBase {
         // Test that StringField constraints are properly loaded in consolidated registry
         var allConstraints = getSharedRegistry().getAllValidationConstraints();
 
-        // Look for StringField-specific constraints with actual generated IDs
+        // Look for StringField-specific constraints with actual generated IDs.
+        // maxLength is the StringField-specific (cross-port canonical) attr. The
+        // field-level @pattern attr (and its auto-generated custom constraint) was
+        // dropped in SP-G Unit 6c — pattern validation is expressed via validator.regex
+        // children — so no field.string.pattern.custom constraint is generated.
         boolean foundMaxLengthPlacement = allConstraints.stream()
             .anyMatch(c -> c.getConstraintId().contains("stringfield.maxlength"));
-        boolean foundPatternPlacement = allConstraints.stream()
-            .anyMatch(c -> c.getConstraintId().contains("field.string.pattern.custom"));
 
         assertTrue("Should find StringField maxLength placement constraint", foundMaxLengthPlacement);
-        assertTrue("Should find StringField pattern placement constraint", foundPatternPlacement);
+
+        boolean foundPatternPlacement = allConstraints.stream()
+            .anyMatch(c -> c.getConstraintId().contains("field.string.pattern.custom"));
+        assertFalse("Should NOT find a field-level StringField pattern constraint "
+            + "(validation moved to validator.regex children — SP-G Unit 6c)", foundPatternPlacement);
 
         boolean foundFieldNamingValidation = allConstraints.stream()
             .anyMatch(c -> c.getConstraintId().contains("field.naming.pattern"));

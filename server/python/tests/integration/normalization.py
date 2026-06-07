@@ -112,6 +112,22 @@ def canonical_rows_json(
     )
 
 
+def canonical_row_set_json(
+    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None
+) -> str:
+    """Order-independent canonical JSON for a row *set* (M:N `relate` results).
+
+    Each row is canonicalized then the per-row JSON strings are sorted, so the
+    comparison is independent of result order — order is not part of the M:N
+    navigation contract. Mirrors the TS runner's ``canonicalRowSet``.
+    """
+    each = sorted(
+        json.dumps(normalize_row(r, column_oids), sort_keys=True, separators=(",", ":"))
+        for r in rows
+    )
+    return "[" + ",".join(each) + "]"
+
+
 def canonical_value_json(v: Any) -> str:
     """For top-level get/count/scalar expected vs actual comparison."""
     return json.dumps(normalize_value(v), sort_keys=True, separators=(",", ":"))

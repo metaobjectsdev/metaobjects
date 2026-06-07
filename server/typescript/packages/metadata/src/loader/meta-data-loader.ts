@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -69,14 +69,6 @@ export interface LoadOptions {
   freeze?: boolean;
   /** Strict parsing mode — passed through to parser. Default false. */
   strict?: boolean;
-  /**
-   * Optional callback invoked with the fully-resolved, validated root
-   * immediately before the tree is frozen. Use this to inject programmatically
-   * derived nodes (e.g. codegen pre-passes) that must be part of the frozen
-   * metadata tree. The callback may mutate the root; after it returns the tree
-   * is frozen and immutable. Ignored when `freeze: false`.
-   */
-  preFreeze?: (root: MetaRoot) => void;
 }
 
 export interface LoadResult {
@@ -107,7 +99,6 @@ export class MetaDataLoader {
   private readonly _registry: TypeRegistry;
   private readonly _freeze: boolean;
   private readonly _strict: boolean;
-  private readonly _preFreeze: ((root: MetaRoot) => void) | undefined;
 
   private _state: LoadingState = "uninitialized";
   private _root: MetaRoot | undefined;
@@ -116,7 +107,6 @@ export class MetaDataLoader {
     this._registry = opts?.registry ?? MetaDataLoader._defaultRegistry();
     this._freeze = opts?.freeze !== false; // default true
     this._strict = opts?.strict === true;  // default false
-    this._preFreeze = opts?.preFreeze;
   }
 
   private static _defaultRegistry(): TypeRegistry {
@@ -449,12 +439,22 @@ export class MetaDataLoader {
       // Fifth pass: @filterable without index drift warning.
       warnings.push(...validateFilterableHasIndex(root));
 
+      // SP-H Unit9 — @filterable on a subtype with no operator band → error
+      // (would silently generate a filter that rejects every request).
+      errors.push(...validateFilterableHasSupportedOps(root));
+
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));
+
+      // FR-017 — M:N relationship validation (deferred-resolution): @through names a
+      // junction declaring two identity.reference children; @sourceRefField matches one;
+      // @symmetric is self-join-only + mutually exclusive with @sourceRefField; M:N attrs
+      // are invalid on a 1:N relationship.
+      errors.push(...validateRelationships(root));
 
       // template.* validation — @payloadRef resolves to a known object;
       // @requiredSlots are real fields on it (FR-004 Plan #3, T2).
@@ -463,7 +463,7 @@ export class MetaDataLoader {
       // Eighth pass: attribute-schema validation (Phase A3) — checks each
       // node's @-attributes against its (type, subType) AttrSchema: required
       // attrs present, declared attrs well-typed, allowedValues honored.
-      const attrSchemaResult = validateAttrSchema(root, this._registry);
+      const attrSchemaResult = validateAttrSchema(root, this._registry, this._strict);
       errors.push(...attrSchemaResult.errors);
       warnings.push(...attrSchemaResult.warnings);
 
@@ -515,11 +515,6 @@ export class MetaDataLoader {
     // Freeze applies to BOTH paths — synthetic-root callers shouldn't get a
     // mutable model just because their inputs failed.
     if (this._freeze) {
-      // Run the preFreeze hook (if any) before locking the tree. This is the
-      // designated injection point for programmatic tree enrichment (e.g.
-      // codegen pre-passes that derive additional nodes from the validated
-      // metadata). After the hook returns the tree is frozen and immutable.
-      this._preFreeze?.(root);
       root.freeze();
     }
 

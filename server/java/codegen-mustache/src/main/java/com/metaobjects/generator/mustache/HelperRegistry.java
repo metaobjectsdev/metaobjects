@@ -7,6 +7,7 @@ import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.RequiredValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.identity.ReferenceIdentity;
 import org.apache.commons.lang3.StringUtils;
 
 import static com.metaobjects.database.CoreDBMetaDataProvider.COLUMN;
@@ -310,19 +311,17 @@ public class HelperRegistry {
         if (input instanceof MetaField) {
             MetaField field = (MetaField) input;
 
-            // Check if this field is referenced by an AssociationRelationship (new approach)
+            // SP-G: FK-field-ness is derived from identity.reference (the SSOT for
+            // FK direction) — the field is an FK field when it appears in any
+            // reference identity's @fields on the owning entity. Replaces the
+            // removed legacy relationship @referencedBy attr.
             MetaObject metaObject = (MetaObject) field.getParent();
             if (metaObject != null) {
-                // Look for AssociationRelationship children in the MetaObject
-                List<AssociationRelationship> relationships = metaObject.getChildren(AssociationRelationship.class);
-
-                for (AssociationRelationship relationship : relationships) {
-                    // Check if this field is referenced by the relationship
-                    if (relationship.hasMetaAttr("referencedBy")) {
-                        String referencedByField = relationship.getMetaAttr("referencedBy").getValueAsString();
-                        if (field.getName().equals(referencedByField)) {
-                            return true;
-                        }
+                List<MetaIdentity> identities = metaObject.getChildren(MetaIdentity.class);
+                for (MetaIdentity identity : identities) {
+                    if (identity instanceof ReferenceIdentity
+                            && identity.getFields().contains(field.getName())) {
+                        return true;
                     }
                 }
             }
@@ -596,20 +595,21 @@ public class HelperRegistry {
     }
 
     /**
-     * Determine if a field should be nullable based on validators.
-     * Returns the explicit dbNullable attribute if present, otherwise analyzes
-     * the field's validators to determine if it's required (not nullable).
+     * Determine if a field should be nullable.
+     * Honors the cross-port logical {@code @required} marker if present (nullable = !required,
+     * SP-G Unit 7 — replaces the legacy {@code @dbNullable} physical attr), otherwise
+     * analyzes the field's validators to determine if it's required (not nullable).
      */
     private boolean isFieldNullable(MetaField metaField) {
-        // Check for explicit dbNullable attribute first
-        if (metaField.hasMetaAttr("dbNullable")) {
+        // Honor the explicit logical @required marker first (cross-port name).
+        if (metaField.hasMetaAttr(MetaField.ATTR_REQUIRED)) {
             try {
-                boolean explicitNullable = Boolean.parseBoolean(
-                    metaField.getMetaAttr("dbNullable").getValueAsString());
-                log.debug("Using explicit dbNullable: {} for field: {}", explicitNullable, metaField.getName());
-                return explicitNullable;
+                boolean required = Boolean.parseBoolean(
+                    metaField.getMetaAttr(MetaField.ATTR_REQUIRED).getValueAsString());
+                log.debug("Using explicit @required: {} for field: {}", required, metaField.getName());
+                return !required;
             } catch (Exception e) {
-                log.warn("Invalid dbNullable value for field {}, falling back to validator analysis",
+                log.warn("Invalid @required value for field {}, falling back to validator analysis",
                     metaField.getName());
             }
         }
@@ -625,19 +625,20 @@ public class HelperRegistry {
 
     /**
      * Get the database column length for a field.
-     * Returns the explicit dbLength attribute if present, otherwise analyzes
-     * validators to determine appropriate length constraints.
+     * Returns the explicit logical {@code @maxLength} attribute if present (cross-port name,
+     * SP-G Unit 7 — replaces the legacy {@code @dbLength}), otherwise analyzes validators to
+     * determine appropriate length constraints.
      */
     private Optional<Integer> getFieldColumnLength(MetaField metaField) {
-        // Check for explicit dbLength attribute first
-        if (metaField.hasMetaAttr("dbLength")) {
+        // Check for explicit logical @maxLength attribute first (cross-port name).
+        if (metaField.hasMetaAttr(MetaField.ATTR_MAX_LENGTH)) {
             try {
                 int explicitLength = Integer.parseInt(
-                    metaField.getMetaAttr("dbLength").getValueAsString());
-                log.debug("Using explicit dbLength: {} for field: {}", explicitLength, metaField.getName());
+                    metaField.getMetaAttr(MetaField.ATTR_MAX_LENGTH).getValueAsString());
+                log.debug("Using explicit @maxLength: {} for field: {}", explicitLength, metaField.getName());
                 return Optional.of(explicitLength);
             } catch (NumberFormatException e) {
-                log.warn("Invalid dbLength value for field {}, falling back to validator analysis",
+                log.warn("Invalid @maxLength value for field {}, falling back to validator analysis",
                     metaField.getName());
             }
         }
@@ -650,36 +651,25 @@ public class HelperRegistry {
             return validatorLength;
         }
 
-        // Check for maxLength attribute (common pattern)
-        if (metaField.hasMetaAttr("maxLength")) {
-            try {
-                int maxLength = Integer.parseInt(
-                    metaField.getMetaAttr("maxLength").getValueAsString());
-                log.debug("Using maxLength attribute: {} for field: {}", maxLength, metaField.getName());
-                return Optional.of(maxLength);
-            } catch (NumberFormatException e) {
-                log.warn("Invalid maxLength value for field {}", metaField.getName());
-            }
-        }
-
         log.debug("No length constraint found for field: {}", metaField.getName());
         return Optional.empty();
     }
 
     /**
      * Get the database precision for numeric fields.
-     * Returns the explicit dbPrecision attribute if present, otherwise returns
+     * Returns the explicit logical {@code @precision} attribute if present (cross-port name,
+     * SP-G Unit 7 — replaces the legacy {@code @dbPrecision}), otherwise returns
      * empty Optional as precision is typically database-specific.
      */
     private Optional<Integer> getFieldPrecision(MetaField metaField) {
-        if (metaField.hasMetaAttr("dbPrecision")) {
+        if (metaField.hasMetaAttr(MetaField.ATTR_PRECISION)) {
             try {
                 int precision = Integer.parseInt(
-                    metaField.getMetaAttr("dbPrecision").getValueAsString());
-                log.debug("Using explicit dbPrecision: {} for field: {}", precision, metaField.getName());
+                    metaField.getMetaAttr(MetaField.ATTR_PRECISION).getValueAsString());
+                log.debug("Using explicit @precision: {} for field: {}", precision, metaField.getName());
                 return Optional.of(precision);
             } catch (NumberFormatException e) {
-                log.warn("Invalid dbPrecision value for field {}", metaField.getName());
+                log.warn("Invalid @precision value for field {}", metaField.getName());
             }
         }
 
@@ -688,18 +678,19 @@ public class HelperRegistry {
 
     /**
      * Get the database scale for numeric fields.
-     * Returns the explicit dbScale attribute if present, otherwise returns
+     * Returns the explicit logical {@code @scale} attribute if present (cross-port name,
+     * SP-G Unit 7 — replaces the legacy {@code @dbScale}), otherwise returns
      * empty Optional as scale is typically database-specific.
      */
     private Optional<Integer> getFieldScale(MetaField metaField) {
-        if (metaField.hasMetaAttr("dbScale")) {
+        if (metaField.hasMetaAttr(MetaField.ATTR_SCALE)) {
             try {
                 int scale = Integer.parseInt(
-                    metaField.getMetaAttr("dbScale").getValueAsString());
-                log.debug("Using explicit dbScale: {} for field: {}", scale, metaField.getName());
+                    metaField.getMetaAttr(MetaField.ATTR_SCALE).getValueAsString());
+                log.debug("Using explicit @scale: {} for field: {}", scale, metaField.getName());
                 return Optional.of(scale);
             } catch (NumberFormatException e) {
-                log.warn("Invalid dbScale value for field {}", metaField.getName());
+                log.warn("Invalid @scale value for field {}", metaField.getName());
             }
         }
 

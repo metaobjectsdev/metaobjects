@@ -63,8 +63,9 @@ public static class TemplateSchema
 
         new AttrSchema(
             Name: TemplateConstants.TEMPLATE_ATTR_REQUIRED_TAGS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
+            IsArray: true,
             Description: "Output tags the rendered text must contain (drives the verify output-tag check)."),
     ];
 
@@ -124,8 +125,9 @@ public static class TemplateSchema
 
         new AttrSchema(
             Name: TemplateConstants.TEMPLATE_ATTR_REQUIRED_SLOTS,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRINGARRAY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
+            IsArray: true,
             Description: "Slots that must resolve at render time (drives the verify check)."),
 
         new AttrSchema(
@@ -133,6 +135,12 @@ public static class TemplateSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Target model id (LLM-specific)."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_RESPONSE_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "The typed VO an LLM response is extracted into (drives the derived voResponse jsonb trace column). AI trace; TS-pilot vocab."),
     ];
 
     // Toolcall attrs (template.toolcall only — does NOT inherit GenericAttrs).

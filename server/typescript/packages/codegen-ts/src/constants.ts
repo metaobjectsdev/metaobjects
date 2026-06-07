@@ -8,3 +8,21 @@ export const EXTRA_SUFFIX = ".extra";
 
 /** Default outDir used by tests + as a sane default for generate(). */
 export const DEFAULT_OUT_DIR = "./src/db/entities";
+
+// ---------------------------------------------------------------------------
+// Codegen-control attributes.
+//
+// These are per-entity opt-in/opt-out flags read by generators (NOT metamodel
+// vocabulary — they tune codegen, not the model). Named here so the literals
+// aren't scattered as magic strings across the generator packages (compile-time
+// typo safety), matching the metadata package's constants discipline.
+// ---------------------------------------------------------------------------
+
+/** `@emitTanstack: false` — skip the TanStack hooks + grid generators for an entity. */
+export const CODEGEN_ATTR_EMIT_TANSTACK = "emitTanstack";
+/** `@emitGrid: true` — opt a TPH subtype IN to its own per-subtype grid (default: the polymorphic base grid is the single source). */
+export const CODEGEN_ATTR_EMIT_GRID = "emitGrid";
+/** `@emitForm: false` — skip the React form generator for an entity. */
+export const CODEGEN_ATTR_EMIT_FORM = "emitForm";
+/** `@emitRoutes: false` — skip the Fastify routes generator for an entity. */
+export const CODEGEN_ATTR_EMIT_ROUTES = "emitRoutes";

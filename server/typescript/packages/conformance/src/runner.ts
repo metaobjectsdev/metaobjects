@@ -177,6 +177,27 @@ export async function runFixture(
     }
   }
 
+  // ADR-0023 — strict hard-fail. A fixture that declares NO expected-errors.json
+  // is a happy-path fixture: under strict load it MUST load with zero errors.
+  // Any recorded error (e.g. ERR_UNKNOWN_ATTR from a made-up attribute) fails
+  // the fixture with a message naming the unexpected error(s). Previously this
+  // was silently tolerated — the runner only byte-compared the tree and never
+  // asserted the error set was empty, so a made-up attr passed. (Warnings stay
+  // separate; this is about ERRORS only.) Gated on the fixture declaring at
+  // least one metadata expectation file so docs-only / config-error fixtures
+  // are handled by their own checks below.
+  if (
+    !fix.hasExpectedErrors &&
+    (fix.hasExpected || fix.hasExpectedEffective || fix.hasExpectedWarnings || fix.hasScript) &&
+    outcome.errorCodes.length > 0
+  ) {
+    checks.push({
+      kind: "expected-errors",
+      passed: false,
+      detail: `happy-path fixture loaded with unexpected error(s): [${[...outcome.errorCodes].sort().join(", ")}] — under strict, a fixture with no expected-errors.json must load with zero errors (ADR-0023)`,
+    });
+  }
+
   // If the load produced no tree but tree-dependent checks are expected, push a
   // synthetic failed check so the report is self-explanatory rather than silent.
   if (

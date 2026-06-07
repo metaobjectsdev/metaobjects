@@ -54,20 +54,34 @@ const MAX_DEPTH = 32;
 
 // A Mustache parse token: [type, value, start, end, subTokens?, ...].
 type Token = readonly unknown[];
-// The context stack — innermost context last, mirroring Mustache lookup order.
-type Stack = readonly PayloadField[][];
+/**
+ * The context stack — innermost context last, mirroring Mustache lookup order.
+ * Generic over the field node so consumers (e.g. the docs annotator) can resolve
+ * an ENRICHED field tree (carrying owner/type metadata) through the EXACT same
+ * walk verify uses, guaranteeing the two surfaces agree.
+ */
+export type ResolveStack<F extends PayloadField = PayloadField> = readonly F[][];
 
-function find(fields: PayloadField[], name: string): PayloadField | undefined {
+function find<F extends PayloadField>(fields: F[], name: string): F | undefined {
   return fields.find((f) => f.name === name);
 }
 
-// Resolve a (possibly dotted) variable path the way Mustache does: the FIRST
-// segment is looked up through the context stack (innermost → outermost); each
-// remaining segment is a direct descent into the resolved field's `fields`.
-// Returns the resolved field, or undefined if any segment is missing.
-function resolve(stack: Stack, path: string): PayloadField | undefined {
+/**
+ * Resolve a (possibly dotted) variable path the way Mustache does: the FIRST
+ * segment is looked up through the context stack (innermost → outermost); each
+ * remaining segment is a direct descent into the resolved field's `fields`.
+ * Returns the resolved field, or undefined if any segment is missing.
+ *
+ * EXPORTED so the docs annotator can share this ONE resolution (annotator ⇆
+ * verify must agree). Generic over the node type: an enriched tree resolves the
+ * same way, since only `name`/`fields` drive the walk.
+ */
+export function resolveTemplateVariable<F extends PayloadField>(
+  stack: ResolveStack<F>,
+  path: string,
+): F | undefined {
   const segs = path.split(".");
-  let current: PayloadField | undefined;
+  let current: F | undefined;
   for (let i = stack.length - 1; i >= 0; i--) {
     const hit = find(stack[i]!, segs[0]!);
     if (hit) {
@@ -76,13 +90,25 @@ function resolve(stack: Stack, path: string): PayloadField | undefined {
     }
   }
   for (let i = 1; current && i < segs.length; i++) {
-    current = current.fields ? find(current.fields, segs[i]!) : undefined;
+    current = current.fields ? (find(current.fields, segs[i]!) as F | undefined) : undefined;
   }
   return current;
 }
 
+// Internal alias preserving the original call sites unchanged.
+const resolve = resolveTemplateVariable;
+
 function parse(text: string): Token[] {
   return Mustache.parse(text) as unknown as Token[];
+}
+
+/**
+ * Parse a template into Mustache tokens (`[type, value, start, end, subTokens?]`),
+ * the SAME parse verify walks. Exported so the docs annotator tokenizes through
+ * one parser (no divergent re-tokenization). Returns a readonly token list.
+ */
+export function parseTemplate(text: string): readonly (readonly unknown[])[] {
+  return parse(text);
 }
 
 // An opening tag is `<tag` immediately followed by `>` or XML whitespace, so
@@ -124,7 +150,7 @@ export function verify(
   // (no second resolution pass).
   const staticTexts: string[] = [templateText];
 
-  function walk(tokens: Token[], stack: Stack, seen: readonly string[]): void {
+  function walk(tokens: Token[], stack: ResolveStack, seen: readonly string[]): void {
     const atRoot = stack.length === 1 && stack[0] === root;
     for (const tok of tokens) {
       const type = tok[0] as string;

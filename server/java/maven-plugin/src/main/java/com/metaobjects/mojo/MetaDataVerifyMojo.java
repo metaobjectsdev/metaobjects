@@ -107,6 +107,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         if (getLoader() == null) {
             throw new MojoExecutionException("No <loader> element was defined");
         }
+        warnIfAgentContextStale();
 
         String m = mode == null ? MODE_CODEGEN : mode.trim();
         if (MODE_TEMPLATES.equalsIgnoreCase(m)) {

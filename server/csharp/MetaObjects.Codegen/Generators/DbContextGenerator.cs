@@ -13,18 +13,32 @@ using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-/// <summary>Generates one <c>AppDbContext</c> over the entities + projections.</summary>
-public sealed class DbContextGenerator : IGenerator
+/// <summary>
+/// Generates one <c>AppDbContext</c> over the entities + projections.
+///
+/// Open for extension (ADR-0002): <see cref="Name"/> + <see cref="Generate"/> are
+/// <c>public virtual</c>, and the file body is assembled through three
+/// <c>protected virtual</c> seams — <see cref="EmitUsings"/> (header + usings +
+/// namespace + class/ctor open), <see cref="EmitDbSetDeclarations"/> (the
+/// <c>DbSet</c> properties), and <see cref="EmitOnModelCreatingBody"/> (the
+/// <c>OnModelCreating</c> block). The default bodies reproduce the inline emission
+/// exactly, so the default output is byte-identical.
+/// </summary>
+public class DbContextGenerator : IGenerator
 {
-    public string Name => "dbcontext-generator";
+    public virtual string Name => "dbcontext-generator";
 
-    public IEnumerable<EmittedFile> Generate(GenContext ctx)
+    public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
+        // DbSet and no per-subtype model config; the hierarchy is reached via the base
+        // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
         var objects = ctx.Entities
             .Where(o => (o.IsEntity() || o.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(o))
+            .Where(o => !TphPlanBuilder.IsTphSubtype(o, ctx.Root))
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
-        if (objects.Count == 0) yield break;
+        if (objects.Count == 0) return [];
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
@@ -102,13 +116,72 @@ public sealed class DbContextGenerator : IGenerator
             // so the native uuid / jsonb / timestamptz column round-trips into that property.
             foreach (var f in e.Fields().Where(f => !f.IsArray && f.DbColumnType is not null))
                 if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
+
+            // FR-013 — a @readOnly field is read-after-insert-only. The property carries a
+            // private setter (EntityGenerator), and EF must skip the column on writes:
+            // SetAfterSaveBehavior(Ignore) excludes it from UPDATE, and ValueGeneratedOnAdd
+            // (paired below) lets the DB / trigger / default own the value on INSERT.
+            foreach (var f in e.Fields().Where(f => !f.IsArray && f.ReadOnly))
+            {
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add(
+                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
+            }
+
+            // FR-018 M:N — wire a hetero (source != target) navigation as an EF skip
+            // navigation through the explicit junction entity:
+            //   HasMany(x => x.<Nav>).WithMany().UsingEntity<Through>(
+            //       l => l.HasOne<Target>().WithMany().HasForeignKey("<TargetFkProp>"),
+            //       r => r.HasOne<Source>().WithMany().HasForeignKey("<SourceFkProp>"));
+            // Self-joins (directed/symmetric) are [NotMapped] (route-traversed) — see
+            // EntityGenerator.M2mNavProperty — so they are skipped here.
+            foreach (var nav in M2MNavigationBuilder.For(e, ctx.Root).Where(n => !n.IsSelfJoin))
+                modelLines.Add(UsingEntityConfig(nav));
+
+            // FR-017 TPH — single-table inheritance mapping. The base maps its concrete
+            // subtypes onto the shared table via the discriminator property:
+            //   HasDiscriminator(e => e.<DiscProp>).HasValue<Sub>(<EnumType>.<Value>)...
+            // The discriminator property is the entity's @discriminator field (an enum);
+            // its HasConversion<string>() (emitted by the enum loop above) stores the
+            // symbol as text, matching the TS-owned TEXT column. EF folds every subtype's
+            // own columns into the base table as nullable.
+            if (TphPlanBuilder.For(e, ctx.Root) is { } tph)
+                modelLines.Add(HasDiscriminatorConfig(owner, e, tph));
         }
 
+        // FR-013 — PropertySaveBehavior (used by the @readOnly SetAfterSaveBehavior config)
+        // lives in Microsoft.EntityFrameworkCore.Metadata. Emit that using only when a
+        // read-only field is present so models without one stay byte-identical.
+        var needsMetadataUsing = objects
+            .Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
+            .Any(o => o.Fields().Any(f => !f.IsArray && f.ReadOnly));
+
         var sb = new StringBuilder();
+        EmitUsings(sb, needsMetadataUsing, ctx);
+        EmitDbSetDeclarations(sb, objects, ctx);
+        EmitOnModelCreatingBody(sb, modelLines, ctx);
+        sb.AppendLine("}");
+        return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
+    }
+
+    /// <summary>
+    /// Extension hook — emits the file header, usings, namespace, and the opening of
+    /// the <c>public class AppDbContext : DbContext</c> declaration through its primary
+    /// constructor (leaving the class body open for <see cref="EmitDbSetDeclarations"/>
+    /// + <see cref="EmitOnModelCreatingBody"/>; the caller emits the closing <c>}</c>).
+    /// <paramref name="needsMetadataUsing"/> is true when a <c>@readOnly</c> field
+    /// requires the <c>Microsoft.EntityFrameworkCore.Metadata</c> import. The default
+    /// body reproduces the inline emission, so default output is byte-identical.
+    /// Override to add usings, a base interface, or class-level attributes.
+    /// </summary>
+    protected virtual void EmitUsings(StringBuilder sb, bool needsMetadataUsing, GenContext ctx)
+    {
         sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("// Generated by MetaObjects dbcontext-generator. Do not edit by hand.");
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        if (needsMetadataUsing)
+            sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata;");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -116,24 +189,39 @@ public sealed class DbContextGenerator : IGenerator
         sb.AppendLine("{");
         sb.AppendLine("    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Extension hook — emits one <c>public DbSet&lt;Entity&gt; Plural { get; set; }</c>
+    /// (with its XML doc) per persisted object/projection, in the order computed by
+    /// <see cref="Generate"/>. The default body reproduces the inline emission, so
+    /// default output is byte-identical.
+    /// </summary>
+    protected virtual void EmitDbSetDeclarations(StringBuilder sb, IReadOnlyList<MetaObject> objects, GenContext ctx)
+    {
         foreach (var o in objects)
         {
             var name = CSharpNaming.Pascal(o.Name);
             XmlDocBuilder.AppendTo(sb, o, indent: "    ");
             sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
         }
+    }
 
-        if (modelLines.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
-            sb.AppendLine("    {");
-            foreach (var line in modelLines) sb.AppendLine(line);
-            sb.AppendLine("    }");
-        }
-
-        sb.AppendLine("}");
-        yield return new EmittedFile("AppDbContext.g.cs", sb.ToString());
+    /// <summary>
+    /// Extension hook — emits the <c>OnModelCreating</c> override carrying the
+    /// precomputed <paramref name="modelLines"/> (owned-type / enum-conversion /
+    /// precision / TPH / M:N config), in stable order. When there are no model lines
+    /// the block is omitted entirely. The default body reproduces the inline emission,
+    /// so default output is byte-identical.
+    /// </summary>
+    protected virtual void EmitOnModelCreatingBody(StringBuilder sb, IReadOnlyList<string> modelLines, GenContext ctx)
+    {
+        if (modelLines.Count == 0) return;
+        sb.AppendLine();
+        sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
+        sb.AppendLine("    {");
+        foreach (var line in modelLines) sb.AppendLine(line);
+        sb.AppendLine("    }");
     }
 
     // R6 Plan 2b — EF mapping for a @dbColumnType physical-override field. The CLR
@@ -166,6 +254,60 @@ public sealed class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"timestamp with time zone\");",
             _ => null,
         };
+    }
+
+    // FR-017 — EF TPH single-table inheritance config for a discriminator base. The
+    // discriminator property is the base's @discriminator field (PascalCased); the
+    // HasValue clauses bind each concrete subtype to its @discriminatorValue. When the
+    // discriminator field is an enum (the canonical shape) the HasValue argument is the
+    // enum literal (<EnumType>.<Value>), which round-trips through the enum's
+    // HasConversion<string>() as the text symbol; otherwise the raw string value.
+    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph)
+    {
+        var discField = baseEntity.FindField(tph.DiscriminatorField);
+        var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var isEnum = discField is not null && discField.SubType == FIELD_SUBTYPE_ENUM;
+        // The enum type is nested in the base class, so qualify it (<Base>.<EnumType>)
+        // when referenced from the DbContext (a sibling type).
+        var enumType = discField is not null && isEnum
+            ? $"{owner}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+
+        var sb = new StringBuilder();
+        sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
+        foreach (var st in tph.Subtypes)
+        {
+            var subCls = CSharpNaming.Pascal(st.Entity.Name);
+            var valueLit = isEnum ? $"{enumType}.{st.Value}" : $"\"{st.Value}\"";
+            sb.Append($".HasValue<{subCls}>({valueLit})");
+        }
+        sb.Append(';');
+        return sb.ToString();
+    }
+
+    // FR-018 — EF skip-navigation config for a hetero M:N navigation through its
+    // explicit junction entity. The junction's FK PROPERTIES are the PascalCased
+    // junction FK field names (the EntityGenerator emits them as scalar properties on
+    // the junction class), derived from the junction's two identity.reference children.
+    //
+    //   HasMany(x => x.<Nav>).WithMany().UsingEntity<Through>(
+    //       l => l.HasOne<Target>().WithMany().HasForeignKey(nameof(Through.<TargetFkProp>)),
+    //       r => r.HasOne<Source>().WithMany().HasForeignKey(nameof(Through.<SourceFkProp>)));
+    //
+    // `WithMany()` is left inverse-less (no reciprocal collection on the target) — the
+    // contract is one-directional traversal from the source, and the route does the
+    // explicit join regardless.
+    private static string UsingEntityConfig(M2MNavigation nav)
+    {
+        var source = CSharpNaming.Pascal(nav.Source.Name);
+        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var through = CSharpNaming.Pascal(nav.Junction.Name);
+        var navProp = CSharpNaming.Pascal(nav.Name);
+        var sourceFkProp = CSharpNaming.Pascal(nav.SourceField);
+        var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
+        return
+            $"        modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
+            $"l => l.HasOne<{target}>().WithMany().HasForeignKey(nameof({through}.{targetFkProp})), " +
+            $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each

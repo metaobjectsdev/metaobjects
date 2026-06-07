@@ -72,12 +72,34 @@ export function docPageHref(
 ): string {
   const toPath = docPageOutputPath(layout, toNode);
   if (layout === "flat") return `./${toPath}`;
-  const fromPath = docPageOutputPath(layout, fromNode);
-  // Relative path from the FROM page's directory to the TO page.
-  const fromDir = fromPath.includes("/") ? fromPath.slice(0, fromPath.lastIndexOf("/")) : "";
-  let rel = posixRelative(fromDir, toPath);
-  if (!rel.startsWith(".")) rel = `./${rel}`;
-  return rel;
+  // Relative path from the FROM page's directory to the TO page — the same
+  // raw-path rule surfaceCrossHref uses, so the two can never diverge.
+  return surfaceCrossHref(docPageOutputPath(layout, fromNode), toPath);
+}
+
+/** Relative href between two doc pages whose output paths (relative to the shared
+ *  docs outDir) may sit under different surface sub-roots — e.g. model `Order.md`
+ *  and api `api/Order.md`. The shared relative-path rule, over raw paths;
+ *  docPageHref delegates its package-layout branch here. */
+export function surfaceCrossHref(fromOutputPath: string, toOutputPath: string): string {
+  const fromDir = fromOutputPath.includes("/") ? fromOutputPath.slice(0, fromOutputPath.lastIndexOf("/")) : "";
+  const rel = posixRelative(fromDir, toOutputPath);
+  return rel.startsWith(".") ? rel : `./${rel}`;
+}
+
+/** Href FROM a page (at `fromOutputPath`, relative to the docs root) TO a page
+ *  (`page`, relative to the surface's own root) in an api surface. Relative via
+ *  `surfaceCrossHref` when the surface is in the same tree; absolute `baseUrl/page`
+ *  when the surface declares a baseUrl (federated / separate repo). */
+export function apiSurfaceHref(
+  fromOutputPath: string,
+  surface: { subDir: string; baseUrl?: string },
+  page: string,
+): string {
+  if (surface.baseUrl !== undefined && surface.baseUrl !== "") {
+    return `${surface.baseUrl.replace(/\/$/, "")}/${page}`;
+  }
+  return surfaceCrossHref(fromOutputPath, `${surface.subDir}/${page}`);
 }
 
 /** A page about to be emitted, paired with the FQN of the node that produced it

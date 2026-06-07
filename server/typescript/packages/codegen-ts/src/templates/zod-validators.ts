@@ -24,9 +24,82 @@ import {
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
+  OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { sharedEnumForField } from "../enum-shared.js";
+import { sharedEnumImportSpecifier } from "../enum-import.js";
+import { sharedEnumZodConstName } from "./enums-file.js";
+import type { RenderContext } from "../render-context.js";
+
+/**
+ * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
+ * and an ancestor carries @discriminator), return the discriminator-field-name
+ * → pinned-literal-value pair. Subtypes emit `<field>: z.literal("<value>")`
+ * instead of the inherited field's normal type expression. Returns undefined
+ * when the object is not a TPH subtype.
+ */
+export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
+  const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
+  if (typeof value !== "string" || value === "") return undefined;
+
+  // Walk the extends chain to find the root carrying @discriminator.
+  let cursor = obj.superResolved;
+  while (cursor !== undefined) {
+    const fieldName = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+    if (typeof fieldName === "string" && fieldName !== "") {
+      return { fieldName, value };
+    }
+    cursor = cursor.superResolved;
+  }
+  return undefined;
+}
+
+/** True when this object is a TPH subtype — it declares @discriminatorValue
+ *  and an ancestor carries @discriminator. */
+export function isTphSubtype(obj: MetaObject): boolean {
+  return tphDiscriminatorPin(obj) !== undefined;
+}
+
+/**
+ * FR-017 Tier 2 — the per-subtype FULL read schema `<Sub>Schema`. Unlike the
+ * insert schema, this includes every effective field (PK included) so a raw DB
+ * row parses through it. The discriminator field is pinned to its literal value
+ * (`type: z.literal("Bridge")`) so the schema rejects a row of another subtype.
+ *
+ * This is the schema parse<Base>(row) dispatches to (see tph-discriminator.ts).
+ * Non-required columns are `.nullable()`-tolerant: a nullable TPH column read
+ * back from the DB arrives as `null`, not `undefined`, so the read schema must
+ * accept null (the insert schema, by contrast, makes them `.optional()`).
+ */
+export function renderTphSubtypeReadSchema(obj: MetaObject): Code {
+  const z = imp("z@zod");
+  const tphPin = tphDiscriminatorPin(obj);
+
+  const fieldLines: Code[] = [];
+  for (const child of obj.fields()) {
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
+      continue;
+    }
+    const expr = zodFieldExpr(child);
+    // zodFieldExpr already appends `.optional()` for non-required fields; add
+    // `.nullable()` on top so a NULL column value (the TPH default for any
+    // subtype-only column) parses cleanly.
+    fieldLines.push(
+      fieldWillBeOptional(child) ? code`  ${child.name}: ${expr}.nullable()` : code`  ${child.name}: ${expr}`,
+    );
+  }
+
+  const docs = renderDocsFor(obj);
+  const docsPrefix = docs ? `${docs}\n` : "";
+  return code`
+${docsPrefix}export const ${obj.name}Schema = ${z}.object({
+${joinCode(fieldLines, { on: ",\n" })}
+});
+`;
+}
 
 /** Auto-generated PK field names that should be omitted from InsertSchema. */
 function autoGenPkFieldNames(obj: MetaObject): Set<string> {
@@ -55,6 +128,7 @@ function autoGenPkFieldNames(obj: MetaObject): Set<string> {
 export function renderInsertSchemaOnly(obj: MetaObject): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
   for (const child of obj.fields()) {
@@ -63,6 +137,14 @@ export function renderInsertSchemaOnly(obj: MetaObject): Code {
     // owner; the application has no path to write them. Exclude from the
     // create-shape schema entirely.
     if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+
+    // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      insertFieldLines.push(
+        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
+      );
+      continue;
+    }
 
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
@@ -86,9 +168,90 @@ ${joinCode(insertFieldLines, { on: ",\n" })}
 `;
 }
 
-export function renderZodValidators(obj: MetaObject): Code {
+/** One documented field in an Insert/Update schema's accepted shape. */
+export interface SchemaFieldShape {
+  /** The field name (the schema property key). */
+  name: string;
+  /** Whether the property is optional in the schema (`.optional()` / omitted-OK). */
+  optional: boolean;
+  /** For the @discriminator field on a TPH subtype's InsertSchema: the pinned
+   *  literal value (`z.literal("Bridge")`). Undefined otherwise. */
+  pinnedLiteral?: string;
+  /** True for @autoSet timestamp fields the schema fills server-side
+   *  (`z.string().optional().transform(...)`). */
+  autoSet?: boolean;
+}
+
+/**
+ * The field SET (name + optionality) the `<Name>InsertSchema` accepts — derived
+ * by the SAME iteration + skip rules `renderInsertSchemaOnly` /
+ * `renderZodValidators` use to EMIT that schema, so a documented create-payload
+ * shape can never drift from the real schema:
+ *   • auto-generated PK fields are omitted (caller doesn't provide them);
+ *   • @readOnly fields are omitted (DB / replication owns the write path);
+ *   • a TPH subtype's @discriminator field is a pinned `z.literal(value)`;
+ *   • @autoSet fields are present but optional (server fills them);
+ *   • every other field's optionality is `fieldWillBeOptional` (not required, or
+ *     carries a @default).
+ */
+export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
+  const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
+  const out: SchemaFieldShape[] = [];
+  for (const child of obj.fields()) {
+    if (autoGenPkFields.has(child.name)) continue;
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      out.push({ name: child.name, optional: false, pinnedLiteral: tphPin.value });
+      continue;
+    }
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
+      out.push({ name: child.name, optional: true, autoSet: true });
+    } else {
+      out.push({ name: child.name, optional: fieldWillBeOptional(child) });
+    }
+  }
+  return out;
+}
+
+/**
+ * The field SET the `<Name>UpdateSchema` accepts — same iteration + skip rules
+ * as `insertSchemaFields`, but mirroring the UpdateSchema branch of
+ * `renderZodValidators`:
+ *   • a TPH subtype's @discriminator field is OMITTED (clients can't change subtype);
+ *   • @autoSet onCreate fields are OMITTED (creation timestamps are immutable);
+ *   • @autoSet onUpdate fields are present + optional (server fills them);
+ *   • every other field is optional (PATCH semantics).
+ */
+export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
+  const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
+  const out: SchemaFieldShape[] = [];
+  for (const child of obj.fields()) {
+    if (autoGenPkFields.has(child.name)) continue;
+    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // TPH subtype discriminator: omitted from the update schema entirely.
+    if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
+    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE) {
+      // Omitted: creation timestamps cannot change after creation.
+      continue;
+    }
+    if (autoSet === AUTO_SET_ON_UPDATE) {
+      out.push({ name: child.name, optional: true, autoSet: true });
+      continue;
+    }
+    // All non-autoSet fields are optional in the update schema (PATCH semantics).
+    out.push({ name: child.name, optional: true });
+  }
+  return out;
+}
+
+export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
   const updateFieldLines: Code[] = [];
@@ -100,6 +263,17 @@ export function renderZodValidators(obj: MetaObject): Code {
     // contract at the boundary with a 400 response).
     if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
 
+    // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
+    // The discriminator is implicit on subtype rows (controlled by URL / insert
+    // path) — the app never writes it via the body and never updates it.
+    // Insert: pinned literal. Update: omitted entirely (clients can't change subtype).
+    if (tphPin !== undefined && child.name === tphPin.fieldName) {
+      insertFieldLines.push(
+        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
+      );
+      continue;
+    }
+
     const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
 
     // Insert schema: @autoSet fields use transform (always override client input).
@@ -108,7 +282,7 @@ export function renderZodValidators(obj: MetaObject): Code {
         code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child)}`);
+      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     }
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
@@ -122,7 +296,7 @@ export function renderZodValidators(obj: MetaObject): Code {
       // All non-autoSet fields are optional in the update schema (PATCH semantics).
       // zodFieldExpr already appends .optional() when the field is non-required
       // OR has a default; only append once more when it didn't.
-      const baseExpr = zodFieldExpr(child);
+      const baseExpr = zodFieldExpr(child, obj, ctx);
       updateFieldLines.push(
         fieldWillBeOptional(child) ? code`  ${child.name}: ${baseExpr}` : code`  ${child.name}: ${baseExpr}.optional()`,
       );
@@ -146,7 +320,7 @@ ${joinCode(updateFieldLines, { on: ",\n" })}
 `;
 }
 
-function zodFieldExpr(field: MetaField): Code {
+function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
   // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
   // via an imp() so ts-poet hoists the cross-module import. Without this the
   // field used to collapse to z.string() / z.array(z.string()) and downstream
@@ -187,7 +361,27 @@ function zodFieldExpr(field: MetaField): Code {
       break;
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);
-      baseStr = values !== undefined ? zodEnumExpr(values) : "z.string()";
+      if (values === undefined) {
+        baseStr = "z.string()";
+        break;
+      }
+      // FR-019: a field extending a MATERIALIZED root-level abstract enum uses the
+      // shared `<E>Enum` Zod const (imported from ./enums) instead of inlining
+      // z.enum([...]). A @provided enum keeps inline z.enum([...]) — validation
+      // stays metaobjects-owned (the @values SSOT); only the TS type is external.
+      // Inline enums (and bare-ctx unit-test calls) keep inlining as before.
+      if (ctx !== undefined) {
+        const shared = sharedEnumForField(field);
+        if (shared !== undefined && !shared.provided) {
+          const constName = sharedEnumZodConstName(shared.name);
+          const spec = sharedEnumImportSpecifier(ctx, owner?.package);
+          const sharedConst = imp(`${constName}@${spec}`);
+          let base: Code = code`${sharedConst}`;
+          if (field.isArray) base = code`z.array(${base})`;
+          return appendValidatorChain(base, field);
+        }
+      }
+      baseStr = zodEnumExpr(values);
       break;
     }
     case FIELD_SUBTYPE_STRING:

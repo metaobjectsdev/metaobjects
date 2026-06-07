@@ -47,6 +47,20 @@ public sealed class XmlForgivingReader
         return out_;
     }
 
+    /// <summary>
+    /// Rootless read: parse the WHOLE text's top-level elements directly, with no enclosing root
+    /// element to strip (a flat sequence like <c>&lt;a&gt;..&lt;/a&gt;&lt;b&gt;..&lt;/b&gt;</c>).
+    /// Used for rootless responses. Leading/trailing non-element text is ignored. Never throws.
+    /// Mirrors Java XmlForgivingReader.readRootless.
+    /// </summary>
+    public Dictionary<string, object?> ReadRootless(string? text, bool caseInsensitive)
+    {
+        var out_ = new Dictionary<string, object?>();
+        if (string.IsNullOrWhiteSpace(text)) return out_;
+        ParseChildren(text!, caseInsensitive, out_);
+        return out_;
+    }
+
     private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_)
     {
         var openTag = new Regex(OpenTagPattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
@@ -85,12 +99,31 @@ public sealed class XmlForgivingReader
             }
             else
             {
-                // unclosed tag: extract text up to the next sibling open tag
+                // unclosed tag: extract content up to the next sibling open tag.
                 Match sib = openTag.Match(inner, contentStart);
                 if (sib.Success)
                 {
-                    contentEnd = sib.Index;
-                    next = contentEnd;
+                    // When the unclosed element's content begins IMMEDIATELY with a child
+                    // open tag (no leading text), that child was almost certainly meant to
+                    // be NESTED, not a sibling — a common LLM malformation is dropping the
+                    // parent's close tag while still emitting a real child element
+                    // (e.g. <check ...><payoff>text). Absorb the remainder of this span as
+                    // the unclosed element's content so the child nests under it. When there
+                    // IS leading text before the first child tag (e.g. <t>hi<c>..), keep the
+                    // sibling split — the leading text is the unclosed element's body and the
+                    // following tag is its sibling. Mirrors Java XmlForgivingReader.
+                    bool noLeadingText = string.IsNullOrWhiteSpace(
+                        inner.Substring(contentStart, sib.Index - contentStart));
+                    if (noLeadingText)
+                    {
+                        contentEnd = inner.Length;
+                        next = inner.Length;
+                    }
+                    else
+                    {
+                        contentEnd = sib.Index;
+                        next = contentEnd;
+                    }
                 }
                 else
                 {

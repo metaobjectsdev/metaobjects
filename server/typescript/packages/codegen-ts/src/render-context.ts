@@ -52,6 +52,10 @@ export interface RenderContext {
   relationMap: RelationMap;
   /** Entity name → its metadata package (undefined if the entity has no package). Built once per run. */
   packageOf: Map<string, string | undefined>;
+  /** FR-019: module specifier to import externally-PROVIDED shared enums from
+   *  (`@provided: true` declarations). Undefined when unset — referencing a
+   *  provided enum without it is a codegen-time error. */
+  providedEnumModule?: string;
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). */

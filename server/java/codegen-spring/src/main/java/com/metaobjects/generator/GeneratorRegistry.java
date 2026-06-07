@@ -2,6 +2,7 @@ package com.metaobjects.generator;
 
 import com.metaobjects.generator.direct.object.javacode.ExtractorCodeGenerator;
 import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
+import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
@@ -118,6 +119,9 @@ public final class GeneratorRegistry {
                 "Per-entity Spring Data repository.", Tier.NATIVE);
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE);
+        register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
+                "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
+                    + "LlmCallBase-derived entities only).", Tier.NATIVE);
         return Collections.unmodifiableMap(m);
     }
 

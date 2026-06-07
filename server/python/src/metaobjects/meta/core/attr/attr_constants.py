@@ -6,10 +6,17 @@ ATTR_SUBTYPE_INT = "int"
 ATTR_SUBTYPE_LONG = "long"
 ATTR_SUBTYPE_DOUBLE = "double"
 ATTR_SUBTYPE_BOOLEAN = "boolean"
-ATTR_SUBTYPE_STRINGARRAY = "stringArray"
 ATTR_SUBTYPE_FILTER = "filter"
 ATTR_SUBTYPE_PROPERTIES = "properties"
 ATTR_SUBTYPE_CLASS = "class"
+
+# The retired "stringarray" array attr subtype. It is NO LONGER a registered
+# (attr, sub_type) (not in ATTR_SUBTYPES) — array-ness is modeled as a "string"
+# attr with the orthogonal AttrSchema.is_array flag (matching Java's
+# StringAttribute + @isArray), so "stringarray" never appears in the registry
+# manifest. The constant survives only as the array-coercion class-map key
+# (bare-string → one-element list).
+ATTR_SUBTYPE_STRINGARRAY = "stringarray"
 
 ATTR_SUBTYPES = (
     SUBTYPE_BASE,
@@ -18,7 +25,6 @@ ATTR_SUBTYPES = (
     ATTR_SUBTYPE_LONG,
     ATTR_SUBTYPE_DOUBLE,
     ATTR_SUBTYPE_BOOLEAN,
-    ATTR_SUBTYPE_STRINGARRAY,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_CLASS,

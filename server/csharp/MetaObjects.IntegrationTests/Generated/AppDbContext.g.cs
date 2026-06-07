@@ -9,11 +9,19 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<AllTypes> AllTypeses { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
+    public DbSet<Auth> Auths { get; set; } = default!;
+    public DbSet<Follow> Follows { get; set; } = default!;
+    public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
+    public DbSet<Person> Persons { get; set; } = default!;
+    public DbSet<Post> Posts { get; set; } = default!;
+    public DbSet<PostTag> PostTags { get; set; } = default!;
     public DbSet<Program> Programs { get; set; } = default!;
     public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
     public DbSet<ProgramView> ProgramViews { get; set; } = default!;
+    public DbSet<Tag> Tags { get; set; } = default!;
     public DbSet<Week> Weeks { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -21,11 +29,19 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProgramStat>().ToView("v_program_stat");
         modelBuilder.Entity<ProgramView>().ToView("v_program");
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
+        modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
+        modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
+        modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth);
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
+        modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(nameof(PostTag.TagId)), r => r.HasOne<Post>().WithMany().HasForeignKey(nameof(PostTag.PostId)));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
     }

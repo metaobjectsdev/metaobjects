@@ -26,7 +26,7 @@ def test_entity_with_fields_and_identity_fields_array() -> None:
     obj.add_child(MetaField("field", "long", "id"))
     obj.add_child(MetaField("field", "string", "name"))
     ident = MetaIdentity("identity", "primary", "")
-    ident.set_attr("fields", "id", sub_type="stringArray")
+    ident.set_attr("fields", "id", sub_type="stringarray")
     obj.add_child(ident)
     root.add_child(obj)
 

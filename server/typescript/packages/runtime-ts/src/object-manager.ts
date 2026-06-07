@@ -1,7 +1,7 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_OBJECT, TYPE_FIELD,
-  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjectsdev/metadata";
 import type {
@@ -11,8 +11,9 @@ import type {
 import {
   buildSelectSpec, buildCountSpec, buildInsertSpec, buildUpdateSpec, buildDeleteSpec,
   resolvePkFields, compileFilter,
-  type Filter, type QueryOpts,
+  type Filter, type QueryOpts, type DiscriminatorScope,
 } from "./query-builder.js";
+import { tphSubtypeOf, type TphSubtype } from "./tph.js";
 import {
   buildNameMap, resolveTableName, DEFAULT_COLUMN_NAMING_STRATEGY,
   type ColumnNamingStrategy, type EntityNameMap,
@@ -81,6 +82,20 @@ export class ObjectManager {
     return m;
   }
 
+  /** TPH discriminator scope for a subtype entity, or undefined for non-TPH. */
+  private tphScope(entity: MetaData): DiscriminatorScope | undefined {
+    const t = tphSubtypeOf(entity);
+    return t ? { field: t.field, value: t.value } : undefined;
+  }
+
+  /** AND the TPH discriminator predicate into a filter (subtype-scoped reads). */
+  private scopeFilter(filter: Filter | undefined, tph: TphSubtype | null): Filter | undefined {
+    if (tph === null) return filter;
+    const disc = { [tph.field]: { $eq: tph.value } } as Filter;
+    if (filter === undefined) return disc;
+    return { $and: [filter, disc] } as Filter;
+  }
+
   async findById(entityName: string, id: unknown, opts: ReadOpts = {}): Promise<Row | null> {
     const entity = this.requireEntity(entityName);
     const pkField = resolvePkFields(entity)[0]!;
@@ -90,7 +105,8 @@ export class ObjectManager {
   async findFirst(entityName: string, filter: Filter, opts: ReadOpts = {}): Promise<Row | null> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildSelectSpec(entity, filter, { ...opts, limit: 1 }, undefined, this.columnNamingStrategy);
+    const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
+    const spec = buildSelectSpec(entity, scoped, { ...opts, limit: 1 }, undefined, this.columnNamingStrategy);
     const row = await driver.selectOne(spec);
     if (row === null) return null;
     const jsRow = this.toJsRow(entity, row);
@@ -103,7 +119,8 @@ export class ObjectManager {
   async findMany(entityName: string, filter?: Filter, opts: ReadOpts = {}): Promise<Row[]> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildSelectSpec(entity, filter, opts, undefined, this.columnNamingStrategy);
+    const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
+    const spec = buildSelectSpec(entity, scoped, opts, undefined, this.columnNamingStrategy);
     const rows = (await driver.selectMany(spec)).map((r) => this.toJsRow(entity, r));
     if (opts.include && opts.include.length > 0) {
       await this.attachIncludes(entity, rows, opts.include, driver);
@@ -114,7 +131,8 @@ export class ObjectManager {
   async count(entityName: string, filter?: Filter, opts: Pick<ReadOpts, "tx"> = {}): Promise<number> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    return driver.count(buildCountSpec(entity, filter, this.columnNamingStrategy));
+    const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
+    return driver.count(buildCountSpec(entity, scoped, this.columnNamingStrategy));
   }
 
   async load(refString: string): Promise<Row | null> {
@@ -145,7 +163,11 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
 
-    const restricted = this.applyViewRestriction(entity, data, opts.view);
+    const restricted0 = this.applyViewRestriction(entity, data, opts.view);
+    // FR-017 TPH: a subtype create injects its discriminator value (the entity
+    // names the subtype; the caller never sets it).
+    const tph = tphSubtypeOf(entity);
+    const restricted = tph ? { ...restricted0, [tph.field]: tph.value } : restricted0;
     const ident = resolveIdentity(entity, restricted);
     const merged: Row = { ...restricted, ...ident.values };
 
@@ -164,7 +186,15 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
 
-    const restricted = this.applyViewRestriction(entity, data, opts.view);
+    const restricted0 = this.applyViewRestriction(entity, data, opts.view);
+    // FR-017 TPH: the discriminator is immutable — a subtype can't be changed
+    // into another subtype, so strip it from the patch before validating/writing.
+    const tph = tphSubtypeOf(entity);
+    let restricted = restricted0;
+    if (tph && tph.field in restricted0) {
+      const { [tph.field]: _omit, ...rest } = restricted0;
+      restricted = rest;
+    }
 
     // Partial mode: only validate fields the caller actually passed; absent keys are untouched.
     const validation = runValidators(entity, restricted, { partial: true });
@@ -173,7 +203,8 @@ export class ObjectManager {
     }
 
     const coerced = coerceRowOnWrite(entity, restricted, driver.dialect);
-    const spec = buildUpdateSpec(entity, coerced, id, this.columnNamingStrategy);
+    // FR-017 TPH: scope the by-id update to the subtype (cross-subtype → not found).
+    const spec = buildUpdateSpec(entity, coerced, id, this.columnNamingStrategy, this.tphScope(entity));
     const dbRow = await driver.update(spec);
     if (dbRow === null) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -186,7 +217,8 @@ export class ObjectManager {
   async delete(entityName: string, id: unknown, opts: WriteOpts = {}): Promise<boolean> {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
-    const spec = buildDeleteSpec(entity, id, this.columnNamingStrategy);
+    // FR-017 TPH: scope the by-id delete to the subtype (cross-subtype → not found).
+    const spec = buildDeleteSpec(entity, id, this.columnNamingStrategy, this.tphScope(entity));
     const n = await driver.delete(spec);
     if (n === 0) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -334,16 +366,33 @@ export class ObjectManager {
         const sourceJoinDbCol = resolveJoinColumnName(joinEntity, n2m.sourceJoinField, this.columnNamingStrategy);
         const targetJoinDbCol = resolveJoinColumnName(joinEntity, n2m.targetJoinField, this.columnNamingStrategy);
         const targetPk = resolvePkFields(target)[0]!;
-        const targetById = new Map(targetRows.map((r) => [r[targetPk], r]));
-        const grouped = new Map<unknown, Row[]>();
+        // Key everything by String(): the join rows are raw (a BIGINT FK arrives
+        // as a string from the driver) while the JS rows' keys are coerced, so a
+        // number↔string mismatch would silently drop matches.
+        const key = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+        const targetById = new Map(targetRows.map((r) => [key(r[targetPk]), r]));
+        const sourceKeys = new Set(records.map((r) => key(r[sourcePk])));
+        const grouped = new Map<string, Row[]>();
+        const attach = (ownerKey: string | null, relatedKey: string | null): void => {
+          if (ownerKey === null) return;
+          const t = relatedKey === null ? undefined : targetById.get(relatedKey);
+          if (!t) return;
+          if (!grouped.has(ownerKey)) grouped.set(ownerKey, []);
+          grouped.get(ownerKey)!.push(t);
+        };
         for (const j of joinRows) {
-          const sk = j[sourceJoinDbCol];
-          const tk = j[targetJoinDbCol];
-          if (!grouped.has(sk)) grouped.set(sk, []);
-          const t = targetById.get(tk);
-          if (t) grouped.get(sk)!.push(t);
+          const a = key(j[sourceJoinDbCol]);
+          const b = key(j[targetJoinDbCol]);
+          if (n2m.symmetric) {
+            // Union-on-read: a row (a,b) relates a↔b. Attach to whichever
+            // endpoint(s) are in this batch; the related id is the OTHER one.
+            if (a !== null && sourceKeys.has(a)) attach(a, b);
+            if (b !== null && a !== b && sourceKeys.has(b)) attach(b, a);
+          } else {
+            attach(a, b);
+          }
         }
-        for (const r of records) r[inc] = grouped.get(r[sourcePk]) ?? [];
+        for (const r of records) r[inc] = grouped.get(key(r[sourcePk]) ?? "\0") ?? [];
         continue;
       }
 
@@ -444,7 +493,7 @@ function formatValidationMessage(entityName: string, errors: { field: string; ru
 }
 
 const NUMERIC_SUBTYPES = new Set([
-  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_SHORT, FIELD_SUBTYPE_BYTE,
+  FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 ]);
 

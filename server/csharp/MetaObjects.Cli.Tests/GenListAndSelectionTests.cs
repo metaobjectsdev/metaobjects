@@ -32,14 +32,16 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
     [Fact]
-    public void ListLines_prints_all_nine_with_stable_names_and_descriptions()
+    public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines();
-        Assert.Equal(9, lines.Count);
+        Assert.Equal(10, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",
             "output-prompt", "render-helper", "filter-allowlist", "template",
+            // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
+            "callable",
         })
         {
             Assert.Contains(lines, l => l.Contains($" {name} —"));

@@ -33,7 +33,6 @@ import {
   ATTR_SUBTYPE_STRING,
   ATTR_SUBTYPE_INT,
   ATTR_SUBTYPE_BOOLEAN,
-  ATTR_SUBTYPE_STRINGARRAY,
 } from "../src/index.js";
 
 // ---------------------------------------------------------------------------
@@ -254,17 +253,21 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(attrs.get("locale")!.default).toBe("en-US");
   });
 
-  it("layout.dataGrid declares @pageSize as int and @defaultSortOrder enum", () => {
+  it("layout.dataGrid declares @pageSize as int and @columns as a string array", () => {
     const attrs = byName(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID);
     expect(attrs.get("pageSize")!.valueType).toBe(ATTR_SUBTYPE_INT);
-    expect(attrs.get("columns")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+    // Array attrs are now `string` + the orthogonal isArray flag (the
+    // retired `stringarray` subtype), matching Java's StringAttribute + @isArray.
+    expect(attrs.get("columns")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("columns")!.isArray).toBe(true);
     expect(attrs.get("defaultSortOrder")!.allowedValues).toEqual(["asc", "desc"]);
   });
 
-  it("identity.primary declares required @fields (stringarray) and @generation enum", () => {
+  it("identity.primary declares required @fields (string array) and @generation enum", () => {
     const attrs = byName(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY);
     expect(attrs.get("fields")!.required).toBe(true);
-    expect(attrs.get("fields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
+    expect(attrs.get("fields")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("fields")!.isArray).toBe(true);
     expect(attrs.get("generation")!.allowedValues).toEqual(["increment", "uuid", "assigned"]);
   });
 
@@ -285,14 +288,18 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(registry.attrsOf(TYPE_ORIGIN, SUBTYPE_BASE)).toEqual([]);
   });
 
-  it("relationship.association declares cardinality/objectRef/joinEntity/joinFields", () => {
+  it("relationship.association declares cardinality/objectRef/through/sourceRefField/symmetric (FR-017 slim vocab)", () => {
     const attrs = byName(TYPE_RELATIONSHIP, RELATIONSHIP_SUBTYPE_ASSOCIATION);
-    for (const n of ["cardinality", "objectRef", "joinEntity", "joinFields"]) {
+    for (const n of ["cardinality", "objectRef", "through", "sourceRefField", "symmetric"]) {
       expect(attrs.get(n)).toBeDefined();
       expect(attrs.get(n)!.required).toBe(false);
     }
-    expect(attrs.get("joinFields")!.valueType).toBe(ATTR_SUBTYPE_STRINGARRAY);
-    // FK direction now lives on identity.reference; legacy attrs are removed.
+    expect(attrs.get("through")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("sourceRefField")!.valueType).toBe(ATTR_SUBTYPE_STRING);
+    expect(attrs.get("symmetric")!.valueType).toBe(ATTR_SUBTYPE_BOOLEAN);
+    // FK direction now lives on identity.reference; legacy M:N attrs are removed.
+    expect(attrs.get("joinEntity")).toBeUndefined();
+    expect(attrs.get("joinFields")).toBeUndefined();
     expect(attrs.get("fkField")).toBeUndefined();
     expect(attrs.get("parentField")).toBeUndefined();
   });

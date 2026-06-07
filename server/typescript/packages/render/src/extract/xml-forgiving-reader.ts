@@ -45,6 +45,21 @@ export function readXml(span: string | null | undefined, caseInsensitive: boolea
   return out;
 }
 
+/**
+ * Rootless read: parse the WHOLE text's top-level elements directly, with no enclosing root
+ * element to strip (a flat sequence like `<a>..</a><b>..</b>`). Used for `ExtractOptions.rootless`
+ * responses. Leading/trailing non-element text is ignored. Never throws. Mirrors Java readRootless.
+ */
+export function readXmlRootless(
+  text: string | null | undefined,
+  caseInsensitive: boolean,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (text == null || text.trim().length === 0) return out;
+  parseChildren(text, caseInsensitive, out);
+  return out;
+}
+
 function parseChildren(inner: string, ci: boolean, out: Record<string, unknown>): void {
   const flags = ci ? "i" : "";
   let pos = 0;
@@ -75,11 +90,25 @@ function parseChildren(inner: string, ci: boolean, out: Record<string, unknown>)
       contentEnd = close.index;
       next = close.index + close[0].length;
     } else {
-      // unclosed tag: extract text up to the next sibling open tag
+      // unclosed tag: extract content up to the next sibling open tag.
       const sib = matchFrom(OPEN_TAG_SRC, flags, inner, contentStart);
       if (sib != null) {
-        contentEnd = sib.index;
-        next = contentEnd;
+        // When the unclosed element's content begins IMMEDIATELY with a child open tag
+        // (no leading text), that child was almost certainly meant to be NESTED, not a
+        // sibling — a common LLM malformation is dropping the parent's close tag while
+        // still emitting a real child element (e.g. <check ...><payoff>text). Absorb the
+        // remainder of this span as the unclosed element's content so the child nests
+        // under it. When there IS leading text before the first child tag (e.g. <t>hi<c>..),
+        // keep the sibling split — the leading text is the unclosed element's body and the
+        // following tag is its sibling. Mirrors Java XmlForgivingReader.
+        const noLeadingText = inner.substring(contentStart, sib.index).trim().length === 0;
+        if (noLeadingText) {
+          contentEnd = inner.length;
+          next = inner.length;
+        } else {
+          contentEnd = sib.index;
+          next = contentEnd;
+        }
       } else {
         contentEnd = inner.length;
         next = inner.length;

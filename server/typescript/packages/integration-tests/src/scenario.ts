@@ -35,9 +35,38 @@ export interface QueryScenario {
 
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count";
+  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "delete" | "roundtrip";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
+  /**
+   * For `op: create` / `op: update`: the row payload to write. On a TPH subtype
+   * the discriminator is injected by the runtime (omit it). `op: update` also
+   * requires `by: { id }`. `op: delete` requires only `by: { id }` (no `data`);
+   * its `expect` is the boolean delete outcome (true = a row was deleted).
+   */
+  readonly data: Record<string, unknown> | null;
+  /**
+   * When true the op is expected to FAIL (throw/reject) — e.g. a TPH
+   * cross-subtype write (unknown subtype column, or a different-subtype id).
+   * The result `expect` is ignored. Portable across ports: each runner asserts
+   * "the op raised an error", not a specific message.
+   */
+  readonly expectError: boolean;
+  /**
+   * For `op: relate`: the relationship name to traverse from the `by` source
+   * record (e.g. an M:N navigation). The result is the related rows.
+   */
+  readonly relation: string | null;
+  /**
+   * For `op: roundtrip`: the field-keyed row to INSERT via the port's runtime
+   * write path. The runner inserts it, reads the inserted row back by PK, then
+   * asserts the normalized read-back equals `expect`. This exercises the WRITE
+   * codec + the read path together (the structural complement to the read gate).
+   * Values are the native authoring forms the runtime accepts on write (e.g. a
+   * decimal as a string, a uuid as a string, a jsonb `field.object` as an
+   * object); `expect` is the wire-normalized read-back form.
+   */
+  readonly insert: Record<string, unknown> | null;
   /**
    * Either `{ field: { op: value } }` (each top-level key is a field name) or
    * `{ and: [filter, filter, ...] }` (compose by AND). Mixed forms are
@@ -102,6 +131,10 @@ export function loadQuery(yamlPath: string): QueryScenario {
       op: required(q.op, yamlPath, "query.op") as QuerySpec["op"],
       entity: required(q.entity, yamlPath, "query.entity"),
       by: (q.by as Record<string, unknown> | undefined) ?? null,
+      data: (q.data as Record<string, unknown> | undefined) ?? null,
+      expectError: q["expect-error"] === true,
+      relation: q.relation ?? null,
+      insert: (q.insert as Record<string, unknown> | undefined) ?? null,
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
       sort: q.sort
         ? q.sort.map((s) => ({ field: s.field ?? "", dir: (s.dir as "asc" | "desc") ?? "asc" }))
@@ -157,6 +190,10 @@ interface QueryYaml {
     op?: string;
     entity?: string;
     by?: unknown;
+    data?: unknown;
+    "expect-error"?: boolean;
+    relation?: string;
+    insert?: unknown;
     filter?: unknown;
     sort?: { field?: string; dir?: string }[];
     limit?: number;

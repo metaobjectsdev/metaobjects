@@ -1,0 +1,69 @@
+{{{generatedMarker}}}
+
+# {{node}} API
+{{#modelPageHref}}
+
+**Model / metadata:** [{{node}}]({{modelPageHref}})
+{{/modelPageHref}}
+
+> Import paths are relative to your generated-output directory.
+{{#hasSetup}}
+
+## Setup
+
+Obtain the runtime handles the calls below need:
+{{#setup}}
+
+- `{{handle}}` — {{{note}}}
+
+```ts
+{{{snippet}}}
+```
+{{/setup}}
+{{/hasSetup}}
+{{#unitExample}}
+
+## Example
+
+```ts
+{{{unitExample}}}
+```
+{{/unitExample}}
+{{#sections}}
+
+## {{heading}}
+{{#symbols}}
+
+### `{{signature}}`
+
+{{usage}}
+
+```ts
+{{importLine}}
+```
+{{#hasFields}}
+
+{{fieldsCaption}}:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+{{#fieldRows}}
+| `{{field}}` | `{{{type}}}` | {{required}} | {{notes}} |
+{{/fieldRows}}
+{{/hasFields}}
+{{#mountNote}}
+
+Mount: {{{mountNote}}}
+{{/mountNote}}
+{{#throws}}
+
+Throws: {{throws}}
+{{/throws}}
+{{#example}}
+
+```ts
+{{{example}}}
+```
+{{/example}}
+{{/symbols}}
+{{/sections}}

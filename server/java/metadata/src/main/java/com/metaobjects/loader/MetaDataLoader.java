@@ -1,8 +1,17 @@
 /*
- * Copyright 2003 Doug Mealing LLC dba Meta Objects. All Rights Reserved.
+ * Copyright 2003 Doug Mealing LLC dba Meta Objects
  *
- * This software is the proprietary information of Doug Mealing LLC dba Meta Objects.
- * Use is subject to license terms.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package com.metaobjects.loader;
 
@@ -694,7 +703,14 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     public MetaDataRegistry getTypeRegistry() {
         if (typeRegistry == null) {
-            typeRegistry = MetaDataRegistry.getInstance();
+            // ADR-0023 Decision 2 — the JVM load-time pivot. Default to the sealed,
+            // defined-metamodel-provider-set registry (the cross-port logical
+            // vocabulary), NOT the unbounded classpath-SPI getInstance() singleton
+            // (which the codegen-base/om doc-generator providers pollute with
+            // ai*/json*/object.managed tooling vocabulary). Downstream apps that
+            // need extra vocabulary use setTypeRegistry(compose(...)) — their own
+            // unsealed registry.
+            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
         }
         return typeRegistry;
     }
@@ -961,8 +977,10 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     protected void initDefaultRegistries() {
         if (typeRegistry == null) {
-            typeRegistry = MetaDataRegistry.getInstance();
-            log.debug("Initialized default MetaDataRegistry for loader: {}", getName());
+            // ADR-0023 Decision 2 — default to the sealed defined-provider-set
+            // registry (see getTypeRegistry()), not the polluted SPI singleton.
+            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            log.debug("Initialized default (sealed metamodel) MetaDataRegistry for loader: {}", getName());
         }
 
         if (loaderRegistry == null) {

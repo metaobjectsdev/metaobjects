@@ -7,42 +7,23 @@ using MetaObjects.Shared;
 namespace MetaObjects.Presentation.View;
 
 /// <summary>
-/// View concern constants — the view subtypes (the view's subType IS the UI
-/// control type; mirrors metaobjects-dynamic/web html *View.java naming) and the
-/// currency-view formatting attrs.
+/// View concern constants — the view subtypes + the currency-view formatting attrs.
+///
+/// SP-G Phase1 Unit3 (B-2): the 11 generic web-presentation control kinds
+/// (text/textarea/date/month/hotlink/dropdown/radio/checkbox/number/password/
+/// hidden/web) are TS-web-presentation-only — they have NO backend / codegen /
+/// render consumer in C#, so they are dead vocab here and were DEREGISTERED.
+/// They remain registered in TypeScript (the web client + TS form codegen
+/// require them for authoring). Only <c>base</c> + <c>currency</c> (the
+/// cross-port currency <c>@locale</c> wire contract) are registered cross-port.
 /// </summary>
 public static class ViewConstants
 {
-    public const string VIEW_SUBTYPE_TEXT     = "text";
-    public const string VIEW_SUBTYPE_TEXTAREA = "textarea";
-    public const string VIEW_SUBTYPE_DATE     = "date";
-    public const string VIEW_SUBTYPE_MONTH    = "month";
-    public const string VIEW_SUBTYPE_HOTLINK  = "hotlink";
-    public const string VIEW_SUBTYPE_DROPDOWN = "dropdown";
-    public const string VIEW_SUBTYPE_RADIO    = "radio";
-    public const string VIEW_SUBTYPE_CHECKBOX = "checkbox";
-    public const string VIEW_SUBTYPE_NUMBER   = "number";
-    public const string VIEW_SUBTYPE_PASSWORD = "password";
-    public const string VIEW_SUBTYPE_HIDDEN   = "hidden";
-    /// <summary>Abstract base for web-rendered views.</summary>
-    public const string VIEW_SUBTYPE_WEB      = "web";
     public const string VIEW_SUBTYPE_CURRENCY = "currency";
 
     public static readonly string[] VIEW_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,
-        VIEW_SUBTYPE_TEXT,
-        VIEW_SUBTYPE_TEXTAREA,
-        VIEW_SUBTYPE_DATE,
-        VIEW_SUBTYPE_MONTH,
-        VIEW_SUBTYPE_HOTLINK,
-        VIEW_SUBTYPE_DROPDOWN,
-        VIEW_SUBTYPE_RADIO,
-        VIEW_SUBTYPE_CHECKBOX,
-        VIEW_SUBTYPE_NUMBER,
-        VIEW_SUBTYPE_PASSWORD,
-        VIEW_SUBTYPE_HIDDEN,
-        VIEW_SUBTYPE_WEB,
         VIEW_SUBTYPE_CURRENCY,
     ];
 

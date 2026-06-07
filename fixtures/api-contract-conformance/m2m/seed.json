@@ -1,0 +1,33 @@
+{
+  "posts": [
+    { "id": 1, "title": "Hello" },
+    { "id": 2, "title": "World" },
+    { "id": 3, "title": "Orphan" }
+  ],
+  "tags": [
+    { "id": 10, "name": "red" },
+    { "id": 20, "name": "green" },
+    { "id": 30, "name": "blue" }
+  ],
+  "post_tags": [
+    { "postId": 1, "tagId": 10 },
+    { "postId": 1, "tagId": 20 },
+    { "postId": 2, "tagId": 30 }
+  ],
+  "people": [
+    { "id": 1, "name": "Alice" },
+    { "id": 2, "name": "Bob" },
+    { "id": 3, "name": "Carol" },
+    { "id": 4, "name": "Dave" }
+  ],
+  "follows": [
+    { "followerId": 1, "followeeId": 2 },
+    { "followerId": 1, "followeeId": 3 },
+    { "followerId": 2, "followeeId": 1 }
+  ],
+  "friendships": [
+    { "personAId": 1, "personBId": 2 },
+    { "personAId": 3, "personBId": 1 },
+    { "personAId": 2, "personBId": 4 }
+  ]
+}

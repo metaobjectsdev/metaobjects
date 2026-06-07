@@ -17,6 +17,14 @@ class MetaData:
         self.sub_type = sub_type
         self.name = name
         self.package: Optional[str] = None
+        # The file-default package captured at PARSE time (the package declared
+        # on the owning file's root). Distinct from ``package`` (which an object
+        # node leaves unset — the parser does not fold the file-default package
+        # onto an object's own package). Used by super-resolution to match a
+        # cross-package fully-qualified ``extends`` over the MERGED tree, where
+        # per-file root packages are no longer reachable via the parent chain.
+        # Mirrors TS ``MetaData.fileDefaultPackage`` / ``resolutionKey()``.
+        self.file_default_package: Optional[str] = None
         self.super_ref: Optional[str] = None
         self.super_data: Optional[MetaData] = None
         self.is_abstract = False
@@ -55,19 +63,32 @@ class MetaData:
         return self.name if not self.package else f"{self.package}{PACKAGE_SEP}{self.name}"
 
     def resolution_key(self) -> str:
-        """Package-folded FQN: ``<pkg>::<name>`` where *pkg* is this node's own
-        package if set, else the nearest ancestor's package (the file-default
-        package captured at parse time as the root's package). Returns the bare
-        name when neither is available.
+        """Package-folded FQN: ``<pkg>::<name>`` where *pkg* is, in order:
 
-        This is the Python equivalent of the TS ``MetaData.resolutionKey()`` —
-        the package-folded form used by a nested field's ``@objectRef``. It is
-        the key the runtime object model binds on (``ObjectClassRegistry``) and
-        the key nested object-refs resolve against. Distinct from ``fqn()``,
-        which stays bare for objects (the parser does not fold the file-default
-        package onto an object's own ``package``).
+          1. this node's own ``package`` (when declared), else
+          2. its ``file_default_package`` (the file's root package captured at
+             PARSE time), else
+          3. the nearest ancestor's ``package`` (a programmatic fallback for
+             hand-built trees / plugins).
+
+        Returns the bare name when none is available.
+
+        This is the Python equivalent of the C#/TS ``ResolutionKey`` and is
+        consistent with the #37 super-resolution fix (``node.package or
+        node.file_default_package or ctx_pkg``). It is the package-folded form a
+        nested field's ``@objectRef`` uses AND the key the runtime object model
+        binds on (``ObjectClassRegistry`` / ``MetaObject.new_instance``). Distinct
+        from ``fqn()``, which stays bare for objects (the parser does not fold the
+        file-default package onto an object's own ``package``).
+
+        The ``file_default_package`` step is load-bearing: after a multi-file
+        MERGE an object node carries no own ``package`` and its parent is the
+        single merged root (also package-less), so the ancestor walk alone would
+        fall through to the bare name and bind the WRONG (package-less) registry
+        key. Folding the file-default package keeps the binding correct
+        regardless of merge order.
         """
-        pkg = self.package
+        pkg = self.package or self.file_default_package
         if not pkg:
             node = self.parent
             while node is not None:

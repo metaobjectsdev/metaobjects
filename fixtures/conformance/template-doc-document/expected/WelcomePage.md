@@ -23,6 +23,28 @@
 
 - `site/welcome`
 
+## Template source
+
+```mustache
+<h1>Welcome, {{name}}!</h1>
+<p>{{headline}}</p>
+
+```
+
+| Variable | Field | Type | Required |
+| --- | --- | --- | --- |
+| `{{name}}` | [Welcome.name](./Welcome.md#field-name) | string | no |
+| `{{headline}}` | [Welcome.headline](./Welcome.md#field-headline) | string | no |
+
+<details>
+<summary>Linked view</summary>
+
+<pre style="white-space:pre-wrap;word-break:break-word">&lt;h1&gt;Welcome, <a href="./Welcome.md#field-name"><span style="color:#0969da">{{name}}</span></a>!&lt;/h1&gt;
+&lt;p&gt;<a href="./Welcome.md#field-headline"><span style="color:#0969da">{{headline}}</span></a>&lt;/p&gt;
+</pre>
+
+</details>
+
 ## Capability
 
 A render helper is generated for this template: it takes the payload and returns the rendered output as a single string.

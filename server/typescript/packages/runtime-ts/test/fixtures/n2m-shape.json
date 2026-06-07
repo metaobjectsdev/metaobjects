@@ -1,38 +1,37 @@
 {
-  "metadata": {
+  "metadata.root": {
     "package": "demo",
     "children": [
       {
-        "object": {
+        "object.entity": {
           "name": "Post",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "title", "subType": "string", "@required": true } },
-            { "identity": { "name": "primary", "subType": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "relationship": { "name": "tags", "subType": "association", "@cardinality": "many", "@objectRef": "Tag", "@joinEntity": "PostTag", "@joinFields": ["postId", "tagId"] } }
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "Tag",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "id", "subType": "long" } },
-            { "field": { "name": "name", "subType": "string", "@required": true } },
-            { "identity": { "name": "primary", "subType": "primary", "@fields": ["id"], "@generation": "increment" } }
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
           ]
         }
       },
       {
-        "object": {
+        "object.entity": {
           "name": "PostTag",
-          "subType": "entity",
           "children": [
-            { "field": { "name": "postId", "subType": "long" } },
-            { "field": { "name": "tagId", "subType": "long" } },
-            { "identity": { "name": "primary", "subType": "primary", "@fields": ["postId", "tagId"] } }
+            { "field.long": { "name": "postId" } },
+            { "field.long": { "name": "tagId" } },
+            { "identity.primary": { "name": "primary", "@fields": ["postId", "tagId"] } },
+            { "identity.reference": { "name": "postRef", "@fields": ["postId"], "@references": "Post" } },
+            { "identity.reference": { "name": "tagRef", "@fields": ["tagId"], "@references": "Tag" } }
           ]
         }
       }
