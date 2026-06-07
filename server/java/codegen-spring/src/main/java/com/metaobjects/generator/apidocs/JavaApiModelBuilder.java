@@ -1,7 +1,6 @@
 package com.metaobjects.generator.apidocs;
 
 import com.metaobjects.MetaData;
-import com.metaobjects.generator.direct.object.javacode.JavaObjectCodeGenerator;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -13,6 +12,7 @@ import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
 import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
+import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
@@ -103,10 +103,10 @@ public final class JavaApiModelBuilder {
 
         List<ApiSymbol> symbols = new ArrayList<>();
 
-        // MODEL — gated by the model generator's real inclusion predicate. Abstract
-        // objects emit no instance class, so they get no MODEL symbol (documented ==
-        // generated). A concrete value object → MODEL only.
-        if (JavaObjectCodeGenerator.appliesTo(obj)) {
+        // MODEL — documented only for concrete objects. Abstract objects cannot be
+        // instantiated, so we do not document a MODEL symbol for them (documented is a
+        // subset of generated). A concrete value object → MODEL only.
+        if (!IOUtil.isAbstract(obj)) {
             symbols.add(symbol(
                 shortName, ApiSymbolKind.MODEL, fqn(javaPkg, shortName),
                 "class " + shortName,
