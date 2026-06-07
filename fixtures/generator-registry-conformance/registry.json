@@ -80,8 +80,8 @@
     "trace-helper": {
       "concept": "Per-entity typed record<Entity>/call<Entity> trace helpers (extract + buildLlmCallRow + persist; LlmCallBase-derived entities only).",
       "tier": "native",
-      "note": "TS emits record<Entity> + call<Entity>; Java (codegen-spring) emits record<Entity> only — the Java LlmClient seam is BYO/vendor-neutral and not ported (ADR-0024).",
-      "ports": ["typescript", "java"]
+      "note": "TS emits record<Entity> + call<Entity>; Java (codegen-spring) emits record<Entity> only — the Java LlmClient seam is BYO/vendor-neutral and not ported (ADR-0024). Python emits record_<entity> only (same BYO-caller rationale).",
+      "ports": ["typescript", "java", "python"]
     },
     "db-context": {
       "concept": "Single EF Core DbContext binding every generated entity.",

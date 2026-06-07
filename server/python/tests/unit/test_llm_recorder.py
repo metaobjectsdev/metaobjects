@@ -37,7 +37,7 @@ def _sample_input() -> LlmCallInput:
         call_type="greeting",
         started_at="2023-11-14T17:13:20+00:00",
         llm_request={"prompt": "say hi"},
-        llm_response={"greeting": "hello", "score": 7},
+        llm_response_text='{"greeting": "hello", "score": 7}',
         status="ok",
         error_detail=None,
         system="you are a greeter",
@@ -80,7 +80,8 @@ def test_build_row_carries_values_and_null_defaults() -> None:
     assert row["errorDetail"] is None
     assert row["parentSpanId"] is None  # absent → None
     assert row["sessionId"] is None
-    # Raw request/response stored as native JSON (pg8000 binds dict→jsonb).
+    # Raw request stored as native JSON (pg8000 binds dict→jsonb); raw response
+    # is the response TEXT parsed to native JSON (clean JSON → its value).
     assert row["llmRequest"] == {"prompt": "say hi"}
     assert row["llmResponse"] == {"greeting": "hello", "score": 7}
 

@@ -28,15 +28,15 @@ def _meta_dir(tmp_path: Path) -> str:
     return str(d)
 
 
-def test_gen_list_prints_nine_and_exits_zero(capsys, tmp_path: Path) -> None:
+def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     rc = main(["gen", "--list"])
     assert rc == 0
     out = capsys.readouterr().out
     # Every registered stable name appears in the listing.
     for name in GENERATOR_REGISTRY:
         assert name in out, f"--list omitted {name!r}"
-    # Exactly the 9 python-slice names are registered.
-    assert len(GENERATOR_REGISTRY) == 9
+    # Exactly the 10 python-slice names are registered.
+    assert len(GENERATOR_REGISTRY) == 10
     # One line per generator, "<name> — <description>".
     listed = [e.name for e in list_generators()]
     assert sorted(listed) == sorted(GENERATOR_REGISTRY.keys())

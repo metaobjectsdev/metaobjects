@@ -15,9 +15,18 @@ Python ``dict``/``list`` straight to jsonb (a raw ``str`` would not cast), so th
 port stores the request/response as native JSON values — unlike TS (JSON string)
 and Java (verbatim string). The typed ``voResponse`` contract is identical across
 all ports.
+
+The call carries the model response as raw TEXT (``llm_response_text``, mirroring
+TS ``llmResponseText`` / Java ``llmResponseText``) — what the model actually
+returned. For the raw ``llmResponse`` jsonb column we parse that text into a native
+JSON value when it IS valid JSON (clean structured responses store as jsonb), and
+otherwise wrap it as ``{"text": <raw>}`` so the column is always a valid jsonb
+value (prose / non-JSON / truncated responses never break the bind). See
+:func:`_json_or_wrap`.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
 
@@ -55,10 +64,13 @@ _F_LLM_RESPONSE = "llmResponse"
 class LlmCallInput:
     """The call fields driving a base trace row.
 
-    ``llm_request`` / ``llm_response`` are stored into the raw jsonb columns as
-    native JSON values (dict/list/scalar) — see the module docstring. ``started_at``
-    is an ISO-8601 string (or a native ``datetime``); the field.timestamp write
-    codec coerces it.
+    ``llm_request`` is a STRUCTURED request object (dict/list/scalar) stored into
+    the raw ``llmRequest`` jsonb column as a native JSON value — see the module
+    docstring. ``llm_response_text`` is the raw model response TEXT (mirroring TS
+    ``llmResponseText`` / Java ``llmResponseText``); the raw ``llmResponse`` jsonb
+    column is derived from it by :func:`_json_or_wrap`. ``started_at`` is an
+    ISO-8601 string (or a native ``datetime``); the field.timestamp write codec
+    coerces it.
     """
 
     span_id: str
@@ -66,7 +78,7 @@ class LlmCallInput:
     call_type: str
     started_at: Any
     llm_request: Any
-    llm_response: Any
+    llm_response_text: str
     status: str  # STATUS_OK | STATUS_ERROR
     error_detail: str | None
     parent_span_id: str | None = None
@@ -116,6 +128,23 @@ class ObjectManagerLlmCallRecorder:
             self._on_error(err)
 
 
+def _json_or_wrap(text: str | None) -> Any:
+    """Coerce a raw response TEXT into an always-valid jsonb value for the raw
+    ``llmResponse`` column.
+
+    pg8000 binds a native ``dict``/``list``/scalar straight to jsonb (a raw ``str``
+    would not cast — see the module docstring), so clean JSON responses parse to
+    their native value and prose / non-JSON / truncated responses fall back to a
+    ``{"text": <raw>}`` wrapper that is always valid jsonb. ``None`` text → ``None``.
+    """
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return {"text": text}
+
+
 def build_llm_call_row(inp: LlmCallInput) -> LlmCallRow:
     """Build the base trace row — key set is exactly LlmCallBase's 18 fields.
 
@@ -139,9 +168,11 @@ def build_llm_call_row(inp: LlmCallInput) -> LlmCallRow:
         _F_STATUS: inp.status,
         _F_ERROR_DETAIL: inp.error_detail,
         _F_STARTED_AT: inp.started_at,
-        # Raw request/response → native JSON values bound straight to jsonb.
+        # Raw request → the structured request object bound straight to jsonb.
         _F_LLM_REQUEST: inp.llm_request,
-        _F_LLM_RESPONSE: inp.llm_response,
+        # Raw response → the response TEXT parsed to native JSON when it parses,
+        # else wrapped as {"text": ...} so the jsonb bind is always valid.
+        _F_LLM_RESPONSE: _json_or_wrap(inp.llm_response_text),
     }
 
 

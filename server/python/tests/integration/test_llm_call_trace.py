@@ -100,7 +100,7 @@ def test_typed_trace_round_trips_through_postgres() -> None:
                 system="you are a greeter",
                 started_at="2023-11-14T17:13:20",
                 llm_request={"prompt": "say hi", "temperature": 0.2},
-                llm_response={"greeting": "hello", "score": 7},
+                llm_response_text='{"greeting":"hello","score":7}',
                 request_model="claude-x",
                 response_model="claude-x",
                 input_tokens=12,
