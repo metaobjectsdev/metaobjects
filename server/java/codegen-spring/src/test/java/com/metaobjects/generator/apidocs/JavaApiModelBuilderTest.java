@@ -98,6 +98,24 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertTrue("repo signature lists findTags; saw:\n" + repo.signature(),
             repo.signature().contains("findTags"));
 
+        // DTO symbol carries the field shapes; a VALIDATION symbol exists on the
+        // same DTO record with the same field set.
+        ApiSymbol dto = symbol(author, ApiSymbolKind.DTO, "AuthorDto");
+        assertTrue("DTO fields non-empty", !dto.fields().isEmpty());
+        assertTrue("VALIDATION AuthorDto", has(author, ApiSymbolKind.VALIDATION, "AuthorDto"));
+        ApiSymbol validation = symbol(author, ApiSymbolKind.VALIDATION, "AuthorDto");
+        assertEquals("VALIDATION carries the same field shape as DTO",
+            dto.fields(), validation.fields());
+        // name is @required → not optional in the documented DTO shape.
+        FieldShape nameShape = field(dto.fields(), "name");
+        assertEquals("String", nameShape.type());
+        assertEquals(false, nameShape.optional());
+
+        // PAYLOAD symbol carries the resolved payload-VO field shapes.
+        ApiUnit summary = unit(m, "SummaryOutput");
+        ApiSymbol payload = symbol(summary, ApiSymbolKind.PAYLOAD, "SummaryOutputPayload");
+        assertTrue("PAYLOAD fields non-empty", !payload.fields().isEmpty());
+
         ApiUnit address = unit(m, "Address");
         assertEquals("VO Address → MODEL only", EnumSet.of(ApiSymbolKind.MODEL), kinds(address));
 
@@ -134,6 +152,13 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
             if (s.kind() == kind && s.name().equals(name)) return s;
         }
         throw new AssertionError("no " + kind + " '" + name + "' in " + u.symbols());
+    }
+
+    private static FieldShape field(java.util.List<FieldShape> fs, String name) {
+        for (FieldShape f : fs) {
+            if (f.name().equals(name)) return f;
+        }
+        throw new AssertionError("no field shape named '" + name + "' in " + fs);
     }
 
     private static Set<ApiSymbolKind> kinds(ApiUnit u) {

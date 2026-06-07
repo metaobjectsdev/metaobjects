@@ -43,18 +43,27 @@ import java.util.List;
  *       PROMPT / OUTPUT_PARSER symbols gated by the matching {@code appliesTo}.</li>
  * </ul>
  *
+ * <h2>Field shapes</h2>
+ * <ul>
+ *   <li>DTO and VALIDATION symbols carry the entity's per-field shape via
+ *       {@link JavaFieldShapes#dtoFields(MetaObject)}; PAYLOAD symbols carry the
+ *       template's payload shape via
+ *       {@link JavaFieldShapes#payloadFields(com.metaobjects.MetaData, MetaDataLoader)}.
+ *       Both derive types/optionality from the real generators (drift-proof).</li>
+ *   <li>A VALIDATION symbol is emitted alongside each DTO (the Jakarta
+ *       constraints live on the DTO record), carrying the same required/optional
+ *       field shape.</li>
+ * </ul>
+ *
  * <h2>Deferred</h2>
  * <ul>
- *   <li>VALIDATION is deferred to the next task (field-shape phase) — no
- *       VALIDATION symbol is emitted here.</li>
  *   <li>EXTRACTOR is emitted per concrete flavored OBJECT by
  *       {@code JavaObjectCodeGenerator} only when run with a concrete
  *       {@code flavor} arg (pojoAware / valueObject); that is a generator-config
  *       choice not present in the loaded metadata, and there is no
  *       {@code appliesTo} predicate for it. To stay drift-proof (document only
  *       what the loaded model determines), no EXTRACTOR symbol is emitted here.</li>
- *   <li>{@code fields} are left empty; {@code example}/{@code throwsNote} null —
- *       all filled in later phases.</li>
+ *   <li>{@code example}/{@code throwsNote} are null — filled in later phases.</li>
  * </ul>
  */
 public final class JavaApiModelBuilder {
@@ -100,10 +109,21 @@ public final class JavaApiModelBuilder {
             // DTO — the wire shape.
             if (SpringDtoGenerator.appliesTo(obj)) {
                 String dto = SpringNaming.dtoName(shortName);
-                symbols.add(symbol(
+                List<FieldShape> dtoFields = JavaFieldShapes.dtoFields(obj);
+                symbols.add(symbolWithFields(
                     dto, ApiSymbolKind.DTO, fqn(javaPkg, dto),
                     "record " + dto,
-                    "the wire / serialization shape"));
+                    "the wire / serialization shape", dtoFields));
+
+                // VALIDATION — the validated create/update payload shape. The
+                // Jakarta constraints live on the SAME DTO record's components,
+                // so the validation symbol names the DTO record and carries the
+                // same required/optional field shape derived from the DTO.
+                symbols.add(symbolWithFields(
+                    dto, ApiSymbolKind.VALIDATION, fqn(javaPkg, dto),
+                    "record " + dto,
+                    "Bean-validation (Jakarta) constraints on the create/update payload",
+                    dtoFields));
             }
 
             // DATA_ACCESS — one repository interface symbol; signature lists the
@@ -195,10 +215,11 @@ public final class JavaApiModelBuilder {
 
         if (SpringPayloadGenerator.appliesTo(tmpl, loader)) {
             String payload = SpringNaming.payloadName(shortName);
-            symbols.add(symbol(
+            symbols.add(symbolWithFields(
                 payload, ApiSymbolKind.PAYLOAD, fqn(promptsPkg, payload),
                 "record " + payload,
-                "the typed payload projection bound to the template"));
+                "the typed payload projection bound to the template",
+                JavaFieldShapes.payloadFields(tmpl, loader)));
         }
         if (SpringRenderHelperGenerator.appliesTo(tmpl, loader)) {
             String render = SpringNaming.renderHelperName(shortName);
@@ -229,9 +250,14 @@ public final class JavaApiModelBuilder {
 
     private static ApiSymbol symbol(String name, ApiSymbolKind kind, String importFqn,
                                     String signature, String usage) {
+        return symbolWithFields(name, kind, importFqn, signature, usage, List.of());
+    }
+
+    private static ApiSymbol symbolWithFields(String name, ApiSymbolKind kind, String importFqn,
+                                              String signature, String usage, List<FieldShape> fields) {
         return new ApiSymbol(
             name, kind, importFqn, signature,
-            List.of(), usage, null, null, List.of());
+            List.of(), usage, null, null, fields);
     }
 
     private static String fqn(String javaPkg, String shortName) {

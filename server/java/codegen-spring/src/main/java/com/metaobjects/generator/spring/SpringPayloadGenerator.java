@@ -269,7 +269,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code field.object} routes through the nested-payload emission arm; (3)
      * otherwise the scalar fallback via {@link SpringTypeMapper#javaTypeName}.
      */
-    protected String resolveFieldType(MetaField<?> field,
+    public String resolveFieldType(MetaField<?> field,
                                     MetaObject owner,
                                     MetaDataLoader loader,
                                     String nestedPkg,
@@ -506,7 +506,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
+    public static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         MetaObject obj = resolveObjectByShortOrFqn(loader, ref);
         if (obj == null) return null;
         return MetaObject.SUBTYPE_VALUE.equals(obj.getSubType()) ? obj : null;
@@ -544,7 +544,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      *
      * <p>Returns {@code null} when no helper should be emitted.
      */
-    protected static String hasHelperBody(String type, String name) {
+    public static String hasHelperBody(String type, String name) {
         if ("String".equals(type)) {
             return "return " + name + " != null && !" + name + ".isBlank();";
         }

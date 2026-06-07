@@ -184,7 +184,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * not an {@link ObjectField}. The {@code field.object} arm is deliberately
      * deferred (see class javadoc).
      */
-    private static List<MetaField> scalarFields(MetaObject entity) {
+    public static List<MetaField> scalarFields(MetaObject entity) {
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
             if (field instanceof ObjectField) continue;
@@ -201,7 +201,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * wrapped as {@code List<elementType>} (the wrapped element type so an
      * omitted JSON element deserialises to {@code null}).
      */
-    protected static String componentType(MetaField<?> field) {
+    public static String componentType(MetaField<?> field) {
         String element = SpringTypeMapper.javaTypeName(field);
         return field.isArrayType() ? "java.util.List<" + element + ">" : element;
     }
@@ -225,7 +225,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      *   <li>{@code validator.array @min/@max} → {@code @Size(min=…, max=…)} on the {@code List}.</li>
      * </ul>
      */
-    protected static String validationAnnotations(MetaField<?> field) {
+    public static String validationAnnotations(MetaField<?> field) {
         boolean isArray = field.isArrayType();
         boolean isString = field instanceof StringField;
         List<String> out = new ArrayList<>();
