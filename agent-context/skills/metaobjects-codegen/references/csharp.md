@@ -69,6 +69,17 @@ plus finer hooks — `EmitClassHeader` / `EmitClassDeclarationLine` (class decla
 generator and override only the seam you need rather than forking. `@default` on a
 scalar emits a literal initializer; an `object.value`'s default storage is jsonb.
 
+**Shared + externally-provided enums (FR-019).** A package-level abstract
+`field.enum` (`abstract: true`, `@values`) extended by concrete entity fields is
+materialized **once** (`Enums.g.cs`) and referenced — no per-entity nested enum.
+Adding `@provided: true` to that declaration suppresses materialization entirely:
+consuming fields reference a hand-written/third-party enum, and the C# namespace
+**binds to the enum's declaring metadata package** via
+`GenConfig.PackageNamespaces["<pkg>"] = "Your.Namespace"` (one entry per namespace;
+`ProvidedEnumNamespace` is the single fallback). The `@values` still drive the DB
+`CHECK` + validation. This replaces the retired C#-only `@csEnumType` FQN attr
+(ADR-0026) — no language FQN ever lives in metadata (ADR-0001).
+
 ## Re-scaffold this context
 
 `dotnet meta agent-docs --server csharp [--out <dir>]` (re)scaffolds the slim

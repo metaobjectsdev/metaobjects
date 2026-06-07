@@ -81,6 +81,18 @@ resolves to is **codegen config** per port, never a metadata attr. `@csEnumType`
 (FQN-in-metadata, on the field) is **rejected and removed** from the adopter
 surface.
 
+The namespace **binds to the type's declaring metadata package**, not to the
+individual type. A `@provided` enum declared under `package: acme::ext::auth`
+resolves its namespace from a per-port **package→namespace map** (C#:
+`GenConfig.PackageNamespaces["acme::ext::auth"] = "Acme.External.Auth"`), so an
+adopter with N external enums spread across M namespaces configures M package
+entries, not N per-type entries — and adding an enum to an already-mapped package
+needs no config change. A single fallback (`ProvidedEnumNamespace`) covers the
+common one-namespace case; an unresolved package is a codegen-time error naming
+the enum **and its package**. The package is metadata-native; only the
+package→namespace binding is per-port config — consistent with how every other
+generated type relates to its package.
+
 ### 4. Migration path (enum reuse vocabulary)
 
 Shared enums use the existing D6 abstract-`field.enum` + `extends` vocabulary

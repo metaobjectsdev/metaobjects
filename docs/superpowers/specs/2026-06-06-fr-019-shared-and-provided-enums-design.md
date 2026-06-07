@@ -75,10 +75,22 @@ values `[…]`**, materialize ONE standalone type and reference it from consumer
 
 For **`@provided: true`**: materialize **nothing** for `E`; each consuming field
 references `E` resolved to the port's configured namespace/package + `E` (C#
-`<cfg.enumNamespace>.E`, Kotlin/Java `<cfg.enumPackage>.E`, Python an import of
-`E` from `<cfg.enumModule>`, TS an import of `E`). A missing config for a
-referenced `@provided` enum is a **codegen-time error** (clear message naming the
-enum + the config key), not a metadata error.
+`<ns>.E`, Kotlin/Java `<pkg>.E`, Python an import of `E` from `<module>`, TS an
+import of `E`). The namespace **binds to `E`'s declaring metadata package** via a
+per-port **package→namespace map** (C# `GenConfig.PackageNamespaces`, keyed by the
+metadata package `E` is declared under), with a single
+`ProvidedEnumNamespace`/`enumNamespace` **fallback** for the one-namespace case.
+This keeps config proportional to the number of namespaces (one entry per package),
+not the number of enums, and mirrors how every generated type relates to its
+package (ADR-0001 — the package is metadata; only the binding is config). A
+referenced `@provided` enum whose package resolves to no namespace (no map entry
+**and** no fallback) is a **codegen-time error** naming the enum + its package, not
+a metadata error.
+
+> **C# status:** shipped — `GenConfig.PackageNamespaces` (package→namespace) with
+> the `ProvidedEnumNamespace` fallback; `SharedEnum` carries its declaring package;
+> `Fr019SharedEnum.SharedEnumTypeReference` resolves package-first. The other ports
+> adopt the same package-binding shape during graduation.
 
 **Byte-identical default:** an enum that is NOT a package-level shared/abstract
 enum (the common inline case) emits exactly as today — the per-entity nested

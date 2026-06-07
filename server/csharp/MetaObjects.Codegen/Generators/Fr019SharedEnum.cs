@@ -28,8 +28,12 @@ using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
-/// <summary>A shared (root-level abstract) enum declaration codegen must reason about.</summary>
-public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided);
+/// <summary>A shared (root-level abstract) enum declaration codegen must reason about.
+/// <paramref name="Package"/> is the declaration's effective metadata package (folded
+/// file-default package), used to resolve a <c>@provided</c> enum's C# namespace via
+/// <see cref="GenConfig.PackageNamespaces"/> (ADR-0001: bind the namespace to the
+/// metadata package, never an FQN in metadata).</summary>
+public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided, string Package);
 
 /// <summary>
 /// FR-019 — resolves the shared/provided status of an enum field and collects the
@@ -63,7 +67,20 @@ public static class Fr019SharedEnum
         return new SharedEnum(
             Name: CSharpNaming.Pascal(decl.Name),
             Values: values,
-            Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true);
+            Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true,
+            Package: PackageOf(decl));
+    }
+
+    /// <summary>
+    /// The declaration's effective metadata package — its package-folded
+    /// <see cref="MetaData.ResolutionKey"/> with the trailing <c>::Name</c> stripped.
+    /// Empty string when the declaration carries no package (root-level, no file default).
+    /// </summary>
+    private static string PackageOf(MetaField decl)
+    {
+        var key = decl.ResolutionKey();
+        var idx = key.LastIndexOf(Structural.PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        return idx < 0 ? "" : key[..idx];
     }
 
     /// <summary>
@@ -100,12 +117,17 @@ public static class Fr019SharedEnum
     public static string SharedEnumTypeReference(SharedEnum shared, GenConfig config)
     {
         if (!shared.Provided) return shared.Name;
-        var ns = config.ProvidedEnumNamespace;
+        // Bind the namespace to the enum's declaring metadata package (ADR-0001):
+        // PackageNamespaces[pkg] first, then the single ProvidedEnumNamespace fallback.
+        var ns = config.PackageNamespaces.TryGetValue(shared.Package, out var mapped) && !string.IsNullOrEmpty(mapped)
+            ? mapped
+            : config.ProvidedEnumNamespace;
         if (string.IsNullOrEmpty(ns))
             throw new InvalidOperationException(
-                $"provided enum \"{shared.Name}\" is marked @provided but no namespace is configured " +
-                $"to reference it from. Set \"ProvidedEnumNamespace\" in your codegen config (e.g. " +
-                $"ProvidedEnumNamespace = \"YourApp.Enums\") so the generated code can reference \"{shared.Name}\".");
+                $"provided enum \"{shared.Name}\" (declared in package \"{shared.Package}\") is marked " +
+                $"@provided but no C# namespace is configured to reference it from. Map its package in your " +
+                $"codegen config — PackageNamespaces[\"{shared.Package}\"] = \"YourApp.Enums\" — or set the " +
+                $"single ProvidedEnumNamespace fallback, so the generated code can reference \"{shared.Name}\".");
         return $"{ns}.{shared.Name}";
     }
 }

@@ -44,6 +44,18 @@ public sealed record GenConfig
     /// codegen-time error naming the enum + this key.
     /// </summary>
     public string? ProvidedEnumNamespace { get; init; }
+
+    /// <summary>
+    /// FR-019 — maps a metadata <b>package</b> (e.g. <c>acme::ext::auth</c>) to the C#
+    /// namespace its <c>@provided</c> shared enums are referenced from. The namespace
+    /// binds to the enum's <i>declaring package</i> (metadata-native, ADR-0001); the
+    /// package→namespace map is per-port codegen config. This lets a single model
+    /// reference <c>@provided</c> enums that live in several namespaces (one entry per
+    /// namespace, not per enum). When a referenced provided enum's package has no entry
+    /// here, <see cref="ProvidedEnumNamespace"/> is used as the single fallback; if
+    /// neither resolves, it is a codegen-time error naming the enum + its package.
+    /// </summary>
+    public Dictionary<string, string> PackageNamespaces { get; init; } = new();
 }
 
 /// <summary>Per-run state handed to every generator.</summary>

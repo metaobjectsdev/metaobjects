@@ -28,7 +28,18 @@ public class Fr019SharedEnumCodegenTests
         return r.Root;
     }
 
-    private static GenContext Ctx(MetaRoot root, string? providedNs = null) => new()
+    private static MetaRoot LoadMany(params string[] jsons)
+    {
+        var srcs = jsons.Select((j, i) => (IMetaDataSource)new InMemoryStringSource(j, id: $"fr019-{i}.json")).ToList();
+        var r = new MetaDataLoader().Load(srcs);
+        Assert.Empty(r.Errors);
+        return r.Root;
+    }
+
+    private static GenContext Ctx(
+        MetaRoot root,
+        string? providedNs = null,
+        Dictionary<string, string>? packageNamespaces = null) => new()
     {
         Entities = root.Objects(),
         Root = root,
@@ -37,6 +48,7 @@ public class Fr019SharedEnumCodegenTests
             OutDir = "/tmp",
             Namespace = "Acme.Generated",
             ProvidedEnumNamespace = providedNs,
+            PackageNamespaces = packageNamespaces ?? new(),
         },
     };
 
@@ -138,6 +150,76 @@ public class Fr019SharedEnumCodegenTests
 
         Assert.Contains("ContactMethod", ex.Message);
         Assert.Contains("ProvidedEnumNamespace", ex.Message);
+    }
+
+    // ── FR-019 (package-binding) — a @provided enum's namespace maps to its declaring
+    //    metadata package via GenConfig.PackageNamespaces, NOT a single global namespace.
+    //    The package is metadata-native (ADR-0001); the package→C# namespace map is
+    //    per-port codegen config. This lets one model reference provided enums living in
+    //    several namespaces (the multi-namespace adopter shape). ──
+
+    private const string ExtEnumSrc = """
+    { "metadata.root": { "package": "acme::ext::auth", "children": [
+      { "field.enum": { "name": "ContactMethod", "abstract": true, "@values": ["EMAIL", "PHONE"], "@provided": true } }
+    ]}}
+    """;
+    private const string ExtConsumerSrc = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "preferred", "extends": "acme::ext::auth::ContactMethod" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Provided_enum_namespace_resolves_from_its_declaring_package()
+    {
+        var root = LoadMany(ExtEnumSrc, ExtConsumerSrc);
+        var files = new EntityGenerator().Generate(
+            Ctx(root, packageNamespaces: new() { ["acme::ext::auth"] = "Acme.External.Auth" })).ToList();
+
+        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
+        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        Assert.Contains("public Acme.External.Auth.ContactMethod? Preferred { get; set; }", customer.Content);
+    }
+
+    [Fact]
+    public void Package_namespace_map_takes_precedence_over_the_single_fallback()
+    {
+        var root = LoadMany(ExtEnumSrc, ExtConsumerSrc);
+        var files = new EntityGenerator().Generate(
+            Ctx(root,
+                providedNs: "Acme.Fallback",
+                packageNamespaces: new() { ["acme::ext::auth"] = "Acme.External.Auth" })).ToList();
+
+        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        Assert.Contains("public Acme.External.Auth.ContactMethod? Preferred { get; set; }", customer.Content);
+        Assert.DoesNotContain("Acme.Fallback", customer.Content);
+    }
+
+    [Fact]
+    public void Single_namespace_fallback_applies_when_package_is_unmapped()
+    {
+        var root = LoadMany(ExtEnumSrc, ExtConsumerSrc);
+        var files = new EntityGenerator().Generate(
+            Ctx(root, providedNs: "Acme.Fallback")).ToList(); // no PackageNamespaces entry
+
+        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        Assert.Contains("public Acme.Fallback.ContactMethod? Preferred { get; set; }", customer.Content);
+    }
+
+    [Fact]
+    public void Provided_enum_with_no_package_mapping_and_no_fallback_names_the_package()
+    {
+        var root = LoadMany(ExtEnumSrc, ExtConsumerSrc);
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new EntityGenerator().Generate(Ctx(root)).ToList());
+
+        Assert.Contains("ContactMethod", ex.Message);
+        Assert.Contains("acme::ext::auth", ex.Message); // the declaring package, to guide the config
     }
 
     [Fact]
