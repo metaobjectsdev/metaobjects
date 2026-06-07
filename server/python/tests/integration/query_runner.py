@@ -43,6 +43,17 @@ def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> 
         driver = PostgresDriver(conn)
         om = ObjectManager(root_for_bootstrap, driver)
         for spec in scenario.queries:
+            # FR-017 TPH: an op marked `expect-error: true` (a cross-subtype write)
+            # MUST be rejected by the runtime — a raise is the pass (mirrors TS/C#).
+            if spec.expect_error:
+                try:
+                    _execute_spec(om, spec)
+                except Exception:
+                    continue  # rejected as required
+                raise AssertionError(
+                    f"{scenario.source_path} / {spec.name}: expected the {spec.op} to "
+                    f"FAIL (expect-error: true) but it succeeded"
+                )
             actual = _execute_spec(om, spec)
             # The OID map from the just-run query supplies the int4-vs-int8
             # wire discriminator the native row values can't carry (ADR-0019).
@@ -55,6 +66,13 @@ def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> 
 
 
 def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
+    if spec.op == "create":
+        # FR-017 TPH: INSERT a row through the runtime write path, returning the
+        # inserted row (asserted as a single row, like get/update). A subtype
+        # create injects its discriminator value.
+        if not spec.data:
+            raise ValueError(f"{spec.name}: op:create requires 'data'")
+        return om.create(spec.entity, spec.data)
     if spec.op == "get":
         if not spec.by:
             raise ValueError(f"{spec.name}: op:get requires 'by'")
@@ -189,8 +207,8 @@ def _canonicalize_expected(expect: Any, op: str) -> str:
         return str(expect is True)
     # `roundtrip` reads the inserted row back by PK → a single-row result,
     # asserted exactly like `get`. `update` reads the UPDATE ... RETURNING row
-    # back the same way.
-    if op in ("get", "roundtrip", "update"):
+    # back the same way. `create` returns the INSERT ... RETURNING row.
+    if op in ("get", "roundtrip", "update", "create"):
         if expect is None:
             return "null"
         return json.dumps(normalize_row(expect), sort_keys=True, separators=(",", ":"))
@@ -214,7 +232,7 @@ def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> s
         return str(actual is True)
     if actual is None:
         return "null" if op != "relate" else "[]"
-    if op in ("get", "roundtrip", "update"):
+    if op in ("get", "roundtrip", "update", "create"):
         return json.dumps(
             normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
         )

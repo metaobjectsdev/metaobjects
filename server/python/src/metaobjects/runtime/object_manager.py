@@ -45,6 +45,7 @@ from .n2m_resolver import (
     collect_symmetric_target_ids,
     resolve_n2m_descriptor,
 )
+from .tph import TphSubtype, tph_subtype_of
 
 
 # Filter shape:
@@ -112,21 +113,26 @@ class PostgresDriver:
             return None
         return next(iter(result.rows[0].values()))
 
-    def insert_returning(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any]:
-        """Run an INSERT ... RETURNING and return the (single) RETURNING row.
+    def insert_returning(self, sql: str, params: tuple[Any, ...] = ()) -> SelectResult:
+        """Run an INSERT ... RETURNING and return a single-row :class:`SelectResult`
+        (row + per-column OID type metadata).
 
         The write path commits on success (each conformance scenario owns a
         fresh container, so autocommit-per-write semantics are fine and keep the
         round-trip read in the same connection visible without a separate
-        transaction handshake).
+        transaction handshake). The OIDs carry the int4-vs-int8 (BIGINT→string)
+        wire discriminator into the serialization boundary, exactly like the read
+        path — so an op:create asserting the RETURNING row sees BIGINT as a string.
         """
         cur = self._conn.cursor()
         try:
             cur.execute(sql, params)
             cols = [d[0] for d in cur.description]
+            oids = [d[1] for d in cur.description]
             row = cur.fetchone()
             self._conn.commit()
-            return {c: row[i] for i, c in enumerate(cols)}
+            column_oids = {c: oids[i] for i, c in enumerate(cols)}
+            return SelectResult([{c: row[i] for i, c in enumerate(cols)}], column_oids)
         finally:
             cur.close()
 
@@ -212,6 +218,12 @@ class ObjectManager:
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
 
+        # FR-017 TPH: a subtype create injects its discriminator value (the entity
+        # names the subtype; the caller never sets it).
+        tph = tph_subtype_of(entity)
+        if tph is not None:
+            data = {**data, tph.field: tph.value}
+
         insert_cols: list[str] = []
         params: list[Any] = []
         for field_name, raw in data.items():
@@ -241,7 +253,14 @@ class ObjectManager:
                 f"INSERT INTO {_q(table)} DEFAULT VALUES "
                 f"RETURNING {', '.join(_q(c) for c in all_cols)}"
             )
-        row = self._driver.insert_returning(sql, tuple(params))
+        result = self._driver.insert_returning(sql, tuple(params))
+        # Surface the RETURNING column OIDs (mapped to metadata field names) so the
+        # serialization boundary applies the same SQL-type wire rules as a read — a
+        # BIGINT / currency column comes back as a numeric string. Mirrors update().
+        self.last_column_oids = {
+            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
+        }
+        row = result.rows[0]
         return {col_to_field.get(k, k): v for k, v in row.items()}
 
     def update(
@@ -263,6 +282,13 @@ class ObjectManager:
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field))
 
+        # FR-017 TPH: the discriminator is immutable — a subtype can't be retyped,
+        # so it is stripped from the patch. Reads/writes are subtype-scoped (a row
+        # of a different subtype is invisible → a cross-subtype update matches no row).
+        tph = tph_subtype_of(entity)
+        if tph is not None and tph.field in data:
+            data = {k: v for k, v in data.items() if k != tph.field}
+
         set_cols: list[str] = []
         params: list[Any] = []
         for field_name, raw in data.items():
@@ -281,13 +307,24 @@ class ObjectManager:
         col_to_field = {_column_of(f): f.name for f in entity.fields()}
         assignments = ", ".join(f"{_q(c)} = %s" for c in set_cols)
         params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
+        where = f"{_q(pk_col)} = %s"
+        if tph is not None:
+            where += f" AND {_q(_column_of(entity.find_field(tph.field)))} = %s"
+            params.append(tph.value)
         sql = (
-            f"UPDATE {_q(table)} SET {assignments} WHERE {_q(pk_col)} = %s "
+            f"UPDATE {_q(table)} SET {assignments} WHERE {where} "
             f"RETURNING {', '.join(_q(c) for c in all_cols)}"
         )
         result = self._driver.update_returning(sql, tuple(params))
         if result is None:
             self.last_column_oids = {}
+            if tph is not None:
+                # A subtype-scoped update that matched no row is a cross-subtype
+                # (or absent) write — the runtime rejects it (expect-error contract),
+                # mirroring the per-subtype route's 404. Non-TPH keeps None semantics.
+                raise KeyError(
+                    f"update('{entity_name}'): no {tph.value} row with {pk_field}={id_value!r}"
+                )
             return None
         # Surface the RETURNING column OIDs (mapped to metadata field names) so the
         # serialization boundary applies the same SQL-type wire rules as a read —
@@ -309,9 +346,16 @@ class ObjectManager:
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field))
-        sql = f"DELETE FROM {_q(table)} WHERE {_q(pk_col)} = %s"
-        param = _coerce_write_value(entity.find_field(pk_field), id_value)
-        return self._driver.execute_rowcount(sql, (param,)) > 0
+        params: list[Any] = [_coerce_write_value(entity.find_field(pk_field), id_value)]
+        where = f"{_q(pk_col)} = %s"
+        # FR-017 TPH: a subtype delete is scoped to its discriminator (cross-subtype
+        # delete matches no row → False, mirroring the per-subtype route's 404).
+        tph = tph_subtype_of(entity)
+        if tph is not None:
+            where += f" AND {_q(_column_of(entity.find_field(tph.field)))} = %s"
+            params.append(tph.value)
+        sql = f"DELETE FROM {_q(table)} WHERE {where}"
+        return self._driver.execute_rowcount(sql, tuple(params)) > 0
 
     def find_many(
         self,
@@ -327,6 +371,10 @@ class ObjectManager:
         cols = [_column_of(f) for f in entity.fields()]
         sql = f'SELECT {", ".join(_q(c) for c in cols)} FROM {_q(table)}'
         params: list[Any] = []
+        # FR-017 TPH: a subtype read is scoped to its discriminator value (a row of
+        # a different subtype is invisible); the base entity (no @discriminatorValue)
+        # reads polymorphically across the single table.
+        filter = self._scope_filter(filter, tph_subtype_of(entity))
         where = _compile_filter(filter, entity) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
@@ -360,6 +408,7 @@ class ObjectManager:
         table = self._table_name(entity)
         sql = f"SELECT COUNT(*) FROM {_q(table)}"
         params: list[Any] = []
+        filter = self._scope_filter(filter, tph_subtype_of(entity))  # FR-017 TPH subtype scope
         where = _compile_filter(filter, entity) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
@@ -457,7 +506,26 @@ class ObjectManager:
                 pn = c.physical_name()
                 if pn:
                     return pn
+        # FR-017 TPH: a subtype declares no source of its own — it shares the
+        # discriminator base's single table, inherited via the super chain. Fall
+        # back to the effective (inherited) primary source before the name default.
+        for c in entity.children():
+            if isinstance(c, MetaSource) and c.role() == sc.SOURCE_ROLE_PRIMARY:
+                pn = c.physical_name()
+                if pn:
+                    return pn
         return entity.name
+
+    @staticmethod
+    def _scope_filter(filter: Filter | None, tph: TphSubtype | None) -> Filter | None:
+        """AND the TPH discriminator predicate into a filter (subtype-scoped reads).
+        Non-TPH (``tph is None``) returns the filter unchanged."""
+        if tph is None:
+            return filter
+        disc: Filter = {tph.field: tph.value}  # equality shortcut
+        if not filter:
+            return disc
+        return {"and": [filter, disc]}
 
     def _junction_column(self, junction: MetaObject, field_name: str) -> str:
         """Physical column for a junction FK field (metadata field name → column)."""

@@ -46,6 +46,10 @@ class QuerySpec:
     #: ``by``. ``op: delete`` carries neither ``data`` nor ``insert`` — it
     #: removes the row by ``by`` and its ``expect`` is the boolean outcome.
     data: dict[str, Any] | None = None
+    #: FR-017 TPH: when true the op MUST be rejected by the runtime (a throw is the
+    #: pass) — a cross-subtype write (a foreign-subtype column, or a row outside the
+    #: subtype scope). Mirrors the TS/C# ``expect-error`` flag.
+    expect_error: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,7 @@ def _parse_query(path: Path) -> QueryScenario:
             relation=q.get("relation"),
             insert=q.get("insert"),
             data=q.get("data"),
+            expect_error=q.get("expect-error", False) is True,
         ))
     return QueryScenario(
         name=raw["name"],

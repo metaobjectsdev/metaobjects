@@ -17,17 +17,10 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # the reason. The TPH (table-per-hierarchy) scenarios require runtime
 # single-table-inheritance support — resolving a discriminator subtype's
 # inherited fields / identity / shared table via ``extends`` plus discriminator
-# inject/scope/strip. Per the corpus README ("#### TPH scenarios"), TypeScript
-# ships it today and the Java / Kotlin / Python / C# runtimes gain it in their
-# Tier-4 slice; until then those ports SKIP the ``tph-*`` scenarios (do not delete
-# them — implement the runtime support, then run them green). Out of scope for the
-# W2b write-verb / resolution-key hardening.
-EXPECTED_FAILURES: dict[str, str] = {
-    "tph-insert-then-find-by-id": "runtime TPH support (Tier-4) — see corpus README",
-    "tph-insert-three-subtypes-list": "runtime TPH support (Tier-4) — see corpus README",
-    "tph-no-cross-subtype-update": "runtime TPH support (Tier-4) — see corpus README",
-    "tph-update-subtype-only-column": "runtime TPH support (Tier-4) — see corpus README",
-}
+# inject/scope/strip. FR-017 Tier-4: the Python runtime now ships TPH support
+# (ObjectManager discriminator inject/scope/strip + runtime/tph.py), so the
+# ``tph-*`` scenarios run green and are no longer skipped.
+EXPECTED_FAILURES: dict[str, str] = {}
 
 _CORPUS = find_corpus_root()
 
