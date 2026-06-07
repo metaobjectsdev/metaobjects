@@ -61,4 +61,92 @@ final class SpringNaming {
     static String pluralLowercase(String shortName) {
         return shortName.toLowerCase() + "s";
     }
+
+    // ---------------------------------------------------------------------
+    // Generated-name seam.
+    //
+    // Each method below returns EXACTLY the string the corresponding generator
+    // concatenates inline today (verbatim, behavior-preserving). Generators are
+    // routed through these methods in a follow-up task so the api-docs IR shares
+    // one source of truth for emitted type names. Do not change a literal here
+    // without changing the generator and re-verifying byte output.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Capitalize the first character. Mirrors the {@code capitalizeFirst}
+     * helper duplicated across the template-helper generators
+     * ({@code SpringRenderHelperGenerator}, {@code SpringPayloadGenerator},
+     * {@code SpringOutputPromptGenerator}, {@code SpringOutputParserGenerator},
+     * {@code LlmTraceHelperGenerator}).
+     */
+    static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        char c0 = s.charAt(0);
+        if (Character.isUpperCase(c0)) return s;
+        return Character.toUpperCase(c0) + s.substring(1);
+    }
+
+    /** {@code SpringDtoGenerator}: {@code shortName + "Dto"}. */
+    static String dtoName(String shortName) {
+        return shortName + "Dto";
+    }
+
+    /** {@code SpringRepositoryGenerator}: {@code shortName + "Repository"}. */
+    static String repositoryName(String shortName) {
+        return shortName + "Repository";
+    }
+
+    /** {@code SpringControllerGenerator}: {@code shortName + "Controller"}. */
+    static String controllerName(String shortName) {
+        return shortName + "Controller";
+    }
+
+    /** {@code SpringFilterAllowlistGenerator}: {@code shortName + "FilterAllowlist"}. */
+    static String filterAllowlistName(String shortName) {
+        return shortName + "FilterAllowlist";
+    }
+
+    /** {@code ExtractorCodeGenerator}: {@code className + "Extractor"} (entity class name). */
+    static String extractorName(String className) {
+        return className + "Extractor";
+    }
+
+    /** {@code SpringControllerGenerator}: route base {@code "/api/" + pluralLowercase(shortName)}. */
+    static String controllerPath(String shortName) {
+        return "/api/" + pluralLowercase(shortName);
+    }
+
+    /**
+     * Output package for template-helper artifacts:
+     * {@code pkg.isEmpty() ? "prompts" : pkg + ".prompts"}. Shared verbatim by
+     * the render-helper / payload / output-prompt / output-parser generators.
+     */
+    static String promptsPackage(String pkg) {
+        return pkg.isEmpty() ? "prompts" : pkg + ".prompts";
+    }
+
+    /** {@code SpringRenderHelperGenerator}: {@code capitalize(templateShort) + "RenderHelper"}. */
+    static String renderHelperName(String templateShort) {
+        return capitalize(templateShort) + "RenderHelper";
+    }
+
+    /** {@code SpringPayloadGenerator}: {@code capitalize(templateShort) + "Payload"}. */
+    static String payloadName(String templateShort) {
+        return capitalize(templateShort) + "Payload";
+    }
+
+    /** {@code SpringOutputPromptGenerator}: {@code capitalize(templateShort) + "Prompt"}. */
+    static String promptName(String templateShort) {
+        return capitalize(templateShort) + "Prompt";
+    }
+
+    /** {@code SpringOutputParserGenerator}: {@code capitalize(templateShort) + "Parser"}. */
+    static String parserName(String templateShort) {
+        return capitalize(templateShort) + "Parser";
+    }
+
+    /** {@code LlmTraceHelperGenerator}: {@code shortName + "TraceHelper"}. */
+    static String traceHelperName(String shortName) {
+        return shortName + "TraceHelper";
+    }
 }
