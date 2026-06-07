@@ -135,6 +135,12 @@ public static class TemplateSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Target model id (LLM-specific)."),
+
+        new AttrSchema(
+            Name: TemplateConstants.TEMPLATE_ATTR_RESPONSE_REF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "The typed VO an LLM response is extracted into (drives the derived voResponse jsonb trace column). AI trace; TS-pilot vocab."),
     ];
 
     // Toolcall attrs (template.toolcall only — does NOT inherit GenericAttrs).

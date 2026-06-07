@@ -208,6 +208,10 @@ public static class CoreTypes
             Wildcard(TYPE_LAYOUT),
             Wildcard(TYPE_SOURCE),
             Wildcard(TYPE_ATTR),
+            // template.* under object.entity — a declared prompt/output lives WITH
+            // its entity (AI LLM-call trace persistence; the trace entity carries a
+            // nested template.prompt). Mirrors Java optionalChild("template","*","*").
+            Wildcard(TYPE_TEMPLATE),
         ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
