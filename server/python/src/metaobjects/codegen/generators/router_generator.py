@@ -40,6 +40,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
 )
+from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -254,6 +255,211 @@ class RouterGenerator:
             f"    return repo.find_related_{d.relation_name}({pk_param})",
         ]
 
+    def _emit_tph_list_body(
+        self, subtype_expr: str, fields_const: str, ops_const: str, repo_var: str = "repo"
+    ) -> list[str]:
+        """The shared list-handler body (sort + filter parse → repo.list). *subtype_expr*
+        is the Python literal threaded as the discriminator scope: ``None`` for the
+        polymorphic base, or a quoted ``@discriminatorValue`` for a per-subtype route."""
+        return [
+            "    actual_limit = limit if limit is not None else 50",
+            "    actual_offset = offset if offset is not None else 0",
+            "    sort_clause: _SortClause | None = None",
+            "    if sort is not None:",
+            "        sort_clause = _parse_sort(sort)",
+            "        if sort_clause is None:",
+            '            return JSONResponse(status_code=400, content={"error": "invalid_sort"})',
+            f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
+            "    if filter_result.error_envelope is not None:",
+            "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
+            "    predicates = filter_result.predicates",
+            f"    rows = {repo_var}.list({subtype_expr}, actual_limit, actual_offset, sort_clause, predicates)",
+            "    if with_count == 1:",
+            f"        total = {repo_var}.count({subtype_expr}, predicates)",
+            '        return {"rows": rows, "total": total}',
+            "    return rows",
+        ]
+
+    def _render_tph_router(self, entity: MetaObject, plan: TphPlan) -> str:
+        """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
+        at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
+        seam is subtype-keyed (the ``@discriminatorValue``, or ``None`` for the base);
+        the consumer's repo applies the single-table discriminator scope."""
+        short_name = entity.name
+        snake = _snake_case(short_name)
+        plural = _plural_lowercase(short_name)
+        pk_param = f"{snake}_id"
+        repo_class = f"{short_name}Repository"
+        upper = short_name.upper()
+        fields_const = f"{upper}_FILTER_FIELDS"
+        ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
+        allowlist_module = f"{snake}_filter_allowlist"
+
+        # Sort allowlist = base scalar fields ∪ every subtype's own scalar fields, so a
+        # per-subtype list can sort on a subtype-only column too. Stable order.
+        sort_fields: list[str] = [f.name for f in _scalar_fields(entity)]
+        seen = set(sort_fields)
+        for st in plan.subtypes:
+            for f in _scalar_fields(st.entity):
+                if f.name not in seen:
+                    seen.add(f.name)
+                    sort_fields.append(f.name)
+        sort_set_body = "set()" if not sort_fields else (
+            "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
+        )
+
+        h = generated_header(short_name, _effective_fqn(entity)).rstrip()
+        parts: list[str] = []
+        parts.append(
+            h + "\n"
+            + f'"""GENERATED — TPH polymorphic REST router for the {short_name} hierarchy '
+            + '(single-table inheritance: polymorphic base + per-subtype CRUD)."""\n'
+        )
+        parts.append("from __future__ import annotations")
+        parts.append("")
+        parts.append("from typing import Annotated, Any, Protocol")
+        parts.append("")
+        parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
+        parts.append("from fastapi.responses import JSONResponse")
+        parts.append("from pydantic import BaseModel")
+        parts.append("")
+        parts.append("from metaobjects.codegen.runtime.filter_parser import (")
+        parts.append("    FilterPredicate,")
+        parts.append("    parse_filter,")
+        parts.append(")")
+        parts.append("")
+        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append("")
+        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append("")
+        parts.append("")
+        parts.append("class _SortClause(BaseModel):")
+        parts.append('    """GENERATED — parsed sort directive (field + asc/desc)."""')
+        parts.append("    field: str")
+        parts.append("    direction: str")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append("def _parse_sort(raw: str) -> _SortClause | None:")
+        parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
+        parts.append('    parts = raw.split(":", 1)')
+        parts.append("    if not parts or parts[0] not in _SORT_ALLOWLIST:")
+        parts.append("        return None")
+        parts.append('    direction = parts[1].lower() if len(parts) == 2 else "asc"')
+        parts.append('    if direction not in ("asc", "desc"):')
+        parts.append("        return None")
+        parts.append("    return _SortClause(field=parts[0], direction=direction)")
+        parts.append("")
+        parts.append("")
+        # Subtype-keyed repository Protocol (None == the polymorphic base).
+        parts.append(f"class {repo_class}(Protocol):")
+        parts.append('    """GENERATED — TPH seam. `subtype` is the @discriminatorValue, or None for')
+        parts.append('    the polymorphic base; the consumer scopes the single table accordingly."""')
+        parts.append("    def list(")
+        parts.append("        self,")
+        parts.append("        subtype: str | None,")
+        parts.append("        limit: int,")
+        parts.append("        offset: int,")
+        parts.append("        sort: _SortClause | None,")
+        parts.append("        filters: list[FilterPredicate],")
+        parts.append("    ) -> list[Any]: ...")
+        parts.append("    def count(self, subtype: str | None, filters: list[FilterPredicate]) -> int: ...")
+        parts.append("    def find_by_id(self, subtype: str | None, id: int) -> Any | None: ...")
+        parts.append("    def create(self, subtype: str, dto: Any) -> Any: ...")
+        parts.append("    def update(self, subtype: str, id: int, dto: Any) -> Any | None: ...")
+        parts.append("    def delete(self, subtype: str, id: int) -> bool: ...")
+        parts.append("")
+        parts.append("")
+        parts.append(f"def get_repository() -> {repo_class}:")
+        parts.append('    """GENERATED — consumer overrides via `app.dependency_overrides[get_repository]`."""')
+        parts.append('    raise NotImplementedError("Override get_repository via FastAPI dependency_overrides in the consumer app")')
+        parts.append("")
+        parts.append("")
+
+        def list_sig(fn: str, route: str) -> list[str]:
+            return [
+                f'@router.get("{route}")',
+                f"def {fn}(",
+                "    request: Request,",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                "    limit: int | None = Query(None),",
+                "    offset: int | None = Query(None),",
+                "    sort: str | None = Query(None),",
+                '    with_count: int | None = Query(None, alias="withCount"),',
+                ") -> Any:",
+            ]
+
+        # --- Per-subtype routes FIRST (literal segments match before /{id:int}). ---
+        for st in plan.subtypes:
+            seg = st.route_segment
+            val = st.value
+            sfx = _snake_case(st.entity.name)
+            parts.extend(list_sig(f"list_{plural}_{sfx}", f"/{seg}"))
+            parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const))
+            parts.append("")
+            parts.append("")
+            parts.append(f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)')
+            parts.append(f"def create_{plural}_{sfx}(")
+            parts.append("    dto: dict[str, Any],")
+            parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+            parts.append(") -> Any:")
+            parts.append(f'    return repo.create("{val}", dto)')
+            parts.append("")
+            parts.append("")
+            parts.append(f'@router.get("/{seg}/{{{pk_param}}}")')
+            parts.append(f"def get_{plural}_{sfx}(")
+            parts.append(f"    {pk_param}: int,")
+            parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+            parts.append(") -> Any:")
+            parts.append(f'    row = repo.find_by_id("{val}", {pk_param})')
+            parts.append("    if row is None:")
+            parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
+            parts.append("    return row")
+            parts.append("")
+            parts.append("")
+            parts.append(f'@router.patch("/{seg}/{{{pk_param}}}")')
+            parts.append(f'@router.put("/{seg}/{{{pk_param}}}")')
+            parts.append(f"def update_{plural}_{sfx}(")
+            parts.append(f"    {pk_param}: int,")
+            parts.append("    dto: dict[str, Any],")
+            parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+            parts.append(") -> Any:")
+            parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
+            parts.append("    if saved is None:")
+            parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
+            parts.append("    return saved")
+            parts.append("")
+            parts.append("")
+            parts.append(f'@router.delete("/{seg}/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)')
+            parts.append(f"def delete_{plural}_{sfx}(")
+            parts.append(f"    {pk_param}: int,")
+            parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+            parts.append(") -> None:")
+            parts.append(f'    if not repo.delete("{val}", {pk_param}):')
+            parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
+            parts.append("")
+            parts.append("")
+
+        # --- Polymorphic base routes LAST (so /{id:int} doesn't shadow /<segment>). ---
+        parts.extend(list_sig(f"list_{plural}", ""))
+        parts.extend(self._emit_tph_list_body("None", fields_const, ops_const))
+        parts.append("")
+        parts.append("")
+        parts.append(f'@router.get("/{{{pk_param}}}")')
+        parts.append(f"def get_{snake}(")
+        parts.append(f"    {pk_param}: int,")
+        parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
+        parts.append(") -> Any:")
+        parts.append(f"    row = repo.find_by_id(None, {pk_param})")
+        parts.append("    if row is None:")
+        parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
+        parts.append("    return row")
+        parts.append("")
+
+        return "\n".join(parts)
+
     def render_router(
         self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
     ) -> str | None:
@@ -273,11 +479,22 @@ class RouterGenerator:
         """
         if not emits_instance_artifacts(entity):
             return None
+        # FR-017 TPH: a concrete subtype is folded into its base's single table — it
+        # emits no standalone router (its CRUD lives under the base's per-subtype segment).
+        if object_index is not None and is_tph_subtype(entity):
+            return None
         src = _primary_source_rdb(entity)
         if src is None:
             return None
         if src.effective_kind() != SOURCE_KIND_TABLE:
             return None
+
+        # FR-017 TPH: a discriminator base emits a polymorphic collection at the base
+        # path PLUS a full per-subtype CRUD set at /<base>/<discriminatorValue lowercased>.
+        if object_index is not None:
+            plan = tph_plan_for(entity, object_index)
+            if plan is not None:
+                return self._render_tph_router(entity, plan)
 
         m2m: list[M2mDescriptor] = (
             resolve_m2m_descriptors(entity, object_index)
