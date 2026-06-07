@@ -30,7 +30,7 @@
       "apiTsPath": "api/ts/acme/shop/OrderSummary.md",
       "apiJavaPath": "api/java/acme/shop/OrderSummary.md",
       "modelToApiTs": "",
-      "modelToApiJava": "",
+      "modelToApiJava": "../../api/java/acme/shop/OrderSummary.md",
       "apiTsToModel": "../../../../acme/shop/OrderSummary.md",
       "apiJavaToModel": "../../../../acme/shop/OrderSummary.md"
     },
