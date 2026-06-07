@@ -32,8 +32,8 @@ public final class Coerce {
         boolean ci = opts.tolerance() != Tolerance.STRICT;
         return switch (spec.kind()) {
             case ENUM -> coerceEnum(raw, spec, opts, fieldPath, report, ci);
-            case INT, LONG -> coerceInt(raw, spec, fieldPath, report);
-            case DOUBLE -> coerceDouble(raw, spec, fieldPath, report);
+            case INT, LONG -> coerceInt(raw, spec, fieldPath, report, ci);
+            case DOUBLE -> coerceDouble(raw, spec, fieldPath, report, ci);
             case BOOLEAN -> coerceBool(raw, ci);
             default -> raw;
         };
@@ -152,30 +152,41 @@ public final class Coerce {
         return null;
     }
 
-    private static Object coerceInt(String raw, FieldSpec spec, String path, ExtractionReport report) {
+    private static Object coerceInt(String raw, FieldSpec spec, String path, ExtractionReport report, boolean lenient) {
         try {
             long n = Long.parseLong(raw.trim());
-            return clamp((double) n, spec, path, report, true);
+            return clamp((double) n, spec, path, report, true, lenient);
         } catch (NumberFormatException e) {
-            try { return clamp(Double.parseDouble(raw.trim()), spec, path, report, true); }
+            try { return clamp(Double.parseDouble(raw.trim()), spec, path, report, true, lenient); }
             catch (NumberFormatException e2) { return MALFORMED; }
         }
     }
 
-    private static Object coerceDouble(String raw, FieldSpec spec, String path, ExtractionReport report) {
+    private static Object coerceDouble(String raw, FieldSpec spec, String path, ExtractionReport report, boolean lenient) {
         // NOTE (cross-port): Java's Double.parseDouble accepts type suffixes ("42f"/"42d") and
         // "Infinity"/"NaN"; non-finite results are rejected by clamp(). Port authors: match the
         // finite-only + numeric classification, not Java's exact suffix tolerance.
-        try { return clamp(Double.parseDouble(raw.trim()), spec, path, report, false); }
+        try { return clamp(Double.parseDouble(raw.trim()), spec, path, report, false, lenient); }
         catch (NumberFormatException e) { return MALFORMED; }
     }
 
-    private static Object clamp(double n, FieldSpec spec, String path, ExtractionReport report, boolean asLong) {
+    /**
+     * Apply the field's {@code @min}/{@code @max} range (sourced from its NumericValidator).
+     * Under LENIENT tolerance an out-of-range value is CLAMPED to the bound (recorded as a
+     * "clamp" coercion); under STRICT tolerance it is {@link #MALFORMED} (the validator's
+     * "value out of range" contract — surfaced as a failure via {@code ExtractionResult.orThrow}).
+     * Cross-port: ports must match the lenient-clamp / strict-reject split.
+     */
+    private static Object clamp(double n, FieldSpec spec, String path, ExtractionReport report,
+                               boolean asLong, boolean lenient) {
         if (!Double.isFinite(n)) return MALFORMED;   // NaN, ±Infinity → MALFORMED (cross-port classification parity)
         double c = n;
         if (spec.min() != null && c < spec.min()) c = spec.min();
         if (spec.max() != null && c > spec.max()) c = spec.max();
-        if (c != n) report.addCoercion(new Coercion(path, String.valueOf(n), String.valueOf(c), "clamp"));
+        if (c != n) {
+            if (!lenient) return MALFORMED;          // STRICT: out-of-range is invalid, not silently clamped
+            report.addCoercion(new Coercion(path, String.valueOf(n), String.valueOf(c), "clamp"));
+        }
         return asLong ? (Object) (long) c : (Object) c;
     }
 

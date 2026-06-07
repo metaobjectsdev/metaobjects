@@ -59,6 +59,16 @@ public class CoerceTest {
     }
 
     @Test
+    public void intOutOfRangeRejectedUnderStrict() {
+        FieldSpec f = FieldSpec.range("score", FieldKind.INT, true, 0.0, 10.0);
+        // STRICT: an out-of-range value is the validator's failure → MALFORMED (not silently clamped).
+        assertEquals(Coerce.MALFORMED,
+                Coerce.value("42", f, normal().withTolerance(Tolerance.STRICT), "score", rep));
+        // …but an in-range value still coerces cleanly under STRICT.
+        assertEquals(5L, Coerce.value("5", f, normal().withTolerance(Tolerance.STRICT), "score", rep));
+    }
+
+    @Test
     public void intUnparseableMalformed() {
         FieldSpec f = FieldSpec.scalar("score", FieldKind.INT, true);
         assertEquals(Coerce.MALFORMED, Coerce.value("abc", f, normal(), "score", rep));

@@ -16,6 +16,8 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.validator.MetaValidator;
+import com.metaobjects.validator.NumericValidator;
 import com.metaobjects.render.extract.FieldKind;
 import com.metaobjects.render.extract.FieldSpec;
 import com.metaobjects.render.extract.Format;
@@ -205,7 +207,33 @@ public final class MetaObjectExtractor {
         if ("true".equalsIgnoreCase(ownAttrString(field, com.metaobjects.template.TemplateConstants.ATTR_XML_TEXT))) {
             return FieldSpec.textContentField(name, kind, required);
         }
+        // Numeric range: source the bound from the field's NumericValidator (@min/@max) — the single
+        // source of truth — so the engine clamps (lenient) / rejects (strict) out-of-range values.
+        if (kind == FieldKind.INT || kind == FieldKind.LONG || kind == FieldKind.DOUBLE) {
+            Double min = numericBound(field, NumericValidator.ATTR_MIN);
+            Double max = numericBound(field, NumericValidator.ATTR_MAX);
+            if (min != null || max != null) {
+                return FieldSpec.range(name, kind, required, min, max);
+            }
+        }
         return FieldSpec.scalar(name, kind, required, defaultValue);
+    }
+
+    /**
+     * Read a numeric bound ({@code @min}/{@code @max}) from the field's {@link NumericValidator}
+     * child — the canonical range source — or {@code null} if there is no such validator/bound.
+     */
+    private static Double numericBound(MetaField<?> field, String attr) {
+        for (MetaValidator v : field.getValidators()) {
+            if (v instanceof NumericValidator && v.hasMetaAttr(attr)) {
+                String raw = v.getMetaAttr(attr).getValueAsString();
+                if (raw != null && !raw.isBlank()) {
+                    try { return Double.parseDouble(raw.trim()); }
+                    catch (NumberFormatException ignored) { return null; }
+                }
+            }
+        }
+        return null;
     }
 
     // =========================================================================
