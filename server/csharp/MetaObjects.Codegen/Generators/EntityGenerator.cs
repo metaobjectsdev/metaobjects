@@ -49,6 +49,15 @@ public class EntityGenerator : IGenerator
         var valueObjects = ReferencedValueObjects(mapped, ctx);
 
         var files = new List<EmittedFile>();
+
+        // FR-019 — materialized shared enums (root-level abstract field.enum, non-@provided,
+        // consumed by ≥1 field) are emitted ONCE in a dedicated Enums.g.cs at the entity-module
+        // namespace; consuming entity fields REFERENCE them (no nested redeclaration). @provided
+        // shared enums emit nothing here (referenced from configured external namespace). With no
+        // shared enums in the model (the common inline case) no file is emitted — byte-identical.
+        if (EmitSharedEnumsFile(ctx) is { } sharedEnums)
+            files.Add(sharedEnums);
+
         foreach (var e in mapped)
         {
             // Abstract entities never produce a table-mapped instance class. Gated
@@ -124,7 +133,7 @@ public class EntityGenerator : IGenerator
             }
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
             {
-                member = EnumProperty(entity, field, strategy);
+                member = EnumProperty(entity, field, ctx.Config, strategy);
             }
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
             {
@@ -292,6 +301,7 @@ public class EntityGenerator : IGenerator
         {
             if (baseFieldNames.Contains(field.Name)) continue;
             if (field.SubType != FIELD_SUBTYPE_ENUM) continue;
+            if (Fr019SharedEnum.SharedEnumForField(field) is not null) continue; // FR-019 shared/provided → referenced
             var values = field.EffectiveEnumValues;
             if (values is null || values.Count == 0) continue;
             var typeName = CSharpNaming.EnumTypeName(entity, field);
@@ -307,7 +317,7 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = TphSubtypeScalarProperty(field, strategy);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = TphSubtypeEnumProperty(entity, field, strategy);
+                member = TphSubtypeEnumProperty(entity, field, ctx.Config, strategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
                 member = ObjectNavProperty(entity, field, ctx);
             if (member is null) continue;
@@ -340,7 +350,7 @@ public class EntityGenerator : IGenerator
             var arr = new StringBuilder();
             arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
             AppendArrayValidatorAttributes(arr, field);
-            arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
+            arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
@@ -356,13 +366,13 @@ public class EntityGenerator : IGenerator
     }
 
     // A subtype-only enum property: NULLABLE, [Column]-mapped (no [Required]).
-    protected static string TphSubtypeEnumProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
+    protected static string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
     {
-        var typeName = CSharpNaming.EnumTypeName(entity, field);
+        var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = CSharpNaming.Pascal(field.Name);
         var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
         if (field.IsArray)
-            return $"{colAttr}    public List<{typeName}> {propName} {{ get; set; }} = new();";
+            return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         return $"{colAttr}    public {typeName}? {propName} {{ get; set; }}";
     }
 
@@ -417,7 +427,7 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(entity, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(entity, field, ColumnNamingStrategy.Literal, withAttributes: false);
+                member = EnumProperty(entity, field, ctx.Config, ColumnNamingStrategy.Literal, withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(entity, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
@@ -466,7 +476,7 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(vo, field, [], withAttributes: false);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
-                member = EnumProperty(vo, field, ctx.Config.ColumnNamingStrategy);
+                member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
             if (member is null) continue;
@@ -489,6 +499,11 @@ public class EntityGenerator : IGenerator
     // Collects nested C# enum declarations for all enum-subtype fields on an object,
     // deduplicating by type name so two fields that extend the same abstract enum emit
     // only one declaration (prevents CS0102 "already contains a definition for '<Name>'").
+    //
+    // FR-019: a field resolving to a SHARED (root-level abstract field.enum) enum is
+    // SKIPPED here — that type is materialized once in Enums.g.cs (or, when @provided,
+    // not at all) and merely REFERENCED. Inline enums (no root-abstract super) keep their
+    // per-object nested declaration exactly as before (byte-identical default).
     protected static List<string> CollectEnumDecls(MetaObject owner)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -496,6 +511,7 @@ public class EntityGenerator : IGenerator
         foreach (var field in owner.Fields())
         {
             if (field.SubType != FIELD_SUBTYPE_ENUM) continue;
+            if (Fr019SharedEnum.SharedEnumForField(field) is not null) continue; // shared/provided → referenced, not nested
             var values = field.EffectiveEnumValues;
             if (values is null || values.Count == 0) continue;
             var typeName = CSharpNaming.EnumTypeName(owner, field);
@@ -504,6 +520,48 @@ public class EntityGenerator : IGenerator
             decls.Add($"    public enum {typeName} {{ {members} }}");
         }
         return decls;
+    }
+
+    // FR-019 — the C# enum type a property of <field> is typed by:
+    //   • shared (root-level abstract, non-@provided) → the bare materialized type name
+    //     (same generated namespace as the entity).
+    //   • @provided → <cfg.ProvidedEnumNamespace>.<Name> (codegen error if unset).
+    //   • inline (the common case) → the per-object nested <Entity><Field> type name.
+    private static string EnumPropertyTypeName(MetaObject owner, MetaField field, GenConfig config)
+    {
+        if (Fr019SharedEnum.SharedEnumForField(field) is { } shared)
+            return Fr019SharedEnum.SharedEnumTypeReference(shared, config);
+        return CSharpNaming.EnumTypeName(owner, field);
+    }
+
+    // FR-019 — the materialized shared-enums file (Enums.g.cs), emitted ONCE per run when
+    // the model has ≥1 consumed, non-@provided root-level abstract field.enum. Returns null
+    // (no file) otherwise — so a model with only inline enums is byte-identical to pre-FR-019.
+    // Referencing a @provided enum with no ProvidedEnumNamespace configured throws here too
+    // (the collect walk constructs each consuming reference's type), surfacing the config gap
+    // as a codegen-time error before any file is written.
+    protected virtual EmittedFile? EmitSharedEnumsFile(GenContext ctx)
+    {
+        // Surface a missing ProvidedEnumNamespace for any consumed @provided enum as a
+        // codegen-time error (ADR-0026), even though @provided emits no file content.
+        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root))
+            if (shared.Provided)
+                _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
+
+        var materialized = Fr019SharedEnum.MaterializedSharedEnums(ctx.Root);
+        if (materialized.Count == 0) return null;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated/>");
+        sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enums). Do not edit by hand.");
+        sb.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
+        sb.AppendLine("#nullable enable");
+        sb.AppendLine();
+        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine();
+        foreach (var e in materialized)
+            sb.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+        return new EmittedFile("Enums.g.cs", sb.ToString());
     }
 
     // Extension hook — invoked once per emitted property, AFTER the framework
@@ -561,13 +619,15 @@ public class EntityGenerator : IGenerator
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
     // (shapes carry no EF mapping).
     protected static string EnumProperty(
-        MetaObject entity, MetaField field, ColumnNamingStrategy strategy, bool withAttributes = true)
+        MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy, bool withAttributes = true)
     {
-        var typeName = CSharpNaming.EnumTypeName(entity, field);
+        // FR-019 — a shared/provided enum is referenced (materialized once / external);
+        // an inline enum keeps the per-object nested <Entity><Field> type name.
+        var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = CSharpNaming.Pascal(field.Name);
         var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
         if (field.IsArray)
-            return $"{colAttr}    public List<{typeName}> {propName} {{ get; set; }} = new();";
+            return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
         return $"{colAttr}    public {type} {propName} {{ get; set; }}";
@@ -600,7 +660,7 @@ public class EntityGenerator : IGenerator
                 // validator.array @min/@max → element-count bounds on the collection.
                 AppendArrayValidatorAttributes(arr, field);
             }
-            arr.Append($"    public List<{baseType}> {propName} {{ get; set; }} = new();");
+            arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 

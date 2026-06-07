@@ -244,7 +244,7 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs = subType switch
             {
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 

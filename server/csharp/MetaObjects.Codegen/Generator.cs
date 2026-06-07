@@ -34,6 +34,16 @@ public sealed record GenConfig
     /// regardless of this knob.
     /// </summary>
     public bool EmitAbstractShapes { get; init; } = false;
+
+    /// <summary>
+    /// FR-019 — the C# namespace an externally-<c>@provided</c> shared enum is referenced
+    /// from (ADR-0026: the namespace is per-port codegen config, never a metadata attr —
+    /// ADR-0001). A consuming field of a <c>@provided</c> abstract <c>field.enum</c> emits
+    /// <c>&lt;ProvidedEnumNamespace&gt;.&lt;EnumName&gt;</c>. Unset (null/empty) is fine
+    /// when the model has no <c>@provided</c> enums; referencing one without it set is a
+    /// codegen-time error naming the enum + this key.
+    /// </summary>
+    public string? ProvidedEnumNamespace { get; init; }
 }
 
 /// <summary>Per-run state handed to every generator.</summary>

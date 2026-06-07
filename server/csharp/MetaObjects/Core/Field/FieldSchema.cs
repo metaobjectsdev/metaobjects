@@ -160,6 +160,21 @@ public static class FieldSchema
         Description: "Member symbols of an enum-subtype field; declaration order significant.");
 
     /// <summary>
+    /// FR-019: the @provided attr — only on field.enum. Optional boolean. When true on
+    /// an abstract (declaration) field.enum, codegen REFERENCES the type from per-port
+    /// config instead of materializing it (ADR-0026). A non-boolean value is rejected at
+    /// load with ERR_BAD_ATTR_VALUE. No namespace/FQN lives in metadata (ADR-0001).
+    /// </summary>
+    public static readonly AttrSchema ProvidedAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_PROVIDED,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description:
+            "FR-019: marks an abstract package-level field.enum as externally provided — " +
+            "codegen references the type (resolved via per-port codegen config) instead of " +
+            "materializing it. Default false. Not a field attr — it lives on the type declaration.");
+
+    /// <summary>
     /// The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical
     /// member, feeding the FR-010 tolerant extract alias-fold (runtime aliases win on conflict).
     /// </summary>

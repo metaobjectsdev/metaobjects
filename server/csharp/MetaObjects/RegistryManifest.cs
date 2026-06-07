@@ -68,6 +68,17 @@ public static class RegistryManifest
         InheritanceAnchor,
         /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
         PresentationOnly,
+        /// <summary>
+        /// A pilot feature attr deliberately NOT yet part of the cross-port manifest
+        /// contract — registered + validated in this port (and the TS reference) but
+        /// carved out of the byte-matched manifest until the feature is promoted to all
+        /// five ports. Members today: <c>field.enum</c>'s <c>@provided</c> (FR-019 shared/
+        /// provided enums — C# fan-out of the TS pilot; the cross-port manifest promotion
+        /// happens once all five ports register it). Mirrors the TS
+        /// <c>ExclusionReason.TsPilotVocab</c> carve-out so this port stays byte-matched
+        /// to <c>fixtures/registry-conformance/expected-registry.json</c>.
+        /// </summary>
+        PilotVocab,
     }
 
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
@@ -91,6 +102,11 @@ public static class RegistryManifest
             [AttrNameObject] = ExclusionReason.NativeBinding,
             [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
             [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
+            // FR-019 — @provided on field.enum is a pilot attr (registered + validated in
+            // this port and the TS reference) carved OUT of the byte-matched cross-port
+            // manifest until the feature is promoted to all five ports. Mirrors TS's
+            // [FIELD_ATTR_PROVIDED, TsPilotVocab] carve-out so expected-registry.json stays green.
+            [Core.Field.FieldConstants.FIELD_ATTR_PROVIDED] = ExclusionReason.PilotVocab,
         };
 
     /// <summary>Classify a per-type attr: an <see cref="ExclusionReason"/> (carved out) or <see cref="ExclusionReason.Included"/> (logical). Total — no silent default.</summary>

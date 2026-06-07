@@ -136,6 +136,15 @@ public static class FieldConstants
     public const string FIELD_ATTR_VALUES = "values";
 
     /// <summary>
+    /// FR-019: optional boolean on a (package-level abstract) <c>field.enum</c>. When
+    /// <c>true</c>, codegen REFERENCES the enum type from per-port codegen config instead
+    /// of materializing it (ADR-0026) — the type is provided by hand-written / third-party
+    /// code. Default <c>false</c> (metaobjects owns + emits it). It lives on the named-type
+    /// declaration, never on a consuming field; no namespace/FQN lives in metadata (ADR-0001).
+    /// </summary>
+    public const string FIELD_ATTR_PROVIDED = "provided";
+
+    /// <summary>
     /// Regex pattern each enum member symbol must satisfy: must start with
     /// a letter or underscore, followed by letters, digits, or underscores.
     /// Keeps symbol == stored value with no name/value divergence.
