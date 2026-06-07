@@ -66,6 +66,12 @@ public final class FixtureDiscovery {
         public final boolean hasProvidersJson;
         /** True when {@code expected/} exists and holds at least one {@code .md} doc golden. */
         public final boolean hasDocsExpected;
+        /**
+         * True when the fixture ships a cross-port {@code expected-paths.json} layout
+         * contract (the api-docs cross-port manifest). Mirrors the TS discovery's
+         * {@code hasContractManifest} flag.
+         */
+        public final boolean hasContractManifest;
         /** Provider IDs required by this fixture (from {@code providers.json}); empty if absent. */
         public final List<String> requiredProviders;
 
@@ -74,6 +80,7 @@ public final class FixtureDiscovery {
                 boolean hasExpectedErrors, boolean hasExpectedWarnings,
                 boolean hasScript, boolean hasProvidersJson,
                 boolean hasDocsExpected,
+                boolean hasContractManifest,
                 List<String> requiredProviders) {
             this.name = name;
             this.dir = dir;
@@ -85,6 +92,7 @@ public final class FixtureDiscovery {
             this.hasScript = hasScript;
             this.hasProvidersJson = hasProvidersJson;
             this.hasDocsExpected = hasDocsExpected;
+            this.hasContractManifest = hasContractManifest;
             this.requiredProviders = requiredProviders != null
                 ? Collections.unmodifiableList(requiredProviders)
                 : Collections.emptyList();
@@ -104,6 +112,24 @@ public final class FixtureDiscovery {
                 && !hasExpectedErrors
                 && !hasExpectedWarnings
                 && !hasScript;
+        }
+
+        /**
+         * A fixture is "contract-only" when it ships a cross-port layout manifest
+         * ({@code expected-paths.json}) but NONE of the strict metadata expectation
+         * files. Such fixtures drive the dedicated api-docs cross-port conformance
+         * runner only ({@code ApiDocsCrossPortConformanceTest} in codegen-spring); the
+         * strict metadata conformance runner skips them rather than flagging "declares
+         * no expectation files". Mirrors the TS {@code isContractOnlyFixture}.
+         */
+        public boolean isContractOnly() {
+            return hasContractManifest
+                && !hasExpected
+                && !hasExpectedEffective
+                && !hasExpectedErrors
+                && !hasExpectedWarnings
+                && !hasScript
+                && !hasDocsExpected;
         }
 
         @Override
@@ -158,6 +184,7 @@ public final class FixtureDiscovery {
                 Files.isRegularFile(dir.resolve("script.json")),
                 hasProvidersJson,
                 hasDocsExpectedDir(dir),
+                Files.isRegularFile(dir.resolve("expected-paths.json")),
                 requiredProviders));
         }
 

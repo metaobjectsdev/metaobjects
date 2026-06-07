@@ -178,6 +178,13 @@ public class ConformanceTest {
             if (f.isDocsOnly()) {
                 continue;
             }
+            // Contract-only fixtures (a cross-port expected-paths.json layout manifest,
+            // no strict expectation files) drive the dedicated api-docs cross-port
+            // conformance runner only (ApiDocsCrossPortConformanceTest in codegen-spring,
+            // and the TS equivalent) and are skipped here. Mirrors the TS strict runner.
+            if (f.isContractOnly()) {
+                continue;
+            }
             rows.add(new Object[]{f.name, f});
         }
         return rows;

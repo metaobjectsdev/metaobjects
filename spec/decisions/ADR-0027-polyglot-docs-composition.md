@@ -78,3 +78,31 @@ Built in TypeScript (the only port with both surfaces today). The `apiSurfaces`
 schema, the model→multi-link rendering, `apiSurfaceHref`, and the multi-surface
 cross-link conformance gate are TS-now; they are the cross-port contract for the
 SP-2 fan-out.
+
+## Update — Java api surface (SP-2) shipped
+
+The Java api-docs surface is implemented (SP-2a/2b/2c): the Java codegen surface
+(model / DTO / repository / controller / validation / filter / extractor / render /
+payload / prompt / parser / trace) is documented accurate-by-construction (the
+`JavaApiModel` IR reuses the real generators' naming + skip seams, gated by an
+accuracy test), rendered Java-idiomatically via the JVM Mustache engine, and emitted
+by the `metaobjects:docs` Maven goal into the `apiSurfaces` contract (`api/java`),
+cross-linked to the model-docs root via a `DocsPaths` util that is byte-parity with
+the TS path math.
+
+The **cross-port layout contract** is gated: `fixtures/conformance/api-docs-cross-port/`
+holds one shared model (`input/meta.json`) + `expected-paths.json`; the TS and Java
+api-docs conformance tests BOTH assert their emitted page paths + cross-link hrefs
+against that single manifest, so a TS+Java solution's `api/ts` and `api/java` surfaces
+resolve into one cross-linked tree (no divergence found). A contract-only fixture
+(`expected-paths.json`, no standard `expected*`) is skipped by the ported strict
+metadata-conformance runners (TS, Java, C#) via their shared `isContractOnly`
+flag (`isContractOnlyFixture`).
+
+The Java api-docs is a Maven **goal** (`metaobjects:docs`), not a `meta gen`
+registry generator, so the generator-registry manifest keeps `api-docs` as
+`ports:["typescript"]`. Remaining (SP-2b-hardening): runnable examples + a setup
+preamble + an agent-usability gate + the EXTRACTOR documentation decision (Java's
+extractor is emitted only under a concrete object flavor, absent from loaded
+metadata). A real adopter run additionally needs the packages published (or wired
+from a local build).

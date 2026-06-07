@@ -19,11 +19,13 @@ public class ConformanceTests
     /// <summary>
     /// xUnit MemberData source — one entry per discovered fixture. Docs-only
     /// fixtures (an <c>expected/*.md</c> directory, no strict expectation files)
-    /// drive the docs-conformance runner only and are skipped here.
+    /// and contract-only fixtures (an <c>expected-paths.json</c> cross-port layout
+    /// manifest, no strict expectation files) drive bespoke conformance runners
+    /// only and are skipped here.
     /// </summary>
     public static IEnumerable<object[]> Fixtures() =>
         FixtureDiscovery.DiscoverFixtures(CorpusRoot.Path)
-            .Where(f => !f.IsDocsOnly)
+            .Where(f => !f.IsDocsOnly && !f.IsContractOnly)
             .Select(f => new object[] { f });
 
     // -------------------------------------------------------------------------
