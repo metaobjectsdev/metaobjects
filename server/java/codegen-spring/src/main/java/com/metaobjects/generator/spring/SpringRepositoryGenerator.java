@@ -70,8 +70,8 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String dtoName = shortName + "Dto";
-        String repoName = shortName + "Repository";
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {

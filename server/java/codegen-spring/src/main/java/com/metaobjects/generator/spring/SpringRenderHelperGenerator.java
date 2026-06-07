@@ -135,13 +135,12 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String capitalized = capitalizeFirst(templateShort);
-        String helperClass = capitalized + "RenderHelper";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
+        String helperClass = SpringNaming.renderHelperName(templateShort);
         // SpringPayloadGenerator names the payload record <CapitalizedTemplateShortName>Payload
         // (derived from the template short name, NOT the VO name) into the same
         // <pkg>.prompts package — reference it by its same-package short name.
-        String payloadClass = capitalized + "Payload";
+        String payloadClass = SpringNaming.payloadName(templateShort);
 
         // Payload field tree — reused by both the build-time gate AND baked into
         // the emitted RenderRequest.verify so the runtime check matches the gate.
@@ -404,13 +403,6 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         return sb.toString();
     }
 
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     @Override
     protected void writeSingleFile(MetaObject md, GeneratorIOWriter<?> writer) { /* unused */ }
@@ -439,6 +431,6 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "RenderHelper.java";
+        return SpringNaming.renderHelperName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

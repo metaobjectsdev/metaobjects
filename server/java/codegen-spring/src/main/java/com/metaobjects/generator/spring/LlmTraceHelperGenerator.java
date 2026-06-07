@@ -138,9 +138,9 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String helperClass = shortName + "TraceHelper";
+        String helperClass = SpringNaming.traceHelperName(shortName);
         String resultClass = shortName + "TraceResult";
-        String fnName = "record" + capitalizeFirst(shortName);
+        String fnName = "record" + SpringNaming.capitalize(shortName);
 
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — LLM-trace helper for object.entity `")
@@ -286,13 +286,6 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         return sb.toString();
     }
 
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     @Override
     protected void writeSingleFile(MetaObject md, GeneratorIOWriter<?> writer) { /* unused */ }
@@ -321,6 +314,6 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return SpringNaming.splitFqn(md.getName())[1] + "TraceHelper.java";
+        return SpringNaming.traceHelperName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

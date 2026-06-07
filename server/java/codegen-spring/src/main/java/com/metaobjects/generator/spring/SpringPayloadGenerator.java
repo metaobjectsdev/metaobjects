@@ -146,8 +146,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String recordName = capitalizeFirst(templateShort) + "Payload";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
+        String recordName = SpringNaming.payloadName(templateShort);
 
         emitPayloadRecord(
             outPkg,
@@ -235,7 +235,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 src.append("    ").append(decl).append('\n');
             }
             for (String[] h : helpers) {
-                String methodName = "has" + capitalizeFirst(h[0]);
+                String methodName = "has" + SpringNaming.capitalize(h[0]);
                 src.append("    public boolean ").append(methodName).append("() { ")
                    .append(h[1]).append(" }\n");
             }
@@ -412,8 +412,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                            Path outRoot,
                                            Set<String> emittedNestedFqns,
                                            boolean asList) {
-        String nestedShort = capitalizeFirst(SpringNaming.splitFqn(target.getName())[1]);
-        String nestedRecord = nestedShort + "Payload";
+        String nestedRecord = SpringNaming.payloadName(SpringNaming.splitFqn(target.getName())[1]);
         if (emittedNestedFqns.add(target.getName())) {
             emitPayloadRecord(
                 nestedPkg,
@@ -519,20 +518,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /**
-     * Uppercase the first character of {@code s}; pass {@code s} through
-     * unchanged when empty or already capitalised. Used to PascalCase the
-     * payload record name regardless of whether the template short name was
-     * authored as {@code camelCase} or {@code PascalCase}, matching Kotlin /
-     * C# / TS / Python convention + Java's PascalCase class-naming rule.
-     */
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
-    /**
      * Decide whether a record component gets a {@code hasFoo()} instance-method
      * helper, and return the method body if so. The rules mirror what
      * templating consumers actually need to gate Mustache sections:
@@ -611,6 +596,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "Payload.java";
+        return SpringNaming.payloadName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

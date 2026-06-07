@@ -151,15 +151,14 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
         // PascalCase the class names — templates authored in camelCase
         // (e.g. `npcTurn`) yield Java-idiomatic `NpcTurnParser` /
         // `NpcTurnPayload`. Pairs with SpringPayloadGenerator's matching
         // capitalisation so the parser's payload-class reference stays
         // consistent.
-        String capitalized = capitalizeFirst(templateShort);
-        String parserClass = capitalized + "Parser";
-        String payloadClass = capitalized + "Payload";
+        String parserClass = SpringNaming.parserName(templateShort);
+        String payloadClass = SpringNaming.payloadName(templateShort);
 
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — parser for template.output `")
@@ -389,7 +388,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
     /** {@code <CapitalizedShortName>Payload} — mirrors {@link SpringPayloadGenerator}'s nested naming. */
     protected static String nestedPayloadClass(MetaObject vo) {
-        return capitalizeFirst(SpringNaming.splitFqn(vo.getName())[1]) + "Payload";
+        return SpringNaming.payloadName(SpringNaming.splitFqn(vo.getName())[1]);
     }
 
     /**
@@ -421,18 +420,6 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("    }\n");
     }
 
-    /**
-     * Uppercase the first character of {@code s}; pass through unchanged when
-     * empty or already capitalised. Pairs with {@link SpringPayloadGenerator}'s
-     * matching helper so the {@code <PayloadClass>} reference in the parser
-     * matches the actual generated file name.
-     */
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
 
     /** Escape a value for embedding inside a Java double-quoted string literal. */
     private static String escapeJava(String value) {
@@ -490,6 +477,6 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "Parser.java";
+        return SpringNaming.parserName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

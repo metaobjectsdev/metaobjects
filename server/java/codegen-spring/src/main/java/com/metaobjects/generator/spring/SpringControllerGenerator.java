@@ -126,11 +126,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String dtoName = shortName + "Dto";
-        String repoName = shortName + "Repository";
-        String controllerName = shortName + "Controller";
-        String routePath = SpringNaming.pluralLowercase(shortName);
-        String routeBase = "/api/" + routePath;
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        String controllerName = SpringNaming.controllerName(shortName);
+        String routeBase = SpringNaming.controllerPath(shortName);
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface today; @storage controls a separate column shape).
@@ -190,7 +189,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        String allowlistName = shortName + "FilterAllowlist";
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
         src.append("            @RequestParam(required = false) Integer limit,\n");

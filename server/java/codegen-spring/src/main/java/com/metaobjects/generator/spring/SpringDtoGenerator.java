@@ -77,7 +77,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String recordName = shortName + "Dto";
+        String recordName = SpringNaming.dtoName(shortName);
 
         // Compute each component's validation annotations once (each call walks the
         // field's validator children), then derive whether the jakarta import is needed.
@@ -130,7 +130,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String typeName = shortName + "Dto";
+        String typeName = SpringNaming.dtoName(shortName);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {

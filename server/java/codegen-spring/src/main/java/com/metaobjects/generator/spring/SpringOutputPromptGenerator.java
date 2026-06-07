@@ -116,10 +116,9 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String capitalized = capitalizeFirst(templateShort);
-        String promptClass = capitalized + "Prompt";
-        String payloadClass = capitalized + "Payload";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
+        String promptClass = SpringNaming.promptName(templateShort);
+        String payloadClass = SpringNaming.payloadName(templateShort);
 
         // The SPEC rootName agrees with the payload class name so both prompt and
         // extract artifacts share the same root element name.
@@ -162,18 +161,6 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
-    /**
-     * Uppercase the first character of {@code s}; pass through unchanged when
-     * empty or already capitalised. Mirrors {@link SpringOutputParserGenerator}'s
-     * matching helper.
-     */
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
     protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         for (MetaObject obj : loader.getMetaObjects()) {
@@ -213,6 +200,6 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "Prompt.java";
+        return SpringNaming.promptName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

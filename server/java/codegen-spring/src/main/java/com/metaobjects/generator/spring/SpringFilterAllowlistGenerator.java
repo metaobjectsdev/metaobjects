@@ -116,7 +116,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String className = shortName + "FilterAllowlist";
+        String className = SpringNaming.filterAllowlistName(shortName);
 
         Map<String, Set<String>> opsByField = computeFilterableOps(entity);
 
