@@ -58,6 +58,23 @@ def _discriminator_root(obj: MetaObject) -> MetaObject | None:
     return None
 
 
+def tph_subtype_binding(obj: MetaObject) -> tuple[str, str] | None:
+    """For a concrete TPH subtype, return ``(discriminator_field, discriminator_value)``
+    — the field NAME inherited from the ``@discriminator`` base + this subtype's own
+    ``@discriminatorValue``. ``None`` when *obj* is not a subtype. Used by the entity
+    generator to pin the inherited discriminator field to a ``Literal`` on the subtype."""
+    value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)  # own attr
+    if not isinstance(value, str) or not value:
+        return None
+    root = _discriminator_root(obj)
+    if root is None or root is obj:
+        return None
+    field = root.attr(OBJECT_ATTR_DISCRIMINATOR)
+    if not isinstance(field, str) or not field:
+        return None
+    return (field, value)
+
+
 def is_tph_subtype(obj: MetaObject) -> bool:
     """True when *obj* is a concrete TPH subtype: it declares ``@discriminatorValue``
     and (transitively) extends a ``@discriminator``-bearing base. Such an entity emits

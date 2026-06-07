@@ -93,7 +93,7 @@ def build_generated_tph_app(tph_dir: Path) -> tuple[FastAPI, "InMemoryTphReposit
     sys.modules[pkg_name] = pkg_mod
     pkg_spec.loader.exec_module(pkg_mod)
 
-    allowlist_src = render_filter_allowlist(base)
+    allowlist_src = render_filter_allowlist(base, index)
     router_src = render_router(base, index)
     if allowlist_src is None or router_src is None:
         raise RuntimeError(f"generators returned None for {base.name}")

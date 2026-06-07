@@ -395,7 +395,7 @@ class RouterGenerator:
         for st in plan.subtypes:
             seg = st.route_segment
             val = st.value
-            sfx = _snake_case(st.entity.name)
+            sfx = st.route_segment  # handler-name suffix = URL segment (e.g. "bridge"), matches the route
             parts.extend(list_sig(f"list_{plural}_{sfx}", f"/{seg}"))
             parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const))
             parts.append("")

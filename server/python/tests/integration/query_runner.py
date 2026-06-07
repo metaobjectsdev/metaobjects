@@ -87,7 +87,9 @@ def _execute_spec(om: ObjectManager, spec: QuerySpec) -> Any:
         ids = list(spec.by.values())
         if len(ids) != 1:
             raise ValueError(f"{spec.name}: op:update supports single-field 'by' only")
-        return om.update(spec.entity, ids[0], spec.data)
+        # if_missing="throw" so a no-match (cross-subtype / absent) update raises and the
+        # DSL's `expect-error` op is satisfied — mirrors the TS runner's ifMissing:"throw".
+        return om.update(spec.entity, ids[0], spec.data, if_missing="throw")
     if spec.op == "delete":
         if not spec.by:
             raise ValueError(f"{spec.name}: op:delete requires 'by' (the record key)")

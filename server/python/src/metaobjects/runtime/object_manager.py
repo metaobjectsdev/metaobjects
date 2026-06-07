@@ -264,7 +264,12 @@ class ObjectManager:
         return {col_to_field.get(k, k): v for k, v in row.items()}
 
     def update(
-        self, entity_name: str, id_value: Any, data: dict[str, Any]
+        self,
+        entity_name: str,
+        id_value: Any,
+        data: dict[str, Any],
+        *,
+        if_missing: str = "ignore",
     ) -> dict[str, Any] | None:
         """UPDATE a row by primary key through the runtime write path.
 
@@ -273,18 +278,23 @@ class ObjectManager:
         as a dict, currency as integer minor units). Each value is run through the
         SAME write codec the INSERT path uses (``_coerce_write_value``) so the
         PATCH path cannot silently skip the type coercion INSERT applies — the
-        per-port hazard the ``update-delete-all-types`` corpus gates. Returns the
-        updated row (mapped to metadata field names) via ``RETURNING``, or
-        ``None`` when no row matched the PK.
+        per-port hazard the ``update-delete-all-types`` corpus gates.
+
+        Returns the updated row (mapped to metadata field names) via ``RETURNING``.
+        When no row matched the (TPH-scoped) PK, behavior follows *if_missing*
+        (mirrors the TS ``WriteOpts.ifMissing``): ``"ignore"`` (default) → ``None``
+        so a REST route renders 404; ``"throw"`` → raise so the persistence DSL's
+        ``expect-error`` op is satisfied. The discriminator is immutable, so a TPH
+        subtype's patch strips it and the by-id write is scoped to the subtype (a
+        cross-subtype id matches no row → the same not-found path).
         """
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field))
 
-        # FR-017 TPH: the discriminator is immutable — a subtype can't be retyped,
-        # so it is stripped from the patch. Reads/writes are subtype-scoped (a row
-        # of a different subtype is invisible → a cross-subtype update matches no row).
+        # FR-017 TPH: the discriminator is immutable — strip it from the patch; the
+        # by-id write is subtype-scoped (a row of a different subtype is invisible).
         tph = tph_subtype_of(entity)
         if tph is not None and tph.field in data:
             data = {k: v for k, v in data.items() if k != tph.field}
@@ -300,8 +310,9 @@ class ObjectManager:
             set_cols.append(_column_of(f))
             params.append(_coerce_write_value(f, raw))
         if not set_cols:
-            # No columns to set → just read the row back by PK (no-op update).
-            return self.find_by_id(entity_name, id_value)
+            # No columns to set → just read the (scoped) row back by PK (no-op update).
+            row = self.find_by_id(entity_name, id_value)
+            return self._on_missing_update(entity_name, pk_field, id_value, if_missing) if row is None else row
 
         all_cols = [_column_of(f) for f in entity.fields()]
         col_to_field = {_column_of(f): f.name for f in entity.fields()}
@@ -318,14 +329,7 @@ class ObjectManager:
         result = self._driver.update_returning(sql, tuple(params))
         if result is None:
             self.last_column_oids = {}
-            if tph is not None:
-                # A subtype-scoped update that matched no row is a cross-subtype
-                # (or absent) write — the runtime rejects it (expect-error contract),
-                # mirroring the per-subtype route's 404. Non-TPH keeps None semantics.
-                raise KeyError(
-                    f"update('{entity_name}'): no {tph.value} row with {pk_field}={id_value!r}"
-                )
-            return None
+            return self._on_missing_update(entity_name, pk_field, id_value, if_missing)
         # Surface the RETURNING column OIDs (mapped to metadata field names) so the
         # serialization boundary applies the same SQL-type wire rules as a read —
         # a BIGINT / currency column comes back as a numeric string. Mirrors the
@@ -335,6 +339,18 @@ class ObjectManager:
         }
         row = result.rows[0]
         return {col_to_field.get(k, k): v for k, v in row.items()}
+
+    @staticmethod
+    def _on_missing_update(
+        entity_name: str, pk_field: str, id_value: Any, if_missing: str
+    ) -> None:
+        """No (TPH-scoped) row matched an update: ``"throw"`` raises (the persistence
+        ``expect-error`` contract), ``"ignore"`` returns ``None`` (REST route → 404)."""
+        if if_missing == "throw":
+            raise KeyError(
+                f"update('{entity_name}'): no row with {pk_field}={id_value!r} in scope"
+            )
+        return None
 
     def delete(self, entity_name: str, id_value: Any) -> bool:
         """DELETE a row by primary key through the runtime write path.

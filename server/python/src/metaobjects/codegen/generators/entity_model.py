@@ -15,6 +15,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
 )
+from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
 
 
 def _is_int(value: object) -> bool:
@@ -199,6 +200,21 @@ class EntityModelGenerator:
             imports.add(f"from .{base_class} import {base_class}")
 
         lines, uses_field = self._emit_field_lines(entity, imports, object_index)
+
+        # FR-017 TPH: a concrete subtype pins the inherited discriminator field to its
+        # own value (Literal) so the Pydantic model rejects a foreign-subtype tag —
+        # the type-layer parity with the TS `z.literal` / C# discriminator pin. (Python's
+        # runtime is dict-based, so the base's discriminated-UNION alias is intentionally
+        # deferred: it isn't consumed by the generated routes/ObjectManager and would
+        # force a base↔subtype circular import for an unused artifact.)
+        binding = tph_subtype_binding(entity)
+        if binding is not None:
+            disc_field, disc_value = binding
+            lines = [
+                f'    {disc_field}: Literal["{disc_value}"] = "{disc_value}"',
+                *lines,
+            ]
+            imports.add("from typing import Literal")
         body = lines if lines else ["    pass"]
 
         # Import only the pydantic names actually referenced.

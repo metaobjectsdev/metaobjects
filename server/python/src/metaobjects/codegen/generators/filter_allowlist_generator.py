@@ -35,6 +35,8 @@ from __future__ import annotations
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators.m2m_codegen import build_object_index
+from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -176,22 +178,34 @@ class FilterAllowlistGenerator:
         return ops_for_subtype_ordered(field.sub_type)
 
     def _compute_filterable_ops(
-        self, entity: MetaObject
+        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
     ) -> dict[str, tuple[str, ...]]:
         """Build the ``{field_name: op_tuple}`` map for ``entity`` (own + inherited
         effective fields). Only fields with ``@filterable: true`` are included;
         object fields and fields whose ``_ops_for_field`` yields no operators are
-        skipped. Preserves declaration order so the emitted source is deterministic."""
+        skipped. Preserves declaration order so the emitted source is deterministic.
+
+        FR-017 TPH: when ``entity`` is a discriminator base (``object_index`` given),
+        the union also folds in each subtype's own filterable fields, so the single
+        table's per-subtype routes (and the polymorphic base) can filter on a
+        subtype-only column. Non-TPH entities are unaffected."""
         out: dict[str, tuple[str, ...]] = {}
-        for f in entity.fields():
-            if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-                continue
-            if not _is_filterable(f):
-                continue
+
+        def add(f: MetaField) -> None:
+            if f.sub_type == fc.FIELD_SUBTYPE_OBJECT or f.name in out or not _is_filterable(f):
+                return
             ops = self._ops_for_field(f)
-            if not ops:
-                continue
-            out[f.name] = ops
+            if ops:
+                out[f.name] = ops
+
+        for f in entity.fields():
+            add(f)
+        if object_index is not None:
+            plan = tph_plan_for(entity, object_index)
+            if plan is not None:
+                for st in plan.subtypes:
+                    for f in st.entity.own_fields():
+                        add(f)
         return out
 
     def _emit_constants(
@@ -220,13 +234,18 @@ class FilterAllowlistGenerator:
             lines.append("}")
         return lines
 
-    def render_filter_allowlist(self, entity: MetaObject) -> str | None:
+    def render_filter_allowlist(
+        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+    ) -> str | None:
         """Render the filter allowlist module for ``entity`` (or ``None`` to skip).
 
         Returns ``None`` for entities without a ``source.rdb`` child and for
         read-only kinds (``view`` / ``materializedView`` / ``storedProc`` /
         ``tableFunction``) — these match the router generator's "no router"
         gate, so emitting an allowlist would be pure noise.
+
+        ``object_index`` (optional) lets a TPH discriminator base fold in its
+        subtypes' filterable fields (see :meth:`_compute_filterable_ops`).
         """
         if not emits_instance_artifacts(entity):
             return None
@@ -241,7 +260,7 @@ class FilterAllowlistGenerator:
         fields_const = f"{upper}_FILTER_FIELDS"
         ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
 
-        ops_by_field = self._compute_filterable_ops(entity)
+        ops_by_field = self._compute_filterable_ops(entity, object_index)
 
         parts: list[str] = []
         parts.append(
@@ -257,8 +276,10 @@ class FilterAllowlistGenerator:
         return "\n".join(parts)
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
+        index = build_object_index(ctx.entities)
+
         def emit(entity: MetaObject, _c: GenContext) -> list[EmittedFile]:
-            source = self.render_filter_allowlist(entity)
+            source = self.render_filter_allowlist(entity, index)
             if source is None:
                 return []
             snake = _snake_case(entity.name)
@@ -272,10 +293,12 @@ class FilterAllowlistGenerator:
         return per_entity(emit)(ctx)
 
 
-def render_filter_allowlist(entity: MetaObject) -> str | None:
+def render_filter_allowlist(
+    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+) -> str | None:
     """Module-level back-compat wrapper. Delegates to a default
     :class:`FilterAllowlistGenerator`. Subclass it to customize."""
-    return FilterAllowlistGenerator().render_filter_allowlist(entity)
+    return FilterAllowlistGenerator().render_filter_allowlist(entity, object_index)
 
 
 def filter_allowlist_generator() -> Generator:
