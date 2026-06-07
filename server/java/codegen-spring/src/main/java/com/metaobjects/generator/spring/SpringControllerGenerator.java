@@ -101,13 +101,33 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
             RdbSource sourceRdb = firstRdbSource(entity);
             if (sourceRdb == null) continue;
-            String kind = sourceRdb.getEffectiveKind();
-            if (!MetaSource.KIND_TABLE.equals(kind)) {
-                logSkip(entity.getName(), kind);
+            if (!appliesTo(entity)) {
+                // Same shape (entity / non-abstract / has rdb source) but a non-table
+                // kind — log why no controller is emitted, then skip.
+                logSkip(entity.getName(), sourceRdb.getEffectiveKind());
                 continue;
             }
             emit(entity, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a {@code @RestController} for {@code entity}:
+     * a concrete (non-abstract) {@code object.entity} whose first {@code source.rdb}
+     * child is {@code @kind="table"} (writable). Identical inclusion rule to
+     * {@link SpringRepositoryGenerator#appliesTo(MetaObject)} — the controller
+     * delegates to that repository, so the two emit sets coincide. View /
+     * materializedView / storedProc / tableFunction kinds (and entities with no
+     * {@code source.rdb}) are excluded. There is no {@code @emitRoutes}-style
+     * opt-out attribute today — emission is driven purely by the table guard.
+     * Extracted verbatim from the {@link #execute(MetaDataLoader)} per-node guard.
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
+        RdbSource sourceRdb = firstRdbSource(entity);
+        if (sourceRdb == null) return false;
+        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
     }
 
     protected void logSkip(String entityName, String kind) {
@@ -126,11 +146,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String dtoName = shortName + "Dto";
-        String repoName = shortName + "Repository";
-        String controllerName = shortName + "Controller";
-        String routePath = SpringNaming.pluralLowercase(shortName);
-        String routeBase = "/api/" + routePath;
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        String controllerName = SpringNaming.controllerName(shortName);
+        String routeBase = SpringNaming.controllerPath(shortName);
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface today; @storage controls a separate column shape).
@@ -190,7 +209,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        String allowlistName = shortName + "FilterAllowlist";
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
         src.append("            @RequestParam(required = false) Integer limit,\n");

@@ -21,12 +21,12 @@ import com.metaobjects.source.RdbSource;
  *       ({@code docs/features/api-contract.md}).</li>
  * </ul>
  */
-final class SpringNaming {
+public final class SpringNaming {
 
     private SpringNaming() { /* no instances */ }
 
     /** First {@link RdbSource} child of {@code entity}, or {@code null} when absent. */
-    static RdbSource firstRdbSource(MetaObject entity) {
+    public static RdbSource firstRdbSource(MetaObject entity) {
         for (MetaData child : entity.getChildren()) {
             if (child instanceof RdbSource) return (RdbSource) child;
         }
@@ -34,12 +34,12 @@ final class SpringNaming {
     }
 
     /** Convert metadata package separator {@code ::} to Java {@code .}. */
-    static String toJavaPackage(String metadataPackage) {
+    public static String toJavaPackage(String metadataPackage) {
         return metadataPackage.replace("::", ".");
     }
 
     /** Split a fully-qualified metadata name into its Java {@code (packageName, shortName)}. */
-    static String[] splitFqn(String fqn) {
+    public static String[] splitFqn(String fqn) {
         int lastSep = fqn.lastIndexOf("::");
         if (lastSep < 0) {
             return new String[] { "", fqn };
@@ -58,7 +58,95 @@ final class SpringNaming {
      * by hand-editing the file — the {@code GENERATED} banner is advisory,
      * not a hard merge gate, since regeneration overwrites.
      */
-    static String pluralLowercase(String shortName) {
+    public static String pluralLowercase(String shortName) {
         return shortName.toLowerCase() + "s";
+    }
+
+    // ---------------------------------------------------------------------
+    // Generated-name seam.
+    //
+    // Each method below returns EXACTLY the string the corresponding generator
+    // concatenates inline today (verbatim, behavior-preserving). Generators are
+    // routed through these methods in a follow-up task so the api-docs IR shares
+    // one source of truth for emitted type names. Do not change a literal here
+    // without changing the generator and re-verifying byte output.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Capitalize the first character. Mirrors the {@code capitalizeFirst}
+     * helper duplicated across the template-helper generators
+     * ({@code SpringRenderHelperGenerator}, {@code SpringPayloadGenerator},
+     * {@code SpringOutputPromptGenerator}, {@code SpringOutputParserGenerator},
+     * {@code LlmTraceHelperGenerator}).
+     */
+    public static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        char c0 = s.charAt(0);
+        if (Character.isUpperCase(c0)) return s;
+        return Character.toUpperCase(c0) + s.substring(1);
+    }
+
+    /** {@code SpringDtoGenerator}: {@code shortName + "Dto"}. */
+    public static String dtoName(String shortName) {
+        return shortName + "Dto";
+    }
+
+    /** {@code SpringRepositoryGenerator}: {@code shortName + "Repository"}. */
+    public static String repositoryName(String shortName) {
+        return shortName + "Repository";
+    }
+
+    /** {@code SpringControllerGenerator}: {@code shortName + "Controller"}. */
+    public static String controllerName(String shortName) {
+        return shortName + "Controller";
+    }
+
+    /** {@code SpringFilterAllowlistGenerator}: {@code shortName + "FilterAllowlist"}. */
+    public static String filterAllowlistName(String shortName) {
+        return shortName + "FilterAllowlist";
+    }
+
+    /** {@code ExtractorCodeGenerator}: {@code className + "Extractor"} (entity class name). */
+    public static String extractorName(String className) {
+        return className + "Extractor";
+    }
+
+    /** {@code SpringControllerGenerator}: route base {@code "/api/" + pluralLowercase(shortName)}. */
+    public static String controllerPath(String shortName) {
+        return "/api/" + pluralLowercase(shortName);
+    }
+
+    /**
+     * Output package for template-helper artifacts:
+     * {@code pkg.isEmpty() ? "prompts" : pkg + ".prompts"}. Shared verbatim by
+     * the render-helper / payload / output-prompt / output-parser generators.
+     */
+    public static String promptsPackage(String pkg) {
+        return pkg.isEmpty() ? "prompts" : pkg + ".prompts";
+    }
+
+    /** {@code SpringRenderHelperGenerator}: {@code capitalize(templateShort) + "RenderHelper"}. */
+    public static String renderHelperName(String templateShort) {
+        return capitalize(templateShort) + "RenderHelper";
+    }
+
+    /** {@code SpringPayloadGenerator}: {@code capitalize(templateShort) + "Payload"}. */
+    public static String payloadName(String templateShort) {
+        return capitalize(templateShort) + "Payload";
+    }
+
+    /** {@code SpringOutputPromptGenerator}: {@code capitalize(templateShort) + "Prompt"}. */
+    public static String promptName(String templateShort) {
+        return capitalize(templateShort) + "Prompt";
+    }
+
+    /** {@code SpringOutputParserGenerator}: {@code capitalize(templateShort) + "Parser"}. */
+    public static String parserName(String templateShort) {
+        return capitalize(templateShort) + "Parser";
+    }
+
+    /** {@code LlmTraceHelperGenerator}: {@code shortName + "TraceHelper"}. */
+    public static String traceHelperName(String shortName) {
+        return shortName + "TraceHelper";
     }
 }

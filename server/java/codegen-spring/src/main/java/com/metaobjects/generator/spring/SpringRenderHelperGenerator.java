@@ -121,27 +121,38 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         }
     }
 
+    /**
+     * True iff this generator emits a render helper for {@code node}: the node is a
+     * {@code template.output} carrying a {@code @payloadRef} that resolves (against
+     * {@code loader}) to an {@code object.value}. The render helper wraps the JVM
+     * Renderer for {@code @kind=document|email} output templates. Extracted from
+     * the {@link #execute(MetaDataLoader)} {@code SUBTYPE_OUTPUT} filter combined
+     * with the per-template {@link #emit} skip guard.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
+        String payloadRef = template.getPayloadRef();
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       FilesystemProvider provider) {
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (!appliesTo(template, loader)) {
+            return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as SpringPayloadGenerator
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String capitalized = capitalizeFirst(templateShort);
-        String helperClass = capitalized + "RenderHelper";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
+        String helperClass = SpringNaming.renderHelperName(templateShort);
         // SpringPayloadGenerator names the payload record <CapitalizedTemplateShortName>Payload
         // (derived from the template short name, NOT the VO name) into the same
         // <pkg>.prompts package — reference it by its same-package short name.
-        String payloadClass = capitalized + "Payload";
+        String payloadClass = SpringNaming.payloadName(templateShort);
 
         // Payload field tree — reused by both the build-time gate AND baked into
         // the emitted RenderRequest.verify so the runtime check matches the gate.
@@ -404,13 +415,6 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         return sb.toString();
     }
 
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     @Override
     protected void writeSingleFile(MetaObject md, GeneratorIOWriter<?> writer) { /* unused */ }
@@ -439,6 +443,6 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "RenderHelper.java";
+        return SpringNaming.renderHelperName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

@@ -132,22 +132,33 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         }
     }
 
+    /**
+     * True iff this generator emits a payload record for {@code node}: the node is
+     * a {@code template.*} ({@code prompt} / {@code output} / {@code toolcall})
+     * carrying a {@code @payloadRef} that resolves (against {@code loader}) to an
+     * {@code object.value}. Extracted verbatim from the per-template
+     * {@link #emit(MetaTemplate, MetaDataLoader, Path, Set)} skip guard so the
+     * api-docs IR builder reuses the same decision.
+     */
+    public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
+        if (!(node instanceof MetaTemplate template)) return false;
+        String payloadRef = template.getPayloadRef();
+        if (payloadRef == null || payloadRef.isEmpty()) return false;
+        return resolveValueObject(loader, payloadRef) != null;
+    }
+
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       Set<String> emittedNestedFqns) {
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) {
-            return; // loader validation normally catches this first
+        if (!appliesTo(template, loader)) {
+            return; // missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python
         }
-        MetaObject payloadVo = resolveValueObject(loader, payloadRef);
-        if (payloadVo == null) {
-            return; // not a VO — same contract as Kotlin / C# / Python
-        }
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
-        String outPkg = templatePkg.isEmpty() ? "prompts" : templatePkg + ".prompts";
-        String recordName = capitalizeFirst(templateShort) + "Payload";
+        String outPkg = SpringNaming.promptsPackage(templatePkg);
+        String recordName = SpringNaming.payloadName(templateShort);
 
         emitPayloadRecord(
             outPkg,
@@ -235,7 +246,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 src.append("    ").append(decl).append('\n');
             }
             for (String[] h : helpers) {
-                String methodName = "has" + capitalizeFirst(h[0]);
+                String methodName = "has" + SpringNaming.capitalize(h[0]);
                 src.append("    public boolean ").append(methodName).append("() { ")
                    .append(h[1]).append(" }\n");
             }
@@ -258,7 +269,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code field.object} routes through the nested-payload emission arm; (3)
      * otherwise the scalar fallback via {@link SpringTypeMapper#javaTypeName}.
      */
-    protected String resolveFieldType(MetaField<?> field,
+    public String resolveFieldType(MetaField<?> field,
                                     MetaObject owner,
                                     MetaDataLoader loader,
                                     String nestedPkg,
@@ -412,8 +423,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                            Path outRoot,
                                            Set<String> emittedNestedFqns,
                                            boolean asList) {
-        String nestedShort = capitalizeFirst(SpringNaming.splitFqn(target.getName())[1]);
-        String nestedRecord = nestedShort + "Payload";
+        String nestedRecord = SpringNaming.payloadName(SpringNaming.splitFqn(target.getName())[1]);
         if (emittedNestedFqns.add(target.getName())) {
             emitPayloadRecord(
                 nestedPkg,
@@ -496,7 +506,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
+    public static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
         MetaObject obj = resolveObjectByShortOrFqn(loader, ref);
         if (obj == null) return null;
         return MetaObject.SUBTYPE_VALUE.equals(obj.getSubType()) ? obj : null;
@@ -519,20 +529,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     /**
-     * Uppercase the first character of {@code s}; pass {@code s} through
-     * unchanged when empty or already capitalised. Used to PascalCase the
-     * payload record name regardless of whether the template short name was
-     * authored as {@code camelCase} or {@code PascalCase}, matching Kotlin /
-     * C# / TS / Python convention + Java's PascalCase class-naming rule.
-     */
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
-    /**
      * Decide whether a record component gets a {@code hasFoo()} instance-method
      * helper, and return the method body if so. The rules mirror what
      * templating consumers actually need to gate Mustache sections:
@@ -548,7 +544,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      *
      * <p>Returns {@code null} when no helper should be emitted.
      */
-    protected static String hasHelperBody(String type, String name) {
+    public static String hasHelperBody(String type, String name) {
         if ("String".equals(type)) {
             return "return " + name + " != null && !" + name + ".isBlank();";
         }
@@ -611,6 +607,6 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return capitalizeFirst(SpringNaming.splitFqn(md.getName())[1]) + "Payload.java";
+        return SpringNaming.payloadName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

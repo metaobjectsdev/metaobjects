@@ -27,7 +27,7 @@ import java.util.List;
  * up because {@code MetaDataLoader} delegates to the same singleton
  * {@code MetaDataRegistry}.</p>
  */
-final class SpringTestFixtures {
+public final class SpringTestFixtures {
 
     private SpringTestFixtures() { /* no instances */ }
 
@@ -285,7 +285,7 @@ final class SpringTestFixtures {
      * @param baseName   filename stem (will be suffixed with {@code .json})
      * @param fixtureJson literal canonical-JSON fixture text
      */
-    static MetaDataLoader loadFixture(Path parent, String baseName, String fixtureJson) throws IOException {
+    public static MetaDataLoader loadFixture(Path parent, String baseName, String fixtureJson) throws IOException {
         Path fixture = parent.resolve(baseName + ".json");
         Files.writeString(fixture, fixtureJson);
         URI uri = URIHelper.toURI("model:file:" + fixture.toAbsolutePath().toString().replace('\\', '/'));

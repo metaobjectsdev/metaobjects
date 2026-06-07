@@ -109,9 +109,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         // Stable name order — deterministic emission, matching the other generators.
         java.util.List<MetaObject> entities = new java.util.ArrayList<>();
         for (MetaObject mo : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(mo.getSubType())) continue;
-            if (GeneratorUtil.isAbstract(mo)) continue;
-            if (!extendsBase(mo)) continue;
+            if (!appliesTo(mo)) continue;
             entities.add(mo);
         }
         entities.sort(Comparator.comparing(MetaObject::getName));
@@ -119,6 +117,29 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         for (MetaObject entity : entities) {
             emit(entity, loader, outRoot);
         }
+    }
+
+    /**
+     * True iff this generator emits a trace helper for {@code entity}: a concrete
+     * (non-abstract) {@code object.entity} that transitively {@code extends}
+     * {@code LlmCallBase}, nests a {@code template.prompt}, AND that prompt carries
+     * {@code @responseRef} (the typed-result contract requires it). Extracted
+     * verbatim from the combined {@link #execute(MetaDataLoader)} +
+     * {@link #emit(MetaObject, MetaDataLoader, java.nio.file.Path)} skip guards.
+     *
+     * <p>Note: this predicate only asks whether {@code @responseRef} is PRESENT.
+     * A present-but-unresolvable {@code @responseRef} is an authoring error the
+     * {@code emit} path raises as a {@link GeneratorException} — it is not a
+     * silent skip, so it is intentionally outside this inclusion predicate.</p>
+     */
+    public static boolean appliesTo(MetaObject entity) {
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        if (GeneratorUtil.isAbstract(entity)) return false;
+        if (!extendsBase(entity)) return false;
+        PromptTemplate prompt = firstPrompt(entity);
+        if (prompt == null) return false;
+        String responseRef = prompt.getResponseRef();
+        return responseRef != null && !responseRef.isEmpty();
     }
 
     protected void emit(MetaObject entity, MetaDataLoader loader, Path outRoot) {
@@ -138,9 +159,9 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String helperClass = shortName + "TraceHelper";
+        String helperClass = SpringNaming.traceHelperName(shortName);
         String resultClass = shortName + "TraceResult";
-        String fnName = "record" + capitalizeFirst(shortName);
+        String fnName = "record" + SpringNaming.capitalize(shortName);
 
         StringBuilder src = new StringBuilder();
         src.append("// GENERATED — DO NOT EDIT — LLM-trace helper for object.entity `")
@@ -286,13 +307,6 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         return sb.toString();
     }
 
-    private static String capitalizeFirst(String s) {
-        if (s == null || s.isEmpty()) return s;
-        char c0 = s.charAt(0);
-        if (Character.isUpperCase(c0)) return s;
-        return Character.toUpperCase(c0) + s.substring(1);
-    }
-
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     @Override
     protected void writeSingleFile(MetaObject md, GeneratorIOWriter<?> writer) { /* unused */ }
@@ -321,6 +335,6 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return SpringNaming.splitFqn(md.getName())[1] + "TraceHelper.java";
+        return SpringNaming.traceHelperName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }
