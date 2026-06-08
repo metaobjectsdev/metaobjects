@@ -429,6 +429,56 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
+     * FR-017 TPH: return a DERIVED {@link QueryOptions} with the discriminator AND'd into the
+     * expression when {@code mc} is a subtype; otherwise the original {@code options} unchanged
+     * (no allocation). Never mutates the caller's options — scoping a read must not have a visible
+     * side effect on the argument.
+     */
+    private QueryOptions scopedOptions(MetaObject mc, QueryOptions options) {
+        Expression scoped = scopeToSubtype(mc, options.getExpression());
+        if (scoped == options.getExpression()) return options; // non-TPH (or no change) — caller's object
+        QueryOptions copy = new QueryOptions(scoped, options.getSortOrder(), options.getRange());
+        copy.setDistinct(options.isDistinct());
+        copy.setFields(options.getFields());
+        copy.setWithLock(options.withLock());
+        return copy;
+    }
+
+    /**
+     * FR-017 TPH: inject a subtype's discriminator value onto {@code obj} before a write (the
+     * entity names the subtype; the caller never sets the discriminator field). No-op for a
+     * non-TPH class.
+     */
+    private void injectDiscriminator(MetaObject mc, Object obj) {
+        TphHelper.TphSubtype tph = TphHelper.tphSubtypeOf(mc);
+        if (tph != null) {
+            mc.getMetaField(tph.field()).setString(obj, tph.value());
+        }
+    }
+
+    /**
+     * FR-017 TPH: enforce the subtype scope on a by-PK single-object write ({@code updateObject} /
+     * {@code deleteObject}), which go through the driver's PK-based path (no expression hook to AND
+     * the discriminator into the WHERE). A cross-subtype PK — a row that exists in the shared table
+     * but belongs to a different subtype — is invisible to the subtype scope, so the write must be
+     * refused rather than corrupt/delete a sibling subtype's row. Mirrors the Python/TS runtime,
+     * which scope the update/delete WHERE by discriminator. No-op for a non-TPH class.
+     */
+    private void requireInSubtypeScope(ObjectConnection c, MetaObject mc, Object obj) {
+        if (TphHelper.tphSubtypeOf(mc) == null) return;
+        Connection conn = (Connection) c.getDatastoreConnection();
+        ObjectMappingDB mapping = (ObjectMappingDB) getReadMapping(mc);
+        Expression exp = scopeToSubtype(mc, buildPrimaryKeyExpressionFromObject(mc, obj));
+        try {
+            if (getTypedDatabaseDriver().readMany(conn, mc, mapping, new QueryOptions(exp)).isEmpty()) {
+                throw new ObjectNotFoundException(obj); // cross-subtype (or absent) — refuse the write
+            }
+        } catch (SQLException e) {
+            throw new PersistenceException("Unable to verify subtype scope for [" + obj + "]: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Delete the objects from the datastore where the field has the specified
      * value
      */
@@ -511,10 +561,10 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         // Check for a valid transaction if enforced
         checkTransaction(conn, false);
 
-        // FR-017 TPH: a subtype read is discriminator-scoped (a row of a different subtype
-        // is invisible); the base entity (no @discriminatorValue) reads the whole table.
-        Expression scoped = scopeToSubtype(mc, options.getExpression());
-        if (scoped != options.getExpression()) options.setExpression(scoped);
+        // FR-017 TPH: a subtype read is discriminator-scoped (a row of a different subtype is
+        // invisible); the base entity (no @discriminatorValue) reads the whole table. Scope into a
+        // DERIVED options object — never mutate the caller's QueryOptions.
+        options = scopedOptions(mc, options);
 
         //int failures = 0;
         //while( true )
@@ -569,8 +619,9 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
             log.debug("Loading object [" + o + "] of class [" + mc + "]");
         }
 
-        // Create the Expression for the Primary Keys
-        Expression exp = buildPrimaryKeyExpressionFromObject(mc, o);
+        // Create the Expression for the Primary Keys (FR-017 TPH: AND the discriminator so a
+        // subtype load can't read a sibling subtype's row sharing the single table).
+        Expression exp = scopeToSubtype(mc, buildPrimaryKeyExpressionFromObject(mc, o));
 
         // Try to read the object
         try {
@@ -607,11 +658,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         }
 
         // FR-017 TPH: a subtype create injects its discriminator value (the entity names
-        // the subtype; the caller never sets `type`) BEFORE the write so it persists.
-        TphHelper.TphSubtype tph = TphHelper.tphSubtypeOf(mc);
-        if (tph != null) {
-            mc.getMetaField(tph.field()).setString(obj, tph.value());
-        }
+        // the subtype; the caller never sets it) BEFORE the write so it persists.
+        injectDiscriminator(mc, obj);
 
         // Get the create mapping
         ObjectMappingDB mapping = (ObjectMappingDB) getCreateMapping(mc);
@@ -650,6 +698,10 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         if (!isUpdateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not writeable");
         }
+
+        // FR-017 TPH: refuse a cross-subtype by-PK update (the driver writes by PK only, so without
+        // this a subtype VO could overwrite a sibling subtype's row in the shared table).
+        requireInSubtypeScope(c, mc, obj);
 
         // check the object manager
         //verifyObjectManager( obj );
@@ -734,6 +786,10 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         }
 
         //verifyObjectManager( obj );
+
+        // FR-017 TPH: refuse a cross-subtype by-PK delete (the driver deletes by PK only, so without
+        // this a subtype VO could delete a sibling subtype's row in the shared table).
+        requireInSubtypeScope(c, mc, obj);
 
         // Get the update mapping
         ObjectMappingDB mapping = (ObjectMappingDB) getDeleteMapping(mc);
@@ -1024,9 +1080,12 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         
         Connection conn = (Connection) c.getDatastoreConnection();
         checkTransaction(conn, true);
-        
+
         ObjectMappingDB mapping = (ObjectMappingDB) getCreateMapping(mc);
-        
+
+        // FR-017 TPH: inject the discriminator on every row before the bulk write (parallel to createObject).
+        for (Object obj : objects) injectDiscriminator(mc, obj);
+
         try {
             // Use database driver for bulk creation if supported
             if (getDatabaseDriver() instanceof BulkOperationSupport bulkDriver) {
@@ -1053,7 +1112,11 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         checkTransaction(conn, true);
         
         ObjectMappingDB mapping = (ObjectMappingDB) getUpdateMapping(mc);
-        
+
+        // FR-017 TPH: refuse any cross-subtype row up front (covers both the native bulk path and
+        // the per-object fallback) so a bulk update can't corrupt a sibling subtype's row by PK.
+        for (Object obj : objects) requireInSubtypeScope(c, mc, obj);
+
         try {
             // Use database driver for bulk updates if supported
             if (getDatabaseDriver() instanceof BulkOperationSupport bulkDriver) {
