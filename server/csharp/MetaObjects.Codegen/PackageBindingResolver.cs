@@ -21,6 +21,53 @@ public static class PackageBindingResolver
     /// <summary>The metaobjects-standard package separator (cross-port invariant). Always <c>::</c>.</summary>
     public const string MetaPackageSeparator = "::";
 
+    /// <summary>The metadata node's EFFECTIVE package — the file-default package captured at parse
+    /// time, NOT just the node's own (rarely-set) <c>package:</c> attr. Mirrors the
+    /// <c>PackageOf</c> pattern in FR-019: derive from <see cref="MetaData.ResolutionKey"/>
+    /// by stripping the trailing <c>::&lt;name&gt;</c> suffix.</summary>
+    public static string? EffectivePackage(MetaData node)
+    {
+        if (!string.IsNullOrEmpty(node.Package)) return node.Package;
+        var key = node.ResolutionKey();
+        var idx = key.LastIndexOf(MetaPackageSeparator, StringComparison.Ordinal);
+        return idx < 0 ? null : key[..idx];
+    }
+
+    /// <summary>The set of distinct cross-package C# namespaces this entity references — for
+    /// emitting <c>using</c> directives in the file preamble when per-package binding splits
+    /// the model across multiple namespaces. Walks <c>field.object @objectRef</c> targets +
+    /// the super (TPH base) when present; resolves each via <see cref="Resolve"/> and
+    /// filters out the entity's own namespace.</summary>
+    public static IReadOnlyList<string> CrossPackageReferencedNamespaces(
+        MetaObjects.Meta.MetaObject entity, MetaObjects.Meta.MetaRoot root, GenConfig config)
+    {
+        var ownNs = Resolve(config, EffectivePackage(entity), entity.Name);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Consider(MetaObjects.Meta.MetaObject? target)
+        {
+            if (target is null) return;
+            var ns = Resolve(config, EffectivePackage(target), target.Name);
+            if (string.IsNullOrEmpty(ns) || ns == ownNs) return;
+            seen.Add(ns);
+        }
+
+        // field.object refs (owned-type navigations on entity AND value-objects).
+        foreach (var f in entity.Fields())
+        {
+            if (f.SubType != MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_OBJECT) continue;
+            if (f.ObjectRef is not { } oref) continue;
+            var target = root.FindObject(CSharpNaming.StripPkg(oref));
+            Consider(target);
+        }
+
+        // TPH base — a subtype's `class Sub : Base` requires Base's namespace.
+        if (entity.SuperData is MetaObjects.Meta.MetaObject super)
+            Consider(super);
+
+        return seen.OrderBy(n => n, StringComparer.Ordinal).ToList();
+    }
+
     /// <summary>
     /// Resolve a metadata package (and optional type name) to its target C# namespace per the
     /// FR-021 resolution order. Throws <see cref="InvalidOperationException"/> when the package

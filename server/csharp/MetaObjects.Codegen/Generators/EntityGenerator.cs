@@ -108,9 +108,12 @@ public class EntityGenerator : IGenerator
         // host project's ImplicitUsings.
         if (pkFields.Count > 1)
             sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
+        foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
+            sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
@@ -285,9 +288,12 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
+        foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
+            sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
@@ -407,9 +413,12 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
+        foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
+            sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
@@ -459,9 +468,12 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        // FR-021 — usings for OTHER packages this value-object references (object navs + super).
+        foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(vo, ctx.Root, ctx.Config))
+            sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, vo, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, vo.Package, vo.Name, fallbackContext: vo.Name)};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name, fallbackContext: vo.Name)};");
         sb.AppendLine();
         XmlDocBuilder.AppendTo(sb, vo);
         EmitClassDeclarationLine(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
