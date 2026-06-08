@@ -152,6 +152,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Optional;\n\n");
         src.append("/**\n");
@@ -164,12 +165,13 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
         src.append("    record SortClause(String field, String direction) {}\n\n");
         src.append("    // --- polymorphic (whole table) ---\n");
-        src.append("    List<").append(dtoName).append("> list(int limit, int offset, SortClause sort);\n");
-        src.append("    long count();\n");
+        src.append("    List<").append(dtoName)
+           .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
+        src.append("    long count(List<FilterPredicate> filters);\n");
         src.append("    Optional<").append(dtoName).append("> findById(Long id);\n\n");
         src.append("    // --- per-subtype (scoped to the discriminator value) ---\n");
         src.append("    List<").append(dtoName)
-           .append("> listByType(String discriminator, int limit, int offset, SortClause sort);\n");
+           .append("> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
         src.append("    Optional<").append(dtoName).append("> findByIdAndType(Long id, String discriminator);\n");
         src.append("    ").append(dtoName).append(" createWithType(String discriminator, ").append(dtoName).append(" dto);\n");
         src.append("    Optional<").append(dtoName)

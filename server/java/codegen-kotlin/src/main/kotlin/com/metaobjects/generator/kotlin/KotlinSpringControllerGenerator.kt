@@ -392,18 +392,37 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val discField = base.metaFields.first { it.name == plan.discriminatorField }
         val discEnum = KotlinTypeMapper.enumTypeName(discField, base)?.simpleName
             ?: error("TPH base ${base.name}: discriminator field '${plan.discriminatorField}' is not an enum")
+        // The controller scopes/injects the discriminator as `<Enum>.<Value>` (an enum constant), so
+        // every @discriminatorValue MUST be a valid Kotlin identifier — fail loud at generation with a
+        // clear message rather than emit code that won't compile (the Java lane uses string literals
+        // and has no such constraint).
+        for (st in plan.subtypes) {
+            require(st.value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) {
+                "FR-017 TPH base ${base.name}: @discriminatorValue '${st.value}' on ${st.entity.name} is not a valid " +
+                    "Kotlin enum-constant identifier; the generated $discEnum.${st.value} reference would not compile."
+            }
+        }
 
         // Union scalar fields (base own + subtype-only), in the data class / table order.
         val scalarFields = (base.metaFields.filterNot { it is ObjectField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField })
         val sortFields = base.metaFields.filterNot { it is ObjectField }.map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
+        val allowlistName = "${shortName}FilterAllowlist"
+        // Union filter-dispatch specs (base + subtype columns) for the FR-009 pipeline — EXCLUDING the
+        // discriminator (route-addressable; enum column) and decimal columns (outside the cross-port
+        // HTTP filter contract). Mirrors the allowlist's exclusions, so the dispatch never references
+        // an enum/BigDecimal cast the generic pipeline can't coerce.
+        val filterSpecs = scalarFields
+            .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField }
+            .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
         // Non-discriminator, non-PK columns the create/update handlers write from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != "id" }
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
+            append("import org.jetbrains.exposed.sql.Op\n")
             append("import org.jetbrains.exposed.sql.ResultRow\n")
             append("import org.jetbrains.exposed.sql.SortOrder\n")
             append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
@@ -423,7 +442,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.springframework.web.bind.annotation.RequestMapping\n")
             append("import org.springframework.web.bind.annotation.RequestMethod\n")
             append("import org.springframework.web.bind.annotation.RequestParam\n")
-            append("import org.springframework.web.bind.annotation.RestController\n\n")
+            append("import org.springframework.web.bind.annotation.RestController\n")
+            // FR-009 filter pipeline support (mirrors the vanilla controller's import set).
+            append("import java.net.URLDecoder\n")
+            append("import java.nio.charset.StandardCharsets\n")
+            append("import java.sql.Timestamp\n")
+            append("import java.time.LocalDate\n")
+            append("import java.time.LocalDateTime\n")
+            append("import java.time.LocalTime\n")
+            append("import java.time.format.DateTimeFormatter\n\n")
 
             // sort allowlist (base scalar columns — the polymorphic sort surface)
             append("/** GENERATED — sort allowlist for $shortName (cross-port API contract). */\n")
@@ -441,6 +468,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    }\n")
             append("    return field to dir\n")
             append("}\n\n")
+
+            // FR-009 filter pipeline over the UNION columns (parse + per-field Exposed Op dispatch),
+            // shared by the polymorphic + per-subtype list handlers — matches the Python/TS TPH lanes.
+            emitFilterPipeline(this, shortName, table, allowlistName, filterSpecs)
 
             // rowTo<Base>: union ResultRow → data class
             append("/** GENERATED — map an Exposed ResultRow to the union $shortName data class. */\n")
@@ -460,8 +491,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        @RequestParam(required = false) offset: Int?,\n")
             append("        @RequestParam(required = false) sort: String?,\n")
             append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+            append("        @RequestParam allParams: Map<String, String>,\n")
             append("    ): ResponseEntity<Any> = transaction {\n")
-            append("        var q = $table.selectAll()\n")
+            append("        val filterResult = parse${shortName}Filter(allParams)\n")
+            append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error) as Any)\n")
+            append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+            append("        var q = if (whereOp != null) $table.selectAll().where { whereOp } else $table.selectAll()\n")
             append("        if (sort != null) {\n")
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
@@ -489,14 +524,21 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
                 append("    // --- subtype ${st.value} (segment /$seg) ---\n")
 
-                // per-subtype list
+                // per-subtype list (discriminator scope AND'd with the FR-009 filter)
                 append("    @GetMapping(\"/$seg\")\n")
                 append("    fun list$sfx(\n")
                 append("        @RequestParam(required = false) limit: Int?,\n")
                 append("        @RequestParam(required = false) offset: Int?,\n")
                 append("        @RequestParam(required = false) sort: String?,\n")
+                append("        @RequestParam allParams: Map<String, String>,\n")
                 append("    ): ResponseEntity<Any> = transaction {\n")
-                append("        var q = $table.selectAll().where { $table.${plan.discriminatorField} eq $disc }\n")
+                append("        val filterResult = parse${shortName}Filter(allParams)\n")
+                append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error) as Any)\n")
+                append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+                append("        var q = $table.selectAll().where {\n")
+                append("            val d = $table.${plan.discriminatorField} eq $disc\n")
+                append("            if (whereOp != null) d and whereOp else d\n")
+                append("        }\n")
                 append("        if (sort != null) {\n")
                 append("            val parsed = parse${shortName}Sort(sort)\n")
                 append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")

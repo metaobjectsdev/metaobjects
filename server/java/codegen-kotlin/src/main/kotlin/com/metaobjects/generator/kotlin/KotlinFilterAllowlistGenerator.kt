@@ -59,15 +59,26 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
             // table-only). View / materializedView are read-only; storedProc has its
             // own dispatch; tableFunction has no controller surface today.
             if (sourceRdb.effectiveKind != MetaSource.KIND_TABLE) continue
-            emit(entity, outRoot)
+            emit(entity, outRoot, loader)
         }
     }
 
-    protected open fun emit(entity: MetaObject, outRoot: Path) {
+    protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val className = "${shortName}FilterAllowlist"
 
-        val opsByField = computeFilterableOps(entity)
+        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns,
+        // but EXCLUDES (a) the discriminator — addressable via the per-subtype route segment, and
+        // (b) decimal columns — outside the cross-port HTTP filter/value contract. Keeps the Java +
+        // Kotlin filter surface identical (see the Java SpringFilterAllowlistGenerator).
+        val opsByField = if (KotlinTphPlan.isTphBase(entity, loader)) {
+            val disc = KotlinTphPlan.planFor(entity, loader)!!.discriminatorField
+            val union = (entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader))
+                .filter { it.name != disc && it !is com.metaobjects.field.DecimalField }
+            computeFilterableOps(union)
+        } else {
+            computeFilterableOps(entity)
+        }
 
         val src = buildString {
             if (pkg.isNotEmpty()) {
@@ -134,14 +145,22 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
          * collapse to the empty op-set (defensive — the allowlist becomes an effective
          * "field is unknown" gate).
          */
-        fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> {
+        fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> =
+            computeFilterableOps(entity.metaFields)
+
+        /**
+         * [computeFilterableOps] over an explicit field list — used for a TPH base, whose allowlist
+         * is the UNION of the base's own + every subtype-only filterable column (so the polymorphic
+         * + per-subtype lists can filter on subtype columns, matching the Java/Python/TS lanes).
+         */
+        fun computeFilterableOps(fields: Iterable<MetaField<*>>): Map<String, Set<String>> {
             val out = linkedMapOf<String, Set<String>>()
-            for (field in entity.metaFields) {
+            for (field in fields) {
                 if (field is ObjectField) continue
                 if (!isFilterable(field)) continue
                 val ops = opsForSubtype(field.subType)
                 if (ops.isEmpty()) continue
-                out[field.name] = ops
+                out.putIfAbsent(field.name, ops) // dedup base/subtype column names
             }
             return out
         }

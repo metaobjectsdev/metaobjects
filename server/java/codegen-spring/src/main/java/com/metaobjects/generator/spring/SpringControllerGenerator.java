@@ -351,6 +351,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
         String routeBase = SpringNaming.controllerPath(shortName);
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
 
         // Sort allowlist: the base's own scalar columns (the polymorphic sort surface). Subtype
         // columns are not sortable across the polymorphic collection.
@@ -373,6 +374,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
         src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
         src.append("import org.springframework.web.bind.annotation.RestController;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParseResult;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
+        src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
@@ -402,7 +407,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            @RequestParam(required = false) Integer limit,\n");
         src.append("            @RequestParam(required = false) Integer offset,\n");
         src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount) {\n");
+        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        src.append("            HttpServletRequest request) {\n");
         src.append("        int actualLimit = limit != null ? limit : 50;\n");
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
@@ -410,9 +416,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            sortClause = parseSort(sort);\n");
         src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
         src.append("        }\n");
-        src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause);\n");
+        src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
+           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
+        src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
+        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
+        src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
         src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", repository.count()));\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", repository.count(filters)));\n");
         src.append("        }\n");
         src.append("        return ResponseEntity.ok(rows);\n");
         src.append("    }\n\n");
@@ -438,7 +448,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    public ResponseEntity<?> list").append(suffix).append("(\n");
             src.append("            @RequestParam(required = false) Integer limit,\n");
             src.append("            @RequestParam(required = false) Integer offset,\n");
-            src.append("            @RequestParam(required = false) String sort) {\n");
+            src.append("            @RequestParam(required = false) String sort,\n");
+            src.append("            HttpServletRequest request) {\n");
             src.append("        int actualLimit = limit != null ? limit : 50;\n");
             src.append("        int actualOffset = offset != null ? offset : 0;\n");
             src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
@@ -446,8 +457,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            sortClause = parseSort(sort);\n");
             src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
             src.append("        }\n");
+            src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
+               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
+            src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error()));\n");
             src.append("        return ResponseEntity.ok(repository.listByType(\"").append(disc)
-               .append("\", actualLimit, actualOffset, sortClause));\n");
+               .append("\", actualLimit, actualOffset, sortClause, filter.predicates()));\n");
             src.append("    }\n\n");
 
             // per-subtype get (404 cross-subtype)

@@ -33,6 +33,8 @@ final class InMemoryAuthRepositorySource {
     static final String SOURCE = """
         package acme.auth;
 
+        import com.metaobjects.generator.spring.runtime.FilterPredicate;
+
         import java.math.BigDecimal;
         import java.util.ArrayList;
         import java.util.Comparator;
@@ -63,13 +65,13 @@ final class InMemoryAuthRepositorySource {
             // --- polymorphic (whole table) ---
 
             @Override
-            public List<AuthDto> list(int limit, int offset, SortClause sort) {
-                return page(sorted(new ArrayList<>(rows), sort), limit, offset);
+            public List<AuthDto> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
+                return page(sorted(filtered(rows, filters), sort), limit, offset);
             }
 
             @Override
-            public long count() {
-                return rows.size();
+            public long count(List<FilterPredicate> filters) {
+                return filtered(rows, filters).size();
             }
 
             @Override
@@ -81,10 +83,10 @@ final class InMemoryAuthRepositorySource {
             // --- per-subtype (scoped to the discriminator value) ---
 
             @Override
-            public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort) {
+            public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
                 List<AuthDto> scoped = new ArrayList<>();
                 for (AuthDto a : rows) if (discriminator.equals(a.type())) scoped.add(a);
-                return page(sorted(scoped, sort), limit, offset);
+                return page(sorted(filtered(scoped, filters), sort), limit, offset);
             }
 
             @Override
@@ -128,6 +130,75 @@ final class InMemoryAuthRepositorySource {
             }
 
             // --- helpers ---
+
+            /** Apply the GENERATED controller's validated FR-009 predicates (implicit AND) over the union row. */
+            private static List<AuthDto> filtered(List<AuthDto> in, List<FilterPredicate> filters) {
+                if (filters == null || filters.isEmpty()) return new ArrayList<>(in);
+                List<AuthDto> out = new ArrayList<>();
+                for (AuthDto a : in) if (matchesAll(a, filters)) out.add(a);
+                return out;
+            }
+
+            private static boolean matchesAll(AuthDto a, List<FilterPredicate> filters) {
+                for (FilterPredicate p : filters) if (!matches(a, p)) return false;
+                return true;
+            }
+
+            @SuppressWarnings("unchecked")
+            private static boolean matches(AuthDto a, FilterPredicate p) {
+                Object col = column(a, p.field());
+                switch (p.op()) {
+                    case "isNull": return Boolean.TRUE.equals(p.value()) == (col == null);
+                    case "in": {
+                        for (Object item : (List<Object>) p.value()) if (col != null && cmp(col, item) == 0) return true;
+                        return false;
+                    }
+                    case "like": return col != null && sqlLike(String.valueOf(col), String.valueOf(p.value()));
+                    default: {
+                        if (col == null) return false;
+                        int c = cmp(col, p.value());
+                        return switch (p.op()) {
+                            case "eq" -> c == 0; case "ne" -> c != 0;
+                            case "gt" -> c > 0; case "gte" -> c >= 0;
+                            case "lt" -> c < 0; case "lte" -> c <= 0;
+                            default -> throw new IllegalStateException("unknown op: " + p.op());
+                        };
+                    }
+                }
+            }
+
+            private static Object column(AuthDto a, String field) {
+                return switch (field) {
+                    case "id" -> a.id();
+                    case "type" -> a.type();
+                    case "reference" -> a.reference();
+                    case "quantity" -> a.quantity();
+                    case "copayAmount" -> a.copayAmount();
+                    case "approver" -> a.approver();
+                    default -> throw new IllegalStateException("unknown column: " + field);
+                };
+            }
+
+            /** Compare a column value against a raw FilterParser operand (a String), coercing by the column's type. */
+            private static int cmp(Object col, Object operandRaw) {
+                String operand = String.valueOf(operandRaw);
+                if (col instanceof Long l) return Long.compare(l, Long.parseLong(operand));
+                if (col instanceof Integer i) return Integer.compare(i, Integer.parseInt(operand));
+                if (col instanceof BigDecimal d) return d.compareTo(new BigDecimal(operand));
+                return String.valueOf(col).compareTo(operand);
+            }
+
+            /** SQL LIKE with `%` (any run) and `_` (any single char), anchored full-string match. */
+            private static boolean sqlLike(String value, String pattern) {
+                StringBuilder re = new StringBuilder("^");
+                for (int i = 0; i < pattern.length(); i++) {
+                    char ch = pattern.charAt(i);
+                    if (ch == '%') re.append(".*");
+                    else if (ch == '_') re.append('.');
+                    else re.append(java.util.regex.Pattern.quote(String.valueOf(ch)));
+                }
+                return value.matches(re.append("$").toString());
+            }
 
             private static List<AuthDto> sorted(List<AuthDto> in, SortClause sort) {
                 String field = sort != null ? sort.field() : "id"; // default id asc

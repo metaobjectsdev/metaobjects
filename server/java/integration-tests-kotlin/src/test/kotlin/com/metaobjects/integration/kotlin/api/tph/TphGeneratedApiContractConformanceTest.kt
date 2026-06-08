@@ -7,7 +7,9 @@ import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiScenario
 import com.metaobjects.integration.kotlin.api.tph.generated.GeneratedTphControllerHarness
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -46,6 +48,32 @@ internal class TphGeneratedApiContractConformanceTest {
                 ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed)
             }
         }
+    }
+
+    /**
+     * FR-009 filter parity for TPH lists — not covered by the shared corpus, so this local smoke
+     * exercises the generated filter pipeline the Java/Python/TS lanes also expose: filter the
+     * polymorphic list by a subtype column, filter a per-subtype list (discriminator AND'd with the
+     * predicate), and reject an unknown filter field with the cross-port 400 envelope.
+     */
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun tphListsSupportFr009Filters() {
+        HARNESS.reset() // seed: Bridge id1 (quantity 5), Copay id2, PriorAuth id3
+        val r1 = HARNESS.exchange("GET", "/api/auths?filter[quantity][eq]=5&sort=id:asc", null)
+        assertEquals(200, r1.status)
+        val rows1 = HARNESS.parseBody(r1.body) as List<Map<String, Any?>>
+        assertEquals(1, rows1.size)
+        assertEquals(1, (rows1[0]["id"] as Number).toInt())
+        val r2 = HARNESS.exchange("GET", "/api/auths/bridge?filter[reference][eq]=REF-1", null)
+        assertEquals(200, r2.status)
+        assertEquals(1, (HARNESS.parseBody(r2.body) as List<*>).size)
+        val r3 = HARNESS.exchange("GET", "/api/auths/bridge?filter[reference][eq]=NOPE", null)
+        assertEquals(200, r3.status)
+        assertEquals(0, (HARNESS.parseBody(r3.body) as List<*>).size)
+        val r4 = HARNESS.exchange("GET", "/api/auths?filter[bogus][eq]=x", null)
+        assertEquals(400, r4.status)
+        assertEquals("invalid_filter_field", (HARNESS.parseBody(r4.body) as Map<String, Any?>)["error"])
     }
 
     companion object {

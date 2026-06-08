@@ -7,6 +7,7 @@ import com.metaobjects.integration.api.tph.generated.GeneratedTphControllerHarne
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -96,5 +97,36 @@ final class TphGeneratedApiContractConformanceTest {
                 ApiContractAssertions.assertResponse(scenario.name(), req, res.status(), parsed);
             }
         });
+    }
+
+    /**
+     * FR-009 filter parity for TPH lists — not covered by the shared corpus (the tph scenarios are
+     * sort/length/ids only), so this local smoke exercises the generated filter pipeline the
+     * Python/TS lanes also expose: filter the polymorphic list by a subtype column, filter a
+     * per-subtype list, and reject an unknown filter field with the cross-port 400 envelope.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void tphListsSupportFr009Filters() throws Exception {
+        HARNESS.reset(); // seed: Bridge id1 (quantity 5), Copay id2, PriorAuth id3
+        // (a) polymorphic list filtered by a SUBTYPE column — only the Bridge row carries quantity.
+        var r1 = HARNESS.exchange("GET", "/api/auths?filter[quantity][eq]=5&sort=id:asc", null);
+        org.junit.jupiter.api.Assertions.assertEquals(200, r1.status());
+        var rows1 = (List<Map<String, Object>>) HARNESS.parseBody(r1.body());
+        org.junit.jupiter.api.Assertions.assertEquals(1, rows1.size());
+        org.junit.jupiter.api.Assertions.assertEquals(1, ((Number) rows1.get(0).get("id")).intValue());
+        // (b) per-subtype list filtered by a base column (discriminator scope AND'd with the predicate).
+        var r2 = HARNESS.exchange("GET", "/api/auths/bridge?filter[reference][eq]=REF-1", null);
+        org.junit.jupiter.api.Assertions.assertEquals(200, r2.status());
+        org.junit.jupiter.api.Assertions.assertEquals(1, ((List<?>) HARNESS.parseBody(r2.body())).size());
+        // (c) a no-match filter returns an empty list, not 404.
+        var r3 = HARNESS.exchange("GET", "/api/auths/bridge?filter[reference][eq]=NOPE", null);
+        org.junit.jupiter.api.Assertions.assertEquals(200, r3.status());
+        org.junit.jupiter.api.Assertions.assertEquals(0, ((List<?>) HARNESS.parseBody(r3.body())).size());
+        // (d) unknown filter field → 400 invalid_filter_field (cross-port envelope).
+        var r4 = HARNESS.exchange("GET", "/api/auths?filter[bogus][eq]=x", null);
+        org.junit.jupiter.api.Assertions.assertEquals(400, r4.status());
+        org.junit.jupiter.api.Assertions.assertEquals("invalid_filter_field",
+            ((Map<String, Object>) HARNESS.parseBody(r4.body())).get("error"));
     }
 }

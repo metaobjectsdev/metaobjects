@@ -69,8 +69,9 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
+            if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own allowlist
             if (!appliesTo(entity)) continue;
-            emit(entity, outRoot);
+            emit(entity, outRoot, loader);
         }
     }
 
@@ -97,13 +98,22 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
      * allowlist becomes an effective "field is unknown" gate).
      */
     static Map<String, Set<String>> computeFilterableOps(MetaObject entity) {
+        return computeFilterableOps(entity.getMetaFields());
+    }
+
+    /**
+     * {@link #computeFilterableOps(MetaObject)} over an explicit field list — used for a TPH base,
+     * whose allowlist is the UNION of the base's own + every subtype-only filterable column (so the
+     * polymorphic + per-subtype lists can filter on subtype columns, matching the Python/TS lanes).
+     */
+    static Map<String, Set<String>> computeFilterableOps(Iterable<MetaField> fields) {
         Map<String, Set<String>> out = new LinkedHashMap<>();
-        for (MetaField field : entity.getMetaFields()) {
+        for (MetaField field : fields) {
             if (field instanceof ObjectField) continue;
             if (!isFilterable(field)) continue;
             Set<String> ops = opsForSubtype(field.getSubType());
             if (ops.isEmpty()) continue;
-            out.put(field.getName(), ops);
+            out.putIfAbsent(field.getName(), ops); // dedup base/subtype column names
         }
         return out;
     }
@@ -124,13 +134,29 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         return com.metaobjects.query.FilterOps.opsForSubType(subType);
     }
 
-    protected void emit(MetaObject entity, Path outRoot) {
+    protected void emit(MetaObject entity, Path outRoot, MetaDataLoader loader) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
         String className = SpringNaming.filterAllowlistName(shortName);
 
-        Map<String, Set<String>> opsByField = computeFilterableOps(entity);
+        // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns,
+        // but EXCLUDES (a) the discriminator — it's addressable via the per-subtype route segment
+        // (/<base>/<value>), not a free-form filter column — and (b) decimal columns, which are
+        // outside the cross-port HTTP filter/value contract (decimal wire formatting differs per
+        // port, so a portable operand can't be guaranteed). Keeps the Java + Kotlin filter surface
+        // identical. Other columns (id/string/int/bool/date/...) filter via the FR-009 pipeline.
+        Map<String, Set<String>> opsByField;
+        if (TphPlan.isTphBase(entity, loader)) {
+            String disc = TphPlan.planFor(entity, loader).discriminatorField();
+            java.util.List<MetaField> union = new java.util.ArrayList<>();
+            entity.getMetaFields().forEach(union::add);
+            union.addAll(TphPlan.collectSubtypeFields(entity, loader));
+            union.removeIf(f -> f.getName().equals(disc) || f instanceof com.metaobjects.field.DecimalField);
+            opsByField = computeFilterableOps(union);
+        } else {
+            opsByField = computeFilterableOps(entity);
+        }
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {

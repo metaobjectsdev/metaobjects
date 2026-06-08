@@ -107,13 +107,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      */
     protected void emitTphUnion(MetaObject base, MetaDataLoader loader, Path outRoot) {
         List<MetaField> fields = new ArrayList<>(scalarFields(base));
-        List<String> annotationsPerField = new ArrayList<>(fields.size());
-        for (MetaField field : fields) annotationsPerField.add(validationAnnotations(field));
         for (MetaField field : TphPlan.collectSubtypeFields(base, loader)) {
             if (field instanceof ObjectField) continue;
             fields.add(field);
-            annotationsPerField.add(""); // nullable union column — no validation
         }
+        // The TPH union DTO is a partial-PATCH-friendly wire body — every component is a nullable
+        // wrapper and carries NO bean-validation (a per-subtype POST/PATCH supplies only its own
+        // columns; the single table's column nullability is the real constraint). The controller
+        // intentionally omits @Valid, so keeping @NotNull here would be inert + misleading. Matches
+        // the Kotlin lane's all-nullable union data class.
+        List<String> annotationsPerField = new ArrayList<>(fields.size());
+        for (int i = 0; i < fields.size(); i++) annotationsPerField.add("");
         emitRecord(base, outRoot, fields, annotationsPerField);
     }
 
