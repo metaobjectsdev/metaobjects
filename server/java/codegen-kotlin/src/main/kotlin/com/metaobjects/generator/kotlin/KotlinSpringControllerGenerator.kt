@@ -87,6 +87,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // Abstract entities are inheritance scaffolding — never emit a CRUD controller.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
+            // FR-017 TPH: a subtype is folded into its base's single table + base controller (it
+            // also carries no own source.rdb, so the guard below would skip it too).
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
             val kind = sourceRdb.effectiveKind
             // Only writable tables get a CRUD controller. View / materializedView are
@@ -116,7 +119,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 continue
             }
-            emit(entity, outRoot, loader)
+            // FR-017 TPH: a discriminator base emits ONE controller mounting the polymorphic
+            // collection routes plus a full per-subtype CRUD set scoped by the discriminator.
+            val tph = KotlinTphPlan.planFor(entity, loader)
+            if (tph != null) emitTph(entity, tph, outRoot) else emit(entity, outRoot, loader)
         }
     }
 
@@ -363,6 +369,205 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, source)
     }
+
+    /**
+     * FR-017 TPH: emit the discriminator-base controller — ONE self-contained `@RestController`
+     * at `/api/<base-plural>` mounting the polymorphic collection (`GET /`, `GET /{id}`) plus, per
+     * subtype `<seg>` (the `@discriminatorValue` lowercased), a full CRUD set scoped by the
+     * discriminator: `GET /<seg>` (subtype list), `GET /<seg>/{id}` (404 cross-subtype),
+     * `POST /<seg>` (discriminator injected from the URL — never the body),
+     * `PATCH|PUT /<seg>/{id}` (partial patch; discriminator immutable; 404 cross-subtype),
+     * `DELETE /<seg>/{id}` (404 cross-subtype).
+     *
+     * Every endpoint trades the base `<Base>` data class — for a TPH base that class is the UNION
+     * of subtype columns (folded nullable by [KotlinEntityGenerator]), so a polymorphic row surfaces
+     * its subtype values and a per-subtype POST/PATCH body binds its own columns. The controller
+     * embeds Exposed against the union `<Base>Table` ([KotlinExposedTableGenerator]); the
+     * discriminator is the generated enum, so `type` is scoped/injected as `<Enum>.<Value>`.
+     */
+    protected open fun emitTph(base: MetaObject, plan: KotlinTphPlan.Plan, outRoot: Path) {
+        val (pkg, shortName) = PackageMapping.splitFqn(base.name)
+        val table = shortName + "Table"
+        val routeBase = "/api/" + pluralLowercase(shortName)
+        val discField = base.metaFields.first { it.name == plan.discriminatorField }
+        val discEnum = KotlinTypeMapper.enumTypeName(discField, base)?.simpleName
+            ?: error("TPH base ${base.name}: discriminator field '${plan.discriminatorField}' is not an enum")
+
+        // Union scalar fields (base own + subtype-only), in the data class / table order.
+        val scalarFields = (base.metaFields.filterNot { it is ObjectField } +
+            KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField })
+        val sortFields = base.metaFields.filterNot { it is ObjectField }.map { it.name }
+        val baseFieldNames = base.metaFields.map { it.name }.toSet()
+        // Non-discriminator, non-PK columns the create/update handlers write from the body.
+        val writableFields = scalarFields.map { it.name }
+            .filter { it != plan.discriminatorField && it != "id" }
+
+        val src = buildString {
+            if (pkg.isNotEmpty()) append("package $pkg\n\n")
+            append("import org.jetbrains.exposed.sql.ResultRow\n")
+            append("import org.jetbrains.exposed.sql.SortOrder\n")
+            append("import org.jetbrains.exposed.sql.SqlExpressionBuilder\n")
+            append("import org.jetbrains.exposed.sql.and\n")
+            append("import org.jetbrains.exposed.sql.deleteWhere\n")
+            append("import org.jetbrains.exposed.sql.insert\n")
+            append("import org.jetbrains.exposed.sql.selectAll\n")
+            append("import org.jetbrains.exposed.sql.update\n")
+            append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import org.springframework.http.HttpStatus\n")
+            append("import org.springframework.http.ResponseEntity\n")
+            append("import org.springframework.web.bind.annotation.DeleteMapping\n")
+            append("import org.springframework.web.bind.annotation.GetMapping\n")
+            append("import org.springframework.web.bind.annotation.PathVariable\n")
+            append("import org.springframework.web.bind.annotation.PostMapping\n")
+            append("import org.springframework.web.bind.annotation.RequestBody\n")
+            append("import org.springframework.web.bind.annotation.RequestMapping\n")
+            append("import org.springframework.web.bind.annotation.RequestMethod\n")
+            append("import org.springframework.web.bind.annotation.RequestParam\n")
+            append("import org.springframework.web.bind.annotation.RestController\n\n")
+
+            // sort allowlist (base scalar columns — the polymorphic sort surface)
+            append("/** GENERATED — sort allowlist for $shortName (cross-port API contract). */\n")
+            append("private val ${shortName}SortAllowlist = setOf(\n")
+            for (f in sortFields) append("    \"$f\",\n")
+            append(")\n\n")
+            append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
+            append("    val parts = raw.split(\":\", limit = 2)\n")
+            append("    val field = parts.getOrNull(0) ?: return null\n")
+            append("    if (field !in ${shortName}SortAllowlist) return null\n")
+            append("    val dir = when (parts.getOrNull(1)?.lowercase() ?: \"asc\") {\n")
+            append("        \"asc\" -> SortOrder.ASC\n")
+            append("        \"desc\" -> SortOrder.DESC\n")
+            append("        else -> return null\n")
+            append("    }\n")
+            append("    return field to dir\n")
+            append("}\n\n")
+
+            // rowTo<Base>: union ResultRow → data class
+            append("/** GENERATED — map an Exposed ResultRow to the union $shortName data class. */\n")
+            append("private fun rowTo${shortName}(row: ResultRow): $shortName = $shortName(\n")
+            for (field in scalarFields) append("    ${field.name} = row[$table.${field.name}],\n")
+            append(")\n\n")
+
+            append("/** GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD). */\n")
+            append("@RestController\n")
+            append("@RequestMapping(\"$routeBase\")\n")
+            append("class ${shortName}Controller {\n\n")
+
+            // polymorphic list
+            append("    @GetMapping\n")
+            append("    fun list(\n")
+            append("        @RequestParam(required = false) limit: Int?,\n")
+            append("        @RequestParam(required = false) offset: Int?,\n")
+            append("        @RequestParam(required = false) sort: String?,\n")
+            append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+            append("    ): ResponseEntity<Any> = transaction {\n")
+            append("        var q = $table.selectAll()\n")
+            append("        if (sort != null) {\n")
+            append("            val parsed = parse${shortName}Sort(sort)\n")
+            append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
+            append("            val (field, dir) = parsed\n")
+            append("            q = q.orderBy($table.columns.first { it.name == field } to dir)\n")
+            append("        }\n")
+            append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
+            append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+            append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
+            append("        else ResponseEntity.ok(rows as Any)\n")
+            append("    }\n\n")
+
+            // polymorphic get
+            append("    @GetMapping(\"/{id}\")\n")
+            append("    fun get(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
+            append("        val row = $table.selectAll().where { $table.id eq id }.singleOrNull()\n")
+            append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+            append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+            append("    }\n\n")
+
+            for (st in plan.subtypes) {
+                val seg = st.routeSegment
+                val disc = "$discEnum.${st.value}"   // e.g. AuthType.Bridge
+                val sfx = capitalizeFirst(st.value)   // method-name suffix, e.g. Bridge
+
+                append("    // --- subtype ${st.value} (segment /$seg) ---\n")
+
+                // per-subtype list
+                append("    @GetMapping(\"/$seg\")\n")
+                append("    fun list$sfx(\n")
+                append("        @RequestParam(required = false) limit: Int?,\n")
+                append("        @RequestParam(required = false) offset: Int?,\n")
+                append("        @RequestParam(required = false) sort: String?,\n")
+                append("    ): ResponseEntity<Any> = transaction {\n")
+                append("        var q = $table.selectAll().where { $table.${plan.discriminatorField} eq $disc }\n")
+                append("        if (sort != null) {\n")
+                append("            val parsed = parse${shortName}Sort(sort)\n")
+                append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
+                append("            val (field, dir) = parsed\n")
+                append("            q = q.orderBy($table.columns.first { it.name == field } to dir)\n")
+                append("        }\n")
+                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+                append("        ResponseEntity.ok(rows as Any)\n")
+                append("    }\n\n")
+
+                // per-subtype get
+                append("    @GetMapping(\"/$seg/{id}\")\n")
+                append("    fun get$sfx(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
+                append("        val row = $table.selectAll().where { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
+                append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+                append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+                append("    }\n\n")
+
+                // per-subtype create (discriminator injected from URL)
+                append("    @PostMapping(\"/$seg\")\n")
+                append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<$shortName> = transaction {\n")
+                append("        val newId = $table.insert {\n")
+                append("            it[${plan.discriminatorField}] = $disc\n")
+                for (f in writableFields) {
+                    // A column is non-null in the union table iff it is a BASE @required field
+                    // (subtype-only columns are folded NULLABLE). For a non-null column the union
+                    // DTO field is still nullable, so force non-null on create (create bodies for
+                    // that subtype always supply it); nullable columns bind the nullable value as-is.
+                    val colNonNull = baseFieldNames.contains(f) && KotlinGenUtil.isRequiredField(scalarFields.first { it.name == f })
+                    if (colNonNull) append("            it[$f] = dto.$f!!\n")
+                    else append("            it[$f] = dto.$f\n")
+                }
+                append("        }[$table.id]\n")
+                append("        val saved = $table.selectAll().where { $table.id eq newId }.single()\n")
+                append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
+                append("    }\n\n")
+
+                // per-subtype update (partial patch; discriminator immutable; 404 cross-subtype)
+                append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
+                append("    fun update$sfx(@PathVariable id: Long, @RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                append("        val updated = $table.update({ ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
+                for (f in writableFields) {
+                    append("            if (dto.$f != null) it[$f] = dto.$f\n")
+                }
+                append("        }\n")
+                append("        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+                append("        else {\n")
+                append("            val row = $table.selectAll().where { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }.single()\n")
+                append("            ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+                append("        }\n")
+                append("    }\n\n")
+
+                // per-subtype delete (404 cross-subtype)
+                append("    @DeleteMapping(\"/$seg/{id}\")\n")
+                append("    fun delete$sfx(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
+                append("        val deleted = $table.deleteWhere { with(SqlExpressionBuilder) { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) } }\n")
+                append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+                append("        else ResponseEntity.noContent().build<Any>()\n")
+                append("    }\n\n")
+            }
+            append("}\n")
+        }
+
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${shortName}Controller.kt")
+        outFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(outFile, src)
+    }
+
+    /** Capitalize the first char (method-name suffix from a discriminator value). */
+    private fun capitalizeFirst(s: String): String =
+        if (s.isEmpty()) s else s[0].uppercaseChar() + s.substring(1)
 
     /**
      * Emit the three-piece FR-009 filter pipeline (data class + parse function +

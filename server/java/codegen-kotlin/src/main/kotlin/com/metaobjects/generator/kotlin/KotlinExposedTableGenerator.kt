@@ -351,6 +351,21 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val full = if (nullable) "$decorated.nullable()" else decorated
                 append("    val ${field.name} = $full\n")
             }
+            // FR-017 TPH: a discriminator base's single table also carries every subtype-only
+            // column, emitted NULLABLE (a row of another subtype stores null there, even when the
+            // field is @required on its subtype). collectSubtypeFields is empty for a non-TPH entity.
+            for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
+                if (field is ObjectField) continue
+                val baseSpec = if (field is EnumField) {
+                    val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
+                        ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
+                    val colName = KotlinGenUtil.camelToSnake(field.name)
+                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                } else {
+                    KotlinTypeMapper.exposedColumnSpec(field)
+                }
+                append("    val ${field.name} = $baseSpec.nullable()\n")
+            }
             for (oc in objectColumns) {
                 append("    val ${oc.propertyName} = ${oc.columnExpr}\n")
             }

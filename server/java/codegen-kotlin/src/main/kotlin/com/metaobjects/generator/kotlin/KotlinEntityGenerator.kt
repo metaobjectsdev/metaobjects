@@ -94,10 +94,16 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addAnnotation(serializable)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
 
+        // FR-017 TPH: a discriminator base's data class is the UNION of subtype columns and serves
+        // as the partial-PATCH-friendly wire body — every property is nullable + defaulted + carries
+        // NO validation (a per-subtype POST/PATCH supplies only its own columns; the DB column
+        // nullability is the real constraint). Non-TPH entities keep their per-field required rules.
+        val tphBase = KotlinTphPlan.isTphBase(obj, loader)
+
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
-            val nullable = !KotlinGenUtil.isRequiredField(field)
+            val nullable = tphBase || !KotlinGenUtil.isRequiredField(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
             val param = ParameterSpec.builder(propName, propType)
@@ -105,10 +111,22 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .build()
             ctorBuilder.addParameter(param)
             val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
-            for (annotation in validationAnnotations(field)) {
-                propBuilder.addAnnotation(annotation)
+            if (!tphBase) {
+                for (annotation in validationAnnotations(field)) {
+                    propBuilder.addAnnotation(annotation)
+                }
             }
             typeBuilder.addProperty(propBuilder.build())
+        }
+
+        // FR-017 TPH: a discriminator base's data class carries the UNION of subtype columns (each
+        // NULLABLE, no validation) so one wire shape backs the polymorphic + per-subtype endpoints.
+        // collectSubtypeFields is empty for a non-TPH entity (the loop is then a no-op).
+        for (field in KotlinTphPlan.collectSubtypeFields(obj, loader)) {
+            val propType = resolvePropertyType(field, obj, loader).copy(nullable = true)
+            val propName = field.name
+            ctorBuilder.addParameter(ParameterSpec.builder(propName, propType).defaultValue("null").build())
+            typeBuilder.addProperty(PropertySpec.builder(propName, propType).initializer(propName).build())
         }
 
         val fileSpec = FileSpec.builder(pkg, shortName)
