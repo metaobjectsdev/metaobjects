@@ -134,6 +134,79 @@ public class Fr021PackageBindingResolverTests
     }
 
     [Fact]
+    public void ProvidedEnumPrepend_routes_provided_enums_to_a_different_namespace_tree()
+    {
+        // Adopter uses a parallel DataEnums.* namespace for @provided enums while
+        // entities/VOs use Entities.*. The convention strip/case/separator stays
+        // the same; only the prepend differs.
+        var cfg = CfgWithDefaults() with
+        {
+            Convention = new PackageBindingConvention
+            {
+                Strip = "acme::",
+                Prepend = "Acme.Domain.Entities",
+                ProvidedEnumPrepend = "Acme.Domain.DataEnums",
+                Case = PackageCase.PascalCase,
+                Separator = ".",
+            },
+        };
+
+        // Default Resolve path → uses Prepend.
+        Assert.Equal("Acme.Domain.Entities.Authorizations",
+            PackageBindingResolver.Resolve(cfg, "acme::authorizations", "Authorization"));
+
+        // ResolveForProvidedEnum path → uses ProvidedEnumPrepend.
+        Assert.Equal("Acme.Domain.DataEnums.Authorizations",
+            PackageBindingResolver.ResolveForProvidedEnum(cfg, "acme::authorizations", "AuthorizationType"));
+
+        // The same metadata package → two different namespaces by resolution path.
+        Assert.NotEqual(
+            PackageBindingResolver.Resolve(cfg, "acme::common"),
+            PackageBindingResolver.ResolveForProvidedEnum(cfg, "acme::common"));
+    }
+
+    [Fact]
+    public void ProvidedEnumPrepend_when_unset_falls_back_to_Prepend()
+    {
+        // Adopter with no parallel enum namespace — @provided enums land alongside entities.
+        var cfg = CfgWithDefaults() with
+        {
+            Convention = new PackageBindingConvention
+            {
+                Strip = "acme::",
+                Prepend = "Acme.Domain",
+                // ProvidedEnumPrepend not set
+                Case = PackageCase.PascalCase,
+            },
+        };
+        Assert.Equal("Acme.Domain.Authorizations",
+            PackageBindingResolver.ResolveForProvidedEnum(cfg, "acme::authorizations", "X"));
+    }
+
+    [Fact]
+    public void TryResolve_returns_null_when_nothing_matches_for_provided_enum_use_case()
+    {
+        // No convention at all (legacy / FR-019 single-fallback adopter).
+        var cfg = CfgWithDefaults();
+        Assert.Null(PackageBindingResolver.TryResolve(cfg, "acme::ext", "X", useProvidedEnumPrepend: true));
+
+        // Convention exists but has no ProvidedEnumPrepend → fall through.
+        var cfgWithoutProvidedPrepend = cfg with
+        {
+            Convention = new PackageBindingConvention { Strip = "acme::", Prepend = "Acme.App" },
+        };
+        Assert.Null(PackageBindingResolver.TryResolve(cfgWithoutProvidedPrepend, "acme::ext", "X", useProvidedEnumPrepend: true));
+
+        // Package-level override always wins even for provided enums.
+        var cfgWithOverride = cfgWithoutProvidedPrepend with
+        {
+            PackageNamespaces = new Dictionary<string, string> { ["acme::ext"] = "Acme.Overridden" },
+        };
+        Assert.Equal("Acme.Overridden",
+            PackageBindingResolver.TryResolve(cfgWithOverride, "acme::ext", "X", useProvidedEnumPrepend: true));
+    }
+
+    [Fact]
     public void Real_P3_config_resolves_all_18_domains_correctly()
     {
         var cfg = CfgWithDefaults() with

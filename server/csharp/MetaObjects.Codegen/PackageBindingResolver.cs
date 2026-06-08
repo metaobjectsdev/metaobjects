@@ -88,6 +88,62 @@ public static class PackageBindingResolver
         string? package,
         string? typeName = null,
         string? fallbackContext = null)
+        => ResolveImpl(config, package, typeName, useProvidedEnumPrepend: false, fallbackContext);
+
+    /// <summary>Resolve for an abstract <c>field.enum</c> with <c>@provided: true</c>
+    /// (FR-019 shared-enum reference case). Layer order is the same as <see cref="Resolve"/>,
+    /// but the Convention rule consults <see cref="PackageBindingConvention.ProvidedEnumPrepend"/>
+    /// (falling back to <see cref="PackageBindingConvention.Prepend"/> when unset).</summary>
+    public static string ResolveForProvidedEnum(
+        GenConfig config,
+        string? package,
+        string? typeName = null,
+        string? fallbackContext = null)
+        => ResolveImpl(config, package, typeName, useProvidedEnumPrepend: true, fallbackContext);
+
+    /// <summary>Resolve via the layered map (TypeOverrides → PackageNamespaces → Convention)
+    /// WITHOUT applying the unmapped-strategy fallback. Returns null when none of the layers
+    /// matches. Callers (notably the FR-019 @provided-enum reference resolver) use this to
+    /// chain to their own legacy fallback (e.g. <see cref="GenConfig.ProvidedEnumNamespace"/>)
+    /// before deciding to error out.</summary>
+    public static string? TryResolve(
+        GenConfig config,
+        string? package,
+        string? typeName = null,
+        bool useProvidedEnumPrepend = false)
+    {
+        // 1. Type-level override.
+        if (!string.IsNullOrEmpty(package) && !string.IsNullOrEmpty(typeName))
+        {
+            var fqn = package + MetaPackageSeparator + typeName;
+            if (config.TypeOverrides.TryGetValue(fqn, out var typeTarget) && !string.IsNullOrEmpty(typeTarget))
+                return typeTarget;
+        }
+        // 2. Package-level override.
+        if (!string.IsNullOrEmpty(package) &&
+            config.PackageNamespaces.TryGetValue(package, out var pkgTarget) &&
+            !string.IsNullOrEmpty(pkgTarget))
+        {
+            return pkgTarget;
+        }
+        // 3. Convention rule.
+        if (!string.IsNullOrEmpty(package) && config.Convention is { } conv)
+        {
+            // When useProvidedEnumPrepend is true, ONLY succeed if the convention actually has
+            // a ProvidedEnumPrepend set; otherwise fall through so the caller can apply its
+            // own legacy fallback (ProvidedEnumNamespace).
+            if (useProvidedEnumPrepend && string.IsNullOrEmpty(conv.ProvidedEnumPrepend)) return null;
+            return ApplyConvention(conv, package, applyStripPrepend: true, useProvidedEnumPrepend);
+        }
+        return null;
+    }
+
+    private static string ResolveImpl(
+        GenConfig config,
+        string? package,
+        string? typeName,
+        bool useProvidedEnumPrepend,
+        string? fallbackContext)
     {
         // 1. Type-level override — most specific, wins absolutely.
         if (!string.IsNullOrEmpty(package) && !string.IsNullOrEmpty(typeName))
@@ -108,7 +164,7 @@ public static class PackageBindingResolver
         // 3. Convention rule — derives the target from the package itself.
         if (!string.IsNullOrEmpty(package) && config.Convention is { } conv)
         {
-            var derived = ApplyConvention(conv, package, applyStripPrepend: true);
+            var derived = ApplyConvention(conv, package, applyStripPrepend: true, useProvidedEnumPrepend);
             if (derived is not null) return derived;
         }
 
@@ -117,7 +173,7 @@ public static class PackageBindingResolver
         {
             UnmappedPackageStrategy.Flatten => config.Namespace,
             UnmappedPackageStrategy.Derive when config.Convention is { } deriveConv =>
-                ApplyConvention(deriveConv, package ?? "", applyStripPrepend: false) ?? config.Namespace,
+                ApplyConvention(deriveConv, package ?? "", applyStripPrepend: false, useProvidedEnumPrepend) ?? config.Namespace,
             UnmappedPackageStrategy.Derive => config.Namespace,
             UnmappedPackageStrategy.Error => throw BuildErrorForUnmapped(package, typeName, fallbackContext),
             _ => config.Namespace,
@@ -126,9 +182,15 @@ public static class PackageBindingResolver
 
     /// <summary>Apply the convention rule. Returns null if <paramref name="package"/> doesn't
     /// start with <see cref="PackageBindingConvention.Strip"/> (and <paramref name="applyStripPrepend"/>
-    /// is true).</summary>
-    private static string? ApplyConvention(PackageBindingConvention conv, string package, bool applyStripPrepend)
+    /// is true). When <paramref name="useProvidedEnumPrepend"/> is true, the convention's
+    /// <see cref="PackageBindingConvention.ProvidedEnumPrepend"/> replaces the default
+    /// <see cref="PackageBindingConvention.Prepend"/> (falling back to the default when unset).</summary>
+    private static string? ApplyConvention(PackageBindingConvention conv, string package, bool applyStripPrepend, bool useProvidedEnumPrepend = false)
     {
+        var prepend = useProvidedEnumPrepend && !string.IsNullOrEmpty(conv.ProvidedEnumPrepend)
+            ? conv.ProvidedEnumPrepend
+            : conv.Prepend;
+
         string remainder;
         if (applyStripPrepend && !string.IsNullOrEmpty(conv.Strip))
         {
@@ -140,15 +202,15 @@ public static class PackageBindingResolver
             remainder = package;
         }
 
-        if (string.IsNullOrEmpty(remainder)) return applyStripPrepend ? conv.Prepend : null;
+        if (string.IsNullOrEmpty(remainder)) return applyStripPrepend ? prepend : null;
 
         var segments = remainder.Split(new[] { MetaPackageSeparator }, StringSplitOptions.None);
         var transformed = segments.Select(s => Transform(s, conv.Case)).ToArray();
         var joined = string.Join(conv.Separator, transformed);
         return applyStripPrepend
-            ? string.IsNullOrEmpty(conv.Prepend)
+            ? string.IsNullOrEmpty(prepend)
                 ? joined
-                : conv.Prepend + conv.Separator + joined
+                : prepend + conv.Separator + joined
             : joined;
     }
 

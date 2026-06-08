@@ -110,6 +110,16 @@ public sealed record PackageBindingConvention
     /// <summary>Per-segment case transformation. Applied to each segment AFTER splitting
     /// the metadata package on <c>::</c>, BEFORE joining by <see cref="Separator"/>.</summary>
     public PackageCase Case { get; init; } = PackageCase.PascalCase;
+
+    /// <summary>FR-021 — alternate <see cref="Prepend"/> applied when resolving an
+    /// abstract <c>field.enum</c> with <c>@provided: true</c> (the FR-019 shared-enum
+    /// reference case). When set, the convention rule's strip / case / separator stay
+    /// the same; only the prepended root differs. Lets adopters route <c>@provided</c>
+    /// enums to a parallel namespace tree (e.g. <c>YourApp.Domain.DataEnums.*</c>)
+    /// without splitting their <c>YourApp.Domain.Entities.*</c> tree. Unset = use
+    /// <see cref="Prepend"/> (today's behavior — @provided enums land alongside
+    /// entities in the same convention).</summary>
+    public string? ProvidedEnumPrepend { get; init; }
 }
 
 /// <summary>Per-segment case transformations supported by <see cref="PackageBindingConvention.Case"/>.</summary>
