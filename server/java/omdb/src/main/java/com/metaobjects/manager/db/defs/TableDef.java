@@ -8,34 +8,21 @@ public class TableDef extends BaseTableDef {
 	private List<ColumnDef> primaryKeys = new ArrayList<ColumnDef>();
 	private List<IndexDef> indexes = new ArrayList<IndexDef>();
 	private List<ForeignKeyDef> foreignKeys = new ArrayList<ForeignKeyDef>();
-	private InheritenceDef inheritence = null;
 
-	public TableDef( NameDef name ) { // , List<ColumnDef> cols ) {		
-		super( name ); //, cols );		
+	public TableDef( NameDef name ) { // , List<ColumnDef> cols ) {
+		super( name ); //, cols );
 	}
-	
+
 	@Override
 	public void addColumn( ColumnDef col ) {
-		
+
 		// Set the columns
 		super.addColumn( col );
-		
+
 		// Pull out the primary keys
 		if ( col.isPrimaryKey() ) {
 			addPrimaryKey( col );
 		}
-	}
-	
-	public InheritenceDef getInheritence() {
-		return inheritence;
-	}
-
-	public void setInheritence(InheritenceDef inheritence) {
-		this.inheritence = inheritence;
-	}
-	
-	public boolean hasInheritence() {
-		return ( inheritence != null ); 
 	}
 
 	protected void addPrimaryKey( ColumnDef primaryKey ) {

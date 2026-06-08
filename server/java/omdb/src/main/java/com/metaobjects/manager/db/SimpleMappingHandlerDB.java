@@ -3,7 +3,6 @@ package com.metaobjects.manager.db;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Properties;
 
 import com.metaobjects.DataTypes;
 import com.metaobjects.MetaDataNotFoundException;
@@ -21,7 +20,6 @@ import com.metaobjects.manager.ObjectManager;
 import com.metaobjects.manager.db.defs.BaseTableDef;
 import com.metaobjects.manager.db.defs.ColumnDef;
 import com.metaobjects.manager.db.defs.IndexDef;
-import com.metaobjects.manager.db.defs.InheritenceDef;
 import com.metaobjects.manager.db.defs.NameDef;
 import com.metaobjects.manager.db.defs.SequenceDef;
 import com.metaobjects.manager.db.defs.TableDef;
@@ -53,8 +51,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	public final static String COL_REF      = "column";
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
-	public final static String INHERITANCE_REF = "dbInheritance";
-	
+
 	@Override
 	public ObjectMapping getCreateMapping( MetaObject mc ) {
 		
@@ -98,47 +95,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		// Create the table definition
 		TableDef t = new TableDef( NameDef.parseName( getTableRef( mc )));
 		
-		// Get all the possible metafields for this metaclass
+		// Get all the possible metafields for this metaclass (own + inherited via
+		// extends — TPH subtypes map their effective fields onto the base's single
+		// table, resolved via getTableRef → getPrimaryRdbTableName's super-chain walk).
 		Collection<MetaField> fields = mc.getMetaFields();
-		
+
 		// Create the mapping
 		ObjectMappingDB mapping = new ObjectMappingDB( t );
-		
-		// See if there is a referenced table
-		InheritanceRef iref = getInheritanceDefinition( mc );
-		if ( iref != null ) {
-			
-			// Load the table mapping for the super class
-			ObjectMappingDB superMap = getTableMapping( iref.getSuperClass() );
-			
-			// Sets the parent mapping
-			mapping.setSuperMapping( superMap );
 
-			// NOTE:  Kind of shady to grab this here and later grab again, prone to bugs on implementation changes...
-			String coln = getColumnRef( iref.getJoinerField() ); 
-			
-			// Create the inheritence definition
-			InheritenceDef inheritence = new InheritenceDef( 
-					coln,
-					(TableDef) superMap.getDBDef(),
-					(ColumnDef) superMap.getArgDef( iref.getSuperJoinerField() ),
-					getColumnRef( iref.getDiscriminatorField() ),
-					iref.getDiscriminatorValue() );
-			
-			// Add it to the current table
-			t.setInheritence( inheritence );
-			
-			// Remove the fields found in the superclass
-			fields = new ArrayList<MetaField>();
-			for( MetaField mf2 : mc.getMetaFields() ) {
-				boolean found = false;
-				for( MetaField mf : iref.getSuperClass().getMetaFields() ) {
-					if ( mf.equals( mf2 )) found = true;
-				}
-				if ( !found ) fields.add( mf2 );
-			}
-		}
-		
 		// Load columns
 		loadColumns( fields, t, mapping );
 		
@@ -356,26 +320,6 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			} catch (NumberFormatException ignored) { /* fall through */ }
 		}
 		return 50;
-	}
-
-	/**
-	 * Returns the inheritance definition for a given MetaClass or returns null if none exists 
-	 * @param mc The MetaClass to retrieve the inheritance definition for
-	 * @return The inheritance definition or null
-	 */
-	public InheritanceRef getInheritanceDefinition( MetaObject mc ) {
-
-		InheritanceRef def = (InheritanceRef) mc.getCacheValue( INHERITANCE_REF );
-		if ( def == null ) {
-			if ( !mc.hasMetaAttr( INHERITANCE_REF )) return null;
-
-			Properties props = (Properties) mc.getMetaAttr( INHERITANCE_REF ).getValue();
-			if ( props == null ) return null;
-
-			def = new InheritanceRef( mc, props );
-		}
-
-		return def;
 	}
 
 	/**

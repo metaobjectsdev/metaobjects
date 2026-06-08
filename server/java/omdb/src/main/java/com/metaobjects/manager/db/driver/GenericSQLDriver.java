@@ -47,10 +47,8 @@ import com.metaobjects.manager.db.DatabaseDriver;
 import com.metaobjects.manager.db.ObjectManagerDB;
 import com.metaobjects.manager.db.ObjectMappingDB;
 import com.metaobjects.manager.db.SubSelectValue;
-import com.metaobjects.manager.db.defs.BaseDef;
 import com.metaobjects.manager.db.defs.BaseTableDef;
 import com.metaobjects.manager.db.defs.ColumnDef;
-import com.metaobjects.manager.db.defs.InheritenceDef;
 import com.metaobjects.manager.db.defs.NameDef;
 import com.metaobjects.manager.db.defs.TableDef;
 import com.metaobjects.manager.exp.Expression;
@@ -385,34 +383,7 @@ public class GenericSQLDriver implements DatabaseDriver {
     public boolean create(Connection c, MetaObject mc, ObjectMappingDB omdb,
             Object o) throws SQLException {
 
-        // Check if there is table inheritence going on, and if so create the super table first
-        BaseDef base = omdb.getDBDef();
-        if (base instanceof TableDef) {
-            TableDef table = (TableDef) base;
-
-            InheritenceDef inheritence = table.getInheritence();
-            if (inheritence != null) {
-                ObjectMappingDB smom = (ObjectMappingDB) omdb.getSuperMapping();
-
-                // Set the discriminator values
-                if (inheritence.getDiscriminatorName() != null) {
-                    MetaField df = omdb.getField(inheritence.getDiscriminatorName());
-                    df.setString(o, inheritence.getDiscriminatorValue());
-                }
-
-                // Create the super classes table entry
-                if (!create(c, mc, smom, o)) {
-                    throw new SQLException("Super table entry could not be created for mapping [" + smom + "]");
-                }
-
-                // Set the mapping field
-                MetaField rf = omdb.getField(inheritence.getRefColumn());
-                MetaField f = omdb.getField(inheritence.getColumnName());
-                f.setObject(o, rf.getObject(o));
-            }
-        }
-
-        // Now create the entry for this object
+        // Create the entry for this object
         PreparedStatement s = getInsertStatement(c, mc, omdb, o);
 
         try {
@@ -486,42 +457,8 @@ public class GenericSQLDriver implements DatabaseDriver {
 
         Expression exp = null;
 
-        // Check if there is table inheritence going on, and if so delete the super table first
-        BaseDef base = omdb.getDBDef();
-        if (base instanceof TableDef) {
-            TableDef table = (TableDef) base;
-
-            InheritenceDef inheritence = table.getInheritence();
-            if (inheritence != null) {
-
-                ObjectMappingDB smom = (ObjectMappingDB) omdb.getSuperMapping();
-
-                // Setup the key
-                MetaField rf = omdb.getField(inheritence.getRefColumn());
-                Collection<MetaField> pkeys = new ArrayList<MetaField>();
-                pkeys.add(rf);
-
-                // Create the super classes table entry
-                if (!update(c, mc, smom, o, fields, pkeys, dirtyField, dirtyValue)) {
-                    return false;
-                    // throw new SQLException( "Super table entry could not be updated for mapping [" + smom + "]" );
-                }
-
-                // Set the mapping field
-                MetaField f = omdb.getField(inheritence.getColumnName());
-
-                // Set the expression to delete
-                exp = new Expression(f.getName(), rf.getObject(o));
-
-                // Can only have dirty fields on the highest level of inheritence
-                dirtyField = null;
-                dirtyValue = null;
-            }
-        }
-
-        // If there wasn't inheritence, then generate the delete where clause
-        if (exp == null) {
-            // Generate the keys expression
+        // Generate the keys expression (the UPDATE WHERE clause)
+        {
             for (MetaField mf : keys) {
                 //if ( omdb.isInThisMap( mf )) {
                 Expression e = new Expression(mf.getName(), mf.getObject(o));
@@ -577,45 +514,7 @@ public class GenericSQLDriver implements DatabaseDriver {
             Object o, Collection<MetaField> keys)
             throws SQLException {
 
-        // Check if there is table inheritence going on, and if so delete the super table first
-        BaseDef base = omdb.getDBDef();
-        if (base instanceof TableDef) {
-            TableDef table = (TableDef) base;
-
-            InheritenceDef inheritence = table.getInheritence();
-            if (inheritence != null) {
-                ObjectMappingDB smom = (ObjectMappingDB) omdb.getSuperMapping();
-
-                MetaField rf = omdb.getField(inheritence.getRefColumn());
-                Collection<MetaField> pkeys = new ArrayList<MetaField>();
-                pkeys.add(rf);
-
-                // Set the mapping field
-                MetaField f = omdb.getField(inheritence.getColumnName());
-
-                // Set the expression to delete
-                Expression exp = new Expression(f.getName(), rf.getObject(o));
-
-                // Delete the higher level table first
-                boolean result = executeDelete(c, mc, omdb, exp);
-
-                // Return a false if it was not deleteable
-                if (result == false) {
-                    return false;
-                }
-
-                // Delete the super classes table entry
-                if (!delete(c, mc, smom, o, pkeys)) {
-                    throw new SQLException("Super table entry could not be deleted for mapping [" + smom + "]");
-                }
-
-                return result;
-            }
-        }
-
-        // If there wasn't inheritence, then generate the delete where clause
-
-        // Generate the keys expression
+        // Generate the keys expression (the DELETE WHERE clause)
         Expression exp = null;
         for (MetaField mf : keys) {
             Expression e = new Expression(mf.getName(), mf.getObject(o));
@@ -1183,22 +1082,9 @@ public class GenericSQLDriver implements DatabaseDriver {
             query.append(tableStr).append(' ').append(prefix);
 
             if (base instanceof TableDef) {
-
-                TableDef table = (TableDef) base;
+                // Single physical table per entity (TPH folds subtypes onto the base table
+                // via metadata, not a join). End the walk after the one table.
                 base = null;
-
-                InheritenceDef idef = table.getInheritence();
-                if (idef != null) {
-                    base = idef.getRefTable();
-                    prefix++;
-
-                    query.append(" LEFT JOIN ");
-                    tableStr = getProperName(base.getNameDef());
-                    query.append(tableStr).append(' ').append(prefix);
-                    query.append(" ON ");
-                    query.append(prefix--).append(idef.getColumnName())
-                            .append("=").append(prefix).append(quoteIdent(idef.getRefColumn().getName()));
-                }
             } else {
                 break;
             }
@@ -1280,22 +1166,9 @@ public class GenericSQLDriver implements DatabaseDriver {
             query.append(tableStr).append(' ').append(prefix);
 
             if (base instanceof TableDef) {
-
-                TableDef table = (TableDef) base;
+                // Single physical table per entity (TPH folds subtypes onto the base table
+                // via metadata, not a join). End the walk after the one table.
                 base = null;
-
-                InheritenceDef idef = table.getInheritence();
-                if (idef != null) {
-                    base = idef.getRefTable();
-                    prefix++;
-
-                    query.append(" LEFT JOIN ");
-                    tableStr = getProperName(base.getNameDef());
-                    query.append(tableStr).append(' ').append(prefix);
-                    query.append(" ON ");
-                    query.append(prefix--).append(idef.getColumnName())
-                            .append("=").append(prefix).append(quoteIdent(idef.getRefColumn().getName()));
-                }
             } else {
                 break;
             }
