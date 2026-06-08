@@ -390,11 +390,15 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         try {
 
-            // Create the Expression for the Primary Keys
-            Expression exp = buildPrimaryKeyExpressionFromRef(mc, ref);
+            // Create the Expression for the Primary Keys. FR-017 TPH: scope to the subtype so a
+            // ref-load can't surface a sibling subtype's row from the shared table.
+            Expression exp = scopeToSubtype(mc, buildPrimaryKeyExpressionFromRef(mc, ref));
 
-            // Create the QueryOptions and limit to the first 1
-            QueryOptions qo = new QueryOptions();
+            // Bind the PK expression to the QueryOptions, limited to the first matching row. The
+            // expression MUST be set — without it this read is an unfiltered "first row of the
+            // table", which (via the deleteObject(getObjectByRef(...)) caller) would delete the
+            // wrong object.
+            QueryOptions qo = new QueryOptions(exp);
             qo.setRange(1, 1);
 
             // Read the objects from the database driver
