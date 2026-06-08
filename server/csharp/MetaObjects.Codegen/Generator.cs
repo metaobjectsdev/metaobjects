@@ -56,6 +56,94 @@ public sealed record GenConfig
     /// neither resolves, it is a codegen-time error naming the enum + its package.
     /// </summary>
     public Dictionary<string, string> PackageNamespaces { get; init; } = new();
+
+    /// <summary>
+    /// FR-021 — convention rule that derives a C# namespace from a metadata package
+    /// when no explicit override matches. Covers the 90% case so an adopter with N
+    /// domains needs ~1 line of config, not N. Unset (null) ⇒ no convention applied;
+    /// resolution falls through to <see cref="UnmappedStrategy"/>.
+    /// </summary>
+    public PackageBindingConvention? Convention { get; init; }
+
+    /// <summary>
+    /// FR-021 — type-level overrides keyed by fully-qualified type name
+    /// (<c>&lt;package&gt;::&lt;typeName&gt;</c>). Wins over package-level
+    /// <see cref="PackageNamespaces"/> and the <see cref="Convention"/> rule. Use when
+    /// a single entity / value-object / enum in an otherwise-uniform package needs to
+    /// land in a different namespace than its siblings.
+    /// </summary>
+    public Dictionary<string, string> TypeOverrides { get; init; } = new();
+
+    /// <summary>
+    /// FR-021 — what to do when neither overrides nor the <see cref="Convention"/> rule
+    /// resolves a metadata package. Defaults to <see cref="UnmappedPackageStrategy.Flatten"/>
+    /// (today's behavior: fall back to <see cref="Namespace"/>). Setting to
+    /// <see cref="UnmappedPackageStrategy.Error"/> forces explicit mapping (recommended
+    /// once an adopter's config is settled — catches metadata that grows a new package
+    /// without a corresponding config entry).
+    /// </summary>
+    public UnmappedPackageStrategy UnmappedStrategy { get; init; } = UnmappedPackageStrategy.Flatten;
+}
+
+/// <summary>FR-021 — convention rule that derives a target namespace from a metadata
+/// package. Resolution: split the package on <c>::</c>, strip the leading
+/// <see cref="Strip"/> prefix (if matched), transform each remaining segment per
+/// <see cref="Case"/>, join by <see cref="Separator"/>, prepend <see cref="Prepend"/>.
+/// The metaobjects-standard <c>::</c> package separator is invariant (cross-port);
+/// <see cref="Separator"/> is the per-port output joiner (e.g. <c>.</c> for C#).</summary>
+public sealed record PackageBindingConvention
+{
+    /// <summary>Prefix to strip from the metadata package (e.g. <c>acme::</c>). Match must succeed
+    /// for the convention rule to apply; otherwise the resolver falls through to the next
+    /// resolution layer. Empty/null = strip nothing.</summary>
+    public string? Strip { get; init; }
+
+    /// <summary>Per-port prefix to prepend to the derived segments
+    /// (e.g. <c>Acme.Domain.Entities</c>). Joined to the segments by
+    /// <see cref="Separator"/>. Required when the convention rule is set.</summary>
+    public required string Prepend { get; init; }
+
+    /// <summary>Per-port segment separator (e.g. <c>.</c> for C#/Java, <c>/</c> for TS
+    /// module paths). Defaults to <c>.</c>.</summary>
+    public string Separator { get; init; } = ".";
+
+    /// <summary>Per-segment case transformation. Applied to each segment AFTER splitting
+    /// the metadata package on <c>::</c>, BEFORE joining by <see cref="Separator"/>.</summary>
+    public PackageCase Case { get; init; } = PackageCase.PascalCase;
+}
+
+/// <summary>Per-segment case transformations supported by <see cref="PackageBindingConvention.Case"/>.</summary>
+public enum PackageCase
+{
+    /// <summary>each-segment → EachSegment (C#/Java/Kotlin namespace segments).</summary>
+    PascalCase,
+    /// <summary>each-segment → eachSegment (TS interior identifier segments).</summary>
+    CamelCase,
+    /// <summary>each-segment → each-segment (TS npm package name segments).</summary>
+    KebabCase,
+    /// <summary>each-segment → each_segment (Python module name segments).</summary>
+    SnakeCase,
+    /// <summary>each-segment → eachsegment (Java reverse-DNS package segments — no separator within a segment).</summary>
+    Lowercase,
+    /// <summary>each-segment → each-segment (as-authored — no transformation).</summary>
+    Preserve,
+}
+
+/// <summary>What to do when a metadata package resolves through neither overrides nor the
+/// <see cref="GenConfig.Convention"/> rule.</summary>
+public enum UnmappedPackageStrategy
+{
+    /// <summary>Fall back to the port's default flat <see cref="GenConfig.Namespace"/>. Matches
+    /// today's behavior (FR-019) when <see cref="GenConfig.PackageNamespaces"/> has no entry.</summary>
+    Flatten,
+    /// <summary>Codegen fails with a clear message naming the package + the config key to set.
+    /// Recommended once an adopter's config is settled — catches metadata that grows a new
+    /// package without a corresponding config entry.</summary>
+    Error,
+    /// <summary>Apply the convention rule's case + separator transformation without
+    /// <see cref="PackageBindingConvention.Strip"/>/<see cref="PackageBindingConvention.Prepend"/>
+    /// — pure passthrough. Useful when metadata packages are already in the port's idiom.</summary>
+    Derive,
 }
 
 /// <summary>Per-run state handed to every generator.</summary>

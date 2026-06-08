@@ -110,7 +110,7 @@ public class EntityGenerator : IGenerator
             sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
@@ -287,7 +287,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
@@ -409,7 +409,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         EmitFileUsings(sb, entity, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, entity.Package, entity.Name, fallbackContext: entity.Name)};");
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
@@ -461,7 +461,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         EmitFileUsings(sb, vo, ctx);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, vo.Package, vo.Name, fallbackContext: vo.Name)};");
         sb.AppendLine();
         XmlDocBuilder.AppendTo(sb, vo);
         EmitClassDeclarationLine(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
@@ -557,6 +557,8 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
+        // Shared enums file is a single artifact holding enums from MULTIPLE packages —
+        // it can't live in a per-package namespace. Lands at the default Namespace.
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         foreach (var e in materialized)
