@@ -41,19 +41,12 @@ internal class QueryScenarioConformanceTest {
          * added fixture auto-runs (or auto-fails, forcing a deliberate entry here)
          * rather than silently dropping out of the Kotlin suite.
          *
-         * Currently deferred: the FR-017 Tier-5 Table-Per-Hierarchy (TPH) scenarios.
-         * They require runtime TPH support (the `BridgeAuth` discriminated hierarchy
-         * has no hand-written Exposed `Table` in [QueryScenarioRunner.tableFor], and
-         * TPH insert/find/update dispatch is a distinct runtime slice). TPH is a
-         * separate Kotlin slice, out of W2b scope — mirroring the Java sibling, which
-         * defers the same `tph-*.yaml` scenarios via its `EXPECTED_FAILURES` list.
+         * FR-017 TPH (table-per-hierarchy) now lands in the Kotlin port — the single `auths`
+         * Exposed [com.metaobjects.integration.kotlin.tables.AuthTable] plus the discriminator
+         * inject/scope/project + op:create / expect-error dispatch in [QueryScenarioRunner] — so
+         * the `tph-*.yaml` scenarios run. No scenarios are currently deferred.
          */
-        private val DEFERRED_SCENARIOS = mapOf(
-            "tph-insert-then-find-by-id" to "TPH runtime support is a separate Kotlin slice (no BridgeAuth Exposed Table / discriminator dispatch yet).",
-            "tph-insert-three-subtypes-list" to "TPH runtime support is a separate Kotlin slice (no BridgeAuth Exposed Table / discriminator dispatch yet).",
-            "tph-no-cross-subtype-update" to "TPH runtime support is a separate Kotlin slice (no BridgeAuth Exposed Table / discriminator dispatch yet).",
-            "tph-update-subtype-only-column" to "TPH runtime support is a separate Kotlin slice (no BridgeAuth Exposed Table / discriminator dispatch yet).",
-        )
+        private val DEFERRED_SCENARIOS = emptyMap<String, String>()
 
         @JvmStatic
         fun scenarios(): Stream<Arguments> {

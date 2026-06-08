@@ -8,6 +8,7 @@ import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
+import com.metaobjects.integration.kotlin.tables.AuthTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
@@ -92,6 +93,15 @@ object QueryScenarioRunner {
 
         // 4. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
+            // FR-017 TPH: an `expect-error: true` op (a cross-subtype write rejection) MUST throw —
+            // any exception from the dispatch counts as the expected error (the transaction rolls back).
+            if (spec.expectError) {
+                var threw = false
+                try { transaction(db) { dispatch(spec, root) } } catch (e: Throwable) { threw = true }
+                if (!threw) throw AssertionError(
+                    "${scenario.sourcePath} / ${spec.name}: expected the op to be rejected (expect-error) but it succeeded")
+                continue
+            }
             val actual = transaction(db) { dispatch(spec, root) }
             assertResult(scenario.sourcePath, spec, actual)
         }
@@ -119,34 +129,115 @@ object QueryScenarioRunner {
         if (spec.op == "relate") return dispatchRelate(spec, root)
 
         val table = tableFor(spec.entity)
+
+        // FR-017 TPH: when the entity is a discriminator base or subtype it maps to the SINGLE
+        // shared table. A subtype's create injects its discriminator; its reads/updates/deletes are
+        // scoped to that discriminator (a row of a different subtype is invisible). The row is
+        // projected to the ENTITY's own fields (the base reads base columns; a subtype adds its
+        // own column) — NOT the whole physical table — so each surfaces only its columns.
+        val entityMeta: MetaObject? = entityOrNull(root, spec.entity)
+        val tph: TphSubtype? = entityMeta?.let { tphSubtypeOf(it) }
+        // Project a row to the entity's own fields ONLY for a TPH base/subtype (which share a wider
+        // physical table); every other entity passes null → the existing "all table columns" shape.
+        val isTphBase: Boolean = entityMeta?.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false) == true
+        val projectFields: Set<String>? =
+            if (tph != null || isTphBase) entityMeta?.metaFields?.map { it.name }?.toSet() else null
+
         // op:roundtrip — WRITE the insert row through Exposed, read back by PK, drop PK.
         if (spec.op == "roundtrip") return dispatchRoundtrip(spec, table)
+        // op:create — INSERT a row (TPH: discriminator injected from the entity), read back by PK (PK retained).
+        if (spec.op == "create") return dispatchCreate(spec, table, tph, projectFields)
         // op:update — PATCH a row through the Exposed write path, read back by PK (PK retained).
-        if (spec.op == "update") return dispatchUpdate(spec, table)
+        if (spec.op == "update") return dispatchUpdate(spec, table, tph, projectFields, entityMeta)
         // op:delete — DELETE a row by PK through the Exposed write path; boolean outcome.
-        if (spec.op == "delete") return dispatchDelete(spec, table)
+        if (spec.op == "delete") return dispatchDelete(spec, table, tph)
 
         return when (spec.op) {
             "count" -> {
                 val q = table.selectAll()
                 applyFilter(q, table, spec.filter)
+                scope(q, table, tph)
                 q.count()
             }
             "get" -> {
                 val q = table.selectAll()
                 applyBy(q, table, spec.by)
+                scope(q, table, tph)
                 val row = q.singleOrNull()
-                row?.let { rowToMap(it, table) }
+                row?.let { rowToMap(it, table, projectFields) }
             }
             "list" -> {
                 val q = table.selectAll()
                 applyFilter(q, table, spec.filter)
+                scope(q, table, tph)
                 applySort(q, table, spec.sort)
                 spec.limit?.let { q.limit(it, (spec.offset ?: 0).toLong()) }
-                q.map { rowToMap(it, table) }
+                q.map { rowToMap(it, table, projectFields) }
             }
             else -> error("Unsupported op '${spec.op}' for ${spec.name}")
         }
+    }
+
+    /** The discriminator field NAME + this subtype's discriminator VALUE (a resolved TPH subtype). */
+    private data class TphSubtype(val field: String, val value: String)
+
+    /**
+     * If [entity] is a TPH subtype, return its discriminator field + value; else null. A subtype
+     * declares `@discriminatorValue` (own attr) and inherits `@discriminator` from an ancestor in
+     * its resolved super chain. Mirrors the Java `TphHelper` / Python `runtime/tph.py`.
+     */
+    private fun tphSubtypeOf(entity: MetaObject): TphSubtype? {
+        if (!entity.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) return null
+        val value = entity.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false).valueAsString
+        var ancestor: MetaObject? = entity.superObject
+        while (ancestor != null) {
+            if (ancestor.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) {
+                return TphSubtype(ancestor.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).valueAsString, value)
+            }
+            ancestor = ancestor.superObject
+        }
+        return null
+    }
+
+    private fun entityOrNull(root: MetaRoot, name: String): MetaObject? =
+        root.getChildren(MetaObject::class.java, false).firstOrNull { it.shortName == name }
+
+    /** FR-017 TPH: AND the discriminator predicate into a query when [tph] is a subtype (subtype-scoped reads). */
+    private fun scope(q: Query, table: Table, tph: TphSubtype?) {
+        if (tph == null) return
+        val disc = buildEq(columnFor(table, tph.field), tph.value)
+        val existing: Op<Boolean>? = q.where
+        q.adjustWhere { if (existing == null) disc else AndOp(listOf(existing, disc)) }
+    }
+
+    /**
+     * op:create — INSERT a row through the Exposed write path. For a TPH subtype the discriminator
+     * (`type`) is injected from the entity, never the body. Read back BY the server-generated PK and
+     * project to the entity's fields (the create `expect` block retains the id).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun dispatchCreate(spec: QuerySpec, table: Table, tph: TphSubtype?, projectFields: Set<String>?): Map<String, Any?>? {
+        val data = spec.data
+            ?: error("op:create / ${spec.name}: a `data` block (the row to write) is required")
+        val pkCol = table.primaryKey?.columns?.singleOrNull()
+            ?: error("op:create / ${spec.name}: table '${table.tableName}' must have a single-column primary key")
+
+        val statement: InsertStatement<Number> = table.insert { stmt ->
+            for ((field, raw) in data) {
+                val col = columnFor(table, field) as Column<Any?>
+                stmt[col] = coerceForWrite(raw, col)
+            }
+            if (tph != null) {
+                val discCol = columnFor(table, tph.field) as Column<Any?>
+                stmt[discCol] = tph.value // discriminator injected from the entity
+            }
+        }
+
+        val pkValue = statement[pkCol as Column<Any?>]
+            ?: error("op:create / ${spec.name}: insert did not yield a primary key value")
+        val q = table.selectAll()
+        q.adjustWhere { buildEq(pkCol, pkValue) }
+        return q.singleOrNull()?.let { rowToMap(it, table, projectFields) } // PK retained
     }
 
     /**
@@ -226,10 +317,39 @@ object QueryScenarioRunner {
      * block asserts the id). Mirrors the Java/C#/TS update semantics on the Exposed substrate.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun dispatchUpdate(spec: QuerySpec, table: Table): Map<String, Any?>? {
+    private fun dispatchUpdate(
+        spec: QuerySpec, table: Table, tph: TphSubtype?, projectFields: Set<String>?, entityMeta: MetaObject?,
+    ): Map<String, Any?>? {
         val patch = spec.data
             ?: error("op:update / ${spec.name}: a `data` block (the patch to write) is required")
         val (pkCol, pkValue) = requirePkValue(spec, table)
+
+        // FR-017 TPH: a subtype update is SCOPED to its discriminator AND patches only the subtype's
+        // own fields. A patch key that is not a field of the subtype (a cross-subtype column) is
+        // rejected; a PK that belongs to a different subtype (out of scope) matches no row and is
+        // rejected too. Both surface as expect-error.
+        if (tph != null) {
+            val fieldNames = entityMeta?.metaFields?.map { it.name }?.toSet() ?: emptySet()
+            for (key in patch.keys) {
+                if (key !in fieldNames) {
+                    error("op:update / ${spec.name}: '$key' is not a field of ${spec.entity} (cross-subtype column)")
+                }
+            }
+            val discCol = columnFor(table, tph.field)
+            val scoped = { AndOp(listOf(buildEq(pkCol, pkValue), buildEq(discCol, tph.value))) }
+            val updated = table.update({ scoped() }) { stmt ->
+                for ((field, raw) in patch) {
+                    val col = columnFor(table, field) as Column<Any?>
+                    stmt[col] = coerceForWrite(raw, col)
+                }
+            }
+            if (updated == 0) {
+                error("op:update / ${spec.name}: no ${spec.entity} row with ${pkCol.name}=$pkValue in subtype scope")
+            }
+            val q = table.selectAll()
+            q.adjustWhere { scoped() }
+            return q.singleOrNull()?.let { rowToMap(it, table, projectFields) }
+        }
 
         // UPDATE the row by PK, setting each patched column through the WRITE codec.
         table.update({ buildEq(pkCol, pkValue) }) { stmt ->
@@ -250,9 +370,15 @@ object QueryScenarioRunner {
      * the Exposed write path; the boolean outcome is `true` iff a row was removed (delete count > 0).
      * The portable proof the row is gone is a follow-up `op: get` by the same PK asserting null.
      */
-    private fun dispatchDelete(spec: QuerySpec, table: Table): Boolean {
+    private fun dispatchDelete(spec: QuerySpec, table: Table, tph: TphSubtype?): Boolean {
         val (pkCol, pkValue) = requirePkValue(spec, table)
-        val deleted = table.deleteWhere { buildEq(pkCol, pkValue) }
+        // FR-017 TPH: a subtype delete is scoped to its discriminator (cross-subtype id deletes nothing).
+        val deleted = if (tph != null) {
+            val discCol = columnFor(table, tph.field)
+            table.deleteWhere { AndOp(listOf(buildEq(pkCol, pkValue), buildEq(discCol, tph.value))) }
+        } else {
+            table.deleteWhere { buildEq(pkCol, pkValue) }
+        }
         return deleted > 0
     }
 
@@ -330,6 +456,8 @@ object QueryScenarioRunner {
         "ProgramView" -> ProgramView
         "Asset" -> AssetTable
         "AllTypes" -> AllTypesTable
+        // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
+        "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
         else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor")
     }
 
@@ -482,9 +610,14 @@ object QueryScenarioRunner {
     // Row materialization + assertion
     // -----------------------------------------------------------------------
 
-    private fun rowToMap(row: ResultRow, table: Table): Map<String, Any?> {
+    private fun rowToMap(row: ResultRow, table: Table, projectFields: Set<String>? = null): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>(table.columns.size)
         for (col in table.columns) {
+            // FR-017 TPH: project to the ENTITY's own fields (base reads base columns; a subtype adds
+            // its own column) — the single physical table also carries the other subtypes' columns,
+            // which must not leak into a row the entity doesn't declare. Non-TPH entities pass null
+            // (every column is the entity's own column).
+            if (projectFields != null && col.name !in projectFields) continue
             var v: Any? = row[col]
             // Temporal columns must preserve their TZ-discriminator all the way to
             // Normalization, which emits the TIMESTAMPTZ `…Z` suffix iff the value is an
@@ -578,9 +711,9 @@ object QueryScenarioRunner {
         return Normalization.canonicalRowsJson(actual as List<Map<String, Any?>>)
     }
 
-    /** Single-bare-object ops: a read-by-PK (`get`), a write-then-read (`roundtrip` / `update`). */
+    /** Single-bare-object ops: a read-by-PK (`get`), a write-then-read (`roundtrip` / `create` / `update`). */
     private fun isSingleObjectOp(op: String): Boolean =
-        op == "get" || op == "roundtrip" || op == "update"
+        op == "get" || op == "roundtrip" || op == "create" || op == "update"
 
     private fun asBoolean(v: Any?): Boolean = when (v) {
         is Boolean -> v

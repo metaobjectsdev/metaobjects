@@ -20,8 +20,9 @@ object Scenarios {
         val offset: Int? = null,
         val relation: String? = null,            // op:relate — the M:N relationship name to traverse
         val insert: Map<String, Any?>? = null,   // op:roundtrip — the field-keyed row to WRITE
-        val data: Map<String, Any?>? = null,     // op:update — the field-keyed patch to WRITE
+        val data: Map<String, Any?>? = null,     // op:create / op:update — the field-keyed row/patch to WRITE
         val expect: Any? = null,
+        val expectError: Boolean = false,        // when true, the op MUST throw (cross-subtype write rejection)
     )
 
     data class QueryScenario(

@@ -97,6 +97,7 @@ object ScenarioLoader {
             relation = q["relation"] as? String,
             insert = q["insert"] as? Map<String, Any?>,
             data = q["data"] as? Map<String, Any?>,
+            expectError = q["expect-error"] == true,
             expect = q["expect"],
         )
     }
