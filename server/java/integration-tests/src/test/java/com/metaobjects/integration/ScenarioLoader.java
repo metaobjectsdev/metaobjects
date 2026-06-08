@@ -97,7 +97,8 @@ public final class ScenarioLoader {
             (String) q.get("relation"),
             (Map<String, Object>) q.get("insert"),
             (Map<String, Object>) q.get("data"),
-            q.get("expect"));
+            q.get("expect"),
+            Boolean.TRUE.equals(q.get("expect-error")));
     }
 
     private static Integer asInt(Object v) {

@@ -77,25 +77,47 @@ public final class QueryScenarioRunner {
                     ": no MetaObject named '" + spec.entity() + "' in canonical loader");
                 Map<String, Integer> columnSqlTypes = columnTypeCache.computeIfAbsent(
                     mc, m -> probeColumnSqlTypes(pg, m));
-                // op:roundtrip — INSERT via the OMDB write path, read back by PK, drop the PK,
-                // assert the normalized read-back == `expect` (the WRITE codec + read gate).
-                if ("roundtrip".equals(spec.op())) {
-                    Object written = RoundtripWriter.execute(omdb, oc, mc, spec, columnSqlTypes);
-                    assertResult(scenario.sourcePath(), spec, written);
-                    continue;
-                }
                 // op:relate normalizes the TARGET entity's rows, so the adapter needs
                 // to probe column types for an entity other than `mc`; hand it a probe
                 // that hits the same per-scenario cache.
                 ObjectManagerDbAdapter.ColumnTypeProbe probe =
                     m -> columnTypeCache.computeIfAbsent(m, x -> probeColumnSqlTypes(pg, x));
-                Object actual = ObjectManagerDbAdapter.execute(
-                    omdb, oc, mc, spec, columnSqlTypes, loader.getRoot(), probe);
+
+                // FR-017 TPH: an `expect-error: true` op (a cross-subtype write rejection) MUST
+                // throw — any exception/assertion from the dispatch counts as the expected error.
+                if (spec.expectError()) {
+                    boolean threw = false;
+                    try { dispatch(omdb, oc, mc, spec, columnSqlTypes, loader, probe); }
+                    catch (Exception | AssertionError e) { threw = true; }
+                    if (!threw) throw new AssertionError(scenario.sourcePath() + " / " + spec.name()
+                        + ": expected the op to be rejected (expect-error) but it succeeded");
+                    continue;
+                }
+
+                Object actual = dispatch(omdb, oc, mc, spec, columnSqlTypes, loader, probe);
                 assertResult(scenario.sourcePath(), spec, actual);
             }
         } finally {
             omdb.releaseConnection(oc);
         }
+    }
+
+    /**
+     * Dispatch one {@link QuerySpec} to the runtime write/read path and return its normalized
+     * result. {@code op:roundtrip} INSERTs via {@link RoundtripWriter} (read back by PK, PK
+     * dropped); every other op goes through {@link ObjectManagerDbAdapter}. Shared by the normal
+     * and {@code expect-error} arms of the scenario loop.
+     */
+    private static Object dispatch(ObjectManagerDB omdb, ObjectConnection oc, MetaObject mc,
+                                   QuerySpec spec, Map<String, Integer> columnSqlTypes,
+                                   MetaDataLoader loader, ObjectManagerDbAdapter.ColumnTypeProbe probe)
+            throws Exception {
+        // op:roundtrip — INSERT via the OMDB write path, read back by PK, drop the PK,
+        // assert the normalized read-back == `expect` (the WRITE codec + read gate).
+        if ("roundtrip".equals(spec.op())) {
+            return RoundtripWriter.execute(omdb, oc, mc, spec, columnSqlTypes);
+        }
+        return ObjectManagerDbAdapter.execute(omdb, oc, mc, spec, columnSqlTypes, loader.getRoot(), probe);
     }
 
     /**
@@ -167,8 +189,8 @@ public final class QueryScenarioRunner {
             if (expect == null) return "[]";
             return Normalization.canonicalRowSet((List<Map<String, Object>>) expect);
         }
-        // op:get / op:roundtrip / op:update each assert a single bare object (roundtrip drops the
-        // PK; get + update retain it).
+        // op:get / op:roundtrip / op:create / op:update each assert a single bare object (roundtrip
+        // drops the PK; get + create + update retain it).
         if (isSingleObjectOp(op)) {
             if (expect == null) return "null";
             return Normalization.canonicalRowsJson(List.of((Map<String, Object>) expect))
@@ -196,9 +218,9 @@ public final class QueryScenarioRunner {
         return Normalization.canonicalRowsJson((List<Map<String, Object>>) actual);
     }
 
-    /** Single-bare-object ops: a read-by-PK ({@code get}), a write-then-read ({@code roundtrip} / {@code update}). */
+    /** Single-bare-object ops: a read-by-PK ({@code get}), a write-then-read ({@code roundtrip} / {@code create} / {@code update}). */
     private static boolean isSingleObjectOp(String op) {
-        return "get".equals(op) || "roundtrip".equals(op) || "update".equals(op);
+        return "get".equals(op) || "roundtrip".equals(op) || "create".equals(op) || "update".equals(op);
     }
 
     private static boolean asBoolean(Object v) {

@@ -52,15 +52,11 @@ final class QueryScenarioTests {
      * runtime simply reads the TS-authored view through its projection-read
      * path.</p>
      */
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of(
-        // TPH (table-per-hierarchy) runtime support — discriminator injection on create +
-        // subtype-scoped reads — is a separate deferred slice for the Java port (corpus README:
-        // "Java/Kotlin/Python/C# runtime TPH lands in their Tier-4 slice; until then those ports
-        // skip the tph-*.yaml scenarios"). Out of scope for the W2b write-ops/zone-codec unit.
-        "tph-insert-then-find-by-id", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
-        "tph-insert-three-subtypes-list", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
-        "tph-no-cross-subtype-update", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice",
-        "tph-update-subtype-only-column", "TPH runtime support (discriminator + subtype-scoped reads) is a deferred Java slice");
+    // FR-017 TPH (table-per-hierarchy) runtime support — discriminator injection on create +
+    // subtype-scoped reads/updates/deletes — now lands in the Java port (TphHelper +
+    // ObjectManagerDB inject/scope, adapter load-then-mutate update), so the tph-*.yaml scenarios
+    // run. No scenarios are currently deferred.
+    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
 
     @BeforeAll
     static void beforeAll() {
@@ -97,6 +93,11 @@ final class QueryScenarioTests {
         // SP-H Unit 5 op:roundtrip — the every-subtype write keystone + its jsonb value object.
         bindings.put("fitness::AllTypes",    ValueObject.class);
         bindings.put("fitness::Settings",    ValueObject.class);
+        // FR-017 TPH corpus entities — the discriminator base + its three subtypes (single table).
+        bindings.put("fitness::Auth",         ValueObject.class);
+        bindings.put("fitness::BridgeAuth",   ValueObject.class);
+        bindings.put("fitness::CopayAuth",    ValueObject.class);
+        bindings.put("fitness::PriorAuthAuth", ValueObject.class);
         reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
     }

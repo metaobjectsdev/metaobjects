@@ -23,8 +23,9 @@ public final class Scenarios {
         Integer offset,
         String relation,                          // op:relate — the M:N relationship name to traverse
         Map<String, Object> insert,               // op:roundtrip — the field-keyed row to WRITE
-        Map<String, Object> data,                 // op:update — the field-keyed patch to WRITE
-        Object expect
+        Map<String, Object> data,                 // op:create / op:update — the field-keyed row/patch to WRITE
+        Object expect,
+        boolean expectError                       // when true, the op MUST throw (cross-subtype write rejection)
     ) {}
 
     public record QueryScenario(

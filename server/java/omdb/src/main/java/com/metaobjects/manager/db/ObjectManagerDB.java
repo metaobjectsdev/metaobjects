@@ -416,6 +416,19 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
     }
 
     /**
+     * FR-017 TPH: AND the discriminator predicate into a query expression when {@code mc}
+     * is a TPH subtype, so the read/count/delete is scoped to the subtype (a row of a
+     * different subtype is invisible — the runtime's cross-subtype guard, mirroring the
+     * generated per-subtype route's 404). Non-TPH classes return {@code exp} unchanged.
+     */
+    private Expression scopeToSubtype(MetaObject mc, Expression exp) {
+        TphHelper.TphSubtype tph = TphHelper.tphSubtypeOf(mc);
+        if (tph == null) return exp;
+        Expression disc = new Expression(tph.field(), tph.value());
+        return exp == null ? disc : exp.and(disc);
+    }
+
+    /**
      * Delete the objects from the datastore where the field has the specified
      * value
      */
@@ -425,6 +438,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         if (!isDeleteableClass(mc)) {
             throw new PersistenceException("MetaClass [" + mc + "] is not deletable");
         }
+
+        exp = scopeToSubtype(mc, exp); // FR-017 TPH: a subtype delete is discriminator-scoped
 
         ObjectMappingDB mapping = (ObjectMappingDB) getDeleteMapping(mc);
 
@@ -470,6 +485,8 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
         // Check for a valid transaction if enforced
         checkTransaction(conn, false);
 
+        exp = scopeToSubtype(mc, exp); // FR-017 TPH: a subtype count is discriminator-scoped
+
         try {
             // Read the objects
             return getTypedDatabaseDriver().getCount(conn, mc, mapping, exp);
@@ -493,6 +510,11 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         // Check for a valid transaction if enforced
         checkTransaction(conn, false);
+
+        // FR-017 TPH: a subtype read is discriminator-scoped (a row of a different subtype
+        // is invisible); the base entity (no @discriminatorValue) reads the whole table.
+        Expression scoped = scopeToSubtype(mc, options.getExpression());
+        if (scoped != options.getExpression()) options.setExpression(scoped);
 
         //int failures = 0;
         //while( true )
@@ -582,6 +604,13 @@ public class ObjectManagerDB extends ObjectManager implements DBOperations {
 
         if (!isCreateableClass(mc)) {
             throw new PersistenceException("Object of class [" + mc + "] is not createable");
+        }
+
+        // FR-017 TPH: a subtype create injects its discriminator value (the entity names
+        // the subtype; the caller never sets `type`) BEFORE the write so it persists.
+        TphHelper.TphSubtype tph = TphHelper.tphSubtypeOf(mc);
+        if (tph != null) {
+            mc.getMetaField(tph.field()).setString(obj, tph.value());
         }
 
         // Get the create mapping

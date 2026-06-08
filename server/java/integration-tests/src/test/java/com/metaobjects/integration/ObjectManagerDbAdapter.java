@@ -10,6 +10,7 @@ import com.metaobjects.manager.ObjectConnection;
 import com.metaobjects.manager.QueryOptions;
 import com.metaobjects.manager.db.M2MResolver;
 import com.metaobjects.manager.db.ObjectManagerDB;
+import com.metaobjects.manager.db.TphHelper;
 import com.metaobjects.manager.exp.Expression;
 import com.metaobjects.manager.exp.Range;
 import com.metaobjects.manager.exp.SortOrder;
@@ -57,6 +58,9 @@ final class ObjectManagerDbAdapter {
                           ColumnTypeProbe columnTypeProbe) throws Exception {
         if ("relate".equals(spec.op())) {
             return executeRelate(omdb, conn, mc, spec, root, columnTypeProbe);
+        }
+        if ("create".equals(spec.op())) {
+            return executeCreate(omdb, conn, mc, spec, columnSqlTypes);
         }
         if ("update".equals(spec.op())) {
             return executeUpdate(omdb, conn, mc, spec, columnSqlTypes);
@@ -127,6 +131,29 @@ final class ObjectManagerDbAdapter {
     }
 
     /**
+     * op:create — INSERT a row through the OMDB runtime WRITE path (NOT raw SQL). Author the
+     * {@code data:} row into a fresh instance, coercing each value to its native type, then
+     * {@code createObject} (OMDB injects the TPH discriminator from the subtype entity + mints the
+     * server-generated PK), read the row back BY PK (a fresh SELECT, so the read codec runs) and
+     * return the wire row WITH the PK retained (the create {@code expect} block asserts the id).
+     * Mirrors the Python query-runner {@code op: create} and the TS/C# reference.
+     */
+    private static Object executeCreate(ObjectManagerDB omdb, ObjectConnection conn, MetaObject mc,
+                                        QuerySpec spec, Map<String, Integer> columnSqlTypes) throws Exception {
+        if (spec.data() == null) {
+            throw new AssertionError("op:create / " + spec.name() + " requires a `data` block (the row to write)");
+        }
+        ValueObject vo = (ValueObject) mc.newInstance();
+        RoundtripWriter.applyValues(mc, vo, spec.data());
+        omdb.createObject(conn, vo); // OMDB injects the @discriminator value for a TPH subtype
+
+        MetaField<?> pk = RoundtripWriter.primaryKey(mc);
+        Object reread = loadByKey(omdb, conn, mc, Map.of(pk.getName(), vo.get(pk.getName())));
+        if (reread == null) return null;
+        return toRowMap(mc, reread, columnSqlTypes); // PK retained (create expect includes id)
+    }
+
+    /**
      * op:update — PATCH a row through the OMDB runtime WRITE path (NOT raw SQL). Load the row by
      * {@code by:{id}}, apply the {@code data:} patch coercing each value to its native type (the
      * SAME write coercion {@code op: roundtrip} uses on INSERT — so a port whose UPDATE codec
@@ -144,6 +171,27 @@ final class ObjectManagerDbAdapter {
         if (pkValue == null) {
             throw new AssertionError("op:update / " + spec.name()
                 + " requires a `by` block carrying the primary key '" + pk.getName() + "'");
+        }
+
+        // FR-017 TPH: a subtype update is LOAD-then-mutate, SCOPED. Load the existing row through
+        // getObjects (which AND's the discriminator for a subtype), so a row of a different subtype
+        // — or an absent id — is invisible and the cross-subtype write is rejected (expect-error).
+        // Mutating the loaded row keeps the other subtype columns intact (a partial TPH patch must
+        // not NULL the unmodified columns), and applyValues throws if a patch key isn't a field of
+        // this subtype (the cross-subtype-COLUMN rejection). The seed-row jsonb caveat below does
+        // not apply to TPH — the auths table has no jsonb, so reading the row back to mutate works.
+        if (TphHelper.tphSubtypeOf(mc) != null) {
+            Object existing = loadByKey(omdb, conn, mc, Map.of(pk.getName(), pkValue));
+            if (existing == null) {
+                throw new AssertionError("op:update / " + spec.name() + ": no " + mc.getShortName()
+                    + " row with " + pk.getName() + "=" + pkValue + " in subtype scope");
+            }
+            ValueObject scoped = (ValueObject) existing;
+            RoundtripWriter.applyValues(mc, scoped, spec.data()); // throws on a non-field (cross-subtype column)
+            omdb.updateObject(conn, scoped);
+            Object rereadTph = loadByKey(omdb, conn, mc, Map.of(pk.getName(), scoped.get(pk.getName())));
+            if (rereadTph == null) return null;
+            return toRowMap(mc, rereadTph, columnSqlTypes);
         }
 
         // Author a fresh instance carrying the PK + the data patch, and UPDATE by PK through the

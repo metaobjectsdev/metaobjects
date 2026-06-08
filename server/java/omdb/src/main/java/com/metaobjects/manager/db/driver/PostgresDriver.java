@@ -100,6 +100,44 @@ public class PostgresDriver extends GenericSQLDriver {
 	}
 	
 	
+	/**
+	 * Gets the id of the row just inserted into a {@code GENERATED ... AS IDENTITY} (or
+	 * {@code SERIAL}) column — the Postgres equivalent of Derby's {@code IDENTITY_VAL_LOCAL()} /
+	 * MSSQL's {@code SCOPE_IDENTITY()}. Postgres has no such scalar; instead the value is the
+	 * current value of the column's implicit identity sequence in THIS session, which our INSERT
+	 * (on the same connection, immediately prior — see {@link GenericSQLDriver#create}) just
+	 * generated. {@code pg_get_serial_sequence(table, column)} resolves that sequence for both
+	 * SERIAL and IDENTITY columns; {@code currval} is session-local so it is unambiguous even
+	 * under concurrency. Used for an {@code AUTO_LAST_ID} column (the canonical TPH {@code auths}
+	 * identity PK) where no named sequence is pre-fetched via {@link #getNextAutoId}.
+	 */
+	@Override
+	protected String getLastAutoId( Connection conn, ColumnDef col ) throws SQLException
+	{
+		String table = getProperName( col.getBaseTable().getNameDef() );
+		String column = col.getName();
+		String query = "SELECT currval(pg_get_serial_sequence(?, ?))";
+
+		try ( PreparedStatement s = conn.prepareStatement( query ) ) {
+			s.setString( 1, table );
+			s.setString( 2, column );
+			try ( ResultSet rs = s.executeQuery() ) {
+				if ( !rs.next() )
+					throw new SQLException( "Unable to get last id for Column Definition [" + col + "], no result in result set" );
+				String id = rs.getString( 1 );
+				if ( id == null )
+					throw new SQLException( "A null last-id value was returned for Column Definition [" + col + "]" );
+				if ( log.isDebugEnabled() )
+					log.debug( "Retrieved last identity ({}) for column [{}]", id, col.getName() );
+				return id;
+			}
+		}
+		catch ( SQLException e ) {
+			log.error( "Unable to get last id for Column definition [{}]: {}", col, e.getMessage(), e );
+			throw new SQLException( "Unable to get last id for Column definition [" + col + "]: " + e.getMessage(), e );
+		}
+	}
+
 	/** Returns whether the drive supports the Range within the query, i.e. LIMIT */
 	@Override
 	protected boolean supportsRangeInQuery() {
