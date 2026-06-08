@@ -124,29 +124,42 @@ csharp:
 
 Resolution checks `typeOverrides` first, then `overrides`, then the convention rule. The type-level override wins absolutely — its target is used verbatim, no further transformation.
 
-### Per-kind sugar (convenience, optional)
+### `@provided` enum routing (sub-knob on the convention rule)
 
-When all named types of a particular *kind* in a package should land in a different namespace, `perKindOverrides` is shorthand for stamping out N type-level overrides. Common case: value-objects → DTO namespace, lookups → Lookup namespace, projections → ReadModels namespace.
+The one differential-routing case that consistently shows up in real C# adopters is FR-019 abstract `field.enum` declarations with `@provided: true` — these are referenced (not generated) and very often live in a parallel namespace tree from their consuming entities (e.g. `Acme.Domain.DataEnums.*` vs `Acme.Domain.Entities.*`).
+
+Rather than a general kind-based predicate engine (which would need to grow to cover compound rules like "field.enum AND abstract AND @provided" and would explode combinatorially as new metadata kinds appear), the convention rule grows one focused knob:
 
 ```yaml
 csharp:
   namespace:
-    convention: { ... }
-    perKindOverrides:
-      "acme::cases":
-        valueObject: "Acme.Domain.Dto.Cases"
-        lookup: "Acme.Domain.Entities.Lookup"
-        # entity → convention rule (unchanged)
+    convention:
+      strip: "acme::"
+      prepend: "Acme.Domain.Entities"     # entities, VOs, etc. land here
+      providedEnumPrepend: "Acme.Domain.DataEnums"   # @provided enums land here
+      separator: "."
+      case: PascalCase
 ```
 
-Resolution order with all three layers:
-1. `typeOverrides["<pkg>::<typeName>"]` — most specific, wins everything
-2. `perKindOverrides[pkg][kind]` — applies to all named types of `kind` in `pkg`
-3. `overrides[pkg]` — applies to all named types in `pkg` regardless of kind
-4. `convention` rule
-5. `unmappedStrategy` fallback
+When the resolver is on the `@provided` enum path (the FR-019 shared-enum reference case), `providedEnumPrepend` swaps in for `prepend`; everything else about the convention (strip / case / separator / segment-append) stays identical. Unset = `@provided` enums land alongside entities under the same `prepend`.
 
-`kind` values: `entity`, `valueObject`, `enum`, `lookup`, `projection`, `callable`, `tphSubtype`. (`lookup` is heuristic — a `field.string`-keyed entity with no outgoing FKs; ports may choose to ignore the distinction.)
+Two host-language APIs let consumers signal which path they're on:
+- `Resolve(...)` — default path, uses `prepend`
+- `ResolveForProvidedEnum(...)` — used only by the FR-019 `field.enum` reference emitter, uses `providedEnumPrepend`
+
+Resolution order on either path:
+1. `typeOverrides["<pkg>::<typeName>"]` — wins absolutely
+2. `overrides[pkg]` — package-level (skipped on the `@provided` enum path; package-level overrides target entity placement, not enum placement)
+3. `convention` rule — using `prepend` or `providedEnumPrepend` per path
+4. (port-level legacy fallback, e.g. FR-019's `providedEnumNamespace` single-string)
+5. `unmappedStrategy`
+
+Adopters whose `@provided` enums are FLAT in a single namespace (no per-package sub-tree) skip `providedEnumPrepend` entirely and use the FR-019 single-string `providedEnumNamespace` fallback + `typeOverrides` for sub-namespace exceptions. This is exactly what the P3 C# adopter does (see worked example below).
+
+**Why not a general rule/predicate engine.** We explicitly chose NOT to add `perKindOverrides`, `rules: when {}`, or a `NamedKind` enum. Reasons:
+- `NamedKind` would be a closed set of values the framework knows about today; metadata kinds grow over time and the enum would need amendments + a new release every time a new kind appears.
+- Compound predicates (`kind=field.enum AND abstract AND @provided`) don't fit cleanly into a single enum; they need a predicate DSL, which is heavy machinery for one well-known case.
+- The one routing dimension that's actually been hit in practice is `@provided` enum reference resolution — that single named knob covers it. Future routing splits, if they materialize, can earn their own named knobs the same way.
 
 ### Case transformation table
 
@@ -163,7 +176,7 @@ Resolution order with all three layers:
 
 ### Worked examples
 
-**P3 C# adopter** (the driving case):
+**P3 C# adopter** (the driving case — `@provided` enums live FLAT in `DataEnums`, with 12 sub-namespace exceptions):
 ```yaml
 csharp:
   namespace:
@@ -173,12 +186,22 @@ csharp:
       separator: "."
       case: PascalCase
     overrides:
+      # Entity-side overrides
       "acme::reporting": "Acme.Domain.Entities.ReportEntities"
-      "acme::domain::dataEnums": "Acme.Domain.DataEnums"
-      "acme::domain::dataEnums::authorizations": "Acme.Domain.DataEnums.Authorizations"
-      "acme::domain::dataEnums::copayCards": "Acme.Domain.DataEnums.CopayCards"
-      "acme::domain::dataEnums::dataExportIntegration": "Acme.Domain.DataEnums.DataExportIntegration"
-      "acme::domain::dataEnums::spIntegration": "Acme.Domain.DataEnums.SPIntegration"
+      # Collision avoidance — `Entities.Workflow` shadows the `Workflow` type,
+      # `Entities.System` shadows the BCL `System` namespace.
+      "acme::workflow": "Acme.Domain.Entities.WorkflowDomain"
+      "acme::system":   "Acme.Domain.Entities.SystemDomain"
+    providedEnumNamespace: "Acme.Domain.DataEnums"   # FR-019 single-string fallback
+    typeOverrides:
+      # The 12 @provided enums that live in DataEnums sub-namespaces
+      "acme::authorizations::AuthorizationType":      "Acme.Domain.DataEnums.Authorizations"
+      "acme::authorizations::AuthorizationStatus":    "Acme.Domain.DataEnums.Authorizations"
+      "acme::authorizations::CopayCardStatus":        "Acme.Domain.DataEnums.CopayCards"
+      # ... 6 more Copay* enums in acme::authorizations
+      "acme::integrations::DataExportRunStatusEnum":  "Acme.Domain.DataEnums.DataExportIntegration"
+      "acme::integrations::SPFileType":               "Acme.Domain.DataEnums.SPIntegration"
+      "acme::integrations::SPProcessLogStatus":       "Acme.Domain.DataEnums.SPIntegration"
     unmappedStrategy: error
 ```
 
@@ -186,9 +209,29 @@ Resolves:
 - `acme::cases` → convention → `Acme.Domain.Entities.Cases`
 - `acme::users-access` → convention → `Acme.Domain.Entities.UsersAccess`
 - `acme::reporting` → override → `Acme.Domain.Entities.ReportEntities`
-- `acme::domain::dataEnums` → override → `Acme.Domain.DataEnums`
+- `acme::patients::Gender` (provided enum) → `providedEnumNamespace` → `Acme.Domain.DataEnums.Gender`
+- `acme::authorizations::AuthorizationType` (provided enum) → `typeOverrides` → `Acme.Domain.DataEnums.Authorizations.AuthorizationType`
 
-7 entries instead of ~20 — rule covers 13 packages, explicit overrides for the 6 non-conforming cases.
+~18 entries instead of ~80 — convention covers 13 entity packages, 3 entity overrides, the `providedEnumNamespace` single-string fallback covers ~51 flat enums, and 12 `typeOverrides` pin the sub-namespace exceptions.
+
+**Hypothetical Acme C# adopter** (parallel `DataEnums.*` tree mirroring entity tree):
+```yaml
+csharp:
+  namespace:
+    convention:
+      strip: "acme::"
+      prepend: "Acme.Domain.Entities"
+      providedEnumPrepend: "Acme.Domain.DataEnums"  # parallel namespace tree
+      separator: "."
+      case: PascalCase
+    unmappedStrategy: error
+```
+
+Resolves:
+- `acme::orders::Order` (entity) → convention with `prepend` → `Acme.Domain.Entities.Orders`
+- `acme::orders::OrderStatus` (@provided enum) → convention with `providedEnumPrepend` → `Acme.Domain.DataEnums.Orders`
+
+No overrides needed — the parallel namespace tree falls out of the convention.
 
 **Hypothetical TS adopter** (same metadata, different idiom):
 ```yaml
