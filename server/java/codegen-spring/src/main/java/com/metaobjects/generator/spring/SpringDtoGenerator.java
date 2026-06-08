@@ -69,7 +69,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 if (emitAbstractShapes) emitAbstractShape(entity, outRoot);
                 continue;
             }
-            emit(entity, outRoot);
+            // FR-017 TPH: a discriminator base's DTO carries the UNION of its subtype columns
+            // (each folded nullable) so polymorphic + per-subtype endpoints share one wire shape.
+            if (TphPlan.isTphBase(entity, loader)) emitTphUnion(entity, loader, outRoot);
+            else emit(entity, outRoot);
         }
     }
 
@@ -89,21 +92,39 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     }
 
     protected void emit(MetaObject entity, Path outRoot) {
+        List<MetaField> fields = scalarFields(entity);
+        // Each scalar field carries its full validation (the standard, non-TPH DTO).
+        List<String> annotationsPerField = new ArrayList<>(fields.size());
+        for (MetaField field : fields) annotationsPerField.add(validationAnnotations(field));
+        emitRecord(entity, outRoot, fields, annotationsPerField);
+    }
+
+    /**
+     * FR-017 TPH: emit the discriminator-base DTO as the UNION of the base's own scalar columns
+     * (full validation) plus every subtype-only column (folded NULLABLE — no validation, since a
+     * row of any other subtype stores NULL there even when the field is {@code @required}). This
+     * single wire shape backs both the polymorphic and per-subtype endpoints of the base controller.
+     */
+    protected void emitTphUnion(MetaObject base, MetaDataLoader loader, Path outRoot) {
+        List<MetaField> fields = new ArrayList<>(scalarFields(base));
+        List<String> annotationsPerField = new ArrayList<>(fields.size());
+        for (MetaField field : fields) annotationsPerField.add(validationAnnotations(field));
+        for (MetaField field : TphPlan.collectSubtypeFields(base, loader)) {
+            if (field instanceof ObjectField) continue;
+            fields.add(field);
+            annotationsPerField.add(""); // nullable union column — no validation
+        }
+        emitRecord(base, outRoot, fields, annotationsPerField);
+    }
+
+    /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation list. */
+    private void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields, List<String> annotationsPerField) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
         String recordName = SpringNaming.dtoName(shortName);
 
-        // Compute each component's validation annotations once (each call walks the
-        // field's validator children), then derive whether the jakarta import is needed.
-        List<MetaField> fields = scalarFields(entity);
-        List<String> annotationsPerField = new ArrayList<>(fields.size());
-        boolean usesValidation = false;
-        for (MetaField field : fields) {
-            String annotations = validationAnnotations(field);
-            annotationsPerField.add(annotations);
-            if (!annotations.isEmpty()) usesValidation = true;
-        }
+        boolean usesValidation = annotationsPerField.stream().anyMatch(a -> !a.isEmpty());
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {

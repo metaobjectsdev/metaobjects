@@ -99,6 +99,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
             if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) continue;
+            // FR-017 TPH: a subtype is folded into its base's single table + base controller —
+            // it emits no standalone controller (it carries no own source.rdb either, so the
+            // table guard below also excludes it; this is the explicit, model-driven guard).
+            if (TphPlan.isTphSubtype(entity)) continue;
             RdbSource sourceRdb = firstRdbSource(entity);
             if (sourceRdb == null) continue;
             if (!appliesTo(entity)) {
@@ -107,7 +111,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 logSkip(entity.getName(), sourceRdb.getEffectiveKind());
                 continue;
             }
-            emit(entity, outRoot);
+            // FR-017 TPH: a discriminator base emits ONE controller mounting the polymorphic
+            // collection routes plus a full per-subtype CRUD set scoped by the discriminator.
+            TphPlan.Plan tph = TphPlan.planFor(entity, loader);
+            if (tph != null) emitTph(entity, tph, outRoot);
+            else emit(entity, outRoot);
         }
     }
 
@@ -313,6 +321,189 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + controllerName + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    /**
+     * FR-017 TPH: emit the discriminator-base controller. ONE {@code @RestController} at
+     * {@code /api/<base-plural>} mounting:
+     * <ul>
+     *   <li>the polymorphic collection — {@code GET /} (union list) + {@code GET /{id}} (any subtype);</li>
+     *   <li>per subtype {@code <seg>} (the {@code @discriminatorValue} lowercased): {@code GET /<seg>}
+     *       (subtype-scoped list), {@code GET /<seg>/{id}} (404 cross-subtype),
+     *       {@code POST /<seg>} (discriminator injected from the URL, never the body),
+     *       {@code PATCH|PUT /<seg>/{id}} (404 cross-subtype; discriminator immutable),
+     *       {@code DELETE /<seg>/{id}} (404 cross-subtype).</li>
+     * </ul>
+     *
+     * <p>Every endpoint uses the base {@code <Base>Dto} — for a TPH base that DTO carries the UNION
+     * of all subtype columns (folded nullable by {@link SpringDtoGenerator}), so a polymorphic row
+     * surfaces its subtype-specific values and a per-subtype POST body binds its own columns. The
+     * controller delegates to the TPH-shaped {@code <Base>Repository}
+     * ({@link SpringRepositoryGenerator}); the discriminator value per subtype route is baked in
+     * from the {@link TphPlan}.</p>
+     */
+    protected void emitTph(MetaObject base, TphPlan.Plan plan, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(base.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+        String controllerName = SpringNaming.controllerName(shortName);
+        String routeBase = SpringNaming.controllerPath(shortName);
+
+        // Sort allowlist: the base's own scalar columns (the polymorphic sort surface). Subtype
+        // columns are not sortable across the polymorphic collection.
+        List<String> sortFields = new ArrayList<>();
+        for (MetaField field : base.getMetaFields()) {
+            if (field instanceof ObjectField) continue;
+            sortFields.add(field.getName());
+        }
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        src.append("import org.springframework.http.HttpStatus;\n");
+        src.append("import org.springframework.http.ResponseEntity;\n");
+        src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.GetMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.PathVariable;\n");
+        src.append("import org.springframework.web.bind.annotation.PostMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestBody;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestMethod;\n");
+        src.append("import org.springframework.web.bind.annotation.RequestParam;\n");
+        src.append("import org.springframework.web.bind.annotation.RestController;\n");
+        src.append("import java.util.List;\n");
+        src.append("import java.util.Map;\n");
+        src.append("import java.util.Set;\n\n");
+
+        src.append("/** GENERATED — TPH discriminator-base controller for ").append(shortName)
+           .append(" (polymorphic collection + per-subtype CRUD). Implements the cross-port API contract. */\n");
+        src.append("@RestController\n");
+        src.append("@RequestMapping(\"").append(routeBase).append("\")\n");
+        src.append("public class ").append(controllerName).append(" {\n\n");
+
+        src.append("    private static final Set<String> SORT_ALLOWLIST = Set.of(");
+        for (int i = 0; i < sortFields.size(); i++) {
+            if (i > 0) src.append(", ");
+            src.append('"').append(sortFields.get(i)).append('"');
+        }
+        src.append(");\n\n");
+
+        src.append("    private final ").append(repoName).append(" repository;\n\n");
+        src.append("    public ").append(controllerName).append("(").append(repoName).append(" repository) {\n");
+        src.append("        this.repository = repository;\n");
+        src.append("    }\n\n");
+
+        // --- polymorphic collection ---
+        src.append("    // Polymorphic list — the union across all subtypes, each row tagged by its discriminator.\n");
+        src.append("    @GetMapping\n");
+        src.append("    public ResponseEntity<?> list(\n");
+        src.append("            @RequestParam(required = false) Integer limit,\n");
+        src.append("            @RequestParam(required = false) Integer offset,\n");
+        src.append("            @RequestParam(required = false) String sort,\n");
+        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount) {\n");
+        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        src.append("        int actualOffset = offset != null ? offset : 0;\n");
+        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
+        src.append("        if (sort != null) {\n");
+        src.append("            sortClause = parseSort(sort);\n");
+        src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
+        src.append("        }\n");
+        src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause);\n");
+        src.append("        if (withCount != null && withCount == 1) {\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", repository.count()));\n");
+        src.append("        }\n");
+        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("    }\n\n");
+
+        src.append("    // Polymorphic get — one row of whatever subtype it is.\n");
+        src.append("    @GetMapping(\"/{id}\")\n");
+        src.append("    public ResponseEntity<?> get(@PathVariable Long id) {\n");
+        src.append("        return repository.findById(id)\n");
+        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                .orElseGet(this::notFound);\n");
+        src.append("    }\n\n");
+
+        // --- per-subtype CRUD ---
+        for (TphPlan.Subtype st : plan.subtypes()) {
+            String seg = st.routeSegment();              // url segment (e.g. "bridge")
+            String disc = st.value();                    // discriminator value (e.g. "Bridge")
+            String suffix = SpringNaming.capitalize(disc); // method-name suffix (e.g. "Bridge")
+
+            src.append("    // --- subtype ").append(disc).append(" (segment /").append(seg).append(") ---\n");
+
+            // per-subtype list
+            src.append("    @GetMapping(\"/").append(seg).append("\")\n");
+            src.append("    public ResponseEntity<?> list").append(suffix).append("(\n");
+            src.append("            @RequestParam(required = false) Integer limit,\n");
+            src.append("            @RequestParam(required = false) Integer offset,\n");
+            src.append("            @RequestParam(required = false) String sort) {\n");
+            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            src.append("        int actualOffset = offset != null ? offset : 0;\n");
+            src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
+            src.append("        if (sort != null) {\n");
+            src.append("            sortClause = parseSort(sort);\n");
+            src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\"));\n");
+            src.append("        }\n");
+            src.append("        return ResponseEntity.ok(repository.listByType(\"").append(disc)
+               .append("\", actualLimit, actualOffset, sortClause));\n");
+            src.append("    }\n\n");
+
+            // per-subtype get (404 cross-subtype)
+            src.append("    @GetMapping(\"/").append(seg).append("/{id}\")\n");
+            src.append("    public ResponseEntity<?> get").append(suffix).append("(@PathVariable Long id) {\n");
+            src.append("        return repository.findByIdAndType(id, \"").append(disc).append("\")\n");
+            src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+            src.append("                .orElseGet(this::notFound);\n");
+            src.append("    }\n\n");
+
+            // per-subtype create (discriminator injected from URL)
+            src.append("    @PostMapping(\"/").append(seg).append("\")\n");
+            src.append("    public ResponseEntity<").append(dtoName).append("> create").append(suffix)
+               .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            src.append("        ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc).append("\", dto);\n");
+            src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+            src.append("    }\n\n");
+
+            // per-subtype update (404 cross-subtype; discriminator immutable)
+            src.append("    @RequestMapping(value = \"/").append(seg)
+               .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
+            src.append("    public ResponseEntity<?> update").append(suffix)
+               .append("(@PathVariable Long id, @RequestBody ").append(dtoName).append(" dto) {\n");
+            src.append("        return repository.updateByIdAndType(id, \"").append(disc).append("\", dto)\n");
+            src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+            src.append("                .orElseGet(this::notFound);\n");
+            src.append("    }\n\n");
+
+            // per-subtype delete (404 cross-subtype)
+            src.append("    @DeleteMapping(\"/").append(seg).append("/{id}\")\n");
+            src.append("    public ResponseEntity<?> delete").append(suffix).append("(@PathVariable Long id) {\n");
+            src.append("        if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
+            src.append("        return notFound();\n");
+            src.append("    }\n\n");
+        }
+
+        // shared helpers
+        src.append("    private ResponseEntity<?> notFound() {\n");
+        src.append("        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\"));\n");
+        src.append("    }\n\n");
+        src.append("    private static ").append(repoName).append(".SortClause parseSort(String raw) {\n");
+        src.append("        String[] parts = raw.split(\":\", 2);\n");
+        src.append("        if (parts.length == 0 || parts[0].isEmpty() || !SORT_ALLOWLIST.contains(parts[0])) return null;\n");
+        src.append("        String dir = parts.length == 2 ? parts[1].toLowerCase() : \"asc\";\n");
+        src.append("        if (!dir.equals(\"asc\") && !dir.equals(\"desc\")) return null;\n");
+        src.append("        return new ").append(repoName).append(".SortClause(parts[0], dir);\n");
+        src.append("    }\n");
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
+            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
+            Files.writeString(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing TPH " + controllerName + ".java for entity " + base.getName() + ": " + e, e);
         }
     }
 

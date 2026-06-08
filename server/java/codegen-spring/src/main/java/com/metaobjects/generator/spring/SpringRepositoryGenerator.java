@@ -57,8 +57,11 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject entity : loader.getMetaObjects()) {
+            if (TphPlan.isTphSubtype(entity)) continue; // folded into the base — no own repository
             if (!appliesTo(entity)) continue;
-            emit(entity, outRoot);
+            // FR-017 TPH: the discriminator base gets a polymorphic + per-subtype-scoped repository.
+            if (TphPlan.isTphBase(entity, loader)) emitTph(entity, outRoot);
+            else emit(entity, outRoot);
         }
     }
 
@@ -130,6 +133,57 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    /**
+     * FR-017 TPH: emit the discriminator-base repository interface — the consumer seam for a
+     * single-table hierarchy. Polymorphic operations span the whole table; per-subtype operations
+     * are scoped to a discriminator value (passed by the controller, baked in from the URL).
+     * Every method trades the base {@code <Base>Dto} (which carries the UNION of subtype columns
+     * for a TPH base — see {@link SpringDtoGenerator}). Subtype entities emit no own repository.
+     */
+    protected void emitTph(MetaObject base, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(base.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String dtoName = SpringNaming.dtoName(shortName);
+        String repoName = SpringNaming.repositoryName(shortName);
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        src.append("import java.util.List;\n");
+        src.append("import java.util.Optional;\n\n");
+        src.append("/**\n");
+        src.append(" * GENERATED TPH interface — consumer implements with their preferred persistence layer.\n");
+        src.append(" * Polymorphic operations span the single ").append(shortName)
+           .append(" table; the per-subtype operations are scoped to a discriminator value\n");
+        src.append(" * (injected by the matching ").append(shortName).append("Controller from the URL segment).\n");
+        src.append(" */\n");
+        src.append("public interface ").append(repoName).append(" {\n\n");
+        src.append("    /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */\n");
+        src.append("    record SortClause(String field, String direction) {}\n\n");
+        src.append("    // --- polymorphic (whole table) ---\n");
+        src.append("    List<").append(dtoName).append("> list(int limit, int offset, SortClause sort);\n");
+        src.append("    long count();\n");
+        src.append("    Optional<").append(dtoName).append("> findById(Long id);\n\n");
+        src.append("    // --- per-subtype (scoped to the discriminator value) ---\n");
+        src.append("    List<").append(dtoName)
+           .append("> listByType(String discriminator, int limit, int offset, SortClause sort);\n");
+        src.append("    Optional<").append(dtoName).append("> findByIdAndType(Long id, String discriminator);\n");
+        src.append("    ").append(dtoName).append(" createWithType(String discriminator, ").append(dtoName).append(" dto);\n");
+        src.append("    Optional<").append(dtoName)
+           .append("> updateByIdAndType(Long id, String discriminator, ").append(dtoName).append(" dto);\n");
+        src.append("    boolean deleteByIdAndType(Long id, String discriminator);\n");
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
+            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
+            Files.writeString(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing TPH " + repoName + ".java for entity " + base.getName() + ": " + e, e);
         }
     }
 
