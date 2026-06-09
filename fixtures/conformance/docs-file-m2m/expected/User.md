@@ -19,6 +19,17 @@
 
 - **Primary key:** `id`
 
+## In context
+
+```mermaid
+erDiagram
+    User ||--o{ UserTag : "userId"
+    User ||--o{ Friendship : "userAId"
+    User ||--o{ Friendship : "userBId"
+    User ||--o{ Follow : "followerId"
+    User ||--o{ Follow : "followeeId"
+```
+
 ## Relationships
 
 - `tags` — many → `Tag` (association, through `UserTag`)

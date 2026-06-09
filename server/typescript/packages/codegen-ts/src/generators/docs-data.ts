@@ -136,6 +136,15 @@ export interface EntityDocData {
    *  surfaces both — short headline above, expanded paragraph below. */
   summaryLead?: string;
 
+  /** @markdown — fenced ```mermaid erDiagram block``` showing the focal
+   *  entity plus its direct in/out FK neighbors (1-hop). Replaces the
+   *  cognitive load of the whole-model graph with an in-context view.
+   *  Mirrors the dbdocs pattern. Skipped when the entity has no neighbors. */
+  neighborhoodErBlock?: string;
+  /** Gate flag for Mustache — true iff `neighborhoodErBlock` is present.
+   *  See the "Mustache idiom note" at the top of this file. */
+  hasNeighborhoodEr?: boolean;
+
   /** @markdown — multi-line preamble block: Type / Source? / Package?, one
    *  per line, in the exact order matching the legacy emitter. Always
    *  present. */

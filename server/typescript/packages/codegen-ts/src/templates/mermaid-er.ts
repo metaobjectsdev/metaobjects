@@ -56,6 +56,53 @@ export function renderMermaidModel(root: MetaRoot): string {
   return parts.join("\n");
 }
 
+/** Render a Mermaid erDiagram block for ONE focal entity and its direct
+ *  neighbors (1-hop): every entity it references via FK, and every entity that
+ *  references it. Mirrors the dbdocs pattern — at-a-glance "this entity in
+ *  context" without the cognitive load of the whole-model graph.
+ *
+ *  Returns `undefined` when the focal entity has no neighbors at all, so a
+ *  template can `{{#mini}}…{{/mini}}` and skip the section cleanly. Abstract
+ *  entities are excluded as neighbors (they don't have physical rows). */
+export function renderEntityNeighborhoodErBlock(
+  focal: MetaObject,
+  root: MetaRoot,
+): string | undefined {
+  if (focal.isAbstract) return undefined;
+  // Outgoing — entities this one FKs into.
+  const outgoing: Array<{ field: string; target: string }> = [];
+  for (const ref of focal.referenceIdentities()) {
+    const target = ref.targetEntity;
+    const field = ref.fields[0];
+    if (typeof target !== "string" || typeof field !== "string") continue;
+    outgoing.push({ field, target: target.split("::").pop()! });
+  }
+  // Incoming — entities that FK into this one.
+  const incoming: Array<{ source: string; field: string }> = [];
+  for (const other of root.objects().filter(o => o.isEntity() && !o.isAbstract)) {
+    if (other.name === focal.name) continue;
+    for (const ref of other.referenceIdentities()) {
+      const target = ref.targetEntity;
+      if (typeof target !== "string") continue;
+      if (target.split("::").pop() !== focal.name) continue;
+      const field = ref.fields[0];
+      if (typeof field !== "string") continue;
+      incoming.push({ source: other.name, field });
+    }
+  }
+  if (outgoing.length === 0 && incoming.length === 0) return undefined;
+
+  const parts: string[] = ["```mermaid", "erDiagram"];
+  for (const { field, target } of outgoing) {
+    parts.push(`    ${target} ||--o{ ${focal.name} : "${field}"`);
+  }
+  for (const { source, field } of incoming) {
+    parts.push(`    ${focal.name} ||--o{ ${source} : "${field}"`);
+  }
+  parts.push("```");
+  return parts.join("\n");
+}
+
 function renderRelationships(entities: MetaObject[]): string[] {
   const lines: string[] = [];
   for (const entity of entities) {

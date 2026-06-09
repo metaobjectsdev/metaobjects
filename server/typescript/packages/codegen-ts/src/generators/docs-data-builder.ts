@@ -51,6 +51,7 @@ import { fieldAnchorHtml } from "./field-anchor.js";
 import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
+import { renderEntityNeighborhoodErBlock } from "../templates/mermaid-er.js";
 import type {
   EntityDocData,
   StorageFieldDoc,
@@ -463,6 +464,18 @@ export function buildEntityDocData(
     data.summaryLead = `*${summary}*`;
   }
   if (descriptionQuote !== undefined) data.descriptionQuote = descriptionQuote;
+
+  // 1-hop neighborhood diagram — every entity it FKs into + every entity that
+  // FKs into it. Rendered just above the Relationships section in the entity
+  // page template. Skipped when the entity has zero neighbors (no orphan
+  // empty diagram block).
+  const neighborhoodErBlock = hasStorage
+    ? renderEntityNeighborhoodErBlock(entity, root)
+    : undefined;
+  if (neighborhoodErBlock !== undefined) {
+    data.neighborhoodErBlock = neighborhoodErBlock;
+    data.hasNeighborhoodEr = true;
+  }
   if (src !== undefined) data.entity.source = src;
   if (entity.package !== undefined && entity.package !== "") {
     data.entity.package = entity.package;
