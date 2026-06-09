@@ -355,8 +355,16 @@ function buildFieldDetail(
   const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
 
   // "Interesting enough to render a detail block" predicate. Plain typed
-  // fields with no annotations get skipped — the at-a-glance table covered
-  // them already.
+  // fields with no authored annotations get skipped — the at-a-glance Fields
+  // table covered them already.
+  //
+  // Deliberately NOT counted as "interesting":
+  //   - PK / required-ness (already a column in the table)
+  //   - mechanical @column overrides (adopters typically set
+  //     @column: PascalCase(name) wholesale; surfacing every field for
+  //     that alone would defeat the section's purpose)
+  // The detail section's value is surfacing AUTHORED docs + validators +
+  // business rules, not physical column mapping.
   const isInteresting =
     hasDesc
     || hasSummary
@@ -367,7 +375,6 @@ function buildFieldDetail(
     || typeof maxLenAttr === "number"
     || (enumVals !== undefined && enumVals.length > 0)
     || isUnique
-    || (typeof columnName === "string" && columnName !== field.name)
     || (typeof dbColumnType === "string" && dbColumnType.length > 0);
   if (!isInteresting) return undefined;
 
