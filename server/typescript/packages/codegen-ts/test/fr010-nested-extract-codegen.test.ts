@@ -2,8 +2,8 @@
 // Java GeneratedNestedExtractCompileRunTest). Generates the output parser for a payload with a
 // NESTED object + an ARRAY-OF-objects, writes the emitted .ts, dynamically import()s it under bun,
 // then calls the runtime-DELEGATING extract<Name>WithLoader(root, dirtyJson) and asserts the
-// nested object + array-of-objects populate into the typed nullable mirror (NOT null) — the gap
-// the self-contained extract<Name>(text) leaves open.
+// nested object + array-of-objects populate into the typed nullable mirror (NOT null) — the
+// single metadata-driven extract path reads the live metadata and assembles the full graph.
 
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -19,7 +19,7 @@ afterAll(() => {
 const PKG = "acme::ai";
 
 // An order payload with a single nested object (Customer) AND an array-of-objects (LineItem[]),
-// plus a scalar + enum at the root — exercises both nested shapes the self-contained path stubs.
+// plus a scalar + enum at the root — exercises both nested shapes the delegating path populates.
 const NESTED_MODEL = {
   "metadata.root": {
     package: PKG,
@@ -91,9 +91,10 @@ describe("FR-010 nested extract codegen — source shape", () => {
     expect(src).toContain("export function extractLenientOrderOutWithLoader(");
     expect(src).toContain("extractObject(mo, text, Format.JSON, opts)");
 
-    // self-contained path still present (back-compat)
-    expect(src).toContain("export function extractLenientOrderOut(");
-    expect(src).toContain("export function tryExtractLenientOrderOut(");
+    // Move 1: the self-contained / baked path is gone — only the delegating overload remains.
+    expect(src).not.toContain("export function extractLenientOrderOut(");
+    expect(src).not.toContain("tryExtractLenientOrderOut");
+    expect(src).not.toContain("ExtractSchema =");
 
     // nested-aware mirror types (NOT `unknown`)
     expect(src).toContain("export interface OrderOutExtracted {");
@@ -138,15 +139,9 @@ describe("FR-010 nested extract codegen — import-and-RUN proof (delegating pat
       "Thanks!",
     ].join("\n");
 
-    // ---- self-contained path leaves nested-object / array-of-object components NULL ----
-    // (the historical FR-010 gap: the baked-schema path treats them as opaque leaves and the
-    // generated mirror initializer emits null for object fields). The delegating path below
-    // is what populates them.
-    const selfContained = parser.extractLenientOrderOut(dirty);
-    expect(selfContained.data.customer).toBeNull();
-    expect(selfContained.data.items).toBeNull();
-
     // ---- runtime-delegating path POPULATES nested + array-of-objects ----
+    // (the single metadata-driven extract path reads live metadata + assembles the full graph;
+    // the historical FR-010 gap — nested/array components left null — no longer exists.)
     const { data, report } = parser.extractLenientOrderOutWithLoader(root, dirty);
     expect(data).not.toBeNull();
 

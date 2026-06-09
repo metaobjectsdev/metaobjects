@@ -1,11 +1,9 @@
 // server/typescript/packages/codegen-ts/src/templates/extract-delegate-emitter.ts
 //
-// FR-010 Plan 2.1 (nested codegen gap) — the runtime-DELEGATING extract emitter.
+// FR-010 — the runtime-DELEGATING extract emitter (the single metadata-driven extract path).
 //
-// The self-contained extract<Name>(text) path (extract-schema-emitter + the baked
-// ExtractSchema) covers scalars / enums / scalar-arrays but leaves nested-object and
-// array-of-object components NULL — the historical FR-010 codegen gap. This module emits
-// the additive delegating overload that CLOSES that gap by wrapping the runtime extract:
+// This module emits the loader-delegating extract entry point that reads the live metadata
+// directly and populates nested-object and array-of-object components in full:
 //
 //   extract<Name>(root: MetaRoot, text, opts?) -> ExtractionResult<<Name>Extracted>
 //

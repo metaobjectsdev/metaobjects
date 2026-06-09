@@ -3,8 +3,9 @@
 // Generates the parser+extract file and the prompt file for a hand-built model, writes
 // the emitted .ts (plus the payload interface) to a temp dir under this test dir, then
 // dynamically import()s the emitted module under bun and CALLS the generated functions:
-//   • extract<Name>() on a dirty input (preamble + ```json fence + off-vocab enum alias +
-//     missing optional) — asserts the @enumAlias fold, classification, and lost-optional.
+//   • extractLenient<Name>WithLoader(root, text) on a dirty input (preamble + ```json fence +
+//     off-vocab enum alias + missing optional) — asserts the @enumAlias fold, classification,
+//     and lost-optional. This is the single, loader-delegating extract path.
 //   • render<Name>Format() — asserts the comment-free guide fragment.
 // Also typechecks the emitted source via `tsc --noEmit` when available.
 
@@ -79,22 +80,21 @@ describe("FR-010 codegen — extract-schema + output-format-spec emitters (sourc
     expect(src).toContain("export function parseTicketOut(text: string)");
     expect(src).toContain("export function safeParseTicketOut(");
 
-    // extract API
+    // extract API — the single, loader-delegating path (Move 1: no baked self-contained overload)
     expect(src).toContain('from "@metaobjectsdev/render"');
+    expect(src).toContain('import { extractObject } from "@metaobjectsdev/runtime-ts";');
     expect(src).toContain("export interface TicketOutExtracted {");
-    expect(src).toContain("export function extractLenientTicketOut(");
-    expect(src).toContain("export function tryExtractLenientTicketOut(");
+    expect(src).toContain("export function extractLenientTicketOutWithLoader(");
     // nullable mirror
     expect(src).toContain("priority: string | null;");
     expect(src).toContain("score: number | null;");
     expect(src).toContain("tags: (string | null)[] | null;");
-    // schema literal: enum w/ values + alias map
-    expect(src).toContain('enumField("priority", true, ["LOW", "HIGH"]');
-    expect(src).toContain('"med": "HIGH"');
-    expect(src).toContain('"medium": "HIGH"');
-    // extract-map initializer + scoped imports
-    expect(src).toContain('asStringList(d, "tags")');
-    expect(src).toContain('asInt(d, "score")');
+
+    // No baked snapshot survives.
+    expect(src).not.toContain("ExtractSchema =");
+    expect(src).not.toContain("enumField(");
+    expect(src).not.toContain("export function extractLenientTicketOut(");
+    expect(src).not.toContain("tryExtractLenientTicketOut");
   });
 
   test("text-format output gets NO extract block", async () => {
@@ -153,87 +153,8 @@ const MODEL_FR011 = [
   },
 ];
 
-describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN proof", () => {
-  test("emitted enumField(...) carries the @coerceDefault + resolved @normalize args", async () => {
-    const root = await loadRoot(MODEL_FR011);
-    const src = renderOutputParser(root, "TaskOut");
-    // 7-arg positional form: name, required, values, aliases, coerceDefault, normalize, default
-    expect(src).toContain(
-      'enumField("priority", true, ["LOW", "HIGH"], null, "LOW", "strip")',
-    );
-  });
-
-  test("a field-level @normalize overrides the object-level mode in the emitted literal", async () => {
-    const root = await loadRoot([
-      {
-        "object.value": {
-          name: "Task2",
-          "@normalize": "strip",
-          children: [
-            {
-              "field.enum": {
-                name: "priority",
-                "@required": false,
-                "@values": ["LOW", "HIGH"],
-                "@coerceDefault": "LOW",
-                "@normalize": "collapse",
-              },
-            },
-          ],
-        },
-      },
-      { "template.output": { name: "Task2Out", "@payloadRef": "Task2", "@textRef": "out/t2", "@format": "json" } },
-    ]);
-    const src = renderOutputParser(root, "Task2Out");
-    expect(src).toContain(
-      'enumField("priority", false, ["LOW", "HIGH"], null, "LOW", "collapse")',
-    );
-  });
-
-  test("an enum with @default emits the trailing defaultValue arg", async () => {
-    const root = await loadRoot([
-      {
-        "object.value": {
-          name: "Task3",
-          children: [
-            {
-              "field.enum": {
-                name: "priority",
-                "@required": true,
-                "@values": ["LOW", "HIGH"],
-                "@default": "HIGH",
-              },
-            },
-          ],
-        },
-      },
-      { "template.output": { name: "Task3Out", "@payloadRef": "Task3", "@textRef": "out/t3", "@format": "json" } },
-    ]);
-    const src = renderOutputParser(root, "Task3Out");
-    // coerceDefault absent → null; normalize default → "strip"; defaultValue → "HIGH"
-    expect(src).toContain(
-      'enumField("priority", true, ["LOW", "HIGH"], null, null, "strip", "HIGH")',
-    );
-  });
-
-  test("an enum with no FR-011 attrs keeps the back-compat 4-arg form", async () => {
-    const root = await loadRoot([
-      {
-        "object.value": {
-          name: "Task4",
-          children: [
-            { "field.enum": { name: "priority", "@required": true, "@values": ["LOW", "HIGH"] } },
-          ],
-        },
-      },
-      { "template.output": { name: "Task4Out", "@payloadRef": "Task4", "@textRef": "out/t4", "@format": "json" } },
-    ]);
-    const src = renderOutputParser(root, "Task4Out");
-    expect(src).toContain('enumField("priority", true, ["LOW", "HIGH"], null)');
-    expect(src).not.toContain('enumField("priority", true, ["LOW", "HIGH"], null,');
-  });
-
-  test("emitted extractLenientTaskOut() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
+describe("FR-011 codegen — @coerceDefault/@normalize via the loader-delegating extract (import-and-RUN proof)", () => {
+  test("extractLenientTaskOutWithLoader() folds an off-vocab value to @coerceDefault and classifies DEFAULTED", async () => {
     const root = await loadRoot(MODEL_FR011);
     const parserSrc = renderOutputParser(root, "TaskOut");
     const payloadSrc = generatePayloadInterfaces(root, "Task");
@@ -245,9 +166,10 @@ describe("FR-011 codegen — @coerceDefault/@normalize emission + import-and-RUN
 
     const parser = await import(join(dir, "TaskOut.output.ts"));
 
-    // off-vocab, non-aliasable enum value → @coerceDefault fallback to "LOW"
+    // off-vocab, non-aliasable enum value → @coerceDefault fallback to "LOW". The delegating
+    // extract reads the @coerceDefault/@normalize attrs directly off the live metadata.
     const dirty = '{ "title": "Ship it", "priority": "kinda high!!" }';
-    const { data, report } = parser.extractLenientTaskOut(dirty);
+    const { data, report } = parser.extractLenientTaskOutWithLoader(root, dirty);
     expect(data).not.toBeNull();
     expect(data.priority).toBe("LOW");
     expect(data.title).toBe("Ship it");
@@ -282,7 +204,7 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
       "Hope that helps!",
     ].join("\n");
 
-    const { data, report } = parser.extractLenientTicketOut(dirty);
+    const { data, report } = parser.extractLenientTicketOutWithLoader(root, dirty);
     expect(data).not.toBeNull();
     // @enumAlias fold: off-vocab "medium" → canonical "HIGH"
     expect(data.priority).toBe("HIGH");
@@ -297,27 +219,25 @@ describe("FR-010 codegen — import-and-RUN proof (bun dynamic import)", () => {
     expect(states.get("assignee")).toBe("LOST_OPTIONAL");
     expect(states.get("priority")).toBe("EXTRACTED");
 
-    // tryExtract gate: non-empty, no required lost → ok
-    const gate = parser.tryExtractLenientTicketOut(dirty);
-    expect(gate.ok).toBe(true);
-    // and the success wrapper still carries the full result (data + report)
-    expect(gate.result.data.subject).toBe("Cannot log in");
-    expect(gate.result.report.hasLostRequired()).toBe(false);
+    // The bool-gate is now derived from the report by the caller (the self-contained
+    // tryExtract<Name> wrapper was removed with the baked path): non-empty + no required lost.
+    const gateOk = (r: typeof report) => !r.isEmpty() && !r.hasLostRequired();
+    expect(gateOk(report)).toBe(true);
 
-    // ---- tryExtract gate ok:FALSE branch (run-asserted) ----
+    // ---- gate ok:FALSE branches (run-asserted) ----
     // (a) a payload that LOST a @required field (omit `subject`/`priority`/`score`/`tags`) →
-    //     ok === false because report.hasLostRequired() is true; the wrapper still carries the report.
+    //     gate false because report.hasLostRequired() is true.
     const lostRequired = '{ "assignee": "Grace" }';
-    const lost = parser.tryExtractLenientTicketOut(lostRequired);
-    expect(lost.ok).toBe(false);
-    expect(lost.result.report.hasLostRequired()).toBe(true);
-    expect(lost.result.report.lostRequired()).toContain("subject");
+    const lost = parser.extractLenientTicketOutWithLoader(root, lostRequired);
+    expect(gateOk(lost.report)).toBe(false);
+    expect(lost.report.hasLostRequired()).toBe(true);
+    expect(lost.report.lostRequired()).toContain("subject");
 
-    // (b) empty/garbage input → ok === false because report.isEmpty() is true; report still present.
-    const empty = parser.tryExtractLenientTicketOut("   ");
-    expect(empty.ok).toBe(false);
-    expect(empty.result.report.isEmpty()).toBe(true);
-    expect(empty.result.report).toBeDefined();
+    // (b) empty/garbage input → gate false because report.isEmpty() is true.
+    const empty = parser.extractLenientTicketOutWithLoader(root, "   ");
+    expect(gateOk(empty.report)).toBe(false);
+    expect(empty.report.isEmpty()).toBe(true);
+    expect(empty.report).toBeDefined();
 
     // ---- render*Format(): comment-free guide fragment ----
     const fragment: string = prompt.renderTicketOutFormat();

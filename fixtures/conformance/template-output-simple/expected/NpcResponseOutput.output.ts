@@ -1,15 +1,8 @@
 import { z } from "zod";
 import {
-  extract,
-  extractSchema,
   Format,
-  scalar,
-  FieldKind,
-  type ExtractSchema,
   type ExtractOptions,
   type ExtractionResult,
-  asInt,
-  asString,
 } from "@metaobjectsdev/render";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { extractObject } from "@metaobjectsdev/runtime-ts";
@@ -52,47 +45,15 @@ export function safeParseNpcResponseOutput(
     : { success: false, error: result.error };
 }
 
-/** Baked extract descriptor for the NpcResponseOutput output. */
-const NpcResponseOutputExtractSchema: ExtractSchema = extractSchema(Format.JSON, "NpcResponsePayload", [scalar("name", FieldKind.STRING, false), scalar("age", FieldKind.INT, false)]);
+
+/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
+export const NPCRESPONSEOUTPUT_PAYLOAD_NAME = "NpcResponsePayload";
 
 /** Best-effort extracted twin of `NpcResponseOutput` — every field nullable (null where lost/malformed). */
 export interface NpcResponseOutputExtracted {
   name: string | null;
   age: number | null;
 }
-
-/**
- * Self-contained tolerant best-effort extraction of a dirty LLM response; never throws.
- * Returns a nullable mirror (`NpcResponseOutputExtracted`) with fields null where lost/malformed,
- * plus the per-field extraction report. Does NOT populate nested-object / array-of-object
- * components (those stay null — the historical FR-010 gap). For full nested extraction, use
- * `extractLenientNpcResponseOutputWithLoader(root, text)`, which delegates to the runtime extract.
- */
-export function extractLenientNpcResponseOutput(
-  text: string,
-  opts?: ExtractOptions,
-): ExtractionResult<NpcResponseOutputExtracted> {
-  const outcome = extract(text, NpcResponseOutputExtractSchema, opts);
-  const d = outcome.data;
-  const data: NpcResponseOutputExtracted = { name: asString(d, "name"), age: asInt(d, "age") };
-  return { data, report: outcome.report };
-}
-
-/**
- * Extraction as a bool gate: `true` when the response was non-empty and no required
- * field was lost. On success, `result` carries the extracted mirror + report.
- */
-export function tryExtractLenientNpcResponseOutput(
-  text: string,
-): { ok: boolean; result: ExtractionResult<NpcResponseOutputExtracted> } {
-  const result = extractLenientNpcResponseOutput(text);
-  const ok = !result.report.isEmpty() && !result.report.hasLostRequired();
-  return { ok, result };
-}
-
-
-/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
-export const NPCRESPONSEOUTPUT_PAYLOAD_NAME = "NpcResponsePayload";
 
 /** Map an assembled ValueObject graph into a typed `NpcResponseOutputExtracted` mirror. Generated; null-tolerant. */
 function fromNpcResponseOutputExtracted(o: unknown): NpcResponseOutputExtracted | null {
@@ -124,10 +85,11 @@ function dlgInt(v: unknown): number | null {
 }
 
 /**
- * Runtime-delegating tolerant extraction; never throws. Unlike `extractLenientNpcResponseOutput(text)`, this FULLY
- * populates nested-object and array-of-object components by delegating to the metadata-driven
- * runtime `extractObject` (which assembles the whole graph reflection-free via the Phase A object
- * model), then maps the assembled graph into the typed `NpcResponseOutputExtracted` mirror.
+ * Runtime-delegating tolerant best-effort extraction; never throws. FULLY populates
+ * nested-object and array-of-object components by delegating to the metadata-driven runtime
+ * `extractObject` (which assembles the whole graph reflection-free via the Phase A object
+ * model, reading the live metadata directly), then maps the assembled graph into the typed
+ * `NpcResponseOutputExtracted` mirror.
  *
  * @param root a loaded MetaRoot (e.g. `(await new MetaDataLoader().load(...)).root`) that declares
  *             the `NpcResponsePayload` value-object.

@@ -1,7 +1,7 @@
 // server/typescript/packages/codegen-ts/src/templates/fr010-field-mapping.ts
 //
-// Shared field-kind mapping for the FR-010 codegen emitters (extract-schema-emitter +
-// output-format-spec-emitter). Maps a metadata field subtype onto the render engine's
+// Shared field-kind mapping for the FR-010 codegen emitters (the output-format-spec
+// emitter et al.). Maps a metadata field subtype onto the render engine's
 // FieldKind member, the idiomatic nullable TS type used by the extract mirror interface,
 // and the ExtractMap accessor that reads it from the forgiving outcome map.
 //
