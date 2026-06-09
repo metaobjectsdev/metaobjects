@@ -1041,7 +1041,7 @@ Expected: PASS.
 Run:
 ```bash
 cd server/typescript/packages/migrate-ts && bun test
-cd /home/doug/Development/metaobjects && bun run --filter '@metaobjectsdev/migrate-ts' typecheck
+cd <repo-root> && bun run --filter '@metaobjectsdev/migrate-ts' typecheck
 ```
 Expected: all green (no regressions).
 

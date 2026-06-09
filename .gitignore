@@ -23,8 +23,6 @@ __tmp__/
 .vscode/
 
 # Per-language conventions
-typescript/**/dist/
-typescript/**/node_modules/
 server/java/**/target/
 server/typescript/**/dist/
 server/typescript/**/node_modules/

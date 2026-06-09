@@ -43,7 +43,7 @@ These are credential/account steps the assistant cannot do; the user runs them (
 
 Run:
 ```bash
-cd /home/doug/Development/metaobjects
+cd <repo-root>
 cp LICENSE server/python/LICENSE
 ```
 
