@@ -36,6 +36,12 @@ public class EntityGenerator : IGenerator
 {
     public virtual string Name => "entity-generator";
 
+    /// <summary>The C# property name for a field. Default: PascalCase the metadata
+    /// (camelCase) name. Extension seam (ADR-0002) — a subclass can override to honor
+    /// an explicit casing source (e.g. P3 preserves an all-caps acronym column casing
+    /// like NPI/PARequired that a plain PascalCase of the field name would mangle).</summary>
+    protected virtual string PropertyName(MetaField field) => CSharpNaming.Pascal(field.Name);
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         // Entities + read-only projections get the full EF mapping.
@@ -346,10 +352,10 @@ public class EntityGenerator : IGenerator
     // A subtype-only scalar property: NULLABLE, [Column]-mapped, with the field's
     // validator attributes (length/numeric/regex) but NEVER [Key]/[Required] (the
     // column is nullable in the shared TPH table). Arrays keep the List<T> shape.
-    protected static string TphSubtypeScalarProperty(MetaField field, ColumnNamingStrategy strategy)
+    protected virtual string TphSubtypeScalarProperty(MetaField field, ColumnNamingStrategy strategy)
     {
         var baseType = CSharpNaming.ScalarFor(field.SubType)!;
-        var propName = CSharpNaming.Pascal(field.Name);
+        var propName = PropertyName(field);
 
         if (field.IsArray)
         {
@@ -372,10 +378,10 @@ public class EntityGenerator : IGenerator
     }
 
     // A subtype-only enum property: NULLABLE, [Column]-mapped (no [Required]).
-    protected static string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
+    protected virtual string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
     {
         var typeName = EnumPropertyTypeName(entity, field, config);
-        var propName = CSharpNaming.Pascal(field.Name);
+        var propName = PropertyName(field);
         var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
         if (field.IsArray)
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
@@ -632,13 +638,13 @@ public class EntityGenerator : IGenerator
     // the List is never nullable (the column stores a jsonb array, always present).
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
     // (shapes carry no EF mapping).
-    protected static string EnumProperty(
+    protected virtual string EnumProperty(
         MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy, bool withAttributes = true)
     {
         // FR-019 — a shared/provided enum is referenced (materialized once / external);
         // an inline enum keeps the per-object nested <Entity><Field> type name.
         var typeName = EnumPropertyTypeName(entity, field, config);
-        var propName = CSharpNaming.Pascal(field.Name);
+        var propName = PropertyName(field);
         var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
         if (field.IsArray)
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
@@ -654,13 +660,13 @@ public class EntityGenerator : IGenerator
     // When the field is an array (isArray: true), emit List<T> with an empty-list
     // initializer instead of a scalar T property. Arrays are always non-nullable
     // (the jsonb column holds the list; the list itself is never null in C#).
-    protected static string ScalarProperty(
+    protected virtual string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
         string? baseTypeOverride = null)
     {
         var baseType = baseTypeOverride ?? CSharpNaming.ScalarFor(field.SubType)!;
-        var propName = CSharpNaming.Pascal(field.Name);
+        var propName = PropertyName(field);
 
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]
         // attribute — [Key]/[MaxLength]/[Required] are not meaningful for a List<T> jsonb
@@ -834,7 +840,7 @@ public class EntityGenerator : IGenerator
             return null;
         }
         var typeName = CSharpNaming.Pascal(target.Name);
-        var propName = CSharpNaming.Pascal(field.Name);
+        var propName = PropertyName(field);
         // An object-typed field with @isArray:true is a COLLECTION of the value object,
         // not a single nullable ref. Emit a non-nullable ICollection<T> with an empty-list
         // initializer (matching the scalar/enum array convention — the list is never null).
