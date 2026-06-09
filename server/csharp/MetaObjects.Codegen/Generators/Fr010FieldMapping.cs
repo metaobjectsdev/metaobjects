@@ -1,9 +1,9 @@
-// Shared field-kind mapping for the FR-010 codegen emitters (ExtractSchemaEmitter +
-// OutputFormatSpecEmitter). Maps a metadata field subtype onto the render engine's
+// Shared field-kind mapping for the FR-010 codegen emitters (the OutputFormatSpecEmitter +
+// the extract delegate emitter). Maps a metadata field subtype onto the render engine's
 // FieldKind, the idiomatic nullable C# type used by the extract mirror record, and the
 // ExtractMap accessor that reads it from the forgiving outcome map.
 //
-// Mirrors the Java SpringTypeMapper / ExtractSchemaEmitter instanceof order and the C#
+// Mirrors the Java SpringTypeMapper instanceof order and the C#
 // PayloadCodegen scalar map. Bounded scope (parity with Java/Kotlin): scalar / enum /
 // scalar-array. Nested object + array-of-enum are deferred (see KNOWN_GAPS).
 

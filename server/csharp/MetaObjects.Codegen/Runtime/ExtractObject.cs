@@ -224,7 +224,7 @@ public static class ExtractObject
     }
 
     // =========================================================================
-    // Enum-attr reading (mirrors ExtractSchemaEmitter / Fr010FieldMapping)
+    // Enum-attr reading (inheritance-aware, read directly off the live MetaField)
     // =========================================================================
 
     private static IReadOnlyList<string> EnumValues(MetaField field) =>

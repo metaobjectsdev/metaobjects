@@ -1,14 +1,14 @@
-// FR-010 Plan 2.1 (nested codegen gap) — the runtime-DELEGATING extract emitter (C# port).
+// FR-010 — the runtime-DELEGATING extract emitter (C# port): the single metadata-driven
+// extract path.
 //
-// The self-contained ExtractLenient(string) path (ExtractSchemaEmitter + the baked ExtractSchema +
-// ExtractMap reads) covers scalars / enums / scalar-arrays but leaves nested-object and
-// array-of-object components NULL — the historical FR-010 codegen gap. This module emits the
-// additive runtime-DELEGATING overload that CLOSES that gap by wrapping the runtime extract:
+// This module emits the loader-delegating extract overloads that read the live metadata
+// directly and populate the FULL object graph (scalars / enums / scalar-arrays + nested-object
+// and array-of-object components):
 //
 //   ExtractLenient(MetaObject mo, string text[, ExtractOptions opts]) -> ExtractionResult<<Name>Extracted>
 //
 // The delegating overload takes a runtime MetaObject (resolved by the caller from a
-// MetaDataLoader's Root via its baked PAYLOAD_FQN — a convenience MetaDataLoader overload is
+// MetaDataLoader's Root via its baked PAYLOAD_FQN — a convenience MetaRoot overload is
 // emitted too) and delegates to MetaObjects.Codegen.Runtime.ExtractObject.Extract(mo, text,
 // Format, opts), which assembles the FULL nested object graph reflection-free via the Phase A
 // object model (MetaObject.NewInstance() + the MetaField SPI). It then maps the assembled
@@ -119,18 +119,11 @@ internal static class ExtractDelegateEmitter
     }
 
     /// <summary>
-    /// Emit the nested-aware mirror record for <paramref name="vo"/> and every value-object
-    /// reachable from it (deduped by simple name; cycle-safe). The PAYLOAD mirror keeps the
-    /// canonical <c>&lt;Payload&gt;Extracted</c> name (<paramref name="payloadMirror"/>) so the
-    /// self-contained <c>ExtractLenient(string)</c> and the delegating overload share one mirror type.
-    /// The nested mirror records are emitted here (the self-contained emitter only emits the
-    /// payload mirror).
-    /// </summary>
-    /// <summary>
     /// Emit the PAYLOAD mirror record (nested-aware, so object fields are typed as nested mirrors,
-    /// not <c>object?</c>) plus every reachable NESTED mirror record. Replaces the self-contained
-    /// <see cref="ExtractSchemaEmitter.MirrorRecordDecl"/> on the delegating path so the one shared
-    /// <c>&lt;Payload&gt;Extracted</c> type can carry populated nested components.
+    /// not <c>object?</c>) plus every reachable NESTED mirror record, deduped by simple name
+    /// (cycle-safe). The PAYLOAD mirror keeps the canonical <c>&lt;Payload&gt;Extracted</c> name
+    /// (<paramref name="payloadMirror"/>) so the delegating overload's one shared mirror type can
+    /// carry populated nested components.
     /// </summary>
     public static string NestedMirrorRecords(MetaData vo, MetaData root, string payloadMirror)
     {
@@ -175,16 +168,16 @@ internal static class ExtractDelegateEmitter
     {
         var sb = new StringBuilder();
         sb.AppendLine();
-        sb.AppendLine("    // FR-010 Plan 2.1 — runtime-delegating extraction (closes the nested-object / array-of-object");
-        sb.AppendLine("    // gap left by the self-contained ExtractLenient(string) path). Delegates to the runtime");
-        sb.AppendLine("    // MetaObjects.Codegen.Runtime.ExtractObject, which assembles the FULL nested object graph");
-        sb.AppendLine("    // reflection-free, then maps it into the typed nullable mirror via From*Extracted.");
+        sb.AppendLine("    // FR-010 — runtime-delegating extraction (the single metadata-driven extract path).");
+        sb.AppendLine("    // Delegates to the runtime MetaObjects.Codegen.Runtime.ExtractObject, which assembles the");
+        sb.AppendLine("    // FULL object graph (nested objects + arrays-of-objects) reflection-free by reading the live");
+        sb.AppendLine("    // metadata, then maps it into the typed nullable mirror via From*Extracted.");
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.</summary>");
         sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(payloadFqn)}\";");
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Tolerant best-effort extraction delegating to the runtime; fully populates nested-object and");
-        sb.AppendLine($"    /// array-of-object components (unlike the self-contained <see cref=\"ExtractLenient(string)\"/>). Never throws.</summary>");
+        sb.AppendLine($"    /// array-of-object components by reading the live metadata. Never throws.</summary>");
         sb.AppendLine($"    public static global::MetaObjects.Render.Extract.ExtractionResult<{rootMirror}> ExtractLenient(");
         sb.AppendLine($"        global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)");
         sb.AppendLine("    {");

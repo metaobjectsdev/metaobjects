@@ -58,11 +58,15 @@ public sealed class Fr010CodegenTests
         var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(Model)))).Content;
 
         Assert.Contains("using MetaObjects.Render.Extract;", src);
-        Assert.Contains("private static readonly ExtractSchema ExtractSchemaDef =", src);
-        Assert.Contains("FieldSpec.EnumField(\"confidence\", true, new[] { \"HIGH\", \"OK\", \"LOW\" }", src);
-        Assert.Contains("public static ExtractionResult<AnswerPayloadExtracted> ExtractLenient(string text)", src);
-        Assert.Contains("public static ExtractionResult<AnswerPayloadExtracted> ExtractLenient(string text, ExtractOptions opts)", src);
-        Assert.Contains("public static bool TryExtractLenient(string text, out ExtractionResult<AnswerPayloadExtracted> result)", src);
+        // The single (loader-delegating) extract path — no baked snapshot.
+        Assert.Contains("public const string PAYLOAD_FQN = \"AnswerPayload\";", src);
+        Assert.Contains("global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)", src);
+        Assert.Contains("global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)", src);
+        Assert.Contains("global::MetaObjects.Codegen.Runtime.ExtractObject.Extract(mo, text, Format.Json, opts)", src);
+        Assert.DoesNotContain("ExtractSchemaDef", src);
+        Assert.DoesNotContain("FieldSpec.", src);
+        Assert.DoesNotContain("ExtractLenient(string text)", src);
+        Assert.DoesNotContain("TryExtractLenient", src);
 
         // Nullable mirror record — no `required`, every component nullable.
         Assert.Contains("public sealed record AnswerPayloadExtracted", src);
@@ -131,9 +135,11 @@ public sealed class Fr010CodegenTests
 
         // --- invoke Extract() on a dirty response: preamble + off-vocab alias + missing optional ---
         var parserType = asm.GetType("Acme.Generated.AnswerOutputParser")!;
-        var extract = parserType.GetMethod("ExtractLenient", new[] { typeof(string) })!;
+        // The single (loader-delegating) extract path: resolve the payload from the loaded MetaRoot.
+        var extract = parserType.GetMethod("ExtractLenient",
+            new[] { typeof(MetaRoot), typeof(string), typeof(MetaObjects.Render.Extract.ExtractOptions) })!;
         const string dirty = "Sure! Here is the result:\n```json\n{ \"text\": \"Refund in 3-5 days\", \"confidence\": \"medium\", \"score\": 95 }\n```";
-        var result = extract.Invoke(null, new object[] { dirty })!;
+        var result = extract.Invoke(null, new object?[] { root, dirty, null })!;
 
         var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
         string? Get(string p) => data.GetType().GetProperty(p)!.GetValue(data) as string;
@@ -176,16 +182,6 @@ public sealed class Fr010CodegenTests
     """;
 
     [Fact]
-    public void Parser_emits_coerce_default_and_normalize_args()
-    {
-        var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(CoerceDefaultModel)))).Content;
-        // status: coerceDefault "DONE", normalize None → extended EnumField tail.
-        Assert.Contains(
-            "FieldSpec.EnumField(\"status\", true, new[] { \"IN_PROGRESS\", \"DONE\" }, null, \"DONE\", NormalizeMode.None)",
-            src);
-    }
-
-    [Fact]
     public void Generated_extract_folds_off_vocab_via_coerce_default_to_defaulted()
     {
         var root = Load(CoerceDefaultModel);
@@ -196,10 +192,12 @@ public sealed class Fr010CodegenTests
         var asm = CompileToAssembly(parserSrc, promptSrc, payloadSrc);
 
         var parserType = asm.GetType("Acme.Generated.TaskOutputParser")!;
-        var extract = parserType.GetMethod("ExtractLenient", new[] { typeof(string) })!;
+        // The single (loader-delegating) extract path reads @coerceDefault/@normalize off live metadata.
+        var extract = parserType.GetMethod("ExtractLenient",
+            new[] { typeof(MetaRoot), typeof(string), typeof(MetaObjects.Render.Extract.ExtractOptions) })!;
         // Off-vocab enum value "banana" → @coerceDefault folds it to "DONE".
         const string dirty = "{ \"title\": \"ship it\", \"status\": \"banana\" }";
-        var result = extract.Invoke(null, new object[] { dirty })!;
+        var result = extract.Invoke(null, new object?[] { root, dirty, null })!;
 
         var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
         string? Get(string p) => data.GetType().GetProperty(p)!.GetValue(data) as string;
@@ -222,9 +220,13 @@ public sealed class Fr010CodegenTests
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-        // The generated extract/prompt code references the render engine.
+        // The generated delegating extract/prompt code references the render engine, MetaObjects
+        // core (MetaObject / MetaRoot / ValueObject), AND MetaObjects.Codegen (runtime ExtractObject).
         refs.Add(MetadataReference.CreateFromFile(
             typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObject).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(
+            typeof(MetaObjects.Codegen.Runtime.ExtractObject).Assembly.Location));
 
         // Elevate the nullable-covariance warning (CS8619) to an error so a mirror-type ↔
         // ExtractMap-return mismatch (e.g. on an array field) fails this proof rather than

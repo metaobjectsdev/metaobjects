@@ -14,31 +14,25 @@
 // `required`-keyword construction + STJ's strict deserialization cover
 // presence + type in BCL-native form.
 //
-// FR-010 tolerant extraction — TWO flavours (Plan 2.1). For `@format: json|xml`
-// outputs the parser also emits tolerant best-effort extraction (never throws;
-// lost/malformed components are null in a nullable mirror + classified in the
-// report):
-//   • Self-contained  Extract(string[, ExtractOptions]) — drives a baked
-//     ExtractSchema literal + ExtractMap reads. No runtime metadata needed, but
-//     does NOT populate nested-object / array-of-object components (those stay
-//     null — the historical FR-010 gap). Always emitted for back-compat.
-//   • Runtime-delegating  Extract(MetaObject, string[, ExtractOptions]) (+ a
-//     Extract(MetaRoot, ...) convenience overload that resolves the baked
+// FR-010 tolerant extraction — one metadata-driven path (Plan 2.1). For
+// `@format: json|xml` outputs the parser also emits tolerant best-effort
+// extraction (never throws; lost/malformed components are null in a nullable
+// mirror + classified in the report):
+//   • Runtime-delegating  ExtractLenient(MetaObject, string[, ExtractOptions]) (+ an
+//     ExtractLenient(MetaRoot, ...) convenience overload that resolves the baked
 //     PAYLOAD_FQN) — delegates to MetaObjects.Codegen.Runtime.ExtractObject,
-//     which assembles the FULL nested object graph reflection-free via the Phase
-//     A object model, then maps the assembled ValueObject graph into the typed
-//     nullable mirror via generated From*Extracted mappers. CLOSES the nested
-//     gap. Emitted only when the payload (or a reachable nested VO) has a
-//     nested-object / array-of-object field.
+//     which assembles the FULL object graph (nested objects + arrays-of-objects)
+//     reflection-free via the Phase A object model by reading the live metadata
+//     directly, then maps the assembled ValueObject graph into the typed nullable
+//     mirror via generated From*Extracted mappers.
 //
 // ASSEMBLY CONTRACT (delegating extract). ExtractObject is sited in
 // MetaObjects.Codegen (it bridges core + Render, which neither can host alone).
 // So the GENERATED parser, when compiled in a CONSUMER assembly, references
 // MetaObjects.Codegen (ExtractObject) + MetaObjects (core: MetaObject / MetaRoot
-// / ValueObject) + MetaObjects.Render (the extract engine) for the delegating
-// path. The self-contained ExtractLenient(string) needs only MetaObjects.Render. A
-// consumer wanting nested extraction must carry MetaObjects.Codegen on its
-// classpath (it transitively brings core + Render).
+// / ValueObject) + MetaObjects.Render (the extract engine). A consumer using the
+// extract API must carry MetaObjects.Codegen on its classpath (it transitively
+// brings core + Render).
 
 using System.Text;
 using MetaObjects.Meta;
@@ -145,66 +139,25 @@ public class OutputParserGenerator : IGenerator
         sb.AppendLine("        }");
         sb.AppendLine("    }");
 
-        // FR-010 Plan 2.1: when the payload (or a reachable nested VO) has a nested-object /
-        // array-of-object field, additionally emit the runtime-DELEGATING extract overload that
-        // closes the nested gap. The self-contained baked ExtractLenient(string) is ALWAYS kept (back-compat,
-        // scalar/enum-only). The payload mirror is emitted nested-aware on the delegating path so its
-        // one shared <Payload>Extracted type can carry populated nested components.
-        bool emitDelegate = emitExtract && ExtractDelegateEmitter.HasNested(vo!, ctx.Root);
+        // FR-010: for json|xml outputs, emit the single metadata-driven extract path — the
+        // runtime-DELEGATING ExtractLenient(MetaObject/MetaRoot, text) overloads (delegating to
+        // MetaObjects.Codegen.Runtime.ExtractObject, which assembles the full object graph
+        // reflection-free by reading the live metadata directly), plus the nested-aware nullable
+        // mirror records + mappers. No baked ExtractSchema snapshot.
         string formatEnum = format.Equals("xml", StringComparison.OrdinalIgnoreCase)
             ? "Format.Xml" : "Format.Json";
 
         if (emitExtract)
-        {
-            string schemaLiteral = ExtractSchemaEmitter.SchemaLiteral(vo!, format, payloadType);
-            string initializer = ExtractSchemaEmitter.MirrorInitializer(vo!, extractedType);
-            sb.AppendLine();
-            sb.AppendLine("    // FR-010 tolerant extraction — best-effort, never throws. Returns a nullable");
-            sb.AppendLine($"    // mirror (<see cref=\"{extractedType}\"/>) with components null where lost/malformed.");
-            sb.AppendLine($"    private static readonly ExtractSchema ExtractSchemaDef = {schemaLiteral};");
-            sb.AppendLine();
-            sb.AppendLine($"    /// <summary>Self-contained tolerant best-effort extraction of a dirty LLM response; never throws.");
-            if (emitDelegate)
-                sb.AppendLine($"    /// Does NOT populate nested-object / array-of-object components (those stay null) — use the");
-            if (emitDelegate)
-                sb.AppendLine($"    /// <see cref=\"ExtractLenient(global::MetaObjects.Meta.MetaObject, string, ExtractOptions)\"/> overload for full nested extraction.</summary>");
-            else
-                sb.AppendLine($"    /// </summary>");
-            sb.AppendLine($"    public static ExtractionResult<{extractedType}> ExtractLenient(string text) =>");
-            sb.AppendLine("        ExtractLenient(text, ExtractOptions.Defaults());");
-            sb.AppendLine();
-            sb.AppendLine($"    /// <summary>Self-contained tolerant extraction with explicit <see cref=\"ExtractOptions\"/>.</summary>");
-            sb.AppendLine($"    public static ExtractionResult<{extractedType}> ExtractLenient(string text, ExtractOptions opts)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        var o = global::MetaObjects.Render.Extract.ExtractEngine.Run(text, ExtractSchemaDef, opts);");
-            sb.AppendLine("        var d = o.Data;");
-            sb.AppendLine($"        var data = {initializer};");
-            sb.AppendLine($"        return new ExtractionResult<{extractedType}>(data, o.Report);");
-            sb.AppendLine("    }");
-            sb.AppendLine();
-            sb.AppendLine("    /// <summary>Extraction as a bool gate: <c>true</c> when the response was non-empty and no required field was lost.</summary>");
-            sb.AppendLine($"    public static bool TryExtractLenient(string text, out ExtractionResult<{extractedType}> result)");
-            sb.AppendLine("    {");
-            sb.AppendLine("        result = ExtractLenient(text);");
-            sb.AppendLine("        return !result.Report.IsEmpty && !result.Report.HasLostRequired();");
-            sb.AppendLine("    }");
-
-            if (emitDelegate)
-                sb.Append(ExtractDelegateEmitter.DelegatingMembers(vo!, ctx.Root, payloadType, extractedType, formatEnum));
-        }
+            sb.Append(ExtractDelegateEmitter.DelegatingMembers(vo!, ctx.Root, payloadType, extractedType, formatEnum));
 
         sb.AppendLine("}");
 
         if (emitExtract)
         {
             sb.AppendLine();
-            // On the delegating path the payload mirror is emitted nested-aware (object fields typed
-            // as nested mirrors) along with the nested mirror records; otherwise the self-contained
-            // payload mirror (object fields -> object?) suffices.
-            if (emitDelegate)
-                sb.Append(ExtractDelegateEmitter.NestedMirrorRecords(vo!, ctx.Root, extractedType));
-            else
-                sb.Append(ExtractSchemaEmitter.MirrorRecordDecl(vo!, extractedType));
+            // The payload mirror is emitted nested-aware (object fields typed as nested mirrors)
+            // along with every reachable nested mirror record.
+            sb.Append(ExtractDelegateEmitter.NestedMirrorRecords(vo!, ctx.Root, extractedType));
         }
 
         return new EmittedFile($"{templateName}.output.cs", sb.ToString());

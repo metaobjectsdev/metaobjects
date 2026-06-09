@@ -5,8 +5,8 @@
 // compiled via Roslyn ALONGSIDE the render engine + MetaObjects.Codegen (which hosts the runtime
 // ExtractObject the generated delegating overload wraps), then the delegating
 // ExtractLenient(MetaObject, dirtyJson) is invoked with a loaded MetaObject. The proof: nested-object and
-// array-of-object components POPULATE into the typed nullable mirror graph (NOT null — the gap the
-// self-contained ExtractLenient(string) leaves open). Mirrors the Java/Kotlin/TS/Python nested proofs.
+// array-of-object components POPULATE into the typed nullable mirror graph (NOT null), reading the
+// live metadata directly. Mirrors the Java/Kotlin/TS/Python nested proofs.
 
 using System.Collections;
 using System.Reflection;
@@ -71,8 +71,9 @@ public sealed class Fr010NestedExtractCodegenTests
         Assert.Contains("global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)", src);
         Assert.Contains("global::MetaObjects.Codegen.Runtime.ExtractObject.Extract(mo, text, Format.Json, opts)", src);
 
-        // The self-contained ExtractLenient(string) is KEPT (back-compat).
-        Assert.Contains("public static ExtractionResult<OrderPayloadExtracted> ExtractLenient(string text) =>", src);
+        // Move 1: the self-contained / baked ExtractLenient(string) path is gone.
+        Assert.DoesNotContain("ExtractLenient(string text)", src);
+        Assert.DoesNotContain("ExtractSchemaDef", src);
 
         // Nested-aware mirror typing — object fields are nested mirrors, NOT object?.
         Assert.Contains("public AddressExtracted? shipTo { get; init; }", src);
