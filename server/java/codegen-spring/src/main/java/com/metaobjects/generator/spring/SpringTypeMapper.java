@@ -190,7 +190,6 @@ public final class SpringTypeMapper {
     /**
      * Read the EFFECTIVE {@code @values} of an {@link EnumField} (inheriting from an
      * {@code extends}-super when the field carries no own values), as the verbatim member list.
-     * Mirrors {@code ExtractSchemaEmitter.enumFieldSpec}'s {@code getMetaAttr(ATTR_VALUES)} read.
      * Returns an empty list when absent (defensive — the loader requires non-empty {@code @values}).
      */
     @SuppressWarnings("unchecked")

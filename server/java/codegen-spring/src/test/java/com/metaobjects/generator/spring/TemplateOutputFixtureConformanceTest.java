@@ -24,7 +24,7 @@ import static org.junit.Assert.assertTrue;
  * <p>Asserts the key structural markers emitted by both
  * {@link SpringOutputPromptGenerator} and {@link SpringOutputParserGenerator} for each
  * fixture. Behavioral correctness is proven by the compile-run tests
- * ({@code GeneratedOutputPromptCompileRunTest}, {@code GeneratedExtractLenientCompileRunTest}).
+ * ({@code GeneratedOutputPromptCompileRunTest}, {@code GeneratedNestedExtractLenientCompileRunTest}).
  *
  * <p>Repo root is located by walking up from {@code user.dir} until the
  * {@code fixtures/conformance} directory is found — the same strategy used by
@@ -135,19 +135,16 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
                 + parserFile, Files.exists(parserFile));
         String parserSrc = Files.readString(parserFile);
 
-        assertTrue("[" + fixtureName + "] expected `ExtractSchema EXTRACT_SCHEMA`; saw:\n" + parserSrc,
-            parserSrc.contains("ExtractSchema EXTRACT_SCHEMA"));
-
-        assertTrue("[" + fixtureName + "] expected `extractLenient(`; saw:\n" + parserSrc,
-            parserSrc.contains("extractLenient("));
+        // The single metadata-driven extract path: a loader-delegating extractLenient(...)
+        // overload alongside the strict parse(...). No baked ExtractSchema literal anymore.
+        assertTrue("[" + fixtureName + "] expected loader-delegating `extractLenient(com.metaobjects.loader.MetaDataLoader`; saw:\n" + parserSrc,
+            parserSrc.contains("extractLenient(com.metaobjects.loader.MetaDataLoader"));
 
         assertTrue("[" + fixtureName + "] expected `parse(`; saw:\n" + parserSrc,
             parserSrc.contains("parse("));
 
-        // @enumAlias medium→OK must appear in the schema literal.
-        assertTrue("[" + fixtureName + "] expected enumAlias `medium` key in EXTRACT_SCHEMA literal; saw:\n" + parserSrc,
-            parserSrc.contains("\"medium\""));
-        assertTrue("[" + fixtureName + "] expected enumAlias value `OK` in EXTRACT_SCHEMA literal; saw:\n" + parserSrc,
-            parserSrc.contains("\"OK\""));
+        // No baked snapshot must survive (Move 1: the FieldSpec-literal path is gone).
+        assertTrue("[" + fixtureName + "] must NOT emit a baked `ExtractSchema EXTRACT_SCHEMA` literal; saw:\n" + parserSrc,
+            !parserSrc.contains("EXTRACT_SCHEMA"));
     }
 }

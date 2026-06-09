@@ -68,37 +68,28 @@ import java.util.Set;
  * ({@code <entity-pkg>.prompts}) so the payload record import is implicit
  * (same-package reference).
  *
- * <p><b>Tolerant extract — two flavours (FR-010 / FR-011 + Plan 2.1).</b> For
- * {@code @format: json|xml} outputs the parser also emits tolerant best-effort
- * {@code extractLenient(...)} entry points (never-throwing; lost/malformed components
- * are null in the typed payload + classified in the report):
- * <ul>
- *   <li><b>Self-contained</b> {@code extractLenient(String[, ExtractOptions])} — drives
- *       a baked {@link com.metaobjects.render.extract.ExtractSchema} literal +
- *       {@code ExtractMap} reads. No runtime loader needed, but it does NOT
- *       populate nested-object / array-of-object components (those stay null —
- *       the historical FR-010 gap). Kept for back-compat callers that have no
- *       {@code MetaDataLoader} and only need the scalar/enum surface.</li>
- *   <li><b>Runtime-delegating</b> {@code extractLenient(MetaDataLoader, String[, ExtractOptions])}
- *       — resolves this payload's {@code MetaObject} by its baked FQN from the
- *       supplied loader and delegates to
- *       {@link com.metaobjects.object.extract.MetaObjectExtractor}, which assembles
- *       the full object graph (nested objects + arrays-of-objects + enum coercion
- *       + generalized {@code @default}) reflection-free via the Phase A object
- *       model. The assembled {@code ValueObject} graph (a {@code Map<String,Object>})
- *       is then mapped into the typed payload record graph by generated
- *       {@code from<Payload>(Map)} helpers. This is the codegen-wrapping-runtime
- *       pattern (a generated DAO calling OMDB) and CLOSES the nested gap.</li>
- * </ul>
+ * <p><b>Tolerant extract — one metadata-driven path (FR-010 / FR-011 + Plan 2.1).</b>
+ * For {@code @format: json|xml} outputs the parser also emits a tolerant best-effort
+ * {@code extractLenient(MetaDataLoader, String[, ExtractOptions])} entry point
+ * (never-throwing; lost/malformed components are null in the typed payload +
+ * classified in the report). It resolves this payload's {@code MetaObject} by its
+ * baked FQN from the supplied loader and delegates to
+ * {@link com.metaobjects.object.extract.MetaObjectExtractor}, which assembles the
+ * full object graph (nested objects + arrays-of-objects + enum coercion +
+ * generalized {@code @default}) reflection-free via the Phase A object model,
+ * reading the live {@code MetaField} metadata directly (so {@code extends}
+ * inheritance "just works" — no baked snapshot to drift). The assembled
+ * {@code ValueObject} graph (a {@code Map<String,Object>}) is then mapped into the
+ * typed payload record graph by generated {@code from<Payload>(Map)} helpers. This
+ * is the codegen-wrapping-runtime pattern (a generated DAO calling OMDB).
  *
- * <p><b>Consumer dependency (delegating extract).</b> The runtime-delegating
+ * <p><b>Consumer dependency (delegating extract).</b> The
  * {@code extractLenient(MetaDataLoader, ...)} overload references
  * {@code com.metaobjects.object.extract.MetaObjectExtractor} (module
  * {@code metaobjects-om}) and {@code com.metaobjects.loader.MetaDataLoader}
  * ({@code metaobjects-metadata}) in addition to the {@code metaobjects-render}
- * extract engine. Consumers wanting nested extraction must have {@code metaobjects-om}
- * (which transitively brings {@code render} + {@code metadata}) on the classpath.
- * The self-contained {@code extractLenient(String)} needs only {@code metaobjects-render}.
+ * extract engine. Consumers must have {@code metaobjects-om} (which transitively
+ * brings {@code render} + {@code metadata}) on the classpath.
  *
  * <p><b>Consumer dependency.</b> The emitted parser file imports from
  * {@code com.fasterxml.jackson.databind.ObjectMapper} and
@@ -185,12 +176,8 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         boolean emitExtractLenient = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
             || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
         if (emitExtractLenient) {
-            src.append("import com.metaobjects.render.extract.FieldKind;\n");
-            src.append("import com.metaobjects.render.extract.FieldSpec;\n");
             src.append("import com.metaobjects.render.extract.Format;\n");
-            src.append("import com.metaobjects.render.extract.Extract;\n");
             src.append("import com.metaobjects.render.extract.ExtractMap;\n");
-            src.append("import com.metaobjects.render.extract.ExtractSchema;\n");
         }
         src.append("\n");
         src.append("/** Parser for LLM responses matching the `")
@@ -208,35 +195,11 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("        return MAPPER.readValue(text, ").append(payloadClass).append(".class);\n");
         src.append("    }\n");
         if (emitExtractLenient) {
-            String schemaLit = ExtractSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass);
-            String ctorArgs = ExtractSchemaEmitter.constructorArgs(payloadVo, payloadClass);
             String formatEnum = TemplateConstants.FORMAT_XML.equalsIgnoreCase(format)
                 ? "Format.XML" : "Format.JSON";
             String payloadFqn = payloadVo.getName();
 
-            // ---- Self-contained, scalar/enum-only extract (back-compat; nested stays null) ----
-            src.append("\n");
-            src.append("    private static final ExtractSchema EXTRACT_SCHEMA =\n");
-            src.append("        ").append(schemaLit).append(";\n");
-            src.append("\n");
-            src.append("    /**\n");
-            src.append("     * Self-contained tolerant extraction; never throws. Components are null where\n");
-            src.append("     * lost/malformed. Does NOT populate nested-object / array-of-object components\n");
-            src.append("     * (use the {@code extractLenient(MetaDataLoader, String)} overload for full nested extraction).\n");
-            src.append("     */\n");
-            src.append("    public static com.metaobjects.render.extract.ExtractionResult<").append(payloadClass).append("> extractLenient(String text) {\n");
-            src.append("        return extractLenient(text, com.metaobjects.render.extract.ExtractOptions.defaults());\n");
-            src.append("    }\n");
-            src.append("\n");
-            src.append("    public static com.metaobjects.render.extract.ExtractionResult<").append(payloadClass).append("> extractLenient(String text, com.metaobjects.render.extract.ExtractOptions opts) {\n");
-            src.append("        com.metaobjects.render.extract.ExtractionOutcome o = Extract.extract(text, EXTRACT_SCHEMA, opts);\n");
-            src.append("        java.util.Map<String, Object> d = o.data();\n");
-            src.append("        ").append(payloadClass).append(" data = new ").append(payloadClass).append("(\n");
-            src.append("                ").append(ctorArgs).append(");\n");
-            src.append("        return new com.metaobjects.render.extract.ExtractionResult<>(data, o.report());\n");
-            src.append("    }\n");
-
-            // ---- Runtime-delegating extract (closes the nested gap, Plan 2.1) ----
+            // ---- Runtime-delegating extract (the single metadata-driven extract path) ----
             src.append("\n");
             src.append("    /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */\n");
             src.append("    public static final String PAYLOAD_FQN = \"").append(escapeJava(payloadFqn)).append("\";\n");

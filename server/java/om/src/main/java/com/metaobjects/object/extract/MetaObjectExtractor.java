@@ -334,7 +334,7 @@ public final class MetaObjectExtractor {
     }
 
     // =========================================================================
-    // Enum-attr reading (mirrors codegen-spring ExtractSchemaEmitter.enumFieldSpec)
+    // Enum-attr reading (inheritance-aware, read directly off the live MetaField)
     // =========================================================================
 
     @SuppressWarnings("unchecked")
@@ -360,8 +360,7 @@ public final class MetaObjectExtractor {
 
     /**
      * Resolve the enum normalization mode: field-level {@code @normalize}, else the owning
-     * object's {@code @normalize}, else the global default ("strip"). Mirrors the
-     * codegen-spring {@code ExtractSchemaEmitter.resolveNormalize}.
+     * object's {@code @normalize}, else the global default ("strip"). Inheritance-aware.
      */
     private static String resolveNormalize(MetaField<?> field, MetaObject owner) {
         String fieldMode = inheritedAttrString(field, EnumField.ATTR_NORMALIZE);

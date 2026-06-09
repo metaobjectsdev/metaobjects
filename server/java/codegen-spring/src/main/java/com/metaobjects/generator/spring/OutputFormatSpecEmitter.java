@@ -29,7 +29,7 @@ import java.util.Properties;
  * java.util.List.of(<PromptField...>))} source snippet ready for embedding
  * in a generated Java class.
  *
- * <p>Field-kind mapping (mirrors {@link SpringTypeMapper} / {@link ExtractSchemaEmitter}):
+ * <p>Field-kind mapping (mirrors {@link SpringTypeMapper}):
  * <ul>
  *   <li>{@link EnumField} → {@code FieldKind.ENUM}</li>
  *   <li>{@link StringField} → {@code FieldKind.STRING}</li>
@@ -200,7 +200,6 @@ final class OutputFormatSpecEmitter {
 
     /**
      * Returns {@code true} when the field carries {@code @required: true}.
-     * Mirrors {@link ExtractSchemaEmitter#isRequired}.
      */
     private static boolean isRequired(MetaField<?> field) {
         return field.hasMetaAttr(MetaField.ATTR_REQUIRED)
@@ -233,8 +232,7 @@ final class OutputFormatSpecEmitter {
      * Values are escaped via {@link #javaStringLiteral(String)}.
      *
      * <p>{@code java.util.Map.of} only has overloads up to 10 key-value pairs; using
-     * {@code Map.ofEntries} removes that arity cap and allows any number of entries.
-     * Mirrors {@link ExtractSchemaEmitter#buildMapOfLiteral}.</p>
+     * {@code Map.ofEntries} removes that arity cap and allows any number of entries.</p>
      */
     private static String buildMapOfEntriesLiteral(Properties props) {
         List<String> keys = new ArrayList<>();
@@ -259,9 +257,7 @@ final class OutputFormatSpecEmitter {
      * (i.e. between double-quote delimiters). Escapes backslashes, double quotes,
      * and common control characters (tab, newline, carriage-return).
      *
-     * <p>ExtractSchemaEmitter left equivalent escaping as a TODO for alias keys
-     * (enum member symbols are identifier-safe, so the risk was low). Here,
-     * {@code @example} and {@code @instruction} are free-text authored by
+     * <p>{@code @example} and {@code @instruction} are free-text authored by
      * developers and are significantly more likely to contain quotes or
      * newlines, so escaping is applied eagerly.</p>
      */

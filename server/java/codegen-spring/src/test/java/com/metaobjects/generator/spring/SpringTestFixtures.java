@@ -36,8 +36,8 @@ public final class SpringTestFixtures {
     // -------------------------------------------------------------------------
 
     /**
-     * Inline metadata declaring one {@code object.value} for
-     * {@link ExtractSchemaEmitter} unit tests. Package: {@code acme::ai}.
+     * Inline metadata declaring one {@code object.value} for output-codegen unit tests.
+     * Package: {@code acme::ai}.
      * Fields: {@code text} (string, required), {@code confidence} (enum, required,
      * values HIGH/OK/LOW, alias medium→OK), {@code note} (string, optional).
      */
@@ -50,59 +50,6 @@ public final class SpringTestFixtures {
                                     "@values": ["HIGH","OK","LOW"],
                                     "@enumAlias": { "medium": "OK" } } },
                 { "field.string":  { "name": "note" } }
-            ] } }
-          ] }
-        }
-        """;
-
-    /**
-     * Inline metadata declaring an {@code object.value} whose single enum field has
-     * 12 {@code @enumAlias} entries — more than the 10-pair limit of
-     * {@code java.util.Map.of}. Used by {@link ExtractSchemaEmitterTest} to verify that
-     * {@link ExtractSchemaEmitter} emits {@code Map.ofEntries} instead of {@code Map.of}.
-     * Package: {@code acme::ai}. VO: {@code BigAliasPayload}.
-     * Field: {@code label} (enum, required, values HIGH/LOW, aliases a1..a12 → HIGH).
-     */
-    static final String EXTRACT_BIG_ALIAS_FIXTURE = """
-        {
-          "metadata.root": { "package": "acme::ai", "children": [
-            { "object.value": { "name": "BigAliasPayload", "children": [
-                { "field.enum": { "name": "label", "@required": true,
-                                  "@values": ["HIGH","LOW"],
-                                  "@enumAlias": {
-                                    "a1": "HIGH", "a2": "HIGH", "a3": "HIGH",
-                                    "a4": "HIGH", "a5": "HIGH", "a6": "HIGH",
-                                    "a7": "HIGH", "a8": "HIGH", "a9": "HIGH",
-                                    "a10": "HIGH", "a11": "HIGH", "a12": "HIGH"
-                                  } } }
-            ] } }
-          ] }
-        }
-        """;
-
-    /**
-     * FR-011 fixture: an {@code object.value} carrying an object-level {@code @normalize}
-     * default, plus enum fields exercising {@code @coerceDefault} and normalize resolution.
-     * Package: {@code acme::ai}. VO: {@code Fr011Payload}.
-     * <ul>
-     *   <li>{@code status}: enum HIGH/OK/LOW, owns {@code @coerceDefault: "LOW"}, no own
-     *       {@code @normalize} → inherits the object default {@code "collapse"}.</li>
-     *   <li>{@code phase}: enum HIGH/OK/LOW, owns {@code @normalize: "none"} (overrides object).</li>
-     *   <li>{@code plain}: enum HIGH/OK/LOW, no FR-011 attrs but inherits object {@code "collapse"}.</li>
-     * </ul>
-     */
-    static final String EXTRACT_FR011_FIXTURE = """
-        {
-          "metadata.root": { "package": "acme::ai", "children": [
-            { "object.value": { "name": "Fr011Payload", "@normalize": "collapse", "children": [
-                { "field.enum": { "name": "status", "@required": true,
-                                  "@values": ["HIGH","OK","LOW"],
-                                  "@coerceDefault": "LOW" } },
-                { "field.enum": { "name": "phase", "@required": true,
-                                  "@values": ["HIGH","OK","LOW"],
-                                  "@normalize": "none" } },
-                { "field.enum": { "name": "plain", "@required": false,
-                                  "@values": ["HIGH","OK","LOW"] } }
             ] } }
           ] }
         }
