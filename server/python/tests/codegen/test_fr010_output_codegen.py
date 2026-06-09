@@ -151,15 +151,19 @@ def test_xml_format_selects_xml_enum_and_skips_extract_for_text() -> None:
     xml_root = _rich_root(fmt="xml")
     parser = render_output_parser(xml_root.own_children()[1], xml_root)
     assert parser is not None
-    assert "ExtractSchema(Format.XML," in parser
-    assert "def extract_lenient_task_output(" in parser
+    # The single (loader-delegating) extract path passes Format.XML to the runtime extract.
+    assert "extract_object(mo, text, Format.XML, opts)" in parser
+    assert "def extract_lenient_task_output_with_loader(" in parser
+    # No baked snapshot survives (Move 1).
+    assert "ExtractSchema" not in parser
+    assert "def extract_lenient_task_output(" not in parser
 
     text_root = _rich_root(fmt="text")
     text_parser = render_output_parser(text_root.own_children()[1], text_root)
     assert text_parser is not None
     # text-format outputs get NO extract — strict parser only.
-    assert "def extract_lenient_task_output(" not in text_parser
-    assert "ExtractSchema" not in text_parser
+    assert "def extract_lenient_task_output" not in text_parser
+    assert "extract_object" not in text_parser
     # ...and no prompt fragment.
     assert render_output_prompt(text_root.own_children()[1], text_root) is None
 
@@ -197,7 +201,7 @@ def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
         "```\n"
         "Hope that helps!"
     )
-    result = parser_mod.extract_lenient_task_output(dirty)
+    result = parser_mod.extract_lenient_task_output_with_loader(root, dirty)
 
     # The @enumAlias fold: off-vocab "medium" -> canonical "LOW".
     assert result.data is not None
@@ -312,7 +316,7 @@ def test_generated_extract_folds_coerce_default_and_classifies_defaulted(
 
     # Off-vocab confidence "banana" → folds to @coerceDefault "LOW", DEFAULTED.
     dirty = '{"text":"hi","confidence":"banana"}'
-    result = parser_mod.extract_lenient_opinion_output(dirty)
+    result = parser_mod.extract_lenient_opinion_output_with_loader(root, dirty)
 
     assert result.data is not None
     assert result.data.text == "hi"
@@ -325,9 +329,9 @@ def test_generated_extract_folds_coerce_default_and_classifies_defaulted(
 
 
 # ---------------------------------------------------------------------------
-# FR-010 nested-codegen-gap PROOF — the runtime-delegating extract populates
-# nested-object + array-of-object components (the self-contained path leaves
-# them None). Import-and-run via the generated parser + a loaded MetaRoot.
+# FR-010 nested PROOF — the single (loader-delegating) extract populates
+# nested-object + array-of-object components by reading the live metadata.
+# Import-and-run via the generated parser + a loaded MetaRoot.
 # Mirrors the Java/Kotlin/TS nested pilots.
 # ---------------------------------------------------------------------------
 
@@ -427,7 +431,7 @@ def test_delegating_extract_populates_nested_and_array_of_objects(
 ) -> None:
     """Import-and-run PROOF: the generated delegating extract, given a loaded MetaRoot
     + dirty input, FULLY populates the nested object + array-of-objects into typed
-    mirrors. The self-contained path leaves those components None."""
+    mirrors (the single metadata-driven extract path)."""
     root = _nested_root()
     parser_files = OutputParserGenerator().generate(_ctx(root))
     assert len(parser_files) == 1
@@ -452,14 +456,7 @@ def test_delegating_extract_populates_nested_and_array_of_objects(
         "```\n"
     )
 
-    # --- self-contained path: nested components stay None (the historical gap) ---
-    self_contained = parser_mod.extract_lenient_order_output(dirty)
-    assert self_contained.data is not None
-    assert self_contained.data.customer == "Ada"
-    assert self_contained.data.address is None
-    assert self_contained.data.items is None
-
-    # --- delegating path: nested + array-of-objects FULLY populate ---
+    # --- the single (delegating) path: nested + array-of-objects FULLY populate ---
     result = parser_mod.extract_lenient_order_output_with_loader(root, dirty)
     assert result.data is not None
     assert result.data.customer == "Ada"

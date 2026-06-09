@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from metaobjects.codegen import extract_delegate_emitter as rde
-from metaobjects.codegen import extract_schema_emitter as rse
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -101,28 +100,18 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     ]
 
     if emit_extract_lenient:
-        helpers = rse.extract_map_imports(payload)
         lines.append("from dataclasses import dataclass")
         lines.append("")
         lines.append("from metaobjects.render import (")
-        lines.append("    FieldKind,")
-        lines.append("    FieldSpec,")
         lines.append("    Format,")
         lines.append("    ExtractOptions,")
-        lines.append("    ExtractSchema,")
         lines.append("    ExtractionResult,")
-        lines.append("    extract,")
         lines.append(")")
-        if helpers:
-            lines.append("from metaobjects.render.extract.extract_map import (")
-            for h in helpers:
-                lines.append(f"    {h},")
-            lines.append(")")
-        # FR-010 nested-gap: the runtime-delegating path resolves the payload
-        # MetaObject from a loaded MetaRoot and delegates to the metadata-driven
-        # runtime extract (which assembles the FULL nested object graph
-        # reflection-free). Codegen-wrapping-runtime — mirrors the Java/Kotlin/TS
-        # pilots.
+        # FR-010: the single metadata-driven extract path resolves the payload
+        # MetaObject from a loaded MetaRoot and delegates to the runtime extract
+        # (which assembles the FULL nested object graph reflection-free by reading
+        # the live metadata directly). Codegen-wrapping-runtime — mirrors the
+        # Java/Kotlin/TS pilots.
         lines.append(
             "from metaobjects.meta.core.object.meta_object import MetaObject"
         )
@@ -150,46 +139,14 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     )
 
     if emit_extract_lenient:
-        schema_literal = rse.schema_literal(payload, fmt_str, payload_class)
-        initializer = rse.mirror_initializer(payload, extracted_class)
-        # FR-010 nested-gap: the extracted mirror is emitted nested-AWARE — the
-        # payload mirror keeps the canonical ``<Name>PayloadExtracted`` name, and a
-        # mirror dataclass is emitted for every reachable nested value-object. Both
-        # the self-contained ``extract_<name>()`` initializer (scalars/enums only)
-        # and the delegating path share the ONE payload mirror type.
+        # FR-010 nested-AWARE extracted mirror: the payload mirror keeps the canonical
+        # ``<Name>PayloadExtracted`` name, and a mirror dataclass is emitted for every
+        # reachable nested value-object. The single (delegating) extract path returns it.
         lines.extend(rde.nested_mirror_dataclasses(payload, root, extracted_class))
         lines.append("")
         lines.append("")
-        lines.append("# FR-010 baked extract descriptor — the format/root/field shape")
-        lines.append("# the tolerant parser repairs dirty LLM output against.")
-        lines.append(f"_EXTRACT_SCHEMA: ExtractSchema = {schema_literal}")
-        lines.append("")
-        lines.append("")
-        lines.append(
-            f"def {extract_lenient_fn}("
-            "text: str, opts: ExtractOptions | None = None"
-            f") -> ExtractionResult[{extracted_class}]:"
-        )
-        lines.append(
-            '    """Self-contained tolerant best-effort extraction of a dirty LLM response'
-        )
-        lines.append(f"    into a ``{extracted_class}`` mirror; never raises.")
-        lines.append("")
-        lines.append(f"    Unlike the strict ``{parse_fn}`` (Pydantic, throw-only), this folds")
-        lines.append("    fenced / preamble / prose-wrapped / truncated input and classifies")
-        lines.append("    each field via the returned report. Components are ``None`` where the")
-        lines.append("    value was lost or malformed. Does NOT populate nested-object /")
-        lines.append("    array-of-object components (those stay ``None`` — the historical")
-        lines.append(f"    FR-010 gap); use ``{extract_lenient_fn}_with_loader(root, text)`` for full")
-        lines.append('    nested extraction, which delegates to the runtime extract."""')
-        lines.append("    outcome = extract(text, _EXTRACT_SCHEMA, opts)")
-        lines.append("    d = outcome.data")
-        lines.append(f"    data = {initializer}")
-        lines.append("    return ExtractionResult(data=data, report=outcome.report)")
-        lines.append("")
-        lines.append("")
 
-        # ---- Runtime-delegating extract (closes the nested gap) ----
+        # ---- Runtime-delegating extract (the single metadata-driven extract path) ----
         # The baked PAYLOAD_NAME is the resolved payload VO's SIMPLE name: the
         # delegating entry resolves the MetaObject from a loaded MetaRoot by it
         # (root child named ``payload.name``), then delegates to the runtime
@@ -215,13 +172,13 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
             f") -> ExtractionResult[{extracted_class}]:"
         )
         lines.append(
-            '    """Runtime-delegating tolerant extraction; never raises. Unlike'
+            '    """Runtime-delegating tolerant best-effort extraction; never raises.'
         )
-        lines.append(f"    ``{extract_lenient_fn}(text)``, this FULLY populates nested-object and")
-        lines.append("    array-of-object components by delegating to the metadata-driven")
-        lines.append("    runtime ``extract_object`` (which assembles the whole graph")
-        lines.append("    reflection-free via the Phase A object model), then maps the")
-        lines.append(f"    assembled graph into the typed ``{extracted_class}`` mirror.")
+        lines.append("    FULLY populates nested-object and array-of-object components by")
+        lines.append("    delegating to the metadata-driven runtime ``extract_object`` (which")
+        lines.append("    assembles the whole graph reflection-free via the Phase A object")
+        lines.append("    model, reading the live metadata directly), then maps the assembled")
+        lines.append(f"    graph into the typed ``{extracted_class}`` mirror.")
         lines.append("")
         lines.append("    :param root: a loaded ``MetaRoot`` that declares the")
         lines.append(f'                 ``{payload.name}`` value-object."""')
@@ -248,7 +205,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         lines.append("")
         lines.append("")
         lines.append(
-            f'__all__ = ["{parse_fn}", "{extract_lenient_fn}", "{extract_lenient_with_fn}", '
+            f'__all__ = ["{parse_fn}", "{extract_lenient_with_fn}", '
             f'"{extracted_class}", "PAYLOAD_NAME"]'
         )
     else:
