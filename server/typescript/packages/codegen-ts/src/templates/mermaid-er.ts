@@ -91,9 +91,17 @@ export function renderEntityNeighborhoodErBlock(
   // Resolve neighbor kind so the flowchart can color/shape it accordingly.
   // Same-package = focal's effective package; differing or unknown = external.
   // Value object = object.value subtype. Aborts return classify→undefined.
+  //
+  // `node.package` is the OWN attr only — entities that take their package
+  // from the file-default (`metadata.root: { package: ... }`) leave it
+  // undefined. Use `fileDefaultPackage` as the fallback so cross-file
+  // boundary detection works in the common case where adopters set the
+  // package once at the root, not on every entity. Mirrors the same
+  // resolution rule docs-paths.ts uses for page placement.
   const byName = new Map<string, MetaObject>();
   for (const obj of root.objects()) byName.set(obj.name, obj);
-  const focalPackage = focal.package;
+  const effectivePkg = (n: MetaObject) => n.package ?? n.fileDefaultPackage;
+  const focalPackage = effectivePkg(focal);
 
   const sameDomain = new Set<string>();
   const external   = new Set<string>();
@@ -109,7 +117,7 @@ export function renderEntityNeighborhoodErBlock(
       return "vo";
     }
     if (target.isAbstract) return undefined;
-    if (target.package === focalPackage) {
+    if (effectivePkg(target) === focalPackage) {
       sameDomain.add(name);
       return "same";
     }
