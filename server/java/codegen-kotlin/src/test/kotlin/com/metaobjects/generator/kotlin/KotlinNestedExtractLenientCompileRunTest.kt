@@ -23,8 +23,7 @@ import kotlin.test.assertTrue
  * `extractLenient(loader: MetaDataLoader, text: String)` on DIRTY nested JSON.</p>
  *
  * <p>Asserts the nested object AND the array-of-objects components are fully POPULATED
- * (NOT null) in the typed Extracted mirror — which the self-contained `extractLenient(text)`
- * overload cannot do (it leaves them null). This is the codegen-wrapping-runtime pattern:
+ * (NOT null) in the typed Extracted mirror. This is the codegen-wrapping-runtime pattern:
  * the generated parser resolves its payload MetaObject by FQN from the supplied loader,
  * delegates to [com.metaobjects.object.extract.MetaObjectExtractor] (which assembles the
  * full graph reflection-free), then maps the assembled ValueObject graph into the typed

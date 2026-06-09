@@ -134,13 +134,9 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (emitExtractLenient) {
                 append("import com.metaobjects.loader.MetaDataLoader\n")
                 append("import com.metaobjects.`object`.extract.MetaObjectExtractor\n")
-                append("import com.metaobjects.render.extract.FieldKind\n")
-                append("import com.metaobjects.render.extract.FieldSpec\n")
                 append("import com.metaobjects.render.extract.Format\n")
-                append("import com.metaobjects.render.extract.Extract\n")
                 append("import com.metaobjects.render.extract.ExtractMap\n")
                 append("import com.metaobjects.render.extract.ExtractOptions\n")
-                append("import com.metaobjects.render.extract.ExtractSchema\n")
                 append("import com.metaobjects.render.extract.ExtractionResult\n")
             }
             append("\n")
@@ -160,13 +156,6 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             append(" {\n")
             append("\n")
             append("    private val json: Json = Json { ignoreUnknownKeys = false }\n")
-            if (emitExtractLenient) {
-                append("\n")
-                append("    private val EXTRACT_SCHEMA: ExtractSchema =\n")
-                append("        ")
-                append(KotlinExtractSchemaEmitter.schemaLiteral(payloadVo, format, payloadClass))
-                append("\n")
-            }
             append("\n")
             append("    /**\n")
             append("     * Parse an LLM response into a typed [")
@@ -196,36 +185,11 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             append(parseFn)
             append("(text) }\n")
             if (emitExtractLenient) {
-                val ctorArgs = KotlinExtractSchemaEmitter.extractedCtorArgs(payloadVo)
                 val formatEnum = if (TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true))
                     "Format.XML" else "Format.JSON"
                 val payloadFqn = payloadVo.name
 
-                // ---- Self-contained, scalar/enum-only extract (back-compat; nested stays null) ----
-                append("\n")
-                append("    /**\n")
-                append("     * Self-contained tolerant extraction; never throws. Components are null where\n")
-                append("     * lost/malformed. Does NOT populate nested-object / array-of-object components\n")
-                append("     * (use the extractLenient(loader, text) overload for full nested extraction).\n")
-                append("     */\n")
-                append("    fun extractLenient(text: String): ExtractionResult<")
-                append(extractedClass)
-                append("> =\n")
-                append("        extractLenient(text, ExtractOptions.defaults())\n")
-                append("\n")
-                append("    fun extractLenient(text: String, opts: ExtractOptions): ExtractionResult<")
-                append(extractedClass)
-                append("> {\n")
-                append("        val o = Extract.extract(text, EXTRACT_SCHEMA, opts)\n")
-                append("        val d = o.data\n")
-                append("        return ExtractionResult(")
-                append(extractedClass)
-                append("(")
-                append(ctorArgs)
-                append("), o.report)\n")
-                append("    }\n")
-
-                // ---- Runtime-delegating extract (closes the nested gap) ----
+                // ---- Runtime-delegating extract (the single metadata-driven extract path) ----
                 append("\n")
                 append("    /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */\n")
                 append("    const val PAYLOAD_FQN: String = \"")
@@ -234,8 +198,8 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("\n")
                 append("    /**\n")
                 append("     * Tolerant best-effort extraction delegating to the runtime MetaObjectExtractor;\n")
-                append("     * never throws. Fully populates nested-object and array-of-object components\n")
-                append("     * (unlike the self-contained extractLenient(text) overload). Resolves this payload's\n")
+                append("     * never throws. Fully populates nested-object and array-of-object components by\n")
+                append("     * reading the live metadata directly. Resolves this payload's\n")
                 append("     * MetaObject by [PAYLOAD_FQN] from [loader].\n")
                 append("     */\n")
                 append("    fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<")

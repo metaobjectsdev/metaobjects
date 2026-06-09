@@ -1,6 +1,8 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.metadata.ktx.loadString
+import com.metaobjects.render.extract.ExtractOptions
 import com.metaobjects.render.extract.ExtractionResult
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
@@ -79,16 +81,17 @@ class KotlinOutputCompilesTest {
 
     /**
      * FR-010 compile-proof: generates OpinionPayload.kt (KotlinPayloadGenerator),
-     * OpinionParser.kt with extractLenient() + EXTRACT_SCHEMA + OpinionExtracted
+     * OpinionParser.kt with the loader-delegating extractLenient(loader, text) + OpinionExtracted
      * (KotlinOutputParserGenerator), and OpinionPrompt.kt with renderFormat()
      * (KotlinOutputPromptGenerator), then compiles all three together and
-     * behaviorally exercises extractLenient() and renderFormat() via reflection.
+     * behaviorally exercises extractLenient(loader, ...) and renderFormat() via reflection.
      *
-     * Behavioral assertions:
-     *  - extractLenient("...{\"text\":\"hi\",\"confidence\":\"medium\"}...").data.confidence == "OK"
+     * Behavioral assertions (the extract delegates to MetaObjectExtractor, reading FR-011
+     * coercion attrs directly off the live metadata):
+     *  - extractLenient(loader, "...{\"text\":\"hi\",\"confidence\":\"medium\"}...").data.confidence == "OK"
      *    (alias medium→OK fires)
-     *  - extractLenient(...).data.text == "hi"
-     *  - extractLenient(...).report.hasLostRequired() == false
+     *  - extractLenient(loader, ...).data.text == "hi"
+     *  - extractLenient(loader, ...).report.hasLostRequired() == false
      *  - renderFormat() returns a non-empty string with no HTML comments (<!)
      */
     @Test fun `FR-010 extract and renderFormat compile and run`() {
@@ -146,10 +149,18 @@ class KotlinOutputCompilesTest {
             // The object's singleton instance is in the INSTANCE field (Kotlin object companion).
             val parserInstance = parserClass.getDeclaredField("INSTANCE").get(null)
 
-            val extractLenientMethod = parserClass.getDeclaredMethod("extractLenient", String::class.java)
+            // The single metadata-driven extract path: the loader-delegating overload
+            // resolves the payload MetaObject from the live loader (built from fr010Fixture)
+            // and delegates to MetaObjectExtractor — reading FR-011 coercion attrs directly
+            // off the live metadata (alias medium→OK; @coerceDefault banana→LOW).
+            val extractLenientMethod = parserClass.getDeclaredMethod(
+                "extractLenient", MetaDataLoader::class.java, String::class.java, ExtractOptions::class.java
+            )
             @Suppress("UNCHECKED_CAST")
             val extractionResult = extractLenientMethod.invoke(parserInstance,
-                "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\",\"priority\":\"banana\"}\n```"
+                loader,
+                "Sure!\n```json\n{\"text\":\"hi\",\"confidence\":\"medium\",\"priority\":\"banana\"}\n```",
+                ExtractOptions.defaults()
             ) as ExtractionResult<*>
 
             // data: OpinionExtracted — access fields via Kotlin data class properties (getters).

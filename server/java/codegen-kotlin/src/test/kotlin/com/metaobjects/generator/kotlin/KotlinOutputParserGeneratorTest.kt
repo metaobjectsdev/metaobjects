@@ -234,7 +234,8 @@ class KotlinOutputParserGeneratorTest {
     }
 
     // ---------------------------------------------------------------------------
-    // 7. FR-010: json format emits extractLenient() + EXTRACT_SCHEMA + Extracted class.
+    // 7. FR-010: json format emits the loader-delegating extractLenient() + Extracted class
+    //    (Move 1: no baked EXTRACT_SCHEMA / self-contained overload).
     // ---------------------------------------------------------------------------
     @Test fun jsonFormatEmitsExtractLenientBlock() {
         val fx = """{
@@ -264,40 +265,39 @@ class KotlinOutputParserGeneratorTest {
             // Extracted data class emitted at top level.
             assertTrue("data class AnswerExtracted(" in src, "missing Extracted class decl; src:\n$src")
 
-            // EXTRACT_SCHEMA constant inside the object.
-            assertTrue("EXTRACT_SCHEMA" in src, "missing EXTRACT_SCHEMA; src:\n$src")
+            // The single metadata-driven extract path: loader-delegating overload only.
+            assertTrue("fun extractLenient(loader: MetaDataLoader, text: String" in src,
+                "missing loader-delegating extractLenient overload; src:\n$src")
+            assertTrue("MetaObjectExtractor.extract(mo, text" in src,
+                "missing MetaObjectExtractor delegation; src:\n$src")
+            assertTrue("PAYLOAD_FQN" in src, "missing PAYLOAD_FQN constant; src:\n$src")
+            assertTrue("raw.report" in src, "delegating overload should map raw.report; src:\n$src")
 
-            // Two extractLenient() overloads.
-            assertTrue("fun extractLenient(text: String): ExtractionResult<" in src,
-                "missing extractLenient(String) overload; src:\n$src")
-            assertTrue("fun extractLenient(text: String, opts: ExtractOptions)" in src,
-                "missing extractLenient(String, ExtractOptions) overload; src:\n$src")
+            // No baked snapshot survives (Move 1).
+            assertFalse("EXTRACT_SCHEMA" in src, "baked EXTRACT_SCHEMA must be gone; src:\n$src")
+            assertFalse("fun extractLenient(text: String)" in src,
+                "self-contained extractLenient(String) overload must be gone; src:\n$src")
+            assertFalse("Extract.extract(" in src, "baked Extract.extract call must be gone; src:\n$src")
 
-            // Engine call site.
-            assertTrue("Extract.extract(text, EXTRACT_SCHEMA" in src,
-                "missing Extract.extract(...) call site; src:\n$src")
-
-            // Kotlin property access on ExtractionOutcome (not method call).
-            assertTrue("val d = o.data" in src, "expected o.data property access; src:\n$src")
-            assertTrue("o.report" in src, "expected o.report property access; src:\n$src")
-
-            // Extract imports.
-            assertTrue("import com.metaobjects.render.extract.Extract" in src,
-                "missing Extract import; src:\n$src")
+            // Imports for the delegating path; the baked-only ones must be gone.
             assertTrue("import com.metaobjects.render.extract.ExtractionResult" in src,
                 "missing ExtractionResult import; src:\n$src")
             assertTrue("import com.metaobjects.render.extract.ExtractOptions" in src,
                 "missing ExtractOptions import; src:\n$src")
-            assertTrue("import com.metaobjects.render.extract.ExtractSchema" in src,
-                "missing ExtractSchema import; src:\n$src")
             assertTrue("import com.metaobjects.render.extract.ExtractMap" in src,
                 "missing ExtractMap import; src:\n$src")
-            assertTrue("import com.metaobjects.render.extract.FieldSpec" in src,
-                "missing FieldSpec import; src:\n$src")
-            assertTrue("import com.metaobjects.render.extract.FieldKind" in src,
-                "missing FieldKind import; src:\n$src")
             assertTrue("import com.metaobjects.render.extract.Format" in src,
                 "missing Format import; src:\n$src")
+            assertTrue("import com.metaobjects.loader.MetaDataLoader" in src,
+                "missing MetaDataLoader import; src:\n$src")
+            assertFalse("import com.metaobjects.render.extract.ExtractSchema" in src,
+                "ExtractSchema import must be gone; src:\n$src")
+            assertFalse("import com.metaobjects.render.extract.FieldSpec" in src,
+                "FieldSpec import must be gone; src:\n$src")
+            assertFalse("import com.metaobjects.render.extract.FieldKind" in src,
+                "FieldKind import must be gone; src:\n$src")
+            assertFalse("import com.metaobjects.render.extract.Extract\n" in src,
+                "Extract import must be gone; src:\n$src")
 
             // Existing parse/safeParse API must still be present.
             assertTrue("fun parseAnswer" in src, "missing fun parseAnswer; src:\n$src")
@@ -410,12 +410,12 @@ class KotlinOutputParserGeneratorTest {
 
             assertTrue("data class SummaryExtracted(" in src,
                 "xml format must emit Extracted class; src:\n$src")
-            assertTrue("EXTRACT_SCHEMA" in src,
-                "xml format must emit EXTRACT_SCHEMA; src:\n$src")
+            assertFalse("EXTRACT_SCHEMA" in src,
+                "xml format must NOT emit a baked EXTRACT_SCHEMA (Move 1); src:\n$src")
             assertTrue("Format.XML" in src,
-                "xml format must use Format.XML in schema literal; src:\n$src")
-            assertTrue("fun extractLenient(text: String): ExtractionResult<" in src,
-                "xml format must emit extractLenient() overload; src:\n$src")
+                "xml format must pass Format.XML to the runtime extractor; src:\n$src")
+            assertTrue("fun extractLenient(loader: MetaDataLoader, text: String" in src,
+                "xml format must emit the loader-delegating extractLenient overload; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

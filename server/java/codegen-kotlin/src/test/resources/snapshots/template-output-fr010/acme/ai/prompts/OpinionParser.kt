@@ -4,13 +4,9 @@ package acme.ai.prompts
 import kotlinx.serialization.json.Json
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.extract.MetaObjectExtractor
-import com.metaobjects.render.extract.FieldKind
-import com.metaobjects.render.extract.FieldSpec
 import com.metaobjects.render.extract.Format
-import com.metaobjects.render.extract.Extract
 import com.metaobjects.render.extract.ExtractMap
 import com.metaobjects.render.extract.ExtractOptions
-import com.metaobjects.render.extract.ExtractSchema
 import com.metaobjects.render.extract.ExtractionResult
 
 data class OpinionExtracted(
@@ -23,9 +19,6 @@ data class OpinionExtracted(
 object OpinionParser {
 
     private val json: Json = Json { ignoreUnknownKeys = false }
-
-    private val EXTRACT_SCHEMA: ExtractSchema =
-        ExtractSchema(Format.JSON, "OpinionPayload", listOf(FieldSpec.scalar("text", FieldKind.STRING, true), FieldSpec.enumField("confidence", true, listOf("HIGH", "OK", "LOW"), mapOf("medium" to "OK")), FieldSpec.scalar("note", FieldKind.STRING, false)))
 
     /**
      * Parse an LLM response into a typed [OpinionPayload].
@@ -41,27 +34,13 @@ object OpinionParser {
     fun safeParseOpinion(text: String): Result<OpinionPayload> =
         runCatching { parseOpinion(text) }
 
-    /**
-     * Self-contained tolerant extraction; never throws. Components are null where
-     * lost/malformed. Does NOT populate nested-object / array-of-object components
-     * (use the extractLenient(loader, text) overload for full nested extraction).
-     */
-    fun extractLenient(text: String): ExtractionResult<OpinionExtracted> =
-        extractLenient(text, ExtractOptions.defaults())
-
-    fun extractLenient(text: String, opts: ExtractOptions): ExtractionResult<OpinionExtracted> {
-        val o = Extract.extract(text, EXTRACT_SCHEMA, opts)
-        val d = o.data
-        return ExtractionResult(OpinionExtracted(ExtractMap.asString(d, "text"), ExtractMap.asString(d, "confidence"), ExtractMap.asString(d, "note")), o.report)
-    }
-
     /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */
     const val PAYLOAD_FQN: String = "acme::ai::OpinionOutputPayload"
 
     /**
      * Tolerant best-effort extraction delegating to the runtime MetaObjectExtractor;
-     * never throws. Fully populates nested-object and array-of-object components
-     * (unlike the self-contained extractLenient(text) overload). Resolves this payload's
+     * never throws. Fully populates nested-object and array-of-object components by
+     * reading the live metadata directly. Resolves this payload's
      * MetaObject by [PAYLOAD_FQN] from [loader].
      */
     fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<OpinionExtracted> {
