@@ -8,7 +8,7 @@ using static MetaObjects.Core.Attr.AttrConstants;
 namespace MetaObjects.Core.Documentation;
 
 /// <summary>
-/// The 7 universal documentation common attrs. Registered via the
+/// The 8 universal documentation common attrs. Registered via the
 /// TypeRegistry.RegisterCommonAttrs() hook by DocumentationTypes.DocTypesProvider.
 /// </summary>
 public static class DocumentationSchema
@@ -18,6 +18,10 @@ public static class DocumentationSchema
         new(DocumentationConstants.DOC_ATTR_DESCRIPTION, ATTR_SUBTYPE_STRING, Required: false,
             Description: "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. " +
                          "Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose)."),
+        new(DocumentationConstants.DOC_ATTR_SUMMARY, ATTR_SUBTYPE_STRING, Required: false,
+            Description: "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, " +
+                         "and AI prompts where the full @description is too long. Optional supplement to @description; " +
+                         "when @summary is unset, doc surfaces typically fall back to the first sentence of @description."),
         new(DocumentationConstants.DOC_ATTR_TITLE, ATTR_SUBTYPE_STRING, Required: false,
             Description: "Short single-line human label (e.g. 'Email' for a field.string email). " +
                          "Optional supplement to description."),

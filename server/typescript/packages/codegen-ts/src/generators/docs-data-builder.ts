@@ -39,6 +39,7 @@ import {
   VALIDATOR_ATTR_MIN,
   VALIDATOR_ATTR_MAX,
   DOC_ATTR_DESCRIPTION,
+  DOC_ATTR_SUMMARY,
   FIELD_ATTR_DB_COLUMN_TYPE,
   stripPackage,
 } from "@metaobjectsdev/metadata";
@@ -260,6 +261,11 @@ function entityDescription(entity: MetaObject): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+function entitySummary(entity: MetaObject): string | undefined {
+  const v = entity.attr(DOC_ATTR_SUMMARY);
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
 function describeIdentity(id: MetaIdentity): string {
   const fields = id.fields;
   const fieldList = fields.length === 1
@@ -436,6 +442,11 @@ export function buildEntityDocData(
     descriptionQuote = desc.split("\n").map((l) => `> ${l}`.trimEnd()).join("\n");
   }
 
+  // Summary — short single-line tagline. Rendered as italic lead-in just under
+  // the H1, ABOVE @description. Distinct enough that an entity can carry both
+  // (description = paragraph; summary = headline).
+  const summary = entitySummary(entity);
+
   const data: EntityDocData = {
     generatedMarker: `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`,
     entity: {
@@ -447,6 +458,10 @@ export function buildEntityDocData(
   };
 
   if (desc !== undefined) data.entity.description = desc;
+  if (summary !== undefined) {
+    data.entity.summary = summary;
+    data.summaryLead = `*${summary}*`;
+  }
   if (descriptionQuote !== undefined) data.descriptionQuote = descriptionQuote;
   if (src !== undefined) data.entity.source = src;
   if (entity.package !== undefined && entity.package !== "") {

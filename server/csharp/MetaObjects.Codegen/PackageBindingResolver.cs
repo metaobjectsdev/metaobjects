@@ -112,15 +112,19 @@ public static class PackageBindingResolver
         string? typeName = null,
         bool useProvidedEnumPrepend = false)
     {
-        // 1. Type-level override.
+        // 1. Type-level override — wins absolutely for both paths.
         if (!string.IsNullOrEmpty(package) && !string.IsNullOrEmpty(typeName))
         {
             var fqn = package + MetaPackageSeparator + typeName;
             if (config.TypeOverrides.TryGetValue(fqn, out var typeTarget) && !string.IsNullOrEmpty(typeTarget))
                 return typeTarget;
         }
-        // 2. Package-level override.
-        if (!string.IsNullOrEmpty(package) &&
+        // 2. Package-level override — applies ONLY to the default resolution path.
+        //    @provided enums often live in a parallel namespace tree from entities; a
+        //    PackageNamespaces override (which targets entity placement) must not bleed
+        //    into the @provided enum case.
+        if (!useProvidedEnumPrepend &&
+            !string.IsNullOrEmpty(package) &&
             config.PackageNamespaces.TryGetValue(package, out var pkgTarget) &&
             !string.IsNullOrEmpty(pkgTarget))
         {

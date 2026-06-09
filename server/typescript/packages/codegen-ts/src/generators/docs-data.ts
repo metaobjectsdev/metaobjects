@@ -121,6 +121,7 @@ export interface EntityDocData {
     source?: string;             // "meta.blog.json"
     package?: string;            // "acme::blog"
     description?: string;        // raw description text (may be multi-line)
+    summary?: string;            // raw summary text (single line)
   };
 
   /** @markdown — description as a blockquote (one `> ` per line). Present
@@ -128,6 +129,12 @@ export interface EntityDocData {
    *  descriptions don't have to be expressed as Mustache structural
    *  constructs. */
   descriptionQuote?: string;
+
+  /** @markdown — `@summary` rendered as a one-line italic lead-in (e.g.
+   *  `*Tracks ...*`). Present iff `entity.summary` is set. Distinct from
+   *  `descriptionQuote` (a blockquote) so an entity that carries BOTH
+   *  surfaces both — short headline above, expanded paragraph below. */
+  summaryLead?: string;
 
   /** @markdown — multi-line preamble block: Type / Source? / Package?, one
    *  per line, in the exact order matching the legacy emitter. Always
