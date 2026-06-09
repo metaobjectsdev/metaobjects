@@ -182,8 +182,8 @@ public final class MetaObjectExtractor {
         if (field instanceof EnumField ef) {
             List<String> values = enumValues(ef);
             Map<String, String> aliases = enumAliases(ef);
-            String coerceDefault = ownAttrString(ef, EnumField.ATTR_COERCE_DEFAULT);
-            String defaultValue = ownAttrString(ef, EnumField.ATTR_DEFAULT);
+            String coerceDefault = inheritedAttrString(ef, EnumField.ATTR_COERCE_DEFAULT);
+            String defaultValue = inheritedAttrString(ef, EnumField.ATTR_DEFAULT);
             String normalize = resolveNormalize(ef, owner);
             if (field.isArrayType()) {
                 return FieldSpec.enumArray(name, required, values, aliases, coerceDefault, normalize, defaultValue);
@@ -344,7 +344,7 @@ public final class MetaObjectExtractor {
     }
 
     private static Map<String, String> enumAliases(EnumField field) {
-        if (!field.hasMetaAttr(EnumField.ATTR_ENUM_ALIAS, false)) {
+        if (!field.hasMetaAttr(EnumField.ATTR_ENUM_ALIAS)) {
             return Map.of();
         }
         Object raw = field.getMetaAttr(EnumField.ATTR_ENUM_ALIAS).getValue();
@@ -364,9 +364,9 @@ public final class MetaObjectExtractor {
      * codegen-spring {@code ExtractSchemaEmitter.resolveNormalize}.
      */
     private static String resolveNormalize(MetaField<?> field, MetaObject owner) {
-        String fieldMode = ownAttrString(field, EnumField.ATTR_NORMALIZE);
+        String fieldMode = inheritedAttrString(field, EnumField.ATTR_NORMALIZE);
         if (fieldMode != null) return fieldMode;
-        String objMode = owner == null ? null : ownAttrString(owner, EnumField.ATTR_NORMALIZE);
+        String objMode = owner == null ? null : inheritedAttrString(owner, EnumField.ATTR_NORMALIZE);
         if (objMode != null) return objMode;
         return Normalize.DEFAULT;
     }
@@ -379,6 +379,20 @@ public final class MetaObjectExtractor {
     private static String ownAttrString(MetaData node, String attr) {
         if (!node.hasMetaAttr(attr, false)) return null;
         String s = node.getMetaAttr(attr, false).getValueAsString();
+        return (s == null || s.isEmpty()) ? null : s;
+    }
+
+    /**
+     * The string value of an attr on a node INCLUDING values inherited via {@code extends}
+     * (standard MetaData attribute inheritance, like {@code @values} already uses), or
+     * {@code null} when absent/empty. The enum-coercion attrs ({@code @enumAlias},
+     * {@code @coerceDefault}, {@code @normalize}, {@code @default}) MUST inherit so an abstract
+     * {@code field.enum}'s constraint set reaches the concrete fields that {@code extends} it —
+     * otherwise the FieldSpec snapshot silently drops the parent's coercion policy.
+     */
+    private static String inheritedAttrString(MetaData node, String attr) {
+        if (!node.hasMetaAttr(attr)) return null;
+        String s = node.getMetaAttr(attr).getValueAsString();
         return (s == null || s.isEmpty()) ? null : s;
     }
 
