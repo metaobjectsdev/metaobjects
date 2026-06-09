@@ -1,0 +1,15 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
+      { "object.entity": { "name": "Ticket", "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "status", "@required": true, "@values": ["OPEN", "PENDING", "CLOSED"] } },
+        { "field.enum":   { "name": "priority", "extends": "Priority" } },
+        { "source.rdb":   { "@table": "tickets" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } }
+    ]
+  }
+}
