@@ -161,9 +161,14 @@ public class JavaCodeWriter extends BaseObjectCodeWriter {
         }
         println(" */");
 
-        // Simple class header for deprecated generator
+        // Class header. Honor the object's abstract flag (MetaData.ATTR_IS_ABSTRACT): an abstract
+        // object emits `public abstract class` so it cannot be instantiated and serves only as the
+        // base its concrete subtypes inherit (via the extends clause). GeneratorUtil.isAbstract is
+        // an own-only read, so a concrete subtype extending an abstract base is NOT marked abstract.
         String extendsClause = (fullSuperName != null && !fullSuperName.isEmpty()) ? " extends " + fullSuperName : "";
-        println("public " + type + " " + name + extendsClause + " {");
+        String abstractMod = ("class".equals(type) && metaObject != null
+                && GeneratorUtil.isAbstract(metaObject)) ? "abstract " : "";
+        println("public " + abstractMod + type + " " + name + extendsClause + " {");
     }
 
     @Override
