@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "object.entity": { "name": "Base", "abstract": true, "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "createdBy", "@required": true, "@maxLength": 80 } }
+      ] } },
+      { "object.entity": { "name": "Auditable", "abstract": true, "extends": "Base", "children": [
+        { "field.string": { "name": "updatedBy" } }
+      ] } },
+      { "object.entity": { "name": "Product", "extends": "Auditable", "children": [
+        { "field.string": { "name": "sku", "@required": true, "@filterable": true } },
+        { "field.int":    { "name": "qtyOnHand" } },
+        { "source.rdb":   { "@table": "products" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } }
+    ]
+  }
+}
