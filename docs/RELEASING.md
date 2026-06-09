@@ -124,7 +124,99 @@ If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm b
 install`, verify, and `bun publish` it — the others stay at their current version. Tag scoped
 (e.g. `cli-v0.5.1`).
 
-## Other language ecosystems (Java / C# / Python)
+# Releasing the C# packages to NuGet
+
+How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Publishing**
+(OIDC from GitHub Actions) — **no long-lived API key, no signing certificate**. Read the
+**Gotchas** first.
+
+## What gets published
+
+Four packages, version-locked at the C# port version (currently `0.9.0`):
+
+| Package | Contents |
+|---|---|
+| `MetaObjects` | Loader + canonical serializer |
+| `MetaObjects.Render` | Mustache render + payload-VO + `verify` |
+| `MetaObjects.Codegen` | EF Core + ASP.NET codegen + the runtime filter/dispatch helpers generated code references |
+| `MetaObjects.Cli` | The `dotnet meta` .NET tool (`gen` / `verify` / `agent-docs`) |
+
+Shared package metadata lives in [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props);
+per-package `PackageId`/`Title`/`Description` live in each `.csproj`. Test/integration projects set
+`IsPackable=false` and never publish. There are no inter-package version-rewrite concerns like npm's
+`workspace:*` — `ProjectReference`s become NuGet dependencies pinned to the same `Version`.
+
+## How we publish: Trusted Publishing (OIDC)
+
+The workflow [`.github/workflows/publish-csharp.yml`](../.github/workflows/publish-csharp.yml) packs
+the four projects, exchanges a GitHub OIDC token for a short-lived (~1 hour) nuget.org key via
+`NuGet/login@v1`, then `dotnet nuget push`es. Trigger it manually (**Actions → publish-csharp → Run
+workflow**, with an optional version override) or by pushing a `csharp-v*` tag.
+
+### One-time nuget.org setup
+
+Create a Trusted Publishing policy (nuget.org → your username → **Trusted Publishing** → **Create**).
+For this repo (`github.com/metaobjectsdev/metaobjects`) enter **exactly**:
+
+| Field | Value |
+|---|---|
+| Policy Name | `metaobjects-csharp-publish` (any name) |
+| Package Owner | `metaobjects` (the org) |
+| Repository Owner | `metaobjectsdev` |
+| Repository | `metaobjects` |
+| Workflow File | `publish-csharp.yml` *(filename only — not the `.github/workflows/` path)* |
+| Environment | *(leave empty)* |
+
+Then add a GitHub repo secret (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+|---|---|
+| `NUGET_USER` | Your nuget.org **username** (the profile name at `nuget.org/profiles/<username>`) — **NOT** your `doug@dougmealing.com` login email |
+
+Because this repo is **public**, the policy activates immediately. (The "pending for 7 days" status
+the nuget.org docs mention only applies to *private* repos, where NuGet waits for a first publish to
+lock the repo/owner IDs against resurrection attacks.)
+
+## Gotchas (the non-obvious ones)
+
+1. **`NuGet/login`'s `user:` is the nuget.org username (profile name), never the email.** Email
+   silently fails the token exchange. We pass it via the `NUGET_USER` secret.
+2. **NuGet versions are immutable** (like npm). You cannot re-push a version — only *unlist* or
+   *deprecate*. So validate the packed `.nupkg` locally before triggering the workflow.
+3. **Bump the version in `Directory.Build.props`** (`<Version>`), not per-project. The
+   workflow can also override per-run via the `version` dispatch input (`-p:Version=`).
+4. **Don't re-add `Pack`/`PackagePath` to the CLI's `agent-context/` Content item.** `PackAsTool`
+   already bundles build output (the files arrive via `CopyToOutputDirectory`) into
+   `tools/net8.0/any/`; an explicit `PackagePath` double-adds every file → **NU5118**, which is
+   fatal under this repo's `TreatWarningsAsErrors`. The item is deliberately `Pack=false`.
+5. **The temp key is single-use and ~1 h.** The workflow requests it immediately before push — don't
+   move the `NuGet/login` step earlier.
+6. **The policy is bound to the org + repo + workflow *filename*.** Renaming `publish-csharp.yml`, or
+   the policy owner leaving/locking the `metaobjects` org, makes the policy inactive until fixed.
+7. **Source Link + symbols are on** (`PublishRepositoryUrl`, `EmbedUntrackedSources`, `snupkg`); CI
+   sets `ContinuousIntegrationBuild` for deterministic builds. No action needed — just don't strip them.
+
+## Procedure
+
+1. **Pick the publish commit on `main`** (a stable, merged tip — not a mid-refactor branch). Ensure
+   the packaging config + `publish-csharp.yml` are on it. Set `<Version>` in `Directory.Build.props`.
+2. **Validate locally** (catches immutable-version mistakes before they're permanent):
+   ```bash
+   cd server/csharp
+   dotnet pack MetaObjects/MetaObjects.csproj MetaObjects.Render/MetaObjects.Render.csproj \
+     MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj \
+     -c Release -o /tmp/mo-nupkg
+   # inspect a nuspec — version, license, readme, deps:
+   unzip -p /tmp/mo-nupkg/MetaObjects.Render.0.9.0.nupkg MetaObjects.Render.nuspec | grep -iE '<id>|<version>|<license|<readme>|<dependenc'
+   # optional: install the tool from the local dir and smoke-test it
+   dotnet tool install --global --add-source /tmp/mo-nupkg MetaObjects.Cli && dotnet meta --help
+   ```
+3. **Run persistence conformance** if the runtime/codegen changed: `scripts/integration-test.sh csharp`.
+4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag).
+5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
+   (indexing/validation takes a few minutes).
+
+## Other language ecosystems (Java / Python)
 
 This guide is **TypeScript / npm-specific** — its gotchas (`workspace:*`, `bun publish`, lockfile
 re-pinning) do not transfer. Each language ships through a different registry with its own tooling,
@@ -138,10 +230,11 @@ What to expect per ecosystem:
 |---|---|---|---|
 | Java | Maven Central (Sonatype Central Portal) | `mvn deploy` / Gradle publish | GPG-signed artifacts; `groupId` ownership verification; staging → release promotion; javadoc + sources jars required |
 | Python | PyPI | `uv build` / `python -m build` + `twine` | sdist + wheel; `pyproject.toml` metadata; prefer **OIDC trusted publishing** over long-lived tokens |
-| C# | NuGet.org | `dotnet pack` + `dotnet nuget push` | API key; symbols / source-link. **Loader + conformance only today — nothing consumer-facing to publish yet** |
 
-**Versions are not unified across languages** — TS is on `0.5.x`, the Java module line is on the
-`7.0.0` track, C# is at v0.3 conformance parity. Don't force one number. The cross-language contract
+(C# now has its own guide above — *Releasing the C# packages to NuGet*.)
+
+**Versions are not unified across languages** — TS and C# are on the `0.9.x` line, the Java/Kotlin
+module line is on the `7.2.x` track. Don't force one number. The cross-language contract
 is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
 each release states which capabilities/conformance level it satisfies, and *that* manifest — not a
 shared version — is the coordination point. (Generated code runs without any MetaObjects runtime, so
