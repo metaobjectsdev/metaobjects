@@ -5,12 +5,12 @@
 **Type:** `object.value`
 **Source:** `meta.json`
 
-## Constraints
+## Fields
 
-| Field | Required | Type | Limits | Rules |
+| Field | Type | Required | Column | Rules |
 |---|---|---|---|---|
-| <a id="field-name"></a>`name` |  | `string` |  |  |
-| <a id="field-headline"></a>`headline` |  | `string` |  |  |
+| <a id="field-name"></a>`name` | `string` |  |  |  |
+| <a id="field-headline"></a>`headline` | `string` |  |  |  |
 
 ## Used by
 

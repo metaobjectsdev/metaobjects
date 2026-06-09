@@ -59,6 +59,7 @@ import type {
   RelationshipDoc,
   UsedByDoc,
   ConstraintRow,
+  FieldDoc,
 } from "./docs-data.js";
 
 export interface BuildDocDataOpts {
@@ -227,6 +228,93 @@ function buildConstraintRow(
     type: neutralTypeCell(field),
     limits: limits.join(", "),
     rules: rules.join(", "),
+  };
+}
+
+/** Build one row of the unified Fields table — collapses the per-field facts
+ *  the old Storage + Constraints tables split between into a single Markdown
+ *  row. PK/FK key role becomes a glyph prefix on the Field cell, the FK
+ *  target becomes a `→ \`Target\`` suffix on the Type cell, the @column
+ *  override (only when interesting) lands in the Storage cell, everything
+ *  else (validators, defaults, enum CHECK-sets, references, unique, extends)
+ *  goes into the Rules cell joined by " · ".
+ *
+ *  Identity bullets remain a separate section above — they describe the
+ *  *identity declarations* (composite keys, generation strategy, reference
+ *  topology), not the per-field facts. */
+function buildFieldRow(
+  entity: MetaObject,
+  field: MetaField,
+  pkFieldNames: Set<string>,
+  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+): FieldDoc {
+  const isPk = pkFieldNames.has(field.name);
+  const fk = fkMap.get(field.name);
+  const required = isPk || isFieldRequired(field);
+
+  // Field cell — anchor + glyph + name.
+  let glyph = "";
+  if (isPk) glyph = "🔑 ";
+  else if (fk !== undefined) glyph = "🔗 ";
+  const fieldCell = `${fieldAnchorHtml(field.name)}${glyph}\`${field.name}\``;
+
+  // Type cell — neutral logical type; for FK, append the target as a link.
+  let typeCell = neutralTypeCell(field);
+  if (fk !== undefined) {
+    typeCell = `${typeCell} → \`${fk.targetEntity}\``;
+  }
+
+  // Storage cell — only populated when interesting:
+  //   - @column override that differs from the field name, OR
+  //   - @dbColumnType physical override set
+  // Otherwise empty. Keeps the column noise-free for the 90% case where
+  // field name and column name agree.
+  const columnName = field.column;
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const columnDiffers = typeof columnName === "string" && columnName !== field.name;
+  const hasPhysicalOverride = typeof dbColumnType === "string" && dbColumnType.length > 0;
+  let storageCell = "";
+  if (columnDiffers && hasPhysicalOverride) {
+    storageCell = `\`${columnName}\` \`${dbColumnType!.toUpperCase()}\``;
+  } else if (columnDiffers) {
+    storageCell = `\`${columnName}\``;
+  } else if (hasPhysicalOverride) {
+    storageCell = `\`${dbColumnType!.toUpperCase()}\``;
+  }
+
+  // Rules cell — joined facts. Same logic as buildConstraintRow's Rules
+  // column, plus the maxLength/length/numeric limits that used to live in
+  // the separate Limits cell (collapsed in to keep the table to 5 columns).
+  const rules: string[] = [];
+  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
+
+  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
+    const values = enumValues(field);
+    if (values !== undefined && values.length > 0) {
+      const list = values.map((v) => `\`${v}\``).join(", ");
+      rules.push(`one of ${list}`);
+    }
+  }
+
+  const { maxLenAttr, regexParts, lengthParts, numericParts } = collectValidatorParts(field);
+  rules.push(...regexParts);
+  if (maxLenAttr !== undefined) rules.push(`maxLength: ${maxLenAttr}`);
+  rules.push(...lengthParts, ...numericParts);
+
+  // The FK reference is already encoded in typeCell — don't repeat it in rules.
+  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  if (def !== undefined) rules.push(`default: \`${String(def)}\``);
+
+  const sup = field.resolveSuper();
+  if (sup !== undefined) rules.push(`extends \`${sup.name}\``);
+
+  return {
+    field: field.name,
+    fieldCell,
+    typeCell,
+    requiredCell: required ? "yes" : "",
+    storageCell,
+    rulesCell: rules.join(" · "),
   };
 }
 
@@ -399,12 +487,24 @@ export function buildEntityDocData(
 
   // ---- Constraints (NEUTRAL — built from the object's OWN field metadata, so
   // it renders for every object including value objects with no storage).
+  // KEPT FOR BACK-COMPAT — new templates render `fields` instead.
   const constraintRows: ConstraintRow[] = entity
     .fields()
     .map((field) => buildConstraintRow(entity, field, pkFieldNames, fkMap));
   const constraints = {
     hasConstraints: constraintRows.length > 0,
     rows: constraintRows,
+  };
+
+  // ---- Fields (merged Storage + Constraints) — the single per-field table
+  // the new entity-page template renders. Same source of truth as the two
+  // legacy tables, just folded into one row.
+  const fieldRows: FieldDoc[] = entity
+    .fields()
+    .map((field) => buildFieldRow(entity, field, pkFieldNames, fkMap));
+  const fields = {
+    hasFields: fieldRows.length > 0,
+    rows: fieldRows,
   };
 
   // ---- UsedBy
@@ -455,6 +555,7 @@ export function buildEntityDocData(
       type: typeStr,
     },
     preambleHeader,
+    fields,
     constraints,
   };
 

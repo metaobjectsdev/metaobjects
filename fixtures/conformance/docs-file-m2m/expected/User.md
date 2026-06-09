@@ -8,13 +8,6 @@
 **Source:** `meta.social.json`
 **Package:** `acme::social`
 
-## Storage
-
-| Column | Type | Nullable | Key |
-|---|---|---|---|
-| `id` | `long` | no | primary key |
-| `name` | `string` | no |  |
-
 ## Identity
 
 - **Primary key:** `id`
@@ -30,15 +23,15 @@ erDiagram
     User ||--o{ Follow : "followeeId"
 ```
 
+## Fields
+
+| Field | Type | Required | Column | Rules |
+|---|---|---|---|---|
+| <a id="field-id"></a>🔑 `id` | `long` | yes |  |  |
+| <a id="field-name"></a>`name` | `string` | yes |  |  |
+
 ## Relationships
 
 - `tags` — many → `Tag` (association, through `UserTag`)
 - `friends` — many → `User` (association, through `Friendship`, symmetric self-join)
 - `follows` — many → `User` (association, through `Follow`, directed self-join via `followerId`)
-
-## Constraints
-
-| Field | Required | Type | Limits | Rules |
-|---|---|---|---|---|
-| <a id="field-id"></a>`id` | yes | `long` |  | primary key |
-| <a id="field-name"></a>`name` | yes | `string` |  |  |

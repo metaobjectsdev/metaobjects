@@ -87,12 +87,40 @@ export interface UsedByDoc {
   bullet: string;
 }
 
-/** One row in the neutral Constraints table — fully pre-rendered cells, so
- *  templates stay trivial and cross-port walk functions don't re-derive the
- *  escaping. Each cell is plain Markdown text; an empty cell is "". Unlike the
- *  language-specific Storage table, this is built from the field metadata's OWN
- *  declared constraints and renders for every object (including value objects
- *  with no storage). */
+/** One row in the unified Fields table — merges the old Storage + Constraints
+ *  cells into a single per-field row. Cells are pre-rendered Markdown so
+ *  templates stay trivial. An empty cell is "".
+ *
+ *  Replaces the previous Storage + Constraints split which duplicated facts
+ *  (field name, logical type, key role, required-vs-nullable). Following the
+ *  research synthesis: domain-model docs (FHIR, GitHub GraphQL Objects,
+ *  Schema.org) all surface one Fields/Properties table per resource. */
+export interface FieldDoc {
+  field: string;                 // raw field name (without backticks/anchor)
+  /** @markdown — anchored, badge-prefixed field cell:
+   *    `<a id="field-id"></a>🔑 \`id\``  (PK)
+   *    `<a id="field-userId"></a>🔗 \`userId\``  (FK)
+   *    `<a id="field-name"></a>\`name\``  (plain) */
+  fieldCell: string;
+  /** @markdown — neutral logical type; for FK fields, suffixed with the
+   *  cross-linked target — e.g. "`int` → [`User`](User.md)". */
+  typeCell: string;
+  /** @markdown — "yes" / "" — whether the field is required (or a PK). */
+  requiredCell: string;
+  /** @markdown — physical persistence info, ONLY when interesting:
+   *    `@column` override that differs from the field name → "`UserId`"
+   *    `@dbColumnType` set → "`UserId` `UUID`"  (or "`Data` `JSONB`" when
+   *      the field name happens to match the column)
+   *  Empty when field name == column AND no @dbColumnType override. */
+  storageCell: string;
+  /** @markdown — all the rules: validators (regex/length/numeric), default,
+   *  enum value set, extends EnumName, references, unique. Joined by " · ". */
+  rulesCell: string;
+}
+
+/** Deprecated alias for {@link FieldDoc} — kept for back-compat in case any
+ *  external template author destructured the old ConstraintRow shape.
+ *  @deprecated use FieldDoc */
 export interface ConstraintRow {
   field: string;                 // raw field name (without backticks)
   /** @markdown — "yes" / "" — whether the field is required (or a PK). */
@@ -150,10 +178,17 @@ export interface EntityDocData {
    *  present. */
   preambleHeader: string;
 
-  /** Storage section — the NEUTRAL physical persistence mapping (column name,
-   *  physical type, nullable, key). Present iff the entity has a writable rdb
-   *  source and is NOT object.value. Carries NO language-specific type or DDL
-   *  (ADR-0020). */
+  /** Unified Fields section — one row per field, merging the per-field facts
+   *  the old Storage + Constraints tables split between. Always emitted when
+   *  the entity has any fields. */
+  fields: {
+    hasFields: boolean;
+    rows: FieldDoc[];
+  };
+
+  /** @deprecated Storage section. The merged Fields table covers this now;
+   *  the old shape is still populated for adopters with custom templates that
+   *  reference it, but new templates should use `fields` instead. */
   storage?: {
     /** @markdown — pre-rendered "| Column | Type | Nullable | Key |\n|---|...|"
      *  header pair. */
@@ -174,10 +209,9 @@ export interface EntityDocData {
   /** Present-and-non-empty flag for the relationships section. */
   hasRelationships?: boolean;
 
-  /** Constraints section — the NEUTRAL replacement for the old language-
-   *  specific Validation/Generated-code sections (ADR-0020). Built from the
-   *  object's OWN field metadata, so it renders for every object including
-   *  value objects with no storage. Always emitted. */
+  /** @deprecated Constraints section. The merged Fields table covers this
+   *  now; the old shape is still populated for adopters with custom templates
+   *  that reference it, but new templates should use `fields` instead. */
   constraints: {
     /** True iff there is at least one row to render (objects always have
      *  fields, so this is generally true; gates the section header). */

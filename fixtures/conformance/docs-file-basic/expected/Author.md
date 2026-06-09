@@ -8,25 +8,16 @@
 **Source:** `meta.blog.json`
 **Package:** `acme::blog`
 
-## Storage
-
-| Column | Type | Nullable | Key |
-|---|---|---|---|
-| `id` | `long` | no | primary key |
-| `name` | `string` | no |  |
-| `status` | `enum` | no |  |
-| `tags` | `string[]` | yes |  |
-
 ## Identity
 
 - **Primary key:** `id` — generation: `increment`
 - **Secondary index:** `name` — unique
 
-## Constraints
+## Fields
 
-| Field | Required | Type | Limits | Rules |
+| Field | Type | Required | Column | Rules |
 |---|---|---|---|---|
-| <a id="field-id"></a>`id` | yes | `long` |  | primary key |
-| <a id="field-name"></a>`name` | yes | `string` | maxLength: 200 |  |
-| <a id="field-status"></a>`status` | yes | `enum` |  | one of `active`, `suspended`, `archived` |
-| <a id="field-tags"></a>`tags` |  | `string[]` |  |  |
+| <a id="field-id"></a>🔑 `id` | `long` | yes |  |  |
+| <a id="field-name"></a>`name` | `string` | yes |  | maxLength: 200 |
+| <a id="field-status"></a>`status` | `enum` | yes |  | one of `active`, `suspended`, `archived` |
+| <a id="field-tags"></a>`tags` | `string[]` |  |  |  |

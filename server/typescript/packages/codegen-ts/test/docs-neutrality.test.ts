@@ -95,30 +95,29 @@ describe("docs neutrality — entity page leaks no language-specific tokens", ()
     expect(content).not.toMatch(/\.kt\b/);
     expect(content).not.toMatch(/\.py\b/);
 
-    // The neutral replacement IS present.
-    expect(content).toContain("## Constraints");
+    // The neutral replacement IS present (the merged Fields table covers
+    // both the old Constraints + Storage sections — see entity-page.md.mustache).
+    expect(content).toContain("## Fields");
 
-    // ---- Storage section neutrality (ADR-0020): the Storage section is kept
-    // (the physical persistence MAPPING is neutral, useful metadata) but must
-    // carry NO TypeScript type and NO Drizzle ORM DDL. It documents declared
-    // physical facts only: column name, neutral physical type, nullable, key.
-    expect(content).toContain("## Storage");
-    // Neutral Storage header — physical mapping columns, not TS-type/SQL-DDL.
-    expect(content).toContain("| Column | Type | Nullable | Key |");
+    // ---- Fields-section neutrality (ADR-0020): the merged Fields table
+    // documents declared facts only — neutral logical type, an optional
+    // physical-column override, rules. It carries NO TypeScript type and
+    // NO Drizzle ORM DDL.
+    expect(content).toContain("| Field | Type | Required | Column | Rules |");
 
-    // Isolate the Storage section so the neutrality asserts target it directly.
-    const storageSection = sliceSection(content, "## Storage");
+    // Isolate the Fields section so the neutrality asserts target it directly.
+    const fieldsSection = sliceSection(content, "## Fields");
     // No TypeScript-type column header.
-    expect(storageSection).not.toContain("TypeScript type");
+    expect(fieldsSection).not.toContain("TypeScript type");
     // No Drizzle ORM DDL expressions.
-    expect(storageSection).not.toContain("integer(");
-    expect(storageSection).not.toContain("text(");
-    expect(storageSection).not.toContain("as const");
-    expect(storageSection).not.toContain("{ mode:");
-    expect(storageSection).not.toContain("{ enum:");
-    // No bare TypeScript scalar / array-type tokens.
-    expect(storageSection).not.toMatch(/ number /);
-    expect(storageSection).not.toContain("string[]");
+    expect(fieldsSection).not.toContain("integer(");
+    expect(fieldsSection).not.toContain("text(");
+    expect(fieldsSection).not.toContain("as const");
+    expect(fieldsSection).not.toContain("{ mode:");
+    expect(fieldsSection).not.toContain("{ enum:");
+    // No bare TypeScript scalar / array-type tokens. Note: `string[]` IS the
+    // neutral logical type for array fields, so don't reject it here.
+    expect(fieldsSection).not.toMatch(/ number /);
   });
 });
 
@@ -169,7 +168,7 @@ const VALUE_OBJECT_JSON = JSON.stringify({
 });
 
 describe("docs constraints — value object with no storage", () => {
-  it("renders a Constraints table (with rules) and NO Storage section", async () => {
+  it("renders a Fields table (with rules) and NO Storage section", async () => {
     const docs = await renderDocs(VALUE_OBJECT_JSON);
     const md = docs.get("Money.md");
     expect(md, "Money.md should be emitted").toBeDefined();
@@ -177,14 +176,15 @@ describe("docs constraints — value object with no storage", () => {
 
     // Value objects have no storage at all.
     expect(content).not.toContain("## Storage");
-    // But the neutral Constraints table must still render for every field.
-    expect(content).toContain("## Constraints");
-    expect(content).toContain("| Field | Required | Type | Limits | Rules |");
+    // But the neutral Fields table must still render for every field.
+    expect(content).toContain("## Fields");
+    expect(content).toContain("| Field | Type | Required | Column | Rules |");
 
     // Declared constraints surface in the table.
     expect(content).toContain("currency");
     expect(content).toContain("rounding");
-    // @maxLength surfaces as a limit.
+    // @maxLength surfaces in the Rules column (collapsed in from the old
+    // separate Limits column when the merge happened).
     expect(content).toContain("maxLength: 3");
     // enum values surface as a rule.
     expect(content).toContain("up");
