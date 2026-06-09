@@ -30,8 +30,8 @@ import java.util.Set;
  * generator emits ({@link SpringDtoGenerator#scalarFields(MetaObject)} — skips
  * {@code ObjectField}), and for each field:
  * <ul>
- *   <li><b>type</b> = {@link SpringDtoGenerator#componentType(MetaField)} (the
- *       DTO record component type, incl. {@code List<…>} for arrays).</li>
+ *   <li><b>type</b> = {@link SpringDtoGenerator#componentType(MetaField, MetaObject)} (the
+ *       DTO record component type, incl. the value-constrained enum + {@code List<…>} for arrays).</li>
  *   <li><b>optional</b> = derived from
  *       {@link SpringDtoGenerator#validationAnnotations(MetaField)}: a field is
  *       <em>required</em> (optional=false) iff its annotation string contains
@@ -64,7 +64,7 @@ public final class JavaFieldShapes {
     public static List<FieldShape> dtoFields(MetaObject entity) {
         List<FieldShape> out = new ArrayList<>();
         for (MetaField field : SpringDtoGenerator.scalarFields(entity)) {
-            String type = SpringDtoGenerator.componentType(field);
+            String type = SpringDtoGenerator.componentType(field, entity);
             String annotations = SpringDtoGenerator.validationAnnotations(field);
             // Required iff the DTO component carries @NotNull or @NotBlank — read
             // straight from the generator's own annotation string (drift-proof).

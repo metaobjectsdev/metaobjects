@@ -387,13 +387,14 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         return m.find();
     }
 
-    /** Parse the record header `record <Name>( ... ) {}` into its component-name set. */
+    /** Parse the record header `record <Name>( ... ) {` into its component-name set
+     *  (the body may be empty `{}` or carry nested enum decls `{ ... }`). */
     private static Set<String> recordComponents(String src, String recordName) {
         int decl = src.indexOf("record " + recordName + "(");
         assertTrue("could not find `record " + recordName + "(` in:\n" + src, decl >= 0);
         int open = src.indexOf('(', decl);
-        int close = src.indexOf(") {}", open);
-        assertTrue("could not find record body close `) {}` for " + recordName, close > open);
+        int close = src.indexOf(") {", open);
+        assertTrue("could not find record body open `) {` for " + recordName, close > open);
         String header = src.substring(open + 1, close);
 
         Set<String> names = new TreeSet<>();

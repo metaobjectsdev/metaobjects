@@ -1,6 +1,7 @@
 package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
@@ -150,11 +151,24 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String annotations = annotationsPerField.get(i);
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            src.append(componentType(field)).append(' ').append(field.getName());
+            src.append(componentType(field, entity)).append(' ').append(field.getName());
             if (i < fields.size() - 1) src.append(',');
             src.append('\n');
         }
-        src.append(") {}\n");
+
+        // Nested `public enum <Name> { <members> }` declarations for this record's enum fields,
+        // deduped by enum-type name (two fields extending one abstract enum emit ONE decl) — so
+        // the DTO components carry the value-constrained type rather than String (cross-port
+        // parity with TS / Python / Kotlin / C#). Emitted INSIDE the record body, mirroring
+        // SpringPayloadGenerator.
+        List<String> enumDecls = collectEnumDecls(entity, fields);
+        if (enumDecls.isEmpty()) {
+            src.append(") {}\n");
+        } else {
+            src.append(") {\n");
+            for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
+            src.append("}\n");
+        }
 
         writeJavaFile(entity, outRoot, pkg, recordName, src.toString());
     }
@@ -221,14 +235,39 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     // === validation (SP-C validator parity) =================================
 
     /**
-     * Java DTO-record component type for {@code field}. Scalar fields delegate
-     * to {@link SpringTypeMapper}; array fields ({@code isArray=true}) are
-     * wrapped as {@code List<elementType>} (the wrapped element type so an
-     * omitted JSON element deserialises to {@code null}).
+     * Java DTO-record component type for {@code field} owned by {@code owner}. A
+     * {@code field.enum} is typed as the value-constrained nested Java {@code enum}
+     * ({@link SpringTypeMapper#enumTypeName}, single or {@code List<Enum>}) whose declaration
+     * {@link #collectEnumDecls} emits inside the record body — parity with the other ports and
+     * with {@code SpringPayloadGenerator}. Other scalars delegate to {@link SpringTypeMapper};
+     * array fields ({@code isArray=true}) are wrapped as {@code List<elementType>} (the wrapped
+     * element type so an omitted JSON element deserialises to {@code null}).
      */
-    public static String componentType(MetaField<?> field) {
+    public static String componentType(MetaField<?> field, MetaObject owner) {
+        if (field instanceof EnumField) {
+            return SpringTypeMapper.payloadJavaTypeName(field, owner, "");
+        }
         String element = SpringTypeMapper.javaTypeName(field);
         return field.isArrayType() ? "java.util.List<" + element + ">" : element;
+    }
+
+    /**
+     * Collect the nested {@code public enum <Name> { <members> }} declarations for the enum
+     * fields in {@code fields} (the record's components), deduped by enum-type name (two fields
+     * extending one abstract enum collapse onto ONE decl named for the super). Mirrors
+     * {@code SpringPayloadGenerator.collectEnumDecls}.
+     */
+    private static List<String> collectEnumDecls(MetaObject owner, List<MetaField> fields) {
+        List<String> decls = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (MetaField<?> field : fields) {
+            if (!(field instanceof EnumField ef)) continue;
+            String typeName = SpringTypeMapper.enumTypeName(owner, ef);
+            if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
+            List<String> values = SpringTypeMapper.effectiveEnumValues(ef);
+            decls.add("public enum " + typeName + " { " + String.join(", ", values) + " }");
+        }
+        return decls;
     }
 
     /**
