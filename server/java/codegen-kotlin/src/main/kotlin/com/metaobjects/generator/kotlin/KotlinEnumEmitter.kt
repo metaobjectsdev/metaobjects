@@ -59,8 +59,8 @@ internal object KotlinEnumEmitter {
     /**
      * Read the `@values` string-array attr, INCLUDING inherited values — a field that
      * `extends` an abstract enum super (e.g. `currentPriority extends Priority`) carries no own
-     * `@values`; the members live on the super. Mirrors [KotlinExtractSchemaEmitter.enumFieldSpec]
-     * (`getMetaAttr(ATTR_VALUES)` with parent data). Null/empty when absent.
+     * `@values`; the members live on the super. Reads `getMetaAttr(ATTR_VALUES)` with parent data
+     * (inheritance-aware). Null/empty when absent.
      */
     private fun readEnumValues(field: EnumField): List<String>? {
         if (!field.hasMetaAttr(EnumField.ATTR_VALUES)) return null
