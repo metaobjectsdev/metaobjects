@@ -1,0 +1,21 @@
+name: hygiene
+
+# Public-repo leak gate: scans a PR's added lines for absolute local paths and
+# private/other-project names (structural patterns; the private denylist is local-only).
+# The scanner lives in .githooks/leak-scan.sh so its pattern literals don't self-trip.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  leak-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Leak scan (added lines vs base)
+        run: bash .githooks/leak-scan.sh "origin/${{ github.base_ref }}"
