@@ -6,6 +6,9 @@
     <LangVersion>12</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MetaObjects.Codegen</RootNamespace>
+    <PackageId>MetaObjects.Codegen</PackageId>
+    <Title>MetaObjects.Codegen</Title>
+    <Description>MetaObjects code generation for .NET — emits idiomatic EF Core entities, an AppDbContext, and ASP.NET Core CRUD minimal-API routes from typed metadata. Includes the runtime filter/dispatch helpers that generated code references (ASP.NET Core + EF Core).</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />

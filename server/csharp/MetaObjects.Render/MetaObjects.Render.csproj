@@ -6,6 +6,9 @@
     <LangVersion>12</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MetaObjects.Render</RootNamespace>
+    <PackageId>MetaObjects.Render</PackageId>
+    <Title>MetaObjects.Render</Title>
+    <Description>Deterministic Mustache rendering for MetaObjects on .NET — payload value-object projection and build-time prompt/template drift verification (the prompt-construction pillar). Companion to the MetaObjects package.</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Stubble.Core" Version="1.10.8" />

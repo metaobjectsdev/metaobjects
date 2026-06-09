@@ -6,6 +6,9 @@
     <LangVersion>12</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>MetaObjects</RootNamespace>
+    <PackageId>MetaObjects</PackageId>
+    <Title>MetaObjects</Title>
+    <Description>MetaObjects metadata loader + canonical serializer for .NET — the C# port of the cross-language metadata standard. Multi-file JSON/YAML loader with overlay merge and cross-file extends resolution, plus byte-identical canonical serialization (the cross-language wire format).</Description>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
