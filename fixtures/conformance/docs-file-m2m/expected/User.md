@@ -15,12 +15,26 @@
 ## In context
 
 ```mermaid
-erDiagram
-    User ||--o{ UserTag : "userId"
-    User ||--o{ Friendship : "userAId"
-    User ||--o{ Friendship : "userBId"
-    User ||--o{ Follow : "followerId"
-    User ||--o{ Follow : "followeeId"
+flowchart TB
+    User["User"]
+    UserTag["UserTag"]
+    Friendship["Friendship"]
+    Follow["Follow"]
+    UserTag -->|"userId"| User
+    Friendship -->|"userAId"| User
+    Friendship -->|"userBId"| User
+    Follow -->|"followerId"| User
+    Follow -->|"followeeId"| User
+    click User "./User.md"
+    click UserTag "./UserTag.md"
+    click Friendship "./Friendship.md"
+    click Follow "./Follow.md"
+    classDef focal    fill:#dbeafe,stroke:#1e40af,stroke-width:2px,color:#1e293b;
+    classDef same     fill:#eff6ff,stroke:#3b82f6,color:#1e293b;
+    classDef external fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3,color:#374151;
+    classDef vo       fill:#faf5ff,stroke:#9333ea,color:#1e293b;
+    class User focal;
+    class UserTag,Friendship,Follow same;
 ```
 
 ## Fields

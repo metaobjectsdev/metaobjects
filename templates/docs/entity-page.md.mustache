@@ -39,6 +39,15 @@
 | {{{fieldCell}}} | {{{typeCell}}} | {{requiredCell}} | {{{storageCell}}} | {{{rulesCell}}} |
 {{/fields.rows}}
 {{/fields.hasFields}}
+{{#fieldDetails.hasDetails}}
+
+## Field details
+
+{{#fieldDetails.rows}}
+{{{block}}}
+
+{{/fieldDetails.rows}}
+{{/fieldDetails.hasDetails}}
 {{#hasRelationships}}
 
 ## Relationships

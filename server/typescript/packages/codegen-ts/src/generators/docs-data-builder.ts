@@ -60,6 +60,7 @@ import type {
   UsedByDoc,
   ConstraintRow,
   FieldDoc,
+  FieldDetailDoc,
 } from "./docs-data.js";
 
 export interface BuildDocDataOpts {
@@ -318,6 +319,139 @@ function buildFieldRow(
   };
 }
 
+/** Build an expanded per-field detail block — `### \`name\`` heading, italic
+ *  @summary lead-in, @description paragraph, then a bullet list of every
+ *  notable rule (validators, default, FK, extends-enum, column override).
+ *  Returns `undefined` when the field has nothing extra to say (just type +
+ *  required) — the caller filters these out so the section stays tight.
+ *
+ *  The validator list is the most important value-add: the Fields table
+ *  collapses `pattern \`X\` · maxLength: 200 · minLength: 3` into a single
+ *  Rules cell; this section breaks them out as individual bullets so the
+ *  reader can scan each rule on its own line. */
+function buildFieldDetail(
+  field: MetaField,
+  pkFieldNames: Set<string>,
+  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+): FieldDetailDoc | undefined {
+  const desc = field.attr(DOC_ATTR_DESCRIPTION);
+  const summary = field.attr(DOC_ATTR_SUMMARY);
+  const hasDesc = typeof desc === "string" && desc.length > 0;
+  const hasSummary = typeof summary === "string" && summary.length > 0;
+  const sup = field.resolveSuper();
+  const fk = fkMap.get(field.name);
+  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const columnName = field.column;
+  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const isUnique = field.ownAttr(FIELD_ATTR_UNIQUE) === true;
+  const isEnum = field.subType === FIELD_SUBTYPE_ENUM && !field.isArray;
+  const enumVals = isEnum ? enumValues(field) : undefined;
+  const validators = field.validators();
+  const hasValidatorChildren = validators.some(
+    v => v.subType === VALIDATOR_SUBTYPE_LENGTH
+      || v.subType === VALIDATOR_SUBTYPE_REGEX
+      || v.subType === VALIDATOR_SUBTYPE_NUMERIC,
+  );
+  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+
+  // "Interesting enough to render a detail block" predicate. Plain typed
+  // fields with no annotations get skipped — the at-a-glance table covered
+  // them already.
+  const isInteresting =
+    hasDesc
+    || hasSummary
+    || sup !== undefined
+    || fk !== undefined
+    || def !== undefined
+    || hasValidatorChildren
+    || typeof maxLenAttr === "number"
+    || (enumVals !== undefined && enumVals.length > 0)
+    || isUnique
+    || (typeof columnName === "string" && columnName !== field.name)
+    || (typeof dbColumnType === "string" && dbColumnType.length > 0);
+  if (!isInteresting) return undefined;
+
+  const parts: string[] = [`### \`${field.name}\``];
+
+  if (hasSummary) {
+    parts.push("");
+    parts.push(`*${summary as string}*`);
+  }
+  if (hasDesc) {
+    parts.push("");
+    parts.push(String(desc).trim());
+  }
+
+  // Bullet list — one fact per line. Order: type → FK → required/PK → column
+  // → default → unique → extends → enum values → validators.
+  const bullets: string[] = [];
+  bullets.push(`**Type:** ${neutralTypeCell(field)}`);
+  if (fk !== undefined) {
+    bullets.push(`**References:** [\`${fk.targetEntity}.${fk.targetField}\`](${fk.targetEntity}.md)`);
+  }
+  if (pkFieldNames.has(field.name)) {
+    bullets.push("**Primary key**");
+  } else if (isFieldRequired(field)) {
+    bullets.push("**Required**");
+  }
+  if (typeof columnName === "string" && columnName !== field.name) {
+    bullets.push(`**Column:** \`${columnName}\``);
+  }
+  if (typeof dbColumnType === "string" && dbColumnType.length > 0) {
+    bullets.push(`**Physical type:** \`${dbColumnType.toUpperCase()}\``);
+  }
+  if (def !== undefined) {
+    bullets.push(`**Default:** \`${String(def)}\``);
+  }
+  if (isUnique) bullets.push("**Unique**");
+  if (sup !== undefined) {
+    // The postprocess script rewrites `extends \`Name\`` → enum anchor link.
+    bullets.push(`**Extends:** \`${sup.name}\``);
+  }
+  if (enumVals !== undefined && enumVals.length > 0) {
+    const vals = enumVals.map((v) => `\`${v}\``).join(" · ");
+    bullets.push(`**Enum values:** ${vals}`);
+  }
+
+  // Validators — one bullet per validator subtype (regex / length / numeric),
+  // rendered in declaration order so authors can rely on the order they
+  // wrote.
+  for (const v of validators) {
+    if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
+      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      if (typeof pattern === "string" && pattern.length > 0) {
+        bullets.push(`**Validator (regex):** pattern \`${pattern}\``);
+      }
+    } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const fragments: string[] = [];
+      if (typeof min === "number") fragments.push(`min ${min}`);
+      if (typeof max === "number") fragments.push(`max ${max}`);
+      if (fragments.length > 0) bullets.push(`**Validator (length):** ${fragments.join(", ")}`);
+    } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
+      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const fragments: string[] = [];
+      if (typeof min === "number") fragments.push(`min ${min}`);
+      if (typeof max === "number") fragments.push(`max ${max}`);
+      if (fragments.length > 0) bullets.push(`**Validator (numeric):** ${fragments.join(", ")}`);
+    }
+  }
+  // @maxLength is the shorthand; render alongside validators for consistency.
+  if (typeof maxLenAttr === "number") {
+    bullets.push(`**Max length:** ${maxLenAttr}`);
+  }
+
+  parts.push("");
+  for (const b of bullets) parts.push(`- ${b}`);
+
+  return {
+    field: field.name,
+    block: parts.join("\n"),
+  };
+}
+
 function buildFkMap(
   entity: MetaObject,
   root: MetaRoot,
@@ -507,6 +641,20 @@ export function buildEntityDocData(
     rows: fieldRows,
   };
 
+  // ---- Field details — expanded per-field section, skipping plain fields
+  // that the at-a-glance table already covered. The deeper "field details
+  // below the table" pattern adopted by Stripe / FHIR / GraphQL — keep the
+  // table tight, surface authoring + validation depth below.
+  const fieldDetailRows: FieldDetailDoc[] = [];
+  for (const field of entity.fields()) {
+    const detail = buildFieldDetail(field, pkFieldNames, fkMap);
+    if (detail !== undefined) fieldDetailRows.push(detail);
+  }
+  const fieldDetails = {
+    hasDetails: fieldDetailRows.length > 0,
+    rows: fieldDetailRows,
+  };
+
   // ---- UsedBy
   const usedByMatches: UsedByDoc[] = [];
   for (const child of root.ownChildren()) {
@@ -556,6 +704,7 @@ export function buildEntityDocData(
     },
     preambleHeader,
     fields,
+    fieldDetails,
     constraints,
   };
 

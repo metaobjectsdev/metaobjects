@@ -118,6 +118,28 @@ export interface FieldDoc {
   rulesCell: string;
 }
 
+/** One expanded per-field detail entry — rendered as a sub-section below
+ *  the at-a-glance Fields table. ONLY emitted for fields with non-trivial
+ *  content (@description / @summary / validators / extends-enum / FK ref /
+ *  default / column-override). Skipped for plain typed fields with nothing
+ *  extra to surface — keeps the entity page from ballooning with empty
+ *  stubs.
+ *
+ *  The `block` is fully pre-rendered Markdown so the template is trivial
+ *  (`{{{block}}}` per row) and cross-port walks emit consistent output
+ *  without re-implementing the layout.
+ *
+ *  Authoring path: any field that wants surface in this section just sets
+ *  `@description` and/or `@summary` in the metadata YAML. Mirrors the
+ *  per-entity pattern. */
+export interface FieldDetailDoc {
+  field: string;                 // raw field name (without backticks)
+  /** @markdown — the full per-field block, headed by `### \`fieldName\``
+   *  and followed by italic summary, description paragraph, validator
+   *  bullets, type/FK/extends/default lines. */
+  block: string;
+}
+
 /** Deprecated alias for {@link FieldDoc} — kept for back-compat in case any
  *  external template author destructured the old ConstraintRow shape.
  *  @deprecated use FieldDoc */
@@ -184,6 +206,15 @@ export interface EntityDocData {
   fields: {
     hasFields: boolean;
     rows: FieldDoc[];
+  };
+
+  /** Expanded per-field details — emitted as a "## Field details" section
+   *  AFTER the at-a-glance Fields table. Skips fields with nothing extra to
+   *  say (no description, no summary, no validators, no extends, no default,
+   *  no FK, no column override) so the section doesn't balloon the page. */
+  fieldDetails: {
+    hasDetails: boolean;
+    rows: FieldDetailDoc[];
   };
 
   /** @deprecated Storage section. The merged Fields table covers this now;

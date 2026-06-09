@@ -21,3 +21,18 @@
 | <a id="field-name"></a>`name` | `string` | yes |  | maxLength: 200 |
 | <a id="field-status"></a>`status` | `enum` | yes |  | one of `active`, `suspended`, `archived` |
 | <a id="field-tags"></a>`tags` | `string[]` |  |  |  |
+
+## Field details
+
+### `name`
+
+- **Type:** `string`
+- **Required**
+- **Max length:** 200
+
+### `status`
+
+- **Type:** `enum`
+- **Required**
+- **Enum values:** `active` · `suspended` · `archived`
+
