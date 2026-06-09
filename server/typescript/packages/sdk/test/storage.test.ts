@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeRecord } from "../src/storage/write.js";
 import { readRecord, recordExists } from "../src/storage/read.js";
-import { MetaForgeRecordNotFoundError } from "../src/storage/errors.js";
+import { ForgeRecordNotFoundError } from "../src/storage/errors.js";
 
 let metaRoot: string;
 beforeEach(() => {
@@ -48,9 +48,9 @@ describe("writeRecord", () => {
 });
 
 describe("readRecord", () => {
-  test("throws MetaForgeRecordNotFoundError when missing", async () => {
+  test("throws ForgeRecordNotFoundError when missing", async () => {
     await expect(readRecord(metaRoot, "decision", "missing")).rejects.toBeInstanceOf(
-      MetaForgeRecordNotFoundError,
+      ForgeRecordNotFoundError,
     );
   });
   test("round-trips a record losslessly", async () => {
@@ -99,7 +99,7 @@ describe("listRecords", () => {
   });
 });
 import { promoteRecord, supersede } from "../src/storage/lifecycle.js";
-import { MetaForgeAlreadyPromotedError, MetaForgeRecordNotFoundError as NotFoundError } from "../src/storage/errors.js";
+import { ForgeAlreadyPromotedError, ForgeRecordNotFoundError as NotFoundError } from "../src/storage/errors.js";
 
 describe("promoteRecord", () => {
   test("moves a pending record to canonical", async () => {
@@ -115,7 +115,7 @@ describe("promoteRecord", () => {
     await writeRecord(metaRoot, aDecision);
     await writeRecord(metaRoot, aDecision, { pending: true });
     await expect(promoteRecord(metaRoot, "decision", "decision-tanstack")).rejects.toBeInstanceOf(
-      MetaForgeAlreadyPromotedError,
+      ForgeAlreadyPromotedError,
     );
   });
 });

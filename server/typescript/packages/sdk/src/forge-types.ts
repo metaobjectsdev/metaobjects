@@ -114,7 +114,7 @@ import {
 } from "@metaobjectsdev/metadata";
 
 /** Minimal concrete MetaData subclass used for all forge descriptive nodes. */
-class MetaForgeNode extends MetaData {}
+class ForgeNode extends MetaData {}
 
 function wildcardOf(childType: string): ChildRule {
   return {
@@ -133,7 +133,7 @@ function def(
   return {
     typeId: new TypeId(type, subType),
     description,
-    factory: (typeId, name) => new MetaForgeNode(typeId, name),
+    factory: (typeId, name) => new ForgeNode(typeId, name),
     childRules,
     attributes: [],
   };

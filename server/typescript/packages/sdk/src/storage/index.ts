@@ -4,7 +4,7 @@ export { listRecords } from "./list.js";
 export type { ListOptions } from "./list.js";
 export { promoteRecord, supersede } from "./lifecycle.js";
 export {
-  MetaForgeRecordNotFoundError,
-  MetaForgeAlreadyPromotedError,
-  MetaForgeRecordParseError,
+  ForgeRecordNotFoundError,
+  ForgeAlreadyPromotedError,
+  ForgeRecordParseError,
 } from "./errors.js";

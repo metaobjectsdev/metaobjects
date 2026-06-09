@@ -1,4 +1,4 @@
-> **Superseded by `metaforge/docs/superpowers/plans/2026-05-19-java-h3b2-conformance-harness.md` (private). This file is the original draft and is no longer the source of truth.**
+> **Superseded — this file is the original draft and is no longer the source of truth.**
 
 # Java Conformance Harness Implementation Plan
 

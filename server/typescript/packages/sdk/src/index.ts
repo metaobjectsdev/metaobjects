@@ -16,9 +16,9 @@ export {
   listRecords,
   promoteRecord,
   supersede,
-  MetaForgeRecordNotFoundError,
-  MetaForgeAlreadyPromotedError,
-  MetaForgeRecordParseError,
+  ForgeRecordNotFoundError,
+  ForgeAlreadyPromotedError,
+  ForgeRecordParseError,
 } from "./storage/index.js";
 export type { ListOptions } from "./storage/index.js";
 

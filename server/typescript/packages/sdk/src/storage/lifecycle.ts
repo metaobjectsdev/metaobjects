@@ -2,7 +2,7 @@ import type { AnyRecord } from "../records/any.js";
 import type { RecordType } from "../records/core.js";
 import { readRecord, recordExists } from "./read.js";
 import { writeRecord, removeRecord } from "./write.js";
-import { MetaForgeAlreadyPromotedError, MetaForgeRecordNotFoundError } from "./errors.js";
+import { ForgeAlreadyPromotedError, ForgeRecordNotFoundError } from "./errors.js";
 import { recordPath } from "../paths.js";
 
 export async function promoteRecord(
@@ -11,10 +11,10 @@ export async function promoteRecord(
   id: string,
 ): Promise<void> {
   if (!(await recordExists(metaRoot, type, id, { pending: true }))) {
-    throw new MetaForgeRecordNotFoundError(recordPath(metaRoot, type, id, { pending: true }));
+    throw new ForgeRecordNotFoundError(recordPath(metaRoot, type, id, { pending: true }));
   }
   if (await recordExists(metaRoot, type, id)) {
-    throw new MetaForgeAlreadyPromotedError(recordPath(metaRoot, type, id));
+    throw new ForgeAlreadyPromotedError(recordPath(metaRoot, type, id));
   }
   const record = await readRecord(metaRoot, type, id, { pending: true });
   await writeRecord(metaRoot, record);
@@ -27,7 +27,7 @@ export async function supersede(
   newRecord: AnyRecord,
 ): Promise<void> {
   if (!(await recordExists(metaRoot, newRecord.type, oldId))) {
-    throw new MetaForgeRecordNotFoundError(recordPath(metaRoot, newRecord.type, oldId));
+    throw new ForgeRecordNotFoundError(recordPath(metaRoot, newRecord.type, oldId));
   }
   // Write the new record first, so a failure leaves the old record intact.
   await writeRecord(metaRoot, newRecord);

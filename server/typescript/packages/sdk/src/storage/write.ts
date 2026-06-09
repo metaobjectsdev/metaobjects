@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import type { AnyRecord } from "../records/any.js";
 import { AnyRecord as AnyRecordSchema } from "../records/any.js";
 import { recordPath } from "../paths.js";
-import { MetaForgeRecordNotFoundError } from "./errors.js";
+import { ForgeRecordNotFoundError } from "./errors.js";
 import { recordExists } from "./read.js";
 
 export async function writeRecord(
@@ -26,7 +26,7 @@ export async function removeRecord(
   opts: { pending?: boolean } = {},
 ): Promise<void> {
   if (!(await recordExists(metaRoot, type, id, opts))) {
-    throw new MetaForgeRecordNotFoundError(recordPath(metaRoot, type, id, opts));
+    throw new ForgeRecordNotFoundError(recordPath(metaRoot, type, id, opts));
   }
   await unlink(recordPath(metaRoot, type, id, opts));
 }

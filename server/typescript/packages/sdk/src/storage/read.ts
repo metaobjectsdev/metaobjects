@@ -3,7 +3,7 @@ import type { AnyRecord } from "../records/any.js";
 import { AnyRecord as AnyRecordSchema } from "../records/any.js";
 import type { RecordType } from "../records/core.js";
 import { recordPath } from "../paths.js";
-import { MetaForgeRecordNotFoundError, MetaForgeRecordParseError } from "./errors.js";
+import { ForgeRecordNotFoundError, ForgeRecordParseError } from "./errors.js";
 
 export async function readRecord(
   metaRoot: string,
@@ -16,17 +16,17 @@ export async function readRecord(
   try {
     raw = await readFile(path, "utf8");
   } catch (err) {
-    if (isNoEntError(err)) throw new MetaForgeRecordNotFoundError(path);
+    if (isNoEntError(err)) throw new ForgeRecordNotFoundError(path);
     throw err;
   }
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(raw);
   } catch (err) {
-    throw new MetaForgeRecordParseError(path, err);
+    throw new ForgeRecordParseError(path, err);
   }
   const result = AnyRecordSchema.safeParse(parsedJson);
-  if (!result.success) throw new MetaForgeRecordParseError(path, result.error);
+  if (!result.success) throw new ForgeRecordParseError(path, result.error);
   return result.data;
 }
 
