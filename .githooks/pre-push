@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# metaobjects pre-push gate.
+#
+# `bun test` transpiles per-file and does NOT typecheck, so type-broken code ships
+# green on the test suite while the CI `typecheck` job goes red. CI catches it, but a
+# direct push to `main` by an admin BYPASSES branch protection — so red lands anyway.
+# This hook closes that hole locally: it runs the SAME `tsc` gate CI runs and BLOCKS
+# the push when it is red. Loud by design — nothing red should leave your machine
+# quietly.
+#
+# Scope: only the TypeScript build+typecheck gate (the one local `bun test` skips).
+# The Java / C# / Python compile+conformance gates stay CI-only (too heavy + toolchain
+# -dependent for a push hook); branch protection still requires them on PRs.
+#
+# Activate (one-time, per clone):  git config core.hooksPath .githooks
+# Bypass (emergencies only):       git push --no-verify
+#                                  SKIP_TS_TYPECHECK=1 git push
+#
+set -uo pipefail
+
+if [ "${SKIP_TS_TYPECHECK:-}" = "1" ]; then
+  echo "pre-push: SKIP_TS_TYPECHECK=1 set — skipping the TS typecheck gate (you asked for it)." >&2
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+ZERO="0000000000000000000000000000000000000000"
+
+# Collect the files changed across every ref being pushed (stdin: <localref> <localsha>
+# <remoteref> <remotesha>). A brand-new branch (remote sha = zeros) has no remote base,
+# so we fail SAFE and run the gate rather than guess.
+changed=""
+run_gate=0
+while read -r _localref localsha _remoteref remotesha; do
+  [ -z "${localsha:-}" ] && continue
+  if [ "$localsha" = "$ZERO" ]; then
+    continue                       # branch deletion — nothing to check
+  fi
+  if [ "$remotesha" = "$ZERO" ]; then
+    run_gate=1                     # new branch: no base to diff — run the gate
+    continue
+  fi
+  files="$(git diff --name-only "$remotesha..$localsha" 2>/dev/null || true)"
+  changed="$changed
+$files"
+done
+
+# Skip the (slow) gate when the push touches no TypeScript sources.
+if [ "$run_gate" -ne 1 ]; then
+  if printf '%s\n' "$changed" | grep -qE '^(server/typescript|client/web)/'; then
+    run_gate=1
+  fi
+fi
+
+if [ "$run_gate" -ne 1 ]; then
+  exit 0
+fi
+
+echo "pre-push: TypeScript change detected — running the build + typecheck gate (CI parity)…" >&2
+echo "          (skip in an emergency with: git push --no-verify)" >&2
+
+# typecheck resolves cross-package types through each dep's dist/, so build first —
+# exactly what .github/workflows/conformance.yml does before `typecheck`.
+if ! ( cd "$ROOT" && bun run --filter '*' build ) >/tmp/metaobjects-prepush-build.log 2>&1; then
+  echo "" >&2
+  echo "  ✖ pre-push BLOCKED: workspace build failed. Last lines:" >&2
+  tail -20 /tmp/metaobjects-prepush-build.log | sed 's/^/      /' >&2
+  echo "      full log: /tmp/metaobjects-prepush-build.log" >&2
+  exit 1
+fi
+
+if ! ( cd "$ROOT" && bun run --filter '*' typecheck ) >/tmp/metaobjects-prepush-tsc.log 2>&1; then
+  echo "" >&2
+  echo "  ✖ pre-push BLOCKED: tsc typecheck is RED. This is the gate CI enforces; do not push red." >&2
+  echo "" >&2
+  grep -E "error TS" /tmp/metaobjects-prepush-tsc.log | grep -v node_modules | sed 's/^/      /' | head -40 >&2
+  echo "" >&2
+  echo "      full log: /tmp/metaobjects-prepush-tsc.log" >&2
+  echo "      fix the errors, or (emergencies only) re-push with --no-verify." >&2
+  exit 1
+fi
+
+echo "pre-push: ✓ TypeScript build + typecheck clean." >&2
+exit 0

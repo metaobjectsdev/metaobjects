@@ -59,6 +59,16 @@ git config hooks.denyListPath /path/to/your/private/denylist.txt
 
 It blocks commits whose added lines match (`git commit --no-verify` bypasses, discouraged); the npm author email is the one allowed exception. Guard a new private name by editing that private denylist (single source of truth) — never add real names to this public repo or the committed hook.
 
+**Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
+transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
+test suite while the CI `typecheck` job goes red — and a direct admin push to `main`
+bypasses branch protection. This hook closes that hole locally: when a push touches
+`server/typescript/` or `client/web/`, it runs the same `bun run --filter '*' build &&
+… typecheck` gate CI runs and **blocks the push when it is red** (~6s on a clean tree;
+skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
+or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates stay
+CI-only (still required on PRs via branch protection).
+
 ## Monorepo layout
 
 This repo holds all implementations of the standard, organized by deployment target → language/platform → framework integration:
