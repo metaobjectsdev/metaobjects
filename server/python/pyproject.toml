@@ -1,6 +1,6 @@
 [project]
 name = "metaobjects"
-version = "0.7.0"
+version = "0.9.0"
 description = "Cross-language metadata standard: declare typed entities once, generate idiomatic drift-checked code across languages — Python port."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,11 +66,17 @@ build-backend = "hatchling.build"
 packages = ["src/metaobjects"]
 exclude = ["**/KNOWN_GAPS.md"]
 
-# Bundle the repo-root agent-context/ content tree into the wheel so the installed
+# Bundle the repo-root agent-context/ content tree into the package so the installed
 # `metaobjects agent-docs` command can resolve it offline (no Node, no monorepo).
-# In dev/test the resolver falls back to walking up to the monorepo agent-context/.
-[tool.hatch.build.targets.wheel.force-include]
-"../../agent-context" = "metaobjects/agent_context/_content"
+# A custom build hook (hatch_build.py) copies ../../agent-context into
+# src/metaobjects/agent_context/_content at build time, and `artifacts` below forces
+# that (gitignored) tree into BOTH the sdist and the wheel — so `uv build`
+# (sdist -> wheel) works, not just a direct wheel build. In dev/test the resolver
+# falls back to walking up to the monorepo agent-context/.
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build]
+artifacts = ["src/metaobjects/agent_context/_content/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

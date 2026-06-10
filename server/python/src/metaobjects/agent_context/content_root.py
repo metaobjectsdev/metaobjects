@@ -3,8 +3,8 @@
 Two resolution sources (matching the TS reference's bundled-then-monorepo walk):
 
 1. A bundled copy shipped inside the installed wheel, at
-   ``metaobjects/agent_context/_content/`` (see the hatch ``force-include`` in
-   ``pyproject.toml``). This is the published path.
+   ``metaobjects/agent_context/_content/`` (vendored at build time by the custom
+   hatch build hook ``hatch_build.py``). This is the published path.
 2. A dev fallback: walk up from this module to the monorepo root and use its
    top-level ``agent-context/`` directory.
 
