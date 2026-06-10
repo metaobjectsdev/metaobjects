@@ -347,12 +347,18 @@ public class DbContextGenerator : IGenerator
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
 
+        // Flattened-column prefix for each nested scalar. Defaults to "{parentCol}_"
+        // (EF's owned-type convention). An explicit @embeddedColumnPrefix overrides it —
+        // including "" for un-prefixed columns (the prefix is owner-specific, so it lives
+        // on the owner's object-field, not on the shared value object).
+        var prefix = field.Attr("embeddedColumnPrefix") as string ?? $"{parentCol}_";
+
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
         sb.AppendLine("        {");
         foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
         {
-            var nestedCol = $"{parentCol}_{CSharpNaming.Column(nf, strategy)}";
+            var nestedCol = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\");");
         }
         sb.Append("        });");
