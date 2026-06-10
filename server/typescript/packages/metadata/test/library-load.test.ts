@@ -2,8 +2,8 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { librarySources } from "../src/library/library-sources.ts";
-import { MetaDataLoader } from "../src/index.ts";
+import { librarySources } from "../src/library/library-sources.js";
+import { MetaDataLoader } from "../src/index.js";
 
 describe("librarySources", () => {
   test("returns a source for the ai package whose content mentions LlmCallBase", async () => {

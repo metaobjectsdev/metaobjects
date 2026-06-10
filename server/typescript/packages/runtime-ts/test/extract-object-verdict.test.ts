@@ -297,17 +297,17 @@ describe("extractObject — verdict oracle (dirty XML → typed object graph)", 
 
     const vibes = field(docMo, "vibes").getValue(doc) as ValueObject[];
     expect(vibes.length).toBe(2);
-    expect(field(vibeMo, "thread_id").getValue(vibes[0])).toBe("TH-001");
-    expect(field(vibeMo, "text").getValue(vibes[0])).toBe(
+    expect(field(vibeMo, "thread_id").getValue(vibes[0]!)).toBe("TH-001");
+    expect(field(vibeMo, "text").getValue(vibes[0]!)).toBe(
       "Durk staggers but still blocks the trail.",
     );
-    expect(field(vibeMo, "text").getValue(vibes[1])).toBe("Skett's bow arm trembles.");
+    expect(field(vibeMo, "text").getValue(vibes[1]!)).toBe("Skett's bow arm trembles.");
 
     const checks = field(docMo, "checks").getValue(doc) as ValueObject[];
     expect(checks.length).toBe(2);
-    expect(field(checkMo, "id").getValue(checks[0])).toBe("T1");
-    expect(field(checkMo, "resolved").getValue(checks[0])).toBe("yes");
-    expect(field(checkMo, "resolved").getValue(checks[1])).toBe("no");
+    expect(field(checkMo, "id").getValue(checks[0]!)).toBe("T1");
+    expect(field(checkMo, "resolved").getValue(checks[0]!)).toBe("yes");
+    expect(field(checkMo, "resolved").getValue(checks[1]!)).toBe("no");
 
     expect(result.report.hasLostRequired()).toBe(false);
   });

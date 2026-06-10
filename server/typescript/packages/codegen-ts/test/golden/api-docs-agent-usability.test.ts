@@ -101,7 +101,7 @@ function extractTsBlocks(md: string): string[] {
   const blocks: string[] = [];
   const re = /```ts\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(md)) !== null) blocks.push(m[1]);
+  while ((m = re.exec(md)) !== null) blocks.push(m[1]!);
   return blocks;
 }
 
@@ -145,7 +145,7 @@ describe("api-docs agent-usability gate — an agent could write a compiling cal
     for (const h of importHeaders) {
       const m = /import \{ ([^}]*) \} from/.exec(h);
       if (!m) continue;
-      for (const n of m[1].split(",").map((s) => s.trim())) importedNames.add(n);
+      for (const n of m[1]!.split(",").map((s) => s.trim())) importedNames.add(n);
     }
 
     const callables = model.units

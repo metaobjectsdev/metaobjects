@@ -68,7 +68,7 @@ describe("defineConfig", () => {
   });
 
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig (all required fields present, types exact)", () => {
-    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "dbImport" | "dialect" | "outputLayout">>()
+    expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "extStyle" | "dbImport" | "dialect" | "outputLayout" | "includeHonoRoutes" | "providedEnumModule">>()
       .toEqualTypeOf<ResolvedGenConfig>();
   });
 });
