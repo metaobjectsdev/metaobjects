@@ -53,10 +53,20 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
+    /**
+     * FR-019 per-port config for resolving `@provided` enum namespaces, parsed from the
+     * `providedEnumNamespace` (single fallback) + `providedEnumPackages` (package→namespace map)
+     * generator args. Empty by default; a referenced provided enum with no resolvable namespace is
+     * a codegen-time error.
+     */
+    private var fr019Config = Fr019SharedEnum.ProvidedEnumConfig(null, emptyMap())
+
     /** Real work happens here — sidesteps the parent's print-style writer machinery. */
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
+            getArg("providedEnumNamespace"), getArg("providedEnumPackages"))
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
         // emitted as an instantiable @Serializable data class — abstracts are scaffolding.
@@ -83,7 +93,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
         // so the resolved property type (a ClassName) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
-            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+            // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
+            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
+                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -146,7 +158,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     protected open fun emitAbstractShape(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         for (field in obj.metaFields) {
-            if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+            // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
+            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
+                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
@@ -189,6 +203,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /** The Kotlin TypeName for a single (non-array) element of [field]. */
     protected open fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+        // FR-019: a @provided shared enum is referenced at its configured external namespace
+        // (<ns>.E) instead of the materialized in-package class; an unresolved namespace throws.
+        Fr019SharedEnum.providedClassName(field, fr019Config)?.let { return it }
         // field.enum → typed enum class generated alongside this entity.
         KotlinTypeMapper.enumTypeName(field, owner)?.let { return it }
         if (field is ObjectField) {
