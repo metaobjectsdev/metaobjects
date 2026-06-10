@@ -119,12 +119,14 @@ public static class PackageBindingResolver
             if (config.TypeOverrides.TryGetValue(fqn, out var typeTarget) && !string.IsNullOrEmpty(typeTarget))
                 return typeTarget;
         }
-        // 2. Package-level override — applies ONLY to the default resolution path.
-        //    @provided enums often live in a parallel namespace tree from entities; a
-        //    PackageNamespaces override (which targets entity placement) must not bleed
-        //    into the @provided enum case.
-        if (!useProvidedEnumPrepend &&
-            !string.IsNullOrEmpty(package) &&
+        // 2. Package-level override — keyed by the metadata package, so it applies to BOTH
+        //    paths: a provided enum has its OWN declaring package (distinct from any entity
+        //    package), and an explicit PackageNamespaces entry for that package is a
+        //    deliberate binding that must win (matching ResolveImpl's unguarded step 2 and
+        //    the FR-019 "namespace maps to the declaring package" contract). Parallel-tree
+        //    routing for provided enums is expressed via Convention.ProvidedEnumPrepend
+        //    (step 3), not by suppressing this explicit override.
+        if (!string.IsNullOrEmpty(package) &&
             config.PackageNamespaces.TryGetValue(package, out var pkgTarget) &&
             !string.IsNullOrEmpty(pkgTarget))
         {
