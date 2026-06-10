@@ -1,0 +1,8 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "field.enum": { "name": "Priority", "abstract": true, "@provided": "yes", "@values": ["LOW", "HIGH"] } }
+    ]
+  }
+}

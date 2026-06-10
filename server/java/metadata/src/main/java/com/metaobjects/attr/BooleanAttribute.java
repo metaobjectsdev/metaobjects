@@ -91,13 +91,13 @@ public class BooleanAttribute extends MetaAttribute<Boolean>
                 for (String item : items) {
                     String trimmed = item.trim();
                     if (!trimmed.isEmpty()) {
-                        list.add(Boolean.parseBoolean(trimmed));
+                        list.add(parseBooleanStrict(trimmed));
                     }
                 }
                 setValueAsObject(list);
             } else {
                 // Single value
-                Boolean boolValue = Boolean.parseBoolean(value.trim());
+                Boolean boolValue = parseBooleanStrict(value.trim());
                 setValueAsObject(Arrays.asList(boolValue));
             }
         } else {
@@ -105,9 +105,24 @@ public class BooleanAttribute extends MetaAttribute<Boolean>
             if (value == null) {
                 setValueAsObject(null);
             } else {
-                setValueAsObject(Boolean.parseBoolean(value.trim()));
+                setValueAsObject(parseBooleanStrict(value.trim()));
             }
         }
+    }
+
+    /**
+     * Strict boolean parse — accepts only case-insensitive {@code "true"}/{@code "false"} and
+     * THROWS on any other token (unlike {@link Boolean#parseBoolean}, which silently maps every
+     * non-{@code "true"} string to {@code false}). This mirrors {@link com.metaobjects.attr.IntAttribute}'s
+     * parse-throws-on-bad-value contract so a non-boolean authored value (e.g. {@code @provided: "yes"})
+     * surfaces as {@code ERR_BAD_ATTR_VALUE} through the parser's strict-mode catch, matching the
+     * cross-port loader contract (TS / C# / Python all reject a non-boolean boolean-attr value).
+     */
+    private static boolean parseBooleanStrict(String token) {
+        if ("true".equalsIgnoreCase(token)) return true;
+        if ("false".equalsIgnoreCase(token)) return false;
+        throw new IllegalArgumentException(
+            "Invalid boolean value: '" + token + "' (expected 'true' or 'false')");
     }
 
     /**

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { MetaDataLoader } from "../src/index.ts";
+import { MetaDataLoader } from "../src/index.js";
 
 function meta(responseRef: string) {
   return JSON.stringify({
@@ -20,7 +20,7 @@ describe("template.prompt @responseRef", () => {
   });
   test("unresolved @responseRef is a loader error", async () => {
     const r = await MetaDataLoader.fromString(meta("NoSuchVO"), "json");
-    expect(r.errors.some((e: { code?: string }) => e.code === "ERR_INVALID_TEMPLATE")).toBe(true);
+    expect(r.errors.some((e) => (e as { code?: string }).code === "ERR_INVALID_TEMPLATE")).toBe(true);
   });
 });
 
@@ -35,7 +35,7 @@ test("unresolved @responseRef on a NESTED prompt is a loader error", async () =>
     ] } },
   ] } });
   const r = await MetaDataLoader.fromString(m, "json");
-  expect(r.errors.some((e: { code?: string }) => e.code === "ERR_INVALID_TEMPLATE")).toBe(true);
+  expect(r.errors.some((e) => (e as { code?: string }).code === "ERR_INVALID_TEMPLATE")).toBe(true);
 });
 
 test("template.prompt is allowed as a child of object.entity", async () => {
