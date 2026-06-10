@@ -43,7 +43,12 @@ function walk(node: any): void {
         .sort();
     }
   }
-  for (const k of (node.children?.() ?? [])) walk(k);
+  // Only recurse into object/field nodes — validator nodes can chain
+  // via `extends` and cause infinite recursion if walked generically.
+  for (const k of (node.children?.() ?? [])) {
+    if (k?.type === "validator") continue;
+    walk(k);
+  }
 }
 walk(res.root);
 const sorted: Record<string, any> = {};
