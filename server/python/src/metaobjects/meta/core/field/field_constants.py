@@ -68,6 +68,12 @@ FIELD_ATTR_INSTRUCTION = "instruction"
 #   @enumDoc:   member -> human-readable description (shown per-member in the 'guide' prompt).
 FIELD_ATTR_ENUM_ALIAS = "enumAlias"
 FIELD_ATTR_ENUM_DOC = "enumDoc"
+# FR-019 (ADR-0026): @provided boolean, own-only on an ABSTRACT package-level field.enum
+# declaration. When true, codegen does NOT materialize the enum type; consuming fields
+# reference an existing hand-written/third-party type resolved via per-port codegen config
+# (never an FQN in metadata — ADR-0001). Default false. Inert on a concrete consuming field.
+# Non-boolean → ERR_BAD_ATTR_VALUE (the boolean AttrSchema).
+FIELD_ATTR_PROVIDED = "provided"
 # FR-011 enum extract-hardening attrs (field.enum only).
 #   @coerceDefault: present-but-uncoercible extract fallback member → DEFAULTED.
 #       Member-validated against the effective @values (own or inherited).
