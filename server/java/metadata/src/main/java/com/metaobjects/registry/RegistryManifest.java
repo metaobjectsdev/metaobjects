@@ -229,12 +229,7 @@ public final class RegistryManifest {
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
         /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
-        PRESENTATION_ONLY,
-        /** A pilot/not-yet-graduated cross-port attr: registered + functional in this port but
-         * deliberately held out of the canonical manifest until every port registers it (then it
-         * graduates into {@code expected-registry.json} and the carve-out is removed). Currently
-         * FR-019 {@code @provided} (ADR-0026). Mirrors the C# {@code ExclusionReason.PilotVocab}. */
-        PILOT_VOCAB
+        PRESENTATION_ONLY
     }
 
     /**
@@ -263,11 +258,7 @@ public final class RegistryManifest {
             com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_OBJECT, ExclusionReason.NATIVE_BINDING,
             com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING,
-            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP,
-            // FR-019 @provided (ADR-0026): registered + functional on field.enum, held out of the
-            // canonical manifest until all five ports register it (Task 4 graduates it into
-            // expected-registry.json and removes this carve-out). Mirrors C# RegistryManifest.
-            com.metaobjects.field.EnumField.ATTR_PROVIDED, ExclusionReason.PILOT_VOCAB);
+            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP);
 
     /**
      * Classify a per-type attr: an {@link ExclusionReason} (carved out) or

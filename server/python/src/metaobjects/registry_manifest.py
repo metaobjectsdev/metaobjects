@@ -25,7 +25,6 @@ import json
 from enum import Enum
 
 from .documentation.doc_constants import DOC_ATTR_DESCRIPTION
-from .meta.core.field.field_constants import FIELD_ATTR_PROVIDED
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPE_STRINGARRAY,
@@ -62,11 +61,6 @@ class ExclusionReason(str, Enum):
     INHERITANCE_ANCHOR = "inheritance-anchor"
     #: TS-web-presentation-only facet (the generic ``view.*`` controls).
     PRESENTATION_ONLY = "presentation-only"
-    #: A pilot/not-yet-graduated cross-port attr: registered + functional here but held out of
-    #: the canonical manifest until every port registers it (then it graduates into
-    #: expected-registry.json and the carve-out is removed). Currently FR-019 ``@provided``
-    #: (ADR-0026). Mirrors the C# ``ExclusionReason.PilotVocab`` / Java ``PILOT_VOCAB``.
-    PILOT_VOCAB = "pilot-vocab"
 
 
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
@@ -90,10 +84,6 @@ _EXCLUDED_PER_TYPE_ATTRS: dict[str, ExclusionReason] = {
     _ATTR_NAME_OBJECT: ExclusionReason.NATIVE_BINDING,
     _ATTR_NAME_OBJECT_ADAPTER: ExclusionReason.NATIVE_BINDING,
     DOC_ATTR_DESCRIPTION: ExclusionReason.COMMON_ATTR_DUP,
-    # FR-019 @provided (ADR-0026): registered + functional on field.enum, held out of the
-    # canonical manifest until all five ports register it (Task 4 graduates it into
-    # expected-registry.json and removes this carve-out). Mirrors C#/Java.
-    FIELD_ATTR_PROVIDED: ExclusionReason.PILOT_VOCAB,
 }
 
 
