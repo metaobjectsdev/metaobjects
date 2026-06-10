@@ -206,24 +206,25 @@ def test_conflict_reported_once_per_type_subtype() -> None:
 
 
 def test_doc_attr_names_tuple() -> None:
-    """DOC_ATTR_NAMES contains the 7 expected cross-language constant values."""
+    """DOC_ATTR_NAMES contains the 8 expected cross-language constant values."""
     assert DOC_ATTR_DESCRIPTION == "description"
     assert DOC_ATTR_TITLE       == "title"
     assert DOC_ATTR_NOTES       == "notes"
+    assert "summary"     in DOC_ATTR_NAMES
     assert "deprecated"  in DOC_ATTR_NAMES
     assert "replacedBy"  in DOC_ATTR_NAMES
     assert "seeAlso"     in DOC_ATTR_NAMES
     assert "aliases"     in DOC_ATTR_NAMES
-    assert len(DOC_ATTR_NAMES) == 7
+    assert len(DOC_ATTR_NAMES) == 8
 
 
 def test_common_doc_attrs_schema() -> None:
-    """common_doc_attrs has 7 entries; seeAlso and aliases are string arrays.
+    """common_doc_attrs has 8 entries; seeAlso and aliases are string arrays.
 
     Array attrs are now `string` + the orthogonal is_array flag (the retired
     `stringarray` subtype), matching Java's StringAttribute + @isArray.
     """
-    assert len(common_doc_attrs) == 7
+    assert len(common_doc_attrs) == 8
     by_name = {a.name: a for a in common_doc_attrs}
     assert by_name[DOC_ATTR_SEE_ALSO].value_type  == ATTR_SUBTYPE_STRING
     assert by_name[DOC_ATTR_SEE_ALSO].is_array is True

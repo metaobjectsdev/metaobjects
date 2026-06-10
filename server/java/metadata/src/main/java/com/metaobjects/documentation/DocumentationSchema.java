@@ -51,7 +51,7 @@ public final class DocumentationSchema {
         String description
     ) {}
 
-    /** The 7 universal documentation common attrs in declaration order. */
+    /** The 8 universal documentation common attrs in declaration order. */
     public static final List<CommonDocAttr> COMMON_DOC_ATTRS = List.of(
         new CommonDocAttr(
             DocumentationConstants.DOC_ATTR_DESCRIPTION,
@@ -59,6 +59,15 @@ public final class DocumentationSchema {
             false,
             "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. "
             + "Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose)."
+        ),
+        new CommonDocAttr(
+            DocumentationConstants.DOC_ATTR_SUMMARY,
+            StringAttribute.SUBTYPE_STRING,
+            false,
+            "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar "
+            + "previews, and AI prompts where the full @description is too long. Optional supplement "
+            + "to @description; when @summary is unset, doc surfaces typically fall back to the first "
+            + "sentence of @description."
         ),
         new CommonDocAttr(
             DocumentationConstants.DOC_ATTR_TITLE,
