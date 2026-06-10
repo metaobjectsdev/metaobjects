@@ -216,7 +216,62 @@ lock the repo/owner IDs against resurrection attacks.)
 5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
    (indexing/validation takes a few minutes).
 
-## Other language ecosystems (Java / Python)
+# Releasing the Python package to PyPI
+
+How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publishing**
+(OIDC from GitHub Actions) — no API token.
+
+## What gets published
+
+One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
+currently `0.9.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+
+## How we publish: Trusted Publishing (OIDC)
+
+The workflow [`.github/workflows/publish-python.yml`](../.github/workflows/publish-python.yml)
+builds with `uv` and publishes via `pypa/gh-action-pypi-publish` using OIDC.
+Trigger it manually (**Actions → publish-python → Run workflow**) or with a `python-v*` tag.
+
+### One-time setup on PyPI
+
+Project `metaobjects` → **Settings → Publishing → Add a new GitHub publisher**:
+
+| Field | Value |
+|---|---|
+| Owner | `metaobjectsdev` |
+| Repository | `metaobjects` |
+| Workflow | `publish-python.yml` |
+| Environment | *(leave empty)* |
+
+(The initial `0.9.0` was published from a local `uv publish`; this workflow makes
+subsequent releases keyless.)
+
+## Gotchas (the non-obvious ones)
+
+1. **The `agent-context/` bundle is vendored by a build hook, not a parent-path include.**
+   `hatch_build.py` copies the repo-root `agent-context/` into
+   `src/metaobjects/agent_context/_content` at build time, and `[tool.hatch.build]
+   artifacts` forces it into **both** sdist and wheel. Do **not** revert to a
+   `force-include` of `../../agent-context` — that builds a direct wheel but breaks
+   `uv build` (sdist → wheel), because the parent path is absent when building from the sdist.
+2. **PyPI versions are immutable** (like npm/NuGet). You can't re-upload a version — only
+   yank. Validate locally first (below).
+3. **Bump the version in `pyproject.toml`** (`[project].version`).
+4. **The wheel is pure-Python/universal** (`py3-none-any`) — one wheel serves every platform.
+
+## Procedure
+
+1. **Bump** `[project].version` in `server/python/pyproject.toml`.
+2. **Validate locally** (versions are immutable):
+   ```bash
+   cd server/python
+   rm -rf dist && uv build --out-dir dist        # must produce BOTH .tar.gz and .whl
+   uvx twine check dist/*                         # metadata + README render
+   ```
+3. **Publish:** GitHub → **Actions → publish-python → Run workflow** (or push a `python-v<version>` tag).
+4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
+
+## Other language ecosystems (Java)
 
 This guide is **TypeScript / npm-specific** — its gotchas (`workspace:*`, `bun publish`, lockfile
 re-pinning) do not transfer. Each language ships through a different registry with its own tooling,
@@ -229,12 +284,11 @@ What to expect per ecosystem:
 | Language | Registry | Tooling | Gotchas to anticipate |
 |---|---|---|---|
 | Java | Maven Central (Sonatype Central Portal) | `mvn deploy` / Gradle publish | GPG-signed artifacts; `groupId` ownership verification; staging → release promotion; javadoc + sources jars required |
-| Python | PyPI | `uv build` / `python -m build` + `twine` | sdist + wheel; `pyproject.toml` metadata; prefer **OIDC trusted publishing** over long-lived tokens |
 
-(C# now has its own guide above — *Releasing the C# packages to NuGet*.)
+(C# and Python now have their own guides above.)
 
-**Versions are not unified across languages** — TS and C# are on the `0.9.x` line, the Java/Kotlin
-module line is on the `7.2.x` track. Don't force one number. The cross-language contract
+**Versions are not unified across languages** — TS, C#, and Python are on the `0.9.x` line, the
+Java/Kotlin module line is on the `7.2.x` track. Don't force one number. The cross-language contract
 is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
 each release states which capabilities/conformance level it satisfies, and *that* manifest — not a
 shared version — is the coordination point. (Generated code runs without any MetaObjects runtime, so

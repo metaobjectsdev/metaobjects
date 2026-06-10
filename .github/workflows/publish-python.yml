@@ -1,0 +1,45 @@
+name: publish-python
+
+# Publishes the `metaobjects` Python package to PyPI via Trusted Publishing (OIDC) —
+# no API token. PyPI mints short-lived credentials after validating GitHub's OIDC
+# token against the trusted publisher configured for the project. See docs/RELEASING.md.
+#
+# One-time setup on PyPI (project `metaobjects` -> Settings -> Publishing ->
+# Add a new GitHub publisher):
+#   Owner:        metaobjectsdev
+#   Repository:   metaobjects
+#   Workflow:     publish-python.yml
+#   Environment:  (leave empty unless you uncomment `environment:` below)
+# Once that's added you can DELETE any long-lived PyPI API token.
+#
+# Triggers: manual (workflow_dispatch) or a python-v* tag.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'python-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # If you scope the PyPI trusted publisher to a GitHub environment, create it in
+    # repo Settings and uncomment (must match the publisher's Environment exactly):
+    # environment: release
+    permissions:
+      id-token: write   # required: lets this job mint a GitHub OIDC token for PyPI
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        working-directory: server/python
+        run: uv build --out-dir dist
+
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: server/python/dist
