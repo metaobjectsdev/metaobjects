@@ -22,11 +22,11 @@ working code.
 
 | Language | Status | Quickstart | Source |
 |---|---|---|---|
-| TypeScript | Published to npm at `0.7.0-rc.1` (12 `@metaobjectsdev/*` packages) | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
+| TypeScript | Published to npm at `0.9.0` (the `@metaobjectsdev/*` packages) | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
 | Java | Loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
 | Kotlin | Codegen tier on top of Java — 7 generators (entity, Exposed table, relations, payload, validator, Spring config, storedProc); 12 / 12 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
-| C# | Loader + conformance + EF Core codegen + render engine + `meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
-| Python | Loader + conformance + render + entity-model codegen shipped; persistence + migration in progress | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
+| C# | Loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
+| Python | Loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 
 ## Capability matrix
 
@@ -40,11 +40,11 @@ working code.
 | `field.object` + `@storage=flattened` | Yes | Yes | Yes (per-sub-field columns) | Yes (EF Core `OwnsOne`) | Loader yes; codegen partial |
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen | Yes (via projection) | – (consumers use `Map`) | Yes (`@Serializable`) | Yes | – (consumers use `dict`) |
-| Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | `meta migrate` | In progress |
-| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; startup: `MetaClassDBValidatorService` | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `meta verify` | In progress |
+| Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
+| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; startup: `MetaClassDBValidatorService` | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
-| Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Roadmap |
+| Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / UI client (browser) | Yes (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`; codegen + runtime) | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
 | Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Hand-write Spring controller per contract | Hand-write Spring-Kotlin / Ktor per contract | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Hand-write FastAPI router per contract |
 
@@ -62,8 +62,9 @@ the consumer-side wiring.
 
 ## Four pillars
 
-Equal-weight. The first three ship per-language today; the fourth lands in
-`7.0.0`:
+Equal-weight — all four ship per-language today. The fourth's library-side
+building blocks are complete in all five ports; MCP exposure of declared
+prompts/tools is the one remaining roadmap item:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
    POJO + OMDB for Java, `@Serializable data class` + Exposed for Kotlin, EF Core
@@ -74,7 +75,7 @@ Equal-weight. The first three ship per-language today; the fourth lands in
 3. **Drift detection** — catch divergence across the 7 drift sources (code/DB,
    code/API-doc, DB/metadata, migration/metadata, generated-edited, prompt/payload,
    generated/runtime). See [`docs/features/migrations-and-drift.md`](docs/features/migrations-and-drift.md).
-4. **Prompt construction** *(landing in 7.0.0; foundation shipped)* — the prompt
+4. **Prompt construction** *(library-side pieces shipped in all five ports; MCP exposure on the roadmap)* — the prompt
    is code too. Declare a prompt's payload as a typed projection (payload bloat
    becomes a diff), keep its text external and provider-resolved, render it
    deterministically (snapshot-testable, cache-stable, drift-checked at build
