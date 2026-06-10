@@ -120,10 +120,20 @@ The corpus is the oracle: TS reference green first, then each port matches.
 
 ## Realization status
 
-- **Unimplemented.** This spec + ADR-0026 lock the decision. Implementation order:
-  (1) loader `@provided` attr + validation + conformance fixtures (TS green);
-  (2) TS shared-materialize + provided-reference codegen; (3) per-port fan-out
-  (C#/Java/Kotlin/Python) against the fixtures; (4) retire `@csEnumType`.
+- **Shipped — all five ports.** `@provided` is registered on `field.enum` and
+  graduated into the cross-port `expected-registry.json` (the pilot carve-out is
+  closed). Shared-materialize + provided-reference codegen ship in TS (reference),
+  C#, Java (`codegen-spring`), Kotlin (`codegen-kotlin`), and Python, each gated by
+  the shared `fixtures/codegen-conformance/shared-provided-enum` oracle and its own
+  idiomatic per-port conformance test. The positive metamodel fixture
+  `fixtures/conformance/enum-provided-shared` pins `@provided` load + canonical
+  round-trip cross-port. `@csEnumType` was never introduced (retired in design).
+- **Deferred:** a *cross-port* loader error fixture for `@provided: "yes"` is not
+  added — TS rejects a non-boolean boolean-attr value at load (`ERR_BAD_ATTR_VALUE`)
+  but the JVM ports silently coerce it (`Boolean.parseBoolean`), a pre-existing
+  plain-boolean-attr-validation divergence orthogonal to FR-019 (no corpus fixture
+  tests a bad boolean value). TS's `field-enum.test.ts` covers the rejection where
+  supported. `@provided` on `object.value` remains the noted follow-up.
 
 ## Cross-references
 - [ADR-0026](../../../spec/decisions/ADR-0026-shared-and-provided-named-types.md) — `@provided` as a cross-type provenance flag (enums + value objects); shared vs provided orthogonal; Option 2 upgrade path.
