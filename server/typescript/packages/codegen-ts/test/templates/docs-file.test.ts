@@ -126,14 +126,14 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       loadedRoot: root,
     });
 
-    expect(out).toContain("## Storage");
-    expect(out).toContain("| Column | Type | Nullable | Key |");
-    // PK: not nullable, key role = primary key, neutral logical type.
-    expect(out).toContain("| `id` | `long` | no | primary key |");
-    // Required non-PK: not nullable, no key.
-    expect(out).toContain("| `title` | `string` | no |  |");
-    // Optional: nullable.
-    expect(out).toContain("| `body` | `string` | yes |  |");
+    expect(out).toContain("## Fields");
+    expect(out).toContain("| Field | Type | Required | Column | Rules |");
+    // PK: required, glyph-marked, neutral logical type, no @column override.
+    expect(out).toContain("🔑 `id` | `long` | yes |  |  |");
+    // Required non-PK: required, no key glyph.
+    expect(out).toContain("`title` | `string` | yes |  | maxLength: 200 |");
+    // Optional: required cell empty.
+    expect(out).toContain("`body` | `string` |  |  |  |");
 
     // Neutrality: no TypeScript type, no ORM DDL.
     expect(out).not.toContain("TypeScript type");
@@ -141,7 +141,7 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
     expect(out).not.toContain("text(");
   });
 
-  test("@column override surfaces as the physical Column name", () => {
+  test("@column override surfaces in the Storage column", () => {
     const root = metaRoot();
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     attachRdbSource(post, "posts");
@@ -164,8 +164,9 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       dialect: "sqlite",
       loadedRoot: root,
     });
-    // The physical column name (@column) is the value-add of the Storage table.
-    expect(out).toContain("| `post_title` | `string` | no |  |");
+    // The @column override surfaces in the Storage column of the merged
+    // Fields table (only shown when column name differs from field name).
+    expect(out).toContain("`title` | `string` | yes | `post_title` |  |");
   });
 
   test("@dbColumnType override surfaces as the physical Type (uppercased)", () => {
@@ -190,8 +191,9 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       dialect: "sqlite",
       loadedRoot: root,
     });
-    // The declared physical @dbColumnType override wins over the logical type.
-    expect(out).toContain("| `ref` | `UUID` | yes |  |");
+    // The declared physical @dbColumnType override lands in the Storage
+    // column (uppercased); the logical type stays in the Type column.
+    expect(out).toContain("`ref` | `string` |  | `UUID` |  |");
   });
 
   test("array field renders neutral [] type, no JSON-column DDL leak", () => {
@@ -216,7 +218,7 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       dialect: "sqlite",
       loadedRoot: root,
     });
-    expect(out).toContain("| `tags` | `string[]` | yes |  |");
+    expect(out).toContain("`tags` | `string[]` |  |  |  |");
     // The "JSON column" wording was Drizzle-flavored physical detail — gone.
     expect(out).not.toContain("{ mode:");
   });
@@ -254,7 +256,9 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       dialect: "sqlite",
       loadedRoot: root,
     });
-    expect(out).toContain("| `authorId` | `long` | no | foreign key → `Author` |");
+    // FK fields get the 🔗 glyph + the target appended to the Type cell as a
+    // backticked ref. The legacy "foreign key → `Target`" key cell is gone.
+    expect(out).toContain("🔗 `authorId` | `long` → `Author` | yes |  |  |");
   });
 
   test("regex validator surfaces pattern in constraints", () => {
@@ -356,9 +360,9 @@ describe("renderDocsFile — Constraints", () => {
       loadedRoot: root,
     });
 
-    expect(out).toContain("## Constraints");
-    expect(out).toContain("| Field | Required | Type | Limits | Rules |");
-    expect(out).toContain("| `id` |");
+    expect(out).toContain("## Fields");
+    expect(out).toContain("| Field | Type | Required | Column | Rules |");
+    expect(out).toContain("🔑 `id`");
     // No language-specific leakage.
     expect(out).not.toContain("Zod");
     expect(out).not.toContain("## Generated code");
@@ -385,10 +389,10 @@ describe("renderDocsFile — object.value", () => {
     expect(out).not.toContain("## Storage");
     expect(out).not.toContain("## Identity");
     expect(out).not.toContain("## Relationships");
-    // The neutral Constraints table renders even for value objects with no
+    // The neutral Fields table renders even for value objects with no
     // storage — built from the object's own field metadata.
-    expect(out).toContain("## Constraints");
-    expect(out).toContain('| <a id="field-name"></a>`name` | yes | `string` |');
+    expect(out).toContain("## Fields");
+    expect(out).toContain('| <a id="field-name"></a>`name` | `string` | yes |');
     // No language-specific leakage.
     expect(out).not.toContain("## Generated code");
     expect(out).not.toMatch(/\.ts\b/);

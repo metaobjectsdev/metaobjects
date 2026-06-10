@@ -118,16 +118,16 @@ public static class Fr019SharedEnum
     {
         if (!shared.Provided) return shared.Name;
         // Bind the namespace to the enum's declaring metadata package (ADR-0001):
-        // PackageNamespaces[pkg] first, then the single ProvidedEnumNamespace fallback.
-        var ns = config.PackageNamespaces.TryGetValue(shared.Package, out var mapped) && !string.IsNullOrEmpty(mapped)
-            ? mapped
-            : config.ProvidedEnumNamespace;
+        //   TypeOverrides → PackageNamespaces → Convention with ProvidedEnumPrepend →
+        //   ProvidedEnumNamespace (FR-019 legacy single-string fallback) → Error.
+        var ns = PackageBindingResolver.TryResolve(config, shared.Package, shared.Name, useProvidedEnumPrepend: true)
+                 ?? config.ProvidedEnumNamespace;
         if (string.IsNullOrEmpty(ns))
             throw new InvalidOperationException(
                 $"provided enum \"{shared.Name}\" (declared in package \"{shared.Package}\") is marked " +
-                $"@provided but no C# namespace is configured to reference it from. Map its package in your " +
-                $"codegen config — PackageNamespaces[\"{shared.Package}\"] = \"YourApp.Enums\" — or set the " +
-                $"single ProvidedEnumNamespace fallback, so the generated code can reference \"{shared.Name}\".");
+                $"@provided but no C# namespace is configured to reference it from. Set " +
+                $"Convention.ProvidedEnumPrepend, map its package in PackageNamespaces, " +
+                $"or set the legacy ProvidedEnumNamespace fallback.");
         return $"{ns}.{shared.Name}";
     }
 }

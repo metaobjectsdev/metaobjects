@@ -8,26 +8,44 @@
 **Source:** `meta.social.json`
 **Package:** `acme::social`
 
-## Storage
-
-| Column | Type | Nullable | Key |
-|---|---|---|---|
-| `id` | `long` | no | primary key |
-| `name` | `string` | no |  |
-
 ## Identity
 
 - **Primary key:** `id`
+
+## In context
+
+```mermaid
+flowchart TB
+    User["User"]
+    UserTag["UserTag"]
+    Friendship["Friendship"]
+    Follow["Follow"]
+    UserTag -->|"userId"| User
+    Friendship -->|"userAId"| User
+    Friendship -->|"userBId"| User
+    Follow -->|"followerId"| User
+    Follow -->|"followeeId"| User
+    click User "./User.md"
+    click UserTag "./UserTag.md"
+    click Friendship "./Friendship.md"
+    click Follow "./Follow.md"
+    classDef focal    fill:#dbeafe,stroke:#1e40af,stroke-width:2px,color:#1e293b;
+    classDef same     fill:#eff6ff,stroke:#3b82f6,color:#1e293b;
+    classDef external fill:#f3f4f6,stroke:#9ca3af,stroke-dasharray:4 3,color:#374151;
+    classDef vo       fill:#faf5ff,stroke:#9333ea,color:#1e293b;
+    class User focal;
+    class UserTag,Friendship,Follow same;
+```
+
+## Fields
+
+| Field | Type | Required | Column | Rules |
+|---|---|---|---|---|
+| <a id="field-id"></a>🔑 `id` | `long` | yes |  |  |
+| <a id="field-name"></a>`name` | `string` | yes |  |  |
 
 ## Relationships
 
 - `tags` — many → `Tag` (association, through `UserTag`)
 - `friends` — many → `User` (association, through `Friendship`, symmetric self-join)
 - `follows` — many → `User` (association, through `Follow`, directed self-join via `followerId`)
-
-## Constraints
-
-| Field | Required | Type | Limits | Rules |
-|---|---|---|---|---|
-| <a id="field-id"></a>`id` | yes | `long` |  | primary key |
-| <a id="field-name"></a>`name` | yes | `string` |  |  |

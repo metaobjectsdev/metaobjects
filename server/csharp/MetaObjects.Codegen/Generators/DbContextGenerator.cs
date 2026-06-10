@@ -182,6 +182,18 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         if (needsMetadataUsing)
             sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata;");
+        // FR-021 — pull in every per-package namespace the model uses. The DbContext
+        // references EVERY entity by short name (DbSet<X>, modelBuilder.Entity<X>()),
+        // so it needs a `using` for each distinct namespace the entities resolve to.
+        var dbCtxNs = ctx.Config.Namespace;
+        var refNamespaces = ctx.Entities
+            .Where(o => o.IsEntity() || o.DbView is not null)
+            .Select(o => PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(o), o.Name))
+            .Where(ns => !string.IsNullOrEmpty(ns) && ns != dbCtxNs)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(ns => ns, StringComparer.Ordinal);
+        foreach (var ns in refNamespaces)
+            sb.AppendLine($"using {ns};");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -335,12 +347,18 @@ public class DbContextGenerator : IGenerator
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
 
+        // Flattened-column prefix for each nested scalar. Defaults to "{parentCol}_"
+        // (EF's owned-type convention). An explicit @embeddedColumnPrefix overrides it —
+        // including "" for un-prefixed columns (the prefix is owner-specific, so it lives
+        // on the owner's object-field, not on the shared value object).
+        var prefix = field.Attr("embeddedColumnPrefix") as string ?? $"{parentCol}_";
+
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
         sb.AppendLine("        {");
         foreach (var nf in vo.Fields().Where(n => CSharpNaming.ScalarFor(n.SubType) is not null))
         {
-            var nestedCol = $"{parentCol}_{CSharpNaming.Column(nf, strategy)}";
+            var nestedCol = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
             sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\");");
         }
         sb.Append("        });");

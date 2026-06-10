@@ -7,11 +7,12 @@ import {
   DOC_ATTR_NOTES,
   DOC_ATTR_REPLACED_BY,
   DOC_ATTR_SEE_ALSO,
+  DOC_ATTR_SUMMARY,
   DOC_ATTR_TITLE,
 } from "./doc-constants.js";
 
 /**
- * The 7 universal documentation common attrs. Registered via the
+ * The 8 universal documentation common attrs. Registered via the
  * registry.registerCommonAttrs() hook by the documentation provider.
  * Per ADR-0006, attr names are bare here; the serializer prefixes with @.
  */
@@ -21,6 +22,12 @@ export const commonDocAttrs: AttrSchema[] = [
     valueType: ATTR_SUBTYPE_STRING,
     required: false,
     description: "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose).",
+  },
+  {
+    name: DOC_ATTR_SUMMARY,
+    valueType: ATTR_SUBTYPE_STRING,
+    required: false,
+    description: "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Optional supplement to @description; when @summary is unset, doc surfaces typically fall back to the first sentence of @description.",
   },
   {
     name: DOC_ATTR_TITLE,

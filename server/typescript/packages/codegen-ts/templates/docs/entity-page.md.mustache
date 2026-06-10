@@ -1,6 +1,10 @@
 {{{generatedMarker}}}
 
 # {{entity.name}}
+{{#summaryLead}}
+
+{{{.}}}
+{{/summaryLead}}
 {{#descriptionQuote}}
 
 {{{.}}}
@@ -11,15 +15,6 @@
 {{/apiRefs.0}}
 
 {{{preambleHeader}}}
-{{#hasStorage}}
-
-## Storage
-
-{{{storage.tableHeader}}}
-{{#storage.rows}}
-{{{rowLine}}}
-{{/storage.rows}}
-{{/hasStorage}}
 {{#hasIdentities}}
 
 ## Identity
@@ -28,6 +23,31 @@
 - {{{bullet}}}
 {{/identities}}
 {{/hasIdentities}}
+{{#hasNeighborhoodEr}}
+
+## In context
+
+{{{neighborhoodErBlock}}}
+{{/hasNeighborhoodEr}}
+{{#fields.hasFields}}
+
+## Fields
+
+| Field | Type | Required | Column | Rules |
+|---|---|---|---|---|
+{{#fields.rows}}
+| {{{fieldCell}}} | {{{typeCell}}} | {{requiredCell}} | {{{storageCell}}} | {{{rulesCell}}} |
+{{/fields.rows}}
+{{/fields.hasFields}}
+{{#fieldDetails.hasDetails}}
+
+## Field details
+
+{{#fieldDetails.rows}}
+{{{block}}}
+
+{{/fieldDetails.rows}}
+{{/fieldDetails.hasDetails}}
 {{#hasRelationships}}
 
 ## Relationships
@@ -36,16 +56,6 @@
 - {{{bullet}}}
 {{/relationships}}
 {{/hasRelationships}}
-{{#constraints.hasConstraints}}
-
-## Constraints
-
-| Field | Required | Type | Limits | Rules |
-|---|---|---|---|---|
-{{#constraints.rows}}
-| {{{field}}} | {{required}} | {{{type}}} | {{limits}} | {{{rules}}} |
-{{/constraints.rows}}
-{{/constraints.hasConstraints}}
 {{#hasUsedBy}}
 
 ## Used by

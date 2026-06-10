@@ -87,12 +87,62 @@ export interface UsedByDoc {
   bullet: string;
 }
 
-/** One row in the neutral Constraints table — fully pre-rendered cells, so
- *  templates stay trivial and cross-port walk functions don't re-derive the
- *  escaping. Each cell is plain Markdown text; an empty cell is "". Unlike the
- *  language-specific Storage table, this is built from the field metadata's OWN
- *  declared constraints and renders for every object (including value objects
- *  with no storage). */
+/** One row in the unified Fields table — merges the old Storage + Constraints
+ *  cells into a single per-field row. Cells are pre-rendered Markdown so
+ *  templates stay trivial. An empty cell is "".
+ *
+ *  Replaces the previous Storage + Constraints split which duplicated facts
+ *  (field name, logical type, key role, required-vs-nullable). Following the
+ *  research synthesis: domain-model docs (FHIR, GitHub GraphQL Objects,
+ *  Schema.org) all surface one Fields/Properties table per resource. */
+export interface FieldDoc {
+  field: string;                 // raw field name (without backticks/anchor)
+  /** @markdown — anchored, badge-prefixed field cell:
+   *    `<a id="field-id"></a>🔑 \`id\``  (PK)
+   *    `<a id="field-userId"></a>🔗 \`userId\``  (FK)
+   *    `<a id="field-name"></a>\`name\``  (plain) */
+  fieldCell: string;
+  /** @markdown — neutral logical type; for FK fields, suffixed with the
+   *  cross-linked target — e.g. "`int` → [`User`](User.md)". */
+  typeCell: string;
+  /** @markdown — "yes" / "" — whether the field is required (or a PK). */
+  requiredCell: string;
+  /** @markdown — physical persistence info, ONLY when interesting:
+   *    `@column` override that differs from the field name → "`UserId`"
+   *    `@dbColumnType` set → "`UserId` `UUID`"  (or "`Data` `JSONB`" when
+   *      the field name happens to match the column)
+   *  Empty when field name == column AND no @dbColumnType override. */
+  storageCell: string;
+  /** @markdown — all the rules: validators (regex/length/numeric), default,
+   *  enum value set, extends EnumName, references, unique. Joined by " · ". */
+  rulesCell: string;
+}
+
+/** One expanded per-field detail entry — rendered as a sub-section below
+ *  the at-a-glance Fields table. ONLY emitted for fields with non-trivial
+ *  content (@description / @summary / validators / extends-enum / FK ref /
+ *  default / column-override). Skipped for plain typed fields with nothing
+ *  extra to surface — keeps the entity page from ballooning with empty
+ *  stubs.
+ *
+ *  The `block` is fully pre-rendered Markdown so the template is trivial
+ *  (`{{{block}}}` per row) and cross-port walks emit consistent output
+ *  without re-implementing the layout.
+ *
+ *  Authoring path: any field that wants surface in this section just sets
+ *  `@description` and/or `@summary` in the metadata YAML. Mirrors the
+ *  per-entity pattern. */
+export interface FieldDetailDoc {
+  field: string;                 // raw field name (without backticks)
+  /** @markdown — the full per-field block, headed by `### \`fieldName\``
+   *  and followed by italic summary, description paragraph, validator
+   *  bullets, type/FK/extends/default lines. */
+  block: string;
+}
+
+/** Deprecated alias for {@link FieldDoc} — kept for back-compat in case any
+ *  external template author destructured the old ConstraintRow shape.
+ *  @deprecated use FieldDoc */
 export interface ConstraintRow {
   field: string;                 // raw field name (without backticks)
   /** @markdown — "yes" / "" — whether the field is required (or a PK). */
@@ -121,6 +171,7 @@ export interface EntityDocData {
     source?: string;             // "meta.blog.json"
     package?: string;            // "acme::blog"
     description?: string;        // raw description text (may be multi-line)
+    summary?: string;            // raw summary text (single line)
   };
 
   /** @markdown — description as a blockquote (one `> ` per line). Present
@@ -129,15 +180,46 @@ export interface EntityDocData {
    *  constructs. */
   descriptionQuote?: string;
 
+  /** @markdown — `@summary` rendered as a one-line italic lead-in (e.g.
+   *  `*Tracks ...*`). Present iff `entity.summary` is set. Distinct from
+   *  `descriptionQuote` (a blockquote) so an entity that carries BOTH
+   *  surfaces both — short headline above, expanded paragraph below. */
+  summaryLead?: string;
+
+  /** @markdown — fenced ```mermaid erDiagram block``` showing the focal
+   *  entity plus its direct in/out FK neighbors (1-hop). Replaces the
+   *  cognitive load of the whole-model graph with an in-context view.
+   *  Mirrors the dbdocs pattern. Skipped when the entity has no neighbors. */
+  neighborhoodErBlock?: string;
+  /** Gate flag for Mustache — true iff `neighborhoodErBlock` is present.
+   *  See the "Mustache idiom note" at the top of this file. */
+  hasNeighborhoodEr?: boolean;
+
   /** @markdown — multi-line preamble block: Type / Source? / Package?, one
    *  per line, in the exact order matching the legacy emitter. Always
    *  present. */
   preambleHeader: string;
 
-  /** Storage section — the NEUTRAL physical persistence mapping (column name,
-   *  physical type, nullable, key). Present iff the entity has a writable rdb
-   *  source and is NOT object.value. Carries NO language-specific type or DDL
-   *  (ADR-0020). */
+  /** Unified Fields section — one row per field, merging the per-field facts
+   *  the old Storage + Constraints tables split between. Always emitted when
+   *  the entity has any fields. */
+  fields: {
+    hasFields: boolean;
+    rows: FieldDoc[];
+  };
+
+  /** Expanded per-field details — emitted as a "## Field details" section
+   *  AFTER the at-a-glance Fields table. Skips fields with nothing extra to
+   *  say (no description, no summary, no validators, no extends, no default,
+   *  no FK, no column override) so the section doesn't balloon the page. */
+  fieldDetails: {
+    hasDetails: boolean;
+    rows: FieldDetailDoc[];
+  };
+
+  /** @deprecated Storage section. The merged Fields table covers this now;
+   *  the old shape is still populated for adopters with custom templates that
+   *  reference it, but new templates should use `fields` instead. */
   storage?: {
     /** @markdown — pre-rendered "| Column | Type | Nullable | Key |\n|---|...|"
      *  header pair. */
@@ -158,10 +240,9 @@ export interface EntityDocData {
   /** Present-and-non-empty flag for the relationships section. */
   hasRelationships?: boolean;
 
-  /** Constraints section — the NEUTRAL replacement for the old language-
-   *  specific Validation/Generated-code sections (ADR-0020). Built from the
-   *  object's OWN field metadata, so it renders for every object including
-   *  value objects with no storage. Always emitted. */
+  /** @deprecated Constraints section. The merged Fields table covers this
+   *  now; the old shape is still populated for adopters with custom templates
+   *  that reference it, but new templates should use `fields` instead. */
   constraints: {
     /** True iff there is at least one row to render (objects always have
      *  fields, so this is generally true; gates the section header). */

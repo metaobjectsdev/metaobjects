@@ -72,6 +72,25 @@ public class CallableGenerator : PerEntityGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Threading.Tasks;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        // FR-021 — the callable's home namespace + the args VO's namespace, when split.
+        // The callable file declares a `static class {cls}Callable` referencing the
+        // result type and the args type; both can live in different per-package
+        // namespaces from where AppDbContext lives.
+        var callableNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name);
+        var argsNs = argsObject is not null
+            ? PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(argsObject), argsObject.Name)
+            : null;
+        // The callable file lives in the default namespace (alongside AppDbContext);
+        // pull in usings for both the entity's home and the args object's home when
+        // they differ.
+        var fileNs = ctx.Config.Namespace;
+        foreach (var ns in new[] { callableNs, argsNs }
+            .Where(n => !string.IsNullOrEmpty(n) && n != fileNs)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.Ordinal))
+        {
+            sb.AppendLine($"using {ns};");
+        }
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();

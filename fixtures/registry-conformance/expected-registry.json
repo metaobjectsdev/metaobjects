@@ -2717,6 +2717,12 @@
       "required": false
     },
     {
+      "name": "summary",
+      "valueType": "string",
+      "isArray": false,
+      "required": false
+    },
+    {
       "name": "title",
       "valueType": "string",
       "isArray": false,
