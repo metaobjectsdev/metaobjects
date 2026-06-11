@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "metaobjects"
-version = "0.7.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
@@ -271,6 +271,7 @@ integration = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pydantic" },
     { name = "pytest" },
 ]
 
@@ -288,7 +289,10 @@ requires-dist = [
 provides-extras = ["dev", "integration"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.3" }]
+dev = [
+    { name = "pydantic", specifier = ">=2" },
+    { name = "pytest", specifier = ">=9.0.3" },
+]
 
 [[package]]
 name = "mypy"

@@ -205,8 +205,10 @@ describe("meta docs — standalone neutral metadata docs", () => {
     const entity = await readFile(join(out, "Welcome.md"), "utf8");
     const template = await readFile(join(out, "WelcomePage.md"), "utf8");
 
-    // Entity page is the neutral metadata contract.
-    expect(entity).toContain("## Constraints");
+    // Entity page is the neutral metadata contract. (The former separate
+    // `## Constraints` + `## Storage` sections were merged into one neutral
+    // `## Fields` table carrying a Rules column — see entity-page.md.mustache.)
+    expect(entity).toContain("## Fields");
     // Template page declares its render contract.
     expect(template).toContain("**Kind:**");
     // Template page embeds the linked, highlighted template SOURCE resolved via

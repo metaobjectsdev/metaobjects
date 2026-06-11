@@ -93,4 +93,9 @@ exclude = ["tests/codegen/golden/"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    # `uv run` installs THIS group (PEP 735), not [project.optional-dependencies].
+    # The validator-parity corpus (tests/codegen/test_validation_conformance.py)
+    # imports pydantic to exercise the generated Pydantic models, so it must be here
+    # or the CI `uv run pytest` collection fails with ModuleNotFoundError.
+    "pydantic>=2",
 ]
