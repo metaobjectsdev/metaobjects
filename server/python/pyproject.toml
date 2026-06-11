@@ -98,4 +98,8 @@ dev = [
     # imports pydantic to exercise the generated Pydantic models, so it must be here
     # or the CI `uv run pytest` collection fails with ModuleNotFoundError.
     "pydantic>=2",
+    # ruff is the Python codegen format pass (src/metaobjects/codegen/format.py); the
+    # cli-registry corpus runs codegen, so without ruff in the group `uv run pytest`
+    # fails at format time with "No module named ruff".
+    "ruff>=0.6",
 ]
