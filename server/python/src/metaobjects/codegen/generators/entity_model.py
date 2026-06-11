@@ -7,10 +7,12 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.shared.base_types import TYPE_VALIDATOR
 from metaobjects.shared.separators import PACKAGE_SEP
+from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.constants import generated_header
-from metaobjects.codegen.type_map import py_type_for
+from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
+from metaobjects.codegen.generators import fr019_shared_enum as fr019
 from metaobjects.codegen.generators.m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
@@ -89,10 +91,24 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     return kwargs
 
 
-def _field_line(field: MetaField, imports: set[str]) -> tuple[str, bool]:
+def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
-    pt = py_type_for(field)
-    imports.update(pt.imports)
+    # FR-019: a field resolving to a package-level shared enum is typed by the materialized
+    # standalone class (imported from the shared `enums` module) or — when @provided — an
+    # external module from per-port config; inline enums keep their `Literal[...]` (py_type_for).
+    shared = (
+        fr019.shared_enum_for_field(field)
+        if field.sub_type == fc.FIELD_SUBTYPE_ENUM
+        else None
+    )
+    if shared is not None:
+        type_name, import_line = fr019.enum_type_and_import(shared, config)
+        imports.add(import_line)
+        type_expr = f"list[{type_name}]" if field_is_array(field) else type_name
+    else:
+        pt = py_type_for(field)
+        imports.update(pt.imports)
+        type_expr = pt.expr
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
@@ -105,7 +121,7 @@ def _field_line(field: MetaField, imports: set[str]) -> tuple[str, bool]:
     parts = [f"{k}={constraints[k]!r}" for k in _order if k in constraints]
     uses_field = bool(parts)
 
-    annotation = pt.expr if required else f"{pt.expr} | None"
+    annotation = type_expr if required else f"{type_expr} | None"
     if required and uses_field:
         assignment = f" = Field({', '.join(parts)})"
     elif required:
@@ -158,16 +174,19 @@ class EntityModelGenerator:
         entity: MetaObject,
         imports: set[str],
         object_index: dict[str, MetaObject] | None,
+        config: GenConfig | None = None,
     ) -> tuple[list[str], bool]:
         """The model body: one line per own field, then M:N nested collections when
         *object_index* is supplied. Returns ``(lines, uses_field)`` where
         ``uses_field`` is True iff any line used a pydantic ``Field(...)`` (so the
         caller knows to import ``Field``). Required imports are collected into
-        *imports*. Override to add/transform body lines."""
+        *imports*. *config* carries the FR-019 @provided-enum resolution. Override to
+        add/transform body lines."""
+        cfg = config if config is not None else GenConfig(out_dir="")
         uses_field = False
         lines: list[str] = []
         for f in entity.own_fields():
-            line, used = _field_line(f, imports)
+            line, used = _field_line(f, imports, cfg)
             uses_field = uses_field or used
             lines.append(line)
 
@@ -184,7 +203,10 @@ class EntityModelGenerator:
         return lines, uses_field
 
     def render_entity_model(
-        self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+        self,
+        entity: MetaObject,
+        object_index: dict[str, MetaObject] | None = None,
+        config: GenConfig | None = None,
     ) -> str:
         """Render an entity as a Pydantic v2 model (pre-format; the generator runs ruff).
 
@@ -192,14 +214,15 @@ class EntityModelGenerator:
         ``@cardinality:"many" + @through``) are emitted as nested Pydantic
         collections (``tags: list[Tag] = []``); a self-join uses a forward-ref string
         (``following: list["Person"] = []``). Without an index, only scalar/object
-        fields are emitted (back-compat)."""
+        fields are emitted (back-compat). *config* carries the FR-019 @provided-enum
+        resolution; when omitted, only the non-provided shared-materialize path is reachable."""
         imports: set[str] = set()
         base_class = "BaseModel"
         if entity.super_data is not None:
             base_class = entity.super_data.name
             imports.add(f"from .{base_class} import {base_class}")
 
-        lines, uses_field = self._emit_field_lines(entity, imports, object_index)
+        lines, uses_field = self._emit_field_lines(entity, imports, object_index, config)
 
         # FR-017 TPH: a concrete subtype pins the inherited discriminator field to its
         # own value (Literal) so the Pydantic model rejects a foreign-subtype tag —
@@ -237,23 +260,51 @@ class EntityModelGenerator:
         parts += ["", self._emit_class_header(entity, base_class), *body, ""]
         return "\n".join(parts)
 
+    def _render_shared_enums_module(self, entities: list[MetaObject]) -> EmittedFile | None:
+        """FR-019: the shared ``enums.py`` module — one module-level
+        ``class <Name>(str, Enum)`` per materialized (package-level abstract, non-``@provided``,
+        consumed) enum. ``None`` when the model has no materialized shared enum, so the inline
+        default output is byte-identical (no spurious empty module)."""
+        shared = fr019.materialized_shared_enums(entities)
+        if not shared:
+            return None
+        parts: list[str] = [
+            generated_header("enums", "enums"),
+            "from __future__ import annotations",
+            "",
+            "from enum import Enum",
+            "",
+        ]
+        for e in shared:
+            parts += ["", f"class {e.name}(str, Enum):"]
+            parts += [f'    {m} = "{m}"' for m in e.values]
+        parts.append("")
+        return EmittedFile(path="enums.py", content=ruff_format("\n".join(parts)))
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
-        return per_entity(
+        files = per_entity(
             lambda e, _c: EmittedFile(
                 path=f"{e.name}.py",
-                content=ruff_format(self.render_entity_model(e, index)),
+                content=ruff_format(self.render_entity_model(e, index, ctx.config)),
             )
         )(ctx)
+        matched = [e for e in ctx.entities if ctx.matches(e)]
+        enums_module = self._render_shared_enums_module(matched)
+        if enums_module is not None:
+            files.append(enums_module)
+        return files
 
 
 def render_entity_model(
-    entity: MetaObject, object_index: dict[str, MetaObject] | None = None
+    entity: MetaObject,
+    object_index: dict[str, MetaObject] | None = None,
+    config: GenConfig | None = None,
 ) -> str:
     """Module-level back-compat wrapper. Delegates to a default
     :class:`EntityModelGenerator` instance so existing callers (and the golden
     tests) are unaffected. Subclass :class:`EntityModelGenerator` to customize."""
-    return EntityModelGenerator().render_entity_model(entity, object_index)
+    return EntityModelGenerator().render_entity_model(entity, object_index, config)
 
 
 def entity_model() -> Generator:

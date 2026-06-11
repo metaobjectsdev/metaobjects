@@ -46,7 +46,14 @@ run_csharp() {
 
 run_java() {
   echo "==> Java persistence conformance"
-  ( cd server/java && mvn -f integration-tests/pom.xml test ) || FAIL=1
+  # integration-tests is EXCLUDED from the parent reactor (docker-only), so its
+  # <version>-SNAPSHOT module dependencies are not on Maven Central — install them to
+  # the local .m2 first (SERIALLY; a parallel -T build clobbers the shared render jar).
+  # Without this a fresh CI checkout fails with
+  # "Could not find artifact com.metaobjects:metaobjects-metadata:jar:<v>-SNAPSHOT".
+  ( cd server/java \
+      && mvn -q -DskipTests install -pl metadata,om,omdb,codegen-spring -am \
+      && mvn -f integration-tests/pom.xml test ) || FAIL=1
 }
 
 run_python() {
@@ -64,7 +71,11 @@ run_python() {
 
 run_kotlin() {
   echo "==> Kotlin persistence conformance"
-  ( cd server/java && mvn -f integration-tests-kotlin/pom.xml test ) || FAIL=1
+  # See run_java: install the SNAPSHOT module deps to .m2 (serially) before the
+  # docker-only integration-tests-kotlin module (also excluded from the reactor).
+  ( cd server/java \
+      && mvn -q -DskipTests install -pl metadata,codegen-kotlin -am \
+      && mvn -f integration-tests-kotlin/pom.xml test ) || FAIL=1
 }
 
 case "$WHICH" in

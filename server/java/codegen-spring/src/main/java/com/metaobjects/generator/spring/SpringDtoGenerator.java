@@ -53,6 +53,15 @@ import java.util.List;
  */
 public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
+    /**
+     * FR-019 per-port config for resolving {@code @provided} enum namespaces, parsed from the
+     * {@code providedEnumNamespace} (single fallback) + {@code providedEnumPackages}
+     * (package&rarr;namespace map) generator args. Empty (no namespaces) by default; a referenced
+     * provided enum with no resolvable namespace is a codegen-time error.
+     */
+    private Fr019SharedEnum.ProvidedEnumConfig fr019Config =
+        new Fr019SharedEnum.ProvidedEnumConfig(null, java.util.Map.of());
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -63,6 +72,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
+        fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
+            getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
+        // FR-019: materialize each shared (package-level abstract, non-@provided) enum ONCE as a
+        // standalone Java enum, so consuming DTOs reference it instead of redeclaring it inline.
+        emitSharedEnums(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject entity : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
@@ -151,16 +165,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String annotations = annotationsPerField.get(i);
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            src.append(componentType(field, entity)).append(' ').append(field.getName());
+            src.append(componentTypeFr019(field, entity)).append(' ').append(field.getName());
             if (i < fields.size() - 1) src.append(',');
             src.append('\n');
         }
 
-        // Nested `public enum <Name> { <members> }` declarations for this record's enum fields,
-        // deduped by enum-type name (two fields extending one abstract enum emit ONE decl) — so
-        // the DTO components carry the value-constrained type rather than String (cross-port
-        // parity with TS / Python / Kotlin / C#). Emitted INSIDE the record body, mirroring
-        // SpringPayloadGenerator.
+        // Nested `public enum <Name> { <members> }` declarations for this record's INLINE enum
+        // fields, deduped by enum-type name. FR-019: a field resolving to a package-level shared
+        // enum is NOT nested here — its type is materialized standalone (or @provided externally)
+        // and merely referenced. Inline enums stay nested (cross-port parity, byte-identical default).
         List<String> enumDecls = collectEnumDecls(entity, fields);
         if (enumDecls.isEmpty()) {
             src.append(") {}\n");
@@ -252,6 +265,57 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     }
 
     /**
+     * FR-019-aware DTO component type. A {@code field.enum} resolving to a package-level shared enum
+     * is typed by the materialized standalone type (a bare {@code E} in the same package, else its
+     * FQN) or — when {@code @provided} — the configured external {@code <ns>.E}; an enum array wraps
+     * it in {@code List<…>}. Every other field (including inline enums) delegates verbatim to the
+     * static {@link #componentType(MetaField, MetaObject)}, so the inline default stays byte-identical.
+     */
+    private String componentTypeFr019(MetaField<?> field, MetaObject owner) {
+        if (field instanceof EnumField) {
+            Fr019SharedEnum.SharedEnum shared = Fr019SharedEnum.sharedEnumForField(field);
+            if (shared != null) {
+                String ref = Fr019SharedEnum.typeReference(shared, owner, fr019Config);
+                return field.isArrayType() ? "java.util.List<" + ref + ">" : ref;
+            }
+        }
+        return componentType(field, owner);
+    }
+
+    /**
+     * FR-019: emit each materialized shared enum (package-level abstract, non-{@code @provided},
+     * consumed by ≥1 entity field) ONCE as a standalone top-level Java {@code enum} in its declaring
+     * package — {@code <pkg>/<Name>.java} containing {@code public enum <Name> { A, B, C }}. Consuming
+     * DTOs reference this type. Provided enums emit nothing here (referenced externally).
+     */
+    private void emitSharedEnums(MetaDataLoader loader, Path outRoot) {
+        for (Fr019SharedEnum.SharedEnum shared : Fr019SharedEnum.materializedSharedEnums(loader)) {
+            StringBuilder src = new StringBuilder();
+            if (!shared.javaPackage().isEmpty()) {
+                src.append("package ").append(shared.javaPackage()).append(";\n\n");
+            }
+            src.append("/** GENERATED — shared enum ").append(shared.name())
+               .append(". Do not hand-edit; regenerated from metadata. */\n");
+            src.append("public enum ").append(shared.name()).append(" { ")
+               .append(String.join(", ", shared.values())).append(" }\n");
+            writeSharedEnumFile(shared, outRoot, src.toString());
+        }
+    }
+
+    /** Write {@code <outRoot>/<pkg-as-dirs>/<Name>.java} for a materialized shared enum. */
+    private void writeSharedEnumFile(Fr019SharedEnum.SharedEnum shared, Path outRoot, String body) {
+        try {
+            Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))
+                                  .resolve(shared.name() + ".java");
+            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
+            Files.writeString(outFile, body);
+        } catch (IOException e) {
+            throw new GeneratorException(
+                "failed writing shared enum " + shared.name() + ".java: " + e, e);
+        }
+    }
+
+    /**
      * Collect the nested {@code public enum <Name> { <members> }} declarations for the enum
      * fields in {@code fields} (the record's components), deduped by enum-type name (two fields
      * extending one abstract enum collapse onto ONE decl named for the super). Mirrors
@@ -262,6 +326,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (MetaField<?> field : fields) {
             if (!(field instanceof EnumField ef)) continue;
+            // FR-019: a field resolving to a package-level shared enum (materialized standalone or
+            // @provided externally) is referenced, never nested. Skip it here.
+            if (Fr019SharedEnum.sharedEnumForField(field) != null) continue;
             String typeName = SpringTypeMapper.enumTypeName(owner, ef);
             if (!seen.add(typeName)) continue; // dedup shared abstract-enum types
             List<String> values = SpringTypeMapper.effectiveEnumValues(ef);

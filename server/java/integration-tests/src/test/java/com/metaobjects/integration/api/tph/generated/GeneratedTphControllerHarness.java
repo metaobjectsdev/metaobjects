@@ -72,7 +72,8 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final URLClassLoader classLoader;
-    private final Constructor<?> dtoCtor;        // (Long id, String type, String reference, Integer quantity, BigDecimal copayAmount, String approver)
+    private final Constructor<?> dtoCtor;        // (Long id, AuthType type, String reference, Integer quantity, BigDecimal copayAmount, String approver)
+    private final Class<?> authTypeClass;        // the generated value-constrained enum discriminator (AuthDto.AuthType)
     private final Constructor<?> controllerCtor; // (AuthRepository)
     private final Constructor<?> repoCtor;       // (List<AuthDto> seed)
     private final List<Map<String, Object>> seedRows;
@@ -109,8 +110,11 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         // 5. Load the compiled classes (child of the test loader so Spring + runtime types resolve).
         this.classLoader = new URLClassLoader(new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
         Class<?> dtoClass = classLoader.loadClass(DTO_FQCN);
+        // `type` is the value-constrained enum discriminator (field.enum): the generated DTO ctor
+        // takes the nested AuthType, not String. Resolve the enum reflectively to build seed rows.
+        this.authTypeClass = classLoader.loadClass(DTO_FQCN + "$AuthType");
         this.dtoCtor = dtoClass.getDeclaredConstructor(
-            Long.class, String.class, String.class, Integer.class, BigDecimal.class, String.class);
+            Long.class, authTypeClass, String.class, Integer.class, BigDecimal.class, String.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         this.controllerCtor = classLoader.loadClass(CONTROLLER_FQCN).getDeclaredConstructor(repoInterface);
         this.repoCtor = classLoader.loadClass(InMemoryAuthRepositorySource.FQCN).getDeclaredConstructor(List.class);
@@ -162,7 +166,10 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         Object copayRaw = row.get("copayAmount");
         BigDecimal copayAmount = copayRaw == null ? null : new BigDecimal(String.valueOf(copayRaw));
         String approver = (String) row.get("approver");
-        return dtoCtor.newInstance(id, type, reference, quantity, copayAmount, approver);
+        // Coerce the seed's String discriminator into the generated AuthType enum value.
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object typeEnum = type == null ? null : Enum.valueOf((Class) authTypeClass, type);
+        return dtoCtor.newInstance(id, typeEnum, reference, quantity, copayAmount, approver);
     }
 
     private static MetaDataLoader loadCorpus(Path metaJson) {

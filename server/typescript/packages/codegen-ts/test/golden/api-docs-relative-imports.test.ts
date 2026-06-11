@@ -205,7 +205,8 @@ function tsBlockContaining(md: string, marker: string): string {
   const re = /```ts\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(md)) !== null) {
-    if (m[1].includes(marker)) return m[1];
+    const body = m[1]!;
+    if (body.includes(marker)) return body;
   }
   throw new Error(`no \`\`\`ts block containing "${marker}"`);
 }

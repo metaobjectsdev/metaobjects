@@ -55,8 +55,8 @@ describe("xml forgiving reader", () => {
     const m = readXml('<answer><x a="1"/><x a="2"/></answer>', false);
     const list = m["x"] as Array<Record<string, unknown>>;
     expect(list.length).toBe(2);
-    expect(list[0]["a"]).toBe("1");
-    expect(list[1]["a"]).toBe("2");
+    expect(list[0]!["a"]).toBe("1");
+    expect(list[1]!["a"]).toBe("2");
   });
 
   test("unclosed child extracts inner text", () => {

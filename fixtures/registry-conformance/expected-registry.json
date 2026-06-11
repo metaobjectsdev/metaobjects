@@ -866,6 +866,12 @@
           "required": false
         },
         {
+          "name": "provided",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false
+        },
+        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,

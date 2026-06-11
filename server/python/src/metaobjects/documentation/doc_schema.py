@@ -10,11 +10,13 @@ from .doc_constants import (
     DOC_ATTR_NOTES,
     DOC_ATTR_REPLACED_BY,
     DOC_ATTR_SEE_ALSO,
+    DOC_ATTR_SUMMARY,
     DOC_ATTR_TITLE,
 )
 
 common_doc_attrs: list[AttrSchema] = [
     AttrSchema(name=DOC_ATTR_DESCRIPTION,  value_type=ATTR_SUBTYPE_STRING,      required=False),
+    AttrSchema(name=DOC_ATTR_SUMMARY,      value_type=ATTR_SUBTYPE_STRING,      required=False),
     AttrSchema(name=DOC_ATTR_TITLE,        value_type=ATTR_SUBTYPE_STRING,      required=False),
     AttrSchema(name=DOC_ATTR_NOTES,        value_type=ATTR_SUBTYPE_STRING,      required=False),
     AttrSchema(name=DOC_ATTR_DEPRECATED,   value_type=ATTR_SUBTYPE_STRING,      required=False),

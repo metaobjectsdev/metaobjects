@@ -16,6 +16,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.PropertiesAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -65,6 +66,18 @@ public class EnumField extends PrimitiveField<String> {
      * Cross-language vocabulary: {@code @enumAlias} in canonical JSON.
      */
     public static final String ATTR_ENUM_ALIAS = "enumAlias";
+
+    /**
+     * FR-019: name of the optional {@code @provided} boolean attribute — own-only on an
+     * <em>abstract</em> package-level {@code field.enum} declaration. When {@code true}, codegen
+     * does NOT materialize the enum type; consuming fields reference an existing hand-written /
+     * third-party type, resolved via per-port codegen config (the namespace/FQN never lives in
+     * metadata — ADR-0001). Default {@code false}. Placing {@code @provided} on a concrete consuming
+     * field is invalid. A non-boolean value is rejected at load with {@code ERR_BAD_ATTR_VALUE} (the
+     * {@link BooleanAttribute} enum constraint). Cross-language vocabulary: {@code @provided} in
+     * canonical JSON. See ADR-0026.
+     */
+    public static final String ATTR_PROVIDED = "provided";
 
     /**
      * Name of the optional per-member description map (properties).
@@ -179,6 +192,14 @@ public class EnumField extends PrimitiveField<String> {
                 // Consumed by FR-010 extract; not validated at load time.
                 def.optionalAttributeWithConstraints(ATTR_ENUM_ALIAS)
                    .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
+                   .asSingle();
+
+                // FR-019: optional @provided boolean — marks an abstract package-level enum as
+                // externally provided (codegen references it instead of materializing). The
+                // BooleanAttribute enum constraint rejects a non-boolean value (ERR_BAD_ATTR_VALUE).
+                // Mirrors the @symmetric (relationship) boolean registration. See ADR-0026.
+                def.optionalAttributeWithConstraints(ATTR_PROVIDED)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                    .asSingle();
 
                 // Optional @enumDoc properties attribute — per-member description map.

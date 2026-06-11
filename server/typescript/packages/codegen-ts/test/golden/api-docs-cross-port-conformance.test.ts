@@ -156,9 +156,9 @@ const MD_LINK_LABELLED = (label: string): RegExp =>
 /** From a model entity page, pull the api/ts + api/java hrefs out of the
  *  `**API reference:** [TypeScript](..) · [Java](..)` line. */
 function modelApiRefs(content: string): { ts?: string; java?: string } {
-	const ts = content.match(MD_LINK_LABELLED("TypeScript"));
-	const java = content.match(MD_LINK_LABELLED("Java"));
-	return { ts: ts?.[1], java: java?.[1] };
+	const tsHref = content.match(MD_LINK_LABELLED("TypeScript"))?.[1];
+	const javaHref = content.match(MD_LINK_LABELLED("Java"))?.[1];
+	return { ...(tsHref !== undefined && { ts: tsHref }), ...(javaHref !== undefined && { java: javaHref }) };
 }
 
 /** From an api page, pull the model back-link out of the

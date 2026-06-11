@@ -26,6 +26,7 @@ public final class DocumentationConstants {
     private DocumentationConstants() {}
 
     public static final String DOC_ATTR_DESCRIPTION = "description";
+    public static final String DOC_ATTR_SUMMARY      = "summary";
     public static final String DOC_ATTR_TITLE        = "title";
     public static final String DOC_ATTR_NOTES        = "notes";
     public static final String DOC_ATTR_DEPRECATED   = "deprecated";
@@ -33,9 +34,10 @@ public final class DocumentationConstants {
     public static final String DOC_ATTR_SEE_ALSO     = "seeAlso";
     public static final String DOC_ATTR_ALIASES      = "aliases";
 
-    /** All 7 names in declaration order. */
+    /** All 8 names in declaration order. */
     public static final List<String> DOC_ATTR_NAMES = List.of(
         DOC_ATTR_DESCRIPTION,
+        DOC_ATTR_SUMMARY,
         DOC_ATTR_TITLE,
         DOC_ATTR_NOTES,
         DOC_ATTR_DEPRECATED,

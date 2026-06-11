@@ -68,13 +68,19 @@ function findVar(toks: TplToken[], path: string): VarTok {
 	expect(hit).toBeDefined();
 	return hit as VarTok;
 }
+// The TplToken variant whose `kind` union INCLUDES K (e.g. K="unescaped" → the var/unescaped
+// variant). A plain `Extract<TplToken, { kind: K }>` resolves to `never` here because the variants
+// carry UNION discriminants — `{ kind: "var" | "unescaped" }` does not `extend` `{ kind: "unescaped" }`.
+// The distributive `K extends TK` test picks the member whose kind union contains K.
+type TokenByKind<K extends TplToken["kind"], T = TplToken> =
+	T extends { kind: infer TK } ? (K extends TK ? T : never) : never;
 function findByKind<K extends TplToken["kind"]>(
 	toks: TplToken[],
 	kind: K,
-): Extract<TplToken, { kind: K }> {
+): TokenByKind<K> {
 	const hit = toks.find((t) => t.kind === kind);
 	expect(hit).toBeDefined();
-	return hit as Extract<TplToken, { kind: K }>;
+	return hit as TokenByKind<K>;
 }
 
 describe("annotateTemplate: token mapping + order", () => {

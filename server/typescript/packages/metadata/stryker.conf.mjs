@@ -2,7 +2,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const corpus = resolve(here, "../../../fixtures/conformance");
+// `here` is packages/metadata, so reach the repo-root corpus with FOUR `../` levels
+// (metadata → packages → typescript → server → repo root). Three lands on server/ and
+// yields a non-existent server/fixtures/conformance (ENOENT under the mutation gate).
+const corpus = resolve(here, "../../../../fixtures/conformance");
 
 /** @type {import("@stryker-mutator/api/core").PartialStrykerOptions} */
 export default {

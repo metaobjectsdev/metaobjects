@@ -13,7 +13,7 @@
 import { describe, test, expect } from "bun:test";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
-import { EMBEDDED_LIBRARY } from "../src/library/embedded-library.generated.ts";
+import { EMBEDDED_LIBRARY } from "../src/library/embedded-library.generated.js";
 
 function repoRoot(): string {
   let dir = import.meta.dir;

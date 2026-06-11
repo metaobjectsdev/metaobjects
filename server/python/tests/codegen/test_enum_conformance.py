@@ -1,9 +1,10 @@
 """Cross-port enum conformance for Python codegen.
 
-Loads the shared fixture (``fixtures/codegen-conformance/enum/input``) and asserts
-that the entity's enum fields are emitted as Pydantic ``Literal[...]`` member sets:
-an INLINE enum (``status``) carries its own ``@values``, and a field that
-``extends`` the abstract ``Priority`` enum (``priority``) inherits its members.
+Loads the shared fixture (``fixtures/codegen-conformance/enum/input``) and asserts that an
+INLINE enum (``status``) is emitted as a Pydantic ``Literal[...]`` member set carrying its own
+``@values``, while a field that ``extends`` the package-level abstract ``Priority`` enum
+(``priority``) is materialized ONCE as a module-level ``class Priority(str, Enum)`` (FR-019,
+ADR-0026) and merely REFERENCED (imported from the shared ``enums`` module), not inlined.
 """
 from pathlib import Path
 
@@ -32,7 +33,10 @@ def test_inline_enum_field_is_literal_member_set() -> None:
     assert 'status: Literal["OPEN", "PENDING", "CLOSED"]' in src
 
 
-def test_extended_abstract_enum_inherits_member_set() -> None:
+def test_extended_abstract_enum_is_materialized_and_referenced() -> None:
+    # FR-019: `priority extends Priority` (a package-level abstract enum) is typed as the
+    # materialized `Priority` class, imported from the shared `enums` module — NOT inlined.
     src = render_entity_model(_by_name()["Ticket"])
-    # `priority extends Priority` inherits LOW/MEDIUM/HIGH (the abstract-enum reuse path).
-    assert 'priority: Literal["LOW", "MEDIUM", "HIGH"]' in src
+    assert "priority: Priority" in src
+    assert "from .enums import Priority" in src
+    assert 'priority: Literal["LOW", "MEDIUM", "HIGH"]' not in src

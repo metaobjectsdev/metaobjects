@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "HIGH"] } },
+      { "field.enum": { "name": "Currency", "abstract": true, "@provided": true, "@values": ["USD", "EUR"] } },
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "priority", "extends": "Priority" } },
+            { "field.enum": { "name": "currency", "extends": "Currency" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

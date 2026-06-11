@@ -65,7 +65,7 @@ describe("planScaffold generatedBy stamp", () => {
 });
 
 describe("agentContextStaleness", () => {
-  const m = (generatedBy?: string): Manifest => ({ version: 1, generatedBy, servers: ["typescript"], clients: ["react"], files: {} });
+  const m = (generatedBy?: string): Manifest => ({ version: 1, ...(generatedBy !== undefined && { generatedBy }), servers: ["typescript"], clients: ["react"], files: {} });
 
   test("no agent-context manifest → silent (null)", () => {
     expect(agentContextStaleness({ manifest: undefined, currentVersion: "0.9.0" })).toBeNull();

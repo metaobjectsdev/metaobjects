@@ -23,6 +23,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_ENUM_ALIAS,
+    FIELD_ATTR_PROVIDED,
     FIELD_ATTR_ENUM_DOC,
     FIELD_ATTR_EXAMPLE,
     FIELD_ATTR_FILTERABLE,
@@ -370,6 +371,14 @@ core_provider.add(
             AttrSchema(
                 name=FIELD_ATTR_ENUM_ALIAS,
                 value_type=ATTR_SUBTYPE_PROPERTIES,
+                required=False,
+            ),
+            # FR-019 (ADR-0026): @provided boolean — marks an abstract package-level enum
+            # as externally provided (codegen references it instead of materializing). The
+            # boolean AttrSchema rejects a non-boolean value (ERR_BAD_ATTR_VALUE).
+            AttrSchema(
+                name=FIELD_ATTR_PROVIDED,
+                value_type=ATTR_SUBTYPE_BOOLEAN,
                 required=False,
             ),
             AttrSchema(
