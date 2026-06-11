@@ -85,22 +85,25 @@ final class InMemoryAuthRepositorySource {
             @Override
             public List<AuthDto> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters) {
                 List<AuthDto> scoped = new ArrayList<>();
-                for (AuthDto a : rows) if (discriminator.equals(a.type())) scoped.add(a);
+                for (AuthDto a : rows) if (discriminator.equals(a.type().name())) scoped.add(a);
                 return page(sorted(filtered(scoped, filters), sort), limit, offset);
             }
 
             @Override
             public Optional<AuthDto> findByIdAndType(Long id, String discriminator) {
                 for (AuthDto a : rows)
-                    if (id.equals(a.id()) && discriminator.equals(a.type())) return Optional.of(a);
+                    if (id.equals(a.id()) && discriminator.equals(a.type().name())) return Optional.of(a);
                 return Optional.empty();
             }
 
             @Override
             public AuthDto createWithType(String discriminator, AuthDto dto) {
                 // Discriminator injected from the URL — dto.type() is intentionally ignored.
+                // `type` is a value-constrained enum (field.enum discriminator), so coerce the
+                // String URL discriminator into the generated AuthType (its members ARE the
+                // discriminator values).
                 AuthDto saved = new AuthDto(
-                    nextId.getAndIncrement(), discriminator, dto.reference(),
+                    nextId.getAndIncrement(), AuthDto.AuthType.valueOf(discriminator), dto.reference(),
                     dto.quantity(), dto.copayAmount(), dto.approver());
                 rows.add(saved);
                 return saved;
@@ -110,7 +113,7 @@ final class InMemoryAuthRepositorySource {
             public Optional<AuthDto> updateByIdAndType(Long id, String discriminator, AuthDto dto) {
                 for (int i = 0; i < rows.size(); i++) {
                     AuthDto cur = rows.get(i);
-                    if (!id.equals(cur.id()) || !discriminator.equals(cur.type())) continue;
+                    if (!id.equals(cur.id()) || !discriminator.equals(cur.type().name())) continue;
                     // Partial patch; discriminator (type) and id are immutable.
                     AuthDto merged = new AuthDto(
                         id, cur.type(),
@@ -126,7 +129,7 @@ final class InMemoryAuthRepositorySource {
 
             @Override
             public boolean deleteByIdAndType(Long id, String discriminator) {
-                return rows.removeIf(a -> id.equals(a.id()) && discriminator.equals(a.type()));
+                return rows.removeIf(a -> id.equals(a.id()) && discriminator.equals(a.type().name()));
             }
 
             // --- helpers ---
