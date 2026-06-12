@@ -148,6 +148,24 @@ public enum ErrorCode {
     ERR_INVALID_ORIGIN,
 
     /**
+     * FR-024 (ADR-0029): an implicit (omitted-{@code @via}) origin path is ambiguous —
+     * more than one single-hop relationship leads from the base entity to the
+     * {@code @from}/{@code @of} entity, or a projection's base entity cannot be derived
+     * because its fields extend multiple entities and no extended identity anchors the
+     * base. Vocabulary-only here until FR-024 Phase E (the Java loader does not run
+     * the inference yet).
+     */
+    ERR_AMBIGUOUS_PATH,
+
+    /**
+     * FR-024 (ADR-0029): origin cardinality contract broken — a passthrough
+     * {@code @via} path crosses a to-many hop (row-multiplying passthrough — you meant
+     * aggregate), or an aggregate {@code @via} path is to-one at every hop (you meant
+     * passthrough). Vocabulary-only here until FR-024 Phase E.
+     */
+    ERR_ORIGIN_CARDINALITY,
+
+    /**
      * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
      * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
      * does not match one of them, or a M:N-only attr is set on a non-M:N relationship.

@@ -53,7 +53,7 @@ describe("attr-schema validation — required attrs", () => {
     );
   });
 
-  it("flags an origin.aggregate missing required @via / @of", () => {
+  it("flags an origin.aggregate missing required @of (@via is optional since FR-024 — inferable)", () => {
     // Validate directly so the loader's origin-path pass does not also fire.
     const { errors } = validateDirect({
       "metadata.root": {
@@ -79,7 +79,10 @@ describe("attr-schema validation — required attrs", () => {
     expect(msgs).toContain(
       "origin.aggregate is missing required attribute '@of'",
     );
-    expect(msgs).toContain(
+    // FR-024 (ADR-0029 decision 5): @via is no longer schema-required — an
+    // omitted @via is inferred (single-hop-unique) or rejected by the
+    // origin-path validation pass, not by the A3 required-attr check.
+    expect(msgs).not.toContain(
       "origin.aggregate is missing required attribute '@via'",
     );
   });

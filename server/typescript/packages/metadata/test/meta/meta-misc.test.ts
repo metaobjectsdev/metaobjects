@@ -1306,6 +1306,15 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
                     ],
                   },
                 },
+                // FR-024 B5: a no-@via passthrough targeting a non-base
+                // entity needs a single-hop relationship to infer the path.
+                {
+                  "relationship.association": {
+                    name: "base",
+                    "@objectRef": "Base",
+                    "@cardinality": "one",
+                  },
+                },
                 { "identity.primary": { "name": "id", "@fields": "label" } },
               ],
             },

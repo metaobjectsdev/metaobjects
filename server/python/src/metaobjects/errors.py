@@ -49,6 +49,15 @@ class ErrorCode(str, Enum):
     # declared attr valueType (ADR-0006 D2). Authors should quote the value.
     ERR_YAML_COERCION = "ERR_YAML_COERCION"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
+    # FR-024 (ADR-0029) — origin @via inference + cardinality checks. Vocabulary-only
+    # here until FR-024 Phase E (the Python loader does not run the inference yet):
+    # ERR_AMBIGUOUS_PATH — an implicit (omitted-@via) origin path is ambiguous
+    # (multiple single-hop relationships to the @from/@of entity, or a projection's
+    # base entity underivable without an extended identity); ERR_ORIGIN_CARDINALITY —
+    # passthrough @via crosses a to-many hop (you meant aggregate) or aggregate @via
+    # is to-one at every hop (you meant passthrough).
+    ERR_AMBIGUOUS_PATH = "ERR_AMBIGUOUS_PATH"
+    ERR_ORIGIN_CARDINALITY = "ERR_ORIGIN_CARDINALITY"
     # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.

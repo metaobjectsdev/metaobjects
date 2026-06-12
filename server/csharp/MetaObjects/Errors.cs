@@ -40,6 +40,15 @@ public enum ErrorCode
     ERR_YAML_COERCION,
     ERR_RESERVED_ATTR,
     ERR_INVALID_ORIGIN,
+    // FR-024 (ADR-0029) — origin @via inference + cardinality checks. Vocabulary-only
+    // here until FR-024 Phase E (the C# loader does not run the inference yet):
+    // ERR_AMBIGUOUS_PATH — an implicit (omitted-@via) origin path is ambiguous
+    // (multiple single-hop relationships to the @from/@of entity, or a projection's
+    // base entity underivable without an extended identity);
+    // ERR_ORIGIN_CARDINALITY — passthrough @via crosses a to-many hop (you meant
+    // aggregate) or aggregate @via is to-one at every hop (you meant passthrough).
+    ERR_AMBIGUOUS_PATH,
+    ERR_ORIGIN_CARDINALITY,
     // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
     // name a junction declaring two identity.reference children, @sourceRefField
     // does not match one of them, or a M:N-only attr (@through/@sourceRefField/

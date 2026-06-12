@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
+import type { ParseError } from "../src/errors.js";
 
 // Wraps a list of top-level object/source/field nodes in a minimal metadata
 // envelope and loads them through the MetaDataLoader pipeline.
@@ -12,6 +13,21 @@ async function load(children: unknown[]) {
   const result = await loader.load([new InMemoryStringSource(json)]);
   return {
     errors: result.errors.map((e) => e.message),
+    warnings: result.warnings,
+    root: result.root,
+  };
+}
+
+// Like `load`, but keeps the full ParseError objects so tests can assert
+// error CODES (FR-024 B5: ERR_AMBIGUOUS_PATH / ERR_ORIGIN_CARDINALITY).
+async function loadRaw(children: unknown[]) {
+  const loader = new MetaDataLoader();
+  const json = JSON.stringify({
+    "metadata.root": { package: "test", children },
+  });
+  const result = await loader.load([new InMemoryStringSource(json)]);
+  return {
+    errors: result.errors as ParseError[],
     warnings: result.warnings,
     root: result.root,
   };
@@ -41,6 +57,15 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
                 children: [
                   { "origin.passthrough": { "@from": "User.email" } },
                 ],
+              },
+            },
+            // FR-024 B5: a no-@via passthrough whose @from targets a non-base
+            // entity needs a single-hop relationship to infer the path.
+            {
+              "relationship.association": {
+                name: "user",
+                "@objectRef": "User",
+                "@cardinality": "one",
               },
             },
             { "identity.primary": { "name": "id", "@fields": "displayName" } },
@@ -242,5 +267,404 @@ describe("MetaDataLoader validates origin.via paths against relationships", () =
     expect(
       result.errors.some((e) => e.includes("bogus") && e.includes("no such relationship")),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-024 B5 — @via single-hop-unique inference + origin cardinality checks
+// (spec §5 base-entity anchoring + §6 via rules; ADR-0029 decisions 5–6)
+// ---------------------------------------------------------------------------
+
+// Shared building blocks: Country entity + a Customer entity whose
+// relationships to Country are parameterized per test.
+const countryEntity = {
+  "object.entity": {
+    name: "Country",
+    children: [
+      { "field.uuid": { name: "id" } },
+      { "field.string": { name: "name" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+    ],
+  },
+};
+
+function customerEntity(relationships: unknown[], extraChildren: unknown[] = []) {
+  return {
+    "object.entity": {
+      name: "Customer",
+      children: [
+        { "field.uuid": { name: "id" } },
+        { "field.string": { name: "name" } },
+        ...extraChildren,
+        ...relationships,
+        { "identity.primary": { name: "id", "@fields": "id" } },
+      ],
+    },
+  };
+}
+
+const oneCountryRel = {
+  "relationship.association": {
+    name: "country",
+    "@objectRef": "Country",
+    "@cardinality": "one",
+  },
+};
+
+// A projection over Customer (FR-024 B3 conventions: extended identity,
+// pass-through key field) carrying one derived field from Country.name.
+function customerProjection(origin: unknown) {
+  return {
+    "object.projection": {
+      name: "CustomerSummary",
+      children: [
+        { "field.uuid": { name: "customerId", extends: "Customer.id" } },
+        {
+          "field.string": {
+            name: "countryName",
+            children: [origin],
+          },
+        },
+        { "identity.primary": { name: "id", extends: "Customer.id" } },
+      ],
+    },
+  };
+}
+
+describe("FR-024 B5 — single-hop-unique @via inference (passthrough)", () => {
+  test("projection-hosted passthrough with NO @via infers the single hop (base from extended identity)", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjection({ "origin.passthrough": { "@from": "Country.name" } }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("entity-hosted derived field with NO @via infers the single hop (base = the entity itself)", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity(
+        [oneCountryRel],
+        [
+          { "source.rdb": { "@table": "customers" } },
+          { "source.rdb": { "@kind": "view", "@view": "v_customers", "@role": "replica" } },
+          {
+            "field.string": {
+              name: "countryName",
+              children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+            },
+          },
+        ],
+      ),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("two candidate relationships → ERR_AMBIGUOUS_PATH naming both", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity(
+        [
+          {
+            "relationship.association": {
+              name: "homeCountry",
+              "@objectRef": "Country",
+              "@cardinality": "one",
+            },
+          },
+          {
+            "relationship.association": {
+              name: "billingCountry",
+              "@objectRef": "Country",
+              "@cardinality": "one",
+            },
+          },
+        ],
+        [
+          {
+            "field.string": {
+              name: "countryName",
+              children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+            },
+          },
+        ],
+      ),
+    ]);
+    const ambiguous = result.errors.filter((e) => e.code === "ERR_AMBIGUOUS_PATH");
+    expect(ambiguous.length).toBe(1);
+    expect(ambiguous[0]!.message).toContain("homeCountry");
+    expect(ambiguous[0]!.message).toContain("billingCountry");
+  });
+
+  test("zero relationships to the @from entity → ERR_INVALID_ORIGIN (cannot infer)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity(
+        [],
+        [
+          {
+            "field.string": {
+              name: "countryName",
+              children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+            },
+          },
+        ],
+      ),
+    ]);
+    const invalid = result.errors.filter((e) => e.code === "ERR_INVALID_ORIGIN");
+    expect(invalid.length).toBe(1);
+    expect(invalid[0]!.message).toContain("cannot infer");
+  });
+
+  test("@from targeting the base entity itself with no @via = base-relation column, no checks", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjection({ "origin.passthrough": { "@from": "Customer.name" } }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("projection with NO identity: base falls back to the single field-extends entity", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      {
+        "object.projection": {
+          name: "CustomerSlice",
+          children: [
+            { "field.uuid": { name: "customerId", extends: "Customer.id" } },
+            {
+              "field.string": {
+                name: "countryName",
+                children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("projection with NO identity and field-extends to two entities → ERR_AMBIGUOUS_PATH instructing to declare an extended identity", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      {
+        "object.entity": {
+          name: "Supplier",
+          children: [
+            { "field.uuid": { name: "id" } },
+            { "field.string": { name: "label" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "MixedSlice",
+          children: [
+            { "field.uuid": { name: "customerId", extends: "Customer.id" } },
+            { "field.string": { name: "supplierLabel", extends: "Supplier.label" } },
+            {
+              "field.string": {
+                name: "countryName",
+                children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const ambiguous = result.errors.filter((e) => e.code === "ERR_AMBIGUOUS_PATH");
+    expect(ambiguous.length).toBe(1);
+    expect(ambiguous[0]!.message).toContain("extended identity");
+  });
+
+  test("object.value host (FR-015 parameter lineage) is exempt — no inference, no checks", async () => {
+    const result = await load([
+      countryEntity,
+      {
+        "object.value": {
+          name: "CountryArgs",
+          children: [
+            {
+              "field.string": {
+                name: "countryName",
+                children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+});
+
+describe("FR-024 B5 — single-hop-unique @via inference (aggregate)", () => {
+  const orderEntity = {
+    "object.entity": {
+      name: "Order",
+      children: [
+        { "field.uuid": { name: "id" } },
+        { "field.long": { name: "amount" } },
+        { "identity.primary": { name: "id", "@fields": "id" } },
+      ],
+    },
+  };
+
+  function userEntity(cardinality: string) {
+    return {
+      "object.entity": {
+        name: "User",
+        children: [
+          { "field.uuid": { name: "id" } },
+          {
+            "relationship.association": {
+              name: "orders",
+              "@objectRef": "Order",
+              "@cardinality": cardinality,
+            },
+          },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+        ],
+      },
+    };
+  }
+
+  function userProjection(origin: unknown) {
+    return {
+      "object.projection": {
+        name: "UserSummary",
+        children: [
+          { "field.uuid": { name: "userId", extends: "User.id" } },
+          { "field.long": { name: "totalSpent", children: [origin] } },
+          { "identity.primary": { name: "id", extends: "User.id" } },
+        ],
+      },
+    };
+  }
+
+  test("aggregate with NO @via infers the single (to-many) hop", async () => {
+    const result = await load([
+      orderEntity,
+      userEntity("many"),
+      userProjection({
+        "origin.aggregate": { "@agg": "sum", "@of": "Order.amount" },
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("aggregate inferred over a to-one relationship → ERR_ORIGIN_CARDINALITY (you meant passthrough)", async () => {
+    const result = await loadRaw([
+      orderEntity,
+      userEntity("one"),
+      userProjection({
+        "origin.aggregate": { "@agg": "sum", "@of": "Order.amount" },
+      }),
+    ]);
+    const cardinality = result.errors.filter((e) => e.code === "ERR_ORIGIN_CARDINALITY");
+    expect(cardinality.length).toBe(1);
+    expect(cardinality[0]!.message).toContain("you meant passthrough");
+  });
+
+  test("aggregate with NO @via and @of targeting the base entity itself → ERR_INVALID_ORIGIN (relationship path required)", async () => {
+    const result = await loadRaw([
+      orderEntity,
+      userEntity("many"),
+      userProjection({
+        "origin.aggregate": { "@agg": "count", "@of": "User.id" },
+      }),
+    ]);
+    const invalid = result.errors.filter((e) => e.code === "ERR_INVALID_ORIGIN");
+    expect(invalid.length).toBe(1);
+    expect(invalid[0]!.message).toContain("missing @via");
+  });
+});
+
+describe("FR-024 B5 — origin cardinality checks on EXPLICIT @via paths", () => {
+  test("passthrough via a to-many hop → ERR_ORIGIN_CARDINALITY (row-multiplying — you meant aggregate)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([
+        {
+          "relationship.association": {
+            name: "countries",
+            "@objectRef": "Country",
+            "@cardinality": "many",
+          },
+        },
+      ]),
+      customerProjection({
+        "origin.passthrough": { "@from": "Country.name", "@via": "Customer.countries" },
+      }),
+    ]);
+    const cardinality = result.errors.filter((e) => e.code === "ERR_ORIGIN_CARDINALITY");
+    expect(cardinality.length).toBe(1);
+    expect(cardinality[0]!.message).toContain("you meant aggregate");
+  });
+
+  test("passthrough inferred over a to-many relationship → ERR_ORIGIN_CARDINALITY", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([
+        {
+          "relationship.association": {
+            name: "countries",
+            "@objectRef": "Country",
+            "@cardinality": "many",
+          },
+        },
+      ]),
+      customerProjection({ "origin.passthrough": { "@from": "Country.name" } }),
+    ]);
+    const cardinality = result.errors.filter((e) => e.code === "ERR_ORIGIN_CARDINALITY");
+    expect(cardinality.length).toBe(1);
+  });
+
+  test("aggregate via a path that is to-one at EVERY hop → ERR_ORIGIN_CARDINALITY (you meant passthrough)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjection({
+        "origin.aggregate": { "@agg": "count", "@of": "Country.id", "@via": "Customer.country" },
+      }),
+    ]);
+    const cardinality = result.errors.filter((e) => e.code === "ERR_ORIGIN_CARDINALITY");
+    expect(cardinality.length).toBe(1);
+    expect(cardinality[0]!.message).toContain("you meant passthrough");
+  });
+
+  test("explicit @via through a to-one hop on a passthrough stays valid (regression)", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjection({
+        "origin.passthrough": { "@from": "Country.name", "@via": "Customer.country" },
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("aggregate via an UNDECLARED-cardinality hop is not judged (open @cardinality vocabulary — regression)", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([
+        {
+          "relationship.association": {
+            name: "countries",
+            "@objectRef": "Country",
+          },
+        },
+      ]),
+      customerProjection({
+        "origin.aggregate": { "@agg": "count", "@of": "Country.id", "@via": "Customer.countries" },
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
   });
 });

@@ -55,6 +55,17 @@ export const ERROR_CODES = [
   "ERR_OVERLAY_NO_TARGET",
   "ERR_MALFORMED_YAML",
   "ERR_INVALID_ORIGIN",
+  // FR-024 (ADR-0029 decision 5) — an implicit (omitted-@via) origin path is
+  // ambiguous: more than one single-hop relationship leads from the base
+  // entity to the @from/@of entity (the error names the candidates), or a
+  // projection's base entity cannot be derived because its fields extend
+  // multiple entities and no extended identity anchors the base.
+  "ERR_AMBIGUOUS_PATH",
+  // FR-024 (ADR-0029 decision 6) — origin cardinality contract broken: a
+  // passthrough @via path crosses a to-many hop (row-multiplying — you meant
+  // aggregate), or an aggregate @via path is to-one at every hop (you meant
+  // passthrough). Checked on explicit AND inferred paths.
+  "ERR_ORIGIN_CARDINALITY",
   "ERR_INVALID_TEMPLATE",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match

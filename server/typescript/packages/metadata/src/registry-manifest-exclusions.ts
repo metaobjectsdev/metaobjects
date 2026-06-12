@@ -56,9 +56,13 @@
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
-import { SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_VIEW } from "./shared/base-types.js";
+import { SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_ORIGIN, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
 import { OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
+import {
+  ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_AGGREGATE_ATTR_VIA,
+} from "./persistence/origin/origin-constants.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
@@ -138,4 +142,31 @@ export function classifyTypeSubType(
 /** True if a `(type, subType)` row is carved out of the manifest (any reason). */
 export function isExcludedTypeSubType(type: string, subType: string): boolean {
   return classifyTypeSubType(type, subType) !== undefined;
+}
+
+/**
+ * FR-024-pending manifest REQUIREDNESS overrides (the attr-level analogue of
+ * the `Fr024Pending` row carve-out). Key is `"type.subType.attrName"`; value is
+ * the requiredness the cross-port canonical (`expected-registry.json`) still
+ * records. The TS registry already registers the FR-024 requiredness (and the
+ * TS loader enforces it), but the other four ports have not flipped yet — the
+ * manifest keeps emitting the pre-FR-024 agreed value so the shared canonical
+ * stays byte-identical until the Phase-E atomic all-ports flip, when this map
+ * empties and the canonical is updated in ONE commit.
+ *
+ * Members today: `origin.aggregate.via` — required pre-FR-024; OPTIONAL under
+ * ADR-0029 decision 5 (omitted `@via` is inferred when exactly one single-hop
+ * relationship leads from the base entity to the `@of` entity).
+ */
+export const FR024_PENDING_REQUIRED_OVERRIDES: ReadonlyMap<string, boolean> = new Map([
+  [`${TYPE_ORIGIN}.${ORIGIN_SUBTYPE_AGGREGATE}.${ORIGIN_AGGREGATE_ATTR_VIA}`, true],
+]);
+
+/** Manifest requiredness for an attr — the FR-024-pending override when one exists. */
+export function manifestRequiredOverride(
+  type: string,
+  subType: string,
+  attrName: string,
+): boolean | undefined {
+  return FR024_PENDING_REQUIRED_OVERRIDES.get(`${type}.${subType}.${attrName}`);
 }

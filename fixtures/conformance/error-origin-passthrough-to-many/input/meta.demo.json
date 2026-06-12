@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "label" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            { "source.rdb": { "@table": "users" } },
+            { "field.uuid": { "name": "id" } },
+            {
+              "relationship.association": {
+                "name": "orders",
+                "@objectRef": "Order",
+                "@cardinality": "many"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "UserSummary",
+          "children": [
+            { "field.uuid": { "name": "userId", "extends": "User.id" } },
+            {
+              "field.string": {
+                "name": "orderLabel",
+                "children": [
+                  { "origin.passthrough": { "@from": "Order.label", "@via": "User.orders" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "User.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
