@@ -19,7 +19,7 @@
 | **C** | TS codegen + DDL: view-DDL emitter (quoting + schema + assembly from extends/origins), projection read-only codegen + `ProjectionOf<E>` marker, entity derived-field routing/exclusions, multi-source read routing | DDL golden fixtures byte-green; generated-output snapshots; typecheck gate |
 | **D** | `api.operational` (TS): loading + fixtures, route-shell codegen, verify integration, `meta docs` api/projection pages | api fixtures green; generated routes boot in the SP-B-style HTTP lane |
 | **E** | Cross-port fan-out: Java/Kotlin → C# → Python loaders + codegen against the Phase-B/C/D corpus; `expected-registry.json` updated **atomically across all 5 ports** (the `@responseRef` carve-out-close playbook) | every port's conformance + registry-conformance green in CI |
-| **F** | Context + deprecation sweep: `agent-context/` fragments (deployed via `meta init` + the four per-port `agent-docs` doors), `fixtures/agent-context-conformance/` regen, WARN-envelope deprecations for the two legacy spellings, Tier-2 feature docs | agent-context-conformance byte-green ×4 stacks; deprecation WARN fixtures green |
+| **F** | Context sweep: `agent-context/` fragments (deployed via `meta init` + the four per-port `agent-docs` doors), `fixtures/agent-context-conformance/` regen, Tier-2 feature docs | agent-context-conformance byte-green ×4 stacks |
 
 Order constraints: B before C/D (loader first); C and D may interleave; E strictly after B+C+D (the corpus is the contract); F last (docs describe shipped behavior). Commit directly to `main` per repo convention; this repo is **public** — no private names, no absolute local paths, in any phase.
 
@@ -28,7 +28,7 @@ Order constraints: B before C/D (loader first); C and D may interleave; E strict
 ## Phase-B scope card (TS metamodel core — next plan doc)
 
 - **Files (expected):** `server/typescript/packages/metadata/src/` — constants (new: `OBJECT_SUBTYPE_PROJECTION`, `API_TYPE`, etc. — constants land in B even though api loading is D, so the registry manifest changes once), extends-resolution module, loader validation, registry provider; `server/typescript/packages/conformance/` runner if new fixture concepts need support.
-- **Behaviors:** spec §§3–7 — type-scoped `Entity.child` extends (fields + identities, cross-package); projection child licensing (identity-must-extend, read-only source kinds); value purity (no identity/source — verify nothing shipped violates, then enforce); key-correspondence checks; computable identity `fields`; via single-hop-unique inference + `ERR_AMBIGUOUS_PATH`-class error + passthrough-to-one / aggregate-needs-to-many cardinality checks; extends/origin agreement check; derived-field providability.
+- **Behaviors:** spec §§3–7 — type-scoped `Entity.child` extends (fields + identities, cross-package); projection child licensing (identity-must-extend, read-only source kinds); value purity (no identity/source — verify nothing shipped violates, then enforce); **entity-primary-source-must-be-writable (the hard-cutover rule killing the two legacy spellings — migrate own fixtures, e.g. `ProgramSummary`-style and `parameter-ref-on-stored-proc`, to `object.projection` in the same plan)**; key-correspondence checks; computable identity `fields`; via single-hop-unique inference + `ERR_AMBIGUOUS_PATH`-class error + passthrough-to-one / aggregate-needs-to-many cardinality checks; extends/origin agreement check; derived-field providability.
 - **Fixtures to author (shared corpus, `fixtures/conformance/`):** `projection-basic/`, `projection-wire-only/`, `projection-identity-passthrough/`, `projection-external-assembly-extends-only/`, `extends-entity-field-cross-package/`, `value-extends-entity-field-shape/` (proc-args), `entity-derived-fields-multi-source/`, plus `error-*` fixtures for every loader check above (resolved-format envelopes per ADR-0009). Error codes settled here (spec §11.1).
 
 ## Phase-C scope card (TS codegen + DDL)
@@ -48,8 +48,7 @@ Order constraints: B before C/D (loader first); C and D may interleave; E strict
 ## Phase-F scope card (context + deprecations)
 
 - `agent-context/` source: new/updated fragments for projection authoring, derived fields, via rules, api authoring; ≤120-line always-on budget respected; regenerate `fixtures/agent-context-conformance/` (4 stacks byte-identical); per-port emit doors unchanged (content flows through).
-- Deprecations (spec §10): `object.entity`+`extends <Entity>`+view-source firehose → WARN envelope (ADR-0009 shape) recommending `object.projection`; stored-proc-result-as-entity → same. Fixtures: `warn-deprecated-view-extends/`, `warn-deprecated-proc-entity/`. FR-004 `value`+origins payloads explicitly NOT warned.
-- Tier-2 feature doc: `docs/features/` page for surfaces/projections; `meta docs` model pages already covered in D.
+- Tier-2 feature doc: `docs/features/` page for surfaces/projections; `meta docs` model pages already covered in D. (No deprecation work — the legacy spellings are removed outright in Phase B, hard cutover per spec §10.)
 
 ---
 
@@ -111,9 +110,12 @@ semantic lie.
 
 ## Consequences
 
-- The two legacy spellings are deprecated (WARN envelope, ADR-0009 shape):
-  entity-`extends`-entity view objects, and stored-proc result shapes as entities.
-  FR-004 `value`+`origin.*` payloads remain valid — values still carry origins for
+- The two legacy spellings are REMOVED outright — hard cutover, no deprecation
+  path (pre-GA, no users): one loader rule (an entity's primary source must be a
+  writable `@kind`; read-only kinds only in read role) makes
+  entity-`extends`-entity view objects and stored-proc result shapes as entities
+  fail to load. Own fixtures migrate to `object.projection`. FR-004
+  `value`+`origin.*` payloads remain valid — values still carry origins for
   assembly semantics; no migration is forced.
 - One projection serves multiple surfaces simultaneously (DB view via its source,
   wire contract via an operation's `outputRef`, grid via a layout) — they cannot
@@ -390,6 +392,6 @@ Do not begin Phase B without that plan.
 
 ## Plan self-review (done at authoring)
 
-1. **Spec coverage:** §§2–7 → ADR-0028/0029 + Phase B; §8 → Phase B fixtures; §9 → ADR-0030 + Phase D; §10 → Phases C/E/F (DDL, codegen, migrations); §11 open items → assigned to Phase B (11.1, 11.3), Phase D (11.2, 11.4), Phase F (11.5). CLAUDE.md/agent-context/roadmap/conformance all have explicit homes. No gaps found.
+1. **Spec coverage:** §§2–7 → ADR-0028/0029 + Phase B; §8 → Phase B fixtures; §9 → ADR-0030 + Phase D; §10 → Phases B/C/E (removals land in B; DDL/codegen in C/E); §11 open items → assigned to Phase B (11.1, 11.3), Phase D (11.2, 11.4). CLAUDE.md/agent-context/roadmap/conformance all have explicit homes. No gaps found.
 2. **Placeholder scan:** Phase A tasks contain full content (complete ADR texts, exact insertion anchors, commands). Phases B–F are explicitly scope cards for subsequent plan docs, not executable tasks — by design, per the program structure.
 3. **Type consistency:** subtype/attr names used identically across ADRs, CLAUDE.md edits, and the spec (`api.operational`, `operation.query|command`, `binding.rest`, `object.projection`).

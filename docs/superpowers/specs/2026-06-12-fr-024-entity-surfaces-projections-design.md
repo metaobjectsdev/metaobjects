@@ -371,12 +371,16 @@ FQN-resolvability contract is the lesson.)
    implementation, on this design's shapes).
 6. Registry-conformance manifest updates, atomically, all five ports.
 
-**Migrations / deprecations** (pre-taxonomy spellings of "projection"):
+**Removals — hard cutover, no deprecation path** (pre-GA, no users). One loader rule
+kills both pre-taxonomy spellings: **an entity's primary source must be a writable
+`@kind` (`table`); read-only kinds are legal only in read role.** Consequently:
 
 - `object.entity` + `extends <Entity>` + view source (the firehose pattern, e.g.
-  `ProgramSummary`) → explicit `object.projection`. Deprecation path, not a break.
-- Stored-proc result shapes as `object.entity` → `object.projection` (identity
-  becomes optional-borrowed). Deprecation path.
+  `ProgramSummary`) → load error; rewritten as `object.projection` (own fixtures and
+  corpus entries migrated in Phases B/E).
+- Stored-proc result shapes as `object.entity` (e.g. the `parameter-ref-on-stored-proc`
+  fixture) → load error; rewritten as `object.projection` (identity becomes
+  optional-borrowed).
 - `object.value` + `origin.*` prompt payloads (FR-004): **untouched** — values still
   carry origins for assembly semantics; no migration forced.
 
@@ -395,5 +399,3 @@ FR-021 §3 stands).
 3. Severity of the extends/origin target-agreement check (warn vs error).
 4. Whether `identity.primary { extends }` requires the projection to be
    single-base-entity (composite multi-entity keys deferred?).
-5. Exact deprecation mechanics for the two legacy spellings (loader WARN envelope per
-   ADR-0009).
