@@ -25,7 +25,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
             children: [
               { "source.rdb": { "@table": baseName.toLowerCase() + "s" } },
               { "field.int": { name: "id", } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -35,7 +35,7 @@ async function makeMinimalProjection(projName: string, baseName: string) {
             extends: baseName,
             children: [
               { "source.rdb": { "@kind": "view", "@table": `v_${projName.toLowerCase()}` } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -93,7 +93,7 @@ async function loadProjection() {
               { "source.rdb": { "@table": "programs" } },
               { "field.int": { name: "id", } },
               { "field.string": { name: "title", } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
               {
                 "relationship.association": {
                   name: "weeks",
@@ -111,7 +111,7 @@ async function loadProjection() {
               { "source.rdb": { "@table": "weeks" } },
               { "field.int": { name: "id", } },
               { "field.int": { name: "programId", } },
-              { "identity.primary":   { "@fields": "id" } },
+              { "identity.primary":   { "name": "id", "@fields": "id" } },
               { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
             ],
           },
@@ -136,7 +136,7 @@ async function loadProjection() {
                   ],
                 },
               },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -264,7 +264,7 @@ async function loadStandaloneProjection() {
               { "field.string": { name: "sessionId" } },
               { "field.string": { name: "displayName" } },
               { "field.string": { name: "status" } },
-              { "identity.primary": { "@fields": "sessionId" } },
+              { "identity.primary": { "name": "id", "@fields": "sessionId" } },
               { "layout.dataGrid": { name: "default", "@fields": "displayName,status" } },
             ],
           },

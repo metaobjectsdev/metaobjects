@@ -446,7 +446,7 @@ describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R
               children: [
                 { "field.long": { name: "id" } },
                 fieldNode,
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -528,7 +528,7 @@ describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R
                 { "field.long": { name: "id" } },
                 // Concrete field INHERITS @dbColumnType — does not declare it itself.
                 { "field.string": { name: "externalId", extends: "ExternalRef" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

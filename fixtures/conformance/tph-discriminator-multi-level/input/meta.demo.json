@@ -28,7 +28,7 @@
           "children": [
             { "source.rdb": { "@table": "leaf_auths" } },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

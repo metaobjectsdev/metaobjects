@@ -48,7 +48,7 @@ function oneSourceEntity(entityName: string, sourceBody: Record<string, unknown>
             children: [
               { "source.rdb": sourceBody },
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -78,7 +78,7 @@ function entityWithKindAndPhysicalName(
                 },
               },
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -118,7 +118,7 @@ describe("FR-016 attr-schema registration", () => {
               children: [
                 { "source.rdb": { name: "Customers", "@kind": "table" } },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

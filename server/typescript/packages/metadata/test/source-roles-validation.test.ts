@@ -11,7 +11,7 @@ const entityWithSources = (sources: unknown[]) => ({
     { "object.entity": { name: "P", children: [
       ...sources,
       { "field.long": { name: "id" } },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
     ] } },
   ] },
 });
@@ -38,7 +38,7 @@ describe("one-primary source-role validation", () => {
     const { errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "P", children: [
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
       ] } },
     ] } });
     expect(codesOf(errors)).not.toContain("ERR_SOURCE_NO_PRIMARY");

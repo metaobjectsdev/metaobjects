@@ -70,7 +70,7 @@ const APP_YAML = [
   "        extends: metaobjects::ai::LlmCallBase",
   "        children:",
   "          - source.rdb: { table: api_call, role: primary }",
-  '          - identity.primary: { fields: ["spanId"] }',
+  '          - identity.primary: { name: id, fields: ["spanId"] }',
   // B2 entity — base + typed VO columns.
   "    - object.entity:",
   "        name: VerdictCall",
@@ -79,7 +79,7 @@ const APP_YAML = [
   "          - source.rdb: { table: verdict_call, role: primary }",
   "          - field.object: { name: voRequest, objectRef: VerdictReq, storage: jsonb }",
   "          - field.object: { name: voResponse, objectRef: VerdictRes, storage: jsonb }",
-  '          - identity.primary: { fields: ["spanId"] }',
+  '          - identity.primary: { name: id, fields: ["spanId"] }',
 ].join("\n");
 
 // Valid v4-format UUIDs used as test ids.

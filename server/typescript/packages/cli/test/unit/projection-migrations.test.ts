@@ -27,7 +27,7 @@ const programEntity = {
       { "source.rdb": { "@table": "programs" } },
       { "field.int": { name: "id", "@column": "id" } },
       { "field.string": { name: "title", "@column": "title" } },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
       {
         "relationship.association": {
           name: "weeks",
@@ -46,7 +46,7 @@ const weekEntity = {
       { "source.rdb": { "@table": "weeks" } },
       { "field.int": { name: "id", "@column": "id" } },
       { "field.int": { name: "programId", "@column": "program_id" } },
-      { "identity.primary":   { "@fields": "id" } },
+      { "identity.primary":   { "name": "id", "@fields": "id" } },
       { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
     ],
   },
@@ -72,7 +72,7 @@ const programSummaryProjection = {
           ],
         },
       },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
     ],
   },
 };
@@ -157,8 +157,8 @@ describe("computeProjectionMigrations", () => {
           { "source.rdb": { "@table": "customers" } },
           { "field.int": { name: "id", "@column": "id" } },
           { "field.string": { name: "email", "@column": "email" } },
-          { "identity.primary":   { "@fields": "id" } },
-          { "identity.secondary": { "@fields": "email" } },
+          { "identity.primary":   { "name": "id", "@fields": "id" } },
+          { "identity.secondary": { "name": "byEmail", "@fields": "email" } },
           {
             "relationship.association": {
               name: "purchases",
@@ -176,7 +176,7 @@ describe("computeProjectionMigrations", () => {
           { "source.rdb": { "@table": "purchases" } },
           { "field.int": { name: "id", "@column": "id" } },
           { "field.string": { name: "customerEmail", "@column": "customer_email" } },
-          { "identity.primary":   { "@fields": "id" } },
+          { "identity.primary":   { "name": "id", "@fields": "id" } },
           { "identity.reference": { name: "ref_customer", "@fields": "customerEmail", "@references": "Customer.email" } },
         ],
       },
@@ -201,7 +201,7 @@ describe("computeProjectionMigrations", () => {
               ],
             },
           },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     };

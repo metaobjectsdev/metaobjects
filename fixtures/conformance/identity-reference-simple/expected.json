@@ -13,6 +13,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -37,6 +38,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

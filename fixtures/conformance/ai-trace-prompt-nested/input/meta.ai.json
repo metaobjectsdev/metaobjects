@@ -10,7 +10,7 @@
       ] } },
       { "object.entity": { "name": "ClassifyCall", "extends": "metaobjects::ai::LlmCallBase", "children": [
         { "source.rdb": { "@table": "classify_call", "@role": "primary" } },
-        { "identity.primary": { "@fields": ["spanId"] } },
+        { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
         { "template.prompt": { "name": "ClassifyPrompt", "@payloadRef": "ClassifyRequest", "@responseRef": "ClassifyResponse", "@textRef": "p/classify", "@format": "xml" } }
       ] } }
     ]

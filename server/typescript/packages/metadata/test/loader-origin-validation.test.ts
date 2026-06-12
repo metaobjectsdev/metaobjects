@@ -26,7 +26,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
           children: [
             { "field.int": { name: "id" } },
             { "field.string": { name: "email" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -43,7 +43,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "displayName" } },
+            { "identity.primary": { "name": "id", "@fields": "displayName" } },
           ],
         },
       },
@@ -58,7 +58,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
           name: "User",
           children: [
             { "field.int": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -75,7 +75,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "displayName" } },
+            { "identity.primary": { "name": "id", "@fields": "displayName" } },
           ],
         },
       },
@@ -96,7 +96,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
             { "field.int":  { name: "id" } },
             { "field.int":  { name: "userId" } },
             { "field.long": { name: "amount" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_user", "@fields": "userId", "@references": "User" } },
           ],
         },
@@ -106,7 +106,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
           name: "User",
           children: [
             { "field.int": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "orders",
@@ -136,7 +136,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "totalSpent" } },
+            { "identity.primary": { "name": "id", "@fields": "totalSpent" } },
           ],
         },
       },
@@ -151,7 +151,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
           name: "User",
           children: [
             { "field.int": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "orders",
@@ -168,7 +168,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
           children: [
             { "field.int": { name: "id" } },
             { "field.int": { name: "userId" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_user", "@fields": "userId", "@references": "User" } },
           ],
         },
@@ -192,7 +192,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "n" } },
+            { "identity.primary": { "name": "id", "@fields": "n" } },
           ],
         },
       },
@@ -211,7 +211,7 @@ describe("MetaDataLoader validates origin.via paths against relationships", () =
           name: "User",
           children: [
             { "field.int": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -234,7 +234,7 @@ describe("MetaDataLoader validates origin.via paths against relationships", () =
                 ],
               },
             },
-            { "identity.primary": { "@fields": "n" } },
+            { "identity.primary": { "name": "id", "@fields": "n" } },
           ],
         },
       },

@@ -67,7 +67,7 @@ describe("setup-preamble: the rendered TEXT names these exact symbols (change-de
         children: [
           { "field.long": { name: "id" } },
           { "field.string": { name: "name" } },
-          { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "source.rdb": { "@table": "widgets" } },
         ],
       },

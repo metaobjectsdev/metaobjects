@@ -13,11 +13,11 @@ const meta = { "metadata.root": { package: "acme", children: [
   { "object.entity": { name: "Product", children: [
     { "source.rdb": { "@table": "products", "@schema": "catalog" } },
     { "field.long": { name: "id" } },
-    { "identity.primary": { "@fields": "id" } },
+    { "identity.primary": { "name": "id", "@fields": "id" } },
   ] } },
   { "object.entity": { name: "ProductView", extends: "Product", children: [
     { "source.rdb": { "@table": "v_product", "@kind": "view" } },
-    { "identity.primary": { "@fields": "id" } },
+    { "identity.primary": { "name": "id", "@fields": "id" } },
   ] } },
 ] } };
 
@@ -51,7 +51,7 @@ describe("source.rdb registration", () => {
       { "object.entity": { name: "X", children: [
         { "source.rdb": { "@table": "x", "@kind": "bogus" } },
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
       ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_BAD_ATTR_VALUE");

@@ -14,7 +14,7 @@ describe("FR5a — JSON parser populates node.source", () => {
             children: [
               { "object.entity": { name: "User", children: [
                 { "field.string": { name: "id" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ] } },
             ],
           },
@@ -40,7 +40,7 @@ describe("FR5a — JSON parser populates node.source", () => {
             children: [
               { "object.entity": { name: "User", children: [
                 { "field.string": { name: "id" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ] } },
             ],
           },
@@ -64,7 +64,7 @@ describe("FR5a — JSON parser populates node.source", () => {
         JSON.stringify({ "metadata.root": { package: "acme", children: [
           { "object.entity": { name: "A", children: [
             { "field.string": { name: "x" } },
-            { "identity.primary": { "@fields": "x" } },
+            { "identity.primary": { "name": "id", "@fields": "x" } },
           ] } },
         ] } }),
         { id: "file-a.json", format: "json" },
@@ -73,7 +73,7 @@ describe("FR5a — JSON parser populates node.source", () => {
         JSON.stringify({ "metadata.root": { package: "acme", children: [
           { "object.entity": { name: "B", children: [
             { "field.string": { name: "y" } },
-            { "identity.primary": { "@fields": "y" } },
+            { "identity.primary": { "name": "id", "@fields": "y" } },
           ] } },
         ] } }),
         { id: "file-b.json", format: "json" },

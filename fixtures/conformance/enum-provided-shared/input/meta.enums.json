@@ -11,7 +11,7 @@
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "priority", "extends": "Priority" } },
             { "field.enum": { "name": "currency", "extends": "Currency" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

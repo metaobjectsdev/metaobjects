@@ -18,7 +18,7 @@ const DOC = JSON.stringify({
           "name": "Widget",
           "children": [
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },

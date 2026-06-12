@@ -37,6 +37,7 @@ const fixtureJson = {
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id",
                 "@generation": "increment",
                 "@notes": NOTES_MARKER,

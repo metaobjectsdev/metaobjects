@@ -31,4 +31,4 @@ metadata:
         extends: metaobjects::ai::LlmCallBase
         children:
           - source.rdb:      { table: llm_call, role: primary }
-          - identity.primary: { fields: ["spanId"] }
+          - identity.primary: { name: id, fields: ["spanId"] }

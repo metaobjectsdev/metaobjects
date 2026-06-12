@@ -17,7 +17,7 @@
                 "@sourceRefField": "followerId"
               }
             },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
@@ -28,7 +28,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "followerId" } },
             { "field.long": { "name": "followeeId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "User" } },
             { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "User" } }
           ]

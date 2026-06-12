@@ -33,7 +33,7 @@ const MODEL_YAML = [
   "        extends: LlmCallBase",
   "        children:",
   "          - source.rdb:      { table: api_call, role: primary }",
-  '          - identity.primary: { fields: ["traceId"] }',
+  '          - identity.primary: { name: id, fields: ["traceId"] }',
 ].join("\n");
 
 describe("ai LlmCall codegen — abstract base + concrete entity", () => {

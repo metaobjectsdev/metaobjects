@@ -34,6 +34,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@description": "Identity-level doc.",
                 "@fields": [
                   "id"

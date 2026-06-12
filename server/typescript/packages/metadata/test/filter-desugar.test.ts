@@ -16,7 +16,7 @@ async function loadGridFilter(filter: unknown): Promise<unknown> {
               { "field.boolean": { name: "subscribed", "@filterable": true } },
               { "field.string": { name: "status", "@filterable": true } },
               { "field.string": { name: "deletedAt", "@filterable": true } },
-              { "identity.primary": { "@fields": ["id"] } },
+              { "identity.primary": { "name": "id", "@fields": ["id"] } },
               {
                 "layout.dataGrid": {
                   name: "active",

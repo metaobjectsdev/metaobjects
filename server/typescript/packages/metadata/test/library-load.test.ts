@@ -32,7 +32,7 @@ const APP_YAML = [
   "        extends: metaobjects::ai::LlmCallBase",
   "        children:",
   "          - source.rdb: { table: api_call, role: primary }",
-  '          - identity.primary: { fields: ["spanId"] }',
+  '          - identity.primary: { name: id, fields: ["spanId"] }',
 ].join("\n");
 
 describe("loader libraries option", () => {

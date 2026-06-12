@@ -45,7 +45,7 @@ function makeDoc(options: {
             name: "Program",
             children: [
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -68,7 +68,7 @@ function makeDoc(options: {
                   "@references": "Program",
                 },
               },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

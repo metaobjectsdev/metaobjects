@@ -17,7 +17,7 @@
                 "@symmetric": true
               }
             },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
@@ -28,7 +28,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "userAId" } },
             { "field.long": { "name": "userBId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "User" } },
             { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "User" } }
           ]

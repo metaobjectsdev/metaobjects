@@ -10,7 +10,7 @@
             { "source.rdb": { "@table": "auths" } },
             { "field.string": { "name": "type" } },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

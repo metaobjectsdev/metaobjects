@@ -18,7 +18,7 @@ describe("MetaReferenceIdentity.enforce", () => {
           name: "Program",
           children: [
             { "field.long": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -28,7 +28,7 @@ describe("MetaReferenceIdentity.enforce", () => {
           children: [
             { "field.long": { name: "id" } },
             { "field.long": { name: "programId" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
@@ -46,7 +46,7 @@ describe("MetaReferenceIdentity.enforce", () => {
           name: "Program",
           children: [
             { "field.long": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -56,7 +56,7 @@ describe("MetaReferenceIdentity.enforce", () => {
           children: [
             { "field.long": { name: "id" } },
             { "field.long": { name: "programId" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program", "@enforce": true } },
           ],
         },
@@ -75,8 +75,8 @@ describe("MetaReferenceIdentity.enforce", () => {
           children: [
             { "field.long":   { name: "id" } },
             { "field.string": { name: "email" } },
-            { "identity.primary":   { "@fields": "id" } },
-            { "identity.secondary": { "@fields": "email" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
+            { "identity.secondary": { "name": "byEmail", "@fields": "email" } },
           ],
         },
       },
@@ -86,7 +86,7 @@ describe("MetaReferenceIdentity.enforce", () => {
           children: [
             { "field.long":   { name: "id" } },
             { "field.string": { name: "customerEmail" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             {
               "identity.reference": {
                 name: "ref_subscriber",

@@ -27,7 +27,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
             { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "weeks",
@@ -45,7 +45,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
             { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
@@ -70,7 +70,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -113,7 +113,7 @@ describe("extractViewSpec — multi-level via path", () => {
           children: [
             { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "weeks",
@@ -131,7 +131,7 @@ describe("extractViewSpec — multi-level via path", () => {
             { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
             {
               "relationship.association": {
@@ -150,7 +150,7 @@ describe("extractViewSpec — multi-level via path", () => {
             { "source.rdb": { "@table": "workouts" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "weekId", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_week", "@fields": "weekId", "@references": "Week" } },
           ],
         },
@@ -175,7 +175,7 @@ describe("extractViewSpec — multi-level via path", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -200,7 +200,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
             { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "weeks",
@@ -219,7 +219,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
             { "field.string": { name: "title", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
@@ -257,7 +257,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -286,7 +286,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
             { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -296,7 +296,7 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
           "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_view" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -329,7 +329,7 @@ describe("extractViewSpec — pkField resolution", () => {
             { "source.rdb": { "@table": "programs" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "title", } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             {
               "relationship.association": {
                 name: "weeks",
@@ -347,7 +347,7 @@ describe("extractViewSpec — pkField resolution", () => {
             { "source.rdb": { "@table": "weeks" } },
             { "field.int": { name: "id", } },
             { "field.int": { name: "programId", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
@@ -372,7 +372,7 @@ describe("extractViewSpec — pkField resolution", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -394,8 +394,8 @@ describe("extractViewSpec — pkField resolution", () => {
             { "source.rdb": { "@table": "customers" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "email", } },
-            { "identity.primary":   { "@fields": "id" } },
-            { "identity.secondary": { "@fields": "email" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
+            { "identity.secondary": { "name": "byEmail", "@fields": "email" } },
             {
               "relationship.association": {
                 name: "purchases",
@@ -413,7 +413,7 @@ describe("extractViewSpec — pkField resolution", () => {
             { "source.rdb": { "@table": "purchases" } },
             { "field.int": { name: "id", } },
             { "field.string": { name: "customerEmail", } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_customer", "@fields": "customerEmail", "@references": "Customer.email" } },
           ],
         },
@@ -438,7 +438,7 @@ describe("extractViewSpec — pkField resolution", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -462,7 +462,7 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
           children: [
             { "field.long":   { name: "id" } },
             { "field.string": { name: "title" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -472,7 +472,7 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
           children: [
             { "field.long":   { name: "id" } },
             { "field.long":   { name: "programId" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
             {
               "relationship.association": {
@@ -498,7 +498,7 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
                 ],
               },
             },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },

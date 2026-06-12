@@ -75,7 +75,7 @@ const META = JSON.stringify({
             { "field.string": { name: "startedAt" } },
             { "field.string": { name: "llmRequest", "@dbColumnType": "jsonb" } },
             { "field.string": { name: "llmResponse", "@dbColumnType": "jsonb" } },
-            { "identity.primary": { "@fields": "spanId" } },
+            { "identity.primary": { "name": "id", "@fields": "spanId" } },
           ],
         },
       },

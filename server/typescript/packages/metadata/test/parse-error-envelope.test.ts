@@ -8,7 +8,7 @@ describe("FR5a — ParseError carries an ErrorSource envelope", () => {
         JSON.stringify({
           "metadata.root": {
             children: [
-              { "object.entity": { name: "User", children: [{ "field.unknownXyz": { name: "x" } }, { "identity.primary": { "@fields": "x" } }] } },
+              { "object.entity": { name: "User", children: [{ "field.unknownXyz": { name: "x" } }, { "identity.primary": { "name": "id", "@fields": "x" } }] } },
             ],
           },
         }),

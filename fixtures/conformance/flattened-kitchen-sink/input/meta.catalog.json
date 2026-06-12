@@ -196,7 +196,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "productId" } },
             { "field.long": { "name": "supplierId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "productRef", "@fields": "productId", "@references": "Product" } },
             { "identity.reference": { "name": "supplierRef", "@fields": "supplierId", "@references": "Supplier" } }
           ]
@@ -211,7 +211,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "supplierAId" } },
             { "field.long": { "name": "supplierBId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "supplierARef", "@fields": "supplierAId", "@references": "Supplier" } },
             { "identity.reference": { "name": "supplierBRef", "@fields": "supplierBId", "@references": "Supplier" } }
           ]

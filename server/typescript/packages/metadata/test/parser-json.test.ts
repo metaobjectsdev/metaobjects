@@ -177,7 +177,7 @@ describe("parseJson — inline @-attrs", () => {
           { "object.entity": { name: "Program", "@dbTable": "programs",
             children: [
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           }},
         ],

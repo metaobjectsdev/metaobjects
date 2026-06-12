@@ -51,7 +51,7 @@ const CHILDREN = [
             "@values": ["draft", "published", "archived"],
           },
         },
-        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
         { "source.rdb": { "@table": "products" } },
       ],
     },

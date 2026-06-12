@@ -38,7 +38,7 @@
                 "@sourceRefField": "followerId"
               }
             },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
@@ -50,7 +50,7 @@
             { "source.rdb": { "@table": "tags" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "label" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
@@ -63,7 +63,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "userId" } },
             { "field.long": { "name": "tagId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "User" } },
             { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "Tag" } }
           ]
@@ -78,7 +78,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "userAId" } },
             { "field.long": { "name": "userBId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "User" } },
             { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "User" } }
           ]
@@ -93,7 +93,7 @@
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "followerId" } },
             { "field.long": { "name": "followeeId" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
             { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "User" } },
             { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "User" } }
           ]

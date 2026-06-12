@@ -115,7 +115,7 @@ describe("entityFile() — emitAbstractShapes knob", () => {
             children: [
               { "field.int": { name: "id" } },
               { "field.string": { name: "name" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -174,12 +174,12 @@ describe("entityFile() — emitAbstractShapes knob", () => {
           { "field.long": { name: "id" } },
           { "field.string": { name: "code" } },
           { "source.rdb": { "@table": "abstract_records" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ] } },
         { "object.entity": { name: "Concrete", children: [
           { "field.long": { name: "id" } },
           { "source.rdb": { "@table": "concretes" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ] } },
       ] },
     });

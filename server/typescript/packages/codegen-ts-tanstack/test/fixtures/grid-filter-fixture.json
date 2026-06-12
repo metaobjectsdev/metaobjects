@@ -11,6 +11,7 @@
                 "children": [
                   {
                     "identity.primary": {
+                      "name": "id",
                       "@fields": ["id"],
                       "@generation": "increment"
                     }

@@ -47,7 +47,7 @@ describe("FR-013 schema registration", () => {
                 { "source.rdb": { "@table": "customers" } },
                 { "field.long": { name: "id" } },
                 { "field.timestamp": { name: "created_at", "@readOnly": true } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -72,6 +72,7 @@ describe("FR-013 ERR_READONLY_ASSIGNED_PRIMARY", () => {
                 { "field.string": { name: "id", "@readOnly": true } },
                 {
                   "identity.primary": {
+                    "name": "id",
                     "@fields": "id",
                     "@generation": "assigned",
                   },
@@ -99,6 +100,7 @@ describe("FR-013 ERR_READONLY_ASSIGNED_PRIMARY", () => {
                 { "field.long": { name: "id", "@readOnly": true } },
                 {
                   "identity.primary": {
+                    "name": "id",
                     "@fields": "id",
                     "@generation": "increment",
                   },
@@ -137,7 +139,7 @@ describe("FR-013 ERR_READONLY_DOWNGRADE (extends inheritance)", () => {
                 { "source.rdb": { "@table": "subscribers" } },
                 { "field.long": { name: "id" } },
                 { "field.timestamp": { name: "createdAt", "@readOnly": false } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -170,7 +172,7 @@ describe("FR-013 ERR_READONLY_DOWNGRADE (extends inheritance)", () => {
                 { "source.rdb": { "@table": "customers" } },
                 { "field.long": { name: "id" } },
                 { "field.string": { name: "label", "@readOnly": true } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -210,7 +212,7 @@ describe("FR-013 WARN_READONLY_VALUE_OBJECT", () => {
                     "@storage": "flattened",
                   },
                 },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

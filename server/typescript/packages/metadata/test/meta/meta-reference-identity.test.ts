@@ -19,7 +19,7 @@ describe("identity.reference subtype", () => {
           name: "Program",
           children: [
             { "field.long": { name: "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -29,7 +29,7 @@ describe("identity.reference subtype", () => {
           children: [
             { "field.long": { name: "id" } },
             { "field.long": { name: "programId" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
           ],
         },
@@ -54,8 +54,8 @@ describe("identity.reference subtype", () => {
           children: [
             { "field.long":    { name: "id" } },
             { "field.string":  { name: "email" } },
-            { "identity.primary":   { "@fields": "id" } },
-            { "identity.secondary": { "@fields": "email" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
+            { "identity.secondary": { "name": "byEmail", "@fields": "email" } },
           ],
         },
       },
@@ -65,7 +65,7 @@ describe("identity.reference subtype", () => {
           children: [
             { "field.long":   { name: "id" } },
             { "field.string": { name: "customerEmail" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_subscriber", "@fields": "customerEmail", "@references": "Subscriber.email" } },
           ],
         },
@@ -86,7 +86,7 @@ describe("identity.reference subtype", () => {
           children: [
             { "field.long": { name: "a" } },
             { "field.long": { name: "b" } },
-            { "identity.primary": { "@fields": ["a", "b"] } },
+            { "identity.primary": { "name": "id", "@fields": ["a", "b"] } },
           ],
         },
       },
@@ -97,7 +97,7 @@ describe("identity.reference subtype", () => {
             { "field.long": { name: "id" } },
             { "field.long": { name: "fa" } },
             { "field.long": { name: "fb" } },
-            { "identity.primary":   { "@fields": "id" } },
+            { "identity.primary":   { "name": "id", "@fields": "id" } },
             { "identity.reference": { name: "ref_other", "@fields": ["fa", "fb"], "@references": "Other.a,b" } },
           ],
         },
@@ -121,8 +121,8 @@ describe("identity.reference subtype", () => {
               name: "Bad",
               children: [
                 { "field.long": { name: "id" } },
-                { "identity.primary":   { "@fields": "id" } },
-                { "identity.reference": { "@fields": "id" } },
+                { "identity.primary":   { "name": "id", "@fields": "id" } },
+                { "identity.reference": { "name": "idRef", "@fields": "id" } },
               ],
             },
           },

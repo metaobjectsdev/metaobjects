@@ -35,7 +35,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                   // Discriminator is filterable on the base (polymorphic GET).
                   { "field.enum": { name: "type", "@values": ["Bridge", "Copay"], "@filterable": true } },
                   { "field.long": { name: "id" } },
-                  { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                  { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
               },
             },

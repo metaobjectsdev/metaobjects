@@ -25,7 +25,7 @@
             { "field.long": { "name": "phaseId" } },
             { "field.string": { "name": "phaseName" } },
             { "field.timestamp": { "name": "enteredAt" } },
-            { "identity.primary": { "@fields": "phaseId" } }
+            { "identity.primary": { "name": "id", "@fields": "phaseId" } }
           ]
         }
       }

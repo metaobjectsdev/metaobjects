@@ -30,7 +30,7 @@ test("unresolved @responseRef on a NESTED prompt is a loader error", async () =>
     { "object.entity": { name: "Call", children: [
       { "source.rdb": { "@table": "call", "@role": "primary" } },
       { "field.uuid": { name: "spanId" } },
-      { "identity.primary": { "@fields": ["spanId"] } },
+      { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
       { "template.prompt": { name: "CallPrompt", "@payloadRef": "ReqVO", "@responseRef": "NoSuchVO", "@textRef": "p/x", "@format": "xml" } },
     ] } },
   ] } });
@@ -45,7 +45,7 @@ test("template.prompt is allowed as a child of object.entity", async () => {
     { "object.entity": { name: "Call", children: [
       { "source.rdb": { "@table": "call", "@role": "primary" } },
       { "field.uuid": { name: "spanId" } },
-      { "identity.primary": { "@fields": ["spanId"] } },
+      { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
       { "template.prompt": { name: "CallPrompt", "@payloadRef": "ReqVO", "@responseRef": "ResVO", "@textRef": "p/x", "@format": "xml" } },
     ] } },
   ] } });

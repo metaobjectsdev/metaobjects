@@ -8,7 +8,7 @@
           "children": [
             { "field.uuid": { "name": "id" } },
             { "field.string": { "name": "label" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

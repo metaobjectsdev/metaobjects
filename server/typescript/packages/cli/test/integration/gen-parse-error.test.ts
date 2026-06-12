@@ -31,7 +31,7 @@ function setupRepoWithParseError(): string {
             children: [
               { "source.rdb": { "@table": "programs" } },
               { "field.int": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -49,7 +49,7 @@ function setupRepoWithParseError(): string {
                   ],
                 },
               },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

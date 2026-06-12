@@ -9,7 +9,7 @@
           { "field.long":       { "name": "id" } },
           { "field.string":     { "name": "title", "@required": true, "@maxLength": 200 } },
           { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
       { "object.entity": {
@@ -18,7 +18,7 @@
           { "source.rdb":       { "@table": "tags" } },
           { "field.long":       { "name": "id" } },
           { "field.string":     { "name": "name", "@required": true, "@maxLength": 80 } },
-          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
       { "object.entity": {
@@ -27,7 +27,7 @@
           { "source.rdb":         { "@table": "post_tags" } },
           { "field.long":         { "name": "postId", "@required": true } },
           { "field.long":         { "name": "tagId",  "@required": true } },
-          { "identity.primary":   { "@fields": ["postId", "tagId"] } },
+          { "identity.primary":   { "name": "id", "@fields": ["postId", "tagId"] } },
           { "identity.reference": { "name": "fkPost", "@fields": "postId", "@references": "Post" } },
           { "identity.reference": { "name": "fkTag",  "@fields": "tagId",  "@references": "Tag" } }
         ]
@@ -40,7 +40,7 @@
           { "field.string":     { "name": "name", "@required": true, "@maxLength": 80 } },
           { "relationship.association": { "name": "following", "@cardinality": "many", "@objectRef": "Person", "@through": "Follow", "@sourceRefField": "followerId" } },
           { "relationship.association": { "name": "friends",   "@cardinality": "many", "@objectRef": "Person", "@through": "Friendship", "@symmetric": true } },
-          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
       { "object.entity": {
@@ -49,7 +49,7 @@
           { "source.rdb":         { "@table": "follows" } },
           { "field.long":         { "name": "followerId", "@required": true } },
           { "field.long":         { "name": "followeeId", "@required": true } },
-          { "identity.primary":   { "@fields": ["followerId", "followeeId"] } },
+          { "identity.primary":   { "name": "id", "@fields": ["followerId", "followeeId"] } },
           { "identity.reference": { "name": "fkFollower", "@fields": "followerId", "@references": "Person" } },
           { "identity.reference": { "name": "fkFollowee", "@fields": "followeeId", "@references": "Person" } }
         ]
@@ -60,7 +60,7 @@
           { "source.rdb":         { "@table": "friendships" } },
           { "field.long":         { "name": "personAId", "@required": true } },
           { "field.long":         { "name": "personBId", "@required": true } },
-          { "identity.primary":   { "@fields": ["personAId", "personBId"] } },
+          { "identity.primary":   { "name": "id", "@fields": ["personAId", "personBId"] } },
           { "identity.reference": { "name": "fkPersonA", "@fields": "personAId", "@references": "Person" } },
           { "identity.reference": { "name": "fkPersonB", "@fields": "personBId", "@references": "Person" } }
         ]

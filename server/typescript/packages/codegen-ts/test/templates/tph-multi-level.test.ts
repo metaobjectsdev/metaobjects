@@ -35,7 +35,7 @@ async function loadMultiLevel(): Promise<{ root: MetaRoot; base: MetaObject; lea
                   { "source.rdb": { "@table": "auths" } },
                   { "field.enum": { name: "type", "@values": ["Bridge"] } },
                   { "field.long": { name: "id" } },
-                  { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                  { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
               },
             },

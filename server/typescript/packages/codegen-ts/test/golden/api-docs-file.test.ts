@@ -41,7 +41,7 @@ const SHOP = JSON.stringify({
           children: [
             { "field.long": { name: "id" } },
             { "field.string": { name: "name" } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             { "source.rdb": { "@table": "products" } },
           ],
         },

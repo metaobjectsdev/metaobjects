@@ -9,7 +9,7 @@
           "children": [
             { "source.rdb": { "@table": "auths" } },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

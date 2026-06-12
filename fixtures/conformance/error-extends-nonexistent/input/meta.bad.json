@@ -14,6 +14,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }

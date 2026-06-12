@@ -29,7 +29,7 @@ const CHILDREN = [
       children: [
         { "field.long": { name: "id" } },
         { "field.string": { name: "name" } },
-        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
         { "source.rdb": { "@table": "products" } },
       ],
     },
@@ -592,7 +592,7 @@ const COUPON_PK_CODE = [
       children: [
         { "field.string": { name: "code" } },
         { "field.string": { name: "label" } },
-        { "identity.primary": { "@fields": "code", "@generation": "assigned" } },
+        { "identity.primary": { "name": "id", "@fields": "code", "@generation": "assigned" } },
         { "source.rdb": { "@table": "coupons" } },
       ],
     },

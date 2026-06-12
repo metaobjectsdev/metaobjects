@@ -9,7 +9,7 @@
           "children": [
             { "field.long": { "name": "id" } },
             { "field.enum": { "name": "status", "extends": "Status" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

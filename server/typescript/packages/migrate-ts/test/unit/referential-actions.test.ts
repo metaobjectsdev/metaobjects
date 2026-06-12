@@ -25,14 +25,14 @@ function weekDoc(rel: Record<string, unknown> | undefined) {
   return { "metadata.root": { package: "acme", children: [
     { "object.entity": { name: "Program", children: [
       { "field.long": { name: "id" } },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
     ] } },
     { "object.entity": { name: "Week", children: [
       { "field.long": { name: "id" } },
       { "field.long": { name: "programId" } },
       ...(rel ? [rel] : []),
       { "identity.reference": { name: "ref_program", "@fields": ["programId"], "@references": "Program" } },
-      { "identity.primary": { "@fields": "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
     ] } },
   ] } };
 }

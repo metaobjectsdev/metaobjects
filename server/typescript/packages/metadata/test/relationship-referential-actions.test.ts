@@ -13,13 +13,13 @@ describe("relationship @onDelete / @onUpdate", () => {
     const { root, errors } = await loadDoc({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Program", children: [
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Week", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "programId" } },
         { "relationship.composition": { name: "program", "@objectRef": "Program",
             "@cardinality": "one", "@onDelete": "cascade", "@onUpdate": "cascade" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
       ] } },
     ] } });
     expect(errors).toHaveLength(0);
@@ -34,9 +34,9 @@ describe("relationship @onDelete / @onUpdate", () => {
         { "field.long": { name: "id" } },
         { "relationship.aggregation": { name: "y", "@objectRef": "Y", "@onDelete": "set-null" } },
         { "relationship.association": { name: "z", "@objectRef": "Z", "@onDelete": "restrict", "@onUpdate": "no-action" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
-      { "object.entity": { name: "Y", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } }] } },
-      { "object.entity": { name: "Z", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } }] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Y", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } }] } },
+      { "object.entity": { name: "Z", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } }] } },
     ] } });
     expect(codesOf(errors)).not.toContain("ERR_BAD_ATTR_VALUE");
   });
@@ -46,8 +46,8 @@ describe("relationship @onDelete / @onUpdate", () => {
       { "object.entity": { name: "Week", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "p", "@objectRef": "X", "@onDelete": "setDefault" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
-      { "object.entity": { name: "X", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } }] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "X", children: [{ "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } }] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_BAD_ATTR_VALUE");
   });

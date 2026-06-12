@@ -19,7 +19,7 @@ function entityWithPk(name: string) {
       name,
       children: [
         { "field.string": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
       ],
     },
   };
