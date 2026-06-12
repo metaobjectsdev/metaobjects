@@ -54,22 +54,23 @@
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
         ]
       }},
-      { "object.entity": {
+      { "object.projection": {
         "name": "ProgramView",
         "children": [
           { "source.rdb": { "@kind": "view", "@table": "v_program" } },
-          { "field.long":   { "name": "id",     "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
+          { "field.long":   { "name": "id", "extends": "Program.id",
+                              "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
           { "field.string": { "name": "title",  "children": [ { "origin.passthrough": { "@from": "Program.title" } } ] } },
           { "field.enum":   { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
                               "children": [ { "origin.passthrough": { "@from": "Program.status" } } ] } },
-          { "identity.primary": { "name": "id", "@fields": "id" } }
+          { "identity.primary": { "name": "id", "extends": "Program.id", "@fields": "id" } }
         ]
       }},
-      { "object.entity": {
+      { "object.projection": {
         "name": "ProgramStat",
         "children": [
           { "source.rdb": { "@kind": "view", "@table": "v_program_stat" } },
-          { "field.long": { "name": "programId",
+          { "field.long": { "name": "programId", "extends": "Program.id",
             "children": [ { "origin.passthrough": { "@from": "Program.id" } } ] } },
           { "field.long": { "name": "weekCount",
             "children": [
@@ -91,7 +92,7 @@
             "children": [
               { "origin.aggregate": { "@agg": "max", "@of": "Week.durationMinutes", "@via": "Program.weeks" } }
           ]}},
-          { "identity.primary": { "name": "id", "@fields": "programId" } }
+          { "identity.primary": { "name": "id", "extends": "Program.id", "@fields": "programId" } }
         ]
       }},
 

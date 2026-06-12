@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 55,
-  "exercisedSubTypeCount": 38,
+  "registeredSubTypeCount": 56,
+  "exercisedSubTypeCount": 39,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -277,7 +277,6 @@
       "key": "field.uuid",
       "untestedAttrs": [
         "autoSet",
-        "column",
         "db.indexed",
         "dbColumnType",
         "default",
@@ -295,17 +294,18 @@
       ]
     },
     {
+      "key": "object.projection",
+      "untestedAttrs": [
+        "discriminator",
+        "discriminatorValue"
+      ]
+    },
+    {
       "key": "object.value",
       "untestedAttrs": [
         "discriminator",
         "discriminatorValue",
         "normalize"
-      ]
-    },
-    {
-      "key": "origin.passthrough",
-      "untestedAttrs": [
-        "via"
       ]
     },
     {

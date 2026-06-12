@@ -322,7 +322,26 @@ public class MetaDataLoader implements LoaderConfigurable {
                 owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT,
                     pkg + PKG_SEPARATOR + ownerRef);
             } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                // fall through to FQN lookup
+                // fall through
+            }
+        }
+        if (owner == null && ownerRef.indexOf(PKG_SEPARATOR) < 0) {
+            // NESTED referrers (a field/identity inside an object) are queued with an
+            // EMPTY packageName (the parser does not fold the object's package onto
+            // nested children) — derive the context package from the referrer's
+            // ancestry instead: the enclosing object's registered name carries the
+            // parse-time-folded package (e.g. "fitness::ProgramView" → "fitness").
+            // Mirrors TS resolveDeferredSupers' node.fileDefaultPackage fallback.
+            for (MetaData ancestor = p.child.getParent(); ancestor != null; ancestor = ancestor.getParent()) {
+                String ancestorPkg = ancestor.getPackage();
+                if (ancestorPkg == null || ancestorPkg.isEmpty()) continue;
+                try {
+                    owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT,
+                        ancestorPkg + PKG_SEPARATOR + ownerRef);
+                    break;
+                } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                    // keep walking up
+                }
             }
         }
         if (owner == null) {
@@ -333,13 +352,26 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         }
 
-        MetaData target;
+        MetaData target = null;
         try {
             // Type-scoped + EFFECTIVE (includeParentData): a field ref selects among
             // the owner's fields (own + inherited); an identity ref among identities.
             target = owner.getChildOfType(p.child.getType(), childName);
         } catch (com.metaobjects.MetaDataNotFoundException notFound) {
-            return null;
+            // Java folds the file-default package onto SOME nested child names
+            // (identity children register as e.g. "demo::id" while fields stay
+            // bare "id") — match by SHORT name as the fallback so the dotted
+            // grammar stays package-folding-agnostic, mirroring the TS/C#/Python
+            // reference behavior (their child names are always bare).
+            for (MetaData c : owner.getChildren(MetaData.class, true)) {
+                if (c.isType(p.child.getType()) && childName.equals(c.getShortName())) {
+                    target = c;
+                    break;
+                }
+            }
+            if (target == null) {
+                return null;
+            }
         }
 
         if (!target.getType().equals(p.child.getType())

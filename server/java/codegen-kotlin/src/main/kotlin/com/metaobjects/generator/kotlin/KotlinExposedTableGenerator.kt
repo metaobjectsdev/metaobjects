@@ -64,8 +64,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
+        // FR-024 (ADR-0028): object.projection is emitted too — a projection with
+        // an rdb view-kind source is queried through an Exposed Table exactly like
+        // a view-kind entity was pre-FR-024 (read-only by construction; projections
+        // carry no relationships/references, so passes 1+3 stay entity-only).
         for (entity in loader.metaObjects) {
-            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY &&
+                entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a persistence table.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue

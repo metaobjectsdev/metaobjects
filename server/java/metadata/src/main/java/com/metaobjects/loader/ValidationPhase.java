@@ -1418,7 +1418,16 @@ public final class ValidationPhase {
         java.util.Set.of("increment", "uuid", "assigned");
 
     private static void validateIdentityNode(MetaIdentity identity) {
-        if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) {
+        // FR-024 (ADR-0029): an identity with a resolved extends (identity
+        // pass-through, e.g. a projection identity extending an entity identity)
+        // satisfies @fields through INHERITANCE — the local @fields list is
+        // computable from the extends-bound key fields and may be omitted.
+        // Check the EFFECTIVE attr view (includeParentData) when a super is
+        // present; own-only otherwise (the pre-FR-024 rule, unchanged).
+        boolean hasFields = identity.getSuperData() != null
+            ? identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, true)
+            : identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false);
+        if (!hasFields) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": identity '" + identity.getName()
