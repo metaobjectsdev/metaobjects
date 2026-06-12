@@ -42,7 +42,7 @@ def _walk(
         # root. Mirrors TS ``resolveDeferredSupers``
         # (``node.package ?? node.fileDefaultPackage``).
         effective_pkg = node.package or node.file_default_package or ctx_pkg or None
-        target = _resolve(node.super_ref, effective_pkg, index)
+        target = _resolve(node.super_ref, effective_pkg, index, referrer_type=node.type)
         if target is None:
             # FR5d / ADR-0009: emit a ResolvedSource envelope carrying the
             # referrer's files / json_path plus the referrer FQN + unresolved
@@ -51,6 +51,21 @@ def _walk(
                 f"the SuperClass '{node.super_ref}' does not exist "
                 f"(referenced by {node.fqn()})",
                 ErrorCode.ERR_UNRESOLVED_SUPER,
+                path=node.fqn(),
+                envelope=resolved_source(node.source, node.fqn(), node.super_ref),
+            ))
+        elif _is_child_targeting_ref(node.super_ref) and (
+            target.type != node.type or target.sub_type != node.sub_type
+        ):
+            # FR-024 (ADR-0029): a dotted extends target must match the referrer's
+            # type AND subtype (dotted-only check — top-level extends unchanged).
+            # Mirrors TS resolveDeferredSupers' target-mismatch kind.
+            errors.append(MetaError(
+                f"the dotted extends target '{node.super_ref}' is "
+                f"[{target.type}.{target.sub_type}] but the extending node is "
+                f"[{node.type}.{node.sub_type}] — a dotted extends must target a "
+                f"node of the same type and subtype (referenced by {node.fqn()})",
+                ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
                 path=node.fqn(),
                 envelope=resolved_source(node.source, node.fqn(), node.super_ref),
             ))
@@ -89,8 +104,21 @@ def _index_walk(node: MetaData, idx: dict[str, MetaData]) -> None:
         _index_walk(child, idx)
 
 
+def _is_child_targeting_ref(ref: str) -> bool:
+    """FR-024 (ADR-0029): True when the ref's final ``::``-segment contains a
+    ``.`` — i.e. it targets a child nested inside an object (``Customer.id``,
+    ``acme::sales::Customer.id``). Names cannot contain ``.``, so the form is
+    unambiguous."""
+    last_sep = ref.rfind(PACKAGE_SEP)
+    last_segment = ref if last_sep < 0 else ref[last_sep + len(PACKAGE_SEP):]
+    return "." in last_segment
+
+
 def _resolve(
-    ref: str, context_pkg: str | None, index: dict[str, MetaData]
+    ref: str,
+    context_pkg: str | None,
+    index: dict[str, MetaData],
+    referrer_type: str | None = None,
 ) -> MetaData | None:
     """Resolve a super_ref string against the FQN index.
 
@@ -101,9 +129,37 @@ def _resolve(
                                   (→ ERR_UNRESOLVED_SUPER); else look up
                                   ``reducedCtx::rest`` (mirrors TS exactly).
     - bare/qualified ``Name``   → try ``context::ref`` first, then bare ``ref``.
+    - dotted ``Owner.child``    → FR-024 (ADR-0029): resolve the OWNER with the
+                                  strategies above, then select the child among
+                                  the owner's EFFECTIVE children (``children()``,
+                                  so inherited children resolve) by name + the
+                                  REFERRER's type (type-scoped: a field ref
+                                  resolves fields, an identity ref identities).
+                                  Dotted refs never fall through to the bare
+                                  lookup; multi-dot (``X.y.z``) is reserved →
+                                  ``None``; no ``referrer_type`` → ``None``.
+                                  Mirrors TS super-resolve.ts (commit 809712f8).
     """
     abs_prefix = PACKAGE_SEP  # "::"
     rel_prefix = ".." + PACKAGE_SEP  # "..::
+
+    if _is_child_targeting_ref(ref):
+        if referrer_type is None:
+            return None
+        last_sep = ref.rfind(PACKAGE_SEP)
+        seg_start = 0 if last_sep < 0 else last_sep + len(PACKAGE_SEP)
+        parts = ref[seg_start:].split(".")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return None  # multi-dot reserved / degenerate forms
+        owner_ref = ref[:seg_start] + parts[0]
+        child_name = parts[1]
+        owner = _resolve(owner_ref, context_pkg, index)
+        if owner is None:
+            return None
+        for child in owner.children():
+            if child.name == child_name and child.type == referrer_type:
+                return child
+        return None
 
     if ref.startswith(abs_prefix):                          # absolute ::pkg::Name
         return index.get(ref[len(abs_prefix):])

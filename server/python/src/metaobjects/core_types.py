@@ -68,6 +68,7 @@ from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
     OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
     OBJECT_SUBTYPES,
 )
@@ -203,7 +204,7 @@ core_provider.add(
     )
 )
 
-# object.* (entity, value)
+# object.* (entity, value, projection)
 _OBJECT_CHILD_RULES = [
     ChildRule(TYPE_FIELD, "*"),
     ChildRule(TYPE_IDENTITY, "*"),
@@ -215,6 +216,16 @@ _OBJECT_CHILD_RULES = [
     # entity (AI LLM-call trace persistence; the trace entity carries a nested
     # template.prompt). Mirrors Java MetaObject.optionalChild("template","*","*").
     ChildRule(TYPE_TEMPLATE, "*"),
+]
+# FR-024 (ADR-0028): object.projection licenses NO relationship and NO template
+# children — a projection is a derived read-only representation, never a
+# relationship host. Mirrors the TS reference's per-subtype projectionRules.
+_PROJECTION_CHILD_RULES = [
+    ChildRule(TYPE_FIELD, "*"),
+    ChildRule(TYPE_IDENTITY, "*"),
+    ChildRule(TYPE_ATTR, "*"),
+    ChildRule(TYPE_SOURCE, "*"),
+    ChildRule(TYPE_LAYOUT, "*"),
 ]
 # FR-014: @discriminator / @discriminatorValue (TPH single-table inheritance) are
 # registered on EVERY object subtype (base/entity/value) — cross-port contract.
@@ -245,7 +256,11 @@ for _obj_sub in OBJECT_SUBTYPES:
             type=TYPE_OBJECT,
             sub_type=_obj_sub,
             factory=MetaObject,
-            child_rules=list(_OBJECT_CHILD_RULES),
+            child_rules=list(
+                _PROJECTION_CHILD_RULES
+                if _obj_sub == OBJECT_SUBTYPE_PROJECTION
+                else _OBJECT_CHILD_RULES
+            ),
             attrs=(
                 list(_OBJECT_VALUE_ATTRS)
                 if _obj_sub == OBJECT_SUBTYPE_VALUE
@@ -582,7 +597,12 @@ core_provider.add(
     )
 )
 
-# origin.aggregate — @agg, @of, @via all required; @agg has allowed values
+# origin.aggregate — @agg + @of required; @agg has allowed values.
+# FR-024 (ADR-0029): @via flipped REQUIRED → OPTIONAL — it is inferable when
+# exactly one single-hop relationship reaches the @of entity (the inference
+# PASS itself is Phase-E validation parity). The cross-port manifest still
+# records the pre-flip required:true via the registry_manifest FR024_PENDING
+# required-override until the atomic all-ports manifest flip.
 _AGG_ALLOWED = ("count", "sum", "avg", "min", "max")
 core_provider.add(
     TypeDefinition(
@@ -597,7 +617,7 @@ core_provider.add(
                 allowed_values=_AGG_ALLOWED,
             ),
             AttrSchema(name=ORIGIN_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
-            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

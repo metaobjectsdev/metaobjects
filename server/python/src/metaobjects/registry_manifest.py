@@ -31,7 +31,8 @@ from .meta.core.attr.attr_constants import (
 )
 from .meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
 from .registry import AttrSchema, TypeRegistry
-from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW
+from .meta.core.object.object_constants import OBJECT_SUBTYPE_PROJECTION
+from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_VIEW
 from .shared.structural import KEY_IS_ARRAY
 
 # Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason category
@@ -61,6 +62,13 @@ class ExclusionReason(str, Enum):
     INHERITANCE_ANCHOR = "inheritance-anchor"
     #: TS-web-presentation-only facet (the generic ``view.*`` controls).
     PRESENTATION_ONLY = "presentation-only"
+    #: FR-024 vocabulary registered in the ports but pending the atomic all-ports
+    #: manifest flip (the ``@responseRef`` carve-out-close playbook): the
+    #: ``object.projection`` row is excluded until every port registers it AND
+    #: ``fixtures/registry-conformance/expected-registry.json`` is updated in ONE
+    #: commit with all five emitters' carve-outs removed. Same lifecycle as the
+    #: retired ``TS_PILOT_VOCAB`` reason. Remove at the flip.
+    FR024_PENDING = "fr024-pending"
 
 
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
@@ -100,6 +108,8 @@ def classify_type_subtype(type_name: str, sub_type: str) -> ExclusionReason:
         return ExclusionReason.INHERITANCE_ANCHOR  # C-5 — Java's internal inheritance anchor
     if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
         return ExclusionReason.PRESENTATION_ONLY  # B-2 — TS-web-presentation generic view controls
+    if type_name == TYPE_OBJECT and sub_type == OBJECT_SUBTYPE_PROJECTION:
+        return ExclusionReason.FR024_PENDING  # FR-024 — pending the atomic all-ports manifest flip
     return ExclusionReason.INCLUDED
 
 
@@ -137,15 +147,34 @@ def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
     return [_to_manifest_attr(a) for a in sorted(attrs, key=lambda a: a.name)]
 
 
-def _sorted_per_type_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
+# FR-024 (ADR-0029): origin.aggregate @via flipped to OPTIONAL in the
+# registration (single-hop-unique inference); the cross-port manifest still
+# records the pre-flip required:true until the atomic all-ports manifest flip.
+# Mirrors the TS FR024_PENDING_REQUIRED_OVERRIDES carve-out. Remove at the flip.
+_FR024_PENDING_REQUIRED_OVERRIDES: dict[str, bool] = {
+    "origin.aggregate.via": True,
+}
+
+
+def _sorted_per_type_attrs(
+    attrs: list[AttrSchema], type_name: str = "", sub_type: str = ""
+) -> list[dict[str, object]]:
     """As ``_sorted_attrs``, but keeping only attrs the explicit classification
     marks ``INCLUDED`` (logical cross-port vocabulary). A carved-out attr
     (structural keyword, native binding, per-type ``description`` dup) is dropped
     for a documented reason, never a silent name-match. Applied ONLY to per-type
-    attrs — ``description`` stays in the commonAttrs block."""
-    return _sorted_attrs(
+    attrs — ``description`` stays in the commonAttrs block. The FR-024 pending
+    required-overrides are applied here (keyed ``type.subType.attr``)."""
+    rows = _sorted_attrs(
         [a for a in attrs if classify_per_type_attr(a.name) is ExclusionReason.INCLUDED]
     )
+    for row in rows:
+        override = _FR024_PENDING_REQUIRED_OVERRIDES.get(
+            f"{type_name}.{sub_type}.{row['name']}"
+        )
+        if override is not None:
+            row["required"] = override
+    return rows
 
 
 def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
@@ -169,7 +198,9 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
             {
                 "type": definition.type,
                 "subType": definition.sub_type,
-                "attrs": _sorted_per_type_attrs(definition.attrs),
+                "attrs": _sorted_per_type_attrs(
+                    definition.attrs, definition.type, definition.sub_type
+                ),
             }
         )
     types.sort(key=lambda t: f"{t['type']}.{t['subType']}")
