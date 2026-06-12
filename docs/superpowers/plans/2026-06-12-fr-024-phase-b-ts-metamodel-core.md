@@ -236,7 +236,17 @@ Multi-dot (`X.y.z`) is intentionally unresolvable (reserved). NOTE: returning th
 - [ ] **Step 6: Run all tests** → PASS. Generate `projection-basic/expected.json`; author `projection-identity-fields-explicit` + the three error fixtures (hand-write envelopes). Ledger the four NEW fixtures (not the swept ones) in 3 ports.
 - [ ] **Step 7: Commit** — `git commit -m "feat(metadata): identity names required + identity pass-through, key correspondence, computed fields (FR-024 B3)"`
 
-### Task B4: Subtype rules — projection licensing, value purity, the hard cutover
+> **B4 SPLIT (execution finding, user-approved):** the shared persistence corpus
+> (`fixtures/persistence-conformance/canonical/meta.fitness.json`) contains two
+> view-primary entities (`ProgramView`, `ProgramStat`) exercised by all five ports
+> with no ledger mechanism — so rule 5 (`ERR_ENTITY_PRIMARY_SOURCE_READONLY`) and
+> ALL legacy-fixture migrations are **moved to Phase E**, landing atomically with
+> the 5-port `object.projection` registration (B4b). **B4a** (below, executed) =
+> rules 1–4+6 only, which touch no legacy fixture. The `error-entity-primary-source-readonly`
+> fixture, the cutover code, the `parameter-ref-*`/`source-db-view-*`/`field-readonly-*`
+> migrations, and the agent-context SKILL.md prose refresh all ride B4b/Phase E.
+
+### Task B4a: Subtype rules — projection licensing + value purity (cutover deferred to Phase E)
 
 **Files:**
 - Modify: `server/typescript/packages/metadata/src/subtype-rules.ts`

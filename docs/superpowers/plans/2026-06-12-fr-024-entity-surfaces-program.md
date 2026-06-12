@@ -44,6 +44,7 @@ Order constraints: B before C/D (loader first); C and D may interleave; E strict
 ## Phase-E scope card (cross-port fan-out)
 
 - Per port (Java/Kotlin, C#, Python): loader + registry provider + codegen, driven by the Phase-B/C/D corpus — **read the TS reference implementation first** (cross-language-porting skill). `fixtures/registry-conformance/expected-registry.json` gains `object.projection`, `api.base`, `api.operational`, `operation.*`, `binding.*` in ONE commit with all five emitters updated. Java OMDB/Spring + Kotlin Exposed + C# EF (keyless entity for view-backed projections) + Python read models. Persistence-conformance gains projection read scenarios.
+- **B4b (moved here from Phase B, user-approved):** the hard cutover (`ERR_ENTITY_PRIMARY_SOURCE_READONLY` rule + code) + ALL legacy-spelling migrations land HERE, atomically with the 5-port subtype registration: `fixtures/conformance/` legacy fixtures (`parameter-ref-*`, `source-db-view-projection`, `field-readonly-on-view-projection`, `source-rdb-kind-{view,proc,function}-*`, affected `origin-*`/`error-*` inputs) → `object.projection`; `fixtures/persistence-conformance/canonical/meta.fitness.json` `ProgramView`/`ProgramStat` → projections (all five ports must load them — the reason this rides Phase E); `error-entity-primary-source-readonly` cutover-proof fixture; `agent-context/` authoring SKILL.md prose refresh + agent-context-conformance regen.
 
 ## Phase-F scope card (context + deprecations)
 
