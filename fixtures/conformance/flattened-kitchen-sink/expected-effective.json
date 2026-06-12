@@ -587,34 +587,10 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProductSummary",
-          "extends": "acme::catalog::Product",
           "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
-          "@uiHints": {
-            "group": "inventory",
-            "tier": "standard"
-          },
           "children": [
-            {
-              "field.long": {
-                "name": "id"
-              }
-            },
-            {
-              "field.timestamp": {
-                "name": "createdAt",
-                "@autoSet": "onCreate"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
-              }
-            },
             {
               "source.rdb": {
                 "@kind": "view",
@@ -622,216 +598,9 @@
               }
             },
             {
-              "field.string": {
-                "name": "sku",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@maxLength": 32,
-                "@required": true,
-                "@unique": true,
-                "children": [
-                  {
-                    "validator.required": {}
-                  },
-                  {
-                    "validator.length": {
-                      "@max": 32,
-                      "@min": 3
-                    }
-                  },
-                  {
-                    "validator.regex": {
-                      "@pattern": "^[A-Z0-9-]+$"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field.string": {
-                "name": "name",
-                "@column": "product_name",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@required": true,
-                "@sortable": true
-              }
-            },
-            {
-              "field.int": {
-                "name": "stockQty",
-                "@db.indexed": true,
-                "@filterable": true,
-                "children": [
-                  {
-                    "validator.numeric": {
-                      "@max": 100000,
-                      "@min": 0
-                    }
-                  }
-                ]
-              }
-            },
-            {
               "field.long": {
-                "name": "viewCount"
-              }
-            },
-            {
-              "field.double": {
-                "name": "rating",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.float": {
-                "name": "discountFactor"
-              }
-            },
-            {
-              "field.decimal": {
-                "name": "weightedScore",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@precision": 12,
-                "@scale": 4
-              }
-            },
-            {
-              "field.boolean": {
-                "name": "active",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.date": {
-                "name": "releaseDate",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.time": {
-                "name": "dailyRestockAt"
-              }
-            },
-            {
-              "field.timestamp": {
-                "name": "updatedAt",
-                "@autoSet": "onUpdate",
-                "@dbColumnType": "timestamp_with_tz"
-              }
-            },
-            {
-              "field.uuid": {
-                "name": "externalRef",
-                "@unique": true
-              }
-            },
-            {
-              "field.enum": {
-                "name": "status",
-                "extends": "acme::common::Lifecycle",
-                "@db.indexed": true,
-                "@description": "Reusable lifecycle enum — extended by concrete enum fields.",
-                "@filterable": true,
-                "@values": [
-                  "DRAFT",
-                  "ACTIVE",
-                  "ARCHIVED"
-                ]
-              }
-            },
-            {
-              "field.currency": {
-                "name": "priceCents",
-                "@currency": "USD",
-                "@db.indexed": true,
-                "@filterable": true,
-                "children": [
-                  {
-                    "view.currency": {
-                      "@locale": "en-US"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field.object": {
-                "name": "dimensions",
-                "@objectRef": "Dimensions",
-                "@storage": "flattened"
-              }
-            },
-            {
-              "field.object": {
-                "name": "seo",
-                "@objectRef": "SeoMeta",
-                "@storage": "jsonb"
-              }
-            },
-            {
-              "field.long": {
-                "name": "categoryId"
-              }
-            },
-            {
-              "relationship.aggregation": {
-                "name": "category",
-                "@cardinality": "one",
-                "@objectRef": "Category"
-              }
-            },
-            {
-              "relationship.association": {
-                "name": "suppliers",
-                "@cardinality": "many",
-                "@objectRef": "Supplier",
-                "@through": "ProductSupplier"
-              }
-            },
-            {
-              "identity.secondary": {
-                "name": "bySku",
-                "@fields": [
-                  "sku"
-                ]
-              }
-            },
-            {
-              "identity.reference": {
-                "name": "fkCategory",
-                "@enforce": true,
-                "@fields": [
-                  "categoryId"
-                ],
-                "@references": "Category"
-              }
-            },
-            {
-              "layout.dataGrid": {
-                "name": "default",
-                "@columns": [
-                  "sku",
-                  "name",
-                  "status",
-                  "priceCents",
-                  "active"
-                ],
-                "@defaultSortField": "name",
-                "@defaultSortOrder": "asc",
-                "@filterable": true,
-                "@pageSize": 50
-              }
-            },
-            {
-              "field.string": {
-                "name": "notes",
-                "@dbColumnType": "jsonb",
-                "@maxLength": 500
+                "name": "id",
+                "extends": "Product.id"
               }
             },
             {
@@ -871,6 +640,15 @@
                       "@via": "Product.suppliers"
                     }
                   }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "Product.id",
+                "@fields": [
+                  "id"
                 ]
               }
             }

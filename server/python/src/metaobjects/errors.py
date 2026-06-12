@@ -68,6 +68,10 @@ class ErrorCode(str, Enum):
     # (projections and object.value hosts exempt).
     ERR_EXTENDS_ORIGIN_MISMATCH = "ERR_EXTENDS_ORIGIN_MISMATCH"
     ERR_DERIVED_FIELD_NO_READ_SOURCE = "ERR_DERIVED_FIELD_NO_READ_SOURCE"
+    # FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
+    # read-only kinds only in non-primary roles; a derived read model is an object.projection.
+    # Vocabulary-only here until Phase-E validation parity.
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY = "ERR_ENTITY_PRIMARY_SOURCE_READONLY"
     # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.

@@ -53,7 +53,9 @@ describe("FR-015 happy paths", () => {
             },
           },
           {
-            "object.entity": {
+            // FR-024 (B4b): proc-result shapes are object.projection (read-only,
+            // external assembly); identity dropped (optional; no base entity here).
+            "object.projection": {
               name: "PhaseSummary",
               children: [
                 {
@@ -64,7 +66,6 @@ describe("FR-015 happy paths", () => {
                   },
                 },
                 { "field.long": { name: "phaseId" } },
-                { "identity.primary": { "name": "id", "@fields": "phaseId" } },
               ],
             },
           },
@@ -80,12 +81,11 @@ describe("FR-015 happy paths", () => {
         package: "demo",
         children: [
           {
-            "object.entity": {
+            "object.projection": {
               name: "Ping",
               children: [
                 { "source.rdb": { "@kind": "storedProc", "@proc": "fn_ping" } },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -107,7 +107,7 @@ describe("FR-015 happy paths", () => {
             },
           },
           {
-            "object.entity": {
+            "object.projection": {
               name: "Listing",
               children: [
                 {
@@ -118,7 +118,6 @@ describe("FR-015 happy paths", () => {
                   },
                 },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

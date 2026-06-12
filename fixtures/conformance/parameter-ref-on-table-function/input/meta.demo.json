@@ -6,12 +6,17 @@
         "object.value": {
           "name": "ListArgs",
           "children": [
-            { "field.int": { "name": "limit", "@required": true } }
+            {
+              "field.int": {
+                "name": "limit",
+                "@required": true
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Listing",
           "children": [
             {
@@ -21,8 +26,11 @@
                 "@parameterRef": "ListArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "name": "id", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

@@ -20,7 +20,7 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcA",
           "children": [
             {
@@ -34,20 +34,12 @@
               "field.long": {
                 "name": "id"
               }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
-              }
             }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcB",
           "children": [
             {
@@ -60,14 +52,6 @@
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

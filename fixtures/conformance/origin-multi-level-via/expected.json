@@ -85,9 +85,8 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
@@ -106,14 +105,6 @@
                       "@via": "Program.weeks.workouts"
                     }
                   }
-                ]
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
                 ]
               }
             }

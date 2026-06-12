@@ -3,7 +3,7 @@
     "package": "p3::api",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "CaseV1",
           "children": [
             {
@@ -21,14 +21,6 @@
             {
               "field.string": {
                 "name": "case_number"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

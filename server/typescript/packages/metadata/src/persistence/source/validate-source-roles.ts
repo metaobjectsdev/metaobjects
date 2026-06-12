@@ -9,7 +9,8 @@ import type { MetaData } from "../../shared/meta-data.js";
 import { ParseError } from "../../errors.js";
 import { TYPE_OBJECT, TYPE_SOURCE } from "../../shared/base-types.js";
 import { MetaSource } from "./meta-source.js";
-import { SOURCE_ROLE_PRIMARY } from "./source-constants.js";
+import { SOURCE_ROLE_PRIMARY, SOURCE_READ_ONLY_KINDS } from "./source-constants.js";
+import { OBJECT_SUBTYPE_ENTITY } from "../../core/object/object-constants.js";
 
 /**
  * Walks every object in the root and enforces the one-primary rule for
@@ -46,6 +47,26 @@ export function validateSourceRoles(root: MetaData): ParseError[] {
           { code: "ERR_SOURCE_MULTIPLE_PRIMARY", source: obj.source },
         ),
       );
+    }
+
+    // FR-024 (ADR-0028) — THE HARD CUTOVER: an entity's PRIMARY source must be
+    // writable; read-only kinds (view/materializedView/storedProc/tableFunction)
+    // are legal only in non-primary (read) roles. The pre-FR-024 spellings
+    // (view-primary "projection" entities, proc-result-as-entity) are removed
+    // outright — a derived read model is an `object.projection`.
+    if (obj.subType === OBJECT_SUBTYPE_ENTITY) {
+      for (const s of sources) {
+        if (s.role === SOURCE_ROLE_PRIMARY && SOURCE_READ_ONLY_KINDS.has(s.effectiveKind)) {
+          errors.push(
+            new ParseError(
+              `entity "${obj.name}" has a primary source of read-only kind "${s.effectiveKind}" — ` +
+                `read-only kinds are legal only in non-primary roles; a derived read model ` +
+                `is an object.projection (FR-024, ADR-0028)`,
+              { code: "ERR_ENTITY_PRIMARY_SOURCE_READONLY", source: s.source },
+            ),
+          );
+        }
+      }
     }
   }
 

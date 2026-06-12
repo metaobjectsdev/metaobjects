@@ -508,15 +508,20 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProductSummary",
-          "extends": "acme::catalog::Product",
           "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
                 "@view": "v_product_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Product.id"
               }
             },
             {
@@ -557,6 +562,12 @@
                     }
                   }
                 ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "Product.id"
               }
             }
           ]

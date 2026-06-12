@@ -82,6 +82,7 @@ export const ERROR_CODES = [
   // B4b cutover removes view-PRIMARY entities, a read-only-kind PRIMARY
   // source also counts as providable (legacy spelling).
   "ERR_DERIVED_FIELD_NO_READ_SOURCE",
+  "ERR_ENTITY_PRIMARY_SOURCE_READONLY",
   "ERR_INVALID_TEMPLATE",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match

@@ -21,7 +21,7 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "PhaseSummary",
           "children": [
             {
@@ -44,14 +44,6 @@
             {
               "field.timestamp": {
                 "name": "enteredAt"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "phaseId"
-                ]
               }
             }
           ]

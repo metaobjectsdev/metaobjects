@@ -21,7 +21,7 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Search",
           "children": [
             {
@@ -39,14 +39,6 @@
             {
               "field.string": {
                 "name": "label"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

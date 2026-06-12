@@ -47,10 +47,14 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
         },
       },
       {
-        "object.entity": {
+        // FR-024 (B4b): view-PRIMARY = object.projection, anchored to User by
+        // the extends-bound identity (the no-@via passthrough is then a
+        // base-relation column).
+        "object.projection": {
           name: "UserView",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_user" } },
+            { "field.int": { name: "id", extends: "User.id" } },
             {
               "field.string": {
                 name: "displayName",
@@ -59,16 +63,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
                 ],
               },
             },
-            // FR-024 B5: a no-@via passthrough whose @from targets a non-base
-            // entity needs a single-hop relationship to infer the path.
-            {
-              "relationship.association": {
-                name: "user",
-                "@objectRef": "User",
-                "@cardinality": "one",
-              },
-            },
-            { "identity.primary": { "name": "id", "@fields": "displayName" } },
+            { "identity.primary": { "name": "id", extends: "User.id" } },
           ],
         },
       },
@@ -88,10 +83,11 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "UserView",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_user" } },
+            { "field.int": { name: "id", extends: "User.id" } },
             {
               "field.string": {
                 name: "displayName",
@@ -100,7 +96,7 @@ describe("MetaDataLoader validates origin.passthrough.from", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "displayName" } },
+            { "identity.primary": { "name": "id", extends: "User.id" } },
           ],
         },
       },
@@ -143,10 +139,12 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
         },
       },
       {
-        "object.entity": {
+        // FR-024 (B4b): view-PRIMARY = object.projection, anchored to User.
+        "object.projection": {
           name: "UserSummary",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_user_summary" } },
+            { "field.int": { name: "id", extends: "User.id" } },
             {
               "field.long": {
                 name: "totalSpent",
@@ -161,7 +159,7 @@ describe("MetaDataLoader validates origin.aggregate.of", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "totalSpent" } },
+            { "identity.primary": { "name": "id", extends: "User.id" } },
           ],
         },
       },
@@ -949,7 +947,7 @@ describe("FR-024 B6 — derived-field providability (ERR_DERIVED_FIELD_NO_READ_S
     expect(result.errors).toEqual([]);
   });
 
-  test("view-PRIMARY entity (legacy spelling, legal until the Phase-E B4b cutover) → providable, silent", async () => {
+  test("view-PRIMARY entity → ERR_ENTITY_PRIMARY_SOURCE_READONLY (the B4b hard cutover)", async () => {
     const result = await load([
       countryEntity,
       customerEntity(
@@ -960,7 +958,12 @@ describe("FR-024 B6 — derived-field providability (ERR_DERIVED_FIELD_NO_READ_S
         ],
       ),
     ]);
-    expect(result.errors).toEqual([]);
+    // The legacy view-PRIMARY entity spelling is removed outright: an entity's
+    // primary source must be writable; a derived read model is an
+    // object.projection (FR-024, ADR-0028).
+    expect(
+      result.errors.some((e) => e.includes("primary source of read-only kind")),
+    ).toBe(true);
   });
 
   test("projection host is EXEMPT (the projection's own source/wire IS the provider)", async () => {

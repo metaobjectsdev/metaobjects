@@ -79,9 +79,8 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
@@ -101,12 +100,6 @@
                     }
                   }
                 ]
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": "id"
               }
             }
           ]

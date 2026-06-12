@@ -31,14 +31,19 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
                 "@view": "v_program_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Program.id"
               }
             },
             {
@@ -56,7 +61,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "@fields": "id"
+                "extends": "Program.id"
               }
             }
           ]

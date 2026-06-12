@@ -7,7 +7,7 @@
         "files": [
           "meta.commerce.json"
         ],
-        "jsonPath": "$['metadata.root'].children[2]['object.entity'].children[1]['field.int'].children[0]['origin.aggregate']"
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[1]['field.int'].children[0]['origin.aggregate']"
       }
     }
   ],

@@ -48,7 +48,7 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "PhaseSummary",
           "children": [
             {
@@ -61,14 +61,6 @@
             {
               "field.long": {
                 "name": "phaseId"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": [
-                  "phaseId"
-                ]
               }
             }
           ]

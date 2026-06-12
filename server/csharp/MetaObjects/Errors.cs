@@ -59,6 +59,11 @@ public enum ErrorCode
     // (projections and object.value hosts exempt).
     ERR_EXTENDS_ORIGIN_MISMATCH,
     ERR_DERIVED_FIELD_NO_READ_SOURCE,
+
+    // FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
+    // read-only kinds only in non-primary roles; a derived read model is an object.projection.
+    // Vocabulary-only here until Phase-E validation parity.
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY,
     // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
     // name a junction declaring two identity.reference children, @sourceRefField
     // does not match one of them, or a M:N-only attr (@through/@sourceRefField/

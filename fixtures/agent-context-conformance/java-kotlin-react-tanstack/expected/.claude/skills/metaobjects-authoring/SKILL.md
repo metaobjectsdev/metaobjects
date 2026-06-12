@@ -251,8 +251,15 @@ each with a `@role`, exactly one `primary`.
 { "source.rdb": { "@kind": "view", "@table": "v_author", "@schema": "blog" } }
 ```
 
-A `view`-kind entity's fields carry `origin.*` children (`passthrough` /
-`aggregate` / `collection`) declaring where each value comes from.
+**An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
+legal only in non-primary roles (e.g. table `primary` + view `replica` for
+read-through). A derived read model over a view/proc is an **`object.projection`**
+(FR-024): its fields `extends` entity fields (`extends: "Author.id"` — dotted
+child traversal, package only on the root segment) and/or carry `origin.*`
+children (`passthrough` / `aggregate` / `collection`) declaring assembly; its
+identity passes through via `extends` (`identity.primary: { name: id, extends:
+"Author.id" }`); it is read-only by construction and the declared field set IS
+the exposure (fail-closed).
 
 ## Abstracts + `extends` (deferred resolution) + `overlay`
 

@@ -20,6 +20,8 @@
     "error-origin-passthrough-to-many",
     "error-origin-aggregate-no-to-many",
     "error-extends-origin-mismatch",
-    "error-derived-field-no-read-source"
-  ]
+    "error-derived-field-no-read-source",
+    "error-entity-primary-source-readonly"
+  ],
+  "_comment_fr024_b4b": "FR-024 B4b — the hard cutover (ERR_ENTITY_PRIMARY_SOURCE_READONLY) shipped in the TS reference port only; un-ledger at Phase-E validation parity. error-entity-primary-source-readonly expects the cutover error this port does not emit yet (its input loads cleanly here as a view-primary entity)."
 }

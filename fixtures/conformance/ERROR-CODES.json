@@ -59,6 +59,7 @@
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
     "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE": "SP-H Unit9: a field carries @filterable: true but its subtype has no filter-operator band (e.g. field.object). Generating a filter for it would emit an empty operator set — a filter route that rejects every request. Use a filterable subtype (string/enum/uuid/number/currency/date/boolean) or remove @filterable.",
     "ERR_REGISTRY_SEALED": "ADR-0023: a registration (register / registerType / extend / registerCommonAttrs / setDefaultSubType / addConstraint / registerProviders) was attempted against a registry sealed after its agreed metamodel-provider bootstrap. Made-up metamodel attributes/types are structurally disallowed in the library: codegen cannot register post-bootstrap. A new metamodel attribute requires a registered provider + human agreement. Downstream apps that need extra vocabulary compose their own (unsealed) registry.",
-    "ERR_UNKNOWN": "An internal loader error with no stable error code."
+    "ERR_UNKNOWN": "An internal loader error with no stable error code.",
+    "ERR_ENTITY_PRIMARY_SOURCE_READONLY": "FR-024 (ADR-0028) hard cutover: an object.entity's PRIMARY source has a read-only @kind (view/materializedView/storedProc/tableFunction). Read-only kinds are legal only in non-primary roles; a derived read model is an object.projection."
   }
 }

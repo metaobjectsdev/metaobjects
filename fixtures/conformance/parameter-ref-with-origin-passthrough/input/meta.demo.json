@@ -6,9 +6,22 @@
         "object.entity": {
           "name": "Case",
           "children": [
-            { "source.rdb": { "@table": "cases" } },
-            { "field.int": { "name": "id" } },
-            { "identity.primary": { "name": "id", "@fields": "id" } }
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.int": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
@@ -21,7 +34,11 @@
                 "name": "caseId",
                 "@required": true,
                 "children": [
-                  { "origin.passthrough": { "@from": "Case.id" } }
+                  {
+                    "origin.passthrough": {
+                      "@from": "Case.id"
+                    }
+                  }
                 ]
               }
             }
@@ -29,7 +46,7 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "PhaseSummary",
           "children": [
             {
@@ -39,8 +56,11 @@
                 "@parameterRef": "PhaseSummaryArgs"
               }
             },
-            { "field.long": { "name": "phaseId" } },
-            { "identity.primary": { "name": "id", "@fields": "phaseId" } }
+            {
+              "field.long": {
+                "name": "phaseId"
+              }
+            }
           ]
         }
       }

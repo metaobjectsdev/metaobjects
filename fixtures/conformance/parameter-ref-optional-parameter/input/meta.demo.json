@@ -6,13 +6,22 @@
         "object.value": {
           "name": "SearchArgs",
           "children": [
-            { "field.string": { "name": "query", "@required": true } },
-            { "field.int": { "name": "limit" } }
+            {
+              "field.string": {
+                "name": "query",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "limit"
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Search",
           "children": [
             {
@@ -22,9 +31,16 @@
                 "@parameterRef": "SearchArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "field.string": { "name": "label" } },
-            { "identity.primary": { "name": "id", "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
           ]
         }
       }

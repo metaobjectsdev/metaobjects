@@ -545,8 +545,27 @@ function _hopCardinality(rel: MetaData): string | undefined {
  *
  * Returns undefined when no base is derivable (an error has been pushed).
  */
+/**
+ * FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part of
+ * `<owner>.<child>...` resolved as an object. This differs from
+ * `superResolved.parent` when the resolved child is INHERITED: `Product.id`
+ * selecting BaseEntity's identity through Product's effective children must
+ * anchor `Product` (what the author wrote), never `BaseEntity` (where the
+ * child physically lives).
+ */
+function _refNamedOwner(node: MetaData, root: MetaData): MetaData | undefined {
+  const ref = node.superRef;
+  if (ref === undefined) return undefined;
+  const lastSep = ref.lastIndexOf("::");
+  const tail = lastSep === -1 ? ref : ref.slice(lastSep + 2);
+  const dot = tail.indexOf(".");
+  if (dot <= 0) return undefined;
+  return _findObject(root, tail.slice(0, dot));
+}
+
 function _deriveBaseEntity(
   obj: MetaData,
+  root: MetaData,
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
@@ -554,20 +573,25 @@ function _deriveBaseEntity(
   if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return obj;
 
   // 1) The extended identity anchors the base entity (declared, not inferred).
+  //    The anchor is the entity NAMED in the ref's owner part — see _refNamedOwner.
   for (const identity of obj.ownChildren().filter((c) => c.type === TYPE_IDENTITY)) {
     const extended = identity.superResolved;
     if (extended !== undefined && extended.type === TYPE_IDENTITY) {
+      const named = _refNamedOwner(identity, root);
+      if (named !== undefined) return named;
       const owner = extended.parent;
       if (owner !== undefined && owner.type === TYPE_OBJECT) return owner;
     }
   }
 
-  // 2) Fallback: the single distinct entity targeted by plain field-extends.
+  // 2) Fallback: the single distinct entity targeted by plain field-extends —
+  //    again preferring the ref-named owner over the physical declaring ancestor.
   const targets = new Set<MetaData>();
   for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
     const sup = f.superResolved;
     if (sup === undefined) continue;
-    const owner = sup.parent;
+    const named = _refNamedOwner(f, root);
+    const owner = named ?? sup.parent;
     if (
       owner !== undefined &&
       owner.type === TYPE_OBJECT &&
@@ -815,7 +839,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             // FR-024 §6 — no @via: derive the base entity; a @from targeting
             // the base relation itself is a plain base column (no checks);
             // otherwise infer the single-hop-unique path and gate cardinality.
-            const base = _deriveBaseEntity(obj, field.name, origin.source, errors);
+            const base = _deriveBaseEntity(obj, root, field.name, origin.source, errors);
             if (base !== undefined && !_isBaseRelationTarget(fromTarget.entity, base, obj)) {
               const hops = _inferViaSingleHop(
                 base, fromTarget.entity, obj, field.name, from,
@@ -862,7 +886,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          const base = _deriveBaseEntity(obj, field.name, origin.source, errors);
+          const base = _deriveBaseEntity(obj, root, field.name, origin.source, errors);
           if (base === undefined) continue; // base underivable — error already pushed
           if (_isBaseRelationTarget(ofTarget.entity, base, obj)) {
             errors.push(
@@ -903,13 +927,11 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
 //  - object.projection — the projection's own source/wire IS the provider;
 //  - object.value — FR-015 lineage; values are constructed, never populated.
 //
-// Legacy accommodation (until the FR-024 Phase-E B4b cutover): a read-only
-// kind on the PRIMARY source (the pre-B4b "entity with view-primary"
-// spelling, e.g. the shipped origin-passthrough-simple fixture) also counts
-// as providable. Once B4b makes a read-only-kind primary illegal on entities
-// (ERR_ENTITY_PRIMARY_SOURCE_READONLY), the surviving reading is exactly the
-// strict one: a non-primary-role read-only source. The rule itself ("at
-// least one read-only-kind source, any role") needs no change at cutover.
+// The rule reads "at least one read-only-kind source, any role". Since the
+// B4b hard cutover (ERR_ENTITY_PRIMARY_SOURCE_READONLY makes a read-only-kind
+// PRIMARY illegal on entities), the only loadable satisfying shape is the
+// strict one — a non-primary-role read-only source (the §7 multi-source
+// pattern: table primary + view replica).
 //
 // Sources are scanned on the EFFECTIVE child view (children()) so an entity
 // inheriting its sources from an abstract base is judged by what it actually

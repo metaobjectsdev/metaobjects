@@ -3,7 +3,7 @@
     "package": "demo",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "PhaseSummary",
           "children": [
             {
@@ -15,12 +15,6 @@
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "name": "id",
-                "@fields": "id"
               }
             }
           ]

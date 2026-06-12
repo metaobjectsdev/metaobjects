@@ -6,13 +6,22 @@
         "object.value": {
           "name": "PhaseSummaryArgs",
           "children": [
-            { "field.int": { "name": "caseId", "@required": true } },
-            { "field.timestamp": { "name": "asOfDate" } }
+            {
+              "field.int": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "asOfDate"
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "PhaseSummary",
           "children": [
             {
@@ -22,10 +31,21 @@
                 "@parameterRef": "PhaseSummaryArgs"
               }
             },
-            { "field.long": { "name": "phaseId" } },
-            { "field.string": { "name": "phaseName" } },
-            { "field.timestamp": { "name": "enteredAt" } },
-            { "identity.primary": { "name": "id", "@fields": "phaseId" } }
+            {
+              "field.long": {
+                "name": "phaseId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "phaseName"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "enteredAt"
+              }
+            }
           ]
         }
       }
