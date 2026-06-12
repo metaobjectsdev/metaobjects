@@ -668,3 +668,335 @@ describe("FR-024 B5 — origin cardinality checks on EXPLICIT @via paths", () =>
     expect(result.errors).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// FR-024 B6 — extends/origin agreement (ERR_EXTENDS_ORIGIN_MISMATCH)
+// (spec §4 coherence check; ADR-0029 decision 7)
+// ---------------------------------------------------------------------------
+
+const regionEntity = {
+  "object.entity": {
+    name: "Region",
+    children: [
+      { "field.uuid": { name: "id" } },
+      { "field.string": { name: "name" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+    ],
+  },
+};
+
+const oneRegionRel = {
+  "relationship.association": {
+    name: "region",
+    "@objectRef": "Region",
+    "@cardinality": "one",
+  },
+};
+
+// A projection over Customer with ONE configurable field (extends + children).
+function customerProjectionWithField(field: Record<string, unknown>) {
+  return {
+    "object.projection": {
+      name: "CustomerSummary",
+      children: [
+        { "field.uuid": { name: "customerId", extends: "Customer.id" } },
+        { "field.string": field },
+        { "identity.primary": { name: "id", extends: "Customer.id" } },
+      ],
+    },
+  };
+}
+
+describe("FR-024 B6 — extends/origin agreement (ERR_EXTENDS_ORIGIN_MISMATCH)", () => {
+  test("field extends Customer.name + passthrough @from Region.name → ERR_EXTENDS_ORIGIN_MISMATCH", async () => {
+    const result = await loadRaw([
+      regionEntity,
+      customerEntity([oneRegionRel]),
+      customerProjectionWithField({
+        name: "label",
+        extends: "Customer.name",
+        children: [{ "origin.passthrough": { "@from": "Region.name" } }],
+      }),
+    ]);
+    const mismatch = result.errors.filter((e) => e.code === "ERR_EXTENDS_ORIGIN_MISMATCH");
+    expect(mismatch.length).toBe(1);
+    expect(mismatch[0]!.message).toContain("Customer.name");
+    expect(mismatch[0]!.message).toContain("Region.name");
+    // FR5d resolved envelope: referrer = host::field, target = the @from ref.
+    const src = mismatch[0]!.source as { format: string; referrer?: string; target?: string };
+    expect(src.format).toBe("resolved");
+    expect(src.referrer).toContain("CustomerSummary::label");
+    expect(src.target).toBe("Region.name");
+    // No other error muddies the fixture-shaped scenario.
+    expect(result.errors.length).toBe(1);
+  });
+
+  test("extends Customer.name + @from a DIFFERENT field of the same entity → ERR_EXTENDS_ORIGIN_MISMATCH", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjectionWithField({
+        name: "label",
+        extends: "Customer.name",
+        children: [{ "origin.passthrough": { "@from": "Customer.id" } }],
+      }),
+    ]);
+    const mismatch = result.errors.filter((e) => e.code === "ERR_EXTENDS_ORIGIN_MISMATCH");
+    expect(mismatch.length).toBe(1);
+  });
+
+  test("agreeing targets through a joined hop (extends Country.name + @from Country.name) → silent", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjectionWithField({
+        name: "countryName",
+        extends: "Country.name",
+        children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("agreeing base-relation targets (extends Customer.name + @from Customer.name) → silent", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjectionWithField({
+        name: "label",
+        extends: "Customer.name",
+        children: [{ "origin.passthrough": { "@from": "Customer.name" } }],
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("extends + origin.AGGREGATE is not judged (aggregate computes something new)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([
+        {
+          "relationship.association": {
+            name: "countries",
+            "@objectRef": "Country",
+            "@cardinality": "many",
+          },
+        },
+      ]),
+      customerProjectionWithField({
+        name: "label",
+        extends: "Customer.name",
+        children: [{ "origin.aggregate": { "@agg": "count", "@of": "Country.id" } }],
+      }),
+    ]);
+    expect(result.errors.filter((e) => e.code === "ERR_EXTENDS_ORIGIN_MISMATCH")).toEqual([]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("object.value host: extends + AGREEING @from stays untouched (FR-004 payload protection)", async () => {
+    const result = await load([
+      countryEntity,
+      {
+        "object.value": {
+          name: "CountryArgs",
+          children: [
+            {
+              "field.string": {
+                name: "countryName",
+                extends: "Country.name",
+                children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("object.value host: extends + MISMATCHED @from is judged too (host-agnostic)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      regionEntity,
+      {
+        "object.value": {
+          name: "CountryArgs",
+          children: [
+            {
+              "field.string": {
+                name: "countryName",
+                extends: "Country.name",
+                children: [{ "origin.passthrough": { "@from": "Region.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const mismatch = result.errors.filter((e) => e.code === "ERR_EXTENDS_ORIGIN_MISMATCH");
+    expect(mismatch.length).toBe(1);
+  });
+
+  test("extends of a TOP-LEVEL abstract field + entity-@from is NOT judged (shape-only reuse, no lineage claim)", async () => {
+    const result = await load([
+      { "field.string": { name: "commonLabel" } },
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjectionWithField({
+        name: "countryName",
+        extends: "commonLabel",
+        children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+      }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("agreement follows the extends CHAIN (extends a projection field that extends Customer.name + @from Customer.name) → silent", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjectionWithField({
+        name: "custName",
+        extends: "Customer.name",
+      }),
+      {
+        "object.projection": {
+          name: "CustomerCard",
+          children: [
+            { "field.uuid": { name: "customerId", extends: "Customer.id" } },
+            {
+              "field.string": {
+                name: "custName",
+                extends: "CustomerSummary.custName",
+                children: [{ "origin.passthrough": { "@from": "Customer.name" } }],
+              },
+            },
+            { "identity.primary": { name: "id", extends: "Customer.id" } },
+          ],
+        },
+      },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("extends + explicit @via passthrough with a mismatched @from is judged (agreement is via-independent)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      regionEntity,
+      customerEntity([oneCountryRel, oneRegionRel]),
+      customerProjectionWithField({
+        name: "label",
+        extends: "Country.name",
+        children: [
+          { "origin.passthrough": { "@from": "Region.name", "@via": "Customer.region" } },
+        ],
+      }),
+    ]);
+    const mismatch = result.errors.filter((e) => e.code === "ERR_EXTENDS_ORIGIN_MISMATCH");
+    expect(mismatch.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FR-024 B6 — derived-field providability (ERR_DERIVED_FIELD_NO_READ_SOURCE)
+// (spec §7 multi-source pattern: a derived field must be providable)
+// ---------------------------------------------------------------------------
+
+describe("FR-024 B6 — derived-field providability (ERR_DERIVED_FIELD_NO_READ_SOURCE)", () => {
+  const derivedCountryNameField = {
+    "field.string": {
+      name: "countryName",
+      children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+    },
+  };
+
+  test("entity with ONLY a writable table source + an origin-bearing field → ERR_DERIVED_FIELD_NO_READ_SOURCE", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity(
+        [oneCountryRel],
+        [{ "source.rdb": { "@table": "customers" } }, derivedCountryNameField],
+      ),
+    ]);
+    const noRead = result.errors.filter((e) => e.code === "ERR_DERIVED_FIELD_NO_READ_SOURCE");
+    expect(noRead.length).toBe(1);
+    expect(noRead[0]!.message).toContain("countryName");
+    expect(noRead[0]!.message).toContain("read-capable");
+    expect(result.errors.length).toBe(1);
+  });
+
+  test("entity with NO source at all + an origin-bearing field → ERR_DERIVED_FIELD_NO_READ_SOURCE (nothing provides)", async () => {
+    const result = await loadRaw([
+      countryEntity,
+      customerEntity([oneCountryRel], [derivedCountryNameField]),
+    ]);
+    const noRead = result.errors.filter((e) => e.code === "ERR_DERIVED_FIELD_NO_READ_SOURCE");
+    expect(noRead.length).toBe(1);
+  });
+
+  test("table-primary + view-replica (spec §7 multi-source pattern) → providable, silent", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity(
+        [oneCountryRel],
+        [
+          { "source.rdb": { "@table": "customers" } },
+          { "source.rdb": { "@kind": "view", "@view": "v_customers", "@role": "replica" } },
+          derivedCountryNameField,
+        ],
+      ),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("view-PRIMARY entity (legacy spelling, legal until the Phase-E B4b cutover) → providable, silent", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity(
+        [oneCountryRel],
+        [
+          { "source.rdb": { "@kind": "view", "@view": "v_customers" } },
+          derivedCountryNameField,
+        ],
+      ),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("projection host is EXEMPT (the projection's own source/wire IS the provider)", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel]),
+      customerProjection({ "origin.passthrough": { "@from": "Country.name" } }),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("object.value host is EXEMPT (FR-015 lineage; values are constructed, never populated)", async () => {
+    const result = await load([
+      countryEntity,
+      {
+        "object.value": {
+          name: "CountryArgs",
+          children: [
+            {
+              "field.string": {
+                name: "countryName",
+                children: [{ "origin.passthrough": { "@from": "Country.name" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("entity with a read-only-kind source and a field WITHOUT origin → field is not judged", async () => {
+    const result = await load([
+      countryEntity,
+      customerEntity([oneCountryRel], [{ "source.rdb": { "@table": "customers" } }]),
+    ]);
+    expect(result.errors).toEqual([]);
+  });
+});

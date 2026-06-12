@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -467,6 +467,12 @@ export class MetaDataLoader {
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
+
+      // FR-024 B6 — derived-field providability: an entity field carrying an
+      // origin.* is derived (read-only) and must be providable by at least one
+      // read-only-kind source on the entity (spec §7 multi-source pattern);
+      // projections and object.value hosts are exempt.
+      errors.push(...validateDerivedFieldProvidability(root));
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));

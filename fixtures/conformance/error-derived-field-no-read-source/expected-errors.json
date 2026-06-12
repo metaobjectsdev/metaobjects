@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DERIVED_FIELD_NO_READ_SOURCE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[3]['field.int']"
+      }
+    }
+  ],
+  "warnings": []
+}

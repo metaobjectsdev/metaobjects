@@ -4,7 +4,8 @@
 // warnings. No loader state is read or written — these are pure functions.
 //
 // Exported: validateDataGridSortFields, validateFilterableHasIndex,
-//           validateOriginPaths, validateDataGridFilterValues,
+//           validateOriginPaths, validateDerivedFieldProvidability,
+//           validateDataGridFilterValues,
 //           validateFieldObjectStorage  (called by MetaDataLoader.load() in order).
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
@@ -21,6 +22,7 @@ import {
   TYPE_IDENTITY,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
+  TYPE_SOURCE,
   TYPE_TEMPLATE,
 } from "../shared/base-types.js";
 import {
@@ -36,9 +38,11 @@ import {
   TEMPLATE_SUBTYPE_PROMPT,
 } from "../template/template-constants.js";
 import {
+  OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
 } from "../core/object/object-constants.js";
+import { MetaSource } from "../persistence/source/meta-source.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -337,11 +341,20 @@ function _findRelationship(obj: MetaData, name: string): MetaData | undefined {
   return obj.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === name);
 }
 
+/** Resolved `Entity.field` reference target: the entity AND the field node.
+ *  FR-024 B5 inference needs the entity; the B6 extends/origin agreement
+ *  check compares against the field node identity. */
+interface ResolvedFromTarget {
+  readonly entity: MetaData;
+  readonly field: MetaData;
+}
+
 /**
  * Validate a passthrough `@from` / aggregate `@of` "Entity.field" reference.
- * Returns the resolved target ENTITY on full success (FR-024 B5 — the
- * inference/cardinality stage needs it), or undefined when any error was
- * pushed (malformed shape / unknown entity / unknown field).
+ * Returns the resolved target entity + field on full success (FR-024 B5 —
+ * the inference/cardinality stage needs the entity; B6 agreement needs the
+ * field), or undefined when any error was pushed (malformed shape / unknown
+ * entity / unknown field).
  */
 function _validateFromPath(
   fromAttr: string,
@@ -351,7 +364,7 @@ function _validateFromPath(
   originSource: ErrorSource,
   errors: ParseError[],
   label: string = "origin.passthrough.@from",
-): MetaData | undefined {
+): ResolvedFromTarget | undefined {
   const projectionName = projection.name;
   // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
   // "where the broken reference lives" identifier).
@@ -402,7 +415,7 @@ function _validateFromPath(
     );
     return undefined;
   }
-  return sourceObj;
+  return { entity: sourceObj, field: sourceField };
 }
 
 /**
@@ -718,6 +731,51 @@ function _checkAggregateCardinality(
   }
 }
 
+/**
+ * FR-024 B6 (spec §4; ADR-0029 decision 7) — extends/origin agreement.
+ *
+ * When a field declares BOTH an entity-nested `extends` (shape lineage) and
+ * an `origin.passthrough` @from (data lineage), the two are independent
+ * statements that must coincide: the resolved @from target must be THE SAME
+ * NODE as the field's resolved extends target — or appear on its extends
+ * chain (a projection field extending another projection's field that
+ * ultimately extends the entity field still agrees). Host-agnostic: applies
+ * on projections, entities, and values (FR-004 payloads may carry both).
+ *
+ * NOT judged:
+ *  - `origin.aggregate` (it computes something new — no passthrough claim);
+ *  - an extends whose target is a TOP-LEVEL abstract field (its parent is
+ *    not an object) — shape-only reuse makes no lineage claim.
+ */
+function _checkExtendsOriginAgreement(
+  field: MetaData,
+  fromField: MetaData,
+  fromAttr: string,
+  obj: MetaData,
+  originSource: ErrorSource,
+  errors: ParseError[],
+): void {
+  const sup = field.superResolved;
+  if (sup === undefined || sup.type !== TYPE_FIELD) return;
+  const supOwner = sup.parent;
+  if (supOwner === undefined || supOwner.type !== TYPE_OBJECT) return;
+  for (let cur: MetaData | undefined = sup; cur !== undefined; cur = cur.superResolved) {
+    if (cur === fromField) return; // shape lineage and data lineage agree
+  }
+  // FR5d resolved envelope: referrer = host::field, target = the @from ref.
+  errors.push(
+    new ParseError(
+      `origin.passthrough on ${obj.name}.${field.name}: @from "${fromAttr}" disagrees with the field's extends ` +
+        `target "${supOwner.name}.${sup.name}" — extends (shape lineage) and origin.passthrough (data lineage) ` +
+        `must point at the same entity field (FR-024).`,
+      {
+        code: "ERR_EXTENDS_ORIGIN_MISMATCH",
+        source: resolvedSource(originSource, `${obj.fqn()}::${field.name}`, fromAttr),
+      },
+    ),
+  );
+}
+
 export function validateOriginPaths(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
@@ -741,21 +799,26 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          const fromEntity = _validateFromPath(from, root, obj, field.name, origin.source, errors);
+          const fromTarget = _validateFromPath(from, root, obj, field.name, origin.source, errors);
+          // FR-024 B6 — extends/origin agreement (host-agnostic; runs whether
+          // @via is explicit, inferred, or a base-relation column).
+          if (fromTarget !== undefined) {
+            _checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.source, errors);
+          }
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
             if (hops !== undefined) {
               _checkPassthroughCardinality(hops, obj, field.name, origin.source, errors);
             }
-          } else if (fromEntity !== undefined && !isValueHost) {
+          } else if (fromTarget !== undefined && !isValueHost) {
             // FR-024 §6 — no @via: derive the base entity; a @from targeting
             // the base relation itself is a plain base column (no checks);
             // otherwise infer the single-hop-unique path and gate cardinality.
             const base = _deriveBaseEntity(obj, field.name, origin.source, errors);
-            if (base !== undefined && !_isBaseRelationTarget(fromEntity, base, obj)) {
+            if (base !== undefined && !_isBaseRelationTarget(fromTarget.entity, base, obj)) {
               const hops = _inferViaSingleHop(
-                base, fromEntity, obj, field.name, from,
+                base, fromTarget.entity, obj, field.name, from,
                 "origin.passthrough.@from", origin.source, errors,
               );
               if (hops !== undefined) {
@@ -774,7 +837,10 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             );
             continue;
           }
-          const ofEntity = _validateFromPath(of_, root, obj, field.name, origin.source, errors, "origin.aggregate.@of");
+          // NOTE (FR-024 B6): NO extends/origin agreement check on aggregates —
+          // an aggregate computes something new (count/sum/…); spec §4 defines
+          // agreement for passthrough only.
+          const ofTarget = _validateFromPath(of_, root, obj, field.name, origin.source, errors, "origin.aggregate.@of");
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
@@ -786,7 +852,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // FR-024 §6 — no @via on an aggregate: inference applies only when
           // @of targets a non-base entity from a non-value host; an aggregate
           // over the base relation itself still requires an explicit path.
-          if (ofEntity === undefined) continue; // @of did not resolve — no inference to attempt
+          if (ofTarget === undefined) continue; // @of did not resolve — no inference to attempt
           if (isValueHost) {
             errors.push(
               new ParseError(
@@ -798,7 +864,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           }
           const base = _deriveBaseEntity(obj, field.name, origin.source, errors);
           if (base === undefined) continue; // base underivable — error already pushed
-          if (_isBaseRelationTarget(ofEntity, base, obj)) {
+          if (_isBaseRelationTarget(ofTarget.entity, base, obj)) {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
@@ -808,7 +874,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
           const hops = _inferViaSingleHop(
-            base, ofEntity, obj, field.name, of_,
+            base, ofTarget.entity, obj, field.name, of_,
             "origin.aggregate.@of", origin.source, errors,
           );
           if (hops !== undefined) {
@@ -816,6 +882,60 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           }
         }
       }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// FR-024 B6 — derived-field providability (spec §7 population doctrine).
+//
+// An object.ENTITY field carrying any origin.* child is derived (read-only):
+// it does not exist on the writable table — something must PROVIDE it on
+// read. The spec §7 multi-source pattern is a writable table-primary source
+// plus a read-only-kind source (view / materializedView / storedProc /
+// tableFunction, e.g. @role "replica") that carries the derived fields.
+// An entity whose only sources are writable kinds — or that has no source at
+// all — cannot provide an origin-bearing field → ERR_DERIVED_FIELD_NO_READ_SOURCE
+// on that field (plain node-source envelope).
+//
+// Exemptions:
+//  - object.projection — the projection's own source/wire IS the provider;
+//  - object.value — FR-015 lineage; values are constructed, never populated.
+//
+// Legacy accommodation (until the FR-024 Phase-E B4b cutover): a read-only
+// kind on the PRIMARY source (the pre-B4b "entity with view-primary"
+// spelling, e.g. the shipped origin-passthrough-simple fixture) also counts
+// as providable. Once B4b makes a read-only-kind primary illegal on entities
+// (ERR_ENTITY_PRIMARY_SOURCE_READONLY), the surviving reading is exactly the
+// strict one: a non-primary-role read-only source. The rule itself ("at
+// least one read-only-kind source, any role") needs no change at cutover.
+//
+// Sources are scanned on the EFFECTIVE child view (children()) so an entity
+// inheriting its sources from an abstract base is judged by what it actually
+// has; fields + origins use the own view, mirroring validateOriginPaths.
+// ---------------------------------------------------------------------------
+
+export function validateDerivedFieldProvidability(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root
+    .ownChildren()
+    .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_ENTITY)) {
+    const hasReadCapableSource = obj
+      .children()
+      .filter((c) => c.type === TYPE_SOURCE)
+      .some((s) => (s as MetaSource).isReadOnly());
+    if (hasReadCapableSource) continue;
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      if (!field.ownChildren().some((c) => c.type === TYPE_ORIGIN)) continue;
+      errors.push(
+        new ParseError(
+          `derived field "${obj.name}.${field.name}" carries an origin.* but entity "${obj.name}" declares no ` +
+            `read-capable source — derived fields do not exist on the writable table. Declare a read-only source ` +
+            `(e.g. source.rdb @kind "view" @role "replica") to provide it, or move the field to an object.projection (FR-024 §7).`,
+          { code: "ERR_DERIVED_FIELD_NO_READ_SOURCE", source: field.source },
+        ),
+      );
     }
   }
   return errors;

@@ -58,6 +58,16 @@ class ErrorCode(str, Enum):
     # is to-one at every hop (you meant passthrough).
     ERR_AMBIGUOUS_PATH = "ERR_AMBIGUOUS_PATH"
     ERR_ORIGIN_CARDINALITY = "ERR_ORIGIN_CARDINALITY"
+    # FR-024 B6 — extends/origin agreement + derived-field providability. Vocabulary-
+    # only here until FR-024 Phase E (the Python loader does not run these checks yet):
+    # ERR_EXTENDS_ORIGIN_MISMATCH — a field's entity-nested extends (shape lineage)
+    # disagrees with its origin.passthrough @from (data lineage); host-agnostic,
+    # aggregates and top-level abstract extends targets never judged.
+    # ERR_DERIVED_FIELD_NO_READ_SOURCE — an object.entity field carrying an origin.*
+    # is derived and the entity declares no read-only-kind source to provide it
+    # (projections and object.value hosts exempt).
+    ERR_EXTENDS_ORIGIN_MISMATCH = "ERR_EXTENDS_ORIGIN_MISMATCH"
+    ERR_DERIVED_FIELD_NO_READ_SOURCE = "ERR_DERIVED_FIELD_NO_READ_SOURCE"
     # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.

@@ -49,6 +49,16 @@ public enum ErrorCode
     // aggregate) or aggregate @via is to-one at every hop (you meant passthrough).
     ERR_AMBIGUOUS_PATH,
     ERR_ORIGIN_CARDINALITY,
+    // FR-024 B6 — extends/origin agreement + derived-field providability. Vocabulary-
+    // only here until FR-024 Phase E (the C# loader does not run these checks yet):
+    // ERR_EXTENDS_ORIGIN_MISMATCH — a field's entity-nested extends (shape lineage)
+    // disagrees with its origin.passthrough @from (data lineage); host-agnostic,
+    // aggregates and top-level abstract extends targets never judged.
+    // ERR_DERIVED_FIELD_NO_READ_SOURCE — an object.entity field carrying an origin.*
+    // is derived and the entity declares no read-only-kind source to provide it
+    // (projections and object.value hosts exempt).
+    ERR_EXTENDS_ORIGIN_MISMATCH,
+    ERR_DERIVED_FIELD_NO_READ_SOURCE,
     // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
     // name a junction declaring two identity.reference children, @sourceRefField
     // does not match one of them, or a M:N-only attr (@through/@sourceRefField/

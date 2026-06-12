@@ -166,6 +166,27 @@ public enum ErrorCode {
     ERR_ORIGIN_CARDINALITY,
 
     /**
+     * FR-024 (ADR-0029 decision 7): a field declares both an entity-nested extends
+     * (shape lineage) and an {@code origin.passthrough @from} (data lineage) and they
+     * disagree — the resolved {@code @from} target is not the field's resolved extends
+     * target (nor anywhere on its extends chain). Host-agnostic (projections, entities,
+     * values); aggregates and top-level abstract extends targets are never judged.
+     * Vocabulary-only here until FR-024 Phase E (the Java loader does not run the
+     * agreement check yet).
+     */
+    ERR_EXTENDS_ORIGIN_MISMATCH,
+
+    /**
+     * FR-024 (spec §7): an object.entity field carrying an origin.* child is derived
+     * (read-only) and must be providable — the entity must declare at least one source
+     * with a read-only kind (view/materializedView/storedProc/tableFunction) to carry
+     * it; table-only or source-less entities with origin-bearing fields error.
+     * Projections and object.value hosts are exempt. Vocabulary-only here until
+     * FR-024 Phase E.
+     */
+    ERR_DERIVED_FIELD_NO_READ_SOURCE,
+
+    /**
      * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
      * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
      * does not match one of them, or a M:N-only attr is set on a non-M:N relationship.

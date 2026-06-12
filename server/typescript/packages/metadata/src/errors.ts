@@ -66,6 +66,22 @@ export const ERROR_CODES = [
   // aggregate), or an aggregate @via path is to-one at every hop (you meant
   // passthrough). Checked on explicit AND inferred paths.
   "ERR_ORIGIN_CARDINALITY",
+  // FR-024 (ADR-0029 decision 7) — a field declares BOTH an entity-nested
+  // `extends` (shape lineage) and an `origin.passthrough` @from (data lineage)
+  // and they disagree: the resolved @from target is not the field's resolved
+  // extends target (nor anywhere on its extends chain). Host-agnostic
+  // (projections, entities, values). Aggregates are never judged (they
+  // compute something new); a top-level abstract extends target is never
+  // judged (shape-only reuse makes no lineage claim).
+  "ERR_EXTENDS_ORIGIN_MISMATCH",
+  // FR-024 (spec §7) — an object.entity field carrying an origin.* child is
+  // derived (read-only), so the entity must declare at least one source with
+  // a read-only @kind (view/materializedView/storedProc/tableFunction) to
+  // provide it. Table-only (or source-less) entities with derived fields
+  // error. Projections and object.value hosts are exempt. Until the Phase-E
+  // B4b cutover removes view-PRIMARY entities, a read-only-kind PRIMARY
+  // source also counts as providable (legacy spelling).
+  "ERR_DERIVED_FIELD_NO_READ_SOURCE",
   "ERR_INVALID_TEMPLATE",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match

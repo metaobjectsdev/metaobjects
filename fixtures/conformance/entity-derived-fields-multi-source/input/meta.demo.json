@@ -1,0 +1,46 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            { "source.rdb": { "@table": "countries" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "source.rdb": { "@kind": "view", "@view": "v_customer", "@role": "replica" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            {
+              "field.string": {
+                "name": "countryName",
+                "extends": "Country.name",
+                "children": [
+                  { "origin.passthrough": { "@from": "Country.name" } }
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "country",
+                "@objectRef": "Country",
+                "@cardinality": "one"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}
