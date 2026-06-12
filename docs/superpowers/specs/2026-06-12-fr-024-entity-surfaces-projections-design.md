@@ -144,10 +144,14 @@ agree (loader check; exact severity settled at planning).
 ## 5. Identity pass-through
 
 A projection's identity **extends an entity identity** — the same `Entity.child`
-resolution, applied to `identity`:
+resolution, applied to `identity`. To make identities addressable by the dotted
+by-name form, **identity nodes require a `name`** (historically `identity.primary`
+was nameless; hard cutover, pre-GA — authors pick the name: `id`, `key`, …):
 
 ```yaml
-- identity.primary: { extends: Customer.primary }
+# on Customer:        - identity.primary: { name: id, fields: [id] }
+# on the projection:
+- identity.primary: { name: id, extends: Customer.id }   # type-scoped → Customer's IDENTITY named id, not the field
 ```
 
 One declaration, three jobs:
@@ -240,7 +244,7 @@ writable table source plus a read-only view source (ADR-0007 roles, inferable fr
           extends: Country.name                                     # optional shape pull-through
           children: [ origin.passthrough: { from: Country.name } ]  # via omitted: unique single hop
       - relationship.association: { name: country, objectRef: Country, cardinality: one }
-      - identity.primary: { fields: [id] }
+      - identity.primary: { name: id, fields: [id] }
 ```
 
 Writes route to the table (derived fields don't exist there); reads route to the view;
@@ -269,7 +273,7 @@ out of scope here.)
       - field.int:
           name: orderCount
           children: [ origin.aggregate: { agg: count, of: Order.id, via: Customer.orders } ]
-      - identity.primary: { extends: Customer.primary }                 # fields computable → omitted
+      - identity.primary: { name: id, extends: Customer.id }            # → Customer's identity named id; fields computable → omitted
       # Customer.internalNotes is NOT declared → not in the view, not on the wire. Ever.
 ```
 

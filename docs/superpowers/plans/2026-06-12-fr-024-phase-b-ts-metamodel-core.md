@@ -26,10 +26,11 @@
 | `ERR_AMBIGUOUS_PATH` | `via` omitted but >1 single-hop candidate relationship exists (error message names the candidates) |
 | `ERR_ORIGIN_CARDINALITY` | passthrough via-path hops through a to-many / aggregate via-path has no to-many |
 | `ERR_EXTENDS_ORIGIN_MISMATCH` | a field declares both `extends X` and an origin targeting Y, X ≠ Y (spec §11.3 settled: **error**, not warn — an incoherent declaration is never intended) |
+| `ERR_IDENTITY_NAME_REQUIRED` | an `identity.*` node has no `name` (identities are now named, author-chosen — required so the dotted by-name extends form can address them) |
 
 Value-purity violations (identity or source on a value) and the projection-extends-must-target-projection rule reuse the existing `ERR_SUBTYPE_RULE_VIOLATION` (shipped precedent: value-with-primary-identity already uses it).
 
-**D2 — Identity-extends grammar:** `identity.primary` serializes **nameless** (only secondaries carry names), so the dotted by-name form cannot address it. The grammar: `identity.primary: { extends: Customer }` — a **bare entity ref**, resolved type-scoped to the target entity's unique primary identity. Dotted `Entity.<name>` addresses *named* children (fields now; named secondary identities if ever needed). ⚠ This amends the spec's §5/§8 examples (`extends: Customer.primary` → `extends: Customer`) — Task B0, flagged for user sign-off at plan review.
+**D2 — Identity names required (user ruling at plan review):** all `identity.*` nodes now REQUIRE a `name` (author-chosen: `id`, `key`, …; historically `identity.primary` was nameless — hard cutover, pre-GA, `ERR_IDENTITY_NAME_REQUIRED`). This makes the dotted by-name extends form **uniform across all node kinds** — no bare-ref special case: `identity.primary: { name: id, extends: Customer.id }` resolves Customer's *identity* named `id` (type-scoped — never the field of the same name). Consequence: every existing fixture/corpus/test input with a nameless `identity.primary` gains a name. Adding the name is **cross-port-safe** (all ports' serializers already handle named identities — secondaries are named today), so the name-sweep needs NO ledgering; only the new `error-identity-name-required` fixture is ledgered until Phase E (other ports don't enforce the requirement yet). Spec §5/§8 + ADR-0029 D4 amended at plan revision (done by controller).
 
 **D3 — Enforcement-layer split:** Phase B enforces *reference resolution + structural rules* only. "Emitted assembly requires origins on non-base fields" is a **DDL-emit-time** rule (Phase C, migrate-ts) — load cannot know whether DDL will be emitted, and external-assembly sources legitimately have origin-less fields.
 
@@ -41,14 +42,11 @@ Value-purity violations (identity or source on a value) and the projection-exten
 
 ---
 
-### Task B0: Spec amendment — identity-extends bare-ref grammar
+### Task B0: Spec/ADR amendment — identity names required ✅ DONE at plan revision
 
-**Files:**
-- Modify: `docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md` (§5 and §8 examples)
-
-- [ ] **Step 1:** In §5, replace the example line `- identity.primary: { extends: Customer.primary }` with `- identity.primary: { extends: Customer }` and add after the "One declaration, three jobs" list: `Grammar: the ref is a **bare entity ref** — \`identity.primary\` is nameless (unique per entity), so it is addressed type-scoped via its owner, not by the dotted by-name form (which addresses named children: fields, named secondary identities).`
-- [ ] **Step 2:** In §8 (worked projection), replace `- identity.primary: { extends: Customer.primary }                 # fields computable → omitted` with `- identity.primary: { extends: Customer }                         # → Customer's primary identity; fields computable → omitted`.
-- [ ] **Step 3:** Commit: `git commit -m "spec(fr-024): identity-extends takes a bare entity ref (primary identities are nameless)"`
+Spec §5/§8 examples now use `identity.primary: { name: id, extends: Customer.id }` and
+state the name requirement; ADR-0029 Decision 4 amended to match. Done by the
+controller when the user ruled on D2; no further action.
 
 ### Task B1: `object.projection` registration + manifest carve-out
 
@@ -134,12 +132,12 @@ const rules =
         { "field.uuid": { "name": "id" } },
         { "field.string": { "name": "name" } },
         { "field.string": { "name": "internalNotes" } },
-        { "identity.primary": { "@fields": ["id"] } }
+        { "identity.primary": { "name": "id", "@fields": ["id"] } }
       ]}},
       { "object.projection": { "name": "CustomersV1", "children": [
         { "field.uuid": { "name": "customerId", "extends": "Customer.id", "@column": "customer_id" } },
         { "field.string": { "name": "name", "extends": "Customer.name" } },
-        { "identity.primary": { "extends": "Customer" } }
+        { "identity.primary": { "name": "id", "extends": "Customer.id" } }
       ]}}
     ]
   }
@@ -219,22 +217,24 @@ Multi-dot (`X.y.z`) is intentionally unresolvable (reserved). NOTE: returning th
 (match the exact envelope shape the loader emits — generate once, verify by hand, commit); `error-extends-entity-field-type-mismatch` (field.uuid extends Customer.name where name is field.string → `ERR_EXTENDS_TARGET_MISMATCH`). Ledger all four in the three non-TS ports.
 - [ ] **Step 7: Commit** — `git commit -m "feat(metadata): dotted Entity.field extends-resolution + ERR_EXTENDS_TARGET_MISMATCH (FR-024 B2, ADR-0029)"`
 
-### Task B3: Identity pass-through (bare entity ref) + key correspondence
+### Task B3: Identity names required + identity pass-through + key correspondence
 
 **Files:**
-- Modify: `server/typescript/packages/metadata/src/super-resolve.ts` (or the deferred-resolution call site) — identity-scoped re-targeting
+- Modify: `server/typescript/packages/metadata/src/subtype-rules.ts` OR a parse-level check (investigate where nameless nodes surface) — the name requirement
 - Create: `server/typescript/packages/metadata/src/core/identity/validate-identity-passthrough.ts`
 - Modify: loader pipeline (`src/loader/meta-data-loader.ts`, after subtype rules ~line 432) to call the new pass
-- Modify: `errors.ts` + `ERROR-CODES.json` (+`ERR_PROJECTION_IDENTITY_NOT_EXTENDED`, +`ERR_IDENTITY_KEY_MISMATCH`)
+- Modify: `errors.ts` + `ERROR-CODES.json` (+`ERR_IDENTITY_NAME_REQUIRED`, +`ERR_PROJECTION_IDENTITY_NOT_EXTENDED`, +`ERR_IDENTITY_KEY_MISMATCH`)
+- Sweep: every input under `fixtures/conformance/`, `fixtures/persistence-conformance/`, `fixtures/render-conformance/`, `fixtures/api-contract-conformance/`, `library/`, TS unit-test inline metadata, and `meta init` scaffold templates with a nameless `identity.*` gains a name (convention: primary → `"id"` unless context suggests better; keep secondary names as-is)
 - Test: new `test/identity-passthrough.test.ts`
-- Fixtures: finish `projection-basic` (expected.json via oracle), `projection-identity-fields-explicit/`, `error-projection-identity-not-extended/`, `error-identity-key-mismatch/`
+- Fixtures: finish `projection-basic` (expected.json via oracle), `projection-identity-fields-explicit/`, `error-identity-name-required/`, `error-projection-identity-not-extended/`, `error-identity-key-mismatch/`
 
-- [ ] **Step 1: Failing tests** — `identity-passthrough.test.ts`: (a) an `identity.primary { extends: "Customer" }` on a projection resolves to Customer's primary-identity node (assert `superResolved`); (b) its effective `fields` is computed as `["customerId"]` from the local field extending `Customer.id`; (c) explicit `@fields: ["customerId"]` that agrees → ok; disagrees → `ERR_IDENTITY_KEY_MISMATCH`; (d) entity-identity field `id` with NO local field extending it → `ERR_IDENTITY_KEY_MISMATCH`; (e) identity on projection without extends → `ERR_PROJECTION_IDENTITY_NOT_EXTENDED`.
+- [ ] **Step 1: Failing tests** — `identity-passthrough.test.ts`: (a) an `identity.*` node without a name → `ERR_IDENTITY_NAME_REQUIRED`; (b) `identity.primary { name: "id", extends: "Customer.id" }` on a projection resolves to Customer's IDENTITY named `id` (assert `superResolved.type === TYPE_IDENTITY`), never the field `id` (type-scoped, falls out of B2's dotted branch + scope check — this test pins it); (c) its effective `fields` is computed as `["customerId"]` from the local field extending `Customer.id`; (d) explicit `@fields: ["customerId"]` that agrees → ok; disagrees → `ERR_IDENTITY_KEY_MISMATCH`; (e) entity-identity field `id` with NO local field extending it → `ERR_IDENTITY_KEY_MISMATCH`; (f) identity on projection without extends → `ERR_PROJECTION_IDENTITY_NOT_EXTENDED`.
 - [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement resolution** — when the referrer is `TYPE_IDENTITY` and the ref resolves to an `object.entity`, re-target to that entity's child where `type===TYPE_IDENTITY && subType===referrer.subType` (its unique primary). No match → `ERR_UNRESOLVED_SUPER`. (This is the type-scoped step; it lives where the type-scope check from B2 lives, keyed off referrer type.)
+- [ ] **Step 3: Implement the name requirement** — emit `ERR_IDENTITY_NAME_REQUIRED` for any `TYPE_IDENTITY` node with empty/absent name (place it where it fires once per node: the subtype-rules walk is the natural host). Confirm B2's type-scope check makes the dotted identity resolution work with NO new resolution code (a `Customer.id` ref from an identity referrer must select among Customer's children of the REFERRER's type — if B2 implemented child-selection as name-only `children().find(name)`, tighten it to `find(c => c.name === childName && c.type === referrer.type)`; thread the referrer type into the dotted branch).
 - [ ] **Step 4: Implement the validation pass** — `validate-identity-passthrough.ts`, walk objects of subtype projection: every identity child must have `superResolved` (else `ERR_PROJECTION_IDENTITY_NOT_EXTENDED`); for each field name F in the extended identity's `@fields`, find the local field whose `superResolved` is the entity's field F (else `ERR_IDENTITY_KEY_MISMATCH`); computed local `fields` = those local field names in the extended identity's order; explicit `@fields` must equal the computed list (else `ERR_IDENTITY_KEY_MISMATCH`). Export a function returning `ParseError[]`; wire into the loader pipeline after `validateSubtypeRules`.
-- [ ] **Step 5: Run all tests** → PASS. Generate `projection-basic/expected.json` with the oracle; eyeball; add `expected-effective.json` if inheritance shows there. Author the two new happy fixtures + two error fixtures (hand-write envelopes). Ledger all in 3 ports.
-- [ ] **Step 6: Commit** — `git commit -m "feat(metadata): identity pass-through — bare-ref resolution, key correspondence, computed fields (FR-024 B3)"`
+- [ ] **Step 5: The name sweep** — run the full TS suite; every failure from the new requirement IS the sweep list. Add names to all nameless identities in the corpora/library/tests/scaffold; regenerate affected `expected.json` files via the oracle (the serializer now emits the names). Cross-port-safe per D2 — do NOT ledger the swept fixtures; spot-check by running one other port's conformance suite if available locally (optional; CI is the backstop).
+- [ ] **Step 6: Run all tests** → PASS. Generate `projection-basic/expected.json`; author `projection-identity-fields-explicit` + the three error fixtures (hand-write envelopes). Ledger the four NEW fixtures (not the swept ones) in 3 ports.
+- [ ] **Step 7: Commit** — `git commit -m "feat(metadata): identity names required + identity pass-through, key correspondence, computed fields (FR-024 B3)"`
 
 ### Task B4: Subtype rules — projection licensing, value purity, the hard cutover
 

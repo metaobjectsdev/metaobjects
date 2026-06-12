@@ -27,11 +27,15 @@ needed an omission rule that five loaders can implement byte-identically. An int
 3. **Load-time drift gate:** renaming/retyping the target fails `extends`
    resolution in every referencing shape — the contract breaks the build at LOAD,
    strictly earlier than verify-time origin resolution.
-4. **Identity pass-through:** `identity.primary { extends: Customer.primary }`
+4. **Identity pass-through:** `identity.primary { name: id, extends: Customer.id }`
    anchors the projection's base entity, states borrowed identity, and enforces
    key correspondence (each entity-identity field must map to a local field whose
    `extends` target is that field). The local `fields` list is computable from
-   those targets — optional, explicit-must-agree.
+   those targets — optional, explicit-must-agree. To make identities addressable
+   by the dotted by-name form, **identity nodes require a `name`** (author-chosen:
+   `id`, `key`, …; historically `identity.primary` was nameless — hard cutover,
+   pre-GA). The dotted ref is type-scoped, so an identity's `extends: Customer.id`
+   resolves Customer's *identity* named `id`, never the field of the same name.
 5. **`@via` lives on `origin.*` only** (fields never carry join mechanics) and
    **may be omitted only when exactly one single-hop relationship leads from the
    base entity to the `from`/`of` entity**. Multi-hop is always explicit;
