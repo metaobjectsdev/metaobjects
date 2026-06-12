@@ -1,4 +1,4 @@
-// FR-021 — central package-binding resolver tests.
+// Package-binding resolver tests (package-binding renumbered away — api-metadata reused that number).
 // Covers each layer of the resolution order:
 //   1. TypeOverrides (most specific)
 //   2. PackageNamespaces (package-level overrides)
@@ -11,7 +11,7 @@ using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
 
-public class Fr021PackageBindingResolverTests
+public class PackageBindingResolverTests
 {
     private static GenConfig CfgWithDefaults() => new()
     {

@@ -1,4 +1,4 @@
-// FR-021 — central resolver from (metadataPackage, typeName?) to per-port output
+// Package-binding — central resolver from (metadataPackage, typeName?) to per-port output
 // identity (in C#, the namespace). Resolution order, evaluated for every named type:
 //
 //   1. Type-level override        — config.TypeOverrides["<pkg>::<typeName>"]
@@ -15,7 +15,7 @@ using MetaObjects.Meta;
 
 namespace MetaObjects.Codegen;
 
-/// <summary>FR-021 — central package-binding resolver.</summary>
+/// <summary>Package-binding — central package-binding resolver.</summary>
 public static class PackageBindingResolver
 {
     /// <summary>The metaobjects-standard package separator (cross-port invariant). Always <c>::</c>.</summary>
@@ -70,7 +70,7 @@ public static class PackageBindingResolver
 
     /// <summary>
     /// Resolve a metadata package (and optional type name) to its target C# namespace per the
-    /// FR-021 resolution order. Throws <see cref="InvalidOperationException"/> when the package
+    /// package-binding resolution order. Throws <see cref="InvalidOperationException"/> when the package
     /// is unresolvable and <see cref="GenConfig.UnmappedStrategy"/> is
     /// <see cref="UnmappedPackageStrategy.Error"/>.
     /// </summary>
@@ -289,7 +289,7 @@ public static class PackageBindingResolver
         var typeRef = string.IsNullOrEmpty(typeName) ? "" : $" (type \"{typeName}\")";
         var contextSuffix = string.IsNullOrEmpty(context) ? "" : $" — referenced from {context}";
         return new InvalidOperationException(
-            $"FR-021 — metadata package \"{pkgRef}\"{typeRef} has no namespace binding{contextSuffix}. " +
+            $"Package-binding — metadata package \"{pkgRef}\"{typeRef} has no namespace binding{contextSuffix}. " +
             $"Add an entry to PackageNamespaces (e.g. {{ \"{pkgRef}\", \"YourApp.Namespace\" }}), " +
             $"a TypeOverrides entry, or a Convention rule that matches this package — " +
             $"or set UnmappedStrategy = Flatten to fall back to the default Namespace.");
