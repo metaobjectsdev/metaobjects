@@ -43,7 +43,7 @@ describe("loader drift warning for @filterable without index", () => {
             name: "Sub",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
               { [`field.${FIELD_SUBTYPE_STRING}`]: { name: "firstName",
                   "@filterable": true } },
             ],
@@ -71,7 +71,7 @@ describe("loader drift warning for @filterable without index", () => {
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
                   "@filterable": true }},
-              { [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } },
+              { [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } },
             ],
         }},
       ]},
@@ -97,14 +97,14 @@ describe("loader guard: @filterable on a subtype with no operator band (SP-H Uni
             name: "Inner",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
             ],
         }},
         { [`object.${OBJECT_SUBTYPE_ENTITY}`]: {
             name: "Outer",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
               // field.object has no filter-operator band — @filterable must error.
               { "field.object": { name: "blob",
                   "@objectRef": "Inner", "@storage": "jsonb",
@@ -132,7 +132,7 @@ describe("loader guard: @filterable on a subtype with no operator band (SP-H Uni
             name: "Item",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
               { "field.currency": { name: "price", "@currency": "USD",
                   "@filterable": true, "@db.indexed": true } },
               { "field.uuid": { name: "sku",
@@ -163,7 +163,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
             name: "Subscriber",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
               { [`field.${FIELD_SUBTYPE_STRING}`]: {
                   name: "tags",
                   "@filterable": true,
@@ -193,7 +193,7 @@ describe("@db.indexed opts a field out of the @filterable-without-index warning"
             name: "Subscriber",
             children: [
               { [`field.${FIELD_SUBTYPE_LONG}`]: { name: "id",
-                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "@fields": "id" } }] }},
+                  children: [{ [`identity.${IDENTITY_SUBTYPE_PRIMARY}`]: { "name": "id", "@fields": "id" } }] }},
               { [`field.${FIELD_SUBTYPE_STRING}`]: {
                   name: "tags",
                   "@filterable": true,

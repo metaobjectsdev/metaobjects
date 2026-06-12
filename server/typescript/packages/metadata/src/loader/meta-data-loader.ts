@@ -25,6 +25,7 @@ import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js"
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
+import { validateIdentityPassthrough } from "../core/identity/validate-identity-passthrough.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
@@ -448,6 +449,10 @@ export class MetaDataLoader {
       const ruleResult = validateSubtypeRules(root);
       errors.push(...ruleResult.errors);
       warnings.push(...ruleResult.warnings);
+
+      // FR-024 B3 — projection identity pass-through + key correspondence
+      // (ERR_PROJECTION_IDENTITY_NOT_EXTENDED / ERR_IDENTITY_KEY_MISMATCH).
+      errors.push(...validateIdentityPassthrough(root));
 
       // Fourth pass: data-grid @defaultSortField cross-reference validation.
       errors.push(...validateDataGridSortFields(root));

@@ -26,6 +26,17 @@ export const ERROR_CODES = [
   // FR-024 (ADR-0029) — a dotted `Entity.child` extends ref resolved to a node
   // whose type or subtype does not match the extending node's. Dotted-only.
   "ERR_EXTENDS_TARGET_MISMATCH",
+  // FR-024 — an identity.* node has no name. Identities are named,
+  // author-chosen (e.g. "id"), so the dotted by-name extends form can
+  // address them.
+  "ERR_IDENTITY_NAME_REQUIRED",
+  // FR-024 — an identity.* on an object.projection lacks `extends`; a
+  // projection identity is a pass-through of an entity identity.
+  "ERR_PROJECTION_IDENTITY_NOT_EXTENDED",
+  // FR-024 — identity key correspondence broken: an extended-identity field
+  // has no local pass-through field extending it, or an explicit @fields
+  // disagrees with the computed pass-through key.
+  "ERR_IDENTITY_KEY_MISMATCH",
   "ERR_INVALID_SUBTYPE_CHILD",
   "ERR_UNKNOWN_ATTR",
   "ERR_BAD_ATTR_VALUE",

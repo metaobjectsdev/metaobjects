@@ -15,6 +15,12 @@ public enum ErrorCode
     // FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
     // subtype does not match the extending node.
     ERR_EXTENDS_TARGET_MISMATCH,
+    // FR-024: identity names required + projection identity pass-through.
+    // Vocabulary-only here until FR-024 Phase E (the C# loader does not
+    // enforce these yet); the enum tracks the shared corpus codes.
+    ERR_IDENTITY_NAME_REQUIRED,
+    ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+    ERR_IDENTITY_KEY_MISMATCH,
     ERR_INVALID_SUBTYPE_CHILD,
     ERR_UNKNOWN_ATTR,
     ERR_MISSING_REQUIRED_ATTR,

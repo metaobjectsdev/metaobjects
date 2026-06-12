@@ -4,9 +4,15 @@
   "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target. FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) VALIDATION passes shipped in the C# port (ValidationPasses.ValidateFieldReadOnly / ValidateDiscriminator / ValidateSourceParameterRef); all error-* fixtures now produce the expected envelopes. No interim known-gaps.",
   "_comment_ai_pilot": "AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti now load + canonical-serialize cleanly in the C# port (Unit 1 metamodel slice): @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TsPilotVocab until the atomic all-ports flip), and template.* is admitted as an object.entity child (CoreTypes objectRules). The sibling ai-llm-call-extends has always passed cross-port.",
   "_comment_fr024": "FR-024 Phase B — dotted Entity.child extends-resolution shipped in the TS reference port only; un-ledger in Phase E (cross-port fan-out). error-extends-entity-field-unresolved is NOT ledgered: a dotted ref is simply unresolvable here, so this port already emits the identical ERR_UNRESOLVED_SUPER envelope and the fixture passes.",
+  "_comment_fr024_b3": "FR-024 B3 — identity names required + projection identity pass-through shipped in the TS reference port only; un-ledger in Phase E. projection-basic / projection-identity-fields-explicit use the object.projection subtype this port does not register yet; error-identity-name-required expects an error this port does not emit yet; error-projection-identity-not-extended / error-identity-key-mismatch expect FR-024 pass-through codes on object.projection inputs this port cannot load.",
   "fixtures": [
     "extends-entity-field-basic",
     "extends-entity-field-cross-package",
-    "error-extends-entity-field-type-mismatch"
+    "error-extends-entity-field-type-mismatch",
+    "projection-basic",
+    "projection-identity-fields-explicit",
+    "error-identity-name-required",
+    "error-projection-identity-not-extended",
+    "error-identity-key-mismatch"
   ]
 }

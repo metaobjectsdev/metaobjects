@@ -322,7 +322,7 @@ When a list needs computed columns (counts, sums, joined fields), create a **pro
         { "origin": { "subType": "aggregate",
             "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" }}
       ]}},
-      { "identity": { "subType": "primary", "@fields": "id" } }
+      { "identity": { "subType": "primary", "name": "id", "@fields": "id" } }
     ]
   }
 }

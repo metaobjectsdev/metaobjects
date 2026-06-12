@@ -68,6 +68,15 @@ export {
   MetaReferenceIdentity,
 } from "./core/identity/meta-identity.js";
 export type { IdentityGeneration } from "./core/identity/meta-identity.js";
+// FR-024 — projection identity pass-through derivation (computed local key;
+// pure tree read, codegen-facing).
+export {
+  computedIdentityFields,
+  identityOwnFields,
+  identityEffectiveFields,
+  resolveIdentityPassthrough,
+} from "./core/identity/validate-identity-passthrough.js";
+export type { IdentityPassthroughResolution } from "./core/identity/validate-identity-passthrough.js";
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup

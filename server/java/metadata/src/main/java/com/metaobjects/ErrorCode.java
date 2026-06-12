@@ -61,6 +61,29 @@ public enum ErrorCode {
      */
     ERR_EXTENDS_TARGET_MISMATCH,
 
+    /**
+     * FR-024: an identity.* node has no name. Identities are named,
+     * author-chosen (e.g. "id"), so the dotted by-name extends form can
+     * address them. Vocabulary-only here until FR-024 Phase E (the Java
+     * loader does not enforce the requirement yet).
+     */
+    ERR_IDENTITY_NAME_REQUIRED,
+
+    /**
+     * FR-024: an identity.* on an object.projection lacks extends — a
+     * projection identity is a pass-through of an entity identity.
+     * Vocabulary-only here until FR-024 Phase E.
+     */
+    ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+
+    /**
+     * FR-024: identity key correspondence broken — an extended-identity field
+     * has no local pass-through field extending it, or an explicit @fields
+     * disagrees with the computed pass-through key. Vocabulary-only here
+     * until FR-024 Phase E.
+     */
+    ERR_IDENTITY_KEY_MISMATCH,
+
     /** A child node type/subType is not permitted under its parent. */
     ERR_INVALID_SUBTYPE_CHILD,
 

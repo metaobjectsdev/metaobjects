@@ -3,6 +3,8 @@
 //   - value objects MUST NOT have a primary identity (error)
 //   - entity objects SHOULD have a primary identity, unless @isAbstract (warning)
 //   - base objects have no rule (template, may or may not have identity)
+//   - every identity.* node MUST have a name (FR-024 D2: identities are named,
+//     author-chosen, so the dotted by-name extends form can address them)
 
 import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
@@ -26,6 +28,21 @@ export function validateSubtypeRules(root: MetaData): SubtypeRuleResult {
 }
 
 function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
+  // FR-024 D2 — identity nodes require an author-chosen name (any nesting:
+  // object children AND field-nested identities). A nameless node parses
+  // with name === "".
+  if (model.type === TYPE_IDENTITY && model.name === "") {
+    const owner = model.parent?.fqn();
+    errors.push(
+      new ParseError(
+        `identity.${model.subType}${owner !== undefined && owner !== "" ? ` under '${owner}'` : ""} has no name — ` +
+          `identity nodes require an author-chosen name (e.g. "id") so dotted ` +
+          `extends refs can address them (FR-024)`,
+        { code: "ERR_IDENTITY_NAME_REQUIRED", source: model.source },
+      ),
+    );
+  }
+
   if (model.type === TYPE_OBJECT) {
     const hasPrimary = model.children().some(
       (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
