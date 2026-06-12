@@ -100,6 +100,16 @@ Two read-only rules, at two levels:
 > **A projection is read-only at the subtype level** — all its fields, including
 > self-declared ones, regardless of per-field derivation.
 
+Reconciliation with FR-013: an explicit `@readOnly: true` field attr already ships
+(upgrade-only through extends, `ERR_READONLY_DOWNGRADE`/`ERR_READONLY_ASSIGNED_PRIMARY`).
+It **remains** — for non-derived fields that are read-only for external reasons (e.g.
+DB-computed/trigger-populated table columns). FR-024's two rules are *computed* and
+need no attr; the three sources of read-only-ness (subtype-level, origin-derived,
+explicit `@readOnly`) compose — each independently makes a field read-only. On
+projection fields `@readOnly` is redundant (legal, no effect); the
+`field-readonly-on-view-projection` fixture migrates to `object.projection` where its
+flags disappear.
+
 ## 4. Universal field-`extends`: `extends Entity.field`
 
 The keystone new capability: field-level `extends` may target a **field nested inside
