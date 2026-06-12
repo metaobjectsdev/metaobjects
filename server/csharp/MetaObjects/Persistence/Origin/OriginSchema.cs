@@ -43,8 +43,8 @@ public static class OriginSchema
         new AttrSchema(
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_VIA,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: true,
-            Description: "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts')."),
+            Required: false,
+            Description: "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."),
     ];
 
     private static readonly IReadOnlyList<AttrSchema> CollectionOriginAttrs =

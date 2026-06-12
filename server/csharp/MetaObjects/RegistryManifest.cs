@@ -68,6 +68,17 @@ public static class RegistryManifest
         InheritanceAnchor,
         /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
         PresentationOnly,
+        /// <summary>
+        /// FR-024 vocabulary registered ahead of the cross-port manifest; atomic
+        /// all-ports manifest flip in FR-024 Phase E. The TS-reference-first rollout
+        /// pattern: the new vocabulary is genuinely registered (and gated by this
+        /// port's tests) but carved out of the cross-port manifest until every port
+        /// registers it, then the carve-out is removed and the canonical updated in
+        /// ONE commit (the same lifecycle the retired TsPilotVocab carve-outs
+        /// followed for <c>@responseRef</c>/<c>@provided</c>).
+        /// Members today: the <c>object.projection</c> (type, subType) row (ADR-0028).
+        /// </summary>
+        Fr024Pending,
     }
 
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
@@ -110,8 +121,40 @@ public static class RegistryManifest
         {
             return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
         }
+        if (type == BaseTypes.TYPE_OBJECT && subType == Core.Object.ObjectConstants.OBJECT_SUBTYPE_PROJECTION)
+        {
+            // FR-024 vocabulary registered ahead of the cross-port manifest; atomic
+            // all-ports manifest flip in FR-024 Phase E.
+            return ExclusionReason.Fr024Pending;
+        }
         return ExclusionReason.Included;
     }
+
+    /// <summary>
+    /// FR-024-pending manifest REQUIREDNESS overrides (the attr-level analogue of
+    /// the <see cref="ExclusionReason.Fr024Pending"/> row carve-out). Key is
+    /// <c>"type.subType.attrName"</c>; value is the requiredness the cross-port
+    /// canonical (<c>expected-registry.json</c>) still records. This port's registry
+    /// already registers the FR-024 requiredness, but not every port has flipped
+    /// yet — the manifest keeps emitting the pre-FR-024 agreed value so the shared
+    /// canonical stays byte-identical until the Phase-E atomic all-ports flip, when
+    /// this map empties and the canonical is updated in ONE commit.
+    ///
+    /// Members today: <c>origin.aggregate.via</c> — required pre-FR-024; OPTIONAL
+    /// under ADR-0029 decision 5 (omitted <c>@via</c> is inferred when exactly one
+    /// single-hop relationship leads from the base entity to the <c>@of</c> entity).
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, bool> Fr024PendingRequiredOverrides =
+        new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [$"{BaseTypes.TYPE_ORIGIN}.{Persistence.Origin.OriginConstants.ORIGIN_SUBTYPE_AGGREGATE}.{Persistence.Origin.OriginConstants.ORIGIN_AGGREGATE_ATTR_VIA}"] = true,
+        };
+
+    /// <summary>Manifest requiredness for an attr — the FR-024-pending override when one exists, else null.</summary>
+    public static bool? ManifestRequiredOverride(string type, string subType, string attrName) =>
+        Fr024PendingRequiredOverrides.TryGetValue($"{type}.{subType}.{attrName}", out bool required)
+            ? required
+            : null;
 
     /// <summary>True if a <c>(type, subType)</c> row is carved out of the manifest (any reason).</summary>
     private static bool IsExcludedTypeSubType(string type, string subType) =>
@@ -146,7 +189,7 @@ public static class RegistryManifest
             .Select(typeId => new ManifestType(
                 typeId.Type,
                 typeId.SubType,
-                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType))))
+                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType), typeId.Type, typeId.SubType)))
             .OrderBy(t => $"{t.Type}.{t.SubType}", StringComparer.Ordinal)
             .ToList();
 
@@ -186,9 +229,17 @@ public static class RegistryManifest
     /// binding, per-type <c>description</c> dup) is dropped for a documented
     /// reason, never a silent name-match. Applied ONLY to per-type attrs —
     /// <c>description</c> stays in the commonAttrs block.
+    /// FR-024: an attr in <see cref="Fr024PendingRequiredOverrides"/> keeps
+    /// emitting the pre-FR-024 agreed requiredness until the Phase-E atomic flip.
     /// </summary>
-    private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs) =>
-        SortedAttrs(attrs.Where(a => ClassifyPerTypeAttr(a.Name) == ExclusionReason.Included).ToList());
+    private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs, string type, string subType) =>
+        SortedAttrs(attrs.Where(a => ClassifyPerTypeAttr(a.Name) == ExclusionReason.Included).ToList())
+            .Select(attr =>
+            {
+                bool? required = ManifestRequiredOverride(type, subType, attr.Name);
+                return required is null ? attr : attr with { Required = required.Value };
+            })
+            .ToList();
 
     private static ManifestAttr ToManifestAttr(AttrSchema a)
     {

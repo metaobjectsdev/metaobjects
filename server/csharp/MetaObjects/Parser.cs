@@ -487,9 +487,23 @@ public static class Parser
         // (Skipped when DeferSuperResolution is true.)
         if (model.SuperRef is not null && accumRoot is not null && !st.DeferSuperResolution)
         {
-            MetaData? superModel = SuperResolve.ResolveSuperRef(model.SuperRef, effectivePkg, accumRoot);
+            // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
+            // type-scoped — kept consistent with the deferred path (SuperResolve.cs).
+            MetaData? superModel = SuperResolve.ResolveSuperRef(
+                model.SuperRef, effectivePkg, accumRoot, new SuperResolve.ReferrerScope(model.Type));
             if (superModel is not null)
             {
+                // FR-024 — a dotted child-targeting ref must resolve to a node of the
+                // SAME type and subtype as the extending node. Dotted-only check; the
+                // shipped top-level extends behavior is unchanged.
+                if (SuperResolve.IsChildTargetingRef(model.SuperRef) &&
+                    (superModel.Type != model.Type || superModel.SubType != model.SubType))
+                {
+                    throw new ParseException(
+                        $"the extends target '{model.SuperRef}' is {superModel.Type}.{superModel.SubType} but the extending node '{model.Fqn()}' is {model.Type}.{model.SubType} — a dotted extends must target a node of the same type and subtype",
+                        ErrorCode.ERR_EXTENDS_TARGET_MISMATCH, st.Source, st.Builder.ToString(),
+                        ResolvedSource.From(st.CurrentSource(), model.Fqn(), model.SuperRef));
+                }
                 model.SetSuperResolved(superModel);
             }
             else

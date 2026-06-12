@@ -7,7 +7,7 @@ using MetaObjects.Shared;
 namespace MetaObjects.Core.Object;
 
 /// <summary>
-/// Object concern constants — the object subtypes (base, entity, value).
+/// Object concern constants — the object subtypes (base, entity, value, projection).
 /// </summary>
 public static class ObjectConstants
 {
@@ -16,14 +16,16 @@ public static class ObjectConstants
     //   - base   : abstract template (no runtime semantics)
     //   - entity : persistent record (typically has @primary identity)
     //   - value  : value-object (no identity; equality by content)
+    //   - projection : derived read-only representation of entities (FR-024, ADR-0028)
     //
     // No object-level attrs: a Java-runtime materialization strategy enum has no
     // place in a cross-language metamodel core (ADR-0003 §4) and no conformance
     // fixture exercises one. Matches the realized TS object concern (objectAttrs = []).
     // -----------------------------------------------------------------------
 
-    public const string OBJECT_SUBTYPE_ENTITY = "entity";
-    public const string OBJECT_SUBTYPE_VALUE  = "value";
+    public const string OBJECT_SUBTYPE_ENTITY     = "entity";
+    public const string OBJECT_SUBTYPE_VALUE      = "value";
+    public const string OBJECT_SUBTYPE_PROJECTION = "projection";
 
     // -----------------------------------------------------------------------
     // FR-014 — TPH discriminator attrs (registered on every object subtype).
@@ -48,5 +50,6 @@ public static class ObjectConstants
         BaseTypes.SUBTYPE_BASE,
         OBJECT_SUBTYPE_ENTITY,
         OBJECT_SUBTYPE_VALUE,
+        OBJECT_SUBTYPE_PROJECTION,
     ];
 }
