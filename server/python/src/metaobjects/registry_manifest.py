@@ -31,8 +31,7 @@ from .meta.core.attr.attr_constants import (
 )
 from .meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
 from .registry import AttrSchema, TypeRegistry
-from .meta.core.object.object_constants import OBJECT_SUBTYPE_PROJECTION
-from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_VIEW
+from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW
 from .shared.structural import KEY_IS_ARRAY
 
 # Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason category
@@ -62,12 +61,12 @@ class ExclusionReason(str, Enum):
     INHERITANCE_ANCHOR = "inheritance-anchor"
     #: TS-web-presentation-only facet (the generic ``view.*`` controls).
     PRESENTATION_ONLY = "presentation-only"
-    #: FR-024 vocabulary registered in the ports but pending the atomic all-ports
-    #: manifest flip (the ``@responseRef`` carve-out-close playbook): the
-    #: ``object.projection`` row is excluded until every port registers it AND
-    #: ``fixtures/registry-conformance/expected-registry.json`` is updated in ONE
-    #: commit with all five emitters' carve-outs removed. Same lifecycle as the
-    #: retired ``TS_PILOT_VOCAB`` reason. Remove at the flip.
+    #: FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
+    #: ``object.projection`` row + the ``origin.aggregate.via`` required-override
+    #: were excluded until every port registered the FR-024 loader-grammar slice,
+    #: then removed with the canonical updated in ONE commit (the ``@responseRef``
+    #: carve-out-close playbook). Kept as the documented lifecycle slot for the
+    #: next rollout; currently no members.
     FR024_PENDING = "fr024-pending"
 
 
@@ -108,8 +107,6 @@ def classify_type_subtype(type_name: str, sub_type: str) -> ExclusionReason:
         return ExclusionReason.INHERITANCE_ANCHOR  # C-5 — Java's internal inheritance anchor
     if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
         return ExclusionReason.PRESENTATION_ONLY  # B-2 — TS-web-presentation generic view controls
-    if type_name == TYPE_OBJECT and sub_type == OBJECT_SUBTYPE_PROJECTION:
-        return ExclusionReason.FR024_PENDING  # FR-024 — pending the atomic all-ports manifest flip
     return ExclusionReason.INCLUDED
 
 
@@ -147,13 +144,11 @@ def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
     return [_to_manifest_attr(a) for a in sorted(attrs, key=lambda a: a.name)]
 
 
-# FR-024 (ADR-0029): origin.aggregate @via flipped to OPTIONAL in the
-# registration (single-hop-unique inference); the cross-port manifest still
-# records the pre-flip required:true until the atomic all-ports manifest flip.
-# Mirrors the TS FR024_PENDING_REQUIRED_OVERRIDES carve-out. Remove at the flip.
-_FR024_PENDING_REQUIRED_OVERRIDES: dict[str, bool] = {
-    "origin.aggregate.via": True,
-}
+# FR-024-pending manifest requiredness overrides (keyed ``type.subType.attr``) —
+# the attr-level analogue of the FR024_PENDING row carve-out. EMPTY since the
+# atomic all-ports flip (``origin.aggregate.via`` is optional everywhere,
+# ADR-0029 d5). The mechanism stays for the next reference-first rollout.
+_FR024_PENDING_REQUIRED_OVERRIDES: dict[str, bool] = {}
 
 
 def _sorted_per_type_attrs(

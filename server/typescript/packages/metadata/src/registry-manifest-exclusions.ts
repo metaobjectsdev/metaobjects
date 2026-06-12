@@ -56,13 +56,8 @@
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
-import { SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_ORIGIN, TYPE_VIEW } from "./shared/base-types.js";
+import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
-import { OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
-import {
-  ORIGIN_SUBTYPE_AGGREGATE,
-  ORIGIN_AGGREGATE_ATTR_VIA,
-} from "./persistence/origin/origin-constants.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
@@ -77,13 +72,15 @@ export enum ExclusionReason {
   /** TS-web-presentation-only facet (the generic `view.*` controls). */
   PresentationOnly = "presentation-only",
   /**
-   * FR-024 vocabulary registered in TS only; atomic all-ports manifest flip in
-   * FR-024 Phase E. The TS-reference-first rollout pattern: the new vocabulary
-   * is genuinely registered (and gated by TS tests) but carved out of the
-   * cross-port manifest until every port registers it, then the carve-out is
-   * removed and the canonical updated in ONE commit (the same lifecycle the
-   * retired TsPilotVocab carve-outs followed for `@responseRef`/`@provided`).
-   * Members today: the `object.projection` (type, subType) row (ADR-0028).
+   * FR-024 TS-reference-first rollout (RETIRED at the atomic flip): new
+   * vocabulary genuinely registered (and gated by TS tests) but carved out of
+   * the cross-port manifest until every port registered it; the carve-outs were
+   * then removed and the canonical updated in ONE commit (the same lifecycle
+   * the retired TsPilotVocab carve-outs followed for `@responseRef`/`@provided`).
+   * The `object.projection` row + the `origin.aggregate.via` required-override
+   * flipped when all five ports shipped the FR-024 loader-grammar slice. The
+   * reason is kept as the documented lifecycle slot for the NEXT
+   * reference-first rollout; it currently has no members.
    */
   Fr024Pending = "fr024-pending",
 }
@@ -131,11 +128,6 @@ export function classifyTypeSubType(
   if (type === TYPE_VIEW && subType !== SUBTYPE_BASE && subType !== VIEW_SUBTYPE_CURRENCY) {
     return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
   }
-  if (type === TYPE_OBJECT && subType === OBJECT_SUBTYPE_PROJECTION) {
-    // FR-024 vocabulary registered in TS only; atomic all-ports manifest flip
-    // in FR-024 Phase E.
-    return ExclusionReason.Fr024Pending;
-  }
   return undefined;
 }
 
@@ -154,13 +146,13 @@ export function isExcludedTypeSubType(type: string, subType: string): boolean {
  * stays byte-identical until the Phase-E atomic all-ports flip, when this map
  * empties and the canonical is updated in ONE commit.
  *
- * Members today: `origin.aggregate.via` — required pre-FR-024; OPTIONAL under
- * ADR-0029 decision 5 (omitted `@via` is inferred when exactly one single-hop
- * relationship leads from the base entity to the `@of` entity).
+ * Members today: NONE — `origin.aggregate.via` flipped at the FR-024 atomic
+ * all-ports manifest flip (it is OPTIONAL everywhere under ADR-0029 decision 5:
+ * omitted `@via` is inferred when exactly one single-hop relationship leads
+ * from the base entity to the `@of` entity). The mechanism stays for the next
+ * reference-first rollout.
  */
-export const FR024_PENDING_REQUIRED_OVERRIDES: ReadonlyMap<string, boolean> = new Map([
-  [`${TYPE_ORIGIN}.${ORIGIN_SUBTYPE_AGGREGATE}.${ORIGIN_AGGREGATE_ATTR_VIA}`, true],
-]);
+export const FR024_PENDING_REQUIRED_OVERRIDES: ReadonlyMap<string, boolean> = new Map([]);
 
 /** Manifest requiredness for an attr — the FR-024-pending override when one exists. */
 export function manifestRequiredOverride(

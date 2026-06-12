@@ -69,14 +69,12 @@ public static class RegistryManifest
         /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
         PresentationOnly,
         /// <summary>
-        /// FR-024 vocabulary registered ahead of the cross-port manifest; atomic
-        /// all-ports manifest flip in FR-024 Phase E. The TS-reference-first rollout
-        /// pattern: the new vocabulary is genuinely registered (and gated by this
-        /// port's tests) but carved out of the cross-port manifest until every port
-        /// registers it, then the carve-out is removed and the canonical updated in
-        /// ONE commit (the same lifecycle the retired TsPilotVocab carve-outs
-        /// followed for <c>@responseRef</c>/<c>@provided</c>).
-        /// Members today: the <c>object.projection</c> (type, subType) row (ADR-0028).
+        /// FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
+        /// <c>object.projection</c> row + the <c>origin.aggregate.via</c>
+        /// required-override were excluded until every port registered the FR-024
+        /// loader-grammar slice, then removed with the canonical updated in ONE
+        /// commit (the <c>@responseRef</c> carve-out-close playbook). Kept as the
+        /// documented lifecycle slot for the next rollout; currently no members.
         /// </summary>
         Fr024Pending,
     }
@@ -121,12 +119,6 @@ public static class RegistryManifest
         {
             return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
         }
-        if (type == BaseTypes.TYPE_OBJECT && subType == Core.Object.ObjectConstants.OBJECT_SUBTYPE_PROJECTION)
-        {
-            // FR-024 vocabulary registered ahead of the cross-port manifest; atomic
-            // all-ports manifest flip in FR-024 Phase E.
-            return ExclusionReason.Fr024Pending;
-        }
         return ExclusionReason.Included;
     }
 
@@ -140,15 +132,12 @@ public static class RegistryManifest
     /// canonical stays byte-identical until the Phase-E atomic all-ports flip, when
     /// this map empties and the canonical is updated in ONE commit.
     ///
-    /// Members today: <c>origin.aggregate.via</c> — required pre-FR-024; OPTIONAL
-    /// under ADR-0029 decision 5 (omitted <c>@via</c> is inferred when exactly one
-    /// single-hop relationship leads from the base entity to the <c>@of</c> entity).
+    /// Members today: NONE — <c>origin.aggregate.via</c> flipped at the FR-024
+    /// atomic all-ports manifest flip (optional everywhere, ADR-0029 decision 5).
+    /// The mechanism stays for the next reference-first rollout.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, bool> Fr024PendingRequiredOverrides =
-        new Dictionary<string, bool>(StringComparer.Ordinal)
-        {
-            [$"{BaseTypes.TYPE_ORIGIN}.{Persistence.Origin.OriginConstants.ORIGIN_SUBTYPE_AGGREGATE}.{Persistence.Origin.OriginConstants.ORIGIN_AGGREGATE_ATTR_VIA}"] = true,
-        };
+        new Dictionary<string, bool>(StringComparer.Ordinal);
 
     /// <summary>Manifest requiredness for an attr — the FR-024-pending override when one exists, else null.</summary>
     public static bool? ManifestRequiredOverride(string type, string subType, string attrName) =>
