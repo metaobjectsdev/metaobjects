@@ -300,28 +300,16 @@ public abstract class BaseMetaDataParser {
 
         
         if (packageName == null || packageName.trim().isEmpty()) {
-            // If not found, then use the default
-            // For child elements, inherit package from parent instead of root document
-    
-            // Only apply package inheritance for specific cases, not for object children like fields
-            if (!isRoot && parent != null && parent.getName().contains(MetaDataLoader.PKG_SEPARATOR)
-                && shouldInheritPackageFromParent(parent, typeName)) {
-                // Extract package from parent's full name (everything before the last separator)
-                String parentName = parent.getName();
-                int lastSep = parentName.lastIndexOf(MetaDataLoader.PKG_SEPARATOR);
-                if (lastSep > 0) {
-                    packageName = parentName.substring(0, lastSep);
-                } else {
-                    packageName = getDefaultPackageName();
-                }
-            } else {
-                // For fields within objects, use no package to get simple names
-                if ("field".equals(typeName) && parent != null && "object".equals(parent.getType())) {
-                    packageName = "";
-                } else {
-                    packageName = getDefaultPackageName();
-                }
-            }
+            // FR-024 addressing model (ADR-0029): a package qualifies ROOT-LEVEL
+            // metadata only (objects, root abstract fields). Nested children —
+            // fields, identities, sources, validators, views, ... — carry BARE
+            // names and are addressed by traversal through child names
+            // (pkg::Root.child...). Previously every non-field nested child got
+            // the file-default package folded onto its registered name (e.g. an
+            // identity registering as "demo::id"), which broke name-based child
+            // addressing and matched no other port (TS/C#/Python nested names
+            // are always bare).
+            packageName = isRoot ? getDefaultPackageName() : "";
         } else {
             // Convert any relative paths to the full package path
             packageName = expandPackageForPath( getDefaultPackageName(), packageName );
@@ -338,7 +326,16 @@ public abstract class BaseMetaDataParser {
             if ( isRoot && packageName.length() > 0 ) {
                 md = parent.getChildOfType( typeName, packageName + MetaDataLoader.PKG_SEPARATOR + name );
             } else {
-                md = parent.getChildOfType( typeName, name );
+                // OWN children only (includeParentData=false): the overlay merge
+                // applies when the SAME node is re-declared (cross-file overlays of
+                // a merged object). A child whose (type, name) matches one INHERITED
+                // through `extends` is a SHADOWING REDECLARATION per the cross-port
+                // canonical contract (own-overrides-super in the effective view; no
+                // override/extends marker is recorded or serialized). The previous
+                // effective-view lookup only ever missed because nested names were
+                // package-folded — bare nested names (FR-024 addressing model) made
+                // it visible.
+                md = parent.getChildOfType( typeName, name, false );
 
                 // If it's not a child from the same parent, we need to wrap it
                 if ( md.getParent() != parent ) {
@@ -389,30 +386,6 @@ public abstract class BaseMetaDataParser {
         return md;
     }
 
-    /**
-     * Determines whether a child element should inherit the package from its parent.
-     * Generally, fields within objects should have simple names, not inherit the object's package.
-     * But validators within fields might inherit the field's package.
-     */
-    protected boolean shouldInheritPackageFromParent(MetaData parent, String childTypeName) {
-        // Fields within objects should have simple names
-        if ("field".equals(childTypeName) && parent != null && "object".equals(parent.getType())) {
-            return false;
-        }
-
-        // Validators within fields can inherit the field's package
-        if ("validator".equals(childTypeName) && parent != null && "field".equals(parent.getType())) {
-            return true;
-        }
-
-        // Attributes generally don't inherit packages
-        if ("attr".equals(childTypeName)) {
-            return false;
-        }
-
-        // Default to false for safety - elements should explicitly specify packages if needed
-        return false;
-    }
 
     /** Get the Super MetaData if it exists - v6.0.0: Updated to use registry */
     protected MetaData getSuperMetaData(MetaData parent, String typeName, String name, String packageName, String superName ) {

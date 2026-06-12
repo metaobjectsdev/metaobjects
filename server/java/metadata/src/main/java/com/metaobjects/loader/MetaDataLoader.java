@@ -352,26 +352,16 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         }
 
-        MetaData target = null;
+        MetaData target;
         try {
             // Type-scoped + EFFECTIVE (includeParentData): a field ref selects among
             // the owner's fields (own + inherited); an identity ref among identities.
+            // Nested child names are BARE (the FR-024 addressing model: a package
+            // qualifies root-level metadata only; BaseMetaDataParser no longer folds
+            // the file-default package onto nested children).
             target = owner.getChildOfType(p.child.getType(), childName);
         } catch (com.metaobjects.MetaDataNotFoundException notFound) {
-            // Java folds the file-default package onto SOME nested child names
-            // (identity children register as e.g. "demo::id" while fields stay
-            // bare "id") — match by SHORT name as the fallback so the dotted
-            // grammar stays package-folding-agnostic, mirroring the TS/C#/Python
-            // reference behavior (their child names are always bare).
-            for (MetaData c : owner.getChildren(MetaData.class, true)) {
-                if (c.isType(p.child.getType()) && childName.equals(c.getShortName())) {
-                    target = c;
-                    break;
-                }
-            }
-            if (target == null) {
-                return null;
-            }
+            return null;
         }
 
         if (!target.getType().equals(p.child.getType())

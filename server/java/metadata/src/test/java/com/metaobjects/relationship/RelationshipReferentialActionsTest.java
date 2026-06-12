@@ -168,7 +168,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
             MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
             assertNotNull("Order should exist for action=" + action, order);
 
-            MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "acme::items");
+            MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "items");
             assertNotNull("relationship.composition 'acme::items' should exist for action=" + action, rel);
             assertTrue("node must be a MetaRelationship", rel instanceof MetaRelationship);
             assertEquals("getOnDeleteRaw() should return '" + action + "'",
@@ -187,7 +187,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
             MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
             assertNotNull("Order should exist for action=" + action, order);
 
-            MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "acme::members");
+            MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "members");
             assertNotNull("relationship.aggregation 'acme::members' should exist for action=" + action, rel);
             assertTrue("node must be a MetaRelationship", rel instanceof MetaRelationship);
             assertEquals("getOnUpdateRaw() should return '" + action + "'",
@@ -210,7 +210,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
 
         MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
         assertNotNull(order);
-        MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "acme::sections");
+        MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "sections");
         assertNotNull(rel);
         assertTrue(rel instanceof MetaRelationship);
         MetaRelationship metaRel = (MetaRelationship) rel;
@@ -317,7 +317,7 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
 
         MetaData order = loader.getRoot().getChildOfType("object", "acme::Order");
         assertNotNull(order);
-        MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "acme::items");
+        MetaData rel = order.getChildOfType(MetaRelationship.TYPE_RELATIONSHIP, "items");
         assertNotNull(rel);
         assertTrue(rel instanceof MetaRelationship);
         MetaRelationship metaRel = (MetaRelationship) rel;
