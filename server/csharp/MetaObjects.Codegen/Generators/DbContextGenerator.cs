@@ -182,7 +182,7 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         if (needsMetadataUsing)
             sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata;");
-        // FR-021 — pull in every per-package namespace the model uses. The DbContext
+        // Package-binding — pull in every per-package namespace the model uses. The DbContext
         // references EVERY entity by short name (DbSet<X>, modelBuilder.Entity<X>()),
         // so it needs a `using` for each distinct namespace the entities resolve to.
         var dbCtxNs = ctx.Config.Namespace;

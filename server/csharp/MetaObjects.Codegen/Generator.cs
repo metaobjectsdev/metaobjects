@@ -58,7 +58,7 @@ public sealed record GenConfig
     public Dictionary<string, string> PackageNamespaces { get; init; } = new();
 
     /// <summary>
-    /// FR-021 — convention rule that derives a C# namespace from a metadata package
+    /// Package-binding — convention rule that derives a C# namespace from a metadata package
     /// when no explicit override matches. Covers the 90% case so an adopter with N
     /// domains needs ~1 line of config, not N. Unset (null) ⇒ no convention applied;
     /// resolution falls through to <see cref="UnmappedStrategy"/>.
@@ -66,7 +66,7 @@ public sealed record GenConfig
     public PackageBindingConvention? Convention { get; init; }
 
     /// <summary>
-    /// FR-021 — type-level overrides keyed by fully-qualified type name
+    /// Package-binding — type-level overrides keyed by fully-qualified type name
     /// (<c>&lt;package&gt;::&lt;typeName&gt;</c>). Wins over package-level
     /// <see cref="PackageNamespaces"/> and the <see cref="Convention"/> rule. Use when
     /// a single entity / value-object / enum in an otherwise-uniform package needs to
@@ -75,7 +75,7 @@ public sealed record GenConfig
     public Dictionary<string, string> TypeOverrides { get; init; } = new();
 
     /// <summary>
-    /// FR-021 — what to do when neither overrides nor the <see cref="Convention"/> rule
+    /// Package-binding — what to do when neither overrides nor the <see cref="Convention"/> rule
     /// resolves a metadata package. Defaults to <see cref="UnmappedPackageStrategy.Flatten"/>
     /// (today's behavior: fall back to <see cref="Namespace"/>). Setting to
     /// <see cref="UnmappedPackageStrategy.Error"/> forces explicit mapping (recommended
@@ -85,7 +85,7 @@ public sealed record GenConfig
     public UnmappedPackageStrategy UnmappedStrategy { get; init; } = UnmappedPackageStrategy.Flatten;
 }
 
-/// <summary>FR-021 — convention rule that derives a target namespace from a metadata
+/// <summary>Package-binding — convention rule that derives a target namespace from a metadata
 /// package. Resolution: split the package on <c>::</c>, strip the leading
 /// <see cref="Strip"/> prefix (if matched), transform each remaining segment per
 /// <see cref="Case"/>, join by <see cref="Separator"/>, prepend <see cref="Prepend"/>.
@@ -111,7 +111,7 @@ public sealed record PackageBindingConvention
     /// the metadata package on <c>::</c>, BEFORE joining by <see cref="Separator"/>.</summary>
     public PackageCase Case { get; init; } = PackageCase.PascalCase;
 
-    /// <summary>FR-021 — alternate <see cref="Prepend"/> applied when resolving an
+    /// <summary>Package-binding — alternate <see cref="Prepend"/> applied when resolving an
     /// abstract <c>field.enum</c> with <c>@provided: true</c> (the FR-019 shared-enum
     /// reference case). When set, the convention rule's strip / case / separator stay
     /// the same; only the prepended root differs. Lets adopters route <c>@provided</c>

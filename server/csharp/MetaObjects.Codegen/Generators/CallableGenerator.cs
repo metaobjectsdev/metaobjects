@@ -72,7 +72,7 @@ public class CallableGenerator : PerEntityGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Threading.Tasks;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        // FR-021 — the callable's home namespace + the args VO's namespace, when split.
+        // Package-binding — the callable's home namespace + the args VO's namespace, when split.
         // The callable file declares a `static class {cls}Callable` referencing the
         // result type and the args type; both can live in different per-package
         // namespaces from where AppDbContext lives.
