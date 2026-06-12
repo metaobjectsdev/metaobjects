@@ -12,6 +12,9 @@ public enum ErrorCode
     ERR_MISSING_SUBTYPE,
     ERR_DUPLICATE_NAME,
     ERR_UNRESOLVED_SUPER,
+    // FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
+    // subtype does not match the extending node.
+    ERR_EXTENDS_TARGET_MISMATCH,
     ERR_INVALID_SUBTYPE_CHILD,
     ERR_UNKNOWN_ATTR,
     ERR_MISSING_REQUIRED_ATTR,

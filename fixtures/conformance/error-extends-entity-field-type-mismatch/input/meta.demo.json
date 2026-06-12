@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "CustomerArgs",
+          "children": [
+            { "field.uuid": { "name": "customerId", "extends": "Customer.name" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -12,7 +12,7 @@
 // The old resolveSupers() multi-pass walker has been deleted.
 
 import type { MetaData } from "./shared/meta-data.js";
-import { PACKAGE_SEPARATOR, PACKAGE_PARENT } from "./shared/structural.js";
+import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 
 // ---------------------------------------------------------------------------
 // Tree search helper
@@ -53,22 +53,89 @@ function findInTree(root: MetaData, fqn: string): MetaData | undefined {
 // ---------------------------------------------------------------------------
 
 /**
+ * FR-024 (ADR-0029): the type-scope of the node whose `extends` is being
+ * resolved. A dotted `Entity.child` ref selects among the owner's children of
+ * the SAME type as the referrer — a field ref resolves fields, an identity
+ * ref resolves identities. Required for the dotted branch; ignored for
+ * dot-free refs (legacy behavior unchanged).
+ */
+export interface ReferrerScope {
+  readonly type: string;
+}
+
+/**
+ * FR-024: true when a ref's final `::`-segment contains a `.` — i.e. the ref
+ * targets a child nested inside an object (`Customer.id`,
+ * `acme::sales::Customer.id`). Names cannot contain `.`, so this is
+ * unambiguous. Call sites use this to apply the dotted-only
+ * type/subtype-mismatch check (ERR_EXTENDS_TARGET_MISMATCH) without altering
+ * shipped top-level extends behavior.
+ */
+export function isChildTargetingRef(ref: string): boolean {
+  const lastSep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const lastSegment = lastSep === -1 ? ref : ref.slice(lastSep + PACKAGE_SEPARATOR.length);
+  return lastSegment.includes(CHILD_REF_SEPARATOR);
+}
+
+/**
+ * FR-024: split a child-targeting ref into the owner-object ref and the child
+ * name. Returns undefined for the reserved multi-dot form (`X.y.z`) and for
+ * degenerate empty parts (`.id`, `Customer.`).
+ */
+function parseChildTargetingRef(
+  ref: string,
+): { ownerRef: string; childName: string } | undefined {
+  const lastSep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const segStart = lastSep === -1 ? 0 : lastSep + PACKAGE_SEPARATOR.length;
+  const lastSegment = ref.slice(segStart);
+  const parts = lastSegment.split(CHILD_REF_SEPARATOR);
+  if (parts.length !== 2 || parts[0] === "" || parts[1] === "") return undefined;
+  return {
+    ownerRef: ref.slice(0, segStart) + parts[0],
+    childName: parts[1]!,
+  };
+}
+
+/**
  * Resolve a single super reference string against a tree.
  *
  * Called by the parser IMMEDIATELY when a node with a `super` key is created,
  * against the loader's accumulating root (intoRoot). Java semantics: if the
  * ref cannot be resolved, the parser throws ParseError.
  *
- * @param ref - The raw super reference (e.g., "Fruit", "::pkg::Name", "..::common::id")
+ * FR-024 (ADR-0029): a ref whose final segment is dotted (`Customer.id`)
+ * targets a child nested inside an object. The owner part resolves with the
+ * existing strategies (absolute / relative / bare / same-package); the child
+ * is then selected among the owner's EFFECTIVE children (so inherited
+ * children resolve) by name AND the referrer's type (type-scoped). A dotted
+ * ref that does not resolve returns undefined WITHOUT falling through to the
+ * bare lookup; a dotted ref with no `referrerScope` is unresolvable.
+ *
+ * @param ref - The raw super reference (e.g., "Fruit", "::pkg::Name", "..::common::id", "Customer.id")
  * @param contextPackage - The package of the model whose super is being resolved
  * @param root - The root MetaData of the accumulating tree to search within
+ * @param referrerScope - FR-024: the extending node's type — required to resolve dotted refs
  * @returns The resolved MetaData, or undefined if the reference cannot be resolved
  */
 export function resolveSuperRef(
   ref: string,
   contextPackage: string,
   root: MetaData,
+  referrerScope?: ReferrerScope,
 ): MetaData | undefined {
+  // -------------------------------------------------------------------------
+  // 0. FR-024 dotted child-targeting ref: `<ownerRef>.<childName>`
+  // -------------------------------------------------------------------------
+  if (isChildTargetingRef(ref)) {
+    if (referrerScope === undefined) return undefined;
+    const parsed = parseChildTargetingRef(ref);
+    if (parsed === undefined) return undefined; // multi-dot reserved / degenerate
+    const owner = resolveSuperRef(parsed.ownerRef, contextPackage, root);
+    if (owner === undefined) return undefined;
+    return owner
+      .children()
+      .find((c) => c.name === parsed.childName && c.type === referrerScope.type);
+  }
   // -------------------------------------------------------------------------
   // 1. Absolute reference: leading "::"
   // -------------------------------------------------------------------------
@@ -119,6 +186,19 @@ export interface DeferredSuperFailure {
   ref: string;
   /** ADR-0009 provenance envelope of the referencing node (FR5a). */
   source: import("./source.js").ErrorSource;
+  /**
+   * FR-024: why resolution failed.
+   * - "unresolved" — no target found (loader emits ERR_UNRESOLVED_SUPER).
+   * - "target-mismatch" — a dotted child-targeting ref resolved, but the
+   *   target's type/subtype differs from the extending node's (loader emits
+   *   ERR_EXTENDS_TARGET_MISMATCH). Applies ONLY to dotted refs — top-level
+   *   extends behavior is unchanged.
+   */
+  kind: "unresolved" | "target-mismatch";
+  /** target-mismatch only: the resolved target's identity, for the message. */
+  target?: { type: string; subType: string };
+  /** target-mismatch only: the extending node's type/subtype, for the message. */
+  referrer?: { type: string; subType: string };
 }
 
 /**
@@ -140,15 +220,38 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
     if (node.superRef === undefined) return;
     if (node.superResolved !== undefined) return;
     const effectivePkg = node.package ?? node.fileDefaultPackage ?? "";
-    const target = resolveSuperRef(node.superRef, effectivePkg, root);
+    // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
+    // type-scoped (a field ref selects fields; an identity ref identities).
+    const target = resolveSuperRef(node.superRef, effectivePkg, root, { type: node.type });
     if (target !== undefined) {
+      // FR-024: a dotted ref must target a node of the SAME type and subtype
+      // as the extending node. Dotted-only — top-level extends is unchanged.
+      if (
+        isChildTargetingRef(node.superRef) &&
+        (target.type !== node.type || target.subType !== node.subType)
+      ) {
+        failures.push({
+          nodeFqn: node.fqn(),
+          ref: node.superRef,
+          source: node.source,
+          kind: "target-mismatch",
+          target: { type: target.type, subType: target.subType },
+          referrer: { type: node.type, subType: node.subType },
+        });
+        return;
+      }
       try {
         node.setSuperResolved(target);
       } catch {
         // Frozen — ignore; the loader should resolve before freeze.
       }
     } else {
-      failures.push({ nodeFqn: node.fqn(), ref: node.superRef, source: node.source });
+      failures.push({
+        nodeFqn: node.fqn(),
+        ref: node.superRef,
+        source: node.source,
+        kind: "unresolved",
+      });
     }
   });
   return failures;

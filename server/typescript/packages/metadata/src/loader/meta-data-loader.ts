@@ -416,6 +416,22 @@ export class MetaDataLoader {
         // parse-time source supplies files + jsonPath (the location of the
         // broken `extends:` on disk); referrer = the declaring node's FQN;
         // target = the unresolved supertype ref.
+        if (failure.kind === "target-mismatch") {
+          // FR-024 — a dotted child-targeting ref resolved, but the target's
+          // type/subtype differs from the extending node's. Dotted-only check.
+          const r = failure.referrer;
+          const t = failure.target;
+          errors.push(
+            new ParseError(
+              `the extends target '${failure.ref}' is ${t?.type}.${t?.subType} but the extending node '${failure.nodeFqn}' is ${r?.type}.${r?.subType} — a dotted extends must target a node of the same type and subtype`,
+              {
+                code: "ERR_EXTENDS_TARGET_MISMATCH",
+                source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
+              },
+            ),
+          );
+          continue;
+        }
         errors.push(
           new ParseError(
             `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,

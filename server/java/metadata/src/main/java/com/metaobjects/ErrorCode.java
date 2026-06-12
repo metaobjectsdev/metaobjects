@@ -54,6 +54,13 @@ public enum ErrorCode {
     /** An extends/super reference names a node that does not exist. */
     ERR_UNRESOLVED_SUPER,
 
+    /**
+     * FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
+     * subtype does not match the extending node (a field may only extend a field
+     * of the same subtype; an identity only an identity).
+     */
+    ERR_EXTENDS_TARGET_MISMATCH,
+
     /** A child node type/subType is not permitted under its parent. */
     ERR_INVALID_SUBTYPE_CHILD,
 

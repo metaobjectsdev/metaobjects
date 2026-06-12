@@ -1,0 +1,15 @@
+{
+  "metadata.root": {
+    "package": "acme::api",
+    "children": [
+      {
+        "object.value": {
+          "name": "CustomerArgs",
+          "children": [
+            { "field.uuid": { "name": "customerId", "extends": "acme::sales::Customer.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

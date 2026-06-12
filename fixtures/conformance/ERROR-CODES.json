@@ -8,6 +8,7 @@
     "ERR_MISSING_SUBTYPE": "A node omits subType and the type has no default subType.",
     "ERR_DUPLICATE_NAME": "Two sibling nodes share the same name.",
     "ERR_UNRESOLVED_SUPER": "An extends/super reference names a node that does not exist.",
+    "ERR_EXTENDS_TARGET_MISMATCH": "FR-024: a dotted extends ref resolved to a node whose type or subtype does not match the extending node (a field may only extend a field of the same subtype; an identity only an identity).",
     "ERR_INVALID_SUBTYPE_CHILD": "A child node type/subType is not permitted under its parent.",
     "ERR_UNKNOWN_ATTR": "An attribute name is not declared on the node's type.",
     "ERR_MISSING_REQUIRED_ATTR": "A required attribute is absent from the node.",

@@ -31,7 +31,7 @@ import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
 import { semanticDiff } from "./semantic-diff.js";
-import { resolveSuperRef } from "./super-resolve.js";
+import { resolveSuperRef, isChildTargetingRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
@@ -531,8 +531,25 @@ function parseNodeFresh(
   // (Skipped when deferSuperResolution is true — the loader resolves after
   // all input files have been parsed, so cross-file super refs work.)
   if (model.superRef !== undefined && accumRoot !== undefined && !_deferSuperResolution) {
-    const superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot);
+    // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
+    // type-scoped — kept consistent with the deferred path (super-resolve.ts).
+    const superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot, { type: model.type });
     if (superModel !== undefined) {
+      // FR-024 — a dotted child-targeting ref must resolve to a node of the
+      // SAME type and subtype as the extending node. Dotted-only check; the
+      // shipped top-level extends behavior is unchanged.
+      if (
+        isChildTargetingRef(model.superRef) &&
+        (superModel.type !== model.type || superModel.subType !== model.subType)
+      ) {
+        throw new ParseError(
+          `the extends target '${model.superRef}' is ${superModel.type}.${superModel.subType} but the extending node '${model.fqn()}' is ${model.type}.${model.subType} — a dotted extends must target a node of the same type and subtype`,
+          {
+            code: "ERR_EXTENDS_TARGET_MISMATCH",
+            source: resolvedSource(errSource(), model.fqn(), model.superRef),
+          },
+        );
+      }
       model.setSuperResolved(superModel);
     } else {
       // FR5d — emit format=resolved with referrer + target. referrer is the

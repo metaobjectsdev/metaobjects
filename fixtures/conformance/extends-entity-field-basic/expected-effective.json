@@ -1,0 +1,60 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id",
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "CustomerArgs",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "customerId",
+                "extends": "Customer.id",
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

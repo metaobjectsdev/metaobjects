@@ -1,5 +1,10 @@
 {
   "language": "python",
-  "fixtures": [],
-  "notes": "No expected conformance failures. The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti — previously ledgered TS-pilot gaps — now load + canonical-serialize cleanly in the Python port: @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip), and template.* is admitted as an object.entity child (_OBJECT_CHILD_RULES). The sibling ai-llm-call-extends has always passed cross-port."
+  "fixtures": [
+    "extends-entity-field-basic",
+    "extends-entity-field-cross-package",
+    "error-extends-entity-field-type-mismatch"
+  ],
+  "_comment_fr024": "FR-024 Phase B — dotted Entity.child extends-resolution shipped in the TS reference port only; un-ledger in Phase E (cross-port fan-out). error-extends-entity-field-unresolved is NOT ledgered: a dotted ref is simply unresolvable here, so this port already emits the identical ERR_UNRESOLVED_SUPER envelope and the fixture passes.",
+  "notes": "Only the FR-024 Phase B fixtures above are expected failures (see _comment_fr024). The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti — previously ledgered TS-pilot gaps — now load + canonical-serialize cleanly in the Python port: @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip), and template.* is admitted as an object.entity child (_OBJECT_CHILD_RULES). The sibling ai-llm-call-extends has always passed cross-port."
 }
