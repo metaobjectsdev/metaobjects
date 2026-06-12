@@ -249,8 +249,13 @@ describe("extractViewSpec — shared @via deduplication", () => {
                 name: "firstWeekTitle",
                 children: [
                   {
-                    "origin.passthrough": {
-                      "@from": "Week.title",
+                    // FR-024 (ADR-0029): a passthrough through a to-many hop is a
+                    // row-multiplying passthrough and is now ERR_ORIGIN_CARDINALITY
+                    // at load — an aggregate (min) over the same @via keeps this
+                    // test's purpose intact: two origins sharing one @via.
+                    "origin.aggregate": {
+                      "@agg": "min",
+                      "@of": "Week.title",
                       "@via": "Program.weeks",
                     },
                   },
@@ -269,7 +274,7 @@ describe("extractViewSpec — shared @via deduplication", () => {
     // Both fields reference Program.weeks — should deduplicate to a single join node.
     expect(spec.joinTree.joins.length).toBe(1);
     expect(spec.joinTree.joins[0]!.relationship).toBe("weeks");
-    // Both weekCount (aggregate) and firstWeekTitle (passthrough) appear in columns.
+    // Both weekCount (count) and firstWeekTitle (min) appear in columns.
     const fieldNames = spec.selectSpec.columns.map((c) => c.fieldName);
     expect(fieldNames).toContain("weekCount");
     expect(fieldNames).toContain("firstWeekTitle");
