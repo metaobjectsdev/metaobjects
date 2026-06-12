@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted (2026-06-12). Defined by FR-024 §9; aligns and grounds the FR-021 design
-sketch.
+Accepted (2026-06-12). Defined by FR-024 §9
+(`docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md`);
+aligns and grounds the FR-021 design sketch.
 
 ## Context
 

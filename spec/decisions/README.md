@@ -34,4 +34,17 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0014 — Type-registry resolution is loader-scoped, not process-global](ADR-0014-loader-scoped-type-registry-resolution.md) — *Accepted*
 - [ADR-0017 — Cross-port runtime object model (ValueObject default + MetaObjectAware + self-registering ObjectClassRegistry + newInstance factory)](ADR-0017-cross-port-runtime-object-model.md) — *Accepted*
 - [ADR-0018 — Per-kind physical-name attributes within source paradigms](ADR-0018-per-kind-physical-name-attrs.md) — *Proposed*
+- [ADR-0015 — One shared migration engine; codegen + loader stay per-port](ADR-0015-single-shared-migrate-engine.md) — *Accepted*
+- [ADR-0016 — Build the migration apply+tracking runner (TS-native, Postgres-first)](ADR-0016-build-migration-apply-runner.md) — *Accepted*
 - [ADR-0019 — Runtime return-type contract: native in-process, canonicalize at the boundary](ADR-0019-runtime-return-type-contract.md) — *Accepted*
+- [ADR-0020 — Codegen tiering — native-per-port vs neutral-shared](ADR-0020-codegen-tiering-native-vs-neutral.md) — *Superseded by ADR-0022*
+- [ADR-0021 — Codegen surface coherence — one front door, stable-name registry, consistent verify](ADR-0021-codegen-surface-coherence.md) — *Superseded by ADR-0022*
+- [ADR-0022 — Codegen & documentation surface architecture (consolidated)](ADR-0022-codegen-and-docs-surface-architecture.md) — *Accepted*
+- [ADR-0023 — Strict metadata provenance: no made-up attributes](ADR-0023-strict-metadata-provenance.md) — *Accepted*
+- [ADR-0024 — AI-trace scope: the typed trace + recorder is the standard; the LLM caller is bring-your-own](ADR-0024-ai-trace-scope-and-llm-caller-boundary.md) — *Accepted*
+- [ADR-0025 — Unified docs door — one command, two surfaces, one config](ADR-0025-unified-docs-door.md) — *Accepted*
+- [ADR-0026 — Shared & externally-provided named types (enums + value objects)](ADR-0026-shared-and-provided-named-types.md) — *Accepted*
+- [ADR-0027 — Polyglot docs composition — per-language api surfaces, model once](ADR-0027-polyglot-docs-composition.md) — *Accepted*
+- [ADR-0028 — Object taxonomy: `object.projection`, value purity, and the population doctrine](ADR-0028-object-taxonomy-projection-value-purity.md) — *Accepted*
+- [ADR-0029 — Universal `Entity.child` extends-resolution and the `via` inference contract](ADR-0029-entity-child-extends-and-via-inference.md) — *Accepted*
+- [ADR-0030 — The declared API surface lives in core; protocol lives in bindings; the organization tier stays out](ADR-0030-declared-api-surface-and-org-tier-boundary.md) — *Accepted*

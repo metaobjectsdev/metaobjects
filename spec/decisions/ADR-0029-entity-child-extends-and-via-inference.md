@@ -11,7 +11,7 @@ Contract shapes (projections, proc-parameter VOs, command inputs) need fields wh
 type/docs/validators track an entity field, with drift caught at build time. Two
 mechanisms competed: enhancing `origin.passthrough` to inherit shape, or field-level
 `extends` targeting entity-nested fields. Separately, `@via` relationship paths
-needed an omission rule that five loaders can implement byte-identically.
+needed an omission rule that five loaders can implement byte-identically. An internal entity-surfaces RFC had proposed a new `viewOf` structural key for view lineage.
 
 ## Decision
 
