@@ -19,11 +19,20 @@ needed an omission rule that five loaders can implement byte-identically. An int
    answers "where does this field's shape come from"; `origin.*` answers "where does
    its data come from / how is the view assembled." They are independent statements
    that often coincide and may appear together.
-2. **`extends` may target an entity-nested child** (`Customer.id`, cross-package
-   `acme::sales::Customer.id`), resolved **type-scoped**: a field resolves entity
-   fields; an identity resolves entity identities. Universal — legal on projection
-   fields, value fields, and entity derived fields alike. Existing override
-   semantics apply (redeclare on the child to pin an inherited attr).
+2. **`extends` may target a nested child to ANY depth** (`Customer.id`,
+   cross-package `acme::sales::Customer.id`, triple-nest
+   `Customer.priceCents.display` — object → field → view). The addressing
+   model: **a package qualifies the ROOT-level node only; every subsequent
+   dotted segment traverses CHILD NAMES** (which is why every node is named).
+   INTERMEDIATE segments select by unique name among the current node's
+   effective children — a cross-type name collision (a field AND an identity
+   both named `id`) is ambiguous → unresolved; the FINAL segment is
+   **type-scoped** to the referrer (a field resolves fields; an identity
+   identities; a view views), which also disambiguates the common 2-segment
+   case. Universal — legal on projection fields, value fields, entity derived
+   fields, identities, and views alike. Existing override semantics apply
+   (redeclare on the child to pin an inherited attr). Nested children carry
+   BARE names — packages are never folded onto non-root nodes.
 3. **Load-time drift gate:** renaming/retyping the target fails `extends`
    resolution in every referencing shape — the contract breaks the build at LOAD,
    strictly earlier than verify-time origin resolution.

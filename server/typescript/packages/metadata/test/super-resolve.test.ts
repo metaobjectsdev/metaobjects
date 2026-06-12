@@ -17,12 +17,16 @@ import {
   TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_IDENTITY,
+  TYPE_VIEW,
   OBJECT_SUBTYPE_ENTITY,
   SUBTYPE_ROOT,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_CURRENCY,
   IDENTITY_SUBTYPE_PRIMARY,
+  VIEW_SUBTYPE_CURRENCY,
 } from "../src/index.js";
+import { MetaView } from "../src/presentation/view/meta-view.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,6 +44,10 @@ function makeField(name: string, subType: string): MetaData {
 
 function makeIdentity(name: string, subType: string): MetaData {
   return new MetaIdentity(new TypeId(TYPE_IDENTITY, subType), name);
+}
+
+function makeView(name: string, subType: string): MetaData {
+  return new MetaView(new TypeId(TYPE_VIEW, subType), name);
 }
 
 function makeRoot(): MetaData {
@@ -281,12 +289,58 @@ describe("resolveSuperRef — dotted Entity.child refs (FR-024)", () => {
     expect(found).toBeUndefined();
   });
 
-  it("multi-dot ref X.y.z stays unresolvable (reserved)", () => {
+  // -------------------------------------------------------------------------
+  // Deep traversal (`X.y.z...`): package qualifies the ROOT node only; every
+  // subsequent segment traverses child names. Intermediate segments resolve by
+  // UNIQUE name (cross-type collision = ambiguous = unresolved); the final
+  // segment is type-scoped to the referrer.
+  // -------------------------------------------------------------------------
+
+  it("triple-nest Customer.priceCents.display resolves the field's VIEW for a view referrer", () => {
+    const root = makeRoot();
+    const { customer } = makeCustomer("demo");
+    const price = makeField("priceCents", FIELD_SUBTYPE_CURRENCY);
+    const display = makeView("display", VIEW_SUBTYPE_CURRENCY);
+    price.addChild(display);
+    customer.addChild(price);
+    root.addChild(customer);
+
+    const found = resolveSuperRef("Customer.priceCents.display", "demo", root, { type: TYPE_VIEW });
+    expect(found).toBe(display);
+  });
+
+  it("deep traversal: missing intermediate segment → undefined", () => {
     const root = makeRoot();
     const { customer } = makeCustomer("demo");
     root.addChild(customer);
 
-    const found = resolveSuperRef("Customer.id.z", "demo", root, { type: TYPE_FIELD });
+    const found = resolveSuperRef("Customer.nosuch.display", "demo", root, { type: TYPE_VIEW });
+    expect(found).toBeUndefined();
+  });
+
+  it("deep traversal: AMBIGUOUS intermediate (field + identity both named 'id') → undefined", () => {
+    const root = makeRoot();
+    const { customer, idField } = makeCustomer("demo"); // has field `id` AND identity `id`
+    const v = makeView("display", VIEW_SUBTYPE_CURRENCY);
+    idField.addChild(v);
+    root.addChild(customer);
+
+    // "id" matches two children of different types → ambiguous intermediate.
+    const found = resolveSuperRef("Customer.id.display", "demo", root, { type: TYPE_VIEW });
+    expect(found).toBeUndefined();
+  });
+
+  it("deep traversal: final segment stays type-scoped to the referrer", () => {
+    const root = makeRoot();
+    const { customer } = makeCustomer("demo");
+    const price = makeField("priceCents", FIELD_SUBTYPE_CURRENCY);
+    const display = makeView("display", VIEW_SUBTYPE_CURRENCY);
+    price.addChild(display);
+    customer.addChild(price);
+    root.addChild(customer);
+
+    // A FIELD referrer must not resolve the view through the same path.
+    const found = resolveSuperRef("Customer.priceCents.display", "demo", root, { type: TYPE_FIELD });
     expect(found).toBeUndefined();
   });
 

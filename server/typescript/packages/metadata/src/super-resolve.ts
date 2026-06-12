@@ -84,15 +84,15 @@ export function isChildTargetingRef(ref: string): boolean {
  */
 function parseChildTargetingRef(
   ref: string,
-): { ownerRef: string; childName: string } | undefined {
+): { ownerRef: string; path: readonly string[] } | undefined {
   const lastSep = ref.lastIndexOf(PACKAGE_SEPARATOR);
   const segStart = lastSep === -1 ? 0 : lastSep + PACKAGE_SEPARATOR.length;
   const lastSegment = ref.slice(segStart);
   const parts = lastSegment.split(CHILD_REF_SEPARATOR);
-  if (parts.length !== 2 || parts[0] === "" || parts[1] === "") return undefined;
+  if (parts.length < 2 || parts.some((p) => p === "")) return undefined;
   return {
     ownerRef: ref.slice(0, segStart) + parts[0],
-    childName: parts[1]!,
+    path: parts.slice(1),
   };
 }
 
@@ -124,17 +124,33 @@ export function resolveSuperRef(
   referrerScope?: ReferrerScope,
 ): MetaData | undefined {
   // -------------------------------------------------------------------------
-  // 0. FR-024 dotted child-targeting ref: `<ownerRef>.<childName>`
+  // 0. FR-024 dotted child-targeting ref: `<rootRef>.<child>...<child>`
+  //
+  // Addressing model (ADR-0029): the package qualifies the ROOT-level node
+  // only; each subsequent segment traverses CHILD NAMES, to any depth
+  // (object → field → view: `Customer.priceCents.display`). INTERMEDIATE
+  // segments select by unique name among the current node's effective
+  // children (a cross-type name collision, e.g. a field AND an identity both
+  // named "id", is ambiguous → unresolved); the FINAL segment is type-scoped
+  // to the referrer (a field ref resolves fields, a view ref views), which is
+  // also what disambiguates the common 2-segment `Customer.id` case.
   // -------------------------------------------------------------------------
   if (isChildTargetingRef(ref)) {
     if (referrerScope === undefined) return undefined;
     const parsed = parseChildTargetingRef(ref);
-    if (parsed === undefined) return undefined; // multi-dot reserved / degenerate
-    const owner = resolveSuperRef(parsed.ownerRef, contextPackage, root);
-    if (owner === undefined) return undefined;
-    return owner
+    if (parsed === undefined) return undefined; // degenerate (empty segment)
+    let current = resolveSuperRef(parsed.ownerRef, contextPackage, root);
+    if (current === undefined) return undefined;
+    for (let i = 0; i < parsed.path.length - 1; i++) {
+      const seg = parsed.path[i]!;
+      const matches = current.children().filter((c) => c.name === seg);
+      if (matches.length !== 1) return undefined; // missing or ambiguous intermediate
+      current = matches[0]!;
+    }
+    const last = parsed.path[parsed.path.length - 1]!;
+    return current
       .children()
-      .find((c) => c.name === parsed.childName && c.type === referrerScope.type);
+      .find((c) => c.name === last && c.type === referrerScope.type);
   }
   // -------------------------------------------------------------------------
   // 1. Absolute reference: leading "::"

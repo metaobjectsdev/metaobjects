@@ -298,22 +298,32 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     /**
      * FR-024 (ADR-0029): resolve a dotted child-targeting {@code extends} ref.
-     * Splits {@code <ownerRef>.<childName>} (multi-dot reserved → null), resolves
+     * Splits {@code <rootRef>.<child>...<child>} (any depth), resolves
      * the owner OBJECT via the existing pkg-prepend-then-FQN strategies, then
      * selects the owner's EFFECTIVE child (includeParentData) by name + the
      * referrer's type. A resolved target whose type/subtype differs from the
      * referrer's throws {@code ERR_EXTENDS_TARGET_MISMATCH} (dotted-only check).
      */
     private MetaData resolveChildTargetingRef(PendingExtends p) {
+        // Addressing model (ADR-0029): the package qualifies the ROOT-level node
+        // only; each subsequent segment traverses CHILD NAMES to any depth
+        // (object → field → view: "Customer.priceCents.display"). INTERMEDIATE
+        // segments select by UNIQUE name among the current node's effective
+        // children (a cross-type name collision is ambiguous → unresolved); the
+        // FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
         int lastSep = p.superName.lastIndexOf(PKG_SEPARATOR);
         int segStart = lastSep < 0 ? 0 : lastSep + PKG_SEPARATOR.length();
         String lastSegment = p.superName.substring(segStart);
         String[] parts = lastSegment.split("\\.", -1);
-        if (parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty()) {
-            return null; // multi-dot reserved / degenerate forms
+        if (parts.length < 2) {
+            return null;
+        }
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                return null; // degenerate (empty segment)
+            }
         }
         String ownerRef = p.superName.substring(0, segStart) + parts[0];
-        String childName = parts[1];
 
         MetaData owner = null;
         String pkg = p.packageName == null ? "" : p.packageName;
@@ -352,14 +362,35 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         }
 
+        // Traverse INTERMEDIATE segments by unique child name (effective view);
+        // a missing name or a cross-type collision (e.g. a field AND an identity
+        // both named "id") is unresolved.
+        MetaData current = owner;
+        for (int i = 1; i < parts.length - 1; i++) {
+            String seg = parts[i];
+            MetaData match = null;
+            for (MetaData c : current.getChildren(MetaData.class, true)) {
+                if (seg.equals(c.getName())) {
+                    if (match != null) {
+                        return null; // ambiguous intermediate
+                    }
+                    match = c;
+                }
+            }
+            if (match == null) {
+                return null;
+            }
+            current = match;
+        }
+
         MetaData target;
         try {
-            // Type-scoped + EFFECTIVE (includeParentData): a field ref selects among
-            // the owner's fields (own + inherited); an identity ref among identities.
-            // Nested child names are BARE (the FR-024 addressing model: a package
-            // qualifies root-level metadata only; BaseMetaDataParser no longer folds
-            // the file-default package onto nested children).
-            target = owner.getChildOfType(p.child.getType(), childName);
+            // FINAL segment: type-scoped + EFFECTIVE (includeParentData) — a field
+            // ref selects among fields (own + inherited), an identity ref among
+            // identities, a view ref among views. Nested child names are BARE
+            // (the FR-024 addressing model: a package qualifies root-level
+            // metadata only).
+            target = current.getChildOfType(p.child.getType(), parts[parts.length - 1]);
         } catch (com.metaobjects.MetaDataNotFoundException notFound) {
             return null;
         }

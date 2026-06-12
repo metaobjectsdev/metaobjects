@@ -81,18 +81,21 @@ internal static class SuperResolve
     }
 
     /// <summary>
-    /// FR-024: split a child-targeting ref into the owner-object ref and the child
-    /// name. Returns null for the reserved multi-dot form (<c>X.y.z</c>) and for
-    /// degenerate empty parts (<c>.id</c>, <c>Customer.</c>).
+    /// FR-024: split a child-targeting ref into the root-object ref and the child
+    /// traversal path. The addressing model: a package qualifies the ROOT-level
+    /// node only; every subsequent dotted segment traverses CHILD NAMES to any
+    /// depth (<c>Customer.id</c>, <c>Customer.priceCents.display</c> — object →
+    /// field → view). Returns null for degenerate empty parts (<c>.id</c>,
+    /// <c>Customer.</c>, <c>Customer..x</c>).
     /// </summary>
-    private static (string OwnerRef, string ChildName)? ParseChildTargetingRef(string reference)
+    private static (string OwnerRef, string[] Path)? ParseChildTargetingRef(string reference)
     {
         int lastSep = reference.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
         int segStart = lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length;
         string lastSegment = reference[segStart..];
         string[] parts = lastSegment.Split(CHILD_REF_SEPARATOR, StringSplitOptions.None);
-        if (parts.Length != 2 || parts[0] == "" || parts[1] == "") return null;
-        return (reference[..segStart] + parts[0], parts[1]);
+        if (parts.Length < 2 || Array.Exists(parts, p => p == "")) return null;
+        return (reference[..segStart] + parts[0], parts[1..]);
     }
 
     /// <summary>
@@ -124,18 +127,33 @@ internal static class SuperResolve
         ReferrerScope? referrerScope = null)
     {
         // ---------------------------------------------------------------------
-        // 0. FR-024 dotted child-targeting ref: `<ownerRef>.<childName>`
+        // 0. FR-024 dotted child-targeting ref: `<rootRef>.<child>...<child>`
+        //
+        // Addressing model (ADR-0029): the package qualifies the ROOT-level node
+        // only; each subsequent segment traverses CHILD NAMES to any depth
+        // (object → field → view: `Customer.priceCents.display`). INTERMEDIATE
+        // segments select by UNIQUE name among the current node's effective
+        // children (a cross-type name collision is ambiguous → unresolved); the
+        // FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
         // ---------------------------------------------------------------------
         if (IsChildTargetingRef(reference))
         {
             if (referrerScope is null) return null;
-            (string OwnerRef, string ChildName)? parsed = ParseChildTargetingRef(reference);
-            if (parsed is null) return null; // multi-dot reserved / degenerate
-            MetaData? owner = ResolveSuperRef(parsed.Value.OwnerRef, contextPackage, root);
-            if (owner is null) return null;
-            return owner
+            (string OwnerRef, string[] Path)? parsed = ParseChildTargetingRef(reference);
+            if (parsed is null) return null; // degenerate (empty segment)
+            MetaData? current = ResolveSuperRef(parsed.Value.OwnerRef, contextPackage, root);
+            if (current is null) return null;
+            for (int i = 0; i < parsed.Value.Path.Length - 1; i++)
+            {
+                string seg = parsed.Value.Path[i];
+                var matches = current.Children().Where(c => c.Name == seg).ToList();
+                if (matches.Count != 1) return null; // missing or ambiguous intermediate
+                current = matches[0];
+            }
+            string last = parsed.Value.Path[^1];
+            return current
                 .Children()
-                .FirstOrDefault(c => c.Name == parsed.Value.ChildName && c.Type == referrerScope.Type);
+                .FirstOrDefault(c => c.Name == last && c.Type == referrerScope.Type);
         }
 
         // ---------------------------------------------------------------------

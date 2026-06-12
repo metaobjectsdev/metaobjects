@@ -112,10 +112,14 @@ flags disappear.
 
 ## 4. Universal field-`extends`: `extends Entity.field`
 
-The keystone new capability: field-level `extends` may target a **field nested inside
-an entity** (`Customer.id`, cross-package `acme::sales::Customer.id`). Today
-field-`extends` resolves only top-level abstract fields. Resolution is **type-scoped**:
-a field resolves entity fields; an identity resolves entity identities (§5).
+The keystone new capability: `extends` may target a **nested child to any depth**
+(`Customer.id`, cross-package `acme::sales::Customer.id`, triple-nest
+`Customer.priceCents.display` — object → field → view). The addressing model: a
+package qualifies the ROOT-level node only; every subsequent dotted segment
+traverses CHILD NAMES (nested children carry bare names — packages never fold onto
+non-root nodes). Intermediate segments resolve by unique name (a cross-type name
+collision is ambiguous → unresolved); the FINAL segment is **type-scoped** to the
+referrer: a field resolves fields; an identity identities (§5); a view views.
 
 This mechanism is **universal**, not projection-specific:
 

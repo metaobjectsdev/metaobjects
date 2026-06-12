@@ -144,20 +144,30 @@ def _resolve(
     rel_prefix = ".." + PACKAGE_SEP  # "..::
 
     if _is_child_targeting_ref(ref):
+        # Addressing model (ADR-0029): the package qualifies the ROOT-level node
+        # only; each subsequent segment traverses CHILD NAMES to any depth
+        # (object → field → view: ``Customer.priceCents.display``). INTERMEDIATE
+        # segments select by UNIQUE name among the current node's effective
+        # children (a cross-type name collision is ambiguous → unresolved); the
+        # FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
         if referrer_type is None:
             return None
         last_sep = ref.rfind(PACKAGE_SEP)
         seg_start = 0 if last_sep < 0 else last_sep + len(PACKAGE_SEP)
         parts = ref[seg_start:].split(".")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            return None  # multi-dot reserved / degenerate forms
-        owner_ref = ref[:seg_start] + parts[0]
-        child_name = parts[1]
-        owner = _resolve(owner_ref, context_pkg, index)
-        if owner is None:
+        if len(parts) < 2 or any(not p for p in parts):
+            return None  # degenerate (empty segment)
+        current = _resolve(ref[:seg_start] + parts[0], context_pkg, index)
+        if current is None:
             return None
-        for child in owner.children():
-            if child.name == child_name and child.type == referrer_type:
+        for seg in parts[1:-1]:
+            matches = [c for c in current.children() if c.name == seg]
+            if len(matches) != 1:
+                return None  # missing or ambiguous intermediate
+            current = matches[0]
+        last = parts[-1]
+        for child in current.children():
+            if child.name == last and child.type == referrer_type:
                 return child
         return None
 
