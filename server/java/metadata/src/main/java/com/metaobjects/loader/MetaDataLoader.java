@@ -213,6 +213,19 @@ public class MetaDataLoader implements LoaderConfigurable {
      * silently and only surface at usage time. Add a one-pass cycle check at
      * queue drain when this becomes a real-world hazard.</p>
      */
+    /**
+     * Drain the deferred-extends queue. Public for harnesses that drive the
+     * parse pipeline manually (e.g. the YAML conformance runner, which calls
+     * desugar → buildTree → THIS → ValidationPhase to collect per-stage
+     * diagnostics) — the normal {@link #load} path calls it automatically.
+     * FR-024: validation passes (e.g. identity @fields-through-inheritance)
+     * depend on extends being resolved first, so any manual pipeline MUST
+     * drain before validating.
+     */
+    public void drainPendingExtends() {
+        resolvePendingExtends();
+    }
+
     private void resolvePendingExtends() {
         if (pendingExtends.isEmpty()) return;
         for (PendingExtends p : pendingExtends) {

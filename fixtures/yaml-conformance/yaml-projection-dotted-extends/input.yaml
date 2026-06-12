@@ -1,0 +1,39 @@
+# FR-024: sigil-free YAML authoring of an object.projection with dotted extends
+# (field, identity, and triple-nest view pass-through). `extends` is a reserved
+# structural keyword (bare in canonical JSON too); attrs lower to @-prefixed.
+metadata:
+  package: demo
+  children:
+    - object.entity:
+        name: Customer
+        children:
+          - field.uuid:
+              name: id
+          - field.currency:
+              name: priceCents
+              currency: USD
+              children:
+                - view.currency:
+                    name: display
+                    locale: en-US
+          - identity.primary:
+              name: id
+              fields: ["id"]
+    - object.projection:
+        name: CustomerPricesV1
+        children:
+          - field.uuid:
+              name: customerId
+              extends: Customer.id
+              column: customer_id
+          - field.currency:
+              name: price
+              extends: Customer.priceCents
+              column: price_cents
+              children:
+                - view.currency:
+                    name: display
+                    extends: Customer.priceCents.display
+          - identity.primary:
+              name: id
+              extends: Customer.id

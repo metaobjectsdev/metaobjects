@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNRESOLVED_SUPER",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[0]['field.currency'].children[0]['view.currency']",
+        "referrer": "display",
+        "target": "Customer.nosuch.display"
+      }
+    }
+  ],
+  "warnings": []
+}
