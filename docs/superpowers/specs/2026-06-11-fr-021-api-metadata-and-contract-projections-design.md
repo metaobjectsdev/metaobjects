@@ -1,6 +1,6 @@
 # FR-021 — `api` metadata type + contract projections (design)
 
-_Status: PROPOSED (design sketch — needs brainstorming + plan before implementation)._
+_Status: PROPOSED — REVISED by FR-024 (2026-06-12): contract shapes retyped onto `object.projection`/`object.value`; `api.base`/`api.operational` subtype vocabulary per ADR-0030; `wireId` + emitter direction stands. See `2026-06-12-fr-024-entity-surfaces-projections-design.md`._
 _Date: 2026-06-11._
 
 ## Problem
