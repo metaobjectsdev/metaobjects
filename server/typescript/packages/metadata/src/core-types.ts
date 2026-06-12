@@ -63,7 +63,7 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE } from "./core/object/object-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
 import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
@@ -173,11 +173,23 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ], MetaRoot),
   );
 
-  // object — 4 subtypes
+  // object — 5 subtypes
   const objectRules = [
     wildcard(TYPE_FIELD),
     wildcard(TYPE_IDENTITY),
     wildcard(TYPE_RELATIONSHIP),
+    wildcard(TYPE_VALIDATOR),
+    wildcard(TYPE_LAYOUT),
+    wildcard(TYPE_SOURCE),
+    wildcard(TYPE_ATTR),
+  ];
+  // FR-024: object.projection is a derived read-only representation of
+  // entities — it carries fields/identities/sources but never declares
+  // relationships (derivation is expressed via @via, Task B5) and never
+  // co-locates templates.
+  const projectionRules = [
+    wildcard(TYPE_FIELD),
+    wildcard(TYPE_IDENTITY),
     wildcard(TYPE_VALIDATOR),
     wildcard(TYPE_LAYOUT),
     wildcard(TYPE_SOURCE),
@@ -192,7 +204,12 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         : [...objectAttrs];
     // template.prompt (and other template subtypes) may be nested inside
     // object.entity so a prompt can be co-located with its owning entity.
-    const rules = subType === OBJECT_SUBTYPE_ENTITY ? [...objectRules, wildcard(TYPE_TEMPLATE)] : objectRules;
+    const rules =
+      subType === OBJECT_SUBTYPE_ENTITY
+        ? [...objectRules, wildcard(TYPE_TEMPLATE)]
+        : subType === OBJECT_SUBTYPE_PROJECTION
+          ? projectionRules
+          : objectRules;
     registry.register(
       def(TYPE_OBJECT, subType, `Object/entity (${subType})`, rules, MetaObject, subTypeObjectAttrs),
     );

@@ -56,8 +56,9 @@
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
-import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
+import { SUBTYPE_BASE, TYPE_METADATA, TYPE_OBJECT, TYPE_VIEW } from "./shared/base-types.js";
 import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
+import { OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
@@ -71,6 +72,16 @@ export enum ExclusionReason {
   InheritanceAnchor = "inheritance-anchor",
   /** TS-web-presentation-only facet (the generic `view.*` controls). */
   PresentationOnly = "presentation-only",
+  /**
+   * FR-024 vocabulary registered in TS only; atomic all-ports manifest flip in
+   * FR-024 Phase E. The TS-reference-first rollout pattern: the new vocabulary
+   * is genuinely registered (and gated by TS tests) but carved out of the
+   * cross-port manifest until every port registers it, then the carve-out is
+   * removed and the canonical updated in ONE commit (the same lifecycle the
+   * retired TsPilotVocab carve-outs followed for `@responseRef`/`@provided`).
+   * Members today: the `object.projection` (type, subType) row (ADR-0028).
+   */
+  Fr024Pending = "fr024-pending",
 }
 
 /** `isAbstract` as Java's per-type attr name (the contract's bare `abstract` structural keyword). */
@@ -115,6 +126,11 @@ export function classifyTypeSubType(
   }
   if (type === TYPE_VIEW && subType !== SUBTYPE_BASE && subType !== VIEW_SUBTYPE_CURRENCY) {
     return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
+  }
+  if (type === TYPE_OBJECT && subType === OBJECT_SUBTYPE_PROJECTION) {
+    // FR-024 vocabulary registered in TS only; atomic all-ports manifest flip
+    // in FR-024 Phase E.
+    return ExclusionReason.Fr024Pending;
   }
   return undefined;
 }
