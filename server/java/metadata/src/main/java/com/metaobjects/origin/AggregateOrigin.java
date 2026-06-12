@@ -39,15 +39,21 @@ public class AggregateOrigin extends MetaOrigin {
                .description("Aggregate origin — field value computed by aggregating over a relationship path (count/sum/avg/min/max)")
                .inheritsFrom(TYPE_ORIGIN, SUBTYPE_BASE);
 
-            // SP-G Unit 6a: aggregate carries ONLY @agg / @of / @via, all REQUIRED
-            // (cross-port canonical). @agg is enum-constrained. Path semantics are
-            // re-validated in ValidationPhase#validateOrigins.
+            // SP-G Unit 6a: aggregate carries ONLY @agg / @of / @via. @agg is
+            // enum-constrained. Path semantics are re-validated in
+            // ValidationPhase#validateOrigins.
+            // FR-024 (ADR-0029): @via flipped REQUIRED → OPTIONAL — it is inferable
+            // when exactly one single-hop relationship reaches the @of entity
+            // (single-hop-unique inference; the inference PASS itself is Phase-E
+            // validation parity). The cross-port manifest still records the pre-flip
+            // required:true via the RegistryManifest FR024_PENDING required-override
+            // until the atomic all-ports manifest flip.
             def.requiredAttributeWithConstraints(ATTR_AGG)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .withEnum(AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX);
             def.requiredAttributeWithConstraints(ATTR_OF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.requiredAttributeWithConstraints(ATTR_VIA)
+            def.optionalAttributeWithConstraints(ATTR_VIA)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }

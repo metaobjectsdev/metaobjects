@@ -48,6 +48,9 @@ public abstract class MetaObject extends MetaData {
     /** Semantic subtype: a value object (no identity). Representation resolved per ADR-0005. */
     public static final String SUBTYPE_VALUE = "value";
 
+    /** Semantic subtype: a derived read-only representation of entities (FR-024, ADR-0028). */
+    public static final String SUBTYPE_PROJECTION = "projection";
+
     // === OBJECT-LEVEL ATTRIBUTE NAME CONSTANTS ===
     // These apply to ALL object types and are inherited by concrete object implementations
     // ATTR_IS_ABSTRACT is imported from MetaData (universal attribute)
@@ -188,6 +191,20 @@ public abstract class MetaObject extends MetaData {
                          com.metaobjects.field.EnumField.NORMALIZE_COLLAPSE,
                          com.metaobjects.field.EnumField.NORMALIZE_STRIP);
         });
+
+        // FR-024 (ADR-0028) — object.projection: derived read-only representation of
+        // entities. Loader-grammar slice: registration + serialization only; the
+        // FR-024 validation passes land with Phase-E validation parity. KNOWN
+        // DIVERGENCE (documented, manifest-invisible): Java's child licensing lives
+        // on object.base and is inherited wholesale, so projection nominally admits
+        // relationship/template children that the TS reference's per-subtype rules
+        // exclude — childRules are excluded from the cross-port manifest, and the
+        // real projection rules are the Phase-E validation passes, so this is a
+        // licensing-surface note, not a behavioral divergence.
+        registry.registerType(ProjectionMetaObject.class, def -> def
+            .type(TYPE_OBJECT).subType(SUBTYPE_PROJECTION)
+            .description("Projection object (derived, read-only) — value access via the reflection/map hybrid")
+            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
 
         // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.
         registry.setDefaultSubType(TYPE_OBJECT, SUBTYPE_ENTITY);

@@ -229,7 +229,16 @@ public final class RegistryManifest {
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
         /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
-        PRESENTATION_ONLY
+        PRESENTATION_ONLY,
+        /**
+         * FR-024 vocabulary registered in the ports but pending the atomic all-ports
+         * manifest flip (the {@code @responseRef} carve-out-close playbook): the
+         * {@code object.projection} row is excluded until every port registers it AND
+         * {@code fixtures/registry-conformance/expected-registry.json} is updated in
+         * ONE commit with all five emitters' carve-outs removed. Same lifecycle as
+         * the retired TS_PILOT_VOCAB reason. Remove at the flip.
+         */
+        FR024_PENDING
     }
 
     /**
@@ -276,6 +285,10 @@ public final class RegistryManifest {
     public static ExclusionReason classifyTypeSubType(String type, String subType) {
         if (MetaData.TYPE_METADATA.equals(type) && MetaData.SUBTYPE_BASE.equals(subType)) {
             return ExclusionReason.INHERITANCE_ANCHOR; // C-5 — Java's internal inheritance anchor
+        }
+        if (com.metaobjects.object.MetaObject.TYPE_OBJECT.equals(type)
+                && com.metaobjects.object.MetaObject.SUBTYPE_PROJECTION.equals(subType)) {
+            return ExclusionReason.FR024_PENDING; // FR-024 — pending the atomic all-ports manifest flip
         }
         if (MetaView.TYPE_VIEW.equals(type)
                 && !MetaData.SUBTYPE_BASE.equals(subType)
@@ -332,6 +345,13 @@ public final class RegistryManifest {
         // the same name is required (matches the logical intent — an attr is
         // required if the type requires it).
         Map<String, ManifestAttr> byName = new LinkedHashMap<>();
+        // FR-024 (ADR-0029): origin.aggregate @via flipped to OPTIONAL in the
+        // registration (single-hop-unique inference); the cross-port manifest still
+        // records the pre-flip required:true until the atomic all-ports manifest
+        // flip. Mirrors the TS FR024_PENDING_REQUIRED_OVERRIDES carve-out. Remove
+        // at the flip.
+        final Map<String, Boolean> fr024PendingRequiredOverrides = Map.of(
+                "origin.aggregate.via", Boolean.TRUE);
         for (ChildRequirement req : def.getChildRequirements()) {
             if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) {
                 continue; // non-attr child rule (deferred childRules)
@@ -350,6 +370,10 @@ public final class RegistryManifest {
             boolean isArray = arrayAttrNames.contains(name);
             ManifestAttr existing = byName.get(name);
             boolean required = req.isRequired() || (existing != null && existing.required());
+            Boolean fr024Override = fr024PendingRequiredOverrides.get(type + "." + subType + "." + name);
+            if (fr024Override != null) {
+                required = fr024Override;
+            }
             byName.put(name, new ManifestAttr(name, valueType, isArray, required));
         }
 

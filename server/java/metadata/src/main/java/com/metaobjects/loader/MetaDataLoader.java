@@ -217,6 +217,27 @@ public class MetaDataLoader implements LoaderConfigurable {
         if (pendingExtends.isEmpty()) return;
         for (PendingExtends p : pendingExtends) {
             MetaData superData = null;
+            // FR-024 (ADR-0029): dotted child-targeting ref `<ownerRef>.<childName>` —
+            // the final ::-segment containing '.' is unambiguous (names cannot contain
+            // '.'). Resolve the OWNER object with the existing strategies, then select
+            // the child among the owner's EFFECTIVE children (includeParentData) by
+            // name + the REFERRER'S type (type-scoped: a field ref resolves fields,
+            // an identity ref identities). Dotted refs never fall through to the bare
+            // top-level lookup; the multi-dot form (X.y.z) is reserved → unresolved.
+            // A resolved dotted target whose type/subtype differs from the referrer's
+            // is ERR_EXTENDS_TARGET_MISMATCH (dotted-only — top-level extends behavior
+            // is unchanged). Mirrors the TS reference (super-resolve.ts, commit
+            // 809712f8) and C# SuperResolve.cs. The parser's getSuperMetaData never
+            // resolves dotted refs (no top-level node has a dotted name), so every
+            // dotted ref arrives here via the pending queue — single resolution site.
+            if (isChildTargetingRef(p.superName)) {
+                superData = resolveChildTargetingRef(p);
+                if (superData == null) {
+                    throwUnresolvedSuper(p);
+                }
+                p.child.setSuperData(superData);
+                continue;
+            }
             try {
                 String sn = p.superName;
                 String pkg = p.packageName == null ? "" : p.packageName;
@@ -234,27 +255,109 @@ public class MetaDataLoader implements LoaderConfigurable {
                 }
             }
             if (superData == null) {
-                // FR5d — emit format=resolved with referrer + target. The referrer's
-                // parse-time source supplies files + jsonPath (the location of the
-                // broken `extends:` on disk); referrer = the declaring node's bare
-                // (short) name to match the TS/C#/Python reference (TS's MetaData
-                // .fqn() does not propagate the root `package:` to root-level
-                // objects); target = the unresolved supertype ref. Mirrors TS
-                // `resolveDeferredSupers` in server/typescript/packages/metadata/
-                // src/loader/meta-data-loader.ts.
-                com.metaobjects.source.ErrorSource envelope =
-                    com.metaobjects.source.ResolvedSource.from(
-                        p.child.getSource(), p.child.getShortName(), p.superName);
-                throw new com.metaobjects.MetaDataException(
-                    "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
-                        + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
-                        + " in file [" + p.filename + "]",
-                    com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER,
-                    envelope);
+                throwUnresolvedSuper(p);
             }
             p.child.setSuperData(superData);
         }
         pendingExtends.clear();
+    }
+
+    /**
+     * FR5d — emit format=resolved with referrer + target. The referrer's
+     * parse-time source supplies files + jsonPath (the location of the
+     * broken {@code extends:} on disk); referrer = the declaring node's bare
+     * (short) name to match the TS/C#/Python reference (TS's MetaData
+     * .fqn() does not propagate the root {@code package:} to root-level
+     * objects); target = the unresolved supertype ref. Mirrors TS
+     * {@code resolveDeferredSupers} in server/typescript/packages/metadata/
+     * src/loader/meta-data-loader.ts.
+     */
+    private void throwUnresolvedSuper(PendingExtends p) {
+        com.metaobjects.source.ErrorSource envelope =
+            com.metaobjects.source.ResolvedSource.from(
+                p.child.getSource(), p.child.getShortName(), p.superName);
+        throw new com.metaobjects.MetaDataException(
+            "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
+                + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
+                + " in file [" + p.filename + "]",
+            com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER,
+            envelope);
+    }
+
+    /**
+     * FR-024 (ADR-0029): true when a ref's final {@code ::}-segment contains a
+     * {@code .} — i.e. the ref targets a child nested inside an object
+     * ({@code Customer.id}, {@code acme::sales::Customer.id}). Names cannot
+     * contain {@code .}, so the form is unambiguous.
+     */
+    private static boolean isChildTargetingRef(String ref) {
+        int lastSep = ref.lastIndexOf(PKG_SEPARATOR);
+        String lastSegment = lastSep < 0 ? ref : ref.substring(lastSep + PKG_SEPARATOR.length());
+        return lastSegment.indexOf('.') >= 0;
+    }
+
+    /**
+     * FR-024 (ADR-0029): resolve a dotted child-targeting {@code extends} ref.
+     * Splits {@code <ownerRef>.<childName>} (multi-dot reserved → null), resolves
+     * the owner OBJECT via the existing pkg-prepend-then-FQN strategies, then
+     * selects the owner's EFFECTIVE child (includeParentData) by name + the
+     * referrer's type. A resolved target whose type/subtype differs from the
+     * referrer's throws {@code ERR_EXTENDS_TARGET_MISMATCH} (dotted-only check).
+     */
+    private MetaData resolveChildTargetingRef(PendingExtends p) {
+        int lastSep = p.superName.lastIndexOf(PKG_SEPARATOR);
+        int segStart = lastSep < 0 ? 0 : lastSep + PKG_SEPARATOR.length();
+        String lastSegment = p.superName.substring(segStart);
+        String[] parts = lastSegment.split("\\.", -1);
+        if (parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty()) {
+            return null; // multi-dot reserved / degenerate forms
+        }
+        String ownerRef = p.superName.substring(0, segStart) + parts[0];
+        String childName = parts[1];
+
+        MetaData owner = null;
+        String pkg = p.packageName == null ? "" : p.packageName;
+        if (ownerRef.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
+            try {
+                owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT,
+                    pkg + PKG_SEPARATOR + ownerRef);
+            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                // fall through to FQN lookup
+            }
+        }
+        if (owner == null) {
+            try {
+                owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT, ownerRef);
+            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                return null;
+            }
+        }
+
+        MetaData target;
+        try {
+            // Type-scoped + EFFECTIVE (includeParentData): a field ref selects among
+            // the owner's fields (own + inherited); an identity ref among identities.
+            target = owner.getChildOfType(p.child.getType(), childName);
+        } catch (com.metaobjects.MetaDataNotFoundException notFound) {
+            return null;
+        }
+
+        if (!target.getType().equals(p.child.getType())
+                || !target.getSubType().equals(p.child.getSubType())) {
+            com.metaobjects.source.ErrorSource envelope =
+                com.metaobjects.source.ResolvedSource.from(
+                    p.child.getSource(), p.child.getShortName(), p.superName);
+            throw new com.metaobjects.MetaDataException(
+                "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
+                    + "], the dotted extends target [" + p.superName + "] is ["
+                    + target.getType() + "." + target.getSubType() + "] but the extending node is ["
+                    + p.child.getType() + "." + p.child.getSubType()
+                    + "] — a dotted extends must target a node of the same type and subtype"
+                    + " in file [" + p.filename + "]",
+                com.metaobjects.ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
+                envelope);
+        }
+        return target;
     }
 
     /**
