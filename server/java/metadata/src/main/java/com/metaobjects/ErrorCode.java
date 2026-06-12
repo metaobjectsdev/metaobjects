@@ -84,6 +84,14 @@ public enum ErrorCode {
      */
     ERR_IDENTITY_KEY_MISMATCH,
 
+    /**
+     * FR-024 (ADR-0028): a source.* on an object.projection has a writable
+     * @kind (table, or @kind omitted which defaults to table) — projection
+     * sources must be read-only kinds. Vocabulary-only here until FR-024
+     * Phase E.
+     */
+    ERR_PROJECTION_SOURCE_WRITABLE,
+
     /** A child node type/subType is not permitted under its parent. */
     ERR_INVALID_SUBTYPE_CHILD,
 

@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            { "field.long": { "name": "amount" } },
+            { "field.string": { "name": "currency" } },
+            { "identity.secondary": { "name": "byAmount", "@fields": ["amount"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

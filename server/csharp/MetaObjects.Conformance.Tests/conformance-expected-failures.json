@@ -5,6 +5,7 @@
   "_comment_ai_pilot": "AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti now load + canonical-serialize cleanly in the C# port (Unit 1 metamodel slice): @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TsPilotVocab until the atomic all-ports flip), and template.* is admitted as an object.entity child (CoreTypes objectRules). The sibling ai-llm-call-extends has always passed cross-port.",
   "_comment_fr024": "FR-024 Phase B — dotted Entity.child extends-resolution shipped in the TS reference port only; un-ledger in Phase E (cross-port fan-out). error-extends-entity-field-unresolved is NOT ledgered: a dotted ref is simply unresolvable here, so this port already emits the identical ERR_UNRESOLVED_SUPER envelope and the fixture passes.",
   "_comment_fr024_b3": "FR-024 B3 — identity names required + projection identity pass-through shipped in the TS reference port only; un-ledger in Phase E. projection-basic / projection-identity-fields-explicit use the object.projection subtype this port does not register yet; error-identity-name-required expects an error this port does not emit yet; error-projection-identity-not-extended / error-identity-key-mismatch expect FR-024 pass-through codes on object.projection inputs this port cannot load.",
+  "_comment_fr024_b4a": "FR-024 B4a — value-purity + projection-licensing subtype rules shipped in the TS reference port only; un-ledger in Phase E. projection-extends-projection / error-projection-extends-entity / error-projection-source-writable use the object.projection subtype this port does not register yet, so it cannot load them. error-value-with-identity-secondary / error-value-with-source are plain object.value inputs this port CAN load — but it enforces only the legacy value-with-PRIMARY-identity rule today, not the full FR-024 value-purity rule (a value object carries no identity of ANY subtype and no source.*), so a secondary identity or a source.rdb on a value loads cleanly here while the fixture expects ERR_SUBTYPE_RULE_VIOLATION.",
   "fixtures": [
     "extends-entity-field-basic",
     "extends-entity-field-cross-package",
@@ -13,6 +14,11 @@
     "projection-identity-fields-explicit",
     "error-identity-name-required",
     "error-projection-identity-not-extended",
-    "error-identity-key-mismatch"
+    "error-identity-key-mismatch",
+    "projection-extends-projection",
+    "error-projection-extends-entity",
+    "error-projection-source-writable",
+    "error-value-with-identity-secondary",
+    "error-value-with-source"
   ]
 }

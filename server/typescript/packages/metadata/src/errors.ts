@@ -37,6 +37,10 @@ export const ERROR_CODES = [
   // has no local pass-through field extending it, or an explicit @fields
   // disagrees with the computed pass-through key.
   "ERR_IDENTITY_KEY_MISMATCH",
+  // FR-024 (ADR-0028) — a source.* on an object.projection has a writable
+  // @kind (table, or @kind omitted which defaults to table). Projections are
+  // derived read-only representations; their sources must be read-only kinds.
+  "ERR_PROJECTION_SOURCE_WRITABLE",
   "ERR_INVALID_SUBTYPE_CHILD",
   "ERR_UNKNOWN_ATTR",
   "ERR_BAD_ATTR_VALUE",

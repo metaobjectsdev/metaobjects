@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomersV1",
+          "extends": "Customer",
+          "children": [
+            { "field.string": { "name": "displayLabel" } }
+          ]
+        }
+      }
+    ]
+  }
+}
