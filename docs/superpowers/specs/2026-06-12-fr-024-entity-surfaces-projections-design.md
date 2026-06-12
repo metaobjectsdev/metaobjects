@@ -194,10 +194,13 @@ Inference stops at single-hop-unique deliberately: the inference algorithm is pa
 the **cross-port conformance contract** (five loaders must agree byte-identically);
 single-hop-unique is trivially portable, graph search is not.
 
-Cardinality checks give the rules teeth: a `passthrough` via-path must be effectively
-**to-one** at every hop (row-multiplying passthrough = error; you meant `aggregate`);
-an `aggregate` via-path must contain **at least one to-many** (aggregating over a
-to-one = error; you meant `passthrough`).
+Cardinality checks give the rules teeth, in the **conservative form** (the 5-port
+contract — `@cardinality` is an open string cross-port and may be undeclared;
+undeclared hops are never judged, pinned by regression test): a `passthrough`
+via-path errors when any hop **explicitly declares** `@cardinality: many`
+(row-multiplying passthrough — you meant `aggregate`); an `aggregate` via-path
+errors when it is **provably all-to-one** (every hop explicitly declares
+`@cardinality: one` — you meant `passthrough`).
 
 ## 7. Sources, assembly modes, and the population doctrine
 
@@ -236,7 +239,7 @@ writable table source plus a read-only view source (ADR-0007 roles, inferable fr
     name: Customer
     children:
       - source.rdb: { table: Customer, role: primary }             # writes
-      - source.rdb: { kind: view, table: v_customer, role: read }  # reads (DDL emitted)
+      - source.rdb: { kind: view, table: v_customer, role: replica }  # reads (DDL emitted; ADR-0007 role vocabulary — there is no "read" role)
       - field.uuid:   { name: id }
       - field.string: { name: name }
       - field.string:

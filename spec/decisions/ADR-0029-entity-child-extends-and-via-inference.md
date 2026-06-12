@@ -43,9 +43,12 @@ needed an omission rule that five loaders can implement byte-identically. An int
    (the human decides exactly when ambiguity is introduced). Inference stops at
    single-hop-unique deliberately: the algorithm is part of the cross-port
    conformance contract, and single-hop-unique is trivially portable.
-6. **Cardinality checks:** a `passthrough` via-path must be effectively to-one at
-   every hop (row-multiplying passthrough = error: you meant `aggregate`); an
-   `aggregate` via-path must contain at least one to-many.
+6. **Cardinality checks (conservative form — the 5-port contract):** `@cardinality`
+   is an open string cross-port and may be undeclared; undeclared hops are never
+   judged. A `passthrough` via-path errors when any hop explicitly declares
+   `@cardinality: many` (row-multiplying — you meant `aggregate`); an `aggregate`
+   via-path errors when provably all-to-one (every hop explicitly declares
+   `@cardinality: one` — you meant `passthrough`).
 7. **Agreement check:** when a field has both `extends X` and an origin targeting
    Y, X and Y must agree (severity settled at planning; conformance-fixed).
 8. **Assembly modes:** with an *emitted* source (generated CREATE VIEW), every
