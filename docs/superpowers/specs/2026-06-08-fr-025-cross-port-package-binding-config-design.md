@@ -1,6 +1,7 @@
-# FR-021 — Cross-port package-binding codegen config
+# FR-025 — Cross-port package-binding codegen config
 
 **Status:** Design (ready for implementation)
+**Renumbered:** authored as FR-021 (2026-06-08); renumbered to FR-025 on 2026-06-12 to resolve a number collision with the api-metadata FR-021 sketch.
 **Created:** 2026-06-08
 **Relates to:** [ADR-0001](../../../spec/decisions/ADR-0001-cross-language-type-binding.md) (per-port type binding is codegen config, not metadata), [ADR-0026](../../../spec/decisions/ADR-0026-shared-and-provided-named-types.md) §3 (`@csEnumType` retired in favor of codegen config), [FR-019](2026-06-06-fr-019-shared-and-provided-enums-design.md) (introduced C# `PackageNamespaces` for `@provided` enums — this FR generalizes that shape)
 
