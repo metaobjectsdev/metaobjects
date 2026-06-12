@@ -36,9 +36,8 @@ function setupRepoWithParseError(): string {
           },
         },
         {
-          "object.entity": {
+          "object.projection": {
             name: "ProgramSummary",
-            extends: "Program",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
               {
@@ -49,7 +48,6 @@ function setupRepoWithParseError(): string {
                   ],
                 },
               },
-              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

@@ -30,12 +30,14 @@ async function makeMinimalProjection(projName: string, baseName: string) {
           },
         },
         {
-          "object.entity": {
+          // FR-024 (B4b): a projection never extends an entity (the firehose is
+          // removed) — its inclusive list + extends-bound identity anchor the base.
+          "object.projection": {
             name: projName,
-            extends: baseName,
             children: [
               { "source.rdb": { "@kind": "view", "@table": `v_${projName.toLowerCase()}` } },
-              { "identity.primary": { "name": "id", "@fields": "id" } },
+              { "field.int": { name: "id", extends: `${baseName}.id` } },
+              { "identity.primary": { "name": "id", extends: `${baseName}.id` } },
             ],
           },
         },
@@ -117,11 +119,13 @@ async function loadProjection() {
           },
         },
         {
-          "object.entity": {
+          "object.projection": {
             name: "ProgramSummary",
-            extends: "Program",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+              { "field.int": { name: "id", extends: "Program.id" } },
+              { "field.string": { name: "title", extends: "Program.title" } },
+              { "identity.primary": { "name": "id", extends: "Program.id" } },
               {
                 "field.int": {
                   name: "weekCount",
@@ -136,7 +140,6 @@ async function loadProjection() {
                   ],
                 },
               },
-              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -196,7 +199,7 @@ describe("renderProjectionDecl emits Drizzle view + Zod read schema + constants"
     expect(code).toContain("export const ProgramSummary");
   });
 
-  test("inherited fields from super appear in schema and constants", async () => {
+  test("declared extends-bound fields appear in schema and constants (FR-024 inclusive list)", async () => {
     const { root, projection } = await loadProjection();
     const code = renderProjectionDecl(projection, root, {
       columnNamingStrategy: "snake_case",
@@ -257,14 +260,13 @@ async function loadStandaloneProjection() {
       package: "test",
       children: [
         {
-          "object.entity": {
+          "object.projection": {
             name: "LobbyRoster",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_lobby_roster" } },
               { "field.string": { name: "sessionId" } },
               { "field.string": { name: "displayName" } },
               { "field.string": { name: "status" } },
-              { "identity.primary": { "name": "id", "@fields": "sessionId" } },
               { "layout.dataGrid": { name: "default", "@fields": "displayName,status" } },
             ],
           },

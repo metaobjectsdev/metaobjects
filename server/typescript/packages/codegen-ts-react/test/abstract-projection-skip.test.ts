@@ -53,12 +53,10 @@ async function loadFixture() {
         },
         // Read-only projection — read model only, no write form.
         {
-          "object.entity": {
+          "object.projection": {
             name: "HostSummary",
-            extends: "Host",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_host_summary" } },
-              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

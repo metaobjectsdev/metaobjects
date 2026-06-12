@@ -61,12 +61,10 @@ async function loadFixture() {
       },
     },
     {
-      "object.entity": {
+      "object.projection": {
         name: "HostSummary",
-        extends: "Host",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_host_summary" } },
-          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },

@@ -846,13 +846,12 @@ const T5_FIXTURE = JSON.stringify({
       // PhaseSummary — a projection entity backed by a stored procedure → the
       // callable generator emits callPhaseSummary(db, args): Promise<PhaseSummary[]>.
       {
-        "object.entity": {
+        "object.projection": {
           name: "PhaseSummary",
           children: [
             { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
             { "field.long": { name: "caseId" } },
             { "field.string": { name: "phase" } },
-            { "identity.primary": { "name": "id", "@fields": "caseId" } },
           ],
         },
       },

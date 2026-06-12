@@ -58,9 +58,8 @@ async function loadProjectionFixture() {
       },
     },
     {
-      "object.entity": {
+      "object.projection": {
         name: "ProgramSummary",
-        extends: "Program",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
           {
@@ -77,7 +76,6 @@ async function loadProjectionFixture() {
               ],
             },
           },
-          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },

@@ -53,11 +53,12 @@ const weekEntity = {
 };
 
 const programSummaryProjection = {
-  "object.entity": {
+  "object.projection": {
     name: "ProgramSummary",
-    extends: "Program",
     children: [
       { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
       {
         "field.int": {
           name: "weekCount",
@@ -72,7 +73,6 @@ const programSummaryProjection = {
           ],
         },
       },
-      { "identity.primary": { "name": "id", "@fields": "id" } },
     ],
   },
 };
@@ -182,11 +182,12 @@ describe("computeProjectionMigrations", () => {
       },
     };
     const customerSummaryProjection = {
-      "object.entity": {
+      "object.projection": {
         name: "CustomerSummary",
-        extends: "Customer",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.int": { name: "id", extends: "Customer.id" } },
+            { "identity.primary": { "name": "id", extends: "Customer.id" } },
           {
             "field.int": {
               name: "purchaseCount",
@@ -201,7 +202,6 @@ describe("computeProjectionMigrations", () => {
               ],
             },
           },
-          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     };

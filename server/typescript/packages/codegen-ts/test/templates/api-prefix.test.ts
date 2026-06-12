@@ -71,13 +71,11 @@ async function loadProjectionFixture() {
           },
         },
         {
-          "object.entity": {
+          "object.projection": {
             name: "ProgramSummary",
-            extends: "Program",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
               { "field.int": { name: "weekCount" } },
-              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

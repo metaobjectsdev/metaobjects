@@ -51,11 +51,13 @@ describe("extractViewSpec — flat passthrough via extends", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "ProgramSummary",
-          "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "field.string": { name: "title", extends: "Program.title" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -70,7 +72,6 @@ describe("extractViewSpec — flat passthrough via extends", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -156,11 +157,12 @@ describe("extractViewSpec — multi-level via path", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "ProgramSummary",
-          "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
             {
               "field.int": {
                 name: "workoutCount",
@@ -175,7 +177,6 @@ describe("extractViewSpec — multi-level via path", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -225,11 +226,12 @@ describe("extractViewSpec — shared @via deduplication", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "ProgramSummary",
-          "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -262,7 +264,6 @@ describe("extractViewSpec — shared @via deduplication", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -296,12 +297,13 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "ProgramView",
-          "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_view" } },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "field.string": { name: "title", extends: "Program.title" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
           ],
         },
       },
@@ -358,11 +360,12 @@ describe("extractViewSpec — pkField resolution", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "ProgramSummary",
-          "extends": "Program",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
             {
               "field.int": {
                 name: "weekCount",
@@ -377,7 +380,6 @@ describe("extractViewSpec — pkField resolution", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -424,11 +426,12 @@ describe("extractViewSpec — pkField resolution", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "CustomerSummary",
-          "extends": "Customer",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_customer_summary" } },
+            { "field.int": { name: "id", extends: "Customer.id" } },
+            { "identity.primary": { "name": "id", extends: "Customer.id" } },
             {
               "field.int": {
                 name: "purchaseCount",
@@ -443,7 +446,6 @@ describe("extractViewSpec — pkField resolution", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -490,11 +492,12 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
         },
       },
       {
-        "object.entity": {
+        "object.projection": {
           name: "PurchaseSummary",
-          "extends": "Purchase",
           children: [
             { "source.rdb": { "@kind": "view", "@table": "v_purchase_summary" } },
+            { "field.long": { name: "id", extends: "Purchase.id" } },
+            { "identity.primary": { "name": "id", extends: "Purchase.id" } },
             {
               "field.string": {
                 name: "programTitle",
@@ -503,7 +506,6 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
                 ],
               },
             },
-            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },

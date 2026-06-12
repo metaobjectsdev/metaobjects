@@ -35,7 +35,7 @@ describe("renderCallableFile", () => {
             },
           },
           {
-            "object.entity": {
+            "object.projection": {
               name: "PhaseSummary",
               children: [
                 {
@@ -47,7 +47,6 @@ describe("renderCallableFile", () => {
                 },
                 { "field.long": { name: "phaseId" } },
                 { "field.string": { name: "phaseName" } },
-                { "identity.primary": { "name": "id", "@fields": "phaseId" } },
               ],
             },
           },
@@ -76,7 +75,7 @@ describe("renderCallableFile", () => {
             },
           },
           {
-            "object.entity": {
+            "object.projection": {
               name: "PhaseSummary",
               children: [
                 {
@@ -87,7 +86,6 @@ describe("renderCallableFile", () => {
                   },
                 },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -105,7 +103,7 @@ describe("renderCallableFile", () => {
         package: "demo",
         children: [
           {
-            "object.entity": {
+            "object.projection": {
               name: "PhaseSummary",
               children: [
                 {
@@ -115,7 +113,6 @@ describe("renderCallableFile", () => {
                   },
                 },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
