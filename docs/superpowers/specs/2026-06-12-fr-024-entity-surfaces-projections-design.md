@@ -279,10 +279,21 @@ layout) — answering FR-021's open question 5 (one shape, several consumers) by
 
 ## 9. The declared API surface (FR-021, aligned)
 
+**`api` subtypes.** The grammar requires a subtype vocabulary; the semantic axis is
+the **interaction model** (the axis that changes child-licensing), never the protocol
+(protocol lives in `binding.*` on operations — one surface, several protocols):
+
+- `api.base` — abstract.
+- `api.operational` — request/response surface; children are `operation.query|command`.
+  The one concrete subtype this design ships. Commands carried over queues remain
+  `api.operational` (that is a `binding.messaging` on the operation, not a new kind).
+- *(reserved)* an event/streaming sibling (true pub/sub: channels/events referencing
+  values — different children, hence a different subtype) — future design.
+
 FR-021's vocabulary stands, with contract shapes now properly typed:
 
 ```yaml
-- api:
+- api.operational:
     name: CustomerApi
     package: acme::api
     version: v1
@@ -315,8 +326,9 @@ controllers (Tier-1), FR-022 contract emitters, `meta docs` api surface, future 
 exposure (each operation a discoverable tool; input schema = the value's strict-profile
 JSON Schema).
 
-**Scope: core.** `object.projection`, `Entity.child` extends-resolution, `api` /
-`operation.query|command` / `binding.rest` enter the core registered providers —
+**Scope: core.** `object.projection`, `Entity.child` extends-resolution,
+`api.operational` / `operation.query|command` / `binding.rest` enter the core
+registered providers —
 `expected-registry.json` updated atomically across all five ports, conformance
 fixtures for every loader rule in this design. `binding.*` is the extension seam
 (`messaging`/`grpc` later, as registered subtypes — never freeform attrs).
