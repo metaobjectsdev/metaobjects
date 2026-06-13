@@ -1,4 +1,4 @@
-// FR-026 (ADR-0032) — canonical reference expansion.
+// FR-032 (ADR-0032) — canonical reference expansion.
 //
 // `expandRef(raw, packageContext)` is the SINGLE ref-expansion primitive. It
 // lowers an authored metadata reference to its fully-qualified canonical form
@@ -45,14 +45,14 @@ const PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
 
 /**
  * The inline (`@`-prefixed) attribute names whose VALUE is a metadata reference
- * subject to FR-026 expansion/guarding (ADR-0032 §3). The structural `extends`
+ * subject to FR-032 expansion/guarding (ADR-0032 §3). The structural `extends`
  * key is handled separately (it is not `@`-prefixed). `@objectRef`/`@references`
  * are pure object refs; `@from`/`@of`/`@via` carry an entity HEAD (possibly with
  * a dotted relationship/field tail — expandRef preserves the tail);
  * `@parameterRef`/`@payloadRef`/`@responseRef` reference value-objects. These are
  * expanded by the YAML desugar and rejected (when still relative) by the
  * canonical-JSON guard. `@sourceRefField` (a FK FIELD name, not an object ref)
- * and `@through` are intentionally NOT in this set (out of scope for FR-026 T-slice).
+ * and `@through` are intentionally NOT in this set (out of scope for FR-032 T-slice).
  */
 export const REF_BEARING_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   RELATIONSHIP_ATTR_OBJECT_REF, // = FIELD_ATTR_OBJECT_REF (same spelling "objectRef")
@@ -145,7 +145,7 @@ export function expandRef(raw: string, packageContext: string): string {
 }
 
 /**
- * FR-026 — does a root-level object `node` satisfy an (already-expanded)
+ * FR-032 — does a root-level object `node` satisfy an (already-expanded)
  * object reference `ref`? After the YAML desugar + corpus sweep every ref is
  * fully qualified, so resolution is a pure FQN match. Objects keep a BARE
  * `fqn()` per the FR5d cross-port contract, so the canonical FQN accessor is

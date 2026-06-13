@@ -161,7 +161,7 @@ function reportProblem(
 }
 
 // ---------------------------------------------------------------------------
-// FR-026 (ADR-0032) — canonical-JSON ref guard.
+// FR-032 (ADR-0032) — canonical-JSON ref guard.
 //
 // Canonical JSON is the self-contained interchange form: every ref-bearing attr
 // MUST be fully-qualified. A relative authoring form (leading `::` or `..::`)
@@ -944,7 +944,7 @@ function applyReservedKeys(
     if (typeof rawExtends !== "string") {
       reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, "ERR_UNRESOLVED_SUPER");
     } else {
-      // FR-026: canonical JSON `extends` must be FQN; reject a surviving
+      // FR-032: canonical JSON `extends` must be FQN; reject a surviving
       // relative form (no-op for YAML-format input, which was desugar-expanded).
       guardRelativeRefInCanonical(`"${RESERVED_KEY_EXTENDS}"`, rawExtends, strict, warnings, path);
       model.setSuper(rawExtends);
@@ -1034,7 +1034,7 @@ function applyInlineAttrsAndUnknownKeys(
 
     const rawVal = nodeData[key];
 
-    // FR-026: a ref-bearing inline attr (@objectRef/@references/@from/@of/@via/
+    // FR-032: a ref-bearing inline attr (@objectRef/@references/@from/@of/@via/
     // @parameterRef/@payloadRef/@responseRef) in canonical JSON must be FQN —
     // reject a surviving relative form. No-op for YAML-format input.
     if (REF_BEARING_ATTR_NAMES.has(attrName)) {

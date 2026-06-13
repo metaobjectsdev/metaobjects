@@ -613,7 +613,7 @@ describe("Super resolution sanity: acme-vehicle-metadata.json (common + vehicle)
     ]);
     const car = root.ownChildByTypeAndName(TYPE_OBJECT, "Car")!;
     expect(car).toBeDefined();
-    expect(car.superRef).toBe("acme::vehicle::Vehicle"); // FR-026: canonical refs are FQN
+    expect(car.superRef).toBe("acme::vehicle::Vehicle"); // FR-032: canonical refs are FQN
     expect(car.superResolved).toBeDefined();
     expect(car.superResolved!.name).toBe("Vehicle");
   });
@@ -625,7 +625,7 @@ describe("Super resolution sanity: acme-vehicle-metadata.json (common + vehicle)
     ]);
     const porsche = root.ownChildByTypeAndName(TYPE_OBJECT, "Porsche")!;
     expect(porsche).toBeDefined();
-    expect(porsche.superRef).toBe("acme::vehicle::car::Car"); // FR-026: canonical refs are FQN
+    expect(porsche.superRef).toBe("acme::vehicle::car::Car"); // FR-032: canonical refs are FQN
     expect(porsche.superResolved).toBeDefined();
     expect(porsche.superResolved!.name).toBe("Car");
   });

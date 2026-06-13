@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-06-13). Pre-1.0 blocker. Defined by FR-026
+Accepted (2026-06-13). Pre-1.0 blocker. Defined by FR-032
 (`docs/superpowers/specs/2026-06-13-fr-026-canonical-fqn-refs-design.md`).
 
 ## Context

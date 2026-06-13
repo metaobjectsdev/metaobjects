@@ -49,7 +49,7 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
   // Pre-index every object by name, fqn AND effective FQN resolution key so
-  // resolution costs O(1) per source. FR-026 — @parameterRef is FQN-qualified
+  // resolution costs O(1) per source. FR-032 — @parameterRef is FQN-qualified
   // after the desugar/sweep, but objects keep a BARE fqn() per the FR5d
   // contract, so the FQN form `<package | fileDefaultPackage>::<name>` only
   // matches via resolutionKey() (these fixtures declare package at metadata.root

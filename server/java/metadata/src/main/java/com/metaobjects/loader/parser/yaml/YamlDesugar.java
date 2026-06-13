@@ -132,7 +132,7 @@ public final class YamlDesugar {
     private static final String PKG_SEPARATOR = MetaDataUtil.SEP;
 
     /**
-     * FR-026 (ADR-0032) — the bare (sigil-free) inline attribute names whose VALUE is a
+     * FR-032 (ADR-0032) — the bare (sigil-free) inline attribute names whose VALUE is a
      * metadata reference subject to FQN expansion. In canonical JSON these are {@code @}-prefixed
      * ({@code @objectRef}, …). The structural {@code extends} key is handled separately (it is not
      * {@code @}-prefixed). {@code @from}/{@code @of}/{@code @via} carry an entity head with a
@@ -148,11 +148,11 @@ public final class YamlDesugar {
     }
 
     // -----------------------------------------------------------------------
-    // FR-026 (ADR-0032) — reference expansion helpers
+    // FR-032 (ADR-0032) — reference expansion helpers
     // -----------------------------------------------------------------------
 
     /**
-     * FR-026 — compute a node's effective package from its raw {@code package} body key
+     * FR-032 — compute a node's effective package from its raw {@code package} body key
      * (inheriting {@code parentPkg} when absent). Mirrors the TS {@code effectivePackageFor}:
      * the legacy {@code expandPackageForPath} rule prepends the parent when the child's
      * {@code package} value starts with {@code ::}; otherwise it is used as-is. The
@@ -167,7 +167,7 @@ public final class YamlDesugar {
     }
 
     /**
-     * FR-026 — true when {@code outKey} is a ref-bearing key whose String value must be
+     * FR-032 — true when {@code outKey} is a ref-bearing key whose String value must be
      * FQN-expanded: the reserved {@code extends} key, or an {@code @}-prefixed inline attr
      * whose bare name is in {@link #REF_BEARING_ATTR_NAMES}.
      */
@@ -180,7 +180,7 @@ public final class YamlDesugar {
     }
 
     /**
-     * FR-026 — expand {@code value} when {@code outKey} is a ref-bearing key, else return it
+     * FR-032 — expand {@code value} when {@code outKey} is a ref-bearing key, else return it
      * unchanged. Convenience wrapper that combines {@link #isRefBearingKey} + {@link #expandRefValue}.
      */
     private static JsonElement maybeExpandRef(String outKey, JsonElement value, String nodePkg,
@@ -197,7 +197,7 @@ public final class YamlDesugar {
     }
 
     /**
-     * FR-026 — read the {@code package} body key (a scalar) from a SnakeYAML body
+     * FR-032 — read the {@code package} body key (a scalar) from a SnakeYAML body
      * {@link Node}, or {@code null} when absent / not a scalar string. Used to seed the
      * node's effective package context for ref expansion.
      */
@@ -217,7 +217,7 @@ public final class YamlDesugar {
     }
 
     /**
-     * FR-026 — expand a ref-bearing value to FQN. A ref value is a single string (most refs)
+     * FR-032 — expand a ref-bearing value to FQN. A ref value is a single string (most refs)
      * or a string-array ({@code @references} can carry multiple); {@link MetaDataUtil#expandRef}
      * preserves any FR-024 dotted child suffix. A parent-relative over-drop throws inside
      * {@code expandRef}; we collect it as {@code ERR_BAD_ATTR_VALUE} and pass the raw value
@@ -319,7 +319,7 @@ public final class YamlDesugar {
      */
     public static DesugarResult desugar(Object input, MetaDataRegistry registry) {
         List<CollectedError> errors = new ArrayList<>();
-        // FR-026: the root package context starts empty; each node's own `package` body key
+        // FR-032: the root package context starts empty; each node's own `package` body key
         // seeds the context threaded down to its children for ref expansion.
         JsonObject node = desugarNode(input, registry, errors, "<root>", "");
         JsonObject canonical = node != null ? node : new JsonObject();
@@ -352,7 +352,7 @@ public final class YamlDesugar {
     public static DesugarResult desugar(Node input, MetaDataRegistry registry) {
         List<CollectedError> errors = new ArrayList<>();
         SideTable positions = new SideTable();
-        // FR-026: root package context starts empty (see the Object-tree entry point).
+        // FR-032: root package context starts empty (see the Object-tree entry point).
         JsonObject node = desugarNodeFromYaml(input, registry, errors, positions, "<root>", "");
         JsonObject canonical = node != null ? node : new JsonObject();
         return new DesugarResult(canonical, errors, positions);
@@ -411,7 +411,7 @@ public final class YamlDesugar {
         // Rule 1: a bare `type` key → the type's registry default subType.
         String canonicalKey = resolveKey(key, registry, errors, path);
 
-        // FR-026: this node's effective package context (its own `package` body key, else
+        // FR-032: this node's effective package context (its own `package` body key, else
         // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
         String rawPkg = (rawBody instanceof Map) ? asStringOrNull(((Map<?, ?>) rawBody).get(KEY_PACKAGE)) : null;
         String nodePkg = effectivePackageFor(rawPkg, parentPkg);
@@ -539,7 +539,7 @@ public final class YamlDesugar {
             }
 
             if (RESERVED_KEYS.contains(key) || key.startsWith(ATTR_PREFIX)) {
-                // FR-026: expand a ref-bearing value (the reserved `extends` key, or an
+                // FR-032: expand a ref-bearing value (the reserved `extends` key, or an
                 // already-`@`-prefixed ref attr) to FQN; the `package` key is never expanded.
                 out.add(key, maybeExpandRef(key, toJsonElement(value), nodePkg, errors, path));
                 // D2 also applies to author-written @-keys (the awkward form).
@@ -551,7 +551,7 @@ public final class YamlDesugar {
                     }
                 }
             } else {
-                // FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+                // FR-032: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
                 String outKey = ATTR_PREFIX + key;
                 out.add(outKey, maybeExpandRef(outKey, toJsonElement(value), nodePkg, errors, path));
                 checkCoercion(key, value, attrSchemaIndex, registry, parent, errors, path);
@@ -905,7 +905,7 @@ public final class YamlDesugar {
         // Rule 1: a bare `type` key → the type's registry default subType.
         String canonicalKey = resolveKey(key, registry, errors, path);
 
-        // FR-026: this node's effective package context (its own `package` body key, else
+        // FR-032: this node's effective package context (its own `package` body key, else
         // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
         String rawPkg = packageKeyFromYamlBody(rawBody);
         String nodePkg = effectivePackageFor(rawPkg, parentPkg);
@@ -1045,7 +1045,7 @@ public final class YamlDesugar {
                 out.add(KEY_CHILDREN, yamlNodeToJsonElement(valueNode));
                 outKey = KEY_CHILDREN;
             } else if (RESERVED_KEYS.contains(key) || key.startsWith(ATTR_PREFIX)) {
-                // FR-026: expand a ref-bearing value (reserved `extends` or an already-`@`-prefixed
+                // FR-032: expand a ref-bearing value (reserved `extends` or an already-`@`-prefixed
                 // ref attr) to FQN; the `package` key is never expanded.
                 outKey = key;
                 out.add(key, maybeExpandRef(key, yamlNodeToJsonElement(valueNode), nodePkg, errors, path));
@@ -1058,7 +1058,7 @@ public final class YamlDesugar {
                 }
             } else {
                 // Rule 4 (D1) — sigil-free attr: re-prefix with `@` on lowering.
-                // FR-026: a bare ref-bearing attr is expanded to FQN too.
+                // FR-032: a bare ref-bearing attr is expanded to FQN too.
                 outKey = ATTR_PREFIX + key;
                 out.add(outKey, maybeExpandRef(outKey, yamlNodeToJsonElement(valueNode), nodePkg, errors, path));
                 checkCoercionYaml(key, valueNode, attrSchemaIndex, registry, parent,

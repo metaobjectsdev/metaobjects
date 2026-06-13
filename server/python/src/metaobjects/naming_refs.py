@@ -1,4 +1,4 @@
-"""FR-026 (ADR-0032) — canonical reference expansion.
+"""FR-032 (ADR-0032) — canonical reference expansion.
 
 Mirrors the TS reference at
 ``server/typescript/packages/metadata/src/naming-refs.ts``.
@@ -51,7 +51,7 @@ CHILD_REF_SEP = "."
 PACKAGE_PARENT = ".."
 PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEP  # "..::"
 
-#: FR-026 — the inline (``@``-prefixed in canonical JSON; bare in YAML) attribute
+#: FR-032 — the inline (``@``-prefixed in canonical JSON; bare in YAML) attribute
 #: names whose VALUE is a metadata reference subject to FQN expansion (ADR-0032
 #: §3). The structural ``extends`` key is handled separately (not ``@``-prefixed).
 #: ``@objectRef``/``@references`` are pure object refs; ``@from``/``@of``/``@via``

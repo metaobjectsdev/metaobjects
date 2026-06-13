@@ -47,7 +47,7 @@ const SCALAR_TS: Record<string, string> = {
 };
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-026 — @payloadRef/@responseRef are FQN after the desugar/sweep; match on
+  // FR-032 — @payloadRef/@responseRef are FQN after the desugar/sweep; match on
   // the effective FQN resolution key (with bare back-compat).
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
@@ -172,7 +172,7 @@ export function generateRenderHandle(root: MetaData, templateName: string): stri
   const tmpl = root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === templateName);
   if (!tmpl) throw new Error(`template "${templateName}" not found`);
   const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
-  // FR-026 — @payloadRef is an FQN after the desugar/sweep; the generated TS
+  // FR-032 — @payloadRef is an FQN after the desugar/sweep; the generated TS
   // TYPE NAME is the resolved value-object's bare name (an FQN like
   // `acme::ai::Payload` is not a valid TS identifier). Fall back to the last
   // `::`-segment when the VO is not in this root (defensive).

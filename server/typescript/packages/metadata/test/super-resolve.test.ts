@@ -60,7 +60,7 @@ function makeRoot(): MetaData {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// FR-026 (ADR-0032): the absolute (`::pkg::Name`) and parent-relative
+// FR-032 (ADR-0032): the absolute (`::pkg::Name`) and parent-relative
 // (`..::common::id`) authoring forms are now expanded to FQN by `expandRef` at
 // YAML-desugar time — they no longer survive into the tree, so the resolver no
 // longer interprets them. The old prefix-resolution unit tests below were
@@ -70,7 +70,7 @@ function makeRoot(): MetaData {
 // (`<P>::name` for the rare in-tree bare) + the FR-024 dotted-child traversal.
 // ---------------------------------------------------------------------------
 
-describe("resolveSuperRef — bare name in current package (no root fallback, FR-026)", () => {
+describe("resolveSuperRef — bare name in current package (no root fallback, FR-032)", () => {
   it("bare name found in contextPackage", () => {
     const root = makeRoot();
     const target = makeObject("Target", "mypkg");
@@ -287,7 +287,7 @@ describe("resolveSuperRef — dotted Entity.child refs (FR-024)", () => {
 
     expect(resolveSuperRef("Target", "mypkg", root)).toBe(target);
     expect(resolveSuperRef("Target", "mypkg", root, { type: TYPE_OBJECT })).toBe(target);
-    // FR-026: refs in the loaded tree are already FQN (the desugar/JSON-guard
+    // FR-032: refs in the loaded tree are already FQN (the desugar/JSON-guard
     // ensured this), so the resolver matches the qualified form directly — the
     // `::`-strip branch is gone.
     expect(resolveSuperRef("mypkg::Target", "other", root, { type: TYPE_OBJECT })).toBe(target);

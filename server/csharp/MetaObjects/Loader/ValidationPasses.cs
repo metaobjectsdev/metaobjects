@@ -318,7 +318,7 @@ public static class ValidationPasses
 
     private static MetaData? FindObject(MetaData root, string name)
     {
-        // FR-026 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
+        // FR-032 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
         // @objectRef values are FULLY QUALIFIED after the desugar/corpus sweep
         // (e.g. "acme::commerce::Program"). Match FQN-tolerantly — the canonical
         // ResolutionKey()/Fqn() OR the bare Name. Mirrors TS refMatchesObject.
@@ -326,7 +326,7 @@ public static class ValidationPasses
             .FirstOrDefault(c => c.Type == TYPE_OBJECT && RefMatchesObject(c, name));
     }
 
-    // FR-026 (ADR-0032) — does object `node` satisfy an (already-expanded) FQN ref?
+    // FR-032 (ADR-0032) — does object `node` satisfy an (already-expanded) FQN ref?
     // After the YAML desugar + corpus sweep every ref is fully qualified, so this
     // is a pure FQN match against the canonical ResolutionKey(); the Fqn()/Name
     // arms cover legacy same-tree refs and root-level (empty-package) objects.
@@ -1563,7 +1563,7 @@ public static class ValidationPasses
 
             if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
 
-            // FR-026 (ADR-0032): @payloadRef is FQN after the desugar/sweep — FQN-match.
+            // FR-032 (ADR-0032): @payloadRef is FQN after the desugar/sweep — FQN-match.
             var payload = root.OwnChildren()
                 .FirstOrDefault(c => c.Type == TYPE_OBJECT && RefMatchesObject(c, payloadRef));
             if (payload is null || payload.SubType != OBJECT_SUBTYPE_VALUE)
@@ -1877,7 +1877,7 @@ public static class ValidationPasses
     {
         var errors = new List<MetaError>();
 
-        // Pre-index every object by name, fqn AND resolution key. FR-026 (ADR-0032):
+        // Pre-index every object by name, fqn AND resolution key. FR-032 (ADR-0032):
         // @parameterRef is FQN after the desugar/sweep (e.g. "acme::ParamVO"), which
         // is the canonical ResolutionKey() (objects keep a bare Fqn() per FR5d), so
         // the index must carry that key too. Mirrors TS/Java FQN-tolerant resolution.

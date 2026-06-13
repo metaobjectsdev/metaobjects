@@ -1,4 +1,4 @@
-# FR-026 — Fully-qualified canonical refs + YAML-only relative paths (design)
+# FR-032 — Fully-qualified canonical refs + YAML-only relative paths (design)
 
 _Status: DESIGNED (settled by conversation + best-practice research 2026-06-13). PRE-1.0 BLOCKER — implement now._
 _Decision: [ADR-0032](../../../spec/decisions/ADR-0032-canonical-fqn-refs.md)._
@@ -71,7 +71,7 @@ references.** A `package:` declaration *is* the node's identity (it establishes 
 context that references resolve against), so it is never `::`/`..::`-prefixed and never
 expanded: it is taken literally as the absolute package. (No fixture, YAML file, or doc
 uses a relative package declaration; Java's vestigial `expandPackageForPath` call on
-the package attribute is removed by FR-026 so there is one relativity concept, not
+the package attribute is removed by FR-032 so there is one relativity concept, not
 two.) The `::`/`..::`/bare/qualified rules in §2.1 govern *references between metadata*
 only.
 

@@ -1,6 +1,6 @@
-// super reference resolution — pure FQN match (FR-026 / ADR-0032)
+// super reference resolution — pure FQN match (FR-032 / ADR-0032)
 //
-// FR-026 made canonical refs fully-qualified: the YAML desugar expands every
+// FR-032 made canonical refs fully-qualified: the YAML desugar expands every
 // authored relative/bare-current ref to its FQN (`expandRef`, naming-refs.ts),
 // and the canonical-JSON guard rejects any surviving `::`/`..::` form. So the
 // refs that reach this resolver are already FQN, and resolution is a pure tree
@@ -162,7 +162,7 @@ export function resolveSuperRef(
       .find((c) => c.name === last && c.type === referrerScope.type);
   }
   // -------------------------------------------------------------------------
-  // 1. FR-026 (ADR-0032): refs in the loaded tree are already fully-qualified.
+  // 1. FR-032 (ADR-0032): refs in the loaded tree are already fully-qualified.
   //    The YAML desugar expanded every relative/bare-current ref to FQN
   //    (`expandRef`), and the canonical-JSON guard rejects any surviving
   //    `::`/`..::` form (ERR_RELATIVE_REF_IN_CANONICAL). So resolution is a

@@ -86,7 +86,7 @@ public class OutputParserGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var parserClass = CSharpNaming.ParserClassName(templateName);
-        // FR-026: @payloadRef is an FQN after the desugar/sweep; the generated C# TYPE
+        // FR-032: @payloadRef is an FQN after the desugar/sweep; the generated C# TYPE
         // NAME is the resolved value-object's bare name (an FQN like "acme::ai::Payload"
         // is not a valid C# identifier). Mirrors RenderHelperGenerator's StripPkg use.
         var payloadType = CSharpNaming.StripPkg(payloadRef);

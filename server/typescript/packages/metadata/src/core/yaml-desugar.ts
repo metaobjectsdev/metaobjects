@@ -76,7 +76,7 @@ export interface DesugarResult {
 /** Desugar a parsed-YAML authoring document into a canonical-shaped object. */
 export function desugar(input: unknown, registry: TypeRegistry): DesugarResult {
   const errors: CollectedError[] = [];
-  // FR-026 (ADR-0032): the desugar threads the effective package context down
+  // FR-032 (ADR-0032): the desugar threads the effective package context down
   // the tree so every ref-bearing attr (extends + @objectRef/@references/@from/
   // @of/@via/@parameterRef/@payloadRef/@responseRef) is expanded to its FQN via
   // expandRef. The root context is empty (the metadata.root's own `package`
@@ -85,7 +85,7 @@ export function desugar(input: unknown, registry: TypeRegistry): DesugarResult {
   return { canonical: node ?? {}, errors };
 }
 
-// FR-026: compute a node's effective package from its raw `package` body key
+// FR-032: compute a node's effective package from its raw `package` body key
 // (inheriting the parent context when absent). Mirrors parser-core's
 // expandPackageForPath so the desugar's ref-expansion context matches the JSON
 // loader's package resolution. The `package` attr itself is NEVER ref-expanded
@@ -149,7 +149,7 @@ function desugarNode(
   // Rule 1: a bare `type` key → the type's registry default subType.
   const canonicalKey = resolveKey(key, registry, errors, path);
 
-  // FR-026: this node's effective package context (its own `package` body key,
+  // FR-032: this node's effective package context (its own `package` body key,
   // else inherited). Used to expand its ref-bearing attrs AND threaded to its
   // children so their bare/relative refs resolve against the right package.
   const nodePkg = effectivePackageFor(rawBody, parentPkg);
@@ -230,7 +230,7 @@ function desugarBody(
    *  empty bodies; for mapping bodies we use the body's own position-by-key
    *  map. */
   wrapperKeyPos: { line: number; col: number } | undefined,
-  /** FR-026: this node's effective package context, used to expand its
+  /** FR-032: this node's effective package context, used to expand its
    *  ref-bearing attrs (extends + @objectRef/@references/@from/@of/@via/
    *  @parameterRef/@payloadRef/@responseRef) to FQN via expandRef. */
   nodePkg: string,
@@ -280,7 +280,7 @@ function desugarBody(
     let outKey: string;
     if (RESERVED_KEYS.has(key) || key.startsWith(ATTR_PREFIX)) {
       outKey = key;
-      // FR-026: expand a ref-bearing value to FQN. `extends` (reserved) and the
+      // FR-032: expand a ref-bearing value to FQN. `extends` (reserved) and the
       // @-prefixed ref attrs are expanded; everything else is copied verbatim.
       const attrName = key.startsWith(ATTR_PREFIX) ? key.slice(ATTR_PREFIX.length) : "";
       if (key === RESERVED_KEY_EXTENDS || (attrName !== "" && REF_BEARING_ATTR_NAMES.has(attrName))) {
@@ -294,7 +294,7 @@ function desugarBody(
       }
     } else {
       outKey = `${ATTR_PREFIX}${key}`;
-      // FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+      // FR-032: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
       if (REF_BEARING_ATTR_NAMES.has(key)) {
         out[outKey] = expandRefValue(src[key], nodePkg, errors, path, outKey);
       } else {
@@ -313,7 +313,7 @@ function desugarBody(
 }
 
 // ---------------------------------------------------------------------------
-// FR-026 (ADR-0032) — expand a ref-bearing value to FQN.
+// FR-032 (ADR-0032) — expand a ref-bearing value to FQN.
 //
 // A ref value is a single string (most refs) or a string-array (@references can
 // carry multiple). expandRef preserves any FR-024 dotted child suffix and the

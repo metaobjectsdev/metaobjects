@@ -107,7 +107,7 @@ def payload_module_name(template_name: str) -> str:
 def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | None:
     """Find a ``MetaObject`` child satisfying an (already-expanded) object ref.
 
-    FR-026 (ADR-0032): ``@payloadRef`` / ``@objectRef`` / ``origin.@from`` heads
+    FR-032 (ADR-0032): ``@payloadRef`` / ``@objectRef`` / ``origin.@from`` heads
     are FULLY QUALIFIED after the desugar/corpus sweep (e.g. ``acme::shop::X``),
     so the match is FQN-tolerant — the canonical ``resolution_key()`` OR the
     bare ``fqn()`` / ``name`` (the latter covering legacy same-tree refs and

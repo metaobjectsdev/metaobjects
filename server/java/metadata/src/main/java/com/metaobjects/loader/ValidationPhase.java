@@ -2105,7 +2105,7 @@ public final class ValidationPhase {
     private static boolean nameMatches(MetaData child, String name) {
         String bare = shortNameOf(child);
         if (bare == null) return false;
-        // FR-026 (ADR-0032): origin/template ref values are FULLY QUALIFIED after
+        // FR-032 (ADR-0032): origin/template ref values are FULLY QUALIFIED after
         // the desugar/sweep (e.g. "acme::commerce::Program.title" → entity head
         // "acme::commerce::Program"). Match the ref's tail segment (after the last
         // "::") against the child's bare name — covers a bare ref (tail == whole)

@@ -65,11 +65,11 @@ public static class YamlDesugar
     public const string ARRAY_SUFFIX = "[]";
 
     // -----------------------------------------------------------------------
-    // FR-026 (ADR-0032) — reference expansion
+    // FR-032 (ADR-0032) — reference expansion
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// FR-026 — the bare (sigil-free) inline attribute names whose VALUE is a metadata
+    /// FR-032 — the bare (sigil-free) inline attribute names whose VALUE is a metadata
     /// reference subject to FQN expansion. In canonical JSON these are <c>@</c>-prefixed
     /// (<c>@objectRef</c>, …). The structural <c>extends</c> key is handled separately
     /// (it is not <c>@</c>-prefixed). <c>@from</c>/<c>@of</c>/<c>@via</c> carry an entity
@@ -84,7 +84,7 @@ public static class YamlDesugar
     };
 
     /// <summary>
-    /// FR-026 (ADR-0032) — compute a node's effective package from its raw
+    /// FR-032 (ADR-0032) — compute a node's effective package from its raw
     /// <c>package</c> body key (inheriting <paramref name="parentPkg"/> when absent).
     /// Mirrors TS <c>effectivePackageFor</c> / Parser's <c>expandPackageForPath</c>: a
     /// leading <c>::</c> on a child package prepends the parent; otherwise it is used
@@ -110,7 +110,7 @@ public static class YamlDesugar
     }
 
     /// <summary>
-    /// FR-026 — true when <paramref name="outKey"/> is a ref-bearing key whose string
+    /// FR-032 — true when <paramref name="outKey"/> is a ref-bearing key whose string
     /// value must be FQN-expanded: the reserved <c>extends</c> key, or an
     /// <c>@</c>-prefixed inline attr whose bare name is in <see cref="RefBearingAttrNames"/>.
     /// </summary>
@@ -123,7 +123,7 @@ public static class YamlDesugar
     }
 
     /// <summary>
-    /// FR-026 — expand an authored metadata reference to its fully-qualified canonical
+    /// FR-032 — expand an authored metadata reference to its fully-qualified canonical
     /// form (ADR-0032 §2.1). C# mirror of TS <c>expandRef(raw, packageContext)</c>; the
     /// single ref-expansion routine the YAML desugar threads over every ref-bearing
     /// attr so canonical JSON is FQN-only. Deterministic, NO root fallback:
@@ -147,7 +147,7 @@ public static class YamlDesugar
         return ExpandOwner(owner, packageContext) + tail;
     }
 
-    /// <summary>FR-026 — expand a reference's OWNER part (no child tail) to its FQN.
+    /// <summary>FR-032 — expand a reference's OWNER part (no child tail) to its FQN.
     /// Mirrors TS <c>expandOwner</c>. Throws on parent-relative over-drop.</summary>
     private static string ExpandOwner(string owner, string packageContext)
     {
@@ -190,7 +190,7 @@ public static class YamlDesugar
     }
 
     /// <summary>
-    /// FR-026 — expand a ref-bearing value to FQN when <paramref name="outKey"/> is
+    /// FR-032 — expand a ref-bearing value to FQN when <paramref name="outKey"/> is
     /// ref-bearing; otherwise return it unchanged. A ref value is a single string (most
     /// refs) or a string-array (<c>@references</c> can carry multiple). A parent-relative
     /// over-drop is collected as <c>ERR_BAD_ATTR_VALUE</c> and the raw value passes through.
@@ -247,7 +247,7 @@ public static class YamlDesugar
     public static YamlDesugarResult Desugar(YamlNode? input, TypeRegistry registry)
     {
         var errors = new List<YamlCollectedError>();
-        // FR-026: root package context starts empty; each node's own `package` body key
+        // FR-032: root package context starts empty; each node's own `package` body key
         // seeds the context threaded down to its children for ref expansion.
         JsonObject? node = DesugarNode(input, registry, errors, "<root>", "");
         return new YamlDesugarResult(node ?? new JsonObject(), errors.AsReadOnly());
@@ -333,7 +333,7 @@ public static class YamlDesugar
         // Rule 1: a bare `type` key → the type's registry default subType.
         string canonicalKey = ResolveKey(key, registry, errors, path);
 
-        // FR-026: this node's effective package context (its own `package` body key, else
+        // FR-032: this node's effective package context (its own `package` body key, else
         // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
         string nodePkg = EffectivePackageFor(rawBody, parentPkg);
 
@@ -434,7 +434,7 @@ public static class YamlDesugar
         // mapping bodies, we read each body-key's own position from the
         // YAML AST (the per-kvp scan below).
         YamlPosition? wrapperKeyPos,
-        // FR-026: this node's effective package context, used to FQN-expand
+        // FR-032: this node's effective package context, used to FQN-expand
         // ref-bearing attr values (extends + @objectRef/@from/…).
         string nodePkg)
     {
@@ -532,7 +532,7 @@ public static class YamlDesugar
                 // ERR_RESERVED_ATTR and emits it with the proper FR5a envelope
                 // (format=json, jsonPath at the parent node). Mirrors TS
                 // yaml-desugar.ts:197-203 and Java YamlDesugar.java:340-349.
-                // FR-026: expand a ref-bearing value (reserved `extends` or an already-
+                // FR-032: expand a ref-bearing value (reserved `extends` or an already-
                 // `@`-prefixed ref attr) to FQN; the `package` key is never expanded.
                 output[key] = MaybeExpandRef(key, YamlToJsonNode(value), nodePkg, errors, path);
                 outKey = key;
@@ -550,7 +550,7 @@ public static class YamlDesugar
             else
             {
                 // Rule 4 — sigil-free attr: re-prefix with `@` when lowering to canonical.
-                // FR-026: a bare ref-bearing attr is expanded to FQN too.
+                // FR-032: a bare ref-bearing attr is expanded to FQN too.
                 outKey = $"{ATTR_PREFIX}{key}";
                 output[outKey] = MaybeExpandRef(outKey, YamlToJsonNode(value), nodePkg, errors, path);
                 CheckCoercion(key, value, schemaIndex, errors, path);

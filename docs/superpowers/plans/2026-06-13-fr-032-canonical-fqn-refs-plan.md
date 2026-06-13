@@ -1,4 +1,4 @@
-# FR-026 — Canonical FQN refs: implementation plan
+# FR-032 — Canonical FQN refs: implementation plan
 
 > Spec: `docs/superpowers/specs/2026-06-13-fr-026-canonical-fqn-refs-design.md`; ADR-0032.
 > Pre-1.0. Slices land on `main`, green at each step. TS reference first, then fan out.

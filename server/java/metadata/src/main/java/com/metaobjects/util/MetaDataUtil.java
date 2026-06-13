@@ -132,7 +132,7 @@ public class MetaDataUtil {
   public final static String CHILD_REF_SEPARATOR = ".";
 
   /**
-   * FR-026 (ADR-0032) — expand an authored metadata reference to its fully-qualified
+   * FR-032 (ADR-0032) — expand an authored metadata reference to its fully-qualified
    * canonical form. This is the Java mirror of the TS {@code expandRef(raw, packageContext)}
    * primitive; it is the single ref-expansion routine the YAML desugar threads over every
    * ref-bearing attr so canonical JSON is FQN-only. Deterministic, NO root fallback:
@@ -158,7 +158,7 @@ public class MetaDataUtil {
    * @return the fully-qualified canonical reference
    */
   public static String expandRef(String raw, String packageContext) {
-    // FR-026 — split off any FR-024 dotted child tail; expand only the owner.
+    // FR-032 — split off any FR-024 dotted child tail; expand only the owner.
     final int lastSep = raw.lastIndexOf(SEP);
     final int segStart = lastSep == -1 ? 0 : lastSep + SEP.length();
     final int dotInSeg = raw.indexOf(CHILD_REF_SEPARATOR, segStart);
@@ -168,7 +168,7 @@ public class MetaDataUtil {
   }
 
   /**
-   * FR-026 — expand a reference's OWNER part (no child tail) to its FQN. Mirrors the TS
+   * FR-032 — expand a reference's OWNER part (no child tail) to its FQN. Mirrors the TS
    * {@code expandOwner}. Throws on parent-relative over-drop.
    */
   private static String expandRefOwner(String owner, String packageContext) {

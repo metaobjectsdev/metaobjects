@@ -771,7 +771,7 @@ def _validate_datagrid_filter_values(
 def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
     """Return a ref → MetaObject index of all top-level objects in *root*.
 
-    FR-026 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
+    FR-032 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
     @objectRef values are FULLY QUALIFIED after the desugar/corpus sweep
     (e.g. ``acme::commerce::Program``). Index each object under its bare
     ``name``, its ``fqn()`` AND its package-folded ``resolution_key()`` so a
@@ -1416,7 +1416,7 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
-    # FR-026 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
+    # FR-032 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
     # (e.g. ``acme::ai::ReviewPayload``). Index each object under its bare name,
     # its fqn() AND its package-folded resolution_key() so the FQN ref resolves.
     # Mirrors TS refMatchesObject / the C# @payloadRef RefMatchesObject.

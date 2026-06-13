@@ -1,6 +1,6 @@
 // naming-refs.test.ts
 //
-// FR-026 (ADR-0032): unit tests for expandRef() — the single ref-expansion
+// FR-032 (ADR-0032): unit tests for expandRef() — the single ref-expansion
 // primitive used by the YAML desugar to lower an authored reference to its
 // fully-qualified canonical form, and by isRelativeRef() (the JSON-input guard).
 //

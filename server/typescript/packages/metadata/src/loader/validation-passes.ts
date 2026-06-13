@@ -329,7 +329,7 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
 // ---------------------------------------------------------------------------
 
 function _findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-026 — origin heads are FQN-qualified after the desugar/sweep; match on
+  // FR-032 — origin heads are FQN-qualified after the desugar/sweep; match on
   // the effective FQN resolution key (with bare back-compat).
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }

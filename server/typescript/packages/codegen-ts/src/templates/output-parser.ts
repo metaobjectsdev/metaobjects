@@ -43,7 +43,7 @@ const SCALAR_ZOD: Record<string, string> = {
 };
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-026 — @payloadRef is FQN after the desugar/sweep; match on the effective
+  // FR-032 — @payloadRef is FQN after the desugar/sweep; match on the effective
   // FQN resolution key (with bare back-compat).
   return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }

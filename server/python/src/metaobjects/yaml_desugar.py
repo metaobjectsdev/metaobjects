@@ -98,14 +98,14 @@ class DesugarResult:
 def desugar(input_obj: object, registry: TypeRegistry) -> DesugarResult:
     """Desugar a parsed-YAML authoring document into a canonical-shaped object."""
     errors: list[CollectedError] = []
-    # FR-026: root package context starts empty; each node's own `package` body
+    # FR-032: root package context starts empty; each node's own `package` body
     # key seeds the context threaded down to its children for ref expansion.
     node = _desugar_node(input_obj, registry, errors, "<root>", "")
     return DesugarResult(canonical=node if node is not None else {}, errors=errors)
 
 
 def _effective_package_for(raw_body: object, parent_pkg: str) -> str:
-    """FR-026 (ADR-0032) — compute a node's effective package from its raw
+    """FR-032 (ADR-0032) — compute a node's effective package from its raw
     ``package`` body key (inheriting *parent_pkg* when absent).
 
     Mirrors TS ``effectivePackageFor`` / the parser's package resolution: a
@@ -129,7 +129,7 @@ def _expand_ref_value(
     path: str,
     ref_label: str,
 ) -> object:
-    """FR-026 — expand a ref-bearing value to FQN. A ref value is a single string
+    """FR-032 — expand a ref-bearing value to FQN. A ref value is a single string
     (most refs) or a string-array (``@references`` can carry multiple).
     ``expand_ref`` preserves any FR-024 dotted child suffix. A parent-relative
     over-drop is collected as ERR_BAD_ATTR_VALUE and the raw value passes through.
@@ -205,7 +205,7 @@ def _desugar_node(
     # Rule 1: a bare `type` key -> the type's registry default subType.
     canonical_key = _resolve_key(key, registry, errors, path)
 
-    # FR-026: this node's effective package context (its own `package` body key,
+    # FR-032: this node's effective package context (its own `package` body key,
     # else inherited). Used to expand its ref-bearing attrs AND threaded to its
     # children so their bare/relative refs resolve against the right package.
     node_pkg = _effective_package_for(raw_body, parent_pkg)
@@ -351,7 +351,7 @@ def _desugar_body(
 
         if key in RESERVED_KEYS or key.startswith(ATTR_PREFIX):
             out_key = key
-            # FR-026: expand a ref-bearing value to FQN. `extends` (reserved) and
+            # FR-032: expand a ref-bearing value to FQN. `extends` (reserved) and
             # the @-prefixed ref attrs are expanded; everything else is verbatim.
             # The `package` key is never expanded (it is identity).
             attr_name = key[len(ATTR_PREFIX):] if key.startswith(ATTR_PREFIX) else ""
@@ -364,7 +364,7 @@ def _desugar_body(
                 _check_coercion(attr_name, value, schema_index, errors, path)
         else:
             out_key = f"{ATTR_PREFIX}{key}"
-            # FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+            # FR-032: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
             if key in REF_BEARING_ATTR_NAMES:
                 out[out_key] = _expand_ref_value(value, node_pkg, errors, path, out_key)
             else:
