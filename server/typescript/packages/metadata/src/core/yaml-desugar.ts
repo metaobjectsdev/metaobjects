@@ -35,9 +35,13 @@ import {
   RESERVED_KEYS,
   RESERVED_KEY_CHILDREN,
   RESERVED_KEY_NAME,
+  RESERVED_KEY_PACKAGE,
+  RESERVED_KEY_EXTENDS,
   RESERVED_KEY_IS_ARRAY,
   TYPE_SUBTYPE_SEPARATOR,
+  PACKAGE_SEPARATOR,
 } from "../shared/structural.js";
+import { expandRef, REF_BEARING_ATTR_NAMES } from "../naming-refs.js";
 import {
   getPositionMap,
   setPositionMap,
@@ -72,8 +76,32 @@ export interface DesugarResult {
 /** Desugar a parsed-YAML authoring document into a canonical-shaped object. */
 export function desugar(input: unknown, registry: TypeRegistry): DesugarResult {
   const errors: CollectedError[] = [];
-  const node = desugarNode(input, registry, errors, "<root>");
+  // FR-026 (ADR-0032): the desugar threads the effective package context down
+  // the tree so every ref-bearing attr (extends + @objectRef/@references/@from/
+  // @of/@via/@parameterRef/@payloadRef/@responseRef) is expanded to its FQN via
+  // expandRef. The root context is empty (the metadata.root's own `package`
+  // body key seeds the first real context inside desugarNode).
+  const node = desugarNode(input, registry, errors, "<root>", "");
   return { canonical: node ?? {}, errors };
+}
+
+// FR-026: compute a node's effective package from its raw `package` body key
+// (inheriting the parent context when absent). Mirrors parser-core's
+// expandPackageForPath so the desugar's ref-expansion context matches the JSON
+// loader's package resolution. The `package` attr itself is NEVER ref-expanded
+// (ADR-0032 §2.1 — it is the node's identity, taken literally/absolute).
+function effectivePackageFor(rawBody: unknown, parentPkg: string): string {
+  if (typeof rawBody !== "object" || rawBody === null || Array.isArray(rawBody)) {
+    return parentPkg;
+  }
+  const rawPkg = (rawBody as Record<string, unknown>)[RESERVED_KEY_PACKAGE];
+  if (typeof rawPkg !== "string") return parentPkg;
+  // Legacy expandPackageForPath: a leading "::" on a child package prepends the
+  // parent; otherwise it is used as-is.
+  if (parentPkg !== "" && rawPkg.startsWith(PACKAGE_SEPARATOR)) {
+    return parentPkg + rawPkg;
+  }
+  return rawPkg;
 }
 
 // Desugar one node — a single-key mapping { "type.subType": body }.
@@ -84,6 +112,7 @@ function desugarNode(
   registry: TypeRegistry,
   errors: CollectedError[],
   path: string,
+  parentPkg: string,
 ): Record<string, unknown> | undefined {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     errors.push({ message: `Node at ${path} must be a mapping with one type key` });
@@ -120,11 +149,16 @@ function desugarNode(
   // Rule 1: a bare `type` key → the type's registry default subType.
   const canonicalKey = resolveKey(key, registry, errors, path);
 
+  // FR-026: this node's effective package context (its own `package` body key,
+  // else inherited). Used to expand its ref-bearing attrs AND threaded to its
+  // children so their bare/relative refs resolve against the right package.
+  const nodePkg = effectivePackageFor(rawBody, parentPkg);
+
   // Rule 2: a scalar body → { name: <scalar> }.
   // FR5b — propagate the wrapper-key's position into the synthesized body
   // when the input body was a scalar (no body-side positions to inherit).
   const wrapperKeyPos = wrapperPositions?.[rawKey];
-  const body = desugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos);
+  const body = desugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos, nodePkg);
 
   // Rule 4 (cont.): stamp isArray onto the canonical body.
   if (isArray) body[RESERVED_KEY_IS_ARRAY] = true;
@@ -135,7 +169,7 @@ function desugarNode(
     const children: unknown[] = [];
     for (let i = 0; i < rawChildren.length; i++) {
       const childPath = `${path}.${RESERVED_KEY_CHILDREN}[${i}]`;
-      const child = desugarNode(rawChildren[i], registry, errors, childPath);
+      const child = desugarNode(rawChildren[i], registry, errors, childPath, nodePkg);
       // On a bad child keep an empty-object placeholder so sibling indices
       // stay stable; the error is already collected.
       children.push(child ?? {});
@@ -196,6 +230,10 @@ function desugarBody(
    *  empty bodies; for mapping bodies we use the body's own position-by-key
    *  map. */
   wrapperKeyPos: { line: number; col: number } | undefined,
+  /** FR-026: this node's effective package context, used to expand its
+   *  ref-bearing attrs (extends + @objectRef/@references/@from/@of/@via/
+   *  @parameterRef/@payloadRef/@responseRef) to FQN via expandRef. */
+  nodePkg: string,
 ): Record<string, unknown> {
   if (
     typeof rawBody === "string" ||
@@ -241,16 +279,27 @@ function desugarBody(
   for (const key of Object.keys(src)) {
     let outKey: string;
     if (RESERVED_KEYS.has(key) || key.startsWith(ATTR_PREFIX)) {
-      out[key] = src[key];
       outKey = key;
-      // D2 also applies to author-written @-keys (the awkward form).
+      // FR-026: expand a ref-bearing value to FQN. `extends` (reserved) and the
+      // @-prefixed ref attrs are expanded; everything else is copied verbatim.
       const attrName = key.startsWith(ATTR_PREFIX) ? key.slice(ATTR_PREFIX.length) : "";
+      if (key === RESERVED_KEY_EXTENDS || (attrName !== "" && REF_BEARING_ATTR_NAMES.has(attrName))) {
+        out[key] = expandRefValue(src[key], nodePkg, errors, path, key);
+      } else {
+        out[key] = src[key];
+      }
+      // D2 also applies to author-written @-keys (the awkward form).
       if (attrName !== "" && !RESERVED_KEYS.has(attrName)) {
         checkCoercion(attrName, src[key], schemaIndex, errors, path);
       }
     } else {
       outKey = `${ATTR_PREFIX}${key}`;
-      out[outKey] = src[key];
+      // FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+      if (REF_BEARING_ATTR_NAMES.has(key)) {
+        out[outKey] = expandRefValue(src[key], nodePkg, errors, path, outKey);
+      } else {
+        out[outKey] = src[key];
+      }
       checkCoercion(key, src[key], schemaIndex, errors, path);
     }
     const pos = srcPositions?.[key];
@@ -261,6 +310,41 @@ function desugarBody(
   }
   if (hasOutPositions) setPositionMap(out, outPositions);
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// FR-026 (ADR-0032) — expand a ref-bearing value to FQN.
+//
+// A ref value is a single string (most refs) or a string-array (@references can
+// carry multiple). expandRef preserves any FR-024 dotted child suffix and the
+// `package` attr is never touched here (it is not a ref). A parent-relative
+// over-drop (more `..::` than the package has segments) throws inside expandRef;
+// we collect it as ERR_BAD_ATTR_VALUE and pass the raw value through so the rest
+// of the desugar/load proceeds and surfaces a single actionable error.
+// ---------------------------------------------------------------------------
+
+function expandRefValue(
+  raw: unknown,
+  nodePkg: string,
+  errors: CollectedError[],
+  path: string,
+  refLabel: string,
+): unknown {
+  if (typeof raw === "string") {
+    try {
+      return expandRef(raw, nodePkg);
+    } catch (err) {
+      errors.push({
+        message: `Cannot expand reference '${refLabel}' at ${path}: ${(err as Error).message}`,
+        code: "ERR_BAD_ATTR_VALUE",
+      });
+      return raw;
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.map((el) => (typeof el === "string" ? expandRefValue(el, nodePkg, errors, path, refLabel) : el));
+  }
+  return raw;
 }
 
 // ---------------------------------------------------------------------------

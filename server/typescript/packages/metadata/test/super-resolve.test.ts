@@ -12,6 +12,7 @@ import { MetaRoot } from "../src/shared/meta-root.js";
 import type { MetaData } from "../src/shared/meta-data.js";
 import { TypeId } from "../src/registry.js";
 import { resolveSuperRef } from "../src/super-resolve.js";
+import { expandRef } from "../src/naming-refs.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -58,7 +59,18 @@ function makeRoot(): MetaData {
 // resolveSuperRef — unit tests
 // ---------------------------------------------------------------------------
 
-describe("resolveSuperRef — bare name in same package", () => {
+// ---------------------------------------------------------------------------
+// FR-026 (ADR-0032): the absolute (`::pkg::Name`) and parent-relative
+// (`..::common::id`) authoring forms are now expanded to FQN by `expandRef` at
+// YAML-desugar time — they no longer survive into the tree, so the resolver no
+// longer interprets them. The old prefix-resolution unit tests below were
+// MIGRATED to assert `expandRef(input) → FQN` instead of resolution behavior;
+// the resolver's `::`-strip / `..::`-reduce / bare-then-root-fallback branches
+// are deleted in this slice (T3). The resolver keeps only pure FQN matching
+// (`<P>::name` for the rare in-tree bare) + the FR-024 dotted-child traversal.
+// ---------------------------------------------------------------------------
+
+describe("resolveSuperRef — bare name in current package (no root fallback, FR-026)", () => {
   it("bare name found in contextPackage", () => {
     const root = makeRoot();
     const target = makeObject("Target", "mypkg");
@@ -68,25 +80,7 @@ describe("resolveSuperRef — bare name in same package", () => {
     expect(found).toBe(target);
   });
 
-  it("bare name falls back to root-level (no-package) node", () => {
-    const root = makeRoot();
-    const target = makeObject("Base", undefined); // no package
-    root.addChild(target);
-
-    const found = resolveSuperRef("Base", "some::pkg", root);
-    expect(found).toBe(target);
-  });
-
-  it("bare name with empty contextPackage — falls back to root-level search", () => {
-    const root = makeRoot();
-    const target = makeObject("Thing", undefined);
-    root.addChild(target);
-
-    const found = resolveSuperRef("Thing", "", root);
-    expect(found).toBe(target);
-  });
-
-  it("bare name not found → returns undefined", () => {
+  it("bare name not found in the current package → returns undefined", () => {
     const root = makeRoot();
     root.addChild(makeObject("Other", "mypkg"));
     const found = resolveSuperRef("Missing", "mypkg", root);
@@ -94,132 +88,49 @@ describe("resolveSuperRef — bare name in same package", () => {
   });
 });
 
-describe("resolveSuperRef — absolute path with '::' prefix", () => {
-  it("resolves '::fishstore::Fish' to Fish in package fishstore", () => {
-    const root = makeRoot();
-    const fish = makeObject("Fish", "fishstore");
-    root.addChild(fish);
-
-    const found = resolveSuperRef("::fishstore::Fish", "other", root);
-    expect(found).toBe(fish);
+describe("expandRef — absolute path with '::' prefix → FQN (migrated from resolver)", () => {
+  it("'::fishstore::Fish' expands to 'fishstore::Fish'", () => {
+    expect(expandRef("::fishstore::Fish", "other")).toBe("fishstore::Fish");
   });
 
-  it("resolves deeply nested absolute ref '::a::b::c::Target'", () => {
-    const root = makeRoot();
-    const target = makeObject("Target", "a::b::c");
-    root.addChild(target);
-
-    const found = resolveSuperRef("::a::b::c::Target", "x::y", root);
-    expect(found).toBe(target);
+  it("deeply nested absolute ref '::a::b::c::Target' → 'a::b::c::Target'", () => {
+    expect(expandRef("::a::b::c::Target", "x::y")).toBe("a::b::c::Target");
   });
 
-  it("absolute ref '::pkg::Name' with empty contextPackage still resolves", () => {
-    const root = makeRoot();
-    const target = makeObject("Name", "pkg");
-    root.addChild(target);
-
-    const found = resolveSuperRef("::pkg::Name", "", root);
-    expect(found).toBe(target);
-  });
-
-  it("non-existent absolute ref → returns undefined", () => {
-    const root = makeRoot();
-    const found = resolveSuperRef("::nonexistent::Thing", "x", root);
-    expect(found).toBeUndefined();
+  it("'::pkg::Name' with empty contextPackage → 'pkg::Name'", () => {
+    expect(expandRef("::pkg::Name", "")).toBe("pkg::Name");
   });
 });
 
-describe("resolveSuperRef — relative '..::' parent traversal", () => {
-  it("resolves '..::common::id' from demo::fruitbasket up to demo::common::id", () => {
-    const root = makeRoot();
-    const id = makeObject("id", "demo::common");
-    root.addChild(id);
-
-    const found = resolveSuperRef("..::common::id", "demo::fruitbasket", root);
-    expect(found).toBe(id);
+describe("expandRef — relative '..::' parent traversal → FQN (migrated from resolver)", () => {
+  it("'..::common::id' from demo::fruitbasket → 'demo::common::id'", () => {
+    expect(expandRef("..::common::id", "demo::fruitbasket")).toBe("demo::common::id");
   });
 
-  it("relative ref from a two-level package goes up correctly", () => {
-    const root = makeRoot();
-    const target = makeObject("Shared", "top");
-    root.addChild(target);
-
-    // context is top::sub, going up one → top, then bare name Shared
-    const found = resolveSuperRef("..::Shared", "top::sub", root);
-    expect(found).toBe(target);
+  it("'..::Shared' from top::sub → 'top::Shared'", () => {
+    expect(expandRef("..::Shared", "top::sub")).toBe("top::Shared");
   });
 
-  it("resolves from a deeply nested context with one-level up", () => {
-    const root = makeRoot();
-    const base = makeObject("Base", "a::b");
-    root.addChild(base);
-    const found = resolveSuperRef("..::Base", "a::b::c", root);
-    expect(found).toBe(base);
+  it("'..::Base' from a::b::c → 'a::b::Base'", () => {
+    expect(expandRef("..::Base", "a::b::c")).toBe("a::b::Base");
   });
 
-  it("relative ref that exceeds package depth returns undefined", () => {
-    const root = makeRoot();
-    const found = resolveSuperRef("..::..::Anything", "singlelevel", root);
-    expect(found).toBeUndefined();
+  it("'..::..::Anything' that exceeds package depth → throws", () => {
+    expect(() => expandRef("..::..::Anything", "singlelevel")).toThrow();
   });
 });
 
-describe("resolveSuperRef — multi-level relative '..::..::' traversal", () => {
-  it("resolves '..::..::shared::User' from a::b::c up two levels to a::shared::User", () => {
-    const root = makeRoot();
-    const user = makeObject("User", "a::shared");
-    root.addChild(user);
-
-    const found = resolveSuperRef("..::..::shared::User", "a::b::c", root);
-    expect(found).toBe(user);
+describe("expandRef — multi-level relative '..::..::' traversal → FQN (migrated from resolver)", () => {
+  it("'..::..::shared::User' from a::b::c → 'a::shared::User'", () => {
+    expect(expandRef("..::..::shared::User", "a::b::c")).toBe("a::shared::User");
   });
 
-  it("resolves '..::..::Base' from a::b::c up two levels to a::Base", () => {
-    const root = makeRoot();
-    const base = makeObject("Base", "a");
-    root.addChild(base);
-
-    const found = resolveSuperRef("..::..::Base", "a::b::c", root);
-    expect(found).toBe(base);
+  it("'..::..::Base' from a::b::c → 'a::Base'", () => {
+    expect(expandRef("..::..::Base", "a::b::c")).toBe("a::Base");
   });
 
-  it("three-level relative '..::..::..::Root' from a::b::c::d goes all the way up", () => {
-    const root = makeRoot();
-    const rootNode = makeObject("Root", "a");
-    root.addChild(rootNode);
-
-    const found = resolveSuperRef("..::..::..::Root", "a::b::c::d", root);
-    expect(found).toBe(rootNode);
-  });
-});
-
-describe("resolveSuperRef — same-package shorthand", () => {
-  it("same-package shorthand 'common::id' tries contextPackage prepend first", () => {
-    const root = makeRoot();
-    // Exists at demo::common::id
-    const target = makeObject("id", "demo::common");
-    root.addChild(target);
-
-    // contextPackage is "demo"; "common::id" → try "demo::common::id" first
-    const found = resolveSuperRef("common::id", "demo", root);
-    expect(found).toBe(target);
-  });
-
-  it("same-package shorthand falls through to root-rooted when not in contextPackage", () => {
-    const root = makeRoot();
-    // Exists at common::id (root-rooted, no contextPackage prepend match)
-    const target = makeObject("id", "common");
-    root.addChild(target);
-
-    // contextPackage is "other"; "common::id" → try "other::common::id" (miss), then "common::id"
-    const found = resolveSuperRef("common::id", "other", root);
-    expect(found).toBe(target);
-  });
-
-  it("returns undefined for completely unknown refs", () => {
-    const root = makeRoot();
-    const found = resolveSuperRef("Totally::Unknown::Thing", "mypkg", root);
-    expect(found).toBeUndefined();
+  it("'..::..::..::Root' from a::b::c::d → 'a::Root'", () => {
+    expect(expandRef("..::..::..::Root", "a::b::c::d")).toBe("a::Root");
   });
 });
 
@@ -376,6 +287,9 @@ describe("resolveSuperRef — dotted Entity.child refs (FR-024)", () => {
 
     expect(resolveSuperRef("Target", "mypkg", root)).toBe(target);
     expect(resolveSuperRef("Target", "mypkg", root, { type: TYPE_OBJECT })).toBe(target);
-    expect(resolveSuperRef("::mypkg::Target", "other", root, { type: TYPE_OBJECT })).toBe(target);
+    // FR-026: refs in the loaded tree are already FQN (the desugar/JSON-guard
+    // ensured this), so the resolver matches the qualified form directly — the
+    // `::`-strip branch is gone.
+    expect(resolveSuperRef("mypkg::Target", "other", root, { type: TYPE_OBJECT })).toBe(target);
   });
 });

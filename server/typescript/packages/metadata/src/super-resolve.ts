@@ -1,18 +1,26 @@
-// super reference resolution — package navigation helpers
+// super reference resolution — pure FQN match (FR-026 / ADR-0032)
 //
-// Reference syntax (Java metaobjects-core conventions):
-//   Bare name       "Fruit"            → resolve in contextPackage, then root fallback
-//   Absolute        "::fishstore::Fish" → strip leading ::, walk from root
-//   Relative parent "..::common::id"   → up one package level, then resolve "common::id"
-//   Multi-level     "..::..::shared::User" → up two levels, then resolve "shared::User"
-//   Same-package    "common::id"       → try contextPackage prepend first, then root-rooted
+// FR-026 made canonical refs fully-qualified: the YAML desugar expands every
+// authored relative/bare-current ref to its FQN (`expandRef`, naming-refs.ts),
+// and the canonical-JSON guard rejects any surviving `::`/`..::` form. So the
+// refs that reach this resolver are already FQN, and resolution is a pure tree
+// match:
+//   Qualified  "pkg::Name"            → findInTree(fqn)
+//   Bare       "Name" (rare in-tree)  → current package only (`<ctx>::Name`),
+//                                        then literal (root-level). NO root
+//                                        fallback for a packaged bare ref.
+// The old `::`-strip (absolute), `..::`-reduce (relative) and
+// bare-current-then-root-fallback branches were DELETED — that fallback was the
+// silent-shadowing footgun ADR-0032 removes.
 //
-// Super resolution is now IMMEDIATE during parse (Java behavior).
-// This module provides only the lookup helper; the parser calls it inline.
-// The old resolveSupers() multi-pass walker has been deleted.
+// FR-024: a ref whose final `::`-segment is dotted (`pkg::Customer.id`) targets
+// a child nested in the owner object — resolved type-scoped to the referrer.
+//
+// Super resolution is IMMEDIATE during parse (Java behavior). This module
+// provides only the lookup helper; the parser calls it inline.
 
 import type { MetaData } from "./shared/meta-data.js";
-import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
+import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 
 // ---------------------------------------------------------------------------
 // Tree search helper
@@ -140,11 +148,11 @@ export function resolveSuperRef(
     if (referrerScope === undefined) return undefined;
     const parsed = parseChildTargetingRef(ref);
     if (parsed === undefined) return undefined; // degenerate (empty segment)
-    let current = resolveSuperRef(parsed.ownerRef, contextPackage, root);
+    let current: MetaData | undefined = resolveSuperRef(parsed.ownerRef, contextPackage, root);
     if (current === undefined) return undefined;
     for (let i = 0; i < parsed.path.length - 1; i++) {
       const seg = parsed.path[i]!;
-      const matches = current.children().filter((c) => c.name === seg);
+      const matches: MetaData[] = current.children().filter((c) => c.name === seg);
       if (matches.length !== 1) return undefined; // missing or ambiguous intermediate
       current = matches[0]!;
     }
@@ -154,40 +162,22 @@ export function resolveSuperRef(
       .find((c) => c.name === last && c.type === referrerScope.type);
   }
   // -------------------------------------------------------------------------
-  // 1. Absolute reference: leading "::"
+  // 1. FR-026 (ADR-0032): refs in the loaded tree are already fully-qualified.
+  //    The YAML desugar expanded every relative/bare-current ref to FQN
+  //    (`expandRef`), and the canonical-JSON guard rejects any surviving
+  //    `::`/`..::` form (ERR_RELATIVE_REF_IN_CANONICAL). So resolution is a
+  //    pure FQN match — the old `::`-strip (absolute), `..::`-reduce (relative)
+  //    and bare-current-then-ROOT-FALLBACK branches are deleted (the footgun).
+  //
+  //    A qualified ref (`pkg::Name`) matches its node directly. A bare ref
+  //    (no `::`) is the rare in-tree case: a root-level/empty-package type, or
+  //    a bare ref constructed during dotted-owner recursion — resolve it in the
+  //    current package ONLY (try `<ctx>::ref`), then bare (root-level) as the
+  //    literal name. NO root fallback for a packaged bare ref.
   // -------------------------------------------------------------------------
-  if (ref.startsWith(PACKAGE_SEPARATOR)) {
-    const absolutePath = ref.slice(PACKAGE_SEPARATOR.length);
-    return findInTree(root, absolutePath);
-  }
-
-  // -------------------------------------------------------------------------
-  // 2. Relative reference: one or more leading "..::"
-  // -------------------------------------------------------------------------
-  if (ref.startsWith(PACKAGE_PARENT + PACKAGE_SEPARATOR)) {
-    const parts = ref.split(PACKAGE_SEPARATOR);
-    let levels = 0;
-    while (levels < parts.length && parts[levels] === PACKAGE_PARENT) {
-      levels++;
-    }
-
-    const pkgParts = contextPackage !== "" ? contextPackage.split(PACKAGE_SEPARATOR) : [];
-    const remainder = parts.slice(levels);
-    if (pkgParts.length < levels || remainder.length === 0) {
-      return undefined;
-    }
-
-    const allParts = [...pkgParts.slice(0, pkgParts.length - levels), ...remainder];
-    return findInTree(root, allParts.join(PACKAGE_SEPARATOR));
-  }
-
-  // -------------------------------------------------------------------------
-  // 3. Bare name OR same-package shorthand (contains "::" but no leading
-  //    "::" or "..::"): try contextPackage prepend first, then root-rooted.
-  // -------------------------------------------------------------------------
-  if (contextPackage !== "") {
-    const found = findInTree(root, `${contextPackage}${PACKAGE_SEPARATOR}${ref}`);
-    if (found !== undefined) return found;
+  if (!ref.includes(PACKAGE_SEPARATOR) && contextPackage !== "") {
+    const inPackage = findInTree(root, `${contextPackage}${PACKAGE_SEPARATOR}${ref}`);
+    if (inPackage !== undefined) return inPackage;
   }
   return findInTree(root, ref);
 }

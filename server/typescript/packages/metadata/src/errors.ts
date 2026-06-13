@@ -130,6 +130,12 @@ export const ERROR_CODES = [
   // ADR-0023 — a registration was attempted against a registry sealed after its
   // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
   "ERR_REGISTRY_SEALED",
+  // FR-026 (ADR-0032) — a ref-bearing attr (extends/@objectRef/@references/
+  // origin @from/@of/@via/@parameterRef/@payloadRef/@responseRef) in CANONICAL
+  // JSON used a relative authoring form (leading `::` or `..::`). Canonical JSON
+  // is the self-contained interchange form: every ref MUST be fully-qualified.
+  // Relative navigation is YAML-only (the desugar expands it via expandRef).
+  "ERR_RELATIVE_REF_IN_CANONICAL",
   "ERR_UNKNOWN",
 ] as const;
 
