@@ -35,6 +35,7 @@ import com.metaobjects.source.YamlPosition;
 import com.metaobjects.source.YamlPositions;
 import com.metaobjects.source.YamlPositions.PositionMap;
 import com.metaobjects.source.YamlPositions.SideTable;
+import com.metaobjects.util.MetaDataUtil;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.NodeId;
@@ -127,8 +128,127 @@ public final class YamlDesugar {
         KEY_IS_ARRAY, KEY_CHILDREN, KEY_VALUE
     );
 
+    /** Package separator ({@code ::}) — used to prepend a parent package per the legacy rule. */
+    private static final String PKG_SEPARATOR = MetaDataUtil.SEP;
+
+    /**
+     * FR-026 (ADR-0032) — the bare (sigil-free) inline attribute names whose VALUE is a
+     * metadata reference subject to FQN expansion. In canonical JSON these are {@code @}-prefixed
+     * ({@code @objectRef}, …). The structural {@code extends} key is handled separately (it is not
+     * {@code @}-prefixed). {@code @from}/{@code @of}/{@code @via} carry an entity head with a
+     * possible dotted relationship/field tail — {@link MetaDataUtil#expandRef} preserves the tail.
+     */
+    private static final Set<String> REF_BEARING_ATTR_NAMES = Set.of(
+        "objectRef", "references", "from", "of", "via",
+        "payloadRef", "responseRef", "parameterRef"
+    );
+
     private YamlDesugar() {
         // Utility class.
+    }
+
+    // -----------------------------------------------------------------------
+    // FR-026 (ADR-0032) — reference expansion helpers
+    // -----------------------------------------------------------------------
+
+    /**
+     * FR-026 — compute a node's effective package from its raw {@code package} body key
+     * (inheriting {@code parentPkg} when absent). Mirrors the TS {@code effectivePackageFor}:
+     * the legacy {@code expandPackageForPath} rule prepends the parent when the child's
+     * {@code package} value starts with {@code ::}; otherwise it is used as-is. The
+     * {@code package} attribute itself is NEVER ref-expanded — it is the node's identity.
+     */
+    private static String effectivePackageFor(String rawPkg, String parentPkg) {
+        if (rawPkg == null) return parentPkg;
+        if (!parentPkg.isEmpty() && rawPkg.startsWith(PKG_SEPARATOR)) {
+            return parentPkg + rawPkg;
+        }
+        return rawPkg;
+    }
+
+    /**
+     * FR-026 — true when {@code outKey} is a ref-bearing key whose String value must be
+     * FQN-expanded: the reserved {@code extends} key, or an {@code @}-prefixed inline attr
+     * whose bare name is in {@link #REF_BEARING_ATTR_NAMES}.
+     */
+    private static boolean isRefBearingKey(String outKey) {
+        if (KEY_EXTENDS.equals(outKey)) return true;
+        if (outKey.startsWith(ATTR_PREFIX)) {
+            return REF_BEARING_ATTR_NAMES.contains(outKey.substring(ATTR_PREFIX.length()));
+        }
+        return false;
+    }
+
+    /**
+     * FR-026 — expand {@code value} when {@code outKey} is a ref-bearing key, else return it
+     * unchanged. Convenience wrapper that combines {@link #isRefBearingKey} + {@link #expandRefValue}.
+     */
+    private static JsonElement maybeExpandRef(String outKey, JsonElement value, String nodePkg,
+                                              List<CollectedError> errors, String path) {
+        if (isRefBearingKey(outKey)) {
+            return expandRefValue(value, nodePkg, outKey, errors, path);
+        }
+        return value;
+    }
+
+    /** Coerce a raw Java value to a String, or {@code null} if it is not a String. */
+    private static String asStringOrNull(Object v) {
+        return (v instanceof String) ? (String) v : null;
+    }
+
+    /**
+     * FR-026 — read the {@code package} body key (a scalar) from a SnakeYAML body
+     * {@link Node}, or {@code null} when absent / not a scalar string. Used to seed the
+     * node's effective package context for ref expansion.
+     */
+    private static String packageKeyFromYamlBody(Node rawBody) {
+        if (rawBody == null || rawBody.getNodeId() != NodeId.mapping) return null;
+        for (NodeTuple bt : ((MappingNode) rawBody).getValue()) {
+            if (bt.getKeyNode().getNodeId() != NodeId.scalar) continue;
+            if (KEY_PACKAGE.equals(((ScalarNode) bt.getKeyNode()).getValue())) {
+                Node v = bt.getValueNode();
+                if (v != null && v.getNodeId() == NodeId.scalar) {
+                    return ((ScalarNode) v).getValue();
+                }
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * FR-026 — expand a ref-bearing value to FQN. A ref value is a single string (most refs)
+     * or a string-array ({@code @references} can carry multiple); {@link MetaDataUtil#expandRef}
+     * preserves any FR-024 dotted child suffix. A parent-relative over-drop throws inside
+     * {@code expandRef}; we collect it as {@code ERR_BAD_ATTR_VALUE} and pass the raw value
+     * through so a single actionable error surfaces.
+     */
+    private static JsonElement expandRefValue(JsonElement value, String nodePkg, String refLabel,
+                                              List<CollectedError> errors, String path) {
+        if (value == null) return value;
+        if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+            try {
+                return new JsonPrimitive(MetaDataUtil.expandRef(value.getAsString(), nodePkg));
+            } catch (RuntimeException ex) {
+                errors.add(new CollectedError(
+                    "Cannot expand reference '" + refLabel + "' at " + path + ": " + ex.getMessage(),
+                    ErrorCode.ERR_BAD_ATTR_VALUE));
+                return value;
+            }
+        }
+        if (value.isJsonArray()) {
+            JsonArray src = value.getAsJsonArray();
+            JsonArray out = new JsonArray(src.size());
+            for (JsonElement el : src) {
+                if (el != null && el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()) {
+                    out.add(expandRefValue(el, nodePkg, refLabel, errors, path));
+                } else {
+                    out.add(el);
+                }
+            }
+            return out;
+        }
+        return value;
     }
 
     // -----------------------------------------------------------------------
@@ -199,7 +319,9 @@ public final class YamlDesugar {
      */
     public static DesugarResult desugar(Object input, MetaDataRegistry registry) {
         List<CollectedError> errors = new ArrayList<>();
-        JsonObject node = desugarNode(input, registry, errors, "<root>");
+        // FR-026: the root package context starts empty; each node's own `package` body key
+        // seeds the context threaded down to its children for ref expansion.
+        JsonObject node = desugarNode(input, registry, errors, "<root>", "");
         JsonObject canonical = node != null ? node : new JsonObject();
         return new DesugarResult(canonical, errors);
     }
@@ -230,7 +352,8 @@ public final class YamlDesugar {
     public static DesugarResult desugar(Node input, MetaDataRegistry registry) {
         List<CollectedError> errors = new ArrayList<>();
         SideTable positions = new SideTable();
-        JsonObject node = desugarNodeFromYaml(input, registry, errors, positions, "<root>");
+        // FR-026: root package context starts empty (see the Object-tree entry point).
+        JsonObject node = desugarNodeFromYaml(input, registry, errors, positions, "<root>", "");
         JsonObject canonical = node != null ? node : new JsonObject();
         return new DesugarResult(canonical, errors, positions);
     }
@@ -245,7 +368,8 @@ public final class YamlDesugar {
      * node (the caller substitutes a placeholder).
      */
     private static JsonObject desugarNode(Object input, MetaDataRegistry registry,
-                                          List<CollectedError> errors, String path) {
+                                          List<CollectedError> errors, String path,
+                                          String parentPkg) {
         if (!(input instanceof Map)) {
             errors.add(new CollectedError(
                 "Node at " + path + " must be a mapping with one type key"));
@@ -287,8 +411,13 @@ public final class YamlDesugar {
         // Rule 1: a bare `type` key → the type's registry default subType.
         String canonicalKey = resolveKey(key, registry, errors, path);
 
+        // FR-026: this node's effective package context (its own `package` body key, else
+        // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
+        String rawPkg = (rawBody instanceof Map) ? asStringOrNull(((Map<?, ?>) rawBody).get(KEY_PACKAGE)) : null;
+        String nodePkg = effectivePackageFor(rawPkg, parentPkg);
+
         // Rule 2: a scalar body → { name: <scalar> }.
-        JsonObject body = desugarBody(rawBody, registry, canonicalKey, errors, path);
+        JsonObject body = desugarBody(rawBody, registry, canonicalKey, errors, path, nodePkg);
 
         // Rule 4 (cont.): stamp isArray onto the canonical body.
         if (isArray) {
@@ -315,7 +444,7 @@ public final class YamlDesugar {
             JsonArray children = new JsonArray(list.size());
             for (int i = 0; i < list.size(); i++) {
                 String childPath = path + "." + KEY_CHILDREN + "[" + i + "]";
-                JsonObject child = desugarNode(list.get(i), registry, errors, childPath);
+                JsonObject child = desugarNode(list.get(i), registry, errors, childPath, nodePkg);
                 // On a bad child keep an empty-object placeholder so sibling indices
                 // stay stable; the error is already collected.
                 children.add(child != null ? child : new JsonObject());
@@ -363,7 +492,8 @@ public final class YamlDesugar {
      */
     private static JsonObject desugarBody(Object rawBody, MetaDataRegistry registry,
                                           String canonicalKey,
-                                          List<CollectedError> errors, String path) {
+                                          List<CollectedError> errors, String path,
+                                          String nodePkg) {
         JsonObject out = new JsonObject();
         if (rawBody == null) {
             // An empty body (`field.string:` with nothing after) → an empty node.
@@ -409,7 +539,9 @@ public final class YamlDesugar {
             }
 
             if (RESERVED_KEYS.contains(key) || key.startsWith(ATTR_PREFIX)) {
-                out.add(key, toJsonElement(value));
+                // FR-026: expand a ref-bearing value (the reserved `extends` key, or an
+                // already-`@`-prefixed ref attr) to FQN; the `package` key is never expanded.
+                out.add(key, maybeExpandRef(key, toJsonElement(value), nodePkg, errors, path));
                 // D2 also applies to author-written @-keys (the awkward form).
                 if (key.startsWith(ATTR_PREFIX)) {
                     String attrName = key.substring(ATTR_PREFIX.length());
@@ -419,7 +551,9 @@ public final class YamlDesugar {
                     }
                 }
             } else {
-                out.add(ATTR_PREFIX + key, toJsonElement(value));
+                // FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+                String outKey = ATTR_PREFIX + key;
+                out.add(outKey, maybeExpandRef(outKey, toJsonElement(value), nodePkg, errors, path));
                 checkCoercion(key, value, attrSchemaIndex, registry, parent, errors, path);
             }
         }
@@ -711,7 +845,8 @@ public final class YamlDesugar {
      */
     private static JsonObject desugarNodeFromYaml(Node input, MetaDataRegistry registry,
                                                   List<CollectedError> errors,
-                                                  SideTable positions, String path) {
+                                                  SideTable positions, String path,
+                                                  String parentPkg) {
         if (input == null) {
             errors.add(new CollectedError(
                 "Node at " + path + " must be a mapping with one type key"));
@@ -770,10 +905,15 @@ public final class YamlDesugar {
         // Rule 1: a bare `type` key → the type's registry default subType.
         String canonicalKey = resolveKey(key, registry, errors, path);
 
+        // FR-026: this node's effective package context (its own `package` body key, else
+        // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
+        String rawPkg = packageKeyFromYamlBody(rawBody);
+        String nodePkg = effectivePackageFor(rawPkg, parentPkg);
+
         // Rule 2: a scalar body → { name: <scalar> }. The body-builder also gets
         // the wrapper-key position so Rule-2 synthesis (name slot) can inherit it.
         JsonObject body = desugarBodyFromYaml(rawBody, registry, canonicalKey, errors,
-            positions, path, wrapperKeyPos);
+            positions, path, wrapperKeyPos, nodePkg);
 
         // Rule 4 (cont.): stamp isArray onto the canonical body.
         if (isArray) {
@@ -795,7 +935,7 @@ public final class YamlDesugar {
                     for (int i = 0; i < seq.getValue().size(); i++) {
                         String childPath = path + "." + KEY_CHILDREN + "[" + i + "]";
                         JsonObject child = desugarNodeFromYaml(seq.getValue().get(i),
-                            registry, errors, positions, childPath);
+                            registry, errors, positions, childPath, nodePkg);
                         children.add(child != null ? child : new JsonObject());
                     }
                     body.add(KEY_CHILDREN, children);
@@ -834,7 +974,8 @@ public final class YamlDesugar {
                                                   String canonicalKey,
                                                   List<CollectedError> errors,
                                                   SideTable positions, String path,
-                                                  YamlPosition wrapperKeyPos) {
+                                                  YamlPosition wrapperKeyPos,
+                                                  String nodePkg) {
         JsonObject out = new JsonObject();
         if (rawBody == null) {
             // Empty body (`field.string:` with nothing) → empty node, no body positions.
@@ -904,8 +1045,10 @@ public final class YamlDesugar {
                 out.add(KEY_CHILDREN, yamlNodeToJsonElement(valueNode));
                 outKey = KEY_CHILDREN;
             } else if (RESERVED_KEYS.contains(key) || key.startsWith(ATTR_PREFIX)) {
-                out.add(key, yamlNodeToJsonElement(valueNode));
+                // FR-026: expand a ref-bearing value (reserved `extends` or an already-`@`-prefixed
+                // ref attr) to FQN; the `package` key is never expanded.
                 outKey = key;
+                out.add(key, maybeExpandRef(key, yamlNodeToJsonElement(valueNode), nodePkg, errors, path));
                 if (key.startsWith(ATTR_PREFIX)) {
                     String attrName = key.substring(ATTR_PREFIX.length());
                     if (!attrName.isEmpty() && !RESERVED_KEYS.contains(attrName)) {
@@ -915,8 +1058,9 @@ public final class YamlDesugar {
                 }
             } else {
                 // Rule 4 (D1) — sigil-free attr: re-prefix with `@` on lowering.
+                // FR-026: a bare ref-bearing attr is expanded to FQN too.
                 outKey = ATTR_PREFIX + key;
-                out.add(outKey, yamlNodeToJsonElement(valueNode));
+                out.add(outKey, maybeExpandRef(outKey, yamlNodeToJsonElement(valueNode), nodePkg, errors, path));
                 checkCoercionYaml(key, valueNode, attrSchemaIndex, registry, parent,
                     errors, path);
             }

@@ -2104,7 +2104,16 @@ public final class ValidationPhase {
      */
     private static boolean nameMatches(MetaData child, String name) {
         String bare = shortNameOf(child);
-        return bare != null && name.equals(bare);
+        if (bare == null) return false;
+        // FR-026 (ADR-0032): origin/template ref values are FULLY QUALIFIED after
+        // the desugar/sweep (e.g. "acme::commerce::Program.title" → entity head
+        // "acme::commerce::Program"). Match the ref's tail segment (after the last
+        // "::") against the child's bare name — covers a bare ref (tail == whole)
+        // AND an FQN ref — and also match the child's full FQN name directly.
+        // Mirrors the TS refMatchesObject helper.
+        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String nameTail = (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
+        return nameTail.equals(bare) || name.equals(child.getName());
     }
 
     /**
