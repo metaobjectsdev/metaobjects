@@ -95,12 +95,24 @@ Serializing 100,000 large objects re-queries the MetaData tree (fields, attrs) p
 - **Cyclic / deep graphs** — serializer cycle guard + depth limit (extract already has `MAX_NEST_DEPTH`; reuse).
 - **Error envelopes** — malformed-input deserialize errors should use the FR-5 envelope shape.
 
-## Suggested grouping + build order
+## Release grouping
 
-1. **FR-027 baseline** — finish strict object↔JSON parity (Python/C#/Kotlin) + `meta export` CLI parity. (Smallest; unblocks SER round-trip.)
-2. **FR-029 serializers** — SPI (SER-3) + XML write (SER-2) + a binary protocol (SER-4, reuse FR-022) + field-subset (SER-7) + Pojo/VO/MetaObjectAware (SER-6) + round-trip conformance (SER-8/CONF-1). Resolve SER-10 ADR first.
-3. **FR-030 performance** — caching (PERF-1/2) + streaming (PERF-3) + the 100k benchmark (PERF-5), so FR-029 scales. (Can run alongside FR-029.)
-4. **FR-026 downloads** — client export + server bulk-export endpoint (all backends), JSON/XML via FR-029's field-subset. (Depends on FR-029 for JSON/XML, independent for CSV/PDF/XLSX.)
-5. **FR-028 metadata API + runtime UI** — metadata endpoint (all backends) → browser runtime loader → runtime-driven grid + forms → both-ways demo → backend-agnostic verification.
-6. **FR-025 codegen forms** — edit forms + view-render parity (parallel, TS-only, small).
-7. **Conformance** woven through each (CONF-1..5).
+The authoritative release grouping (before-1.0 vs 1.1/1.2/1.3/1.4/1.x) lives in
+`spec/roadmap.md` → **"Release plan (1.0 → 1.x)"**. Summary:
+
+- **Before 1.0:** FR-030 (general MetaData read-path caching + benchmark — PERF-1 reframed
+  general, not serialization-overfit), FR-025 (codegen edit forms + view-render parity),
+  `meta export` CLI parity (the cheap slice of FR-027), GA publish mechanics; **decision**
+  on whether FR-024 is a 1.0 gate (its pre-GA hard cutover + the field-subset dependency).
+- **1.1 — serialization foundation:** FR-027 finish + FR-029 core (SPI / XML write /
+  field-subset / Pojo·VO·MetaObjectAware / json↔xml round-trip — SER-1/2/3/6/7/8) +
+  FR-029 serialization perf (compiled plan + streaming — PERF-2/3, on FR-030's cache).
+  ADR-0031 realized; SER-10 resolved.
+- **1.2 — downloads:** FR-026 (CSV/XLSX/PDF/TXT + bulk-export endpoint all backends +
+  JSON/XML via the 1.1 serializer + export conformance).
+- **1.3 — binary + contracts:** FR-029 binary (SER-4: protobuf/MessagePack/CBOR) → full
+  json→xml→binary→json round-trip; FR-022 contract emitters (shared `wireId`/types).
+- **1.4 — metadata API + runtime UI:** FR-028 (Theme 1 in full).
+- **1.x:** FR-023 (sharing), MCP exposure, database-source loader.
+
+Conformance (CONF-1..5) is woven through each release, not a separate phase.

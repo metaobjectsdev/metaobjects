@@ -90,7 +90,7 @@ _Last refreshed 2026-06-13._
 
 - **FR-029 — Runtime metadata-driven serializers: protocols, round-trip, field-subset.** Serialize/deserialize an object graph **driven by the MetaData itself** (honoring `normalization.md`), on **Pojo or ValueObject** instances, resolving the `MetaObject` via `MetaObjectAware` (fast path) or the `ObjectClassRegistry`. A pluggable **serializer SPI** so new protocols slot in uniformly: JSON + **XML write** (revive the legacy `metaobjects-core`/`dynamic` JSON+XML), plus a **binary** protocol (protobuf — reuse FR-022's `wireId`/type mapping — and/or MessagePack/CBOR) "to show how standardized it is." Per port: a thin **adapter** over the native serializer (Jackson / System.Text.Json / Pydantic / kotlinx) where one fits, fully custom otherwise. A **field-subset/projection** serialization parameter (reuses FR-024 projections; shared with grid JSON/XML downloads). **Round-trip integrity conformance** — `json → xml → binary → json`, assert no data loss, cross-port. Open ADR: keep bidirectional serialization separate from one-way (lossy) data download, sharing JSON/XML via the field-subset param. Detail: §"Theme 3" of the gap doc.
 
-- **FR-030 — MetaData caching + serialization performance.** Serializing 100k+ large objects re-queries the MetaData tree per object — the cost that makes FR-029 unusable at scale. Memoize field/attr/validator/view lookups on the (immutable-post-load) MetaData class; precompute a **per-MetaObject compiled serialization plan** (ordered fields + accessors + codecs once, reused across all instances); **stream** large result sets (no full materialization; pairs with the bulk-export endpoint); and add a **100k-object benchmark gate** (cached vs uncached delta) per port. Detail: §"Theme 4" of the gap doc.
+- **FR-030 — MetaData read-path caching (general; serialization is the example).** Repeatedly walking the MetaData tree for field/attr/validator/view/children lookups is a hot path for **every** consumer — codegen, runtime, the UI, and (as the headline example) serializing 100k+ large objects re-queries the tree per object. The MetaData read-model is **immutable after load**, so memoize these lookups on the MetaData class once. Deliberately **not** serialization-specific: it's a general read-path cache that any processing benefits from, validated by a throughput **benchmark gate** (process 100k+ objects, cached-vs-uncached delta) per port, using serialization as the example workload. Low effort, high leverage. *(The serialization-specific perf — a per-MetaObject compiled plan + streaming large sets — rides with FR-029, building on this cache.)* Detail: §"Theme 4" of the gap doc.
 
 ### Tracked outside this library repo (not roadmap work here)
 
@@ -98,6 +98,66 @@ These are exercised in adopter projects on top of the shipped per-port primitive
 
 - **Consumer-adoption validation** — downstream consumers migrating onto metaobjects-emitted code across the language paths (the former H5 / H9 / H10). The library surface they exercise (`codegen-spring`, `MetaObjects.Codegen`, the web-client packages, etc.) already ships.
 - **Application-level prompt-pillar consolidation** — the end-to-end declared-prompt orchestration and prompt eval harness that sit on top of the per-port primitives (the former H6, **minus** MCP exposure, which remains a library item above).
+
+## Release plan (1.0 → 1.x)
+
+Grouping of the Planned work into releases. Multiple items per release is fine. Before 1.0
+we keep it **lean** — consistency fixes + cheap, broadly-leveraged foundations; the big new
+themes (serializers, downloads, runtime-driven UI) land post-GA where they can be built
+properly without holding the GA.
+
+### Before 1.0 (tackle now — consistency + cheap foundations)
+
+- **FR-030 — MetaData read-path caching** + throughput benchmark. Low effort, high leverage,
+  benefits everything; serialization is the example, not the only consumer. (Doug-prioritized.)
+- **FR-025 — codegen edit forms + view-render parity** (TS web only, small). Create forms ship
+  but edit forms don't — create/edit symmetry is table-stakes for a GA.
+- **`meta export` CLI parity** (Java/Python/C#/Kotlin) — trivial cross-port CLI consistency
+  (the carve-out of FR-027 that's cheap; object↔JSON port-parity itself rides 1.1).
+- **GA mechanics** — the 0.10.0 publish (npm + NuGet/PyPI/Maven re-cut so `meta docs` /
+  `verify --codegen/--db` / the SDK-docs parity are installable) → smoke → promote to 1.0.
+- **[DECISION] FR-024 — entity surfaces (projection/value taxonomy + declared API).** Its design
+  calls it a **pre-GA hard cutover** (the two pre-taxonomy spellings are removed outright), and
+  the serializer/download **field-subset** (SER-7) builds on `object.projection`. So either it
+  lands before 1.0, or its breaking metamodel change waits for 2.0 and the field-subset uses an
+  interim mechanism. **Confirm whether FR-024 is a 1.0 gate** — it's large but already scoped.
+- **[OPTIONAL] FR-019 — shared/provided enums** (small, already designed) — slot here or 1.1.
+- **[OPTIONAL] MCP exposure** — completes the prompt pillar's library side; pull to 1.0 only if
+  "4 complete pillars" is a GA marketing bar, else 1.1.
+
+### 1.1 — Serialization foundation
+
+- **FR-027 finish** — object↔JSON strict parity (Python / C# / Kotlin).
+- **FR-029 core** — serializer SPI; **XML write** (revive the legacy core/dynamic JSON+XML);
+  field-subset via FR-024 projections; Pojo/ValueObject/MetaObjectAware support; **json↔xml
+  round-trip** conformance. Realizes ADR-0031.
+- **FR-029 serialization perf** — per-MetaObject compiled plan + streaming (on FR-030's cache).
+
+### 1.2 — DataGrid downloads
+
+- **FR-026** — client export (CSV/XLSX/PDF/TXT) + server bulk-export endpoint (all backends) +
+  JSON/XML download via the 1.1 serializer & field-subset + export conformance + the secondary
+  grid gaps (column width/visibility/selection, consistent server `search`).
+
+### 1.3 — Binary protocols + contract emitters
+
+- **FR-029 binary** — protobuf / MessagePack / CBOR over the SPI → completes the
+  **json → xml → binary → json** no-data-loss round-trip gate.
+- **FR-022 — contract emitters** (JSON Schema / OpenAPI / protobuf) — overlaps the protobuf
+  serializer (shared `wireId`/type mapping); do together.
+
+### 1.4 — Metadata API + runtime-driven UI
+
+- **FR-028** — metadata API endpoint (all backends) → browser runtime metadata loader →
+  runtime-driven dataGrid + create/edit forms → both-ways (codegen vs runtime) demo →
+  backend-agnostic verification (the TS UI against all 5 backends).
+
+### 1.x / later
+
+- **FR-023 — metadata sharing** (full package resolution; the doc-first quick wins can land any
+  time, independent of release).
+- **MCP exposure** (if not pulled earlier).
+- **Database-source metadata loader** (currently Future).
 
 ## Future (sketched)
 
