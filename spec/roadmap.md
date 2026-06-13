@@ -2,6 +2,50 @@
 
 _Last refreshed 2026-06-13._
 
+> **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
+> the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
+
+## FR registry
+
+Every feature request, its status, target release, and tracking issue. Shipped FRs are detailed
+under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shipped · 🔵 active · 📋 planned.
+
+| FR | Title | Status | Release | Issue |
+|---|---|---|---|---|
+| FR-002 | Client/web package split | ✅ | — | — |
+| FR-003 | Java RDB persistence & projections | ✅ | — | — |
+| FR-004 | Cross-language prompt construction | ✅ (MCP remains) | — | [#18](https://github.com/metaobjectsdev/metaobjects/issues/18) |
+| FR-005 | Actionable loader errors (FR5 a–e) | ✅ | — | — |
+| FR-006 | `template.output` parser-on-receipt | ✅ | — | — |
+| FR-007 | Codegen conformance corpus | ✅ | — | — |
+| FR-008 | Universal REST API contract | ✅ | — | — |
+| FR-009 | Filter operators per port | ✅ | — | — |
+| FR-010 | Output-format prompt + tolerant extract | ✅ | — | — |
+| FR-011 | Extract hardening (enum coercion + nesting) | ✅ | — | — |
+| FR-012 | Nested-object prompt expansion | ✅ | — | — |
+| FR-013 | Field read-only | ✅ | — | — |
+| FR-014 | TPH discriminator | ✅ | — | — |
+| FR-015 | Source parameter-ref | ✅ | — | — |
+| FR-016 | `source.rdb` name/kind aliases | ✅ | — | — |
+| FR-017 | TPH polymorphic codegen | ✅ | — | — |
+| FR-018 | Many-to-many relationships | ✅ | — | — |
+| — | AI LLM-call trace persistence | 🔵 active | — | — |
+| FR-019 | Shared / externally-provided enums | 📋 | 1.1 | [#5](https://github.com/metaobjectsdev/metaobjects/issues/5) |
+| FR-020 | `@inheritance` joined strategy | 📋 | 1.x | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) |
+| FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
+| FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
+| FR-023 | Metadata packages (cross-project sharing) | 📋 | 1.x | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
+| FR-024 | Entity surfaces (projection/value + declared API) | 📋 **pre-GA** | 1.0 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
+| FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
+| FR-026 | Forms completeness (edit forms + view parity) | 📋 | 1.0 | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
+| FR-027 | DataGrid downloads (CSV/XLSX/PDF/TXT) | 📋 | 1.2 | [#13](https://github.com/metaobjectsdev/metaobjects/issues/13) |
+| FR-028 | Strict serializer parity + `meta export` CLI parity | 📋 | 1.1 | [#14](https://github.com/metaobjectsdev/metaobjects/issues/14) |
+| FR-029 | Metadata API + runtime-driven UI | 📋 | 1.4 | [#15](https://github.com/metaobjectsdev/metaobjects/issues/15) |
+| FR-030 | Runtime serializers (SPI/XML/binary/round-trip) | 📋 | 1.1 | [#16](https://github.com/metaobjectsdev/metaobjects/issues/16) |
+| FR-031 | MetaData read-path caching + perf | 📋 | 1.0 | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) |
+
+_(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
+
 ## Shipped
 
 ### Foundation
