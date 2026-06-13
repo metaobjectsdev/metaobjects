@@ -32,6 +32,8 @@ pick their preferred persistence layer.
 """
 from __future__ import annotations
 
+from metaobjects.apidocs.naming import plural_lowercase as _plural_lowercase
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -60,28 +62,6 @@ def _effective_fqn(entity: MetaObject) -> str:
         pkg = parent.package
         parent = parent.parent
     return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
-
-
-def _snake_case(name: str) -> str:
-    """``Author`` → ``author``; ``AuthorBrief`` → ``author_brief``.
-
-    Used for both the file name (``author_router.py``) and the path-parameter
-    name (``/{author_id}``). Trivial PascalCase → snake_case (no acronym
-    handling — matches the cross-port pluralization rule).
-    """
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
-
-
-def _plural_lowercase(name: str) -> str:
-    """``Author`` → ``authors``. Cross-port-aligned trivial pluralization
-    (TS / Java / Kotlin / C# use the same rule for the default route segment).
-    Consumers needing irregular plurals can hand-edit the generated file."""
-    return name.lower() + "s"
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:

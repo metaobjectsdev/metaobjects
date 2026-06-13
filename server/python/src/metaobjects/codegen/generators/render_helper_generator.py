@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -65,17 +66,6 @@ from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "render-helper-generator"
-
-
-def _snake_case(name: str) -> str:
-    """``WelcomePage`` → ``welcome_page``. Trivial PascalCase → snake_case (no acronym
-    handling; matches the convention used by the sibling generators)."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def _py_str(s: str) -> str:
