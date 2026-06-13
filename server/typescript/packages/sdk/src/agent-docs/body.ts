@@ -152,7 +152,7 @@ The v0.2 keys (\`super\`, \`overlay\`, \`override\`, \`isInterface\`, \`implemen
 ### Package paths and inheritance
 
 - Package segments separated by \`::\` — \`acme::common::id\`
-- Relative references in \`extends:\` — \`..::common::id\` means "go up to parent package, descend into \`common::id\`"
+- Relative references in \`extends:\` — \`..::common::id\` means "go up to parent package, descend into \`common::id\`". Relative forms (\`..::\` parent-relative, leading \`::\` root-absolute) are a **YAML-authoring affordance only**; canonical JSON must be fully-qualified (a relative ref in JSON is rejected with \`ERR_RELATIVE_REF_IN_CANONICAL\`).
 - Cross-file resolution works as long as all files are passed to Loader (or live in the same \`metaobjects/\` directory)
 
 ### Two special intercepted attrs (parser-routed)
@@ -521,7 +521,7 @@ metaobjects.config.ts         generator wiring (committed)
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/users.schema.ts",
           "children": [
-            {"field": {"name": "id", "extends": "..::common::id"}},
+            {"field": {"name": "id", "extends": "common::id"}},
             {"field": {"name": "email", "subType": "string",
               "@column": "email_address",
               "children": [{"validator": {"subType": "required"}}]
