@@ -47,14 +47,33 @@ package context `P`:
 | **root-absolute** `::Rest` (leading `::`) | **absolute, escape to root**: strip the `::`, resolve `Rest` as a full path from root (reaches an empty-package/root-level type or any absolute path) | `::Apple` → root-level `Apple`; `::other::X` → `other::X` |
 | **parent-relative** `..::Rest` (one or more leading `..::`) | drop one package segment from `P` per `..::`, then resolve `Rest` (bare-in-that-package or qualified) against the reduced package; over-drop → error | `..::veg::Carrot` (from `acme::fruit`) → `acme::veg::Carrot` |
 
+**Key consequence — `a::b::c` ≡ `::a::b::c`.** The discriminator is simply *qualified
+(contains `::`) → absolute; bare (no `::`) → current package*. So a leading `::` is
+**redundant on an already-qualified ref** (`::acme::common::Base` and
+`acme::common::Base` resolve to the same node) and only changes meaning on a **single
+bare name** (`Apple` = current package vs `::Apple` = root-level/empty-package). That
+single-name case is the entire reason `::` exists — it resolves the lone genuine
+ambiguity ("the `Apple` in my package, or the one at root?"). Cross-package refs are
+therefore written plain-qualified (`acme::common::Base`); `::` is not a
+"package-prefix-vs-root" switch for multi-segment paths.
+
 The **dotted FR-024 child suffix** (`Owner.child.grandchild`) is orthogonal: the owner
 part follows the table above; the `.`-segments traverse child names (ADR-0029,
-unchanged). So `::acme::sales::Customer.id` = root-absolute owner `acme::sales::Customer`
-→ child `id`.
+unchanged). So `::acme::sales::Customer.id` = (redundant-`::`) absolute owner
+`acme::sales::Customer` → child `id`, identical to `acme::sales::Customer.id`.
 
 **The footgun is dead:** bare is always exactly the current package (deterministic);
 the root is **always** reachable via `::Name` (escape) or its full `pkg::Name`. Nothing
 silently falls back. `::` keeps the universal C++/C#/Rust meaning (root/absolute escape).
+
+**The `package` attribute is always absolute — relativity applies ONLY to
+references.** A `package:` declaration *is* the node's identity (it establishes the
+context that references resolve against), so it is never `::`/`..::`-prefixed and never
+expanded: it is taken literally as the absolute package. (No fixture, YAML file, or doc
+uses a relative package declaration; Java's vestigial `expandPackageForPath` call on
+the package attribute is removed by FR-026 so there is one relativity concept, not
+two.) The `::`/`..::`/bare/qualified rules in §2.1 govern *references between metadata*
+only.
 
 ### 2.2 Canonical JSON = fully-qualified, no relative navigation
 
