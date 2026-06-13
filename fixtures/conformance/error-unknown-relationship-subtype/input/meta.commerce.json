@@ -14,7 +14,7 @@
             {
               "relationship.oneToMany": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {

@@ -10,7 +10,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "NonexistentArgs"
+                "@parameterRef": "demo::NonexistentArgs"
               }
             },
             {

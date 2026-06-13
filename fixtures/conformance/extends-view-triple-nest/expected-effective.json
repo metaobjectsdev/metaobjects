@@ -48,21 +48,21 @@
             {
               "field.uuid": {
                 "name": "customerId",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@column": "customer_id"
               }
             },
             {
               "field.currency": {
                 "name": "price",
-                "extends": "Customer.priceCents",
+                "extends": "demo::Customer.priceCents",
                 "@column": "price_cents",
                 "@currency": "USD",
                 "children": [
                   {
                     "view.currency": {
                       "name": "display",
-                      "extends": "Customer.priceCents.display",
+                      "extends": "demo::Customer.priceCents.display",
                       "@locale": "en-US"
                     }
                   }
@@ -72,7 +72,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@fields": [
                   "id"
                 ]

@@ -200,14 +200,14 @@
             {
               "field.object": {
                 "name": "dimensions",
-                "@objectRef": "Dimensions",
+                "@objectRef": "acme::catalog::Dimensions",
                 "@storage": "flattened"
               }
             },
             {
               "field.object": {
                 "name": "seo",
-                "@objectRef": "SeoMeta",
+                "@objectRef": "acme::catalog::SeoMeta",
                 "@storage": "jsonb"
               }
             },
@@ -220,14 +220,14 @@
               "relationship.aggregation": {
                 "name": "category",
                 "@cardinality": "one",
-                "@objectRef": "Category"
+                "@objectRef": "acme::catalog::Category"
               }
             },
             {
               "relationship.association": {
                 "name": "suppliers",
                 "@cardinality": "many",
-                "@objectRef": "Supplier",
+                "@objectRef": "acme::catalog::Supplier",
                 "@through": "ProductSupplier"
               }
             },
@@ -242,7 +242,7 @@
                 "name": "fkCategory",
                 "@enforce": true,
                 "@fields": "categoryId",
-                "@references": "Category"
+                "@references": "acme::catalog::Category"
               }
             },
             {
@@ -296,7 +296,7 @@
               "relationship.composition": {
                 "name": "products",
                 "@cardinality": "many",
-                "@objectRef": "Product"
+                "@objectRef": "acme::catalog::Product"
               }
             }
           ]
@@ -323,7 +323,7 @@
               "relationship.association": {
                 "name": "peers",
                 "@cardinality": "many",
-                "@objectRef": "Supplier",
+                "@objectRef": "acme::catalog::Supplier",
                 "@through": "SupplierPeer",
                 "@symmetric": true
               }
@@ -366,14 +366,14 @@
               "identity.reference": {
                 "name": "productRef",
                 "@fields": "productId",
-                "@references": "Product"
+                "@references": "acme::catalog::Product"
               }
             },
             {
               "identity.reference": {
                 "name": "supplierRef",
                 "@fields": "supplierId",
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             }
           ]
@@ -414,14 +414,14 @@
               "identity.reference": {
                 "name": "supplierARef",
                 "@fields": "supplierAId",
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             },
             {
               "identity.reference": {
                 "name": "supplierBRef",
                 "@fields": "supplierBId",
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             }
           ]
@@ -441,7 +441,7 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "Product.id"
+                "extends": "acme::catalog::Product.id"
               }
             },
             {
@@ -450,7 +450,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Product.sku"
+                      "@from": "acme::catalog::Product.sku"
                     }
                   }
                 ]
@@ -463,8 +463,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Supplier.id",
-                      "@via": "Product.suppliers"
+                      "@of": "acme::catalog::Supplier.id",
+                      "@via": "acme::catalog::Product.suppliers"
                     }
                   }
                 ]
@@ -478,7 +478,7 @@
                 "children": [
                   {
                     "origin.collection": {
-                      "@via": "Product.suppliers"
+                      "@via": "acme::catalog::Product.suppliers"
                     }
                   }
                 ]
@@ -487,7 +487,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Product.id"
+                "extends": "acme::catalog::Product.id"
               }
             }
           ]

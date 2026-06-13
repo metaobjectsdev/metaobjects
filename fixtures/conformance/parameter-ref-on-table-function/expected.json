@@ -23,7 +23,7 @@
               "source.rdb": {
                 "@function": "fn_listing",
                 "@kind": "tableFunction",
-                "@parameterRef": "ListArgs"
+                "@parameterRef": "demo::ListArgs"
               }
             },
             {

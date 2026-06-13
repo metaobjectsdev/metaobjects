@@ -9,8 +9,8 @@
           "name": "Ticket",
           "children": [
             { "field.long": { "name": "id" } },
-            { "field.enum": { "name": "priority", "extends": "Priority" } },
-            { "field.enum": { "name": "currency", "extends": "Currency" } },
+            { "field.enum": { "name": "priority", "extends": "acme::Priority" } },
+            { "field.enum": { "name": "currency", "extends": "acme::Currency" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }

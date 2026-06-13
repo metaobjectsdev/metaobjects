@@ -33,7 +33,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "Customer"
+                "@parameterRef": "demo::Customer"
               }
             },
             {

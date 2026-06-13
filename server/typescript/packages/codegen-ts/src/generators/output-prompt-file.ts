@@ -17,6 +17,7 @@ import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
@@ -49,7 +50,7 @@ export const outputPrompt = function outputPrompt(opts?: OutputPromptOpts): Gene
         // @payloadRef must resolve to a value-object (same contract as the parser).
         const payloadRef = t.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof payloadRef !== "string") continue;
-        const vo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);
+        const vo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
         if (!vo) continue;
         files.push({
           path: `${dirPrefix}${t.name}.prompt.ts`,

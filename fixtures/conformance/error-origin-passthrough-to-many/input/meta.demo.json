@@ -22,7 +22,7 @@
             {
               "relationship.association": {
                 "name": "orders",
-                "@objectRef": "Order",
+                "@objectRef": "demo::Order",
                 "@cardinality": "many"
               }
             },
@@ -34,16 +34,16 @@
         "object.projection": {
           "name": "UserSummary",
           "children": [
-            { "field.uuid": { "name": "userId", "extends": "User.id" } },
+            { "field.uuid": { "name": "userId", "extends": "demo::User.id" } },
             {
               "field.string": {
                 "name": "orderLabel",
                 "children": [
-                  { "origin.passthrough": { "@from": "Order.label", "@via": "User.orders" } }
+                  { "origin.passthrough": { "@from": "demo::Order.label", "@via": "demo::User.orders" } }
                 ]
               }
             },
-            { "identity.primary": { "name": "id", "extends": "User.id" } }
+            { "identity.primary": { "name": "id", "extends": "demo::User.id" } }
           ]
         }
       }

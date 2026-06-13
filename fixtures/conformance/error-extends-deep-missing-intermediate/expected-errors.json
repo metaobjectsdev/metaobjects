@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[0]['field.currency'].children[0]['view.currency']",
         "referrer": "display",
-        "target": "Customer.nosuch.display"
+        "target": "demo::Customer.nosuch.display"
       }
     }
   ],

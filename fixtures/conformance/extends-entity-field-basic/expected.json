@@ -44,7 +44,7 @@
             {
               "field.uuid": {
                 "name": "customerId",
-                "extends": "Customer.id"
+                "extends": "demo::Customer.id"
               }
             }
           ]

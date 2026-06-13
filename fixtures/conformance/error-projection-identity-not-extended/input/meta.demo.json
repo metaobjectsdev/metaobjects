@@ -18,8 +18,8 @@
         "object.projection": {
           "name": "CustomersV1",
           "children": [
-            { "field.uuid": { "name": "customerId", "extends": "Customer.id", "@column": "customer_id" } },
-            { "field.string": { "name": "name", "extends": "Customer.name" } },
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id", "@column": "customer_id" } },
+            { "field.string": { "name": "name", "extends": "demo::Customer.name" } },
             { "identity.primary": { "name": "id", "@fields": ["customerId"] } }
           ]
         }

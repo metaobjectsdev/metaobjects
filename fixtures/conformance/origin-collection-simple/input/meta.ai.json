@@ -27,11 +27,11 @@
               "field.object": {
                 "name": "posts",
                 "isArray": true,
-                "@objectRef": "PostBrief",
+                "@objectRef": "acme::ai::PostBrief",
                 "children": [
                   {
                     "origin.collection": {
-                      "@via": "Author.posts"
+                      "@via": "acme::ai::Author.posts"
                     }
                   }
                 ]

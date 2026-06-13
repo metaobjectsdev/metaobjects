@@ -13,9 +13,9 @@
       { "object.projection": {
         "name": "CustomersV1",
         "children": [
-          { "field.uuid": { "name": "customerId", "extends": "Customer.id",
+          { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id",
             "children": [
-              { "view.currency": { "name": "display", "extends": "Customer.id.display" } }
+              { "view.currency": { "name": "display", "extends": "demo::Customer.id.display" } }
             ] } }
         ]
       }}

@@ -19,7 +19,7 @@
       {
         "object.entity": {
           "name": "Customer",
-          "extends": "BaseEntity",
+          "extends": "demo::BaseEntity",
           "children": [
             {
               "source.rdb": {

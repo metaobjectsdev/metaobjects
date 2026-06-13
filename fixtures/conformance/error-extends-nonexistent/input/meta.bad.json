@@ -5,7 +5,7 @@
       {
         "object.entity": {
           "name": "Premium",
-          "extends": "DoesNotExist",
+          "extends": "acme::DoesNotExist",
           "children": [
             {
               "field.long": {

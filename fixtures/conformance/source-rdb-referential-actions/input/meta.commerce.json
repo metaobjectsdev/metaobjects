@@ -52,7 +52,7 @@
             {
               "relationship.composition": {
                 "name": "program",
-                "@objectRef": "Program",
+                "@objectRef": "acme::commerce::Program",
                 "@cardinality": "one",
                 "@onDelete": "cascade",
                 "@onUpdate": "cascade"
@@ -68,7 +68,7 @@
               "identity.reference": {
                 "name": "programRef",
                 "@fields": "programId",
-                "@references": "Program"
+                "@references": "acme::commerce::Program"
               }
             }
           ]

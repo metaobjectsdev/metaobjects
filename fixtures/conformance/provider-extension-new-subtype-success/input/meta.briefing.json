@@ -14,7 +14,7 @@
       {
         "template.briefing": {
           "name": "DailyBriefing",
-          "@payloadRef": "BriefingNotes",
+          "@payloadRef": "examples::BriefingNotes",
           "@author": "Lorekeeper",
           "@recipient": "Council"
         }

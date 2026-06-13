@@ -43,7 +43,7 @@
         "template.output": {
           "name": "npcCard",
           "@format": "html",
-          "@payloadRef": "NpcPromptPayload",
+          "@payloadRef": "acme::ai::NpcPromptPayload",
           "@textRef": "card/npc"
         }
       },
@@ -51,7 +51,7 @@
         "template.prompt": {
           "name": "npcTurn",
           "@format": "xml",
-          "@payloadRef": "NpcPromptPayload",
+          "@payloadRef": "acme::ai::NpcPromptPayload",
           "@textRef": "npc/turn"
         }
       }

@@ -19,14 +19,14 @@
       {
         "object.entity": {
           "name": "MidAuth",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "abstract": true
         }
       },
       {
         "object.entity": {
           "name": "LeafAuth",
-          "extends": "MidAuth",
+          "extends": "demo::MidAuth",
           "@discriminatorValue": "Leaf",
           "children": [
             {

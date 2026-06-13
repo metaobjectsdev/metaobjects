@@ -183,6 +183,9 @@ export type { SerializeOptions } from "./serializer-json.js";
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
 export { resolveSuperRef } from "./super-resolve.js";
 
+// FR-026 (ADR-0032) — canonical reference expansion + FQN object matching.
+export { expandRef, isRelativeRef, refMatchesObject, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
+
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";
 export type { LoadOptions, LoadResult, LoadingState, DirectoryFactoryOptions } from "./loader/meta-data-loader.js";

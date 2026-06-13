@@ -27,7 +27,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_a",
-                "@parameterRef": "PagedArgs"
+                "@parameterRef": "demo::PagedArgs"
               }
             },
             {
@@ -46,7 +46,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_b",
-                "@parameterRef": "PagedArgs"
+                "@parameterRef": "demo::PagedArgs"
               }
             },
             {

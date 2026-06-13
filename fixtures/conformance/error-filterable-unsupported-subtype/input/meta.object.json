@@ -31,7 +31,7 @@
             {
               "field.object": {
                 "name": "shipTo",
-                "@objectRef": "Address",
+                "@objectRef": "test::Address",
                 "@storage": "jsonb",
                 "@filterable": true,
                 "@db.indexed": true

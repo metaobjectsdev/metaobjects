@@ -61,11 +61,11 @@
             {
               "field.string": {
                 "name": "countryName",
-                "extends": "Country.name",
+                "extends": "demo::Country.name",
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Country.name"
+                      "@from": "demo::Country.name"
                     }
                   }
                 ]
@@ -75,7 +75,7 @@
               "relationship.association": {
                 "name": "country",
                 "@cardinality": "one",
-                "@objectRef": "Country"
+                "@objectRef": "demo::Country"
               }
             },
             {

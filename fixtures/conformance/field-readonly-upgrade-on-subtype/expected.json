@@ -18,7 +18,7 @@
       {
         "object.entity": {
           "name": "Catalog",
-          "extends": "BaseEntity",
+          "extends": "demo::BaseEntity",
           "children": [
             {
               "source.rdb": {

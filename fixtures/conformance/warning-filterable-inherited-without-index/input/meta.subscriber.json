@@ -21,7 +21,7 @@
       {
         "object.entity": {
           "name": "Subscriber",
-          "extends": "BaseEntity"
+          "extends": "acme::BaseEntity"
         }
       }
     ]

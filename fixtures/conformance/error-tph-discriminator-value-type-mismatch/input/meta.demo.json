@@ -22,7 +22,7 @@
       {
         "object.entity": {
           "name": "Unknown",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "@discriminatorValue": "NotInEnum",
           "children": []
         }

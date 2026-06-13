@@ -12,7 +12,7 @@
               "relationship.association": {
                 "name": "friends",
                 "@cardinality": "many",
-                "@objectRef": "User",
+                "@objectRef": "acme::social::User",
                 "@through": "Friendship",
                 "@symmetric": true
               }
@@ -29,8 +29,8 @@
             { "field.long": { "name": "userAId" } },
             { "field.long": { "name": "userBId" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
-            { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "User" } },
-            { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "User" } }
+            { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "acme::social::User" } },
+            { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "acme::social::User" } }
           ]
         }
       }

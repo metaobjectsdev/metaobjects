@@ -15,7 +15,7 @@
         "template.output": {
           "name": "WelcomePage",
           "@kind": "document",
-          "@payloadRef": "Welcome",
+          "@payloadRef": "acme::site::Welcome",
           "@textRef": "site/welcome",
           "@format": "html",
           "@maxChars": 5000,

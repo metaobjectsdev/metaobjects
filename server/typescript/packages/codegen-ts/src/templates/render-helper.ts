@@ -43,6 +43,7 @@ import {
   TEMPLATE_ATTR_SUBJECT_REF,
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -53,7 +54,7 @@ import {
 } from "@metaobjectsdev/render";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function findTemplate(root: MetaData, name: string): MetaData | undefined {

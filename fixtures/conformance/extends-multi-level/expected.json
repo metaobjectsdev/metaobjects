@@ -25,7 +25,7 @@
       {
         "object.entity": {
           "name": "Mid",
-          "extends": "Base",
+          "extends": "acme::Base",
           "children": [
             {
               "field.string": {
@@ -38,7 +38,7 @@
       {
         "object.entity": {
           "name": "Leaf",
-          "extends": "Mid",
+          "extends": "acme::Mid",
           "children": [
             {
               "field.string": {

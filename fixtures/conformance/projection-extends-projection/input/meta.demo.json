@@ -19,16 +19,16 @@
           "name": "CustomerCore",
           "abstract": true,
           "children": [
-            { "field.uuid": { "name": "customerId", "extends": "Customer.id", "@column": "customer_id" } },
-            { "field.string": { "name": "name", "extends": "Customer.name" } },
-            { "identity.primary": { "name": "id", "extends": "Customer.id" } }
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id", "@column": "customer_id" } },
+            { "field.string": { "name": "name", "extends": "demo::Customer.name" } },
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
           ]
         }
       },
       {
         "object.projection": {
           "name": "CustomersV1",
-          "extends": "CustomerCore",
+          "extends": "demo::CustomerCore",
           "children": [
             { "source.rdb": { "@kind": "view", "@view": "v_customers_v1" } }
           ]

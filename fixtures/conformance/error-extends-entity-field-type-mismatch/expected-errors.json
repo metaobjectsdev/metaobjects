@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.uuid']",
         "referrer": "customerId",
-        "target": "Customer.name"
+        "target": "demo::Customer.name"
       }
     }
   ],

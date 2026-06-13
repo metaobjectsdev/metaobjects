@@ -8,7 +8,7 @@
           "name": "Order",
           "children": [
             { "field.long": { "name": "id" } },
-            { "field.enum": { "name": "status", "extends": "Status" } },
+            { "field.enum": { "name": "status", "extends": "acme::Status" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }

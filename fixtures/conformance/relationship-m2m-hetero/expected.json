@@ -20,7 +20,7 @@
               "relationship.association": {
                 "name": "tags",
                 "@cardinality": "many",
-                "@objectRef": "Tag",
+                "@objectRef": "acme::commerce::Tag",
                 "@through": "PostTag"
               }
             },
@@ -93,7 +93,7 @@
                 "@fields": [
                   "postId"
                 ],
-                "@references": "Post"
+                "@references": "acme::commerce::Post"
               }
             },
             {
@@ -102,7 +102,7 @@
                 "@fields": [
                   "tagId"
                 ],
-                "@references": "Tag"
+                "@references": "acme::commerce::Tag"
               }
             }
           ]

@@ -19,7 +19,7 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {

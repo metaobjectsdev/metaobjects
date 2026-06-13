@@ -14,7 +14,7 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
@@ -61,8 +61,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "notARealFn",
-                      "@of": "Week.id",
-                      "@via": "Program.weeks"
+                      "@of": "acme::commerce::Week.id",
+                      "@via": "acme::commerce::Program.weeks"
                     }
                   }
                 ]

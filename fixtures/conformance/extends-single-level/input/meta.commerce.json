@@ -28,7 +28,7 @@
       {
         "object.entity": {
           "name": "Premium",
-          "extends": "Product",
+          "extends": "acme::commerce::Product",
           "children": [
             {
               "field.string": {

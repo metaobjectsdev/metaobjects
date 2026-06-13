@@ -64,7 +64,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Country.name"
+                      "@from": "demo::Country.name"
                     }
                   }
                 ]
@@ -74,7 +74,7 @@
               "relationship.association": {
                 "name": "country",
                 "@cardinality": "one",
-                "@objectRef": "Country"
+                "@objectRef": "demo::Country"
               }
             },
             {
@@ -95,14 +95,14 @@
             {
               "field.uuid": {
                 "name": "customerId",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@column": "customer_id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "extends": "Customer.name"
+                "extends": "demo::Customer.name"
               }
             },
             {
@@ -111,7 +111,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Country.name"
+                      "@from": "demo::Country.name"
                     }
                   }
                 ]
@@ -120,7 +120,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@fields": [
                   "id"
                 ]
@@ -132,4 +132,3 @@
     ]
   }
 }
-

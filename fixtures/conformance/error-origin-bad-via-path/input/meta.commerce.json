@@ -42,8 +42,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Program.id",
-                      "@via": "Program.notARealRelationship"
+                      "@of": "acme::commerce::Program.id",
+                      "@via": "acme::commerce::Program.notARealRelationship"
                     }
                   }
                 ]

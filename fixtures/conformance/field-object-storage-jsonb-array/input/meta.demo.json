@@ -42,7 +42,7 @@
               "field.object": {
                 "name": "contactInfos",
                 "isArray": true,
-                "@objectRef": "ContactInfo",
+                "@objectRef": "acme::ContactInfo",
                 "@storage": "jsonb"
               }
             },

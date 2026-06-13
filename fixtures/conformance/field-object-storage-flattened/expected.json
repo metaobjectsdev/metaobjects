@@ -43,7 +43,7 @@
             {
               "field.object": {
                 "name": "shippingAddress",
-                "@objectRef": "Address",
+                "@objectRef": "acme::Address",
                 "@storage": "flattened"
               }
             },

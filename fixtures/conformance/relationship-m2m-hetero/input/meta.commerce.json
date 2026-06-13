@@ -12,7 +12,7 @@
               "relationship.association": {
                 "name": "tags",
                 "@cardinality": "many",
-                "@objectRef": "Tag",
+                "@objectRef": "acme::commerce::Tag",
                 "@through": "PostTag"
               }
             },
@@ -38,8 +38,8 @@
             { "field.long": { "name": "postId" } },
             { "field.long": { "name": "tagId" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
-            { "identity.reference": { "name": "postRef", "@fields": "postId", "@references": "Post" } },
-            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "Tag" } }
+            { "identity.reference": { "name": "postRef", "@fields": "postId", "@references": "acme::commerce::Post" } },
+            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "acme::commerce::Tag" } }
           ]
         }
       }

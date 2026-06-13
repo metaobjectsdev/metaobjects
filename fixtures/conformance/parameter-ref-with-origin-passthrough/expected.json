@@ -38,7 +38,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Case.id"
+                      "@from": "demo::Case.id"
                     }
                   }
                 ]
@@ -54,7 +54,7 @@
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@parameterRef": "PhaseSummaryArgs",
+                "@parameterRef": "demo::PhaseSummaryArgs",
                 "@proc": "fn_get_phase_summary"
               }
             },

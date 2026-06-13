@@ -22,7 +22,7 @@
             {
               "relationship.association": {
                 "name": "country",
-                "@objectRef": "Country",
+                "@objectRef": "demo::Country",
                 "@cardinality": "one"
               }
             },
@@ -34,16 +34,16 @@
         "object.projection": {
           "name": "CustomerSummary",
           "children": [
-            { "field.uuid": { "name": "customerId", "extends": "Customer.id" } },
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id" } },
             {
               "field.int": {
                 "name": "countryCount",
                 "children": [
-                  { "origin.aggregate": { "@agg": "count", "@of": "Country.id", "@via": "Customer.country" } }
+                  { "origin.aggregate": { "@agg": "count", "@of": "demo::Country.id", "@via": "demo::Customer.country" } }
                 ]
               }
             },
-            { "identity.primary": { "name": "id", "extends": "Customer.id" } }
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
           ]
         }
       }

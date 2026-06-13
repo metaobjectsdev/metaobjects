@@ -95,6 +95,7 @@ import {
   TEMPLATE_KIND_DEFAULT,
   TYPE_SOURCE,
   SOURCE_ATTR_PARAMETER_REF,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import {
   findByIdFnName,
@@ -756,7 +757,7 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
       // Only count it when it resolves to a value object (the template's guard).
       const vo = root
         .ownChildren()
-        .find((c) => c.subType === OBJECT_SUBTYPE_VALUE && c.name === ref);
+        .find((c) => c.subType === OBJECT_SUBTYPE_VALUE && refMatchesObject(c, ref));
       if (vo !== undefined) return ref;
     }
   }

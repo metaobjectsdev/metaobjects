@@ -43,7 +43,7 @@
         "template.output": {
           "name": "OrderSummary",
           "package": "acme::shop",
-          "@payloadRef": "OrderSummaryPayload",
+          "@payloadRef": "acme::shop::OrderSummaryPayload",
           "@textRef": "shop/order-summary",
           "@format": "json",
           "@promptStyle": "inline"

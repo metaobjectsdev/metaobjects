@@ -27,11 +27,12 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   PACKAGE_SEPARATOR,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */

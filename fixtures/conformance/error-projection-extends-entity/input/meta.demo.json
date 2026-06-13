@@ -16,7 +16,7 @@
       {
         "object.projection": {
           "name": "CustomersV1",
-          "extends": "Customer",
+          "extends": "demo::Customer",
           "children": [
             { "field.string": { "name": "displayLabel" } }
           ]

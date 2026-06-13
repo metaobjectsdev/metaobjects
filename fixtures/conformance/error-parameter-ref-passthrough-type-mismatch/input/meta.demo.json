@@ -40,7 +40,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Case.label"
+                      "@from": "demo::Case.label"
                     }
                   }
                 ]
@@ -57,7 +57,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "Args"
+                "@parameterRef": "demo::Args"
               }
             },
             {

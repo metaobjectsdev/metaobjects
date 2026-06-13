@@ -22,7 +22,7 @@
       {
         "object.entity": {
           "name": "ForgotValue",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "children": [
             { "field.int": { "name": "q" } }
           ]

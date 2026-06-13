@@ -17,11 +17,12 @@ import {
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_FORMAT,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import { specLiteral } from "./output-format-spec-emitter.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function findTemplate(root: MetaData, name: string): MetaData | undefined {

@@ -44,20 +44,20 @@
             {
               "field.uuid": {
                 "name": "customerId",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@column": "customer_id"
               }
             },
             {
               "field.string": {
                 "name": "name",
-                "extends": "Customer.name"
+                "extends": "demo::Customer.name"
               }
             },
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Customer.id",
+                "extends": "demo::Customer.id",
                 "@fields": [
                   "customerId"
                 ]

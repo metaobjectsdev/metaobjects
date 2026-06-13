@@ -16,7 +16,7 @@
               "relationship.association": {
                 "name": "tags",
                 "@cardinality": "many",
-                "@objectRef": "Tag",
+                "@objectRef": "acme::social::Tag",
                 "@through": "UserTag"
               }
             },
@@ -24,7 +24,7 @@
               "relationship.association": {
                 "name": "friends",
                 "@cardinality": "many",
-                "@objectRef": "User",
+                "@objectRef": "acme::social::User",
                 "@through": "Friendship",
                 "@symmetric": true
               }
@@ -33,7 +33,7 @@
               "relationship.association": {
                 "name": "follows",
                 "@cardinality": "many",
-                "@objectRef": "User",
+                "@objectRef": "acme::social::User",
                 "@through": "Follow",
                 "@sourceRefField": "followerId"
               }
@@ -64,8 +64,8 @@
             { "field.long": { "name": "userId" } },
             { "field.long": { "name": "tagId" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
-            { "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "User" } },
-            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "Tag" } }
+            { "identity.reference": { "name": "userRef", "@fields": "userId", "@references": "acme::social::User" } },
+            { "identity.reference": { "name": "tagRef", "@fields": "tagId", "@references": "acme::social::Tag" } }
           ]
         }
       },
@@ -79,8 +79,8 @@
             { "field.long": { "name": "userAId" } },
             { "field.long": { "name": "userBId" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
-            { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "User" } },
-            { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "User" } }
+            { "identity.reference": { "name": "userARef", "@fields": "userAId", "@references": "acme::social::User" } },
+            { "identity.reference": { "name": "userBRef", "@fields": "userBId", "@references": "acme::social::User" } }
           ]
         }
       },
@@ -94,8 +94,8 @@
             { "field.long": { "name": "followerId" } },
             { "field.long": { "name": "followeeId" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
-            { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "User" } },
-            { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "User" } }
+            { "identity.reference": { "name": "followerRef", "@fields": "followerId", "@references": "acme::social::User" } },
+            { "identity.reference": { "name": "followeeRef", "@fields": "followeeId", "@references": "acme::social::User" } }
           ]
         }
       }

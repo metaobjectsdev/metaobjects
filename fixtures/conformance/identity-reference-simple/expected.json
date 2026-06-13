@@ -51,7 +51,7 @@
                 "@fields": [
                   "customerId"
                 ],
-                "@references": "Customer"
+                "@references": "acme::orders::Customer"
               }
             }
           ]

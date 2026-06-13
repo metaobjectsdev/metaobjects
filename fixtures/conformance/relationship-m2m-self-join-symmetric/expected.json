@@ -20,7 +20,7 @@
               "relationship.association": {
                 "name": "friends",
                 "@cardinality": "many",
-                "@objectRef": "User",
+                "@objectRef": "acme::social::User",
                 "@symmetric": true,
                 "@through": "Friendship"
               }
@@ -69,7 +69,7 @@
                 "@fields": [
                   "userAId"
                 ],
-                "@references": "User"
+                "@references": "acme::social::User"
               }
             },
             {
@@ -78,7 +78,7 @@
                 "@fields": [
                   "userBId"
                 ],
-                "@references": "User"
+                "@references": "acme::social::User"
               }
             }
           ]

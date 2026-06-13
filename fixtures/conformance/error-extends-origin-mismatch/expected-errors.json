@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[1]['field.string'].children[0]['origin.passthrough']",
         "referrer": "CustomerSummary::label",
-        "target": "Region.name"
+        "target": "demo::Region.name"
       }
     }
   ],

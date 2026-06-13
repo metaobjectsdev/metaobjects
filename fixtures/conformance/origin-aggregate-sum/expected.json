@@ -19,7 +19,7 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
@@ -75,8 +75,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "sum",
-                      "@of": "Week.durationMinutes",
-                      "@via": "Program.weeks"
+                      "@of": "acme::commerce::Week.durationMinutes",
+                      "@via": "acme::commerce::Program.weeks"
                     }
                   }
                 ]

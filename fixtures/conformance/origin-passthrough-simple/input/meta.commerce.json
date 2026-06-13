@@ -38,7 +38,7 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "Program.id"
+                "extends": "acme::commerce::Program.id"
               }
             },
             {
@@ -47,7 +47,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Program.title"
+                      "@from": "acme::commerce::Program.title"
                     }
                   }
                 ]
@@ -56,7 +56,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Program.id"
+                "extends": "acme::commerce::Program.id"
               }
             }
           ]

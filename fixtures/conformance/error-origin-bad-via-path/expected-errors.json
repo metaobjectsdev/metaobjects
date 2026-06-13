@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[1]['field.int'].children[0]['origin.aggregate']",
         "referrer": "ProgramSummary::weekCount",
-        "target": "Program.notARealRelationship"
+        "target": "acme::commerce::Program.notARealRelationship"
       }
     }
   ],

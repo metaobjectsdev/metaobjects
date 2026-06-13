@@ -28,7 +28,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_search",
-                "@parameterRef": "SearchArgs"
+                "@parameterRef": "demo::SearchArgs"
               }
             },
             {

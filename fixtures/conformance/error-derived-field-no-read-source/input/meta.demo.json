@@ -26,8 +26,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Week.id",
-                      "@via": "Program.weeks"
+                      "@of": "demo::Week.id",
+                      "@via": "demo::Program.weeks"
                     }
                   }
                 ]
@@ -36,7 +36,7 @@
             {
               "relationship.aggregation": {
                 "name": "weeks",
-                "@objectRef": "Week",
+                "@objectRef": "demo::Week",
                 "@cardinality": "many"
               }
             },

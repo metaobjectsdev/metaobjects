@@ -24,16 +24,16 @@
             {
               "field.string": {
                 "name": "countryName",
-                "extends": "Country.name",
+                "extends": "demo::Country.name",
                 "children": [
-                  { "origin.passthrough": { "@from": "Country.name" } }
+                  { "origin.passthrough": { "@from": "demo::Country.name" } }
                 ]
               }
             },
             {
               "relationship.association": {
                 "name": "country",
-                "@objectRef": "Country",
+                "@objectRef": "demo::Country",
                 "@cardinality": "one"
               }
             },

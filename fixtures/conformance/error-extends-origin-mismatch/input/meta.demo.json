@@ -23,7 +23,7 @@
             {
               "relationship.association": {
                 "name": "region",
-                "@objectRef": "Region",
+                "@objectRef": "demo::Region",
                 "@cardinality": "one"
               }
             },
@@ -35,17 +35,17 @@
         "object.projection": {
           "name": "CustomerSummary",
           "children": [
-            { "field.uuid": { "name": "customerId", "extends": "Customer.id", "@column": "customer_id" } },
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id", "@column": "customer_id" } },
             {
               "field.string": {
                 "name": "label",
-                "extends": "Customer.name",
+                "extends": "demo::Customer.name",
                 "children": [
-                  { "origin.passthrough": { "@from": "Region.name" } }
+                  { "origin.passthrough": { "@from": "demo::Region.name" } }
                 ]
               }
             },
-            { "identity.primary": { "name": "id", "extends": "Customer.id" } }
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
           ]
         }
       }

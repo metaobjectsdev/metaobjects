@@ -67,8 +67,8 @@
               "template.prompt": {
                 "name": "ClassifyPrompt",
                 "@format": "xml",
-                "@payloadRef": "ClassifyRequest",
-                "@responseRef": "ClassifyResponse",
+                "@payloadRef": "metaobjects::ai::ClassifyRequest",
+                "@responseRef": "metaobjects::ai::ClassifyResponse",
                 "@textRef": "p/classify"
               }
             }

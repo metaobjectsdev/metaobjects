@@ -14,7 +14,7 @@
       {
         "template.prompt": {
           "name": "npcTurn",
-          "@payloadRef": "Npc",
+          "@payloadRef": "acme::ai::Npc",
           "@textRef": "npc/turn",
           "@format": "xml"
         }

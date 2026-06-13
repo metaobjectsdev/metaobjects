@@ -19,6 +19,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_FORMAT,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import {
   nestedMirrorInterfaces,
@@ -42,7 +43,9 @@ const SCALAR_ZOD: Record<string, string> = {
 };
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // FR-026 — @payloadRef is FQN after the desugar/sweep; match on the effective
+  // FQN resolution key (with bare back-compat).
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -207,7 +210,7 @@ ${delegateHelpers(usedHelpers(vo, root))}
  * \`${extractedName}\` mirror.
  *
  * @param root a loaded MetaRoot (e.g. \`(await new MetaDataLoader().load(...)).root\`) that declares
- *             the \`${payloadRef}\` value-object.
+ *             the \`${payloadName}\` value-object.
  */
 export function ${extractLenientWithName}(
   root: MetaRoot,

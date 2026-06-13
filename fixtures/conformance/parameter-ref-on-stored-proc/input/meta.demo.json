@@ -28,7 +28,7 @@
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_get_phase_summary",
-                "@parameterRef": "PhaseSummaryArgs"
+                "@parameterRef": "demo::PhaseSummaryArgs"
               }
             },
             {

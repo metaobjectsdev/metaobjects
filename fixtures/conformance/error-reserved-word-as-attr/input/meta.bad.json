@@ -15,7 +15,7 @@
               "field.object": {
                 "name": "items",
                 "@isArray": true,
-                "@objectRef": "Item"
+                "@objectRef": "acme::Item"
               }
             },
             {

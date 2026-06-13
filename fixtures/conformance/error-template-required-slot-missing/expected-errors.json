@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['template.prompt']",
         "referrer": "npcTurn",
-        "target": "NpcPromptPayload.notAField"
+        "target": "acme::ai::NpcPromptPayload.notAField"
       }
     }
   ],

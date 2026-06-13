@@ -14,7 +14,7 @@
       {
         "template.output": {
           "name": "NpcResponseOutput",
-          "@payloadRef": "NpcResponsePayload",
+          "@payloadRef": "acme::ai::NpcResponsePayload",
           "@textRef": "npc/output",
           "@format": "json"
         }

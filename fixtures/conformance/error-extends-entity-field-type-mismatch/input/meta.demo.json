@@ -16,7 +16,7 @@
         "object.value": {
           "name": "CustomerArgs",
           "children": [
-            { "field.uuid": { "name": "customerId", "extends": "Customer.name" } }
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.name" } }
           ]
         }
       }

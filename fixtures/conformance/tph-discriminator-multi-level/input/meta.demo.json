@@ -15,7 +15,7 @@
       {
         "object.entity": {
           "name": "MidAuth",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "abstract": true,
           "children": []
         }
@@ -23,7 +23,7 @@
       {
         "object.entity": {
           "name": "LeafAuth",
-          "extends": "MidAuth",
+          "extends": "demo::MidAuth",
           "@discriminatorValue": "Leaf",
           "children": [
             { "source.rdb": { "@table": "leaf_auths" } },

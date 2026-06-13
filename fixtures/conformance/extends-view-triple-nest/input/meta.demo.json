@@ -17,12 +17,12 @@
       { "object.projection": {
         "name": "CustomerPricesV1",
         "children": [
-          { "field.uuid": { "name": "customerId", "extends": "Customer.id", "@column": "customer_id" } },
-          { "field.currency": { "name": "price", "extends": "Customer.priceCents", "@column": "price_cents",
+          { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id", "@column": "customer_id" } },
+          { "field.currency": { "name": "price", "extends": "demo::Customer.priceCents", "@column": "price_cents",
             "children": [
-              { "view.currency": { "name": "display", "extends": "Customer.priceCents.display" } }
+              { "view.currency": { "name": "display", "extends": "demo::Customer.priceCents.display" } }
             ] } },
-          { "identity.primary": { "name": "id", "extends": "Customer.id" } }
+          { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
         ]
       }}
     ]

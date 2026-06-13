@@ -18,8 +18,8 @@
           "name": "CustomersV1",
           "children": [
             { "source.rdb": { "@table": "customers_copy" } },
-            { "field.uuid": { "name": "customerId", "extends": "Customer.id" } },
-            { "field.string": { "name": "name", "extends": "Customer.name" } }
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id" } },
+            { "field.string": { "name": "name", "extends": "demo::Customer.name" } }
           ]
         }
       }

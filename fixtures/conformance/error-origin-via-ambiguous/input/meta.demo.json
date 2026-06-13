@@ -24,21 +24,21 @@
               "field.string": {
                 "name": "countryName",
                 "children": [
-                  { "origin.passthrough": { "@from": "Country.name" } }
+                  { "origin.passthrough": { "@from": "demo::Country.name" } }
                 ]
               }
             },
             {
               "relationship.association": {
                 "name": "homeCountry",
-                "@objectRef": "Country",
+                "@objectRef": "demo::Country",
                 "@cardinality": "one"
               }
             },
             {
               "relationship.association": {
                 "name": "billingCountry",
-                "@objectRef": "Country",
+                "@objectRef": "demo::Country",
                 "@cardinality": "one"
               }
             },

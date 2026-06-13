@@ -19,7 +19,7 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
@@ -45,7 +45,7 @@
             {
               "relationship.association": {
                 "name": "workouts",
-                "@objectRef": "Workout"
+                "@objectRef": "acme::commerce::Workout"
               }
             },
             {
@@ -101,8 +101,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Workout.id",
-                      "@via": "Program.weeks.workouts"
+                      "@of": "acme::commerce::Workout.id",
+                      "@via": "acme::commerce::Program.weeks.workouts"
                     }
                   }
                 ]

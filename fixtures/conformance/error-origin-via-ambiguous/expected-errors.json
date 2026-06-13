@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[3]['field.string'].children[0]['origin.passthrough']",
         "referrer": "Customer::countryName",
-        "target": "Country.name"
+        "target": "demo::Country.name"
       }
     }
   ],

@@ -108,8 +108,8 @@
               "template.prompt": {
                 "name": "ClassifyPrompt",
                 "@format": "json",
-                "@payloadRef": "ClassifyReq",
-                "@responseRef": "ClassifyRes",
+                "@payloadRef": "metaobjects::ai::ClassifyReq",
+                "@responseRef": "metaobjects::ai::ClassifyRes",
                 "@textRef": "p/classify"
               }
             }
@@ -126,8 +126,8 @@
               "template.prompt": {
                 "name": "SummarizePrompt",
                 "@format": "json",
-                "@payloadRef": "SummarizeReq",
-                "@responseRef": "SummarizeRes",
+                "@payloadRef": "metaobjects::ai::SummarizeReq",
+                "@responseRef": "metaobjects::ai::SummarizeRes",
                 "@textRef": "p/summarize"
               }
             }
