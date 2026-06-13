@@ -58,6 +58,9 @@ const manifestPath = join(fixtureDir, "expected-paths.json");
 const LAYOUT: OutputLayout = "package";
 const API_TS_SUBDIR = "api/ts";
 const API_JAVA_SUBDIR = "api/java";
+const API_CSHARP_SUBDIR = "api/csharp";
+const API_PYTHON_SUBDIR = "api/python";
+const API_KOTLIN_SUBDIR = "api/kotlin";
 
 interface Emitted {
 	path: string;
@@ -69,10 +72,19 @@ interface ManifestUnit {
 	modelPath: string;
 	apiTsPath: string;
 	apiJavaPath: string;
+	apiCsharpPath: string;
+	apiPythonPath: string;
+	apiKotlinPath: string;
 	modelToApiTs: string;
 	modelToApiJava: string;
+	modelToApiCsharp: string;
+	modelToApiPython: string;
+	modelToApiKotlin: string;
 	apiTsToModel: string;
 	apiJavaToModel: string;
+	apiCsharpToModel: string;
+	apiPythonToModel: string;
+	apiKotlinToModel: string;
 }
 
 interface Manifest {
@@ -80,6 +92,9 @@ interface Manifest {
 	layout: string;
 	apiTsSubDir: string;
 	apiJavaSubDir: string;
+	apiCsharpSubDir: string;
+	apiPythonSubDir: string;
+	apiKotlinSubDir: string;
 	units: ManifestUnit[];
 }
 
@@ -155,10 +170,25 @@ const MD_LINK_LABELLED = (label: string): RegExp =>
 
 /** From a model entity page, pull the api/ts + api/java hrefs out of the
  *  `**API reference:** [TypeScript](..) · [Java](..)` line. */
-function modelApiRefs(content: string): { ts?: string; java?: string } {
+function modelApiRefs(content: string): {
+	ts?: string;
+	java?: string;
+	csharp?: string;
+	python?: string;
+	kotlin?: string;
+} {
 	const tsHref = content.match(MD_LINK_LABELLED("TypeScript"))?.[1];
 	const javaHref = content.match(MD_LINK_LABELLED("Java"))?.[1];
-	return { ...(tsHref !== undefined && { ts: tsHref }), ...(javaHref !== undefined && { java: javaHref }) };
+	const csHref = content.match(MD_LINK_LABELLED("C#"))?.[1];
+	const pyHref = content.match(MD_LINK_LABELLED("Python"))?.[1];
+	const ktHref = content.match(MD_LINK_LABELLED("Kotlin"))?.[1];
+	return {
+		...(tsHref !== undefined && { ts: tsHref }),
+		...(javaHref !== undefined && { java: javaHref }),
+		...(csHref !== undefined && { csharp: csHref }),
+		...(pyHref !== undefined && { python: pyHref }),
+		...(ktHref !== undefined && { kotlin: ktHref }),
+	};
 }
 
 /** From an api page, pull the model back-link out of the
@@ -227,15 +257,44 @@ async function buildManifest(): Promise<Manifest> {
 				return rel.startsWith(".") ? rel : `./${rel}`;
 			})();
 
+			// Surfaces TS does not emit (csharp/python/kotlin) share the placement;
+			// only the subdir prefix differs, so the cross-link math is identical to
+			// api/java. Each port's own runner verifies its surface against these.
+			const derivedSurface = (subDir: string) => {
+				const apiPath = `${subDir}/${placement}`;
+				const toModel = posixPath.relative(
+					posixPath.dirname(apiPath),
+					modelPath,
+				);
+				const rel = posixPath.relative(
+					posixPath.dirname(modelPath),
+					apiPath,
+				);
+				const fromModel = rel.startsWith(".") ? rel : `./${rel}`;
+				return { apiPath, toModel, fromModel };
+			};
+			const cs = derivedSurface(API_CSHARP_SUBDIR);
+			const py = derivedSurface(API_PYTHON_SUBDIR);
+			const kt = derivedSurface(API_KOTLIN_SUBDIR);
+
 			return {
 				node,
 				modelPath,
 				apiTsPath,
 				apiJavaPath,
+				apiCsharpPath: cs.apiPath,
+				apiPythonPath: py.apiPath,
+				apiKotlinPath: kt.apiPath,
 				modelToApiTs: refs.ts ?? "",
 				modelToApiJava: refs.java ?? modelToApiJava,
+				modelToApiCsharp: refs.csharp ?? cs.fromModel,
+				modelToApiPython: refs.python ?? py.fromModel,
+				modelToApiKotlin: refs.kotlin ?? kt.fromModel,
 				apiTsToModel: apiTsToModel ?? "",
 				apiJavaToModel,
+				apiCsharpToModel: cs.toModel,
+				apiPythonToModel: py.toModel,
+				apiKotlinToModel: kt.toModel,
 			};
 		})
 		.sort((a, b) => a.node.localeCompare(b.node));
@@ -246,6 +305,9 @@ async function buildManifest(): Promise<Manifest> {
 		layout: LAYOUT,
 		apiTsSubDir: API_TS_SUBDIR,
 		apiJavaSubDir: API_JAVA_SUBDIR,
+		apiCsharpSubDir: API_CSHARP_SUBDIR,
+		apiPythonSubDir: API_PYTHON_SUBDIR,
+		apiKotlinSubDir: API_KOTLIN_SUBDIR,
 		units,
 	};
 }
@@ -266,10 +328,13 @@ if (process.env.UPDATE_CONTRACT === "1") {
 const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Manifest;
 
 describe("api-docs cross-port layout contract (TS oracle)", () => {
-	it("manifest declares package layout + the two api subDirs", () => {
+	it("manifest declares package layout + all five api subDirs", () => {
 		expect(manifest.layout).toBe(LAYOUT);
 		expect(manifest.apiTsSubDir).toBe(API_TS_SUBDIR);
 		expect(manifest.apiJavaSubDir).toBe(API_JAVA_SUBDIR);
+		expect(manifest.apiCsharpSubDir).toBe(API_CSHARP_SUBDIR);
+		expect(manifest.apiPythonSubDir).toBe(API_PYTHON_SUBDIR);
+		expect(manifest.apiKotlinSubDir).toBe(API_KOTLIN_SUBDIR);
 		expect(manifest.units.length).toBeGreaterThan(0);
 	});
 
