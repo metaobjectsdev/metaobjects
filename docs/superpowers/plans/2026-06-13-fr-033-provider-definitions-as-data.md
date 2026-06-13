@@ -249,6 +249,41 @@ test("optional rules/example/whenToUse flow onto the registered def", () => {
 
 ---
 
+## Phase 1b — The constraint model (children / parents / contradiction pass)
+
+Implements spec §3.1. Adds the typesConfig-recovered structural constraints to the
+provider-data format + a single additive merge + a contradiction validator. Do this
+right after Phase 1 (the field provider proves the data path); apply to every
+provider as Phase 2 converts them.
+
+### Task 7: Constraint fields in the provider-data format
+
+**Files:** Modify `server/typescript/packages/metadata/src/provider-data.ts`; Modify `registry.ts` (`ChildRule` → enriched); Test `provider-data.test.ts`.
+
+- [ ] **Step 1: Failing test** — a `ProviderDefinition` whose type declares a unified `children` list (an `type:"attr"` entry with `subType`/`default` + a `type:"identity"` entry with `min:1,max:1` + a `type:"field"` entry `min:0,max:null`) and a `parents` list; assert `defineProviderFromData` produces a `TypeDefinition` whose `childRules` carry `{type, subType (value|list|"*"), name, min, max, named?}` and whose `parents` carry the declared list. Run → FAIL.
+- [ ] **Step 2: Implement** — enrich `ChildRule` in `registry.ts` to `{ childType, childSubType: string | string[], childName, min: number, max: number | null, named?: boolean, default?, allowedValues?, isArray? }`; add `parents?: string[]` to `TypeDefinition`; in `provider-data.ts` map each `children[]` entry (attr or structural — `type:"attr"` carries the attr facets, max forced to 1 unless `isArray`) and pass `parents` through. Keep wildcard semantics (`*` matches any). Attr entries ALSO populate the existing `attributes: AttrSchema[]` (an attr child IS an AttrSchema) so the rest of the loader is unchanged — i.e. the unified `children` list is the authoring shape; internally an `type:"attr"` entry fans out to BOTH a `childRule` and an `AttrSchema`.
+- [ ] **Step 3: Run, verify pass.** **Step 4: Commit** — `feat(fr-033): unified children/parents constraint fields in provider-data`.
+
+### Task 8: Additive merge (provider union + extends inheritance)
+
+**Files:** Create `server/typescript/packages/metadata/src/constraint-merge.ts`; Test `constraint-merge.test.ts`.
+
+- [ ] **Step 1: Failing test** — given a base type with children `[field.*]` and an extension provider adding `parents: ["object.entity"]` on `source.rdb` + a subtype `field.currency extends field`, assert `mergeConstraints(registry)` yields: `object.entity` effective children = base ∪ any child that declares it a parent; `field.currency` effective children/attrs = `field`'s ∪ its own (purely additive — nothing removed). Run → FAIL.
+- [ ] **Step 2: Implement** `mergeConstraints(registry)` — (a) horizontal: fold each type's `parents` into the named parents' effective allowed-children; (b) vertical: walk `extends`/`super`, union super's children/attrs into the subtype (additive only — assert no narrowing is attempted; a subtype re-declaring an inherited attr with a different `subType`/`required` is contradiction #6, surfaced in Task 9). Returns an `EffectiveConstraints` map keyed by `type.subType`.
+- [ ] **Step 3: Run, verify pass.** **Step 4: Commit** — `feat(fr-033): additive constraint merge (provider union + extends)`.
+
+### Task 9: The contradiction validator (the six checks)
+
+**Files:** Create `server/typescript/packages/metadata/src/constraint-validate.ts`; Test `constraint-validate.test.ts`; new error code in `errors.ts` + `fixtures/conformance/ERROR-CODES.json`.
+
+- [ ] **Step 1: Failing tests** — one per contradiction (spec §3.1): (1) dangling parent ref → error; (2) required child of an unregistered/unadmitted type → error; (3) `min>max` and `max:0,min:1` → error; (4) closed-set clash (C claims P; P's children closed without C) → error; (5) required-child cycle → error; (6) same attr name twice with conflicting subType → error. A fully-consistent fixture → no error. Run → FAIL.
+- [ ] **Step 2: Implement** `validateConstraints(effective, registry): MetaModelError[]` returning one `ERR_INVALID_METAMODEL_CONSTRAINT` (new code; add to `errors.ts` + `ERROR-CODES.json` with a `which`-style detail) per contradiction. Wire it into the registry compose/seal path so a bad provider definition fails at bootstrap (mirrors ADR-0023 strictness).
+- [ ] **Step 3: Run, verify pass + full metadata suite green.** **Step 4: Commit** — `feat(fr-033): metamodel constraint contradiction validator (6 checks)`.
+
+> The manifest (Task 5) + doc-gen (Phase 3) additionally emit the `children`/`parents`/cardinality so the gate pins the constraint graph cross-port and the provider doc pages show "allowed children / parents / cardinality."
+
+---
+
 ## Phase 2 — Convert the remaining TS core providers (recipe-driven)
 
 For **each** core provider, repeat the Task 3 + Task 4 recipe: author `spec/metamodel/<provider>.json` (faithful externalization of its current hand-coded vocab/attrs + a subtype `description` + `rules` prose for its complex rules), generate the embedded constant, rewire the provider to `defineProviderFromData(... , <provider>_FACTORIES)`, regenerate `expected-registry.json`, keep the suite + coverage gate green. Providers to convert (grep `src/**/!(*.test).ts` for `registerTypes`/`TypeDefinition` arrays; the set the registry composes today):

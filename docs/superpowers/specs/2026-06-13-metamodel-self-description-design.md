@@ -138,6 +138,58 @@ needs the required one-liner (gate-enforced, shown in `INDEX.md`);
 `rules`/`example`/`whenToUse` surface only when the LLM follows a link into the
 provider page — keeping default context lean.
 
+## 3.1 The constraint model (typesConfig, recovered)
+
+The current TS `ChildRule` (`{ childType, childSubType, childName }`, wildcards
+only) is far thinner than the old Java typesConfig. The provider file restores
+the full structural-constraint model, per **type/subtype**:
+
+- **A single `children` list.** Each entry is a child requirement
+  `{ type, subType, name, min, max, named?, … }` where `type` accepts a value or
+  `*`; `subType` accepts a value, a **list**, or `*`; `name` accepts a literal or
+  `*`. **Attributes are the `type: "attr"` entries** in this same list (so "attrs
+  are children of a specific subtype" holds, and a structural child is never
+  mistaken for an attribute — they are distinguished by `type`). The min/max axis
+  is uniform:
+  - *attr entry* — `min: 1` required / `min: 0` optional; **`max` is always 1**
+    (single-valued; a list-valued attr sets `isArray: true`). Attr-only facets:
+    `subType` (= the attr's value-type), `default`, `allowedValues`, `isArray`.
+  - *structural child* (field/identity/source/validator/view/…) — full cardinality
+    `min`/`max` (0..N): `identity.primary` min 1/max 1, fields min 0/max ∞,
+    `source.rdb` min 0/max 1.
+- **A `parents` list** — the additive, child-side placement: a type declares
+  "I am allowed under these `type.subType`s." This is what lets an *extension*
+  provider add placement without editing the core parent's file.
+- **Universals stay engine rules, not per-type JSON:** child name-uniqueness within
+  a parent; `extends`/`super` must target the same type; **any node may be abstract
+  at root** (an abstract node lives at root as a template regardless of its
+  parent-rules). None of these is repeated per type.
+
+**Merge — one additive model for all of it:**
+
+- **Across providers (horizontal union).** Core declares a type's `children` +
+  `parents`; an *extension* provider only ever **adds** — more child requirements,
+  more attrs, or a child-side `parents` claim — never subtracts (the existing
+  `registry.extend` path, ADR-0023's additive model). All sections union.
+- **Down the `extends` chain (vertical, attributes + children).** A subtype/abstract
+  inherits its super's children/attrs, then **adds** its own. Inheritance is
+  **purely additive — a subtype never narrows an inherited rule** (no making an
+  inherited optional attr required, no restricting an inherited `field.*` to
+  `field.string`). This keeps the contradiction pass from having to reason about
+  tightening.
+- **One contradiction pass over the merged graph.** "Invalid logic" =
+  (1) a `parents`/`children` ref to an **unregistered** type/subtype (dangling);
+  (2) a **required child** (`min ≥ 1`) whose type is **not admitted** under that
+  parent (unsatisfiable); (3) **`min > max`** or `max: 0 with min ≥ 1`;
+  (4) **closed-set clash** — C declares parent P, but P's `children` is a *closed*
+  set (no `*`) excluding C; (5) a **required-child cycle** that can't bottom out;
+  (6) the **same attr name** contributed twice with a **conflicting** `subType`/
+  `required`/`default`.
+
+A placement `(child C under parent P)` is **valid** iff the merged graph admits it
+— P's `children` admit C **or** C's `parents` name P. Additive throughout; the only
+job of the cross-validation is to surface the six contradictions above.
+
 ## 4. Registration mechanism
 
 At build, each port embeds its provider files (global + any language-specific) as
