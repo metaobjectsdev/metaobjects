@@ -24,7 +24,7 @@ if (args.Length == 0)
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
-        "    docs <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>]\n" +
+        "    docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]\n" +
         "                                                     emit the generated C# SDK api reference\n" +
         "                                                     (the api/csharp surface: one page per\n" +
         "                                                     entity + template, README, AGENT-API)\n" +
@@ -48,7 +48,7 @@ static int RunGen(string[] rest)
 {
     string? metadataDir = null;
     string? outDir = null;
-    string ns = "Generated";
+    string ns = GenCommand.DefaultNamespace;
     bool emitAbstractShapes = false;
     bool list = false;
     string? generatorsCsv = null;
@@ -108,9 +108,13 @@ static int RunDocs(string[] rest)
     string? outDir = null;
     string? project = null;
     string? modelBaseUrl = null;
+    // Default the documented namespace to the SAME default `dotnet meta gen` uses, so the
+    // rendered `using <ns>;` import lines match what an adopter writes against generated code.
+    string ns = GenCommand.DefaultNamespace;
     for (int i = 0; i < rest.Length; i++)
     {
         if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
+        else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
         else if (rest[i] == "--project" && i + 1 < rest.Length) project = rest[++i];
         else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) modelBaseUrl = rest[++i];
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
@@ -118,7 +122,7 @@ static int RunDocs(string[] rest)
 
     if (metadataDir is null || outDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>]");
+        Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
         return 2;
     }
 
@@ -126,10 +130,16 @@ static int RunDocs(string[] rest)
     // in the AGENT-API header). Trailing-separator-safe.
     project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(metadataDir))).Name;
 
-    var outcome = DocsCommand.Run(metadataDir, outDir, project, modelBaseUrl: modelBaseUrl);
+    var outcome = DocsCommand.Run(metadataDir, outDir, project, ns, modelBaseUrl: modelBaseUrl);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+        if (outcome.CollisionError is not null)
+        {
+            Console.Error.WriteLine($"  {outcome.CollisionError}");
+            Console.Error.WriteLine("dotnet meta docs: FAILED (duplicate api page output path)");
+            return 1;
+        }
         Console.Error.WriteLine("dotnet meta docs: FAILED (metadata did not load cleanly)");
         return 1;
     }

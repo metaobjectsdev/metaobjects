@@ -91,6 +91,7 @@ public sealed class CSharpApiDocsAccuracyTests
         RunGen(new DbContextGenerator());
         RunGen(new RoutesGenerator());
         RunGen(new FilterAllowlistGenerator());
+        RunGen(new PayloadGenerator());
         RunGen(new OutputParserGenerator());
         RunGen(new OutputPromptGenerator());
         RunGen(new RenderHelperGenerator(templateRoot));
@@ -111,6 +112,27 @@ public sealed class CSharpApiDocsAccuracyTests
     /// <summary>Word-boundary identifier match: <paramref name="name"/> appears as a whole C# identifier.</summary>
     private static bool ContainsIdentifier(string haystack, string name) =>
         Regex.IsMatch(haystack, $@"(?<![A-Za-z0-9_]){Regex.Escape(name)}(?![A-Za-z0-9_])");
+
+    /// <summary>
+    /// DECLARATION match: <paramref name="name"/> is the name in a type OR member DECLARATION
+    /// in the generated source — a type declaration (<c>class X</c> / <c>record X</c> /
+    /// <c>enum X</c> / <c>static class X</c> / <c>interface X</c>, any modifiers allowed
+    /// before the keyword), OR a member declaration whose name is immediately followed by a
+    /// body/param-list/arrow (<c>X {</c> / <c>X(</c> / <c>X =&gt;</c>) — this covers the
+    /// generated DbSet property (<c>public DbSet&lt;Author&gt; Authors { get; set; }</c>).
+    /// A mere type *reference* (e.g. <c>DbSet&lt;X&gt;</c>, where <c>X</c> sits inside the
+    /// generic args) does NOT satisfy this — that is the bug this guards: a
+    /// documented-but-never-declared symbol slips past a bare-identifier match.
+    /// </summary>
+    private static bool ContainsDeclaration(string haystack, string name)
+    {
+        var n = Regex.Escape(name);
+        // Type declaration: `class|record|enum|interface <Name>`.
+        if (Regex.IsMatch(haystack, $@"\b(?:class|record|enum|interface)\s+{n}(?![A-Za-z0-9_])"))
+            return true;
+        // Member declaration: `<Name>` followed by a body `{`, a param list `(`, or `=>`.
+        return Regex.IsMatch(haystack, $@"(?<![A-Za-z0-9_]){n}\s*(?:[{{(]|=>)");
+    }
 
     // ------------------------------------------------------------------------
 
@@ -150,9 +172,10 @@ public sealed class CSharpApiDocsAccuracyTests
                 foreach (var sym in unit.Symbols)
                 {
                     if (!typeKinds.Contains(sym.Kind)) continue;
-                    Assert.True(ContainsIdentifier(all, sym.Name),
-                        $"documented {sym.Kind} symbol '{sym.Name}' (unit {unit.Node}) was NOT found as an "
-                        + "identifier in the generated C# — the builder over-documents or names off-seam.");
+                    Assert.True(ContainsDeclaration(all, sym.Name),
+                        $"documented {sym.Kind} symbol '{sym.Name}' (unit {unit.Node}) was NOT found as a "
+                        + "DECLARATION in the generated C# — the builder over-documents (a mere reference does "
+                        + "not count) or names off-seam.");
                     checkd++;
                 }
             Assert.True(checkd >= 8, $"expected to cross-check several documented type symbols; saw {checkd}");

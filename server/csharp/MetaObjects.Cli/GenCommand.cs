@@ -19,14 +19,26 @@ public static class GenCommand
     }
 
     /// <summary>
-    /// The default generator suite's stable names (ADR-0021 D3). Unchanged from the
-    /// original hardcoded four: <c>entity</c>, <c>db-context</c>, <c>routes</c>,
-    /// <c>output-parser</c>. The other five registered generators are NOT in the
-    /// default suite (so existing output is unchanged for everyone) but ARE
-    /// selectable by name via <c>--generators</c>.
+    /// The default C# namespace generated code lands in when <c>--namespace</c> is omitted.
+    /// Shared by <c>dotnet meta gen</c> and <c>dotnet meta docs</c> so the documented
+    /// <c>using &lt;ns&gt;;</c> import lines match what an adopter writes against generated code.
+    /// </summary>
+    public const string DefaultNamespace = "Generated";
+
+    /// <summary>
+    /// The default generator suite's stable names (ADR-0021 D3). Brought to parity
+    /// with the Python default (entity / router / filter-allowlist / payload /
+    /// output-parser / output-prompt / extractor): the C# suite is
+    /// <c>entity</c>, <c>db-context</c>, <c>routes</c>, <c>filter-allowlist</c>,
+    /// <c>payload</c>, <c>output-parser</c>, <c>output-prompt</c>, <c>extractor</c>.
+    /// The <c>render-helper</c> generator is intentionally NOT in the default suite —
+    /// it requires <c>--template-root</c> for its build-time drift gate (matching the
+    /// Python default, which also excludes the render helper). <c>template</c> /
+    /// <c>callable</c> stay opt-in (config-only / FR-015 niche). Every default name is
+    /// a registered generator, selectable individually via <c>--generators</c>.
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultGeneratorNames =
-        ["entity", "db-context", "routes", "output-parser"];
+        ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
 
     /// <summary>The default generator set, built from the registry by stable name.</summary>
     public static IReadOnlyList<IGenerator> DefaultGenerators() =>

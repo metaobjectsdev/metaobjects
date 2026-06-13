@@ -91,7 +91,10 @@ public sealed class CSharpApiDocsRenderer
             {
                 sb.Append("\n### `").Append(sym.Signature).Append("`\n");
                 sb.Append('\n').Append(sym.Usage).Append('\n');
-                sb.Append("\n```csharp\n").Append(sym.Namespace).Append("\n```\n");
+                // A real, valid C# snippet: the `using <Namespace>;` directive an adopter
+                // writes to reach this symbol (mirrors Python's `from .x import Y` import
+                // line). NOT the bare namespace string.
+                sb.Append("\n```csharp\nusing ").Append(sym.Namespace).Append(";\n```\n");
                 if (!string.IsNullOrEmpty(sym.Returns))
                     sb.Append("\nReturns: ").Append(sym.Returns).Append('\n');
                 if (sym.FieldList.Count > 0)
@@ -178,7 +181,9 @@ public sealed class CSharpApiDocsRenderer
             sb.Append("\n## ").Append(u.Node).Append('\n');
             foreach (var group in u.Symbols.GroupBy(s => s.Namespace))
             {
-                sb.Append("\n`").Append(group.Key).Append("`\n");
+                // The import line an adopter writes (mirrors Python's `from .x import Y`
+                // group header), not the bare namespace.
+                sb.Append("\n`using ").Append(group.Key).Append(";`\n");
                 foreach (var s in group)
                     sb.Append("- `").Append(s.Signature).Append("` — ").Append(s.Usage).Append('\n');
             }

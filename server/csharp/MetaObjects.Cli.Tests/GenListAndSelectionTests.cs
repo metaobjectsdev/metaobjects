@@ -35,10 +35,10 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines();
-        Assert.Equal(10, lines.Count);
+        Assert.Equal(11, lines.Count);
         foreach (var name in new[]
         {
-            "entity", "db-context", "routes", "output-parser", "extractor",
+            "entity", "db-context", "routes", "payload", "output-parser", "extractor",
             "output-prompt", "render-helper", "filter-allowlist", "template",
             // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
             "callable",
@@ -49,9 +49,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     }
 
     [Fact]
-    public void Default_suite_is_unchanged_four_generators()
+    public void Default_suite_is_the_python_parity_eight_generators()
     {
-        Assert.Equal(["entity", "db-context", "routes", "output-parser"], GenCommand.DefaultGeneratorNames);
+        // Parity with the Python default (entity / router / filter-allowlist / payload /
+        // output-parser / output-prompt / extractor). render-helper is opt-in (needs
+        // --template-root); template / callable stay opt-in.
+        Assert.Equal(
+            ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"],
+            GenCommand.DefaultGeneratorNames);
     }
 
     [Fact]

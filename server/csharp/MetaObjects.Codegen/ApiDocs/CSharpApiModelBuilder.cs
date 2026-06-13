@@ -91,10 +91,13 @@ public sealed class CSharpApiModelBuilder
                     $"DbSet<{CSharpNaming.ModelClassName(obj)}>"));
             }
 
-            // VALIDATION — the DataAnnotations constraints carried on the entity class
-            // (required / max-length / range / regex). The validation symbol names the
-            // entity class (the constraints live on its mapped properties).
-            if (DbContextGenerator.AppliesTo(obj, root))
+            // VALIDATION — the DataAnnotations constraints carried on the create/update
+            // shape (required / max-length / range / regex). Only a WRITABLE entity has a
+            // create/update shape: a read-only projection (source.rdb @kind=view, no
+            // writable source) gets a read-only DbSet but no write shape, so documenting
+            // "validation on the create/update shape" for it would over-claim. This matches
+            // the Python builder's writable-table gate (read-only projections excluded).
+            if (DbContextGenerator.AppliesTo(obj, root) && !obj.IsReadOnlyProjection())
             {
                 var cls = CSharpNaming.ModelClassName(obj);
                 symbols.Add(new ApiSymbol(
@@ -186,18 +189,19 @@ public sealed class CSharpApiModelBuilder
                 $"static class {parser}",
                 "parses model output back into the typed payload"));
 
-            // PAYLOAD — the typed payload record the parser produces (referenced by the
-            // parser/prompt). Documented only when the @payloadRef resolves to a VO whose
-            // record the parser materializes (the parser names the record == payloadRef).
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is string payloadRef)
+            // PAYLOAD — the strict typed payload record the payload-generator emits (and the
+            // prompt/parser/extractor bind to). Gated by the SAME predicate the payload
+            // generator uses (PayloadGenerator.AppliesTo → @payloadRef resolves to an
+            // object.value) — no inline mirror that could drift from what is emitted.
+            if (PayloadGenerator.AppliesTo(tmpl, root))
             {
-                var vo = root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
-                if (vo is not null)
-                    symbols.Add(new ApiSymbol(
-                        payloadRef, ApiSymbolKind.Payload, ns,
-                        $"record {payloadRef}",
-                        "the typed payload projection bound to the template",
-                        Fields: PayloadFields(vo)));
+                var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+                var vo = PayloadGenerator.ResolvePayloadVo(root, payloadRef)!;
+                symbols.Add(new ApiSymbol(
+                    payloadRef, ApiSymbolKind.Payload, ns,
+                    $"record {payloadRef}",
+                    "the typed payload projection bound to the template",
+                    Fields: PayloadFields(vo)));
             }
         }
 

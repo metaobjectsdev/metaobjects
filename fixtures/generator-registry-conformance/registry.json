@@ -45,7 +45,7 @@
     "payload": {
       "concept": "Per-template payload value object (the strict payload type).",
       "tier": "native",
-      "ports": ["java", "kotlin", "python"]
+      "ports": ["csharp", "java", "kotlin", "python"]
     },
     "queries": {
       "concept": "Per-entity typed query helpers (findById/create/...).",
