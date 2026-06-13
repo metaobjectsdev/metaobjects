@@ -16,6 +16,7 @@ import { TypeId } from "./registry.js";
 import type { AttrSubType } from "./core/attr/attr-constants.js";
 import type { AttrValue, MetaData } from "./shared/meta-data.js";
 import type { DataType } from "./data-type.js";
+import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 
 /**
  * A UNIFIED child requirement (spec §3.1). Every constraint on a type — both its
@@ -38,9 +39,12 @@ export interface ChildDef {
   /**
    * Child subtype: a single subtype, a list of admitted subtypes, or `"*"`.
    * For an `attr` entry this is the attr's value-type and MUST be a single
-   * subtype (a list is invalid for attrs).
+   * subtype (a list is invalid for attrs). Optional on an `attr` entry: an
+   * omitted `subType` declares a polymorphic/untyped attr (e.g. `@default`,
+   * whose value-type follows the owning field's subtype). A structural child
+   * always supplies a `subType` (or `"*"`).
    */
-  subType: string | readonly string[];
+  subType?: string | readonly string[];
   /** Child name, or `"*"` for any. */
   name: string;
   /** Cardinality lower bound. An attr is required iff `min >= 1`. */
@@ -223,7 +227,9 @@ function toAttrSchema(provider: string, typeKey: string, child: ChildDef): AttrS
 function toChildRule(child: ChildDef): ChildRule {
   return {
     childType: child.type,
-    childSubType: child.subType,
+    // A structural child always supplies a subType; default to the `"*"`
+    // wildcard if (unusually) omitted, so the rule stays well-formed.
+    childSubType: child.subType ?? CHILD_RULE_WILDCARD,
     childName: child.name,
     min: child.min,
     max: child.max,

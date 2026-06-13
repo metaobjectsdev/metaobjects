@@ -36,7 +36,9 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, providedFieldAttr, enumAliasAttr, enumDocAttr, coerceDefaultAttr, normalizeAttr } from "./core/field/field-schema.js";
+import { normalizeAttr } from "./core/field/field-schema.js";
+import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
+import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -64,7 +66,7 @@ import {
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
-import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "./core/field/field-constants.js";
+import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
   VALIDATOR_SUBTYPES,
@@ -215,34 +217,35 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // field — 13 subtypes
+  // field — 15 subtypes. FR-033: the field provider's declarative definition
+  // (vocabulary + per-subtype attr constraints + descriptions + rule prose) is
+  // externalized to spec/metamodel/field.json, embedded at build into
+  // FIELD_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via FIELD_FACTORIES. The structural childRules
+  // are kept identical to today by post-assigning the same `fieldRules` array —
+  // they are not modeled in the JSON (which carries attrs only).
   const fieldRules = [
     wildcard(TYPE_VALIDATOR),
     wildcard(TYPE_VIEW),
     wildcard(TYPE_ATTR),
     wildcard(TYPE_ORIGIN),
   ];
-  for (const subType of FIELD_SUBTYPES) {
-    // field.currency additionally carries @currency; field.enum additionally
-    // carries @values; all other field subtypes share the common attrs only.
-    const fieldAttrs =
-      subType === FIELD_SUBTYPE_CURRENCY
-        ? [...commonFieldAttrs, { ...currencyFieldAttr }]
-        : subType === FIELD_SUBTYPE_ENUM
-          ? [
-              ...commonFieldAttrs,
-              { ...enumFieldAttr },
-              { ...providedFieldAttr },
-              { ...enumAliasAttr },
-              { ...enumDocAttr },
-              { ...coerceDefaultAttr },
-              { ...normalizeAttr },
-            ]
-          : [...commonFieldAttrs];
-    registry.register(
-      def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
-        new MetaField(new TypeId(TYPE_FIELD, subType), "").dataType),
-    );
+  // (id, name) → MetaField for every field subtype. MetaField computes its own
+  // dataType from subType (FIELD_DATA_TYPE getter), so no setDataType is needed;
+  // FIELD_DEFINITION.dataType carries the same per-subtype value onto the def.
+  const FIELD_FACTORIES: FactoryMap = Object.fromEntries(
+    FIELD_SUBTYPES.map((subType) => [
+      `${TYPE_FIELD}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaField(typeId, name),
+    ]),
+  );
+  for (const fieldDef of defineProviderFromData(FIELD_DEFINITION, FIELD_FACTORIES)) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the
+    // wildcard structural rules below are never read by the parser; they ARE
+    // consumed by the Phase-1b constraint validator and excluded from the
+    // registry manifest). A fresh copy per def matches the original semantics.
+    fieldDef.childRules = [...fieldRules];
+    registry.register(fieldDef);
   }
 
   // attr — 9 subtypes, no children allowed. Each subtype's class owns its
