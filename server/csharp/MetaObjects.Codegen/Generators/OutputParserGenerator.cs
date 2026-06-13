@@ -59,21 +59,33 @@ public class OutputParserGenerator : IGenerator
         var files = new List<EmittedFile>();
         foreach (var tmpl in outputs)
         {
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            if (!AppliesTo(tmpl))
             {
                 // Loader passes treat missing @payloadRef as a load error; defensively skip.
-                ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
+                    ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
+            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
             files.Add(EmitParser(tmpl, payloadRef, ctx));
         }
         return files;
     }
 
+    /// <summary>
+    /// True iff this generator emits an output parser for <paramref name="tmpl"/>: a
+    /// <c>template.output</c> carrying a <c>@payloadRef</c> (the strict FR-006 parser is
+    /// always emitted; the tolerant extract API layers on for json/xml + a resolvable VO).
+    /// Single source of truth shared by the generator loop AND the api-docs builder.
+    /// </summary>
+    public static bool AppliesTo(MetaData tmpl) =>
+        tmpl.Type == TYPE_TEMPLATE && tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT &&
+        tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is string;
+
     protected virtual EmittedFile EmitParser(MetaData tmpl, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
-        var parserClass = $"{templateName}Parser";
+        var parserClass = CSharpNaming.ParserClassName(templateName);
         var payloadType = payloadRef;
         var extractedType = $"{payloadType}Extracted";
 

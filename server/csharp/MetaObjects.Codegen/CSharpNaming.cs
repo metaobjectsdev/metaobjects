@@ -66,6 +66,41 @@ public static class CSharpNaming
     public static string Pascal(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
+    // ----------------------------------------------------------------------------
+    // Generated-SDK SYMBOL names — the single source of truth for the public C#
+    // identifiers the generators emit. Each generator calls one of these instead of
+    // re-concatenating the string inline, so the api-docs builder (which documents
+    // the SDK surface) can enumerate the SAME names the generators emit. Moving the
+    // concatenation here is behavior-preserving (the emitted strings are unchanged).
+    // ----------------------------------------------------------------------------
+
+    /// <summary>The entity model class name (the EF Core entity / value-object POCO): <c>Pascal(name)</c>.</summary>
+    public static string ModelClassName(MetaObject obj) => Pascal(obj.Name);
+
+    /// <summary>The routes static class name for an entity: <c>&lt;EntityPascal&gt;Routes</c>.</summary>
+    public static string RoutesClassName(MetaObject entity) => Pascal(entity.Name) + "Routes";
+
+    /// <summary>The REST collection URL segment for an entity: <c>Pluralize(name).ToLowerInvariant()</c>.</summary>
+    public static string RoutePath(MetaObject entity) => Pluralize(entity.Name).ToLowerInvariant();
+
+    /// <summary>The DbSet property name for an entity: <c>Pluralize(Pascal(name))</c>.</summary>
+    public static string DbSetName(MetaObject entity) => Pluralize(Pascal(entity.Name));
+
+    /// <summary>The per-entity filter allowlist class name: <c>&lt;EntityPascal&gt;FilterAllowlist</c>.</summary>
+    public static string FilterAllowlistName(MetaObject entity) => Pascal(entity.Name) + "FilterAllowlist";
+
+    /// <summary>The render-helper class name for a template: <c>&lt;TemplateName&gt;RenderHelper</c>.</summary>
+    public static string RenderHelperName(string templateName) => templateName + "RenderHelper";
+
+    /// <summary>The output-format prompt class name for a template: <c>&lt;TemplateName&gt;Prompt</c>.</summary>
+    public static string PromptClassName(string templateName) => templateName + "Prompt";
+
+    /// <summary>The output-parser class name for a template: <c>&lt;TemplateName&gt;Parser</c>.</summary>
+    public static string ParserClassName(string templateName) => templateName + "Parser";
+
+    /// <summary>The extractor class name for a payload value-object: <c>&lt;PayloadRef&gt;Extractor</c>.</summary>
+    public static string ExtractorClassName(string payloadRef) => payloadRef + "Extractor";
+
     /// <summary>
     /// The DB table name for an entity: the <c>dbTable</c> source override, else the
     /// raw object name. Shared so the schema DDL and the [Table] annotation agree.

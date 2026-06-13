@@ -24,6 +24,10 @@ if (args.Length == 0)
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
+        "    docs <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>]\n" +
+        "                                                     emit the generated C# SDK api reference\n" +
+        "                                                     (the api/csharp surface: one page per\n" +
+        "                                                     entity + template, README, AGENT-API)\n" +
         "    agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>]\n" +
         "                                                     scaffold the slim MetaObjects Claude Code\n" +
         "                                                     agent context (defaults to csharp when a\n" +
@@ -35,6 +39,7 @@ return args[0] switch
 {
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
+    "docs" => RunDocs(args[1..]),
     "agent-docs" => AgentDocsCommand.Run(args[1..]),
     _ => Unknown(args[0]),
 };
@@ -91,6 +96,45 @@ static int RunGen(string[] rest)
     foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
     foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
     Console.WriteLine($"dotnet meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
+    return 0;
+}
+
+// `dotnet meta docs` — emit the generated C# SDK api reference (the `api/csharp`
+// surface). Parses <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>],
+// builds + renders the api-docs IR via DocsCommand (pure logic), and writes the pages.
+static int RunDocs(string[] rest)
+{
+    string? metadataDir = null;
+    string? outDir = null;
+    string? project = null;
+    string? modelBaseUrl = null;
+    for (int i = 0; i < rest.Length; i++)
+    {
+        if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
+        else if (rest[i] == "--project" && i + 1 < rest.Length) project = rest[++i];
+        else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) modelBaseUrl = rest[++i];
+        else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+    }
+
+    if (metadataDir is null || outDir is null)
+    {
+        Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>]");
+        return 2;
+    }
+
+    // Default the project label to the input directory's leaf name (cosmetic — surfaces
+    // in the AGENT-API header). Trailing-separator-safe.
+    project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(metadataDir))).Name;
+
+    var outcome = DocsCommand.Run(metadataDir, outDir, project, modelBaseUrl: modelBaseUrl);
+    if (!outcome.Ok)
+    {
+        foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
+        Console.Error.WriteLine("dotnet meta docs: FAILED (metadata did not load cleanly)");
+        return 1;
+    }
+    foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
+    Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
     return 0;
 }
 

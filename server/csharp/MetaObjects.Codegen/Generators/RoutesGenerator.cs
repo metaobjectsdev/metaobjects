@@ -38,14 +38,24 @@ public class RoutesGenerator : PerEntityGenerator
     protected override bool Filter(MetaObject entity) =>
         (entity.IsEntity() || entity.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
+    /// <summary>
+    /// True iff this entity gets a generated routes file: it passes <see cref="Filter"/>
+    /// (persisted, instance-emitting) and is NOT a TPH subtype (subtypes are served via
+    /// the base's per-subtype routes). Single source of truth shared by the generator
+    /// loop AND the api-docs builder (so docs never claim REST a routes-off entity lacks).
+    /// </summary>
+    public static bool AppliesTo(MetaObject entity, MetaRoot root) =>
+        (entity.IsEntity() || entity.DbView is not null)
+        && InstanceArtifacts.EmitsInstanceArtifacts(entity)
+        && !TphPlanBuilder.IsTphSubtype(entity, root);
+
     // FR-017 TPH: a concrete subtype is served via its base's per-subtype routes — it
     // emits NO standalone routes file (the base mounts polymorphic + per-subtype CRUD).
     // The subtype skip needs the root, which Filter doesn't receive, so it is applied
     // here where the GenContext is in scope.
     public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
         ctx.Entities
-            .Where(Filter)
-            .Where(e => !TphPlanBuilder.IsTphSubtype(e, ctx.Root))
+            .Where(e => AppliesTo(e, ctx.Root))
             .Select(e => GenerateOne(e, ctx));
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
@@ -58,8 +68,8 @@ public class RoutesGenerator : PerEntityGenerator
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
-        var dbSet = CSharpNaming.Pluralize(cls);
-        var route = CSharpNaming.Pluralize(entity.Name).ToLowerInvariant();
+        var dbSet = CSharpNaming.DbSetName(entity);
+        var route = CSharpNaming.RoutePath(entity);
 
         var pkFields = entity.PrimaryIdentity()?.Fields ?? [];
         string? pkType = null;
@@ -245,8 +255,8 @@ public class RoutesGenerator : PerEntityGenerator
     protected virtual EmittedFile GenerateTphRoutes(MetaObject baseEntity, TphPlan tph, GenContext ctx)
     {
         var baseCls = CSharpNaming.Pascal(baseEntity.Name);
-        var dbSet = CSharpNaming.Pluralize(baseCls);
-        var baseRoute = CSharpNaming.Pluralize(baseEntity.Name).ToLowerInvariant();
+        var dbSet = CSharpNaming.DbSetName(baseEntity);
+        var baseRoute = CSharpNaming.RoutePath(baseEntity);
 
         var pkFields = baseEntity.PrimaryIdentity()?.Fields ?? [];
         if (pkFields.Count != 1)

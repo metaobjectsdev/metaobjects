@@ -96,8 +96,7 @@ public class RenderHelperGenerator : IGenerator
             }
             // @payloadRef must resolve to an object.value (same contract as the
             // parser/prompt generators). The VO record name == payloadRef (PayloadCodegen).
-            var vo = ctx.Root.OwnChildren()
-                .FirstOrDefault(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_VALUE && c.Name == payloadRef);
+            var vo = ResolveValueObject(ctx.Root, payloadRef);
             if (vo is null) continue;
 
             // EmitHelper runs the build-time drift gate first and THROWS (fails
@@ -107,10 +106,28 @@ public class RenderHelperGenerator : IGenerator
         return files;
     }
 
+    /// <summary>The root-level <c>object.value</c> a <c>@payloadRef</c> names, or null.</summary>
+    internal static MetaData? ResolveValueObject(MetaRoot root, string payloadRef) =>
+        root.OwnChildren().FirstOrDefault(c =>
+            c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_VALUE && c.Name == payloadRef);
+
+    /// <summary>
+    /// True iff this generator emits a render helper for <paramref name="tmpl"/>: a
+    /// <c>template.output</c> whose <c>@payloadRef</c> resolves to a root-level
+    /// <c>object.value</c>. Single source of truth shared by the generator loop AND the
+    /// api-docs builder (so docs never claim a suppressed symbol).
+    /// </summary>
+    public static bool AppliesTo(MetaData tmpl, MetaRoot root)
+    {
+        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
+        if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
+        return ResolveValueObject(root, payloadRef) is not null;
+    }
+
     protected virtual EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
-        var helperClass = $"{templateName}RenderHelper";
+        var helperClass = CSharpNaming.RenderHelperName(templateName);
         var payloadType = payloadRef; // PayloadCodegen names the record after the VO name.
 
         // Payload field tree — reused by the build-time gate AND baked into the
