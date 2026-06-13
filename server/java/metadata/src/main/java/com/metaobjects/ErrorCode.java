@@ -311,6 +311,15 @@ public enum ErrorCode {
      */
     ERR_REGISTRY_SEALED,
 
+    /**
+     * FR-032 (ADR-0032): a ref-bearing attribute in canonical JSON carries a
+     * relative reference form (a value starting with {@code ::} or {@code ..::}).
+     * Canonical JSON is the self-contained interchange form and MUST be fully
+     * qualified — relative forms are a YAML-authoring affordance the desugar
+     * expands, so they must never survive into canonical JSON.
+     */
+    ERR_RELATIVE_REF_IN_CANONICAL,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

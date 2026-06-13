@@ -75,14 +75,14 @@
               "field.object": {
                 "name": "apples",
                 "isArray": true,
-                "@objectRef": "::Apple"
+                "@objectRef": "simple::fruitbasket::Apple"
               }
             },
             {
               "field.object": {
                 "name": "oranges",
                 "isArray": true,
-                "@objectRef": "::Orange"
+                "@objectRef": "simple::fruitbasket::Orange"
               }
             }
           ]

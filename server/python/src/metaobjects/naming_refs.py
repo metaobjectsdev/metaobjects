@@ -51,6 +51,15 @@ CHILD_REF_SEP = "."
 PACKAGE_PARENT = ".."
 PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEP  # "..::"
 
+
+def is_relative_ref(raw: str) -> bool:
+    """FR-032 — True when *raw* is a relative reference form (``::Rest`` or
+    ``..::Rest``) that the YAML desugar must expand before canonical JSON.
+    Canonical JSON must be FQN; a relative ref surviving into it is
+    ``ERR_RELATIVE_REF_IN_CANONICAL``. Mirrors TS ``isRelativeRef``.
+    """
+    return raw.startswith(PACKAGE_SEP) or raw.startswith(PARENT_PREFIX)
+
 #: FR-032 — the inline (``@``-prefixed in canonical JSON; bare in YAML) attribute
 #: names whose VALUE is a metadata reference subject to FQN expansion (ADR-0032
 #: §3). The structural ``extends`` key is handled separately (not ``@``-prefixed).

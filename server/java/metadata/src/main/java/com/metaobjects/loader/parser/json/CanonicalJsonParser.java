@@ -125,6 +125,24 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         KEY_IS_ARRAY, KEY_CHILDREN, KEY_VALUE
     );
 
+    /**
+     * FR-032 (ADR-0032) — the bare (sigil-free) inline attribute names whose VALUE is a
+     * metadata reference. In canonical JSON these are {@code @}-prefixed ({@code @objectRef}, …).
+     * Mirrors {@code YamlDesugar.REF_BEARING_ATTR_NAMES} and the TS {@code REF_BEARING_ATTR_NAMES}.
+     * The structural {@code extends} key is a reference too, but is guarded separately (it is the
+     * bare {@link #KEY_EXTENDS} body key, not an {@code @}-prefixed attr).
+     */
+    private static final Set<String> REF_BEARING_ATTR_NAMES = Set.of(
+        "objectRef", "references", "from", "of", "via",
+        "payloadRef", "responseRef", "parameterRef"
+    );
+
+    /** FR-032 — package separator ({@code ::}); a value with this leading prefix is root-absolute-relative. */
+    private static final String FR032_PKG_SEPARATOR = com.metaobjects.util.MetaDataUtil.SEP;
+
+    /** FR-032 — parent-relative prefix ({@code ..::}). */
+    private static final String FR032_PARENT_PREFIX = ".." + FR032_PKG_SEPARATOR;
+
     // -----------------------------------------------------------------------
     // Constructor
     // -----------------------------------------------------------------------
@@ -225,6 +243,33 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             return new YamlSource(List.of(getFilename()), path, pos);
         }
         return new JsonSource(List.of(getFilename()), path);
+    }
+
+    /**
+     * FR-032 (ADR-0032) — guard a ref-bearing value against relative forms.
+     *
+     * <p>Canonical JSON is the self-contained interchange form: every ref-bearing
+     * attribute MUST be fully qualified. A relative authoring form (leading
+     * {@code ::} or {@code ..::}) surviving into canonical JSON is
+     * {@code ERR_RELATIVE_REF_IN_CANONICAL}. {@link CanonicalJsonParser} only ever
+     * handles canonical JSON (it is JSON by construction), so no format check is
+     * needed — the YAML desugar expands these forms before the parser sees them.
+     * Throwing halts the parse so exactly one error is produced, mirroring the
+     * {@code ERR_RESERVED_ATTR} rejection style.</p>
+     */
+    private void guardRelativeRefInCanonical(String refLabel, String rawValue) {
+        if (rawValue == null) return;
+        if (!rawValue.startsWith(FR032_PKG_SEPARATOR) && !rawValue.startsWith(FR032_PARENT_PREFIX)) {
+            return;
+        }
+        throw new MetaDataException(
+            ErrorMessageConstants.ERR_RELATIVE_REF_IN_CANONICAL
+                + ": relative reference '" + rawValue + "' on " + refLabel
+                + " in file [" + getFilename() + "] is not allowed in canonical JSON — "
+                + "canonical JSON must be fully-qualified. Relative forms (leading '"
+                + FR032_PKG_SEPARATOR + "' or '" + FR032_PARENT_PREFIX + "') are "
+                + "YAML-authoring sugar that the desugar expands.",
+            ErrorCode.ERR_RELATIVE_REF_IN_CANONICAL, currentSourceEnvelope());
     }
 
     /**
@@ -618,6 +663,8 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         String pkg      = getStringOrNull(body, KEY_PACKAGE);
         // "extends" (canonical) → "super" (base parser slot)
         String superRef = getStringOrNull(body, KEY_EXTENDS);
+        // FR-032 — reject a relative `extends` ref in canonical JSON.
+        guardRelativeRefInCanonical("\"" + KEY_EXTENDS + "\"", superRef);
         // "abstract" (canonical) — handled AFTER node creation as an attribute
         Boolean isAbstract = getBooleanOrNull(body, KEY_ABSTRACT);
         Boolean isOverlay  = getBooleanOrNull(body, KEY_OVERLAY);
@@ -1116,6 +1163,16 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             // Strip the @ prefix
             String attrName = key.substring(JSON_ATTR_PREFIX.length());
+
+            // FR-032 (ADR-0032) — reject a relative reference value on a ref-bearing
+            // inline attr (@objectRef / @references / @from / @of / @via / @payloadRef /
+            // @responseRef / @parameterRef). Canonical JSON must be fully-qualified.
+            if (REF_BEARING_ATTR_NAMES.contains(attrName)) {
+                JsonElement refVal = entry.getValue();
+                if (refVal.isJsonPrimitive() && refVal.getAsJsonPrimitive().isString()) {
+                    guardRelativeRefInCanonical(key, refVal.getAsString());
+                }
+            }
 
             // ADR-0006 §D1: reserved structural keywords must be written bare in canonical JSON.
             // Writing them as @-prefixed attributes (e.g. @isArray, @name) is unconditionally

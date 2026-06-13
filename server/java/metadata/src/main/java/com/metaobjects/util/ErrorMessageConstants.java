@@ -57,6 +57,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR";
 
     /**
+     * FR-032 (ADR-0032): a ref-bearing attribute in canonical JSON carries a
+     * relative reference form (value starting with {@code ::} or {@code ..::}).
+     * Canonical JSON must be fully qualified — relative forms are YAML-authoring
+     * sugar that the desugar expands before lowering to canonical JSON.
+     * Cross-language contract: {@code ERR_RELATIVE_REF_IN_CANONICAL}.
+     */
+    public static final String ERR_RELATIVE_REF_IN_CANONICAL = "ERR_RELATIVE_REF_IN_CANONICAL";
+
+    /**
      * Error code emitted when a field origin (passthrough / aggregate / collection)
      * declares an invalid path or attribute (e.g. malformed {@code @via} relationship
      * path, missing required attribute for the subtype).

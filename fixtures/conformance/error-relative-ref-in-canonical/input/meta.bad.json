@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "::Base",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Base",
+          "children": [
+            { "field.string": { "name": "label" } }
+          ]
+        }
+      }
+    ]
+  }
+}

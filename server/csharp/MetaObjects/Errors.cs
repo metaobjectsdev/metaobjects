@@ -39,6 +39,10 @@ public enum ErrorCode
     ERR_MALFORMED_YAML,
     ERR_YAML_COERCION,
     ERR_RESERVED_ATTR,
+    // FR-032 (ADR-0032) — a ref-bearing value in canonical JSON used a relative
+    // form (leading "::" or "..::"). Relative refs are YAML-authoring sugar the
+    // desugar expands; they must never appear in canonical (interchange) JSON.
+    ERR_RELATIVE_REF_IN_CANONICAL,
     ERR_INVALID_ORIGIN,
     // FR-024 (ADR-0029) — origin @via inference + cardinality checks. Vocabulary-only
     // here until FR-024 Phase E (the C# loader does not run the inference yet):
