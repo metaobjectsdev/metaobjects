@@ -142,18 +142,26 @@ async function loadFixture() {
 	return res.root;
 }
 
-const TWO_SURFACES = [
+// The polyglot project case: the shared (TS-owned) model page DECLARES all five
+// native SDK surfaces, so every model entity page links each one. Only the api/ts
+// files are physically emitted here (the TS oracle); the other four surfaces are
+// emitted by their own ports' `docs` commands into the same tree, and each port's
+// runner asserts its slice against this manifest.
+const FIVE_SURFACES = [
 	{ label: "TypeScript", subDir: API_TS_SUBDIR },
 	{ label: "Java", subDir: API_JAVA_SUBDIR },
+	{ label: "C#", subDir: API_CSHARP_SUBDIR },
+	{ label: "Python", subDir: API_PYTHON_SUBDIR },
+	{ label: "Kotlin", subDir: API_KOTLIN_SUBDIR },
 ];
 
 /** Emit the model surface + the api/ts surface (PACKAGE layout). The model page
- *  DECLARES both api surfaces (TS + Java) so it links each, even though only the
- *  api/ts files are physically emitted. */
+ *  DECLARES all five api surfaces so it links each, even though only the api/ts
+ *  files are physically emitted. */
 async function emit(): Promise<Emitted[]> {
 	const root = await loadFixture();
 	const ctx = makeCtx(root, inputDir);
-	const model = (await docsFile({ apiSurfaces: TWO_SURFACES }).generate(
+	const model = (await docsFile({ apiSurfaces: FIVE_SURFACES }).generate(
 		ctx,
 	)) as Emitted[];
 	const tsApi = (await apiDocsFile({
