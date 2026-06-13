@@ -79,8 +79,9 @@ export function isChildTargetingRef(ref: string): boolean {
 
 /**
  * FR-024: split a child-targeting ref into the owner-object ref and the child
- * name. Returns undefined for the reserved multi-dot form (`X.y.z`) and for
- * degenerate empty parts (`.id`, `Customer.`).
+ * traversal path. A multi-dot ref (`X.y.z`) traverses child names to any depth
+ * (object → field → view); returns undefined only for degenerate empty parts
+ * (`.id`, `Customer.`, `Customer..x`).
  */
 function parseChildTargetingRef(
   ref: string,

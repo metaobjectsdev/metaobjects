@@ -42,6 +42,33 @@ cutover). Everything below is the honest remainder; everything else shipped._
    TS-style structural capture is cleaner); the Java identity-name REQUIREMENT
    (ERR_IDENTITY_NAME_REQUIRED — fixture ledgered).
 
+4. **Pre-release review findings (2026-06-13, 5-reviewer adversarial pass — none
+   ship-blocking; the cheap doc/comment/test fixes were applied, these remain):**
+   - **Java absolute/relative dotted-owner divergence.** `extends:
+     "::acme::sales::Customer.id"` (leading `::` absolute) and `"..::X.id"`
+     (relative) RESOLVE in TS/C#/Python but FAIL in Java — Java's
+     `resolveChildTargetingRef` (MetaDataLoader.java) resolves the owner part
+     directly via `getChildOfType` instead of routing it through the
+     absolute/relative resolver the other three ports' recursion uses. **Unused
+     anywhere** (zero corpus usage of leading-`::`/`..::` for normal OR dotted
+     extends; the idiom is unprefixed `a::b::C`), so the green gate doesn't see
+     it. Resolution: add a conformance fixture with `::`-absolute and
+     `..::`-relative dotted owner refs (it will fail Java → drives the Java fix:
+     route ownerRef through `MetaDataUtil.expandPackageForPath` / strip leading
+     `::` before lookup). Decide first whether leading-`::` is a supported form
+     at all (TS-supported but undocumented).
+   - **view-DDL emitter drops `@schema` + emits unquoted identifiers**
+     (`codegen-ts/src/projection/view-ddl-emit.ts`). The RFC's oldest deferred
+     bug — Phase C must add quoting + schema-qualification before any consumer
+     runs the emitted `CREATE VIEW` against a schema-qualified/reserved-word/
+     mixed-case target. Cleanly deferred, not half-done.
+   - **Array-shape validation permanently disabled** (Java
+     `AttributeConstraintBuilder.isArrayValue → true`). Pre-existing dead
+     constraint (folded-name lookup always returned null); now reaches a value
+     but every value stringifies, so shape can't be checked at that layer. No
+     fixture asserts a non-array value in an array slot is rejected. Move the
+     check to the typed (StringArrayAttribute) layer in a port-parity pass.
+
 ## Sequencing note
 
 Phases C (TS projection codegen + view-DDL quoting/schema fix) and D

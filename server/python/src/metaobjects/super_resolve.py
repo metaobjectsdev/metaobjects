@@ -136,9 +136,11 @@ def _resolve(
                                   REFERRER's type (type-scoped: a field ref
                                   resolves fields, an identity ref identities).
                                   Dotted refs never fall through to the bare
-                                  lookup; multi-dot (``X.y.z``) is reserved →
+                                  lookup; multi-dot (``X.y.z``) TRAVERSES child
+                                  names to any depth (intermediate segments by
+                                  unique name); only degenerate empty segments →
                                   ``None``; no ``referrer_type`` → ``None``.
-                                  Mirrors TS super-resolve.ts (commit 809712f8).
+                                  Mirrors TS super-resolve.ts.
     """
     abs_prefix = PACKAGE_SEP  # "::"
     rel_prefix = ".." + PACKAGE_SEP  # "..::

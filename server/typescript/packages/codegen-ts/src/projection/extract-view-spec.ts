@@ -104,6 +104,14 @@ function baseEntityFor(
   // 1) the extends-bound identity anchors the base entity;
   // 2) else the single distinct entity targeted by extends-bound fields.
   // The pre-FR-024 object-level `extends:` firehose is removed (B4b cutover).
+  //
+  // COUPLING NOTE: this intentionally derives the anchor ONLY from the ref's
+  // named owner (refNamedOwner), NOT the loader's `superResolved.parent`
+  // fallback for a non-dotted identity extends. That fallback is unreachable
+  // here because the loader gate (validate-identity-passthrough →
+  // ERR_PROJECTION_IDENTITY_NOT_EXTENDED) rejects any projection whose identity
+  // is not dotted-extends-bound before codegen runs. If that loader gate is
+  // ever loosened, this function must grow the same fallback.
   for (const identity of projection
     .ownChildren()
     .filter((c) => c.type === TYPE_IDENTITY)) {

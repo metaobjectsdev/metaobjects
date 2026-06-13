@@ -315,6 +315,10 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
     // No cross-entity origins → no joins
     expect(spec.joinTree.joins.length).toBe(0);
 
+    // The two declared extends-bound fields ARE the exposure (fail-closed) —
+    // assert membership so the all-passthrough loop below can't pass vacuously.
+    expect(spec.selectSpec.columns.map((c) => c.fieldName).sort()).toEqual(["id", "title"]);
+
     // All columns are passthrough onto the base alias
     for (const col of spec.selectSpec.columns) {
       expect(col.kind).toBe("passthrough");
