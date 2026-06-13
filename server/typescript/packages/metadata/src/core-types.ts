@@ -39,6 +39,7 @@ import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionO
 import { normalizeAttr } from "./core/field/field-schema.js";
 import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
+import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
@@ -248,15 +249,22 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(fieldDef);
   }
 
-  // attr — 9 subtypes, no children allowed. Each subtype's class owns its
-  // dataType (resolved by this.subType); we read it off a probe instance so the
-  // TypeDefinition.dataType contract (registry.find(...).dataType) still holds.
-  for (const subType of ATTR_SUBTYPES) {
-    const AttrClass = attrClassFor(subType);
-    const probeDataType = new AttrClass(new TypeId(TYPE_ATTR, subType), "").dataType;
-    registry.register(
-      def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], AttrClass, [], probeDataType),
-    );
+  // attr — 9 subtypes, no children allowed, no per-type attrs. FR-033: the attr
+  // provider's declarative definition (vocabulary + descriptions + per-subtype
+  // dataType) is externalized to spec/metamodel/attr.json, embedded at build into
+  // ATTR_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via ATTR_FACTORIES. attrs are leaf value-type
+  // vocabulary: no childRules and no attributes, so (unlike field) NO post-assign
+  // is needed. Each subtype's class owns its dataType internally (resolved by
+  // this.subType); ATTR_DEFINITION.dataType carries the same per-subtype value.
+  const ATTR_FACTORIES: FactoryMap = Object.fromEntries(
+    ATTR_SUBTYPES.map((subType) => [
+      `${TYPE_ATTR}.${subType}`,
+      (typeId: TypeId, name: string) => new (attrClassFor(subType))(typeId, name),
+    ]),
+  );
+  for (const attrDef of defineProviderFromData(ATTR_DEFINITION, ATTR_FACTORIES)) {
+    registry.register(attrDef);
   }
 
   // validator — 6 subtypes (base + 5 named); dispatch to subtype-specific class.

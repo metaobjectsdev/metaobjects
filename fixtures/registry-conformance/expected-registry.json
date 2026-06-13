@@ -3,63 +3,63 @@
     {
       "type": "attr",
       "subType": "base",
-      "description": "Attribute of type base",
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype).",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "boolean",
-      "description": "Attribute of type boolean",
+      "description": "A boolean-valued metadata attribute. Coerces to and validates as true/false.",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "class",
-      "description": "Attribute of type class",
+      "description": "A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets.",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "double",
-      "description": "Attribute of type double",
+      "description": "A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number.",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "filter",
-      "description": "Attribute of type filter",
+      "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "int",
-      "description": "Attribute of type int",
+      "description": "A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "long",
-      "description": "Attribute of type long",
+      "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "properties",
-      "description": "Attribute of type properties",
+      "description": "A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023).",
       "attrs": [],
       "children": []
     },
     {
       "type": "attr",
       "subType": "string",
-      "description": "Attribute of type string",
+      "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).",
       "attrs": [],
       "children": []
     },
