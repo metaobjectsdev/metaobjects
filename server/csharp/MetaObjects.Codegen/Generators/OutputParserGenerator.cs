@@ -86,7 +86,10 @@ public class OutputParserGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var parserClass = CSharpNaming.ParserClassName(templateName);
-        var payloadType = payloadRef;
+        // FR-026: @payloadRef is an FQN after the desugar/sweep; the generated C# TYPE
+        // NAME is the resolved value-object's bare name (an FQN like "acme::ai::Payload"
+        // is not a valid C# identifier). Mirrors RenderHelperGenerator's StripPkg use.
+        var payloadType = CSharpNaming.StripPkg(payloadRef);
         var extractedType = $"{payloadType}Extracted";
 
         // FR-010: emit the tolerant extract() API alongside strict Parse/TryParse when the
@@ -96,7 +99,7 @@ public class OutputParserGenerator : IGenerator
         bool formatSupportsExtract =
             format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-        var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+        var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && CSharpNaming.StripPkg(c.Name) == payloadType);
         bool emitExtract = formatSupportsExtract && vo is not null;
 
         var sb = new StringBuilder();
