@@ -14,6 +14,7 @@ import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { ParseError } from "../errors.js";
+import { refMatchesObject } from "../naming-refs.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
   TYPE_OBJECT,
@@ -195,7 +196,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
 
     const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
-    const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === payloadRef);
+    const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
     if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
       // FR5d — @payloadRef is a reference; emit format=resolved with
       // referrer=template FQN, target=the unresolved payloadRef string.
@@ -212,7 +213,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     }
     const responseRef = tmpl.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
     if (typeof responseRef === "string") {
-      const resVo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === responseRef);
+      const resVo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, responseRef));
       if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
         errors.push(
           new ParseError(
@@ -328,7 +329,9 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
 // ---------------------------------------------------------------------------
 
 function _findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // FR-026 — origin heads are FQN-qualified after the desugar/sweep; match on
+  // the effective FQN resolution key (with bare back-compat).
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function _findField(obj: MetaData, name: string): MetaData | undefined {

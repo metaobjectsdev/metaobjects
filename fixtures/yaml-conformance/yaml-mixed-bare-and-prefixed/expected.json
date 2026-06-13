@@ -9,7 +9,7 @@
             {
               "field.object": {
                 "name": "address",
-                "@objectRef": "Address",
+                "@objectRef": "acme::Address",
                 "@storage": "flattened"
               }
             }

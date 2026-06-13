@@ -14,7 +14,7 @@
             {
               "field": {
                 "name": "id",
-                "extends": "..::nonexistent::id"
+                "extends": "nonexistent::id"
               }
             }
           ]

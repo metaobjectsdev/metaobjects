@@ -15,13 +15,13 @@
             {
               "field": {
                 "name": "id",
-                "extends": "::demo::common::id"
+                "extends": "demo::common::id"
               }
             },
             {
               "field": {
                 "name": "createdAt",
-                "extends": "::demo::common::createdAt"
+                "extends": "demo::common::createdAt"
               }
             },
             {

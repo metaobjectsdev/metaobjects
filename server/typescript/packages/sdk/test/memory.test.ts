@@ -308,7 +308,7 @@ describe("loadMemory — cross-package loading via workspace", () => {
                 "object.entity": {
                   name: "Widget",
                   children: [
-                    { field: { name: "id", extends: "::acme::common::id" } },
+                    { field: { name: "id", extends: "acme::common::id" } },
                   ],
                 },
               },

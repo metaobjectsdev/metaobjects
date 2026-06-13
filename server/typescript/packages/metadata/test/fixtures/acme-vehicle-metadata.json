@@ -11,13 +11,13 @@
             {
               "field.base": {
                 "name": "id",
-                "extends": "..::common::id"
+                "extends": "acme::common::id"
               }
             },
             {
               "field.base": {
                 "name": "name",
-                "extends": "..::common::name"
+                "extends": "acme::common::name"
               }
             },
             {
@@ -68,19 +68,19 @@
             {
               "field.base": {
                 "name": "id",
-                "extends": "..::common::id"
+                "extends": "acme::common::id"
               }
             },
             {
               "field.base": {
                 "name": "name",
-                "extends": "..::common::name"
+                "extends": "acme::common::name"
               }
             },
             {
               "field.base": {
                 "name": "vehicleDescription",
-                "extends": "..::common::description"
+                "extends": "acme::common::description"
               }
             },
             {
@@ -138,7 +138,7 @@
         "object.base": {
           "name": "Car",
           "package": "::vehicle::car",
-          "extends": "..::Vehicle",
+          "extends": "acme::vehicle::Vehicle",
           "@object": "com.acme.vehicle.car.Car",
           "children": [
             {
@@ -203,7 +203,7 @@
         "object.base": {
           "name": "Truck",
           "package": "::vehicle::truck",
-          "extends": "..::Vehicle",
+          "extends": "acme::vehicle::Vehicle",
           "@object": "com.acme.vehicle.truck.Truck",
           "children": [
             {
@@ -249,7 +249,7 @@
         "object.base": {
           "name": "Motorcycle",
           "package": "::vehicle::motorcycle",
-          "extends": "..::Vehicle",
+          "extends": "acme::vehicle::Vehicle",
           "@object": "com.acme.vehicle.motorcycle.Motorcycle",
           "children": [
             {
@@ -291,7 +291,7 @@
         "object.base": {
           "name": "Porsche",
           "package": "::vehicle::car::luxury",
-          "extends": "..::Car",
+          "extends": "acme::vehicle::car::Car",
           "@object": "com.acme.vehicle.car.luxury.Porsche",
           "children": [
             {

@@ -54,13 +54,13 @@
             {
               "field.base": {
                 "name": "id",
-                "extends": "..::common::id"
+                "extends": "simple::common::id"
               }
             },
             {
               "field.base": {
                 "name": "name",
-                "extends": "..::common::name"
+                "extends": "simple::common::name"
               }
             },
             {
@@ -93,21 +93,21 @@
               "field.object": {
                 "name": "fruitIds",
                 "isArray": true,
-                "@objectRef": "::Apple"
+                "@objectRef": "simple::fruitbasket::Apple"
               }
             },
             {
               "field.object": {
                 "name": "apples",
                 "isArray": true,
-                "@objectRef": "::Apple"
+                "@objectRef": "simple::fruitbasket::Apple"
               }
             },
             {
               "field.object": {
                 "name": "oranges",
                 "isArray": true,
-                "@objectRef": "::Orange"
+                "@objectRef": "simple::fruitbasket::Orange"
               }
             }
           ]
@@ -152,13 +152,13 @@
             {
               "field.base": {
                 "name": "basketId",
-                "extends": "..::common::id"
+                "extends": "simple::common::id"
               }
             },
             {
               "field.base": {
                 "name": "fruitId",
-                "extends": "..::common::id"
+                "extends": "simple::common::id"
               }
             }
           ]
@@ -193,19 +193,19 @@
             {
               "field.base": {
                 "name": "id",
-                "extends": "..::common::id"
+                "extends": "simple::common::id"
               }
             },
             {
               "field.base": {
                 "name": "name",
-                "extends": "..::common::name"
+                "extends": "simple::common::name"
               }
             },
             {
               "field.base": {
                 "name": "basketId",
-                "extends": "..::common::id"
+                "extends": "simple::common::id"
               }
             },
             {

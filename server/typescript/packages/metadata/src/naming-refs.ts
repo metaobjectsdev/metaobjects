@@ -26,6 +26,7 @@
 // (ADR-0032 §2.2/§2.3); the resolution layer then does pure FQN matching. The
 // `package` attribute is NEVER expanded — it is the node's identity.
 
+import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 import { RELATIONSHIP_ATTR_OBJECT_REF } from "./core/relationship/relationship-constants.js";
 import { FIELD_ATTR_OBJECT_REF } from "./core/field/field-constants.js";
@@ -141,4 +142,21 @@ function expandOwner(owner: string, packageContext: string): string {
 export function expandRef(raw: string, packageContext: string): string {
   const { owner, tail } = splitChildTail(raw);
   return expandOwner(owner, packageContext) + tail;
+}
+
+/**
+ * FR-026 — does a root-level object `node` satisfy an (already-expanded)
+ * object reference `ref`? After the YAML desugar + corpus sweep every ref is
+ * fully qualified, so resolution is a pure FQN match. Objects keep a BARE
+ * `fqn()` per the FR5d cross-port contract, so the canonical FQN accessor is
+ * `resolutionKey()` (`<package | fileDefaultPackage>::<name>`) — this mirrors
+ * `super-resolve`'s `findInTree`. The bare `name`/`fqn()` arms cover legacy
+ * same-tree refs and root-level (empty-package) objects.
+ *
+ * This is the single matcher the non-super resolvers (origin `@from`/`@of`/
+ * `@via` heads, template `@payloadRef`/`@responseRef`, source `@parameterRef`)
+ * share, so FQN matching behaves identically everywhere a ref resolves.
+ */
+export function refMatchesObject(node: MetaData, ref: string): boolean {
+  return node.resolutionKey() === ref || node.fqn() === ref || node.name === ref;
 }
