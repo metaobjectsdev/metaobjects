@@ -11,3 +11,18 @@ def generated_header(entity_name: str, fqn: str) -> str:
         f"# Source metadata: {entity_name} ({fqn})\n"
         f"# Customize via {entity_name}_extra.py in this directory.\n"
     )
+
+
+def generated_package_init() -> str:
+    """Content for a generated package ``__init__.py``.
+
+    A bare marker file that makes the codegen out dir an importable Python package —
+    the emitted modules use package-relative imports (``from .x import ...``), so the
+    consumer needs the package marker to import them. Carries the @generated marker so
+    the overwrite policy re-writes it on regen and refuses to clobber a hand-authored
+    ``__init__.py`` (which lacks the marker).
+    """
+    return (
+        f"# {GENERATED_MARKER} — DO NOT EDIT.\n"
+        f"# Package marker so the generated output directory is importable.\n"
+    )
