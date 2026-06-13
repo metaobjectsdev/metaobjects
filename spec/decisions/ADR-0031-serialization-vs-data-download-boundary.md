@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-06-13). Grounds FR-029 (runtime metadata-driven serializers) and FR-026
+Accepted (2026-06-13). Grounds FR-030 (runtime metadata-driven serializers) and FR-027
 (dataGrid downloads). Detail backlog:
 `docs/superpowers/specs/2026-06-13-metadata-runtime-ui-and-serializers-gaps.md` (SER-10).
 
@@ -11,13 +11,13 @@ Accepted (2026-06-13). Grounds FR-029 (runtime metadata-driven serializers) and 
 Two features in the backlog both turn objects into bytes, and it is tempting to build
 one engine for both:
 
-1. **Serialization** (FR-029) — object graph ↔ wire, **lossless and bidirectional**,
+1. **Serialization** (FR-030) — object graph ↔ wire, **lossless and bidirectional**,
    metadata-driven, honoring the wire-normalization contract (`normalization.md`:
    currency minor-units, temporal, enum strings, jsonb), over a pluggable protocol SPI
    (JSON, XML, and binary such as protobuf/MessagePack/CBOR). Its defining invariant is
    **round-trip fidelity** — `json → xml → binary → json` must lose no data.
 
-2. **Data download / export** (FR-026) — the dataGrid (or a bulk endpoint) producing a
+2. **Data download / export** (FR-027) — the dataGrid (or a bulk endpoint) producing a
    file for a human: **CSV, XLSX, PDF, TXT**, plus JSON/XML. Its defining property is
    **presentation**: a flat, tabular, human/spreadsheet-facing rendering of the *current
    view* (the grid's visible columns + filter/sort state). CSV/XLSX/PDF are structurally
@@ -37,7 +37,7 @@ separate would duplicate the JSON/XML writers, which *both* legitimately need.
 
 2. **JSON and XML are produced by the serializer and *shared* with the download layer.**
    The download path does not re-implement JSON/XML; for those formats it calls the
-   FR-029 serializer (and reuses its streaming path for large sets). CSV/XLSX/PDF/TXT
+   FR-030 serializer (and reuses its streaming path for large sets). CSV/XLSX/PDF/TXT
    live **only** in the download layer and are **never** part of the serializer protocol
    SPI (they are not bidirectional).
 

@@ -4,13 +4,13 @@ _Status: BACKLOG (enumeration, not yet designed). Date: 2026-06-13._
 
 The authoritative "all gaps to close" list for: metadata-driven UI (codegen **and** runtime, backend-agnostic), dataGrid downloads, runtime metadata-driven serializers (JSON/XML/binary + more protocols), round-trip integrity, and the MetaData caching/performance work that makes serializing large object sets viable. Compiled from the 2026-06-13 audit + the follow-on direction. Each gap: **status** (EXISTS / PARTIAL / MISSING), **scope** (ports), note.
 
-Roadmap pointers: this groups into **FR-025** (codegen forms), **FR-026** (grid downloads), **FR-027** (strict-serializer parity baseline), **FR-028** (metadata API + runtime-driven UI), **FR-029** (serializer protocols + round-trip + field-subset), **FR-030** (MetaData caching + serialization performance), and the existing **FR-023** (metadata sharing). Build order suggested at the end.
+Roadmap pointers: this groups into **FR-026** (codegen forms), **FR-027** (grid downloads), **FR-028** (strict-serializer parity baseline), **FR-029** (metadata API + runtime-driven UI), **FR-030** (serializer protocols + round-trip + field-subset), **FR-031** (MetaData caching + serialization performance), and the existing **FR-023** (metadata sharing). Build order suggested at the end.
 
 Legend: ✅ exists · 🟡 partial · ❌ missing.
 
 ---
 
-## Theme 1 — Metadata-driven UI (codegen + runtime, backend-agnostic) → FR-028 (+ FR-025)
+## Theme 1 — Metadata-driven UI (codegen + runtime, backend-agnostic) → FR-029 (+ FR-026)
 
 The principle: the **web UI is TS (browser-native), but it must be drivable by metadata fetched from ANY backend** (TS/Java/Python/C#/Kotlin) over APIs — so the *same* grid/forms work regardless of server language. Two delivery modes, both supported and demoed:
 
@@ -20,14 +20,14 @@ The principle: the **web UI is TS (browser-native), but it must be drivable by m
 | UI-2 | **Browser runtime metadata loader** — `runtime-web` loads canonical metadata JSON into an in-browser MetaData read-model (entities/fields/views/validators/layouts queryable client-side). | ❌ MISSING | TS web |
 | UI-3 | **Runtime-driven dataGrid** — build columns + cell renderers + sort/filter/page config from fetched metadata at runtime (no codegen). | ❌ MISSING | TS web |
 | UI-4 | **Runtime-driven create + edit forms** — build the form fields + client validation from fetched metadata + validators at runtime. | ❌ MISSING | TS web |
-| UI-5 | **Codegen edit forms** — `UpdateSchema` is generated but unused; emit `<Entity>EditForm` (load defaults, PATCH). | ❌ MISSING (FR-025) | TS web |
-| UI-6 | **View-render parity (codegen + runtime)** — register `datetime`; add `hotlink`/`month`/`radio` renderers; wire `validator.numeric`/`validator.array` to client rules; view attrs beyond `@locale`. | 🟡 PARTIAL (FR-025) | TS web |
+| UI-5 | **Codegen edit forms** — `UpdateSchema` is generated but unused; emit `<Entity>EditForm` (load defaults, PATCH). | ❌ MISSING (FR-026) | TS web |
+| UI-6 | **View-render parity (codegen + runtime)** — register `datetime`; add `hotlink`/`month`/`radio` renderers; wire `validator.numeric`/`validator.array` to client rules; view attrs beyond `@locale`. | 🟡 PARTIAL (FR-026) | TS web |
 | UI-7 | **"Both ways" demo + docs** — one reference app showing the codegen UI and the runtime-metadata-driven UI side by side, against each backend language. | ❌ MISSING | docs/example |
 | UI-8 | **Backend-agnostic guarantee** — the TS UI verified working against all 5 backends (each serving the metadata API + the existing data REST API). | ❌ MISSING | cross-port |
 
 Open questions: metadata-API shape (whole-model vs per-entity), caching/ETag/versioning, auth, and whether the runtime read-model reuses the `@metaobjectsdev/metadata` loader compiled to the browser or a slim client model.
 
-## Theme 2 — DataGrid downloads, all backends → FR-026
+## Theme 2 — DataGrid downloads, all backends → FR-027
 
 | ID | Gap | Status | Scope |
 |---|---|---|---|
@@ -40,7 +40,7 @@ Open questions: metadata-API shape (whole-model vs per-entity), caching/ETag/ver
 
 Open: client-side (loaded page, small) vs server-side (full dataset, streamed) export — likely both, with the grid offering "export this page" and "export all (filtered)". DoS/rate-limit on bulk export.
 
-## Theme 3 — Runtime metadata-driven serializers → FR-027 (baseline) + FR-029 (protocols/round-trip/subset)
+## Theme 3 — Runtime metadata-driven serializers → FR-028 (baseline) + FR-030 (protocols/round-trip/subset)
 
 Serialize/deserialize an object graph **driven by the MetaData itself** (fields, attrs, subtypes, wire normalization), honoring the wire contract (`normalization.md`: currency minor-units, temporal, enum strings, jsonb). Resolve the `MetaObject` from the instance via **`MetaObjectAware`** (fast path) or the `ObjectClassRegistry` (fallback). Works on **Pojo or ValueObject** instances.
 
@@ -54,10 +54,10 @@ Serialize/deserialize an object graph **driven by the MetaData itself** (fields,
 | SER-6 | **Pojo / ValueObject / MetaObjectAware support** — every serializer (and the UI object handling) works on both shapes, using `MetaObjectAware` for fast MetaObject lookup, registry fallback otherwise. | 🟡 PARTIAL (object-model ADR-0017 exists) | all 5 |
 | SER-7 | **Field-subset / projection serialization parameter** — specify which fields are extracted (shared with grid downloads EXP-3; and aligns with `object.projection`/`origin.*`). | ❌ MISSING | all 5 |
 | SER-8 | **Round-trip integrity conformance** — `json → xml → binary → json` (and permutations) on the shared object corpus, assert **no data loss**. | ❌ MISSING | cross-port |
-| SER-9 | **`meta export` CLI parity** (metadata→canonical JSON) for Java/Python/C#/Kotlin (TS-only today). | 🟡 PARTIAL (FR-027) | 4 ports |
+| SER-9 | **`meta export` CLI parity** (metadata→canonical JSON) for Java/Python/C#/Kotlin (TS-only today). | 🟡 PARTIAL (FR-028) | 4 ports |
 | SER-10 | **Decision: bidirectional serialization vs one-way data download** — keep the serializer (round-trippable, typed) and the download (presentation, CSV/PDF, lossy) **separate**, with JSON/XML shared between them via the field-subset param. Resolve as an ADR. | ❌ open decision | design |
 
-## Theme 4 — MetaData caching & serialization performance → FR-030
+## Theme 4 — MetaData caching & serialization performance → FR-031
 
 Serializing 100,000 large objects re-queries the MetaData tree (fields, attrs) per object — a massive repetitive cost. This theme makes metadata-driven serialization (and runtime UI) fast.
 
@@ -100,19 +100,19 @@ Serializing 100,000 large objects re-queries the MetaData tree (fields, attrs) p
 The authoritative release grouping (before-1.0 vs 1.1/1.2/1.3/1.4/1.x) lives in
 `spec/roadmap.md` → **"Release plan (1.0 → 1.x)"**. Summary:
 
-- **Before 1.0:** FR-030 (general MetaData read-path caching + benchmark — PERF-1 reframed
-  general, not serialization-overfit), FR-025 (codegen edit forms + view-render parity),
-  `meta export` CLI parity (the cheap slice of FR-027), GA publish mechanics; **decision**
+- **Before 1.0:** FR-031 (general MetaData read-path caching + benchmark — PERF-1 reframed
+  general, not serialization-overfit), FR-026 (codegen edit forms + view-render parity),
+  `meta export` CLI parity (the cheap slice of FR-028), GA publish mechanics; **decision**
   on whether FR-024 is a 1.0 gate (its pre-GA hard cutover + the field-subset dependency).
-- **1.1 — serialization foundation:** FR-027 finish + FR-029 core (SPI / XML write /
+- **1.1 — serialization foundation:** FR-028 finish + FR-030 core (SPI / XML write /
   field-subset / Pojo·VO·MetaObjectAware / json↔xml round-trip — SER-1/2/3/6/7/8) +
-  FR-029 serialization perf (compiled plan + streaming — PERF-2/3, on FR-030's cache).
+  FR-030 serialization perf (compiled plan + streaming — PERF-2/3, on FR-031's cache).
   ADR-0031 realized; SER-10 resolved.
-- **1.2 — downloads:** FR-026 (CSV/XLSX/PDF/TXT + bulk-export endpoint all backends +
+- **1.2 — downloads:** FR-027 (CSV/XLSX/PDF/TXT + bulk-export endpoint all backends +
   JSON/XML via the 1.1 serializer + export conformance).
-- **1.3 — binary + contracts:** FR-029 binary (SER-4: protobuf/MessagePack/CBOR) → full
+- **1.3 — binary + contracts:** FR-030 binary (SER-4: protobuf/MessagePack/CBOR) → full
   json→xml→binary→json round-trip; FR-022 contract emitters (shared `wireId`/types).
-- **1.4 — metadata API + runtime UI:** FR-028 (Theme 1 in full).
+- **1.4 — metadata API + runtime UI:** FR-029 (Theme 1 in full).
 - **1.x:** FR-023 (sharing), MCP exposure, database-source loader.
 
 Conformance (CONF-1..5) is woven through each release, not a separate phase.
