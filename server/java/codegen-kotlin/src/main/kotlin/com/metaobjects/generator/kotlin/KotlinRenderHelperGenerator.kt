@@ -98,12 +98,11 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
-        val capitalized = capitalizeFirst(templateShort)
         val helperClass = KotlinNaming.renderHelperName(templateShort)
-        // KotlinPayloadGenerator names the payload data class <TemplateShortName>Payload
-        // (derived from the template short name, NOT the VO name) into the same
-        // <pkg>.prompts package — reference it by its same-package short name.
-        val payloadClass = "${capitalized}Payload"
+        // KotlinPayloadGenerator names the payload data class via KotlinNaming.payloadName
+        // into the same <pkg>.prompts package — reference it through the SAME seam so this
+        // name is byte-identical to what that generator emits (single source of truth).
+        val payloadClass = KotlinNaming.payloadName(templateShort)
 
         // Payload field tree — reused by the build-time gate AND baked into the emitted
         // RenderRequest.verify so the runtime check matches the gate.
@@ -335,12 +334,6 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         return sb.toString()
     }
 
-    private fun capitalizeFirst(s: String): String {
-        if (s.isEmpty()) return s
-        val c0 = s[0]
-        if (c0.isUpperCase()) return s
-        return c0.uppercaseChar() + s.substring(1)
-    }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
@@ -353,7 +346,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     override fun writeFinalFile(metadata: MutableCollection<MetaObject>?, writer: GeneratorIOWriter<*>?) { /* none */ }
     override fun getSingleOutputFilePath(md: MetaObject): String = ""
     override fun getSingleOutputFilename(md: MetaObject): String =
-        "${capitalizeFirst(PackageMapping.splitFqn(md.name).second)}RenderHelper.kt"
+        "${KotlinNaming.renderHelperName(PackageMapping.splitFqn(md.name).second)}.kt"
 
     companion object {
         /** Arg key for the on-disk template dir used by the build-time drift gate. */
