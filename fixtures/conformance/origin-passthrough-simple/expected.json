@@ -18,6 +18,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -27,9 +28,8 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
@@ -38,12 +38,18 @@
               }
             },
             {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::commerce::Program.id"
+              }
+            },
+            {
               "field.string": {
                 "name": "displayTitle",
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Program.title"
+                      "@from": "acme::commerce::Program.title"
                     }
                   }
                 ]
@@ -51,9 +57,8 @@
             },
             {
               "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
+                "name": "id",
+                "extends": "acme::commerce::Program.id"
               }
             }
           ]

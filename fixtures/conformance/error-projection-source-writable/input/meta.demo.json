@@ -1,0 +1,28 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomersV1",
+          "children": [
+            { "source.rdb": { "@table": "customers_copy" } },
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id" } },
+            { "field.string": { "name": "name", "extends": "demo::Customer.name" } }
+          ]
+        }
+      }
+    ]
+  }
+}

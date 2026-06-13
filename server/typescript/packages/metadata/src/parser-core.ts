@@ -31,7 +31,7 @@ import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
 import { semanticDiff } from "./semantic-diff.js";
-import { resolveSuperRef } from "./super-resolve.js";
+import { resolveSuperRef, isChildTargetingRef } from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
@@ -59,6 +59,7 @@ import {
 import { ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
 import { attrClassFor } from "./attr-class-map.js";
 import type { AttrValue } from "./shared/meta-data.js";
+import { isRelativeRef, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -157,6 +158,44 @@ function reportProblem(
     throw new ParseError(msg, { code, source: errSource() });
   }
   warnings.push(msg);
+}
+
+// ---------------------------------------------------------------------------
+// FR-032 (ADR-0032) — canonical-JSON ref guard.
+//
+// Canonical JSON is the self-contained interchange form: every ref-bearing attr
+// MUST be fully-qualified. A relative authoring form (leading `::` or `..::`)
+// surviving into canonical JSON is `ERR_RELATIVE_REF_IN_CANONICAL`. The guard
+// fires ONLY for JSON-format input — YAML-format input has already been
+// desugar-expanded via expandRef (so any `::`/`..::` there is correct authoring
+// that was lowered to FQN before buildTree sees it). Like ERR_RESERVED_ATTR,
+// this is a hard error routed through the loader's error sink even in lax mode.
+// ---------------------------------------------------------------------------
+
+function guardRelativeRefInCanonical(
+  refLabel: string,
+  rawValue: unknown,
+  strict: boolean,
+  warnings: string[],
+  path: string,
+): void {
+  if (_currentFormat !== "json") return;
+  if (typeof rawValue !== "string") return;
+  if (!isRelativeRef(rawValue)) return;
+  const msg =
+    `Relative reference '${rawValue}' on ${refLabel} at ${path} is not allowed in ` +
+    `canonical JSON — canonical JSON must be fully-qualified. Relative forms ` +
+    `(leading '::' or '..::') are YAML-authoring sugar that the desugar expands.`;
+  if (strict) {
+    throw new ParseError(msg, { code: "ERR_RELATIVE_REF_IN_CANONICAL", source: errSource() });
+  }
+  if (_currentErrors !== undefined) {
+    _currentErrors.push(
+      new ParseError(msg, { code: "ERR_RELATIVE_REF_IN_CANONICAL", source: errSource() }),
+    );
+  } else {
+    warnings.push(msg);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -531,8 +570,25 @@ function parseNodeFresh(
   // (Skipped when deferSuperResolution is true — the loader resolves after
   // all input files have been parsed, so cross-file super refs work.)
   if (model.superRef !== undefined && accumRoot !== undefined && !_deferSuperResolution) {
-    const superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot);
+    // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
+    // type-scoped — kept consistent with the deferred path (super-resolve.ts).
+    const superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot, { type: model.type });
     if (superModel !== undefined) {
+      // FR-024 — a dotted child-targeting ref must resolve to a node of the
+      // SAME type and subtype as the extending node. Dotted-only check; the
+      // shipped top-level extends behavior is unchanged.
+      if (
+        isChildTargetingRef(model.superRef) &&
+        (superModel.type !== model.type || superModel.subType !== model.subType)
+      ) {
+        throw new ParseError(
+          `the extends target '${model.superRef}' is ${superModel.type}.${superModel.subType} but the extending node '${model.fqn()}' is ${model.type}.${model.subType} — a dotted extends must target a node of the same type and subtype`,
+          {
+            code: "ERR_EXTENDS_TARGET_MISMATCH",
+            source: resolvedSource(errSource(), model.fqn(), model.superRef),
+          },
+        );
+      }
       model.setSuperResolved(superModel);
     } else {
       // FR5d — emit format=resolved with referrer + target. referrer is the
@@ -888,6 +944,9 @@ function applyReservedKeys(
     if (typeof rawExtends !== "string") {
       reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, "ERR_UNRESOLVED_SUPER");
     } else {
+      // FR-032: canonical JSON `extends` must be FQN; reject a surviving
+      // relative form (no-op for YAML-format input, which was desugar-expanded).
+      guardRelativeRefInCanonical(`"${RESERVED_KEY_EXTENDS}"`, rawExtends, strict, warnings, path);
       model.setSuper(rawExtends);
     }
   }
@@ -974,6 +1033,13 @@ function applyInlineAttrsAndUnknownKeys(
     }
 
     const rawVal = nodeData[key];
+
+    // FR-032: a ref-bearing inline attr (@objectRef/@references/@from/@of/@via/
+    // @parameterRef/@payloadRef/@responseRef) in canonical JSON must be FQN —
+    // reject a surviving relative form. No-op for YAML-format input.
+    if (REF_BEARING_ATTR_NAMES.has(attrName)) {
+      guardRelativeRefInCanonical(`${ATTR_PREFIX}${attrName}`, rawVal, strict, warnings, path);
+    }
 
     try {
       const attr = materializeAttr(model, attrName, rawVal, registry);

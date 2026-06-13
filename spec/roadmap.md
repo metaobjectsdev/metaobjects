@@ -1,6 +1,52 @@
 # MetaObjects Roadmap
 
-_Last refreshed 2026-05-30._
+_Last refreshed 2026-06-13._
+
+> **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
+> the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
+
+## FR registry
+
+Every feature request, its status, target release, and tracking issue. Shipped FRs are detailed
+under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shipped · 🔵 active · 📋 planned.
+
+| FR | Title | Status | Release | Issue |
+|---|---|---|---|---|
+| FR-002 | Client/web package split | ✅ | — | — |
+| FR-003 | Java RDB persistence & projections | ✅ | — | — |
+| FR-004 | Cross-language prompt construction | ✅ (MCP remains) | — | [#18](https://github.com/metaobjectsdev/metaobjects/issues/18) |
+| FR-005 | Actionable loader errors (FR5 a–e) | ✅ | — | — |
+| FR-006 | `template.output` parser-on-receipt | ✅ | — | — |
+| FR-007 | Codegen conformance corpus | ✅ | — | — |
+| FR-008 | Universal REST API contract | ✅ | — | — |
+| FR-009 | Filter operators per port | ✅ | — | — |
+| FR-010 | Output-format prompt + tolerant extract | ✅ | — | — |
+| FR-011 | Extract hardening (enum coercion + nesting) | ✅ | — | — |
+| FR-012 | Nested-object prompt expansion | ✅ | — | — |
+| FR-013 | Field read-only | ✅ | — | — |
+| FR-014 | TPH discriminator | ✅ | — | — |
+| FR-015 | Source parameter-ref | ✅ | — | — |
+| FR-016 | `source.rdb` name/kind aliases | ✅ | — | — |
+| FR-017 | TPH polymorphic codegen | ✅ | — | — |
+| FR-018 | Many-to-many relationships | ✅ | — | — |
+| — | AI LLM-call trace persistence | 🔵 active | — | — |
+| FR-019 | Shared / externally-provided enums | 📋 | 1.1 | [#5](https://github.com/metaobjectsdev/metaobjects/issues/5) |
+| FR-020 | `@inheritance` joined strategy | 📋 | 1.x | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) |
+| FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
+| FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
+| FR-023 | Metadata packages (cross-project sharing) | 📋 | 1.x | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
+| FR-024 | Entity surfaces (projection/value + declared API) | 📋 **pre-GA** | 1.0 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
+| FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
+| FR-026 | Forms completeness (edit forms + view parity) | 📋 | 1.0 | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
+| FR-027 | DataGrid downloads (CSV/XLSX/PDF/TXT) | 📋 | 1.2 | [#13](https://github.com/metaobjectsdev/metaobjects/issues/13) |
+| FR-028 | Strict serializer parity + `meta export` CLI parity | 📋 | 1.1 | [#14](https://github.com/metaobjectsdev/metaobjects/issues/14) |
+| FR-029 | Metadata API + runtime-driven UI | 📋 | 1.4 | [#15](https://github.com/metaobjectsdev/metaobjects/issues/15) |
+| FR-030 | Runtime serializers (SPI/XML/binary/round-trip) | 📋 | 1.1 | [#16](https://github.com/metaobjectsdev/metaobjects/issues/16) |
+| FR-031 | MetaData read-path caching + perf | 📋 | 1.0 | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) |
+| FR-032 | Canonical FQN refs (YAML-only relative paths) | 🚧 impl (5 ports), pre-1.0 | 1.0 | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) |
+
+_(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
+_(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
 
 ## Shipped
 
@@ -73,10 +119,26 @@ _Last refreshed 2026-05-30._
 ## Planned
 
 - **FR-019 — Shared + externally-provided enums.** Stop redeclaring a `field.enum` inline in every consuming entity: a package-level abstract `field.enum` materializes ONE standalone enum type per port (the existing D6 `extends` reuse vocabulary), and **`@provided: true`** — a provenance flag on the named-type *declaration* (not the field), shared cross-type with value objects — references an existing hand-written type instead of emitting one (per-port namespace via codegen config, never a metadata FQN — retires the C#-only `@csEnumType`). Decision in [ADR-0026](decisions/ADR-0026-shared-and-provided-named-types.md); implementation spec `docs/superpowers/specs/2026-06-06-fr-019-shared-and-provided-enums-design.md`. (Generators are now subclass-extensible across all 5 ports, so this lands on open seams.)
+- **FR-020 — `@inheritance` persistence strategy (single-table vs joined).** TPH (one physical table, nullable subtype columns) is the single implicit strategy today (FR-014/FR-017). FR-020 adds an `@inheritance` attr to choose **joined** (a base table + per-subtype tables, joined on read) as an alternative — **additive, default stays TPH** (no breaking change). Status: design (proposed, sequenced after FR-017, which shipped). Design: `docs/superpowers/specs/2026-06-07-fr-020-inheritance-strategy-design.md`. *(Was not previously surfaced in this roadmap.)*
+- **FR-025 — Cross-port package-binding codegen config.** Config for how a metadata FQN/package maps to each port's native namespace/package at codegen time (the ADR-0001 build-time binding), so cross-package references (and metadata shared across projects, FR-023) emit correct imports per language. Status: design (ready for implementation). Design: `docs/superpowers/specs/2026-06-08-fr-025-cross-port-package-binding-config-design.md`. *(Was not previously surfaced in this roadmap.)*
 - **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
-- **FR-021 — `api` metadata type + contract projections.** Declared API surfaces (operations + per-protocol bindings) over the derived-CRUD default; operation payloads are `object.value` projections (the same `origin.*` machinery as prompts and views); wire-stable `wireId` numbering lives on the contract projection (never the entity) so domain evolution can't break wire compat. Design sketch: `docs/superpowers/specs/2026-06-11-fr-021-api-metadata-and-contract-projections-design.md`.
+- **FR-024 — Entity surfaces: `object.projection`, universal field-`extends`, and the declared API.** A third object subtype (derived, read-only, borrowed identity via `extends`; the declared field set IS the exposure — fail-closed), universal `Entity.child` extends-resolution (load-time drift gate on every contract shape), `@via` single-hop-unique inference, multi-source entity view behavior, and the `api.operational` / `operation.query|command` / `binding.rest` surface — across all 5 ports, conformance-gated; the two pre-taxonomy spellings (entity-`extends`-entity views, proc-results-as-entities) are removed outright (hard cutover, pre-GA). Decisions: [ADR-0028](decisions/ADR-0028-object-taxonomy-projection-value-purity.md) / [ADR-0029](decisions/ADR-0029-entity-child-extends-and-via-inference.md) / [ADR-0030](decisions/ADR-0030-declared-api-surface-and-org-tier-boundary.md). Design: `docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md`; program plan: `docs/superpowers/plans/2026-06-12-fr-024-entity-surfaces-program.md`. Supersedes the shape-vocabulary half of the FR-021 sketch (its `api`/`wireId` direction stands, retyped onto projection/value).
+- **FR-021 — `api` metadata type + contract projections.** Declared API surfaces (operations + per-protocol bindings) over the derived-CRUD default; operation payloads are `object.value` projections (the same `origin.*` machinery as prompts and views); wire-stable `wireId` numbering lives on the contract projection (never the entity) so domain evolution can't break wire compat. Design sketch: `docs/superpowers/specs/2026-06-11-fr-021-api-metadata-and-contract-projections-design.md`. **Revised by FR-024:** contract shapes are `object.projection` (query outputs) / `object.value` (command inputs); subtype vocabulary `api.base`/`api.operational`; see ADR-0030.
 - **FR-022 — Contract emitters (Tier-2): JSON Schema 2020-12 (canonical + strict structured-output profile) → OpenAPI 3.1 → protobuf.** One shared neutral engine per ADR-0020; strict profile targets the cross-provider structured-output intersection (also MCP input schemas); proto emission consumes FR-021 `wireId`s, maps types per the locked table (Decimal/minor-units/uuid-string/optional/UNSPECIFIED-enum-zero), and inherits wire-compat regression detection via `buf breaking` on the emitted artifacts. Design sketch: `docs/superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md`.
 - **FR-023 — Metadata packages: cross-repo distribution + reuse.** A code-free, versioned artifact (the `metaobjects/` tree + manifest) published through each ecosystem's registry (npm/Maven/PyPI/NuGet) and declared via `metadataDependencies` in config; loader source composition + overlay/extends across package boundaries (mechanics already shipped) with dependency-then-local merge order, collision rules, and per-package provenance attribution. Design sketch: `docs/superpowers/specs/2026-06-11-fr-023-metadata-packages-design.md`.
+  - **Near-term doc-first quick wins (available now, no new code):** the *mechanics* of cross-project sharing already work — overlay merge, deferred cross-package `extends`, and dir/URI loaders — so before the full package-resolution build, ship **recipes**: (a) a monorepo pattern (one shared `metaobjects/` dir loaded by TS + Java + Python projects), (b) a git-submodule pattern (pull upstream metadata into a local `metaobjects/`), and (c) wire the already-defined-but-unused `.metaobjects/config.json` `sources` field (TS) to the loader so `{ kind: "path" }` overlays compose. These cover most "share a model across our backends" needs with documentation; FR-023 proper adds true dependency resolution + the `metaobjects.pkg.json` manifest. TS-only `libraries` mechanism (`metaobjects::ai`) is the single existing precedent — generalize it under FR-023.
+
+- **FR-026 — Forms completeness: edit forms, view-render parity, validator wiring (TS web client).** Builds on what ships today — create forms (`@emitForm` → `formFile` → `useEntityForm` + Zod `InsertSchema`), field display via `view.*` cell renderers (~10 of 13 subtypes), and client form rules (`required`/`length`/`regex`). Gaps to close: (1) **edit forms** — `UpdateSchema` is already generated but no codegen consumes it; emit `<Entity>EditForm` (load existing values as defaults, PATCH, same field-visibility rules as create); (2) **view-render parity** — register `datetime` as a `view.*` subtype (its renderer exists but no metadata path selects it) and add renderers for `hotlink` / `month` / `radio`; (3) **validator wiring** — `validator.numeric` / `validator.array` are emitted to Zod but NOT to the client form rules (only field attrs are); (4) **view attrs** — only `@locale` is schema'd; `@placeholder` / `@helpText` / `@step` / `@rows` / `@pattern` are currently ad-hoc; (5) optional `layout.form` (field grouping / sections / conditional visibility). TS-web-only by architecture (the browser is the TS-native UI surface). **Supersedes the Future "Forms codegen revival" note.** Status map from the 2026-06-13 audit.
+
+- **FR-027 — DataGrid data export + grid completeness (TS web client).** `layout.dataGrid` + the TanStack grid codegen (columns + grid hook) + runtime (server-driven sort / paginate / filter / free-text search, 9 filter ops, `withCount` envelope, extensible cell renderers, React + Angular variants) ship solid. **Headline gap: data export / download does not exist anywhere.** Add **CSV / XLSX / PDF / TXT** export driven by the grid's current columns + filter/sort state: client-side for the loaded page, plus an optional **server-side bulk-export endpoint** (`GET /<entity>/export?format=…`, pagination off, streamed) for full-dataset export; reuse the existing render `escapers.ts` CSV formula-injection guard. Optional `@exportFormats` attr on `layout.dataGrid`. Secondary grid gaps: column width / visibility / reorder / resize metadata (`meta.width` is reserved but never populated; no `@hidden`/`@columnWidth`), row (multi-)selection, and making server-side `search` behavior consistent cross-port. Status map from the 2026-06-13 audit.
+
+- **FR-028 — Strict object serializers (cross-port parity) + `meta export` CLI parity.** *(Baseline for FR-030.)* The **metadata** canonical serializer (loaded metadata → canonical JSON, raw + `effective`) already ships in **all 5 ports**, and the `meta export` CLI ships in **TS**. The **object-graph** strict serializers are uneven: **object → JSON** strict (with symmetric read) ships only in **TS** (`objectToJson`/`jsonToObject`) and **Java** (`JsonObjectWriter`/`JsonObjectReader`) — **missing in Python / C# / Kotlin**; **object → XML** strict **write** is **missing in every port** (only the tolerant `extract` XML *read* side exists). Backlog: (1) port object→JSON strict to Python / C# / Kotlin (conformance-gated alongside the existing `op: roundtrip` gate); (2) add `meta export` to the Java / Python / C# / Kotlin CLIs. Status map from the 2026-06-13 audit.
+
+- **FR-029 — Metadata API + runtime-metadata-driven UI (backend-agnostic).** The web UI is TS (browser-native) but must be drivable by metadata fetched from **any** backend over APIs, so the same grid/forms work regardless of server language. Two delivery modes, both supported + demoed: today's **codegen** UI, and a new **runtime** mode that fetches the model and builds the UI dynamically. Gaps: a **metadata API endpoint** per backend (serve canonical metadata as JSON over HTTP), a **browser runtime metadata loader** (`runtime-web` → in-browser MetaData read-model), a **runtime-driven dataGrid** + **runtime-driven create/edit forms**, a both-ways reference app, and a backend-agnostic guarantee (the TS UI verified against all 5 backends serving the metadata + data APIs). Detail: §"Theme 1" of `docs/superpowers/specs/2026-06-13-metadata-runtime-ui-and-serializers-gaps.md`.
+
+- **FR-030 — Runtime metadata-driven serializers: protocols, round-trip, field-subset.** Serialize/deserialize an object graph **driven by the MetaData itself** (honoring `normalization.md`), on **Pojo or ValueObject** instances, resolving the `MetaObject` via `MetaObjectAware` (fast path) or the `ObjectClassRegistry`. A pluggable **serializer SPI** so new protocols slot in uniformly: JSON + **XML write** (revive the legacy `metaobjects-core`/`dynamic` JSON+XML), plus a **binary** protocol (protobuf — reuse FR-022's `wireId`/type mapping — and/or MessagePack/CBOR) "to show how standardized it is." Per port: a thin **adapter** over the native serializer (Jackson / System.Text.Json / Pydantic / kotlinx) where one fits, fully custom otherwise. A **field-subset/projection** serialization parameter (reuses FR-024 projections; shared with grid JSON/XML downloads). **Round-trip integrity conformance** — `json → xml → binary → json`, assert no data loss, cross-port. Open ADR: keep bidirectional serialization separate from one-way (lossy) data download, sharing JSON/XML via the field-subset param. Detail: §"Theme 3" of the gap doc.
+
+- **FR-031 — MetaData read-path caching (general; serialization is the example).** Repeatedly walking the MetaData tree for field/attr/validator/view/children lookups is a hot path for **every** consumer — codegen, runtime, the UI, and (as the headline example) serializing 100k+ large objects re-queries the tree per object. The MetaData read-model is **immutable after load**, so memoize these lookups on the MetaData class once. Deliberately **not** serialization-specific: it's a general read-path cache that any processing benefits from, validated by a throughput **benchmark gate** (process 100k+ objects, cached-vs-uncached delta) per port, using serialization as the example workload. Low effort, high leverage. *(The serialization-specific perf — a per-MetaObject compiled plan + streaming large sets — rides with FR-030, building on this cache.)* Detail: §"Theme 4" of the gap doc.
 
 ### Tracked outside this library repo (not roadmap work here)
 
@@ -85,14 +147,77 @@ These are exercised in adopter projects on top of the shipped per-port primitive
 - **Consumer-adoption validation** — downstream consumers migrating onto metaobjects-emitted code across the language paths (the former H5 / H9 / H10). The library surface they exercise (`codegen-spring`, `MetaObjects.Codegen`, the web-client packages, etc.) already ships.
 - **Application-level prompt-pillar consolidation** — the end-to-end declared-prompt orchestration and prompt eval harness that sit on top of the per-port primitives (the former H6, **minus** MCP exposure, which remains a library item above).
 
+## Release plan (1.0 → 1.x)
+
+Grouping of the Planned work into releases. Multiple items per release is fine. Before 1.0
+we keep it **lean** — consistency fixes + cheap, broadly-leveraged foundations; the big new
+themes (serializers, downloads, runtime-driven UI) land post-GA where they can be built
+properly without holding the GA.
+
+### Before 1.0 (tackle now — consistency + cheap foundations)
+
+- **FR-031 — MetaData read-path caching** + throughput benchmark. Low effort, high leverage,
+  benefits everything; serialization is the example, not the only consumer. (Doug-prioritized.)
+- **FR-026 — codegen edit forms + view-render parity** (TS web only, small). Create forms ship
+  but edit forms don't — create/edit symmetry is table-stakes for a GA.
+- **`meta export` CLI parity** (Java/Python/C#/Kotlin) — trivial cross-port CLI consistency
+  (the carve-out of FR-028 that's cheap; object↔JSON port-parity itself rides 1.1).
+- **GA mechanics** — the 0.10.0 publish (npm + NuGet/PyPI/Maven re-cut so `meta docs` /
+  `verify --codegen/--db` / the SDK-docs parity are installable) → smoke → promote to 1.0.
+- **[DECISION] FR-024 — entity surfaces (projection/value taxonomy + declared API).** Its design
+  calls it a **pre-GA hard cutover** (the two pre-taxonomy spellings are removed outright), and
+  the serializer/download **field-subset** (SER-7) builds on `object.projection`. So either it
+  lands before 1.0, or its breaking metamodel change waits for 2.0 and the field-subset uses an
+  interim mechanism. **Confirm whether FR-024 is a 1.0 gate** — it's large but already scoped.
+- **[OPTIONAL] FR-019 — shared/provided enums** (small, already designed) — slot here or 1.1.
+- **[OPTIONAL] FR-025 — cross-port package-binding codegen config** (ready for implementation) — pulls into 1.0 *if* FR-024's cross-package generated imports need it; otherwise 1.1.
+- **[OPTIONAL] MCP exposure** — completes the prompt pillar's library side; pull to 1.0 only if
+  "4 complete pillars" is a GA marketing bar, else 1.1.
+
+### 1.1 — Serialization foundation
+
+- **FR-028 finish** — object↔JSON strict parity (Python / C# / Kotlin).
+- **FR-030 core** — serializer SPI; **XML write** (revive the legacy core/dynamic JSON+XML);
+  field-subset via FR-024 projections; Pojo/ValueObject/MetaObjectAware support; **json↔xml
+  round-trip** conformance. Realizes ADR-0031.
+- **FR-030 serialization perf** — per-MetaObject compiled plan + streaming (on FR-031's cache).
+
+### 1.2 — DataGrid downloads
+
+- **FR-027** — client export (CSV/XLSX/PDF/TXT) + server bulk-export endpoint (all backends) +
+  JSON/XML download via the 1.1 serializer & field-subset + export conformance + the secondary
+  grid gaps (column width/visibility/selection, consistent server `search`).
+
+### 1.3 — Binary protocols + contract emitters
+
+- **FR-030 binary** — protobuf / MessagePack / CBOR over the SPI → completes the
+  **json → xml → binary → json** no-data-loss round-trip gate.
+- **FR-022 — contract emitters** (JSON Schema / OpenAPI / protobuf) — overlaps the protobuf
+  serializer (shared `wireId`/type mapping); do together.
+
+### 1.4 — Metadata API + runtime-driven UI
+
+- **FR-029** — metadata API endpoint (all backends) → browser runtime metadata loader →
+  runtime-driven dataGrid + create/edit forms → both-ways (codegen vs runtime) demo →
+  backend-agnostic verification (the TS UI against all 5 backends).
+
+### 1.x / later
+
+- **FR-023 — metadata sharing** (full package resolution; the doc-first quick wins can land any
+  time, independent of release).
+- **FR-020 — `@inheritance` joined strategy** (additive; pairs with a persistence release).
+- **MCP exposure** (if not pulled earlier — see below).
+- **Database-source metadata loader** (currently Future).
+
 ## Future (sketched)
 
 Candidate directions, not actively tracked — pulled up into Planned only when scheduled.
 
 - **Database-source metadata loader** — load the metamodel itself from a database (a metaobjects-table schema + a loader that reads it) instead of JSON/YAML files, for a central / runtime-editable metadata registry. FR5e already reserves the `format: "database"` error envelope (table + id + optional jsonPath), so the error contract is in place; the loader itself is unbuilt.
-- Forms codegen revival (deferred from earlier).
 - Date / case transforms.
 - Materialized views, federated entities, search-index sources.
+
+(Forms codegen revival has been promoted to **FR-026** in Planned.)
 
 ---
 

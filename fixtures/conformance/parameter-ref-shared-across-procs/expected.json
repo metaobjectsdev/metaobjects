@@ -20,13 +20,13 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcA",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@parameterRef": "PagedArgs",
+                "@parameterRef": "demo::PagedArgs",
                 "@proc": "fn_a"
               }
             },
@@ -34,38 +34,24 @@
               "field.long": {
                 "name": "id"
               }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
-              }
             }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcB",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@parameterRef": "PagedArgs",
+                "@parameterRef": "demo::PagedArgs",
                 "@proc": "fn_b"
               }
             },
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

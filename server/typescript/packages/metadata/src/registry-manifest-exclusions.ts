@@ -71,6 +71,18 @@ export enum ExclusionReason {
   InheritanceAnchor = "inheritance-anchor",
   /** TS-web-presentation-only facet (the generic `view.*` controls). */
   PresentationOnly = "presentation-only",
+  /**
+   * FR-024 TS-reference-first rollout (RETIRED at the atomic flip): new
+   * vocabulary genuinely registered (and gated by TS tests) but carved out of
+   * the cross-port manifest until every port registered it; the carve-outs were
+   * then removed and the canonical updated in ONE commit (the same lifecycle
+   * the retired TsPilotVocab carve-outs followed for `@responseRef`/`@provided`).
+   * The `object.projection` row + the `origin.aggregate.via` required-override
+   * flipped when all five ports shipped the FR-024 loader-grammar slice. The
+   * reason is kept as the documented lifecycle slot for the NEXT
+   * reference-first rollout; it currently has no members.
+   */
+  Fr024Pending = "fr024-pending",
 }
 
 /** `isAbstract` as Java's per-type attr name (the contract's bare `abstract` structural keyword). */
@@ -122,4 +134,31 @@ export function classifyTypeSubType(
 /** True if a `(type, subType)` row is carved out of the manifest (any reason). */
 export function isExcludedTypeSubType(type: string, subType: string): boolean {
   return classifyTypeSubType(type, subType) !== undefined;
+}
+
+/**
+ * FR-024-pending manifest REQUIREDNESS overrides (the attr-level analogue of
+ * the `Fr024Pending` row carve-out). Key is `"type.subType.attrName"`; value is
+ * the requiredness the cross-port canonical (`expected-registry.json`) still
+ * records. The TS registry already registers the FR-024 requiredness (and the
+ * TS loader enforces it), but the other four ports have not flipped yet — the
+ * manifest keeps emitting the pre-FR-024 agreed value so the shared canonical
+ * stays byte-identical until the Phase-E atomic all-ports flip, when this map
+ * empties and the canonical is updated in ONE commit.
+ *
+ * Members today: NONE — `origin.aggregate.via` flipped at the FR-024 atomic
+ * all-ports manifest flip (it is OPTIONAL everywhere under ADR-0029 decision 5:
+ * omitted `@via` is inferred when exactly one single-hop relationship leads
+ * from the base entity to the `@of` entity). The mechanism stays for the next
+ * reference-first rollout.
+ */
+export const FR024_PENDING_REQUIRED_OVERRIDES: ReadonlyMap<string, boolean> = new Map([]);
+
+/** Manifest requiredness for an attr — the FR-024-pending override when one exists. */
+export function manifestRequiredOverride(
+  type: string,
+  subType: string,
+  attrName: string,
+): boolean | undefined {
+  return FR024_PENDING_REQUIRED_OVERRIDES.get(`${type}.${subType}.${attrName}`);
 }

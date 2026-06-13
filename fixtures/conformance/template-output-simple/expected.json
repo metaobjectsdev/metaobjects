@@ -23,11 +23,10 @@
         "template.output": {
           "name": "NpcResponseOutput",
           "@format": "json",
-          "@payloadRef": "NpcResponsePayload",
+          "@payloadRef": "acme::ai::NpcResponsePayload",
           "@textRef": "npc/output"
         }
       }
     ]
   }
 }
-

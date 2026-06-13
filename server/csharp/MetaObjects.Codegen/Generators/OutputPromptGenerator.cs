@@ -33,25 +33,36 @@ public class OutputPromptGenerator : IGenerator
         var files = new List<EmittedFile>();
         foreach (var tmpl in outputs)
         {
-            var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
-            bool supported =
-                format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
-                format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-            if (!supported) continue; // only renderable structured outputs get a prompt fragment
-
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
-            var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
-            if (vo is null) continue; // not a resolvable value-object — skip (same contract as the parser)
-
+            if (!AppliesTo(tmpl, ctx.Root)) continue;
+            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+            var vo = ctx.Root.OwnChildren().First(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
             files.Add(EmitPrompt(tmpl, vo, payloadRef, ctx));
         }
         return files;
     }
 
+    /// <summary>
+    /// True iff this generator emits an output-format prompt for <paramref name="tmpl"/>:
+    /// a <c>template.output</c> with a json/xml <c>@format</c> and a <c>@payloadRef</c>
+    /// that resolves to a root-level <c>object</c>. Single source of truth shared by the
+    /// generator loop AND the api-docs builder (so docs never claim a suppressed symbol).
+    /// </summary>
+    public static bool AppliesTo(MetaData tmpl, MetaRoot root)
+    {
+        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
+        var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
+        var supported =
+            format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
+            format.Equals("xml", StringComparison.OrdinalIgnoreCase);
+        if (!supported) return false;
+        if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
+        return root.OwnChildren().Any(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+    }
+
     protected virtual EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
-        var promptClass = $"{templateName}Prompt";
+        var promptClass = CSharpNaming.PromptClassName(templateName);
         // rootName == payload class name so the prompt fragment and extract() agree.
         var specLiteral = OutputFormatSpecEmitter.SpecLiteral(vo, tmpl, payloadRef);
 

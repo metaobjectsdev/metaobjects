@@ -13,13 +13,13 @@
       ] } },
       { "object.entity": { "name": "PromptTrace", "extends": "metaobjects::ai::LlmCallBase", "@discriminator": "callType", "children": [
         { "source.rdb": { "@table": "prompt_llm_call", "@role": "primary" } },
-        { "identity.primary": { "@fields": ["spanId"] } }
+        { "identity.primary": { "name": "id", "@fields": ["spanId"] } }
       ] } },
       { "object.entity": { "name": "ClassifyCall", "extends": "metaobjects::ai::PromptTrace", "@discriminatorValue": "classify", "children": [
-        { "template.prompt": { "name": "ClassifyPrompt", "@payloadRef": "ClassifyReq", "@responseRef": "ClassifyRes", "@textRef": "p/classify", "@format": "json" } }
+        { "template.prompt": { "name": "ClassifyPrompt", "@payloadRef": "metaobjects::ai::ClassifyReq", "@responseRef": "metaobjects::ai::ClassifyRes", "@textRef": "p/classify", "@format": "json" } }
       ] } },
       { "object.entity": { "name": "SummarizeCall", "extends": "metaobjects::ai::PromptTrace", "@discriminatorValue": "summarize", "children": [
-        { "template.prompt": { "name": "SummarizePrompt", "@payloadRef": "SummarizeReq", "@responseRef": "SummarizeRes", "@textRef": "p/summarize", "@format": "json" } }
+        { "template.prompt": { "name": "SummarizePrompt", "@payloadRef": "metaobjects::ai::SummarizeReq", "@responseRef": "metaobjects::ai::SummarizeRes", "@textRef": "p/summarize", "@format": "json" } }
       ] } }
     ]
   }

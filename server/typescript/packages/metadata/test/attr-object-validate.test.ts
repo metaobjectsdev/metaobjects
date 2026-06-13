@@ -21,7 +21,7 @@ function docWith(filter: unknown) {
             children: [
               { "field.long": { name: "id" } },
               { "field.boolean": { name: "subscribed", "@filterable": true } },
-              { "identity.primary": { "@fields": ["id"] } },
+              { "identity.primary": { "name": "id", "@fields": ["id"] } },
               {
                 "layout.dataGrid": {
                   name: "active",

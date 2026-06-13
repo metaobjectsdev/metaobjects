@@ -26,11 +26,12 @@
             {
               "field.enum": {
                 "name": "status",
-                "extends": "Status"
+                "extends": "acme::Status"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

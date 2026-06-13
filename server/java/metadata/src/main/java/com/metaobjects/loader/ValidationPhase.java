@@ -1418,7 +1418,16 @@ public final class ValidationPhase {
         java.util.Set.of("increment", "uuid", "assigned");
 
     private static void validateIdentityNode(MetaIdentity identity) {
-        if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) {
+        // FR-024 (ADR-0029): an identity with a resolved extends (identity
+        // pass-through, e.g. a projection identity extending an entity identity)
+        // satisfies @fields through INHERITANCE — the local @fields list is
+        // computable from the extends-bound key fields and may be omitted.
+        // Check the EFFECTIVE attr view (includeParentData) when a super is
+        // present; own-only otherwise (the pre-FR-024 rule, unchanged).
+        boolean hasFields = identity.getSuperData() != null
+            ? identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, true)
+            : identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false);
+        if (!hasFields) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
                     + ": identity '" + identity.getName()
@@ -2095,7 +2104,16 @@ public final class ValidationPhase {
      */
     private static boolean nameMatches(MetaData child, String name) {
         String bare = shortNameOf(child);
-        return bare != null && name.equals(bare);
+        if (bare == null) return false;
+        // FR-032 (ADR-0032): origin/template ref values are FULLY QUALIFIED after
+        // the desugar/sweep (e.g. "acme::commerce::Program.title" → entity head
+        // "acme::commerce::Program"). Match the ref's tail segment (after the last
+        // "::") against the child's bare name — covers a bare ref (tail == whole)
+        // AND an FQN ref — and also match the child's full FQN name directly.
+        // Mirrors the TS refMatchesObject helper.
+        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String nameTail = (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
+        return nameTail.equals(bare) || name.equals(child.getName());
     }
 
     /**

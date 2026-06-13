@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[0]['object.entity']",
         "referrer": "Premium",
-        "target": "DoesNotExist"
+        "target": "acme::DoesNotExist"
       }
     }
   ],

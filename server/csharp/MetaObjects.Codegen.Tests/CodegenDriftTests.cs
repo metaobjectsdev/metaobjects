@@ -36,10 +36,11 @@ public sealed class CodegenDriftTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
-    // The default suite, resolved straight from the registry (the same four names
-    // GenCommand uses) — keeps Codegen.Tests independent of the Cli project.
+    // The default suite, resolved straight from the registry (the same names GenCommand
+    // uses) — keeps Codegen.Tests independent of the Cli project. Kept in sync with
+    // GenCommand.DefaultGeneratorNames (Python-parity eight; render-helper is opt-in).
     private static readonly IReadOnlyList<string> DefaultNames =
-        ["entity", "db-context", "routes", "output-parser"];
+        ["entity", "db-context", "routes", "filter-allowlist", "payload", "output-parser", "output-prompt", "extractor"];
 
     private static IReadOnlyList<IGenerator> DefaultGenerators() => GeneratorRegistry.Resolve(DefaultNames);
 

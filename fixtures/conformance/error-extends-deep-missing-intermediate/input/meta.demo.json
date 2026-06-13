@@ -1,0 +1,62 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "priceCents",
+                "@currency": "USD",
+                "children": [
+                  {
+                    "view.currency": {
+                      "name": "display",
+                      "@locale": "en-US"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PricesV1",
+          "children": [
+            {
+              "field.currency": {
+                "name": "price",
+                "extends": "demo::Customer.priceCents",
+                "children": [
+                  {
+                    "view.currency": {
+                      "name": "display",
+                      "extends": "demo::Customer.nosuch.display"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

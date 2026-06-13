@@ -62,7 +62,7 @@ analogous "package marker" concept — none is needed for the flat-module ports 
   to assert per-file status (the file map now also contains the package marker).
 
 Full non-integration suite green (the one unrelated failure,
-`ERR_RELATIVE_REF_IN_CANONICAL` missing from the Python `ErrorCode` enum, is FR-026
+`ERR_RELATIVE_REF_IN_CANONICAL` missing from the Python `ErrorCode` enum, is FR-032
 Python-port follow-up, independent of this change).
 
 ## Follow-ups (not in this change)

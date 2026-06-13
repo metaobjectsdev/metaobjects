@@ -22,7 +22,7 @@ async function loadTph() {
               { "field.long": { name: "id" } },
               { "field.enum": { name: "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
               { "field.string": { name: "reference", "@required": true, "@maxLength": 80 } },
-              { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+              { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             ]}},
             { "object.entity": { name: "BridgeAuth", extends: "Auth", "@discriminatorValue": "Bridge", children: [
               { "field.int": { name: "quantity", "@required": true } },

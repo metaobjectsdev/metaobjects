@@ -16,12 +16,11 @@ async function loadObj(objNode: unknown) {
 describe("isProjection / isWriteThrough", () => {
   test("entity with source.rdb @kind:view only → isProjection true, isWriteThrough false", async () => {
     const obj = await loadObj({
-      "object.entity": {
+      "object.projection": {
         name: "Foo",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_foo" } },
           { "field.int": { name: "id", } },
-          { "identity.primary": { "@fields": "id" } },
         ],
       },
     });
@@ -36,7 +35,7 @@ describe("isProjection / isWriteThrough", () => {
         children: [
           { "source.rdb": { "@table": "foos" } },
           { "field.int": { name: "id", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     });
@@ -52,7 +51,7 @@ describe("isProjection / isWriteThrough", () => {
           { "source.rdb": { "@table": "foos" } },
           { "source.rdb": { "@kind": "view", "@table": "v_foo" } },
           { "field.int": { name: "id", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     });
@@ -66,7 +65,7 @@ describe("isProjection / isWriteThrough", () => {
         name: "Foo",
         children: [
           { "field.int": { name: "id", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     });

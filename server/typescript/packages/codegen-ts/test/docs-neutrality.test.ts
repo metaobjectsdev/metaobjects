@@ -68,7 +68,7 @@ const ENTITY_JSON = JSON.stringify({
                 "@values": ["active", "discontinued"],
               },
             },
-            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
           ],
         },
       },

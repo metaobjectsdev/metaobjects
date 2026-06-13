@@ -1,5 +1,6 @@
 import {
   TYPE_FIELD,
+  TYPE_IDENTITY,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
   MetaSource,
@@ -79,26 +80,55 @@ export function projectionViewName(
   return viewName(projection, { columnNamingStrategy });
 }
 
+/**
+ * FR-024 (ADR-0029): the entity NAMED by a node's dotted extends ref — the
+ * owner part of `<owner>.<child>...` resolved as an object. Mirrors the
+ * loader's `_refNamedOwner`: the ref names the anchor, never the physical
+ * declaring ancestor of an inherited child.
+ */
+function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
+  const ref = (node as { superRef?: string }).superRef;
+  if (ref === undefined) return undefined;
+  const lastSep = ref.lastIndexOf("::");
+  const tail = lastSep === -1 ? ref : ref.slice(lastSep + 2);
+  const dot = tail.indexOf(".");
+  if (dot <= 0) return undefined;
+  return root.findObject(tail.slice(0, dot)) ?? undefined;
+}
+
 function baseEntityFor(
   projection: MetaObject,
   root: MetaRoot,
 ): MetaObject {
-  // v1: base entity is the resolved super (set via `extends:` in metadata).
-  const superModel = projection.superResolved;
-  const superName = superModel?.name ?? projection.superRef;
-  if (!superName) {
-    throw new Error(
-      `Projection ${projection.name}: missing extends — projections must extend a writable entity in v1.`,
-    );
+  // FR-024 base-anchor rules (mirror the loader's _deriveBaseEntity):
+  // 1) the extends-bound identity anchors the base entity;
+  // 2) else the single distinct entity targeted by extends-bound fields.
+  // The pre-FR-024 object-level `extends:` firehose is removed (B4b cutover).
+  //
+  // COUPLING NOTE: this intentionally derives the anchor ONLY from the ref's
+  // named owner (refNamedOwner), NOT the loader's `superResolved.parent`
+  // fallback for a non-dotted identity extends. That fallback is unreachable
+  // here because the loader gate (validate-identity-passthrough →
+  // ERR_PROJECTION_IDENTITY_NOT_EXTENDED) rejects any projection whose identity
+  // is not dotted-extends-bound before codegen runs. If that loader gate is
+  // ever loosened, this function must grow the same fallback.
+  for (const identity of projection
+    .ownChildren()
+    .filter((c) => c.type === TYPE_IDENTITY)) {
+    const named = refNamedOwner(identity, root);
+    if (named !== undefined) return named;
   }
-  const base =
-    superModel instanceof MetaObject ? superModel : root.findObject(superName);
-  if (!base) {
-    throw new Error(
-      `Projection ${projection.name}: extends "${superName}" does not resolve to any entity.`,
-    );
+  const targets = new Set<MetaObject>();
+  for (const f of projection.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+    const named = refNamedOwner(f, root);
+    if (named !== undefined && named !== projection) targets.add(named);
   }
-  return base;
+  if (targets.size === 1) return [...targets][0]!;
+  throw new Error(
+    `Projection ${projection.name}: cannot derive the base entity — declare an ` +
+      `extends-bound identity (identity.primary { name, extends: "<Entity>.<identity>" }) ` +
+      `to anchor the base (FR-024).`,
+  );
 }
 
 function sourceColumnNameFor(
@@ -270,22 +300,11 @@ function buildSelectSpec(
 ): SelectSpec {
   const columns: SelectColumn[] = [];
 
-  // Inherited fields from extends parent — emit as passthrough on baseAlias.
-  // Skip fields that the projection has overridden with an explicit origin.
-  // fields() is effective-by-default, so multi-level inheritance (base → BaseEntity) works.
-  for (const baseField of base.fields()) {
-    const overridden = projection.ownChildren().find(
-      (c) => c.type === TYPE_FIELD && c.name === baseField.name,
-    );
-    if (overridden) continue;
-    columns.push({
-      kind: "passthrough",
-      fieldName: baseField.name,
-      dbColAlias: sourceColumnNameFor(baseField, ctx),
-      sourceAlias: joinTree.baseAlias,
-      sourceColumn: sourceColumnNameFor(baseField, ctx),
-    });
-  }
+  // FR-024 (ADR-0028): the projection's DECLARED field set IS the exposure —
+  // the inclusive list, fail-closed by construction. The pre-FR-024 loop that
+  // emitted every base-entity field as an implicit passthrough (the firehose)
+  // is removed with the B4b cutover: base columns are declared explicitly as
+  // extends-bound fields (`{ field.int: { name: id, extends: "Program.id" } }`).
 
   // Fields explicitly declared on the projection.
   for (const field of projection.ownChildren()) {

@@ -8,7 +8,7 @@ test("finds a template.prompt nested in an object.entity", async () => {
     { "object.entity": { name: "Call", children: [
       { "source.rdb": { "@table": "call", "@role": "primary" } },
       { "field.uuid": { name: "spanId" } },
-      { "identity.primary": { "@fields": ["spanId"] } },
+      { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
       { "template.prompt": { name: "CallPrompt", "@payloadRef": "ReqVO", "@textRef": "p/x", "@format": "xml" } },
     ] } },
   ] } });
@@ -36,7 +36,7 @@ test("returns both top-level and nested template.prompt nodes", async () => {
     { "object.entity": { name: "Call", children: [
       { "source.rdb": { "@table": "call", "@role": "primary" } },
       { "field.uuid": { name: "spanId" } },
-      { "identity.primary": { "@fields": ["spanId"] } },
+      { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
       { "template.prompt": { name: "Nested", "@payloadRef": "ReqVO", "@textRef": "p/y", "@format": "xml" } },
     ] } },
   ] } });

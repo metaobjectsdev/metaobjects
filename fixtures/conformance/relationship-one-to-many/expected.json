@@ -19,11 +19,12 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -48,6 +49,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

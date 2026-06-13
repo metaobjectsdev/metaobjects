@@ -33,6 +33,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_FORMAT,
   PACKAGE_SEPARATOR,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray } from "./fr010-field-mapping.js";
 import { mirrorName } from "./extract-delegate-emitter.js";
@@ -40,7 +41,7 @@ import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -336,7 +337,7 @@ export function renderExtractor(root: MetaData, templateName: string): string {
     `\n` +
     `/**\n` +
     ` * Extract a fully-typed \`${strictType}\` from dirty \`text\` using the loaded \`root\` (which must\n` +
-    ` * declare the "${payloadRef}" payload value-object). Runs the tolerant extract, then maps the\n` +
+    ` * declare the "${strictType}" payload value-object). Runs the tolerant extract, then maps the\n` +
     ` * extracted mirror onto the strict payload.\n` +
     ` *\n` +
     ` * @throws Error iff a \`@required\` field was lost (the strict opt-in gate).\n` +

@@ -30,6 +30,15 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
                 .ToArray());
     }
 
+    /// <summary>Templates (<c>template.*</c>) defined at this root level (own children only).</summary>
+    public IReadOnlyList<MetaData> RootTemplates()
+    {
+        return Cached("templates", () =>
+            (IReadOnlyList<MetaData>)OwnChildren()
+                .Where(c => c.Type == TYPE_TEMPLATE)
+                .ToArray());
+    }
+
     /// <summary>Find an object by name.</summary>
     public MetaObject? FindObject(string name)
     {

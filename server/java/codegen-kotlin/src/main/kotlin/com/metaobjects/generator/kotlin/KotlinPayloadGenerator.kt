@@ -78,8 +78,8 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val payloadVo = resolveViewObject(loader, payloadRef) ?: return
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
-        val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
-        val className = templateShort + "Payload"
+        val outPkg = KotlinNaming.promptsPackage(templatePkg)
+        val className = KotlinNaming.payloadName(templateShort)
 
         emitPayloadClass(
             outPkg = outPkg,

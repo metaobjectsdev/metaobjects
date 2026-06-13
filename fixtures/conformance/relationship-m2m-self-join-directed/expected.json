@@ -20,13 +20,14 @@
               "relationship.association": {
                 "name": "follows",
                 "@cardinality": "many",
-                "@objectRef": "User",
+                "@objectRef": "acme::social::User",
                 "@sourceRefField": "followerId",
                 "@through": "Follow"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -56,6 +57,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -67,7 +69,7 @@
                 "@fields": [
                   "followerId"
                 ],
-                "@references": "User"
+                "@references": "acme::social::User"
               }
             },
             {
@@ -76,7 +78,7 @@
                 "@fields": [
                   "followeeId"
                 ],
-                "@references": "User"
+                "@references": "acme::social::User"
               }
             }
           ]

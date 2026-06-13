@@ -1,0 +1,131 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "countries"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@role": "replica",
+                "@view": "v_customers"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.string": {
+                "name": "countryName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "demo::Country.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "country",
+                "@cardinality": "one",
+                "@objectRef": "demo::Country"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomerSummary",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "customerId",
+                "extends": "demo::Customer.id",
+                "@column": "customer_id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "demo::Customer.name"
+              }
+            },
+            {
+              "field.string": {
+                "name": "countryName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "demo::Country.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "demo::Customer.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

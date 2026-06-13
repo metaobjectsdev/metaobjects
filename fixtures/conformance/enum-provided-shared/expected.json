@@ -37,17 +37,18 @@
             {
               "field.enum": {
                 "name": "priority",
-                "extends": "Priority"
+                "extends": "acme::Priority"
               }
             },
             {
               "field.enum": {
                 "name": "currency",
-                "extends": "Currency"
+                "extends": "acme::Currency"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

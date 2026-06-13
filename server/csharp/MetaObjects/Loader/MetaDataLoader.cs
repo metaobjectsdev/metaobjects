@@ -321,6 +321,18 @@ public class MetaDataLoader
                         Files: Array.Empty<string>(),
                         Referrer: failure.NodeFqn,
                         Target: failure.Ref);
+                if (failure.Kind == SuperResolve.SuperFailureKind.TargetMismatch)
+                {
+                    // FR-024 — a dotted child-targeting ref resolved, but the target's
+                    // type/subtype differs from the extending node's. Dotted-only check.
+                    SuperResolve.TypeIdentity? r = failure.Referrer;
+                    SuperResolve.TypeIdentity? t = failure.Target;
+                    errors.Add(new MetaError(
+                        $"the extends target '{failure.Ref}' is {t?.Type}.{t?.SubType} but the extending node '{failure.NodeFqn}' is {r?.Type}.{r?.SubType} — a dotted extends must target a node of the same type and subtype",
+                        ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
+                        Envelope: envelope));
+                    continue;
+                }
                 errors.Add(new MetaError(
                     $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
                     ErrorCode.ERR_UNRESOLVED_SUPER,

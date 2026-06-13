@@ -1,0 +1,50 @@
+{
+  "metadata.root": {
+    "package": "acme::api",
+    "children": [
+      {
+        "object.value": {
+          "name": "CustomerArgs",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "customerId",
+                "extends": "acme::sales::Customer.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id",
+                "children": [
+                  {
+                    "validator.required": {}
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -21,6 +21,7 @@ function writeYamlFixture(dir: string, filename: string, entityName: string): st
         children:
           - field.long: id
           - identity.primary:
+              name: id
               '@fields': id
 `;
   writeFileSync(path, content, "utf-8");
@@ -38,7 +39,7 @@ function writeJsonFixture(dir: string, filename: string, entityName: string): st
             name: entityName,
             children: [
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },

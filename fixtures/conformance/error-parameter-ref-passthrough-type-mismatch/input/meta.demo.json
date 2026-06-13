@@ -6,10 +6,27 @@
         "object.entity": {
           "name": "Case",
           "children": [
-            { "source.rdb": { "@table": "cases" } },
-            { "field.string": { "name": "label" } },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
@@ -21,7 +38,11 @@
               "field.int": {
                 "name": "label",
                 "children": [
-                  { "origin.passthrough": { "@from": "Case.label" } }
+                  {
+                    "origin.passthrough": {
+                      "@from": "demo::Case.label"
+                    }
+                  }
                 ]
               }
             }
@@ -29,18 +50,21 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Proc",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "Args"
+                "@parameterRef": "demo::Args"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

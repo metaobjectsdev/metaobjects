@@ -769,12 +769,22 @@ def _validate_datagrid_filter_values(
 
 
 def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
-    """Return a name → MetaObject index of all top-level objects in *root*."""
+    """Return a ref → MetaObject index of all top-level objects in *root*.
+
+    FR-032 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
+    @objectRef values are FULLY QUALIFIED after the desugar/corpus sweep
+    (e.g. ``acme::commerce::Program``). Index each object under its bare
+    ``name``, its ``fqn()`` AND its package-folded ``resolution_key()`` so a
+    lookup FQN-matches regardless of which canonical form the ref carries.
+    Mirrors TS ``refMatchesObject`` / the C# @parameterRef index.
+    """
     index: dict[str, MetaObject] = {}
     for child in root.own_children():
         if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
             if child.name:
                 index[child.name] = child
+                index[child.fqn()] = child
+                index[child.resolution_key()] = child
     return index
 
 
@@ -1406,10 +1416,16 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
+    # FR-032 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
+    # (e.g. ``acme::ai::ReviewPayload``). Index each object under its bare name,
+    # its fqn() AND its package-folded resolution_key() so the FQN ref resolves.
+    # Mirrors TS refMatchesObject / the C# @payloadRef RefMatchesObject.
     objects_by_name: dict[str, MetaData] = {}
     for child in root.own_children():
         if child.type == TYPE_OBJECT:
             objects_by_name.setdefault(child.name, child)
+            objects_by_name.setdefault(child.fqn(), child)
+            objects_by_name.setdefault(child.resolution_key(), child)
 
     for tpl in root.own_children():
         if tpl.type != TYPE_TEMPLATE:

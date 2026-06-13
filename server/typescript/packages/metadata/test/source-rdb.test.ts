@@ -13,11 +13,15 @@ const meta = { "metadata.root": { package: "acme", children: [
   { "object.entity": { name: "Product", children: [
     { "source.rdb": { "@table": "products", "@schema": "catalog" } },
     { "field.long": { name: "id" } },
-    { "identity.primary": { "@fields": "id" } },
+    { "identity.primary": { "name": "id", "@fields": "id" } },
   ] } },
-  { "object.entity": { name: "ProductView", extends: "Product", children: [
+  // FR-024 (B4b): a view-PRIMARY object is an object.projection (the legacy
+  // entity-extends-entity view spelling is removed); the identity passes
+  // through via extends, and the projection's key field is extends-bound.
+  { "object.projection": { name: "ProductView", children: [
     { "source.rdb": { "@table": "v_product", "@kind": "view" } },
-    { "identity.primary": { "@fields": "id" } },
+    { "field.long": { name: "id", extends: "Product.id" } },
+    { "identity.primary": { "name": "id", extends: "Product.id" } },
   ] } },
 ] } };
 
@@ -51,7 +55,7 @@ describe("source.rdb registration", () => {
       { "object.entity": { name: "X", children: [
         { "source.rdb": { "@table": "x", "@kind": "bogus" } },
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
       ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_BAD_ATTR_VALUE");

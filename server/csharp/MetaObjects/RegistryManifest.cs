@@ -68,6 +68,15 @@ public static class RegistryManifest
         InheritanceAnchor,
         /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
         PresentationOnly,
+        /// <summary>
+        /// FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
+        /// <c>object.projection</c> row + the <c>origin.aggregate.via</c>
+        /// required-override were excluded until every port registered the FR-024
+        /// loader-grammar slice, then removed with the canonical updated in ONE
+        /// commit (the <c>@responseRef</c> carve-out-close playbook). Kept as the
+        /// documented lifecycle slot for the next rollout; currently no members.
+        /// </summary>
+        Fr024Pending,
     }
 
     /// <summary>`isAbstract` as the per-type attr name (the contract's bare `abstract` structural keyword).</summary>
@@ -113,6 +122,29 @@ public static class RegistryManifest
         return ExclusionReason.Included;
     }
 
+    /// <summary>
+    /// FR-024-pending manifest REQUIREDNESS overrides (the attr-level analogue of
+    /// the <see cref="ExclusionReason.Fr024Pending"/> row carve-out). Key is
+    /// <c>"type.subType.attrName"</c>; value is the requiredness the cross-port
+    /// canonical (<c>expected-registry.json</c>) still records. This port's registry
+    /// already registers the FR-024 requiredness, but not every port has flipped
+    /// yet — the manifest keeps emitting the pre-FR-024 agreed value so the shared
+    /// canonical stays byte-identical until the Phase-E atomic all-ports flip, when
+    /// this map empties and the canonical is updated in ONE commit.
+    ///
+    /// Members today: NONE — <c>origin.aggregate.via</c> flipped at the FR-024
+    /// atomic all-ports manifest flip (optional everywhere, ADR-0029 decision 5).
+    /// The mechanism stays for the next reference-first rollout.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, bool> Fr024PendingRequiredOverrides =
+        new Dictionary<string, bool>(StringComparer.Ordinal);
+
+    /// <summary>Manifest requiredness for an attr — the FR-024-pending override when one exists, else null.</summary>
+    public static bool? ManifestRequiredOverride(string type, string subType, string attrName) =>
+        Fr024PendingRequiredOverrides.TryGetValue($"{type}.{subType}.{attrName}", out bool required)
+            ? required
+            : null;
+
     /// <summary>True if a <c>(type, subType)</c> row is carved out of the manifest (any reason).</summary>
     private static bool IsExcludedTypeSubType(string type, string subType) =>
         ClassifyTypeSubType(type, subType) != ExclusionReason.Included;
@@ -146,7 +178,7 @@ public static class RegistryManifest
             .Select(typeId => new ManifestType(
                 typeId.Type,
                 typeId.SubType,
-                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType))))
+                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType), typeId.Type, typeId.SubType)))
             .OrderBy(t => $"{t.Type}.{t.SubType}", StringComparer.Ordinal)
             .ToList();
 
@@ -186,9 +218,17 @@ public static class RegistryManifest
     /// binding, per-type <c>description</c> dup) is dropped for a documented
     /// reason, never a silent name-match. Applied ONLY to per-type attrs —
     /// <c>description</c> stays in the commonAttrs block.
+    /// FR-024: an attr in <see cref="Fr024PendingRequiredOverrides"/> keeps
+    /// emitting the pre-FR-024 agreed requiredness until the Phase-E atomic flip.
     /// </summary>
-    private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs) =>
-        SortedAttrs(attrs.Where(a => ClassifyPerTypeAttr(a.Name) == ExclusionReason.Included).ToList());
+    private static List<ManifestAttr> SortedPerTypeAttrs(IReadOnlyList<AttrSchema> attrs, string type, string subType) =>
+        SortedAttrs(attrs.Where(a => ClassifyPerTypeAttr(a.Name) == ExclusionReason.Included).ToList())
+            .Select(attr =>
+            {
+                bool? required = ManifestRequiredOverride(type, subType, attr.Name);
+                return required is null ? attr : attr with { Required = required.Value };
+            })
+            .ToList();
 
     private static ManifestAttr ToManifestAttr(AttrSchema a)
     {

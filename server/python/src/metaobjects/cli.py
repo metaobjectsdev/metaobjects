@@ -153,6 +153,80 @@ def _generate(
     return written, []
 
 
+#: The default api-surface subdir (the cross-port contract's ``api/python``).
+_DOCS_DEFAULT_API_SUBDIR = "api/python"
+
+
+def _cmd_docs(args: argparse.Namespace) -> int:
+    """``docs`` — emit the generated Python SDK api surface (the ``api/python``
+    surface of the cross-port SDK-docs contract) under ``--out``.
+
+    Wiring only: every symbol name comes from the ``PythonApiModelBuilder`` (which
+    keys off the naming seam + each generator's applies-predicate) and every path
+    comes from :mod:`metaobjects.apidocs.paths` — nothing is re-derived here. Output
+    paths are collision-checked (duplicate page path → failure) BEFORE anything is
+    written, mirroring the C# ``DocsCommand`` / the Java Mojo. Layout is ``package``
+    (the cross-port contract). ``--model-base-url`` federates the model back-links
+    when set."""
+    from metaobjects.apidocs import (
+        Layout,
+        PythonApiDocsRenderer,
+        PythonApiModelBuilder,
+        doc_page_output_path,
+        model_cross_href,
+    )
+
+    root, errors = _load_root(args.metadata_dir)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in errors:
+            print(f"  {msg}", file=sys.stderr)
+        return 1
+
+    api_subdir = args.api_subdir or _DOCS_DEFAULT_API_SUBDIR
+    project = args.project or Path(args.metadata_dir).resolve().name
+    model_base_url = getattr(args, "model_base_url", None)
+
+    model = PythonApiModelBuilder().build(root, project)
+    renderer = PythonApiDocsRenderer()
+    layout = Layout.PACKAGE
+
+    # Collect rel-path → content first so a duplicate page path fails BEFORE any write.
+    emitted: dict[str, str] = {}
+
+    def _put(path: str, content: str) -> None:
+        if path in emitted:
+            raise ValueError(f"docs — duplicate api page output path: {path}")
+        emitted[path] = content
+
+    try:
+        for unit in model.units:
+            page_path = doc_page_output_path(layout, unit.package, unit.node)
+            api_page_path_from_docs_root = f"{api_subdir}/{page_path}"
+            href = model_cross_href(api_page_path_from_docs_root, page_path, model_base_url)
+            _put(page_path, renderer.render_unit_page(unit, href))
+        _put("README.md", renderer.render_index(model, layout))
+        _put("AGENT-API.md", renderer.render_agent_api(model))
+    except ValueError as exc:
+        # A duplicate output path (e.g. two units that resolve to the same page) is a
+        # clean user-facing failure, not a stack trace.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    api_root = Path(args.out) / api_subdir
+    written: list[str] = []
+    for rel, content in emitted.items():
+        dest = api_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
+        written.append(f"{api_subdir}/{rel}")
+
+    for path in sorted(written):
+        print(path)
+    print(f"metaobjects docs: wrote {len(written)} file(s) to {args.out}")
+    return 0
+
+
 def _cmd_list(_args: argparse.Namespace) -> int:
     """Print each registered generator ``<stable-name> — <description>`` and exit 0.
 
@@ -613,6 +687,38 @@ def _build_parser() -> argparse.ArgumentParser:
         help="(reserved) package hint; Python derives package from metadata",
     )
     gen.set_defaults(func=_cmd_gen)
+
+    docs = sub.add_parser(
+        "docs",
+        help=(
+            "emit the native Python SDK api-reference docs (the api/python "
+            "surface of the cross-port SDK-docs contract) under --out"
+        ),
+    )
+    docs.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
+    docs.add_argument(
+        "--out",
+        required=True,
+        help="docs output root; pages land under <out>/api/python",
+    )
+    docs.add_argument(
+        "--api-subdir",
+        dest="api_subdir",
+        default=None,
+        help="api-surface subdir under --out (default: api/python)",
+    )
+    docs.add_argument(
+        "--project",
+        default=None,
+        help="project name shown in the docs (default: the metadata dir name)",
+    )
+    docs.add_argument(
+        "--model-base-url",
+        dest="model_base_url",
+        default=None,
+        help="federate the model back-links to an absolute base URL (default: relative)",
+    )
+    docs.set_defaults(func=_cmd_docs)
 
     verify = sub.add_parser(
         "verify",

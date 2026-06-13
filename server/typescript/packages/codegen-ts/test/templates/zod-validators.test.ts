@@ -77,7 +77,7 @@ describe("renderZodValidators", () => {
               "children": [
                 { "field.long": { "name": "id" } },
                 { "field.string": { "name": "email" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }
@@ -189,7 +189,7 @@ describe("renderZodValidators", () => {
               "@notes": "INTERNAL_SECRET",
               "children": [
                 { "field.long": { "name": "id" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }

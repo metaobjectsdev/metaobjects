@@ -3,7 +3,7 @@
     "package": "demo",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "CustomerList",
           "children": [
             {
@@ -15,11 +15,6 @@
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": "id"
               }
             }
           ]

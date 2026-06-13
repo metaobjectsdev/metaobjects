@@ -22,7 +22,7 @@
       {
         "template.prompt": {
           "name": "describeProduct",
-          "@payloadRef": "ProductPromptPayload",
+          "@payloadRef": "acme::ai::ProductPromptPayload",
           "@textRef": "product/describe",
           "@format": "xml"
         }
@@ -30,7 +30,7 @@
       {
         "template.output": {
           "name": "productCard",
-          "@payloadRef": "ProductPromptPayload",
+          "@payloadRef": "acme::ai::ProductPromptPayload",
           "@textRef": "product/card",
           "@format": "html",
           "@promptStyle": "guide"
@@ -40,7 +40,7 @@
         "template.toolcall": {
           "name": "lookupProduct",
           "@toolName": "lookup_product",
-          "@payloadRef": "ProductPromptPayload"
+          "@payloadRef": "acme::ai::ProductPromptPayload"
         }
       }
     ]

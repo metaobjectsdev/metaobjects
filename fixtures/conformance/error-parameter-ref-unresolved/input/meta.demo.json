@@ -3,18 +3,21 @@
     "package": "demo",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "BadProc",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "NonexistentArgs"
+                "@parameterRef": "demo::NonexistentArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

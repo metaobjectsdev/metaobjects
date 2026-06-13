@@ -39,7 +39,7 @@ async function loadProjectionFixture() {
           { "source.rdb": { "@table": "programs" } },
           { "field.int": { name: "id", } },
           { "field.string": { name: "title", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
           {
             "relationship.association": {
               name: "weeks",
@@ -57,15 +57,14 @@ async function loadProjectionFixture() {
           { "source.rdb": { "@table": "weeks" } },
           { "field.int": { name: "id", } },
           { "field.int": { name: "programId", } },
-          { "identity.primary":   { "@fields": "id" } },
+          { "identity.primary":   { "name": "id", "@fields": "id" } },
           { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
         ],
       },
     },
     {
-      "object.entity": {
+      "object.projection": {
         name: "ProgramSummary",
-        extends: "Program",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
           {
@@ -82,7 +81,6 @@ async function loadProjectionFixture() {
               ],
             },
           },
-          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },
@@ -116,7 +114,7 @@ async function loadVanillaFixture() {
           { "source.rdb": { "@table": "posts" } },
           { "field.long": { name: "id", } },
           { "field.string": { name: "title", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },

@@ -22,7 +22,7 @@ describe("renderMermaidModel", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "field.string": { name: "email", "@description": "Primary email." } },
-                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
               ],
             },
           },
@@ -47,7 +47,7 @@ describe("renderMermaidModel", () => {
               name: "User",
               children: [
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
               ],
             },
           },
@@ -57,9 +57,10 @@ describe("renderMermaidModel", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "field.long": { name: "userId" } },
-                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 {
                   "identity.reference": {
+                    "name": "userRef",
                     "@fields": "userId",
                     "@references": "User",
                   },
@@ -86,7 +87,7 @@ describe("renderMermaidModel", () => {
               "@notes": "INTERNAL_SECRET",
               children: [
                 { "field.long": { name: "id", "@notes": "INTERNAL_SECRET" } },
-                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
               ],
             },
           },
@@ -110,7 +111,7 @@ describe("renderMermaidModel", () => {
               "@description": "Should not appear.",
               children: [
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
               ],
             },
           },

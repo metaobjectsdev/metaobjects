@@ -7,14 +7,14 @@
           "name": "Npc",
           "children": [
             { "field.string": { "name": "name" } },
-            { "identity.primary": { "@fields": "name" } }
+            { "identity.primary": { "name": "id", "@fields": "name" } }
           ]
         }
       },
       {
         "template.prompt": {
           "name": "npcTurn",
-          "@payloadRef": "NpcPromptPayload",
+          "@payloadRef": "acme::ai::NpcPromptPayload",
           "@textRef": "npc/turn",
           "@format": "xml"
         }

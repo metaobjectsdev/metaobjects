@@ -59,22 +59,37 @@ public class OutputParserGenerator : IGenerator
         var files = new List<EmittedFile>();
         foreach (var tmpl in outputs)
         {
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            if (!AppliesTo(tmpl))
             {
                 // Loader passes treat missing @payloadRef as a load error; defensively skip.
-                ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
+                    ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
+            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
             files.Add(EmitParser(tmpl, payloadRef, ctx));
         }
         return files;
     }
 
+    /// <summary>
+    /// True iff this generator emits an output parser for <paramref name="tmpl"/>: a
+    /// <c>template.output</c> carrying a <c>@payloadRef</c> (the strict FR-006 parser is
+    /// always emitted; the tolerant extract API layers on for json/xml + a resolvable VO).
+    /// Single source of truth shared by the generator loop AND the api-docs builder.
+    /// </summary>
+    public static bool AppliesTo(MetaData tmpl) =>
+        tmpl.Type == TYPE_TEMPLATE && tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT &&
+        tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is string;
+
     protected virtual EmittedFile EmitParser(MetaData tmpl, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
-        var parserClass = $"{templateName}Parser";
-        var payloadType = payloadRef;
+        var parserClass = CSharpNaming.ParserClassName(templateName);
+        // FR-032: @payloadRef is an FQN after the desugar/sweep; the generated C# TYPE
+        // NAME is the resolved value-object's bare name (an FQN like "acme::ai::Payload"
+        // is not a valid C# identifier). Mirrors RenderHelperGenerator's StripPkg use.
+        var payloadType = CSharpNaming.StripPkg(payloadRef);
         var extractedType = $"{payloadType}Extracted";
 
         // FR-010: emit the tolerant extract() API alongside strict Parse/TryParse when the
@@ -84,7 +99,7 @@ public class OutputParserGenerator : IGenerator
         bool formatSupportsExtract =
             format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-        var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+        var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && CSharpNaming.StripPkg(c.Name) == payloadType);
         bool emitExtract = formatSupportsExtract && vo is not null;
 
         var sb = new StringBuilder();

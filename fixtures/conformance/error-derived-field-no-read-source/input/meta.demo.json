@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            { "source.rdb": { "@table": "weeks" } },
+            { "field.uuid": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            { "source.rdb": { "@table": "programs" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "title" } },
+            {
+              "field.int": {
+                "name": "weekCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "demo::Week.id",
+                      "@via": "demo::Program.weeks"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "relationship.aggregation": {
+                "name": "weeks",
+                "@objectRef": "demo::Week",
+                "@cardinality": "many"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

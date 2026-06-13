@@ -3,7 +3,14 @@ from ....shared.base_types import SUBTYPE_BASE
 
 OBJECT_SUBTYPE_ENTITY = "entity"
 OBJECT_SUBTYPE_VALUE = "value"
-OBJECT_SUBTYPES = (SUBTYPE_BASE, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE)
+# FR-024 (ADR-0028): derived read-only representation of entities.
+OBJECT_SUBTYPE_PROJECTION = "projection"
+OBJECT_SUBTYPES = (
+    SUBTYPE_BASE,
+    OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_VALUE,
+    OBJECT_SUBTYPE_PROJECTION,
+)
 
 # FR-014 — TPH (Table-per-Hierarchy single-table inheritance) discriminator attrs.
 # On every object subtype (base/entity/value). Mirrors TS object-constants.ts.

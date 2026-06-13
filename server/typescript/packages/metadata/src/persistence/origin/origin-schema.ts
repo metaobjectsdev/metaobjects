@@ -35,7 +35,11 @@ const passthroughOriginAttrs: AttrSchema[] = [
   },
 ];
 
-/** Attrs on origin.aggregate — @agg, @of, @via all required. */
+/** Attrs on origin.aggregate — @agg and @of required; @via omissible since
+ *  FR-024 (ADR-0029 decision 5: single-hop-unique inference from the base
+ *  entity). NOTE: the cross-port registry manifest still records @via as
+ *  required until the FR-024 Phase-E atomic flip — see
+ *  FR024_PENDING_REQUIRED_OVERRIDES in registry-manifest-exclusions.ts. */
 const aggregateOriginAttrs: AttrSchema[] = [
   {
     name: ORIGIN_AGGREGATE_ATTR_AGG,
@@ -54,9 +58,9 @@ const aggregateOriginAttrs: AttrSchema[] = [
   {
     name: ORIGIN_AGGREGATE_ATTR_VIA,
     valueType: ATTR_SUBTYPE_STRING,
-    required: true,
+    required: false,
     description:
-      "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts').",
+      "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029).",
   },
 ];
 

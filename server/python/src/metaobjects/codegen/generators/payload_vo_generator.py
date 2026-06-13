@@ -105,19 +105,18 @@ def payload_module_name(template_name: str) -> str:
 
 
 def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | None:
-    """Find a ``MetaObject`` child by short-name match.
+    """Find a ``MetaObject`` child satisfying an (already-expanded) object ref.
 
-    Equivalent contract to ``KotlinGenUtil.resolveObjectByShortOrFqn``, but
-    simpler in Python: ``MetaData.name`` only ever holds the short name (the
-    package lives on ``MetaData.package`` and ``fqn()`` builds the dotted
-    form on demand). So a plain ``child.name == ref`` is enough.
-
-    ``ref`` is the value passed in ``@payloadRef`` / ``@objectRef`` /
-    ``origin.@from``, which by spec is the short name of the target object."""
+    FR-032 (ADR-0032): ``@payloadRef`` / ``@objectRef`` / ``origin.@from`` heads
+    are FULLY QUALIFIED after the desugar/corpus sweep (e.g. ``acme::shop::X``),
+    so the match is FQN-tolerant — the canonical ``resolution_key()`` OR the
+    bare ``fqn()`` / ``name`` (the latter covering legacy same-tree refs and
+    root-level/empty-package objects). Mirrors TS ``refMatchesObject`` /
+    ``KotlinGenUtil.resolveObjectByShortOrFqn``."""
     for child in root.own_children():
         if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
             continue
-        if child.name == ref:
+        if child.resolution_key() == ref or child.fqn() == ref or child.name == ref:
             return child
     return None
 

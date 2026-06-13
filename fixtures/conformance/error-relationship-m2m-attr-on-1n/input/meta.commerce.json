@@ -10,12 +10,12 @@
             {
               "relationship.composition": {
                 "name": "program",
-                "@objectRef": "Program",
+                "@objectRef": "acme::commerce::Program",
                 "@cardinality": "one",
                 "@through": "ProgramWeek"
               }
             },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
@@ -24,7 +24,7 @@
           "name": "Program",
           "children": [
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

@@ -52,6 +52,14 @@ export const TYPE_SUBTYPE_SEPARATOR = ".";
 /** Separator between package segments and between package and name. */
 export const PACKAGE_SEPARATOR = "::";
 
+/**
+ * FR-024 (ADR-0029): separator between an owner object and a nested child in a
+ * dotted `extends` reference (`Customer.id`, `acme::sales::Customer.id`).
+ * Names cannot contain `.`, so a `.` in the final `::`-segment of a ref
+ * unambiguously marks a child-targeting reference.
+ */
+export const CHILD_REF_SEPARATOR = ".";
+
 /** Relative-reference "go up one level" marker. */
 export const PACKAGE_PARENT = "..";
 

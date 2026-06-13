@@ -351,8 +351,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         validator(field, type) != null
 
     private companion object {
-        /** MetaObject subtypes this generator emits a Kotlin data class for. */
-        val EMITTED_SUBTYPES = setOf(MetaObject.SUBTYPE_ENTITY, MetaObject.SUBTYPE_VALUE)
+        /** MetaObject subtypes this generator emits a Kotlin data class for.
+         *  FR-024 (ADR-0028): object.projection included — a derived read-only
+         *  representation still needs its data class for query results. */
+        val EMITTED_SUBTYPES = setOf(
+            MetaObject.SUBTYPE_ENTITY,
+            MetaObject.SUBTYPE_VALUE,
+            MetaObject.SUBTYPE_PROJECTION,
+        )
 
         // jakarta.validation.constraints annotation types (SP-C validator parity).
         private const val JAKARTA_CONSTRAINTS = "jakarta.validation.constraints"

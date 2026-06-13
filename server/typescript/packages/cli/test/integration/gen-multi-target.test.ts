@@ -21,7 +21,7 @@ function setupRepo(): string {
           package: "mikes::commerce",
           children: [
             { "field.long": { name: "id", children: [
-              { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+              { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             ] } },
             { "field.string": { name: "title", "@required": true } },
             { "layout.dataGrid": { name: "default", "@pageSize": 25, "@columns": ["title"] } },

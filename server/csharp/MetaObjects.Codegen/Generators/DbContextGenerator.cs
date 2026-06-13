@@ -28,14 +28,25 @@ public class DbContextGenerator : IGenerator
 {
     public virtual string Name => "dbcontext-generator";
 
+    /// <summary>
+    /// True iff this object gets a DbSet on the generated AppDbContext: a persisted
+    /// entity/projection (<c>IsEntity() || DbView != null</c>) that emits instance
+    /// artifacts (not abstract) and is NOT a TPH subtype (subtypes share the base's
+    /// table, reached via <c>.OfType&lt;Sub&gt;()</c>). Single source of truth shared by
+    /// the generator loop AND the api-docs builder (so docs never claim a suppressed DbSet).
+    /// </summary>
+    public static bool AppliesTo(MetaObject obj, MetaRoot root) =>
+        (obj.IsEntity() || obj.DbView is not null)
+        && InstanceArtifacts.EmitsInstanceArtifacts(obj)
+        && !TphPlanBuilder.IsTphSubtype(obj, root);
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
         // DbSet and no per-subtype model config; the hierarchy is reached via the base
         // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
         var objects = ctx.Entities
-            .Where(o => (o.IsEntity() || o.DbView is not null) && InstanceArtifacts.EmitsInstanceArtifacts(o))
-            .Where(o => !TphPlanBuilder.IsTphSubtype(o, ctx.Root))
+            .Where(o => AppliesTo(o, ctx.Root))
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];

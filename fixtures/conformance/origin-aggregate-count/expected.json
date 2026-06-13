@@ -19,11 +19,12 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -48,6 +49,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -57,9 +59,8 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
@@ -74,17 +75,10 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Week.id",
-                      "@via": "Program.weeks"
+                      "@of": "acme::commerce::Week.id",
+                      "@via": "acme::commerce::Program.weeks"
                     }
                   }
-                ]
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
                 ]
               }
             }

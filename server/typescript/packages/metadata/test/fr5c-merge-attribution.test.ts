@@ -25,7 +25,7 @@ const baseEntity = {
           children: [
             { "field.long": { name: "id" } },
             { "field.string": { name: "email" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
           ],
         },
       },
@@ -43,7 +43,7 @@ const baseEntityWithStringField = (extraAttrs: Record<string, unknown> = {}) => 
           children: [
             { "field.long": { name: "id" } },
             { "field.string": { name: "email", ...extraAttrs } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
           ],
         },
       },

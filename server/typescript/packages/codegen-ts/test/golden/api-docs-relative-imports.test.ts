@@ -54,7 +54,7 @@ const CHILDREN = [
       children: [
         { "field.long": { name: "id" } },
         { "field.string": { name: "name", "@required": true } },
-        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
         { "source.rdb": { "@table": "products" } },
       ],
     },
@@ -136,7 +136,7 @@ describe("Fix 1: rendered api-docs import specifiers are `./`-prefixed (copy-pas
                   children: [
                     { "field.long": { name: "id" } },
                     { "field.string": { name: "name", "@required": true } },
-                    { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                     { "source.rdb": { "@table": "products" } },
                   ],
                 },

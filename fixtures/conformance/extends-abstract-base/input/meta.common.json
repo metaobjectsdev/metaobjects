@@ -19,6 +19,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }
@@ -28,7 +29,7 @@
       {
         "object.entity": {
           "name": "Subscriber",
-          "extends": "BaseEntity",
+          "extends": "acme::BaseEntity",
           "children": [
             {
               "field.string": {

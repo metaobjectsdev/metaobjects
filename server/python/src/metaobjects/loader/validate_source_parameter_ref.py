@@ -41,7 +41,11 @@ _CALLABLE_KINDS = frozenset({SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION
 
 
 def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> None:
-    # Pre-index every object by name AND fqn so resolution costs O(1) per source.
+    # Pre-index every object by name, fqn AND resolution key so resolution costs
+    # O(1) per source. FR-032 (ADR-0032): @parameterRef is FULLY QUALIFIED after
+    # the desugar/sweep (e.g. ``acme::ParamVO``), which is the package-folded
+    # resolution_key() (objects keep a bare fqn() per FR5d), so the index must
+    # carry that key too. Mirrors the C# @parameterRef ResolutionKey() index.
     object_index: dict[str, MetaData] = {}
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
@@ -53,6 +57,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
             else obj.name
         )
         object_index[fqn] = obj
+        object_index[obj.resolution_key()] = obj
 
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:

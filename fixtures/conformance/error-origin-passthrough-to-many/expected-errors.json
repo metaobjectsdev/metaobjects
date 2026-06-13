@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_ORIGIN_CARDINALITY",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[1]['field.string'].children[0]['origin.passthrough']"
+      }
+    }
+  ],
+  "warnings": []
+}

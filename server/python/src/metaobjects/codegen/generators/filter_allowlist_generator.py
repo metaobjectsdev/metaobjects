@@ -32,6 +32,7 @@ no allowlist — they share the "no router emitted" gate with
 """
 from __future__ import annotations
 
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -64,17 +65,6 @@ def _effective_fqn(entity: MetaObject) -> str:
         pkg = parent.package
         parent = parent.parent
     return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
-
-
-def _snake_case(name: str) -> str:
-    """``Author`` → ``author``; ``AuthorBrief`` → ``author_brief``. Mirror of
-    the router generator's helper of the same name."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:

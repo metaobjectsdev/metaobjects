@@ -68,6 +68,15 @@ export {
   MetaReferenceIdentity,
 } from "./core/identity/meta-identity.js";
 export type { IdentityGeneration } from "./core/identity/meta-identity.js";
+// FR-024 — projection identity pass-through derivation (computed local key;
+// pure tree read, codegen-facing).
+export {
+  computedIdentityFields,
+  identityOwnFields,
+  identityEffectiveFields,
+  resolveIdentityPassthrough,
+} from "./core/identity/validate-identity-passthrough.js";
+export type { IdentityPassthroughResolution } from "./core/identity/validate-identity-passthrough.js";
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
@@ -173,6 +182,9 @@ export type { SerializeOptions } from "./serializer-json.js";
 
 // Super resolution helper (most resolution moved into parser; this is the lookup utility)
 export { resolveSuperRef } from "./super-resolve.js";
+
+// FR-032 (ADR-0032) — canonical reference expansion + FQN object matching.
+export { expandRef, isRelativeRef, refMatchesObject, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
 
 // Loader hierarchy
 export { MetaDataLoader } from "./loader/meta-data-loader.js";

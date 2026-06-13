@@ -3,7 +3,7 @@
     "package": "demo",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
           "children": [
             {
@@ -28,13 +28,6 @@
               "field.int": {
                 "name": "memberCount",
                 "@readOnly": true
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

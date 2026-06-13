@@ -8,7 +8,7 @@
           "extends": "metaobjects::ai::LlmCallBase",
           "children": [
             { "source.rdb": { "@table": "api_call", "@role": "primary" } },
-            { "identity.primary": { "@fields": ["traceId"] } }
+            { "identity.primary": { "name": "id", "@fields": ["traceId"] } }
           ]
         }
       }

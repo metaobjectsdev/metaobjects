@@ -41,7 +41,7 @@ describe("loadMemory — multi-package-meta", () => {
       // id field's super resolves to common::id across files
       const idField = widget!.ownChildren().find((c) => c.name === "id");
       expect(idField).toBeDefined();
-      expect(idField!.superRef).toBe("::demo::common::id");
+      expect(idField!.superRef).toBe("demo::common::id"); // FR-032: canonical refs are FQN
       expect(idField!.superResolved).toBeDefined();
       expect(idField!.superResolved!.fqn()).toBe("demo::common::id");
       expect(idField!.superResolved!.typeId.subType).toBe("long");

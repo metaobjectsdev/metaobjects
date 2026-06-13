@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_EXTENDS_TARGET_MISMATCH",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.uuid']",
+        "referrer": "customerId",
+        "target": "demo::Customer.name"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -8,6 +8,11 @@
     "ERR_MISSING_SUBTYPE": "A node omits subType and the type has no default subType.",
     "ERR_DUPLICATE_NAME": "Two sibling nodes share the same name.",
     "ERR_UNRESOLVED_SUPER": "An extends/super reference names a node that does not exist.",
+    "ERR_EXTENDS_TARGET_MISMATCH": "FR-024: a dotted extends ref resolved to a node whose type or subtype does not match the extending node (a field may only extend a field of the same subtype; an identity only an identity).",
+    "ERR_IDENTITY_NAME_REQUIRED": "FR-024: an identity.* node has no name. Identities are named, author-chosen (e.g. \"id\"), so the dotted by-name extends form can address them.",
+    "ERR_PROJECTION_IDENTITY_NOT_EXTENDED": "FR-024: an identity.* on an object.projection lacks extends — a projection identity is a pass-through of an entity identity.",
+    "ERR_IDENTITY_KEY_MISMATCH": "FR-024: identity key correspondence broken — an extended-identity field has no local pass-through field extending it, or an explicit @fields disagrees with the computed pass-through key.",
+    "ERR_PROJECTION_SOURCE_WRITABLE": "FR-024 (ADR-0028): a source.* on an object.projection has a writable @kind (table, or @kind omitted which defaults to table) — a projection is a derived read-only representation; its sources must be read-only kinds (view, materializedView, storedProc, tableFunction).",
     "ERR_INVALID_SUBTYPE_CHILD": "A child node type/subType is not permitted under its parent.",
     "ERR_UNKNOWN_ATTR": "An attribute name is not declared on the node's type.",
     "ERR_MISSING_REQUIRED_ATTR": "A required attribute is absent from the node.",
@@ -17,10 +22,14 @@
     "ERR_PROVIDER_DUPLICATE_ID": "Two providers in a composition share the same id.",
     "ERR_PROVIDER_MISSING_DEPENDENCY": "A provider declares a dependency id with no matching provider.",
     "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared.",
-    "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with a primary identity).",
+    "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with an identity or a source — FR-024 value purity; a projection extending a non-projection — FR-024/ADR-0028).",
     "ERR_OVERLAY_NO_TARGET": "An overlay node has no existing target to merge into.",
     "ERR_MALFORMED_YAML": "The YAML metadata input is not valid YAML, or cannot be desugared into canonical metadata.",
     "ERR_INVALID_ORIGIN": "A field origin (passthrough/aggregate) declares an invalid path or attribute.",
+    "ERR_AMBIGUOUS_PATH": "FR-024 (ADR-0029): an implicit (omitted-@via) origin path is ambiguous — more than one single-hop relationship leads from the base entity to the @from/@of entity (the error names the candidates), or a projection's base entity cannot be derived because its fields extend multiple entities and no extended identity anchors the base.",
+    "ERR_ORIGIN_CARDINALITY": "FR-024 (ADR-0029): origin cardinality contract broken — a passthrough @via path crosses a to-many hop (row-multiplying passthrough — you meant aggregate), or an aggregate @via path is to-one at every hop (aggregating over a to-one path — you meant passthrough). Checked on explicit AND inferred paths.",
+    "ERR_EXTENDS_ORIGIN_MISMATCH": "FR-024 (ADR-0029 decision 7): a field declares both an entity-nested extends (shape lineage) and an origin.passthrough @from (data lineage) and they disagree — the resolved @from target is not the field's resolved extends target (nor anywhere on its extends chain). Host-agnostic (projections, entities, values). origin.aggregate is never judged (it computes something new); a top-level abstract extends target is never judged (shape-only reuse makes no lineage claim).",
+    "ERR_DERIVED_FIELD_NO_READ_SOURCE": "FR-024 (spec §7): an object.entity field carrying an origin.* child is derived (read-only) and must be providable — the entity must declare at least one source with a read-only @kind (view/materializedView/storedProc/tableFunction, e.g. a @role replica view beside the table primary). Table-only or source-less entities with origin-bearing fields error on the field. Projections and object.value hosts are exempt. Until the Phase-E B4b cutover removes view-primary entities, a read-only-kind PRIMARY source also counts as providable (legacy spelling).",
     "ERR_INVALID_TEMPLATE": "A template (prompt/output) declares a @payloadRef that does not resolve, or @requiredSlots that are not fields on its payload.",
     "ERR_INVALID_RELATIONSHIP": "FR-017: a M:N relationship's slim vocabulary is invalid — @through does not name a junction declaring two identity.reference children, @sourceRefField does not match one of them, or a M:N-only attr (@through/@sourceRefField/@symmetric) is set on a non-M:N (1:N / @cardinality:one) relationship.",
     "ERR_VAR_NOT_ON_PAYLOAD": "Build-time verify: a template variable references a field the (contextual) payload view-object does not declare.",
@@ -50,6 +59,8 @@
     "ERR_MERGE_CONFLICT": "FR5c: multi-file overlay merge produced an attribute conflict — two contributing files declared the same @attr with different non-empty values on the same logical node. Envelope is `format: \"merged\"` with `contributors[]` naming both files.",
     "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE": "SP-H Unit9: a field carries @filterable: true but its subtype has no filter-operator band (e.g. field.object). Generating a filter for it would emit an empty operator set — a filter route that rejects every request. Use a filterable subtype (string/enum/uuid/number/currency/date/boolean) or remove @filterable.",
     "ERR_REGISTRY_SEALED": "ADR-0023: a registration (register / registerType / extend / registerCommonAttrs / setDefaultSubType / addConstraint / registerProviders) was attempted against a registry sealed after its agreed metamodel-provider bootstrap. Made-up metamodel attributes/types are structurally disallowed in the library: codegen cannot register post-bootstrap. A new metamodel attribute requires a registered provider + human agreement. Downstream apps that need extra vocabulary compose their own (unsealed) registry.",
-    "ERR_UNKNOWN": "An internal loader error with no stable error code."
+    "ERR_UNKNOWN": "An internal loader error with no stable error code.",
+    "ERR_ENTITY_PRIMARY_SOURCE_READONLY": "FR-024 (ADR-0028) hard cutover: an object.entity's PRIMARY source has a read-only @kind (view/materializedView/storedProc/tableFunction). Read-only kinds are legal only in non-primary roles; a derived read model is an object.projection.",
+    "ERR_RELATIVE_REF_IN_CANONICAL": "FR-032 (ADR-0032): a ref-bearing attribute (extends/@objectRef/@references/origin @from/@of/@via/@parameterRef/@payloadRef/@responseRef) in CANONICAL JSON used a relative authoring form (leading :: or ..::). Canonical JSON is the self-contained interchange form — every reference MUST be fully-qualified. Relative navigation (root-absolute ::, parent-relative ..::, bare-current-package) is a YAML-authoring affordance the desugar expands to FQN; it must never survive into canonical JSON."
   }
 }

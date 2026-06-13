@@ -16,6 +16,19 @@ class ErrorCode(str, Enum):
     ERR_MISSING_SUBTYPE = "ERR_MISSING_SUBTYPE"
     ERR_DUPLICATE_NAME = "ERR_DUPLICATE_NAME"
     ERR_UNRESOLVED_SUPER = "ERR_UNRESOLVED_SUPER"
+    # FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
+    # subtype does not match the extending node.
+    ERR_EXTENDS_TARGET_MISMATCH = "ERR_EXTENDS_TARGET_MISMATCH"
+    # FR-024: identity names required + projection identity pass-through.
+    # Vocabulary-only here until FR-024 Phase E (the Python loader does not
+    # enforce these yet); the enum tracks the shared corpus codes.
+    ERR_IDENTITY_NAME_REQUIRED = "ERR_IDENTITY_NAME_REQUIRED"
+    ERR_PROJECTION_IDENTITY_NOT_EXTENDED = "ERR_PROJECTION_IDENTITY_NOT_EXTENDED"
+    ERR_IDENTITY_KEY_MISMATCH = "ERR_IDENTITY_KEY_MISMATCH"
+    # FR-024 (ADR-0028): a source.* on an object.projection has a writable
+    # @kind — projection sources must be read-only kinds. Vocabulary-only
+    # here until FR-024 Phase E.
+    ERR_PROJECTION_SOURCE_WRITABLE = "ERR_PROJECTION_SOURCE_WRITABLE"
     ERR_INVALID_SUBTYPE_CHILD = "ERR_INVALID_SUBTYPE_CHILD"
     ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR"
     ERR_MISSING_REQUIRED_ATTR = "ERR_MISSING_REQUIRED_ATTR"
@@ -36,6 +49,29 @@ class ErrorCode(str, Enum):
     # declared attr valueType (ADR-0006 D2). Authors should quote the value.
     ERR_YAML_COERCION = "ERR_YAML_COERCION"
     ERR_INVALID_ORIGIN = "ERR_INVALID_ORIGIN"
+    # FR-024 (ADR-0029) — origin @via inference + cardinality checks. Vocabulary-only
+    # here until FR-024 Phase E (the Python loader does not run the inference yet):
+    # ERR_AMBIGUOUS_PATH — an implicit (omitted-@via) origin path is ambiguous
+    # (multiple single-hop relationships to the @from/@of entity, or a projection's
+    # base entity underivable without an extended identity); ERR_ORIGIN_CARDINALITY —
+    # passthrough @via crosses a to-many hop (you meant aggregate) or aggregate @via
+    # is to-one at every hop (you meant passthrough).
+    ERR_AMBIGUOUS_PATH = "ERR_AMBIGUOUS_PATH"
+    ERR_ORIGIN_CARDINALITY = "ERR_ORIGIN_CARDINALITY"
+    # FR-024 B6 — extends/origin agreement + derived-field providability. Vocabulary-
+    # only here until FR-024 Phase E (the Python loader does not run these checks yet):
+    # ERR_EXTENDS_ORIGIN_MISMATCH — a field's entity-nested extends (shape lineage)
+    # disagrees with its origin.passthrough @from (data lineage); host-agnostic,
+    # aggregates and top-level abstract extends targets never judged.
+    # ERR_DERIVED_FIELD_NO_READ_SOURCE — an object.entity field carrying an origin.*
+    # is derived and the entity declares no read-only-kind source to provide it
+    # (projections and object.value hosts exempt).
+    ERR_EXTENDS_ORIGIN_MISMATCH = "ERR_EXTENDS_ORIGIN_MISMATCH"
+    ERR_DERIVED_FIELD_NO_READ_SOURCE = "ERR_DERIVED_FIELD_NO_READ_SOURCE"
+    # FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
+    # read-only kinds only in non-primary roles; a derived read model is an object.projection.
+    # Vocabulary-only here until Phase-E validation parity.
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY = "ERR_ENTITY_PRIMARY_SOURCE_READONLY"
     # FR-017 — M:N relationship slim-vocabulary validation (junction-missing-two-
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.
@@ -85,6 +121,11 @@ class ErrorCode(str, Enum):
     # ADR-0023 — a registration was attempted against a registry sealed after its
     # agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
     ERR_REGISTRY_SEALED = "ERR_REGISTRY_SEALED"
+    # FR-032 (ADR-0032) — a relative (``::``/``..::``) reference survived into
+    # canonical JSON (canonical JSON must be FQN-only). The Python loader does not
+    # emit this yet (the T6 guard is deferred — like TS, it belongs in the parser);
+    # the enum tracks the shared corpus code so resolution/desugar stay aligned.
+    ERR_RELATIVE_REF_IN_CANONICAL = "ERR_RELATIVE_REF_IN_CANONICAL"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

@@ -128,6 +128,90 @@ public class MetaDataUtil {
     return expandPackageFor( basePkg, pkgPath );
   }
 
+  /** Child-reference separator for FR-024 dotted child suffixes (e.g. {@code Customer.id}). */
+  public final static String CHILD_REF_SEPARATOR = ".";
+
+  /**
+   * FR-032 (ADR-0032) — expand an authored metadata reference to its fully-qualified
+   * canonical form. This is the Java mirror of the TS {@code expandRef(raw, packageContext)}
+   * primitive; it is the single ref-expansion routine the YAML desugar threads over every
+   * ref-bearing attr so canonical JSON is FQN-only. Deterministic, NO root fallback:
+   *
+   * <ul>
+   *   <li>bare {@code Name} (no {@code ::}, no leading dot) → {@code <P>::Name} (current
+   *       package only; stays bare when {@code P} is empty/root).</li>
+   *   <li>qualified {@code pkg::Name} (contains {@code ::}, NOT leading {@code ::}) →
+   *       unchanged (absolute from root).</li>
+   *   <li>{@code ::Rest} (leading {@code ::}) → strip the leading {@code ::}; the remainder
+   *       is absolute from root.</li>
+   *   <li>{@code ..::Rest} (one or more leading {@code ..::}) → drop one package segment
+   *       from {@code P} per {@code ..::}, then resolve {@code Rest} against the reduced
+   *       package. Over-drop throws {@link IllegalStateException}.</li>
+   * </ul>
+   *
+   * <p>The trailing FR-024 dotted child suffix ({@code .child} / {@code .child.grandchild})
+   * is preserved verbatim: only the OWNER part (everything before the first dot in the final
+   * {@code ::}-segment) is expanded; the {@code .child...} tail is reattached.</p>
+   *
+   * @param raw            the authored reference (may carry a dotted child tail)
+   * @param packageContext the declaring node's effective package
+   * @return the fully-qualified canonical reference
+   */
+  public static String expandRef(String raw, String packageContext) {
+    // FR-032 — split off any FR-024 dotted child tail; expand only the owner.
+    final int lastSep = raw.lastIndexOf(SEP);
+    final int segStart = lastSep == -1 ? 0 : lastSep + SEP.length();
+    final int dotInSeg = raw.indexOf(CHILD_REF_SEPARATOR, segStart);
+    final String owner = dotInSeg == -1 ? raw : raw.substring(0, dotInSeg);
+    final String tail = dotInSeg == -1 ? "" : raw.substring(dotInSeg);
+    return expandRefOwner(owner, packageContext) + tail;
+  }
+
+  /**
+   * FR-032 — expand a reference's OWNER part (no child tail) to its FQN. Mirrors the TS
+   * {@code expandOwner}. Throws on parent-relative over-drop.
+   */
+  private static String expandRefOwner(String owner, String packageContext) {
+    final String pkg = (packageContext == null) ? "" : packageContext;
+
+    // root-absolute: leading "::" → strip; the remainder is absolute from root.
+    if ( owner.startsWith( SEP )) {
+      return owner.substring( SEP.length() );
+    }
+
+    // parent-relative: one or more leading "..::".
+    final String parentPrefix = ".." + SEP;
+    if ( owner.startsWith( parentPrefix )) {
+      String rest = owner;
+      int levels = 0;
+      while ( rest.startsWith( parentPrefix )) {
+        levels++;
+        rest = rest.substring( parentPrefix.length() );
+      }
+      String[] pkgParts = pkg.isEmpty() ? new String[0] : pkg.split( SEP );
+      if ( levels > pkgParts.length ) {
+        throw new IllegalStateException(
+            "Relative reference '" + owner + "' over-drops: " + levels
+                + " parent level(s) but the package context '" + pkg + "' has only "
+                + pkgParts.length + " segment(s)");
+      }
+      StringBuilder reduced = new StringBuilder();
+      for ( int i = 0; i < pkgParts.length - levels; i++ ) {
+        if ( reduced.length() > 0 ) reduced.append( SEP );
+        reduced.append( pkgParts[i] );
+      }
+      return reduced.length() != 0 ? reduced + SEP + rest : rest;
+    }
+
+    // qualified: contains "::" (not leading) → absolute, unchanged.
+    if ( owner.contains( SEP )) {
+      return owner;
+    }
+
+    // bare name → current package (only). Stays bare when context is empty/root.
+    return !pkg.isEmpty() ? pkg + SEP + owner : owner;
+  }
+
   /** Expands the provided value if using relative package paths */
   private static String expandPackageFor(String basePkg, String value ) {
 

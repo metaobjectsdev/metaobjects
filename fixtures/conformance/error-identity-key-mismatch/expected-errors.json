@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_IDENTITY_KEY_MISMATCH",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[2]['identity.primary']"
+      }
+    }
+  ],
+  "warnings": []
+}

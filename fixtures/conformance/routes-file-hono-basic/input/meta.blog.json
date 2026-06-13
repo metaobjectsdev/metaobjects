@@ -10,7 +10,7 @@
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
             { "field.string": { "name": "bio", "@maxLength": 2000 } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]
         }
       }

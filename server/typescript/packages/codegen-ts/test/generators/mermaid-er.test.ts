@@ -15,7 +15,7 @@ async function loadRoot() {
                 "@description": "A user.",
                 children: [
                   { "field.long": { name: "id" } },
-                  { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+                  { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
               },
             },

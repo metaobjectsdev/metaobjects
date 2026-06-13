@@ -16,7 +16,7 @@ public sealed class GeneratorRegistryTests
     // the concepts C# implements, plus the C#-specific db-context.
     private static readonly string[] ExpectedNames =
     [
-        "entity", "db-context", "routes", "output-parser", "extractor",
+        "entity", "db-context", "routes", "payload", "output-parser", "extractor",
         "output-prompt", "render-helper", "filter-allowlist", "template",
         // FR-015 — per-entity callable wrapper (storedProc / tableFunction).
         "callable",

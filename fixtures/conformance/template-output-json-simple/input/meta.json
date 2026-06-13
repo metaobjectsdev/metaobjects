@@ -15,7 +15,7 @@
       {
         "template.output": {
           "name": "SupportAnswerOutput",
-          "@payloadRef": "SupportAnswer",
+          "@payloadRef": "acme::support::SupportAnswer",
           "@textRef": "support/answer",
           "@format": "json",
           "@promptStyle": "inline"

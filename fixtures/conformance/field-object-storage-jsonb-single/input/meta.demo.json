@@ -41,12 +41,13 @@
             {
               "field.object": {
                 "name": "workflowConfig",
-                "@objectRef": "WorkflowConfig",
+                "@objectRef": "acme::WorkflowConfig",
                 "@storage": "jsonb"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }

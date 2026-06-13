@@ -7,7 +7,7 @@
         "files": [
           "meta.demo.json"
         ],
-        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[0]['source.rdb']"
+        "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[0]['source.rdb']"
       }
     }
   ],

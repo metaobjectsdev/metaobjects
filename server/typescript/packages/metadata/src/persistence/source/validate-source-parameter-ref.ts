@@ -48,7 +48,12 @@ const CALLABLE_KINDS = new Set<string>([
 export function validateSourceParameterRef(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
-  // Pre-index every object by name AND fqn so resolution costs O(1) per source.
+  // Pre-index every object by name, fqn AND effective FQN resolution key so
+  // resolution costs O(1) per source. FR-032 — @parameterRef is FQN-qualified
+  // after the desugar/sweep, but objects keep a BARE fqn() per the FR5d
+  // contract, so the FQN form `<package | fileDefaultPackage>::<name>` only
+  // matches via resolutionKey() (these fixtures declare package at metadata.root
+  // only, so obj.package is undefined and the file-default must be folded in).
   const objectIndex = new Map<string, MetaData>();
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     objectIndex.set(obj.name, obj);
@@ -56,6 +61,7 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
       ? `${obj.package}${PACKAGE_SEPARATOR}${obj.name}`
       : obj.name;
     objectIndex.set(fqn, obj);
+    objectIndex.set(obj.resolutionKey(), obj);
   }
 
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {

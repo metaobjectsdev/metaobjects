@@ -65,7 +65,7 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
-        val className = "${shortName}FilterAllowlist"
+        val className = KotlinNaming.filterAllowlistName(shortName)
 
         // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns,
         // but EXCLUDES (a) the discriminator — addressable via the per-subtype route segment, and
@@ -196,5 +196,5 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
     override fun getSingleOutputFilePath(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
-        PackageMapping.splitFqn(md.name).second + "FilterAllowlist.kt"
+        KotlinNaming.filterAllowlistName(PackageMapping.splitFqn(md.name).second) + ".kt"
 }

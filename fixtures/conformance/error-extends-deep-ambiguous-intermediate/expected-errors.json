@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNRESOLVED_SUPER",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[0]['field.uuid'].children[0]['view.currency']",
+        "referrer": "display",
+        "target": "demo::Customer.id.display"
+      }
+    }
+  ],
+  "warnings": []
+}

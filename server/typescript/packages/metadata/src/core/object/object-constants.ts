@@ -9,14 +9,17 @@ import { SUBTYPE_BASE } from "../../shared/base-types.js";
 //   - base   : abstract template (no runtime semantics)
 //   - entity : persistent record (typically has @primary identity)
 //   - value  : value-object (no identity; equality by content)
+//   - projection : derived read-only representation of entities (FR-024, ADR-0028)
 //
 export const OBJECT_SUBTYPE_ENTITY = "entity";
 export const OBJECT_SUBTYPE_VALUE = "value";
+export const OBJECT_SUBTYPE_PROJECTION = "projection";
 
 export const OBJECT_SUBTYPES = [
   SUBTYPE_BASE,
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
+  OBJECT_SUBTYPE_PROJECTION,
 ] as const;
 export type ObjectSubType = (typeof OBJECT_SUBTYPES)[number];
 

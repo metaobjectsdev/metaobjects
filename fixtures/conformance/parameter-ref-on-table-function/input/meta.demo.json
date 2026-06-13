@@ -6,23 +6,31 @@
         "object.value": {
           "name": "ListArgs",
           "children": [
-            { "field.int": { "name": "limit", "@required": true } }
+            {
+              "field.int": {
+                "name": "limit",
+                "@required": true
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Listing",
           "children": [
             {
               "source.rdb": {
                 "@kind": "tableFunction",
                 "@function": "fn_listing",
-                "@parameterRef": "ListArgs"
+                "@parameterRef": "demo::ListArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

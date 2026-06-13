@@ -113,9 +113,9 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
-        val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
-        val promptClass = "${templateShort}Prompt"
-        val payloadClass = "${templateShort}Payload"
+        val outPkg = KotlinNaming.promptsPackage(templatePkg)
+        val promptClass = KotlinNaming.promptName(templateShort)
+        val payloadClass = KotlinNaming.payloadName(templateShort)
 
         // The SPEC rootName agrees with the payload class name so both prompt and
         // extract artifacts share the same root element name.

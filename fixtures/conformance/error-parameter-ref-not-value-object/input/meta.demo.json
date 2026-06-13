@@ -6,25 +6,41 @@
         "object.entity": {
           "name": "Customer",
           "children": [
-            { "source.rdb": { "@table": "customers" } },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "BadProc",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_x",
-                "@parameterRef": "Customer"
+                "@parameterRef": "demo::Customer"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

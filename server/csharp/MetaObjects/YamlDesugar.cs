@@ -65,6 +65,178 @@ public static class YamlDesugar
     public const string ARRAY_SUFFIX = "[]";
 
     // -----------------------------------------------------------------------
+    // FR-032 (ADR-0032) — reference expansion
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-032 — the bare (sigil-free) inline attribute names whose VALUE is a metadata
+    /// reference subject to FQN expansion. In canonical JSON these are <c>@</c>-prefixed
+    /// (<c>@objectRef</c>, …). The structural <c>extends</c> key is handled separately
+    /// (it is not <c>@</c>-prefixed). <c>@from</c>/<c>@of</c>/<c>@via</c> carry an entity
+    /// head with a possible dotted relationship/field tail — <see cref="ExpandRef"/>
+    /// preserves the tail. Mirrors TS <c>REF_BEARING_ATTR_NAMES</c> / Java equivalent.
+    /// The <c>package</c> attr is intentionally NOT here — it is the node's identity.
+    /// </summary>
+    private static readonly HashSet<string> RefBearingAttrNames = new(StringComparer.Ordinal)
+    {
+        "objectRef", "references", "from", "of", "via",
+        "payloadRef", "responseRef", "parameterRef",
+    };
+
+    /// <summary>
+    /// FR-032 (ADR-0032) — compute a node's effective package from its raw
+    /// <c>package</c> body key (inheriting <paramref name="parentPkg"/> when absent).
+    /// Mirrors TS <c>effectivePackageFor</c> / Parser's <c>expandPackageForPath</c>: a
+    /// leading <c>::</c> on a child package prepends the parent; otherwise it is used
+    /// as-is. The <c>package</c> attr itself is never ref-expanded — it is identity.
+    /// </summary>
+    private static string EffectivePackageFor(YamlNode? rawBody, string parentPkg)
+    {
+        if (rawBody is not YamlMappingNode map) return parentPkg;
+        foreach (var kvp in map.Children)
+        {
+            if (kvp.Key is YamlScalarNode ks && ks.Value == RESERVED_KEY_PACKAGE)
+            {
+                if (kvp.Value is YamlScalarNode vs && vs.Value is string rawPkg)
+                {
+                    if (parentPkg != "" && rawPkg.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+                        return parentPkg + rawPkg;
+                    return rawPkg;
+                }
+                return parentPkg;
+            }
+        }
+        return parentPkg;
+    }
+
+    /// <summary>
+    /// FR-032 — true when <paramref name="outKey"/> is a ref-bearing key whose string
+    /// value must be FQN-expanded: the reserved <c>extends</c> key, or an
+    /// <c>@</c>-prefixed inline attr whose bare name is in <see cref="RefBearingAttrNames"/>.
+    /// </summary>
+    private static bool IsRefBearingKey(string outKey)
+    {
+        if (outKey == RESERVED_KEY_EXTENDS) return true;
+        if (outKey.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
+            return RefBearingAttrNames.Contains(outKey[ATTR_PREFIX.Length..]);
+        return false;
+    }
+
+    /// <summary>
+    /// FR-032 — expand an authored metadata reference to its fully-qualified canonical
+    /// form (ADR-0032 §2.1). C# mirror of TS <c>expandRef(raw, packageContext)</c>; the
+    /// single ref-expansion routine the YAML desugar threads over every ref-bearing
+    /// attr so canonical JSON is FQN-only. Deterministic, NO root fallback:
+    /// <list type="bullet">
+    ///   <item>bare <c>Name</c> → <c>&lt;P&gt;::Name</c> (current package only; stays bare when P empty).</item>
+    ///   <item>qualified <c>pkg::Name</c> (contains <c>::</c>, not leading) → unchanged.</item>
+    ///   <item><c>::Rest</c> → strip leading <c>::</c>; remainder absolute from root.</item>
+    ///   <item><c>..::Rest</c> → drop one package segment from P per <c>..::</c>, then resolve
+    ///         Rest against the reduced package. Over-drop throws.</item>
+    /// </list>
+    /// The trailing FR-024 dotted child suffix (<c>.child</c>) is preserved verbatim.
+    /// </summary>
+    public static string ExpandRef(string raw, string packageContext)
+    {
+        // Split off any FR-024 dotted child tail; expand only the owner.
+        int lastSep = raw.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        int segStart = lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length;
+        int dotInSeg = raw.IndexOf(CHILD_REF_SEPARATOR, segStart, StringComparison.Ordinal);
+        string owner = dotInSeg == -1 ? raw : raw[..dotInSeg];
+        string tail = dotInSeg == -1 ? "" : raw[dotInSeg..];
+        return ExpandOwner(owner, packageContext) + tail;
+    }
+
+    /// <summary>FR-032 — expand a reference's OWNER part (no child tail) to its FQN.
+    /// Mirrors TS <c>expandOwner</c>. Throws on parent-relative over-drop.</summary>
+    private static string ExpandOwner(string owner, string packageContext)
+    {
+        string pkg = packageContext ?? "";
+
+        // root-absolute: leading "::" → strip; the remainder is absolute from root.
+        if (owner.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+            return owner[PACKAGE_SEPARATOR.Length..];
+
+        // parent-relative: one or more leading "..::".
+        string parentPrefix = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
+        if (owner.StartsWith(parentPrefix, StringComparison.Ordinal))
+        {
+            string rest = owner;
+            int levels = 0;
+            while (rest.StartsWith(parentPrefix, StringComparison.Ordinal))
+            {
+                levels++;
+                rest = rest[parentPrefix.Length..];
+            }
+            string[] pkgParts = pkg.Length == 0
+                ? Array.Empty<string>()
+                : pkg.Split(PACKAGE_SEPARATOR, StringSplitOptions.None);
+            if (levels > pkgParts.Length)
+            {
+                throw new InvalidOperationException(
+                    $"Relative reference '{owner}' over-drops: {levels} parent level(s) " +
+                    $"but the package context '{pkg}' has only {pkgParts.Length} segment(s)");
+            }
+            string reduced = string.Join(PACKAGE_SEPARATOR, pkgParts[..(pkgParts.Length - levels)]);
+            return reduced.Length != 0 ? reduced + PACKAGE_SEPARATOR + rest : rest;
+        }
+
+        // qualified: contains "::" (not leading) → absolute, unchanged.
+        if (owner.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+            return owner;
+
+        // bare name → current package (only). Stays bare when context is empty/root.
+        return pkg.Length != 0 ? pkg + PACKAGE_SEPARATOR + owner : owner;
+    }
+
+    /// <summary>
+    /// FR-032 — expand a ref-bearing value to FQN when <paramref name="outKey"/> is
+    /// ref-bearing; otherwise return it unchanged. A ref value is a single string (most
+    /// refs) or a string-array (<c>@references</c> can carry multiple). A parent-relative
+    /// over-drop is collected as <c>ERR_BAD_ATTR_VALUE</c> and the raw value passes through.
+    /// </summary>
+    private static JsonNode? MaybeExpandRef(
+        string outKey, JsonNode? value, string nodePkg,
+        List<YamlCollectedError> errors, string path)
+    {
+        if (!IsRefBearingKey(outKey)) return value;
+        return ExpandRefValue(value, nodePkg, outKey, errors, path);
+    }
+
+    private static JsonNode? ExpandRefValue(
+        JsonNode? value, string nodePkg, string refLabel,
+        List<YamlCollectedError> errors, string path)
+    {
+        if (value is JsonValue jv && jv.TryGetValue<string>(out var s))
+        {
+            try
+            {
+                return JsonValue.Create(ExpandRef(s, nodePkg));
+            }
+            catch (InvalidOperationException ex)
+            {
+                errors.Add(new YamlCollectedError(
+                    $"Cannot expand reference '{refLabel}' at {path}: {ex.Message}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE));
+                return value;
+            }
+        }
+        if (value is JsonArray arr)
+        {
+            var outArr = new JsonArray();
+            foreach (var el in arr)
+            {
+                if (el is JsonValue ev && ev.TryGetValue<string>(out _))
+                    outArr.Add(ExpandRefValue(el.DeepClone(), nodePkg, refLabel, errors, path));
+                else
+                    outArr.Add(el?.DeepClone());
+            }
+            return outArr;
+        }
+        return value;
+    }
+
+    // -----------------------------------------------------------------------
     // Entry point
     // -----------------------------------------------------------------------
 
@@ -75,7 +247,9 @@ public static class YamlDesugar
     public static YamlDesugarResult Desugar(YamlNode? input, TypeRegistry registry)
     {
         var errors = new List<YamlCollectedError>();
-        JsonObject? node = DesugarNode(input, registry, errors, "<root>");
+        // FR-032: root package context starts empty; each node's own `package` body key
+        // seeds the context threaded down to its children for ref expansion.
+        JsonObject? node = DesugarNode(input, registry, errors, "<root>", "");
         return new YamlDesugarResult(node ?? new JsonObject(), errors.AsReadOnly());
     }
 
@@ -91,7 +265,8 @@ public static class YamlDesugar
         YamlNode? input,
         TypeRegistry registry,
         List<YamlCollectedError> errors,
-        string path)
+        string path,
+        string parentPkg)
     {
         if (input is null)
         {
@@ -158,10 +333,14 @@ public static class YamlDesugar
         // Rule 1: a bare `type` key → the type's registry default subType.
         string canonicalKey = ResolveKey(key, registry, errors, path);
 
+        // FR-032: this node's effective package context (its own `package` body key, else
+        // inherited). Used to expand its ref-bearing attrs AND threaded to its children.
+        string nodePkg = EffectivePackageFor(rawBody, parentPkg);
+
         // Rule 2: a scalar body → { name: <scalar> }.
         // FR5b — pass the wrapper-key position so the scalar-body synthesis
         // (Rule 2) can attribute the synthesized `name` slot to the wrapper.
-        JsonObject body = DesugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos);
+        JsonObject body = DesugarBody(rawBody, registry, canonicalKey, errors, path, wrapperKeyPos, nodePkg);
 
         // Rule 3 (cont.): stamp isArray onto the canonical body.
         if (isArray)
@@ -182,7 +361,7 @@ public static class YamlDesugar
                         for (int i = 0; i < seq.Children.Count; i++)
                         {
                             string childPath = $"{path}.{RESERVED_KEY_CHILDREN}[{i}]";
-                            JsonObject? child = DesugarNode(seq.Children[i], registry, errors, childPath);
+                            JsonObject? child = DesugarNode(seq.Children[i], registry, errors, childPath, nodePkg);
                             children.Add(child ?? new JsonObject());
                         }
                         body[RESERVED_KEY_CHILDREN] = children;
@@ -254,7 +433,10 @@ public static class YamlDesugar
         // to back-fill the `name` slot on Rule-2 scalar-body synthesis; for
         // mapping bodies, we read each body-key's own position from the
         // YAML AST (the per-kvp scan below).
-        YamlPosition? wrapperKeyPos)
+        YamlPosition? wrapperKeyPos,
+        // FR-032: this node's effective package context, used to FQN-expand
+        // ref-bearing attr values (extends + @objectRef/@from/…).
+        string nodePkg)
     {
         var output = new JsonObject();
         if (rawBody is null)
@@ -350,7 +532,9 @@ public static class YamlDesugar
                 // ERR_RESERVED_ATTR and emits it with the proper FR5a envelope
                 // (format=json, jsonPath at the parent node). Mirrors TS
                 // yaml-desugar.ts:197-203 and Java YamlDesugar.java:340-349.
-                output[key] = YamlToJsonNode(value);
+                // FR-032: expand a ref-bearing value (reserved `extends` or an already-
+                // `@`-prefixed ref attr) to FQN; the `package` key is never expanded.
+                output[key] = MaybeExpandRef(key, YamlToJsonNode(value), nodePkg, errors, path);
                 outKey = key;
                 if (key.StartsWith(ATTR_PREFIX, StringComparison.Ordinal))
                 {
@@ -366,8 +550,9 @@ public static class YamlDesugar
             else
             {
                 // Rule 4 — sigil-free attr: re-prefix with `@` when lowering to canonical.
+                // FR-032: a bare ref-bearing attr is expanded to FQN too.
                 outKey = $"{ATTR_PREFIX}{key}";
-                output[outKey] = YamlToJsonNode(value);
+                output[outKey] = MaybeExpandRef(outKey, YamlToJsonNode(value), nodePkg, errors, path);
                 CheckCoercion(key, value, schemaIndex, errors, path);
             }
 

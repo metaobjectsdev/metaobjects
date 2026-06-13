@@ -33,7 +33,7 @@ async function loadFixture() {
         children: [
           { "field.int": { name: "id" } },
           { "field.string": { name: "displayName" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },
@@ -56,17 +56,15 @@ async function loadFixture() {
           { "source.rdb": { "@table": "hosts" } },
           { "field.int": { name: "id" } },
           { "field.string": { name: "name" } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },
     {
-      "object.entity": {
+      "object.projection": {
         name: "HostSummary",
-        extends: "Host",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_host_summary" } },
-          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },

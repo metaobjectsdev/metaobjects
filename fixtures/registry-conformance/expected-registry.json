@@ -2037,6 +2037,24 @@
     },
     {
       "type": "object",
+      "subType": "projection",
+      "attrs": [
+        {
+          "name": "discriminator",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        },
+        {
+          "name": "discriminatorValue",
+          "valueType": "string",
+          "isArray": false,
+          "required": false
+        }
+      ]
+    },
+    {
+      "type": "object",
       "subType": "value",
       "attrs": [
         {
@@ -2079,7 +2097,7 @@
           "name": "via",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": false
         }
       ]
     },

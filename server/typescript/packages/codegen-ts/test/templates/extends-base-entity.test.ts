@@ -23,7 +23,7 @@ async function loadFixture() {
                     "@column": "created_at",
                   },
                 },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

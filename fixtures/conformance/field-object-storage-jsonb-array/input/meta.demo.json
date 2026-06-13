@@ -42,12 +42,13 @@
               "field.object": {
                 "name": "contactInfos",
                 "isArray": true,
-                "@objectRef": "ContactInfo",
+                "@objectRef": "acme::ContactInfo",
                 "@storage": "jsonb"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }

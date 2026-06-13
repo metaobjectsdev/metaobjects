@@ -59,6 +59,7 @@ const META_JSON = {
             { "field.object": { name: "voResponse", "@objectRef": "VerdictResponse", "@storage": "jsonb" } },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": ["id"],
                 "@generation": "increment",
               },

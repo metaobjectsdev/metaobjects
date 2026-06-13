@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Region",
+          "children": [
+            { "source.rdb": { "@table": "regions" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            {
+              "relationship.association": {
+                "name": "region",
+                "@objectRef": "demo::Region",
+                "@cardinality": "one"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomerSummary",
+          "children": [
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id", "@column": "customer_id" } },
+            {
+              "field.string": {
+                "name": "label",
+                "extends": "demo::Customer.name",
+                "children": [
+                  { "origin.passthrough": { "@from": "demo::Region.name" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

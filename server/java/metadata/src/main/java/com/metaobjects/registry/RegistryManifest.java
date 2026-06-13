@@ -229,7 +229,16 @@ public final class RegistryManifest {
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
         /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
-        PRESENTATION_ONLY
+        PRESENTATION_ONLY,
+        /**
+         * FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
+         * {@code object.projection} row + the {@code origin.aggregate.via}
+         * required-override were excluded until every port registered the FR-024
+         * loader-grammar slice, then removed with the canonical updated in ONE
+         * commit (the {@code @responseRef} carve-out-close playbook). Kept as the
+         * documented lifecycle slot for the next rollout; currently no members.
+         */
+        FR024_PENDING
     }
 
     /**

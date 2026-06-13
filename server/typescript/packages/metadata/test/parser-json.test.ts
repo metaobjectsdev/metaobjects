@@ -177,7 +177,7 @@ describe("parseJson — inline @-attrs", () => {
           { "object.entity": { name: "Program", "@dbTable": "programs",
             children: [
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           }},
         ],
@@ -905,7 +905,7 @@ describe("parseJson — fruitbasket fixture round-trip", () => {
   it("Basket.apples field has @objectRef attr", () => {
     const basket = result.root.ownChildByTypeAndName("object", "Basket");
     const apples = basket!.ownChildByTypeAndName("field", "apples");
-    expect(apples!.ownAttr("objectRef")).toBe("::Apple");
+    expect(apples!.ownAttr("objectRef")).toBe("simple::fruitbasket::Apple"); // FR-032: canonical refs are FQN
   });
 
   it("Apple object has super set to 'Fruit' and is immediately resolved", () => {

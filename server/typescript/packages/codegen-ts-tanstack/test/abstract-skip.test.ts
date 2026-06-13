@@ -33,7 +33,7 @@ async function loadFixture() {
               { "source.rdb": { "@table": "party_base" } },
               { "field.int": { name: "id" } },
               { "field.string": { name: "displayName", children: [{ "view.text": {} }] } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
               grid,
             ],
           },

@@ -31,7 +31,7 @@
             {
               "field.object": {
                 "name": "shipTo",
-                "@objectRef": "Address",
+                "@objectRef": "test::Address",
                 "@storage": "jsonb",
                 "@filterable": true,
                 "@db.indexed": true
@@ -39,6 +39,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }

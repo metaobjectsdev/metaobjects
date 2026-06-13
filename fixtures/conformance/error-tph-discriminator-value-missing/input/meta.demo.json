@@ -15,14 +15,14 @@
               }
             },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
       {
         "object.entity": {
           "name": "ForgotValue",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "children": [
             { "field.int": { "name": "q" } }
           ]

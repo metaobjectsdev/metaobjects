@@ -915,16 +915,19 @@ describe("registry dispatch — origin subtype classes", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "field.string": { name: "title" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
           {
-            "object.entity": {
+            // FR-024 (B4b): the legacy entity-extends-entity view spelling is
+            // removed — a derived read model is an object.projection, anchored
+            // by an extends-bound identity.
+            "object.projection": {
               name: "ProgramSummary",
-              extends: "Program",
               children: [
                 { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+                { "field.long": { name: "id", extends: "Program.id" } },
                 {
                   "field.string": {
                     name: "displayTitle",
@@ -933,7 +936,7 @@ describe("registry dispatch — origin subtype classes", () => {
                     ],
                   },
                 },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", extends: "Program.id" } },
               ],
             },
           },
@@ -963,7 +966,7 @@ describe("registry dispatch — origin subtype classes", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "relationship.association": { name: "weeks", "@objectRef": "Week" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -972,16 +975,17 @@ describe("registry dispatch — origin subtype classes", () => {
               name: "Week",
               children: [
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
           {
-            "object.entity": {
+            // FR-024 (B4b): projection, not entity-extends-entity (see above).
+            "object.projection": {
               name: "ProgramSummary",
-              extends: "Program",
               children: [
                 { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+                { "field.long": { name: "id", extends: "Program.id" } },
                 {
                   "field.int": {
                     name: "weekCount",
@@ -996,7 +1000,7 @@ describe("registry dispatch — origin subtype classes", () => {
                     ],
                   },
                 },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", extends: "Program.id" } },
               ],
             },
           },
@@ -1262,7 +1266,7 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
                     children: [{ "validator.array": { "@min": 1, "@max": 10 } }],
                   },
                 },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
@@ -1289,15 +1293,19 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
               children: [
                 { "field.long": { name: "id" } },
                 { "field.string": { name: "label" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },
           {
-            "object.entity": {
+            // FR-024 (B4b): view-PRIMARY = object.projection; anchored to Base
+            // by the extends-bound identity (so the no-@via passthrough is a
+            // base-relation column — no relationship needed).
+            "object.projection": {
               name: "Summary",
               children: [
                 { "source.rdb": { "@kind": "view", "@table": "v_summary" } },
+                { "field.long": { name: "id", extends: "Base.id" } },
                 {
                   "field.string": {
                     name: "label",
@@ -1306,7 +1314,7 @@ describe("MetaDataLoader produces typed concrete nodes from JSON", () => {
                     ],
                   },
                 },
-                { "identity.primary": { "@fields": "label" } },
+                { "identity.primary": { "name": "id", extends: "Base.id" } },
               ],
             },
           },

@@ -172,7 +172,7 @@ describe("loadAndExportJson — single file smoke test", () => {
                 name: "Item",
                 children: [
                   { "field.long": { name: "id" } },
-                  { "identity.primary": { "@fields": "id" } },
+                  { "identity.primary": { "name": "id", "@fields": "id" } },
                 ],
               },
             },

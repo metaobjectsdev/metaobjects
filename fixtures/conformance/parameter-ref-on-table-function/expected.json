@@ -16,26 +16,19 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Listing",
           "children": [
             {
               "source.rdb": {
                 "@function": "fn_listing",
                 "@kind": "tableFunction",
-                "@parameterRef": "ListArgs"
+                "@parameterRef": "demo::ListArgs"
               }
             },
             {
               "field.long": {
                 "name": "id"
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

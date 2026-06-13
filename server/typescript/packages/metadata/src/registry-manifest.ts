@@ -24,6 +24,7 @@ import {
   EXCLUDED_PER_TYPE_ATTRS,
   ExclusionReason,
   isExcludedTypeSubType,
+  manifestRequiredOverride,
 } from "./registry-manifest-exclusions.js";
 
 /** One attribute in the manifest — the logical, cross-port-identical facet. */
@@ -98,8 +99,21 @@ function sortedAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
  * is explicit. NOTE: `description` is filtered ONLY here — it remains in the
  * `commonAttrs` block (built via `sortedAttrs`, unfiltered).
  */
-function sortedPerTypeAttrs(attrs: readonly AttrSchema[]): ManifestAttr[] {
-  return sortedAttrs(attrs.filter((a) => classifyPerTypeAttr(a.name) === INCLUDED));
+function sortedPerTypeAttrs(
+  attrs: readonly AttrSchema[],
+  type: string,
+  subType: string,
+): ManifestAttr[] {
+  return sortedAttrs(attrs.filter((a) => classifyPerTypeAttr(a.name) === INCLUDED)).map(
+    (attr) => {
+      // FR-024-pending requiredness override (the attr-level analogue of the
+      // Fr024Pending row carve-out): the TS registry already registers the
+      // FR-024 requiredness, but the manifest keeps emitting the pre-FR-024
+      // agreed value until the Phase-E atomic all-ports flip.
+      const required = manifestRequiredOverride(type, subType, attr.name);
+      return required === undefined ? attr : { ...attr, required };
+    },
+  );
 }
 
 /**
@@ -146,7 +160,11 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
     .map((typeId) => ({
       type: typeId.type,
       subType: typeId.subType,
-      attrs: sortedPerTypeAttrs(registry.attrsOf(typeId.type, typeId.subType)),
+      attrs: sortedPerTypeAttrs(
+        registry.attrsOf(typeId.type, typeId.subType),
+        typeId.type,
+        typeId.subType,
+      ),
     }))
     // Sort by the full "type.subType" key for a stable, port-independent order.
     .sort((a, b) =>

@@ -19,11 +19,12 @@
             {
               "relationship.association": {
                 "name": "weeks",
-                "@objectRef": "Week"
+                "@objectRef": "acme::commerce::Week"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -44,11 +45,12 @@
             {
               "relationship.association": {
                 "name": "workouts",
-                "@objectRef": "Workout"
+                "@objectRef": "acme::commerce::Workout"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -73,6 +75,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -82,9 +85,8 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProgramSummary",
-          "extends": "Program",
           "children": [
             {
               "source.rdb": {
@@ -99,17 +101,10 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Workout.id",
-                      "@via": "Program.weeks.workouts"
+                      "@of": "acme::commerce::Workout.id",
+                      "@via": "acme::commerce::Program.weeks.workouts"
                     }
                   }
-                ]
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
                 ]
               }
             }

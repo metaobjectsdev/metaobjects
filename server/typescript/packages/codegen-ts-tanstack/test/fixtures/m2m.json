@@ -10,7 +10,7 @@
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "title", "@required": true } },
             { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]
         }
       },
@@ -21,7 +21,7 @@
             { "source.rdb": { "@table": "tags" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name", "@required": true } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]
         }
       },
@@ -32,7 +32,7 @@
             { "source.rdb": { "@table": "post_tags" } },
             { "field.long": { "name": "postId", "@required": true } },
             { "field.long": { "name": "tagId", "@required": true } },
-            { "identity.primary": { "@fields": ["postId", "tagId"] } },
+            { "identity.primary": { "name": "id", "@fields": ["postId", "tagId"] } },
             { "identity.reference": { "name": "fkPost", "@fields": "postId", "@references": "Post" } },
             { "identity.reference": { "name": "fkTag", "@fields": "tagId", "@references": "Tag" } }
           ]
@@ -46,7 +46,7 @@
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "name", "@required": true } },
             { "relationship.association": { "name": "friends", "@cardinality": "many", "@objectRef": "Person", "@through": "Friendship", "@symmetric": true } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]
         }
       },
@@ -57,7 +57,7 @@
             { "source.rdb": { "@table": "friendships" } },
             { "field.long": { "name": "personAId", "@required": true } },
             { "field.long": { "name": "personBId", "@required": true } },
-            { "identity.primary": { "@fields": ["personAId", "personBId"] } },
+            { "identity.primary": { "name": "id", "@fields": ["personAId", "personBId"] } },
             { "identity.reference": { "name": "fkPersonA", "@fields": "personAId", "@references": "Person" } },
             { "identity.reference": { "name": "fkPersonB", "@fields": "personBId", "@references": "Person" } }
           ]

@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      { "object.entity": {
+        "name": "Customer",
+        "children": [
+          { "field.uuid": { "name": "id",
+            "children": [ { "view.currency": { "name": "display", "@locale": "en-US" } } ] } },
+          { "identity.primary": { "name": "id", "@fields": ["id"] } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "CustomersV1",
+        "children": [
+          { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id",
+            "children": [
+              { "view.currency": { "name": "display", "extends": "demo::Customer.id.display" } }
+            ] } }
+        ]
+      }}
+    ]
+  }
+}

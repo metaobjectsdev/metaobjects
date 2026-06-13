@@ -61,6 +61,13 @@ class ExclusionReason(str, Enum):
     INHERITANCE_ANCHOR = "inheritance-anchor"
     #: TS-web-presentation-only facet (the generic ``view.*`` controls).
     PRESENTATION_ONLY = "presentation-only"
+    #: FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
+    #: ``object.projection`` row + the ``origin.aggregate.via`` required-override
+    #: were excluded until every port registered the FR-024 loader-grammar slice,
+    #: then removed with the canonical updated in ONE commit (the ``@responseRef``
+    #: carve-out-close playbook). Kept as the documented lifecycle slot for the
+    #: next rollout; currently no members.
+    FR024_PENDING = "fr024-pending"
 
 
 _ATTR_NAME_IS_ABSTRACT = "isAbstract"
@@ -137,15 +144,32 @@ def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
     return [_to_manifest_attr(a) for a in sorted(attrs, key=lambda a: a.name)]
 
 
-def _sorted_per_type_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
+# FR-024-pending manifest requiredness overrides (keyed ``type.subType.attr``) —
+# the attr-level analogue of the FR024_PENDING row carve-out. EMPTY since the
+# atomic all-ports flip (``origin.aggregate.via`` is optional everywhere,
+# ADR-0029 d5). The mechanism stays for the next reference-first rollout.
+_FR024_PENDING_REQUIRED_OVERRIDES: dict[str, bool] = {}
+
+
+def _sorted_per_type_attrs(
+    attrs: list[AttrSchema], type_name: str = "", sub_type: str = ""
+) -> list[dict[str, object]]:
     """As ``_sorted_attrs``, but keeping only attrs the explicit classification
     marks ``INCLUDED`` (logical cross-port vocabulary). A carved-out attr
     (structural keyword, native binding, per-type ``description`` dup) is dropped
     for a documented reason, never a silent name-match. Applied ONLY to per-type
-    attrs — ``description`` stays in the commonAttrs block."""
-    return _sorted_attrs(
+    attrs — ``description`` stays in the commonAttrs block. The FR-024 pending
+    required-overrides are applied here (keyed ``type.subType.attr``)."""
+    rows = _sorted_attrs(
         [a for a in attrs if classify_per_type_attr(a.name) is ExclusionReason.INCLUDED]
     )
+    for row in rows:
+        override = _FR024_PENDING_REQUIRED_OVERRIDES.get(
+            f"{type_name}.{sub_type}.{row['name']}"
+        )
+        if override is not None:
+            row["required"] = override
+    return rows
 
 
 def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
@@ -169,7 +193,9 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
             {
                 "type": definition.type,
                 "subType": definition.sub_type,
-                "attrs": _sorted_per_type_attrs(definition.attrs),
+                "attrs": _sorted_per_type_attrs(
+                    definition.attrs, definition.type, definition.sub_type
+                ),
             }
         )
     types.sort(key=lambda t: f"{t['type']}.{t['subType']}")

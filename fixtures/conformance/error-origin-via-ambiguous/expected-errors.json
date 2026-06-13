@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_AMBIGUOUS_PATH",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[3]['field.string'].children[0]['origin.passthrough']",
+        "referrer": "Customer::countryName",
+        "target": "demo::Country.name"
+      }
+    }
+  ],
+  "warnings": []
+}

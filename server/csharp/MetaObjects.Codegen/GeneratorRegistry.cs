@@ -111,6 +111,13 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Factory = _ => new RoutesGenerator(),
             },
+            ["payload"] = new()
+            {
+                Name = "payload",
+                Description = "Per-template strict typed payload record(s) (the prompt/parser/extractor bind type).",
+                Tier = GeneratorTier.Native,
+                Factory = _ => new PayloadGenerator(),
+            },
             ["output-parser"] = new()
             {
                 Name = "output-parser",

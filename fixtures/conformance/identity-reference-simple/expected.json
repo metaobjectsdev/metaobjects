@@ -13,6 +13,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -37,6 +38,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -49,7 +51,7 @@
                 "@fields": [
                   "customerId"
                 ],
-                "@references": "Customer"
+                "@references": "acme::orders::Customer"
               }
             }
           ]

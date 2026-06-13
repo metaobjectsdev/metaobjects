@@ -19,7 +19,7 @@ const STI_MODEL = JSON.stringify({ "metadata.root": { package: "t::ai", children
   ] } },
   { "object.entity": { name: "PromptTrace", extends: "LlmCallBase", "@discriminator": "callType", children: [
     { "source.rdb": { "@table": "prompt_llm_call", "@role": "primary" } },
-    { "identity.primary": { "@fields": ["spanId"] } },
+    { "identity.primary": { "name": "id", "@fields": ["spanId"] } },
   ] } },
   { "object.entity": { name: "ClassifyCall", extends: "PromptTrace", "@discriminatorValue": "classify", children: [
     { "template.prompt": { name: "ClassifyPrompt", "@textRef": "p/classify", "@payloadRef": "ClassifyReq", "@responseRef": "ClassifyRes", "@format": "json" } },

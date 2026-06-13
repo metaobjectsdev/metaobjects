@@ -65,7 +65,7 @@ const MODEL_JSON = JSON.stringify({
             { "source.rdb": { "@table": "customers" } },
             { "field.long": { name: "id" } },
             { "field.string": { name: "email", "@required": true } },
-            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
           ],
         },
       },
@@ -78,7 +78,7 @@ const MODEL_JSON = JSON.stringify({
             { "source.rdb": { "@table": "orders" } },
             { "field.long": { name: "id" } },
             { "field.long": { name: "customerId", "@required": true } },
-            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
             {
               "identity.reference": {
                 name: "customerRef",

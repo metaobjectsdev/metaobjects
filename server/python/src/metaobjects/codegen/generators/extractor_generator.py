@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen import fr010_field_mapping as fm
 from metaobjects.codegen import extract_delegate_emitter as rde
 from metaobjects.codegen.constants import generated_header
@@ -56,16 +57,6 @@ _GENERATOR_NAME = "extractor-generator"
 
 # The extract tier only exists where the tolerant extract API does — json/xml.
 _EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
-
-
-def _snake_case(name: str) -> str:
-    """``OrderOut`` → ``order_out`` (matches the cross-generator convention)."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def _strict_class(vo: MetaData, root_vo: MetaData, template_name: str) -> str:

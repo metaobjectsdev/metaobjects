@@ -39,7 +39,7 @@ async function loadProjectionFixture() {
           { "source.rdb": { "@table": "programs" } },
           { "field.int": { name: "id", } },
           { "field.string": { name: "title", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
           {
             "relationship.association": {
               name: "weeks",
@@ -57,17 +57,19 @@ async function loadProjectionFixture() {
           { "source.rdb": { "@table": "weeks" } },
           { "field.int": { name: "id", } },
           { "field.int": { name: "programId", } },
-          { "identity.primary":   { "@fields": "id" } },
+          { "identity.primary":   { "name": "id", "@fields": "id" } },
           { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
         ],
       },
     },
     {
-      "object.entity": {
+      "object.projection": {
         name: "ProgramSummary",
-        extends: "Program",
         children: [
           { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+          { "field.int": { name: "id", extends: "Program.id" } },
+          { "field.string": { name: "title", extends: "Program.title" } },
+          { "identity.primary": { "name": "id", extends: "Program.id" } },
           {
             "field.int": {
               name: "weekCount",
@@ -82,7 +84,6 @@ async function loadProjectionFixture() {
               ],
             },
           },
-          { "identity.primary": { "@fields": "id" } },
         ],
       },
     },
@@ -116,7 +117,7 @@ async function loadVanillaFixture() {
           { "source.rdb": { "@table": "posts" } },
           { "field.long": { name: "id", } },
           { "field.string": { name: "title", } },
-          { "identity.primary": { "@fields": "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
         ],
       },
     },
@@ -185,10 +186,10 @@ describe("renderEntityFile — source-aware dispatch", () => {
       expect(out).not.toContain("UpdateSchema");
     });
 
-    test("inherited fields from super appear in schema", async () => {
+    test("declared extends-bound fields appear in schema (FR-024 inclusive list)", async () => {
       const { projection, ctx } = await loadProjectionFixture();
       const out = renderEntityFile(projection, ctx);
-      // id and title are inherited from Program
+      // id and title are DECLARED extends-bound fields (the inclusive list)
       expect(out).toContain("id:");
       expect(out).toContain("title:");
       // weekCount is projection-declared

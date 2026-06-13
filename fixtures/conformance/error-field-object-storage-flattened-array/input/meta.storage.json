@@ -27,7 +27,7 @@
               "field.object": {
                 "name": "addrs",
                 "isArray": true,
-                "@objectRef": "Address",
+                "@objectRef": "test::Address",
                 "@storage": "flattened"
               }
             },
@@ -38,6 +38,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": "id"
               }
             }

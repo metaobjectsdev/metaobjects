@@ -6,9 +6,9 @@ import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../../src/loader/meta-data-source.js";
 import { navigate } from "./navigator.js";
 
-// A minimal document containing an `identity.primary` child — this node has
-// NO `name` attribute, so it is a nameless node that can only be addressed via
-// the bracket segment grammar `identity[primary]`.
+// A minimal document containing an `identity.primary` child — addressed via
+// the bracket segment grammar `identity[primary]` (subtype-addressing works
+// regardless of the node's name; FR-024 requires identities to be named).
 const DOC = JSON.stringify({
   "metadata.root": {
     "package": "test",
@@ -18,7 +18,7 @@ const DOC = JSON.stringify({
           "name": "Widget",
           "children": [
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },
@@ -39,7 +39,7 @@ async function loadTree() {
 }
 
 describe("navigate — bracket segment grammar", () => {
-  test("bracket segment `identity[primary]` reaches the nameless identity node", async () => {
+  test("bracket segment `identity[primary]` reaches the identity node", async () => {
     const root = await loadTree();
     // Navigate: root → object:Widget → identity[primary]
     const node = navigate(root, ["object:Widget", "identity[primary]"]);

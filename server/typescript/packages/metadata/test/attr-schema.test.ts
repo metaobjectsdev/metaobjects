@@ -216,12 +216,16 @@ describe("Phase A2 — core attribute schemas", () => {
     return m;
   };
 
-  it("origin.aggregate declares @agg, @of, @via — all required", () => {
+  it("origin.aggregate declares @agg + @of (required) and @via (optional since FR-024 — inferable)", () => {
     const attrs = byName(TYPE_ORIGIN, ORIGIN_SUBTYPE_AGGREGATE);
-    for (const n of ["agg", "of", "via"]) {
+    for (const n of ["agg", "of"]) {
       expect(attrs.get(n)).toBeDefined();
       expect(attrs.get(n)!.required).toBe(true);
     }
+    // FR-024 (ADR-0029 decision 5): @via may be omitted when exactly one
+    // single-hop relationship leads from the base entity to the @of entity.
+    expect(attrs.get("via")).toBeDefined();
+    expect(attrs.get("via")!.required).toBe(false);
     expect(attrs.get("agg")!.allowedValues).toEqual(["count", "sum", "avg", "min", "max"]);
   });
 

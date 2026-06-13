@@ -262,9 +262,16 @@ public class AttributeConstraintBuilder {
         private boolean isArrayValue(Object value) {
             if (value == null) return true; // null is valid for optional arrays
             if (value instanceof String) {
-                String str = (String) value;
-                // Check for JSON array format or comma-delimited values
-                return str.startsWith("[") && str.endsWith("]") || str.contains(",");
+                // Any string is acceptable: JSON-array text ("[...]"), the
+                // comma-delimited internal form ("a,b"), OR the cross-port
+                // bare-string single-element sugar (e.g. @fields: "id" ≡ ["id"]
+                // — pinned by deserializesBareStringAsArrayForIdentityFields and
+                // the conformance corpus). NOTE: this constraint was effectively
+                // dead until FR-024's nested-name fix (the enforcer's attr
+                // lookup matched by bare name while attrs registered folded, so
+                // the value was always null) — rejecting single-value sugar was
+                // never the contract.
+                return true;
             }
             return false;
         }

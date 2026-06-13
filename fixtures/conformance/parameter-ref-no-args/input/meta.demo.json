@@ -3,7 +3,7 @@
     "package": "demo",
     "children": [
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Ping",
           "children": [
             {
@@ -12,8 +12,11 @@
                 "@proc": "fn_ping"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

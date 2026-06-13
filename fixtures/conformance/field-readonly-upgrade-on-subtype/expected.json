@@ -18,7 +18,7 @@
       {
         "object.entity": {
           "name": "Catalog",
-          "extends": "BaseEntity",
+          "extends": "demo::BaseEntity",
           "children": [
             {
               "source.rdb": {
@@ -38,6 +38,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

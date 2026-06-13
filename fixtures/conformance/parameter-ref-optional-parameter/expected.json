@@ -21,13 +21,13 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "Search",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@parameterRef": "SearchArgs",
+                "@parameterRef": "demo::SearchArgs",
                 "@proc": "fn_search"
               }
             },
@@ -39,13 +39,6 @@
             {
               "field.string": {
                 "name": "label"
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
               }
             }
           ]

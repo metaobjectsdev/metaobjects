@@ -61,6 +61,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "traceId"
                 ]
@@ -82,6 +83,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "traceId"
                 ]

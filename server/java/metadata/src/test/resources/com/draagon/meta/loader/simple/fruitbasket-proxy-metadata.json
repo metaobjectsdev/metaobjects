@@ -85,21 +85,21 @@
               "field.object": {
                 "name": "fruitIds",
                 "isArray": true,
-                "@objectRef": "::Apple"
+                "@objectRef": "simple::fruitbasket::Apple"
               }
             },
             {
               "field.object": {
                 "name": "apples",
                 "isArray": true,
-                "@objectRef": "::Apple"
+                "@objectRef": "simple::fruitbasket::Apple"
               }
             },
             {
               "field.object": {
                 "name": "oranges",
                 "isArray": true,
-                "@objectRef": "::Orange"
+                "@objectRef": "simple::fruitbasket::Orange"
               }
             }
           ]
@@ -128,7 +128,7 @@
                 "@sourceFields": [
                   "basketId"
                 ],
-                "@objectRef": "::Basket"
+                "@objectRef": "simple::fruitbasket::Basket"
               }
             },
             {
@@ -138,7 +138,7 @@
                 "@sourceFields": [
                   "fruitId"
                 ],
-                "@objectRef": "::Fruit"
+                "@objectRef": "simple::fruitbasket::Fruit"
               }
             },
             {
@@ -179,7 +179,7 @@
                 "@sourceFields": [
                   "basketId"
                 ],
-                "@objectRef": "::Basket"
+                "@objectRef": "simple::fruitbasket::Basket"
               }
             },
             {

@@ -32,7 +32,7 @@ const TPH_META = JSON.stringify({
             { "field.long": { name: "id" } },
             { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
             { "field.string": { name: "reference", "@required": true, "@maxLength": 80 } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },

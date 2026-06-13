@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen import extract_delegate_emitter as rde
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
@@ -42,18 +43,6 @@ _EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 _GENERATOR_NAME = "output-parser-generator"
-
-
-def _snake_case(name: str) -> str:
-    """``NpcResponseOutput`` → ``npc_response_output``. Trivial PascalCase →
-    snake_case (no acronym handling; matches the cross-port convention used by
-    ``router_generator._snake_case``)."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def render_output_parser(template: MetaData, root: MetaData) -> str | None:

@@ -39,7 +39,7 @@ describe("migrate command with --dialect d1", () => {
             "children": [
               { "field.long":   { "name": "id" } },
               { "field.string": { "name": "email" } },
-              { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+              { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
             ]
           }
         }]
@@ -97,7 +97,7 @@ describe("migrate command with --dialect d1", () => {
                 { "source.rdb": { "@table": "programs" } },
                 { "field.int": { "name": "id", "@column": "id" } },
                 { "field.string": { "name": "title", "@column": "title" } },
-                { "identity.primary": { "@fields": ["id"] } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
                 {
                   "relationship.association": {
                     "name": "weeks",
@@ -115,7 +115,7 @@ describe("migrate command with --dialect d1", () => {
                 { "source.rdb": { "@table": "weeks" } },
                 { "field.int": { "name": "id", "@column": "id" } },
                 { "field.int": { "name": "programId", "@column": "program_id" } },
-                { "identity.primary": { "@fields": ["id"] } },
+                { "identity.primary": { "name": "id", "@fields": ["id"] } },
                 {
                   "identity.reference": {
                     "name": "ref_program",
@@ -127,11 +127,12 @@ describe("migrate command with --dialect d1", () => {
             },
           },
           {
-            "object.entity": {
+            "object.projection": {
               "name": "ProgramSummary",
-              "extends": "Program",
               "children": [
                 { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+            { "field.int": { name: "id", extends: "Program.id" } },
+            { "identity.primary": { "name": "id", extends: "Program.id" } },
                 {
                   "field.int": {
                     "name": "weekCount",
@@ -146,7 +147,6 @@ describe("migrate command with --dialect d1", () => {
                     ],
                   },
                 },
-                { "identity.primary": { "@fields": ["id"] } },
               ],
             },
           },

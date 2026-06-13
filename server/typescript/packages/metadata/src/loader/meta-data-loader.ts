@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -25,6 +25,7 @@ import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js"
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
+import { validateIdentityPassthrough } from "../core/identity/validate-identity-passthrough.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
@@ -416,6 +417,22 @@ export class MetaDataLoader {
         // parse-time source supplies files + jsonPath (the location of the
         // broken `extends:` on disk); referrer = the declaring node's FQN;
         // target = the unresolved supertype ref.
+        if (failure.kind === "target-mismatch") {
+          // FR-024 — a dotted child-targeting ref resolved, but the target's
+          // type/subtype differs from the extending node's. Dotted-only check.
+          const r = failure.referrer;
+          const t = failure.target;
+          errors.push(
+            new ParseError(
+              `the extends target '${failure.ref}' is ${t?.type}.${t?.subType} but the extending node '${failure.nodeFqn}' is ${r?.type}.${r?.subType} — a dotted extends must target a node of the same type and subtype`,
+              {
+                code: "ERR_EXTENDS_TARGET_MISMATCH",
+                source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
+              },
+            ),
+          );
+          continue;
+        }
         errors.push(
           new ParseError(
             `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,
@@ -433,6 +450,10 @@ export class MetaDataLoader {
       errors.push(...ruleResult.errors);
       warnings.push(...ruleResult.warnings);
 
+      // FR-024 B3 — projection identity pass-through + key correspondence
+      // (ERR_PROJECTION_IDENTITY_NOT_EXTENDED / ERR_IDENTITY_KEY_MISMATCH).
+      errors.push(...validateIdentityPassthrough(root));
+
       // Fourth pass: data-grid @defaultSortField cross-reference validation.
       errors.push(...validateDataGridSortFields(root));
 
@@ -446,6 +467,12 @@ export class MetaDataLoader {
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
+
+      // FR-024 B6 — derived-field providability: an entity field carrying an
+      // origin.* is derived (read-only) and must be providable by at least one
+      // read-only-kind source on the entity (spec §7 multi-source pattern);
+      // projections and object.value hosts are exempt.
+      errors.push(...validateDerivedFieldProvidability(root));
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));

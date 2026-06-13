@@ -198,7 +198,7 @@ public static class CoreTypes
                 (tid, n) => new MetaRoot(tid, n),
                 []));
 
-        // object — 3 subtypes (base, entity, value)
+        // object — 4 subtypes (base, entity, value, projection)
         List<ChildRule> objectRules =
         [
             Wildcard(TYPE_FIELD),
@@ -213,6 +213,19 @@ public static class CoreTypes
             // nested template.prompt). Mirrors Java optionalChild("template","*","*").
             Wildcard(TYPE_TEMPLATE),
         ];
+        // FR-024: object.projection is a derived read-only representation of
+        // entities — it carries fields/identities/sources but never declares
+        // relationships (derivation is expressed via @via) and never co-locates
+        // templates. Mirrors the TS reference projectionRules exactly.
+        List<ChildRule> projectionRules =
+        [
+            Wildcard(TYPE_FIELD),
+            Wildcard(TYPE_IDENTITY),
+            Wildcard(TYPE_VALIDATOR),
+            Wildcard(TYPE_LAYOUT),
+            Wildcard(TYPE_SOURCE),
+            Wildcard(TYPE_ATTR),
+        ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
             // FR-011: object.value additionally carries @normalize — the object-level
@@ -221,12 +234,16 @@ public static class CoreTypes
                 ? [.. ObjectSchema.ObjectAttrs, FieldSchema.NormalizeAttr]
                 : ObjectSchema.ObjectAttrs.ToList();
 
+            List<ChildRule> rules = subType == OBJECT_SUBTYPE_PROJECTION
+                ? new List<ChildRule>(projectionRules)
+                : new List<ChildRule>(objectRules);
+
             registry.Register(
                 Def(
                     TYPE_OBJECT,
                     subType,
                     $"Object/entity ({subType})",
-                    new List<ChildRule>(objectRules),
+                    rules,
                     (tid, n) => new MetaObject(tid, n),
                     objectAttrs));
         }

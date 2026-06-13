@@ -15,14 +15,14 @@
               }
             },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
       {
         "object.entity": {
           "name": "BridgeA",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "@discriminatorValue": "Bridge",
           "children": []
         }
@@ -30,7 +30,7 @@
       {
         "object.entity": {
           "name": "BridgeB",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "@discriminatorValue": "Bridge",
           "children": []
         }

@@ -12,6 +12,19 @@ public enum ErrorCode
     ERR_MISSING_SUBTYPE,
     ERR_DUPLICATE_NAME,
     ERR_UNRESOLVED_SUPER,
+    // FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
+    // subtype does not match the extending node.
+    ERR_EXTENDS_TARGET_MISMATCH,
+    // FR-024: identity names required + projection identity pass-through.
+    // Vocabulary-only here until FR-024 Phase E (the C# loader does not
+    // enforce these yet); the enum tracks the shared corpus codes.
+    ERR_IDENTITY_NAME_REQUIRED,
+    ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+    ERR_IDENTITY_KEY_MISMATCH,
+    // FR-024 (ADR-0028): a source.* on an object.projection has a writable
+    // @kind — projection sources must be read-only kinds. Vocabulary-only
+    // here until FR-024 Phase E.
+    ERR_PROJECTION_SOURCE_WRITABLE,
     ERR_INVALID_SUBTYPE_CHILD,
     ERR_UNKNOWN_ATTR,
     ERR_MISSING_REQUIRED_ATTR,
@@ -26,7 +39,35 @@ public enum ErrorCode
     ERR_MALFORMED_YAML,
     ERR_YAML_COERCION,
     ERR_RESERVED_ATTR,
+    // FR-032 (ADR-0032) — a ref-bearing value in canonical JSON used a relative
+    // form (leading "::" or "..::"). Relative refs are YAML-authoring sugar the
+    // desugar expands; they must never appear in canonical (interchange) JSON.
+    ERR_RELATIVE_REF_IN_CANONICAL,
     ERR_INVALID_ORIGIN,
+    // FR-024 (ADR-0029) — origin @via inference + cardinality checks. Vocabulary-only
+    // here until FR-024 Phase E (the C# loader does not run the inference yet):
+    // ERR_AMBIGUOUS_PATH — an implicit (omitted-@via) origin path is ambiguous
+    // (multiple single-hop relationships to the @from/@of entity, or a projection's
+    // base entity underivable without an extended identity);
+    // ERR_ORIGIN_CARDINALITY — passthrough @via crosses a to-many hop (you meant
+    // aggregate) or aggregate @via is to-one at every hop (you meant passthrough).
+    ERR_AMBIGUOUS_PATH,
+    ERR_ORIGIN_CARDINALITY,
+    // FR-024 B6 — extends/origin agreement + derived-field providability. Vocabulary-
+    // only here until FR-024 Phase E (the C# loader does not run these checks yet):
+    // ERR_EXTENDS_ORIGIN_MISMATCH — a field's entity-nested extends (shape lineage)
+    // disagrees with its origin.passthrough @from (data lineage); host-agnostic,
+    // aggregates and top-level abstract extends targets never judged.
+    // ERR_DERIVED_FIELD_NO_READ_SOURCE — an object.entity field carrying an origin.*
+    // is derived and the entity declares no read-only-kind source to provide it
+    // (projections and object.value hosts exempt).
+    ERR_EXTENDS_ORIGIN_MISMATCH,
+    ERR_DERIVED_FIELD_NO_READ_SOURCE,
+
+    // FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
+    // read-only kinds only in non-primary roles; a derived read model is an object.projection.
+    // Vocabulary-only here until Phase-E validation parity.
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY,
     // FR-017 — a M:N relationship's slim vocabulary is invalid: @through does not
     // name a junction declaring two identity.reference children, @sourceRefField
     // does not match one of them, or a M:N-only attr (@through/@sourceRefField/

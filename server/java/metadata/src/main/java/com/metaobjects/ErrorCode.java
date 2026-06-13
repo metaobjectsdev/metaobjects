@@ -54,6 +54,44 @@ public enum ErrorCode {
     /** An extends/super reference names a node that does not exist. */
     ERR_UNRESOLVED_SUPER,
 
+    /**
+     * FR-024 (ADR-0029): a dotted extends ref resolved to a node whose type or
+     * subtype does not match the extending node (a field may only extend a field
+     * of the same subtype; an identity only an identity).
+     */
+    ERR_EXTENDS_TARGET_MISMATCH,
+
+    /**
+     * FR-024: an identity.* node has no name. Identities are named,
+     * author-chosen (e.g. "id"), so the dotted by-name extends form can
+     * address them. Vocabulary-only here until FR-024 Phase E (the Java
+     * loader does not enforce the requirement yet).
+     */
+    ERR_IDENTITY_NAME_REQUIRED,
+
+    /**
+     * FR-024: an identity.* on an object.projection lacks extends — a
+     * projection identity is a pass-through of an entity identity.
+     * Vocabulary-only here until FR-024 Phase E.
+     */
+    ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+
+    /**
+     * FR-024: identity key correspondence broken — an extended-identity field
+     * has no local pass-through field extending it, or an explicit @fields
+     * disagrees with the computed pass-through key. Vocabulary-only here
+     * until FR-024 Phase E.
+     */
+    ERR_IDENTITY_KEY_MISMATCH,
+
+    /**
+     * FR-024 (ADR-0028): a source.* on an object.projection has a writable
+     * @kind (table, or @kind omitted which defaults to table) — projection
+     * sources must be read-only kinds. Vocabulary-only here until FR-024
+     * Phase E.
+     */
+    ERR_PROJECTION_SOURCE_WRITABLE,
+
     /** A child node type/subType is not permitted under its parent. */
     ERR_INVALID_SUBTYPE_CHILD,
 
@@ -108,6 +146,50 @@ public enum ErrorCode {
 
     /** A field origin (passthrough/aggregate) declares an invalid path or attribute. */
     ERR_INVALID_ORIGIN,
+
+    /**
+     * FR-024 (ADR-0029): an implicit (omitted-{@code @via}) origin path is ambiguous —
+     * more than one single-hop relationship leads from the base entity to the
+     * {@code @from}/{@code @of} entity, or a projection's base entity cannot be derived
+     * because its fields extend multiple entities and no extended identity anchors the
+     * base. Vocabulary-only here until FR-024 Phase E (the Java loader does not run
+     * the inference yet).
+     */
+    ERR_AMBIGUOUS_PATH,
+
+    /**
+     * FR-024 (ADR-0029): origin cardinality contract broken — a passthrough
+     * {@code @via} path crosses a to-many hop (row-multiplying passthrough — you meant
+     * aggregate), or an aggregate {@code @via} path is to-one at every hop (you meant
+     * passthrough). Vocabulary-only here until FR-024 Phase E.
+     */
+    ERR_ORIGIN_CARDINALITY,
+
+    /**
+     * FR-024 (ADR-0029 decision 7): a field declares both an entity-nested extends
+     * (shape lineage) and an {@code origin.passthrough @from} (data lineage) and they
+     * disagree — the resolved {@code @from} target is not the field's resolved extends
+     * target (nor anywhere on its extends chain). Host-agnostic (projections, entities,
+     * values); aggregates and top-level abstract extends targets are never judged.
+     * Vocabulary-only here until FR-024 Phase E (the Java loader does not run the
+     * agreement check yet).
+     */
+    ERR_EXTENDS_ORIGIN_MISMATCH,
+
+    /**
+     * FR-024 (spec §7): an object.entity field carrying an origin.* child is derived
+     * (read-only) and must be providable — the entity must declare at least one source
+     * with a read-only kind (view/materializedView/storedProc/tableFunction) to carry
+     * it; table-only or source-less entities with origin-bearing fields error.
+     * Projections and object.value hosts are exempt. Vocabulary-only here until
+     * FR-024 Phase E.
+     */
+    ERR_DERIVED_FIELD_NO_READ_SOURCE,
+
+    /** FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
+     *  read-only kinds are legal only in non-primary roles; a derived read model is an
+     *  object.projection. Vocabulary-only here until Phase-E validation parity. */
+    ERR_ENTITY_PRIMARY_SOURCE_READONLY,
 
     /**
      * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
@@ -228,6 +310,15 @@ public enum ErrorCode {
      * structurally impossible: codegen cannot register post-bootstrap.
      */
     ERR_REGISTRY_SEALED,
+
+    /**
+     * FR-032 (ADR-0032): a ref-bearing attribute in canonical JSON carries a
+     * relative reference form (a value starting with {@code ::} or {@code ..::}).
+     * Canonical JSON is the self-contained interchange form and MUST be fully
+     * qualified — relative forms are a YAML-authoring affordance the desugar
+     * expands, so they must never survive into canonical JSON.
+     */
+    ERR_RELATIVE_REF_IN_CANONICAL,
 
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,

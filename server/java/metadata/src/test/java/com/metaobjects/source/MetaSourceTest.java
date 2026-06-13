@@ -82,14 +82,14 @@ public class MetaSourceTest extends SharedRegistryTestBase {
         // auto-naming (sequential <subType>N) — the canonical serializer suppresses
         // the auto-name on emit so the output stays byte-identical to the TS oracle.
         // First source.rdb under the entity gets auto-name "rdb1", qualified with the
-        // document's default package "acme" → "acme::rdb1".
+        // document's default package "acme" → "rdb1".
         String canonical = entityWith("{ \"source.rdb\": { \"@table\": \"products\" } }");
         MetaDataLoader loader = loadThrough(canonical, "source-rdb-table-test.json");
 
         MetaData product = loader.getRoot().getChildOfType("object", "acme::Product");
         assertNotNull("Product entity should exist", product);
 
-        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb1");
+        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "rdb1");
         assertNotNull("source.rdb child 'acme::rdb1' should exist", src);
         assertEquals("subtype should be rdb", RdbSource.SUBTYPE_RDB, src.getSubType());
         assertTrue("src must be a MetaSource", src instanceof MetaSource);
@@ -268,7 +268,7 @@ public class MetaSourceTest extends SharedRegistryTestBase {
 
         // Source nodes are auto-named (sequential <subType>N); auto-name is suppressed
         // on canonical serialization. Lookup by the resolved qualified auto-name.
-        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "acme::rdb1");
+        MetaData src = product.getChildOfType(MetaSource.TYPE_SOURCE, "rdb1");
         assertNotNull("source.rdb child 'acme::rdb1' should exist", src);
         assertTrue("src must be a MetaSource", src instanceof MetaSource);
         assertEquals("@schema should round-trip as 'public'",

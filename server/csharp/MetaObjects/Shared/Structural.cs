@@ -67,6 +67,14 @@ public static class Structural
     /// <summary>Separator between package segments and between package and name.</summary>
     public const string PACKAGE_SEPARATOR = "::";
 
+    /// <summary>
+    /// FR-024 (ADR-0029): separator between an owner object and a nested child in a
+    /// dotted <c>extends</c> reference (<c>Customer.id</c>, <c>acme::sales::Customer.id</c>).
+    /// Names cannot contain <c>.</c>, so a <c>.</c> in the final <c>::</c>-segment of a ref
+    /// unambiguously marks a child-targeting reference.
+    /// </summary>
+    public const string CHILD_REF_SEPARATOR = ".";
+
     /// <summary>Relative-reference "go up one level" marker.</summary>
     public const string PACKAGE_PARENT = "..";
 

@@ -48,7 +48,7 @@ function oneSourceEntity(entityName: string, sourceBody: Record<string, unknown>
             children: [
               { "source.rdb": sourceBody },
               { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
           },
         },
@@ -57,29 +57,36 @@ function oneSourceEntity(entityName: string, sourceBody: Record<string, unknown>
   };
 }
 
-/** Build a one-entity model whose source.rdb has @kind plus the named physical-name attr. */
+/** Build a one-object model whose source.rdb has @kind plus the named physical-name attr.
+ *  FR-024 (B4b hard cutover): a read-only @kind can no longer be an entity's PRIMARY
+ *  source — the read-only-kind cases host on object.projection (the modern spelling);
+ *  the writable "table" case stays an entity. */
 function entityWithKindAndPhysicalName(
   kindValue: string,
   physicalNameAttr: string,
   physicalNameValue: string,
 ) {
+  const objectKey = kindValue === "table" ? "object.entity" : "object.projection";
+  const children: unknown[] = [
+    {
+      "source.rdb": {
+        "@kind": kindValue,
+        [`@${physicalNameAttr}`]: physicalNameValue,
+      },
+    },
+    { "field.long": { name: "id" } },
+  ];
+  if (objectKey === "object.entity") {
+    children.push({ "identity.primary": { "name": "id", "@fields": "id" } });
+  }
   return {
     "metadata.root": {
       package: "demo",
       children: [
         {
-          "object.entity": {
+          [objectKey]: {
             name: "Demo",
-            children: [
-              {
-                "source.rdb": {
-                  "@kind": kindValue,
-                  [`@${physicalNameAttr}`]: physicalNameValue,
-                },
-              },
-              { "field.long": { name: "id" } },
-              { "identity.primary": { "@fields": "id" } },
-            ],
+            children,
           },
         },
       ],
@@ -118,7 +125,7 @@ describe("FR-016 attr-schema registration", () => {
               children: [
                 { "source.rdb": { name: "Customers", "@kind": "table" } },
                 { "field.long": { name: "id" } },
-                { "identity.primary": { "@fields": "id" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
               ],
             },
           },

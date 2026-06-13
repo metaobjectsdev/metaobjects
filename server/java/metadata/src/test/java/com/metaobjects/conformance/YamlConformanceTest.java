@@ -186,6 +186,22 @@ public class YamlConformanceTest {
                 return;
             }
 
+            // 3b. Drain deferred extends — mirrors MetaDataLoader.load(), which
+            //     resolves the pending-extends queue BEFORE validation. FR-024:
+            //     validation (identity @fields-through-inheritance, subtype rules
+            //     on resolved supers) depends on resolution having happened; an
+            //     unresolved/mismatched extends surfaces here as
+            //     ERR_UNRESOLVED_SUPER / ERR_EXTENDS_TARGET_MISMATCH.
+            if (buildTreeOk) {
+                try {
+                    loader.drainPendingExtends();
+                } catch (MetaDataException ex) {
+                    String code = extractErrorCode(ex);
+                    if (codesSeen.add(code)) envelopesSeen.add(buildYamlEnvelopeFromException(ex, code));
+                    buildTreeOk = false;
+                }
+            }
+
             // 4. Run the post-load ValidationPhase — fires post-parse content checks
             //    (e.g. EnumField @values: ERR_BAD_ATTR_VALUE on a non-string value).
             //    Mirrors what MetaDataLoader.load() does after parsing each source.

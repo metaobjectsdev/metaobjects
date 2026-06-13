@@ -45,12 +45,20 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 
     // Read-only projections (views/etc.) are not filterable in the routes
     // generator today — skip them here to match.
-    protected override bool Filter(MetaObject entity) =>
+    protected override bool Filter(MetaObject entity) => AppliesTo(entity);
+
+    /// <summary>
+    /// True iff this entity gets a generated filter allowlist: a writable, instance-
+    /// emitting <c>object.entity</c> (read-only projections have no filter routes today).
+    /// Single source of truth shared by the generator loop AND the api-docs builder.
+    /// </summary>
+    public static bool AppliesTo(MetaObject entity) =>
         entity.IsEntity() && !entity.IsReadOnlyProjection() && InstanceArtifacts.EmitsInstanceArtifacts(entity);
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
+        var filterClass = CSharpNaming.FilterAllowlistName(entity);
         var opsByField = ComputeFilterableOps(entity);
 
         var sb = new StringBuilder();
@@ -66,7 +74,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         sb.AppendLine("/// <see cref=\"Fields\"/> lists the filterable field names; <see cref=\"OpsByField\"/>");
         sb.AppendLine("/// constrains the operator vocabulary for each field by its subtype.");
         sb.AppendLine("/// </summary>");
-        sb.AppendLine($"public static class {cls}FilterAllowlist");
+        sb.AppendLine($"public static class {filterClass}");
         sb.AppendLine("{");
 
         // Fields — the field-name set. Use System.StringComparer.Ordinal for

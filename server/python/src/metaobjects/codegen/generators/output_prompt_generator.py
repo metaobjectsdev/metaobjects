@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen import output_format_spec_emitter as ofs
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
@@ -34,17 +35,6 @@ _GENERATOR_NAME = "output-prompt-generator"
 
 # Only structured formats get a renderable output-format fragment.
 _PROMPT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
-
-
-def _snake_case(name: str) -> str:
-    """``NpcResponseOutput`` → ``npc_response_output`` — matches the sibling
-    generators' local helper (no acronym handling)."""
-    out: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def _emit_format_spec(

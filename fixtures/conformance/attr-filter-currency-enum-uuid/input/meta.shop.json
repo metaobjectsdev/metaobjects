@@ -28,6 +28,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": ["ref"]
               }
             },

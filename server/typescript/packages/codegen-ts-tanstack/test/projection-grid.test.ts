@@ -26,18 +26,20 @@ async function loadFixture() {
               { "source.rdb": { "@table": "hosts" } },
               { "field.int": { name: "id" } },
               { "field.string": { name: "name", children: [{ "view.text": {} }] } },
-              { "identity.primary": { "@fields": "id" } },
+              { "identity.primary": { "name": "id", "@fields": "id" } },
               { "layout.dataGrid": { name: "default", "@columns": ["name"] } },
             ],
           },
         },
         {
-          "object.entity": {
+          "object.projection": {
             name: "HostSummary",
-            extends: "Host",
             children: [
               { "source.rdb": { "@kind": "view", "@table": "v_host_summary" } },
-              { "identity.primary": { "@fields": "id" } },
+              { "field.int": { name: "id", extends: "Host.id" } },
+              { "field.string": { name: "name", extends: "Host.name" } },
+              { "layout.dataGrid": { name: "default", "@columns": ["name"] } },
+              { "identity.primary": { "name": "id", extends: "Host.id" } },
             ],
           },
         },

@@ -41,12 +41,13 @@
             {
               "field.object": {
                 "name": "homeAddress",
-                "@objectRef": "AddressOptional",
+                "@objectRef": "acme::AddressOptional",
                 "@storage": "flattened"
               }
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

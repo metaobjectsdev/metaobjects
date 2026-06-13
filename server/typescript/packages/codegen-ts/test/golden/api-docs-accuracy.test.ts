@@ -70,7 +70,7 @@ const FIXTURE = JSON.stringify({
             { "field.long": { name: "id" } },
             { "field.string": { name: "name" } },
             { "field.enum": { name: "status", "@values": ["active", "discontinued"] } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             { "source.rdb": { "@table": "products" } },
           ],
         },
@@ -91,7 +91,7 @@ const FIXTURE = JSON.stringify({
           children: [
             { "field.long": { name: "id" } },
             { "field.string": { name: "memo" } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             { "source.rdb": { "@table": "ledgers" } },
           ],
         },
@@ -105,7 +105,7 @@ const FIXTURE = JSON.stringify({
             { "source.rdb": { "@table": "auths" } },
             { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
             { "field.long": { name: "id" } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
@@ -786,7 +786,7 @@ const T5_FIXTURE = JSON.stringify({
             { "source.rdb": { "@table": "users" } },
             { "field.long": { name: "id" } },
             { "field.string": { name: "email", "@required": true } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
@@ -798,7 +798,7 @@ const T5_FIXTURE = JSON.stringify({
             { "source.rdb": { "@table": "tags" } },
             { "field.long": { name: "id" } },
             { "field.string": { name: "label", "@required": true } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
@@ -826,7 +826,7 @@ const T5_FIXTURE = JSON.stringify({
             { "field.long": { name: "id" } },
             { "field.string": { name: "title", "@required": true } },
             { "field.long": { name: "authorId", "@required": true } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             { "identity.reference": { name: "ref_author", "@fields": ["authorId"], "@references": "User" } },
             { "relationship.association": { name: "author", "@cardinality": "one", "@objectRef": "User" } },
             { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
@@ -846,13 +846,12 @@ const T5_FIXTURE = JSON.stringify({
       // PhaseSummary — a projection entity backed by a stored procedure → the
       // callable generator emits callPhaseSummary(db, args): Promise<PhaseSummary[]>.
       {
-        "object.entity": {
+        "object.projection": {
           name: "PhaseSummary",
           children: [
             { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
             { "field.long": { name: "caseId" } },
             { "field.string": { name: "phase" } },
-            { "identity.primary": { "@fields": "caseId" } },
           ],
         },
       },

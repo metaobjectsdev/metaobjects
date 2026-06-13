@@ -23,6 +23,24 @@ export const ERROR_CODES = [
   "ERR_MISSING_SUBTYPE",
   "ERR_DUPLICATE_NAME",
   "ERR_UNRESOLVED_SUPER",
+  // FR-024 (ADR-0029) — a dotted `Entity.child` extends ref resolved to a node
+  // whose type or subtype does not match the extending node's. Dotted-only.
+  "ERR_EXTENDS_TARGET_MISMATCH",
+  // FR-024 — an identity.* node has no name. Identities are named,
+  // author-chosen (e.g. "id"), so the dotted by-name extends form can
+  // address them.
+  "ERR_IDENTITY_NAME_REQUIRED",
+  // FR-024 — an identity.* on an object.projection lacks `extends`; a
+  // projection identity is a pass-through of an entity identity.
+  "ERR_PROJECTION_IDENTITY_NOT_EXTENDED",
+  // FR-024 — identity key correspondence broken: an extended-identity field
+  // has no local pass-through field extending it, or an explicit @fields
+  // disagrees with the computed pass-through key.
+  "ERR_IDENTITY_KEY_MISMATCH",
+  // FR-024 (ADR-0028) — a source.* on an object.projection has a writable
+  // @kind (table, or @kind omitted which defaults to table). Projections are
+  // derived read-only representations; their sources must be read-only kinds.
+  "ERR_PROJECTION_SOURCE_WRITABLE",
   "ERR_INVALID_SUBTYPE_CHILD",
   "ERR_UNKNOWN_ATTR",
   "ERR_BAD_ATTR_VALUE",
@@ -37,6 +55,34 @@ export const ERROR_CODES = [
   "ERR_OVERLAY_NO_TARGET",
   "ERR_MALFORMED_YAML",
   "ERR_INVALID_ORIGIN",
+  // FR-024 (ADR-0029 decision 5) — an implicit (omitted-@via) origin path is
+  // ambiguous: more than one single-hop relationship leads from the base
+  // entity to the @from/@of entity (the error names the candidates), or a
+  // projection's base entity cannot be derived because its fields extend
+  // multiple entities and no extended identity anchors the base.
+  "ERR_AMBIGUOUS_PATH",
+  // FR-024 (ADR-0029 decision 6) — origin cardinality contract broken: a
+  // passthrough @via path crosses a to-many hop (row-multiplying — you meant
+  // aggregate), or an aggregate @via path is to-one at every hop (you meant
+  // passthrough). Checked on explicit AND inferred paths.
+  "ERR_ORIGIN_CARDINALITY",
+  // FR-024 (ADR-0029 decision 7) — a field declares BOTH an entity-nested
+  // `extends` (shape lineage) and an `origin.passthrough` @from (data lineage)
+  // and they disagree: the resolved @from target is not the field's resolved
+  // extends target (nor anywhere on its extends chain). Host-agnostic
+  // (projections, entities, values). Aggregates are never judged (they
+  // compute something new); a top-level abstract extends target is never
+  // judged (shape-only reuse makes no lineage claim).
+  "ERR_EXTENDS_ORIGIN_MISMATCH",
+  // FR-024 (spec §7) — an object.entity field carrying an origin.* child is
+  // derived (read-only), so the entity must declare at least one source with
+  // a read-only @kind (view/materializedView/storedProc/tableFunction) to
+  // provide it. Table-only (or source-less) entities with derived fields
+  // error. Projections and object.value hosts are exempt. Until the Phase-E
+  // B4b cutover removes view-PRIMARY entities, a read-only-kind PRIMARY
+  // source also counts as providable (legacy spelling).
+  "ERR_DERIVED_FIELD_NO_READ_SOURCE",
+  "ERR_ENTITY_PRIMARY_SOURCE_READONLY",
   "ERR_INVALID_TEMPLATE",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match
@@ -84,6 +130,12 @@ export const ERROR_CODES = [
   // ADR-0023 — a registration was attempted against a registry sealed after its
   // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
   "ERR_REGISTRY_SEALED",
+  // FR-032 (ADR-0032) — a ref-bearing attr (extends/@objectRef/@references/
+  // origin @from/@of/@via/@parameterRef/@payloadRef/@responseRef) in CANONICAL
+  // JSON used a relative authoring form (leading `::` or `..::`). Canonical JSON
+  // is the self-contained interchange form: every ref MUST be fully-qualified.
+  // Relative navigation is YAML-only (the desugar expands it via expandRef).
+  "ERR_RELATIVE_REF_IN_CANONICAL",
   "ERR_UNKNOWN",
 ] as const;
 

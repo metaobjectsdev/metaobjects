@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            { "source.rdb": { "@table": "money" } },
+            { "field.long": { "name": "amount" } },
+            { "field.string": { "name": "currency" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -45,7 +45,7 @@
         "template.output": {
           "name": "SupportAnswerOutput",
           "@format": "xml",
-          "@payloadRef": "SupportAnswer",
+          "@payloadRef": "acme::support::SupportAnswer",
           "@promptStyle": "guide",
           "@textRef": "support/answer"
         }

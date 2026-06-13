@@ -32,15 +32,15 @@ describe("FR-017 M:N slim vocabulary", () => {
       { "object.entity": { name: "Post", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "PostTag", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "postId" } },
         { "field.long": { name: "tagId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "postRef", "@fields": ["postId"], "@references": "Post" } },
         { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "Tag" } } ] } },
     ] } });
@@ -59,10 +59,10 @@ describe("FR-017 M:N slim vocabulary", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
             "@joinEntity": "PostTag", "@joinFields": ["postId", "tagId"] } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
     ] } });
     expect(errors).toHaveLength(0);
     const post = findObj(root, "Post");
@@ -78,7 +78,7 @@ describe("FR-017 M:N slim vocabulary", () => {
             "@through": "Follow", "@sourceRefField": "followerId" } },
         { "relationship.association": { name: "friends", "@cardinality": "many", "@objectRef": "User",
             "@through": "Friendship", "@symmetric": true } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
     ] } });
     const user = findObj(root, "User");
     const rels = user.ownRelationships() as MetaRelationship[];
@@ -104,15 +104,15 @@ describe("FR-017 deriveM2MFields", () => {
       { "object.entity": { name: "Post", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
         { "field.long": { name: "id" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "PostTag", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "postId" } },
         { "field.long": { name: "tagId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "postRef", "@fields": ["postId"], "@references": "Post" } },
         { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "Tag" } } ] } },
     ] } });
@@ -129,12 +129,12 @@ describe("FR-017 deriveM2MFields", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "follows", "@cardinality": "many", "@objectRef": "User",
             "@through": "Follow", "@sourceRefField": "followerId" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Follow", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "followerId" } },
         { "field.long": { name: "followeeId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "followerRef", "@fields": ["followerId"], "@references": "User" } },
         { "identity.reference": { name: "followeeRef", "@fields": ["followeeId"], "@references": "User" } } ] } },
     ] } });
@@ -151,12 +151,12 @@ describe("FR-017 deriveM2MFields", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "friends", "@cardinality": "many", "@objectRef": "User",
             "@through": "Friendship", "@symmetric": true } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Friendship", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "userAId" } },
         { "field.long": { name: "userBId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "aRef", "@fields": ["userAId"], "@references": "User" } },
         { "identity.reference": { name: "bRef", "@fields": ["userBId"], "@references": "User" } } ] } },
     ] } });
@@ -173,12 +173,12 @@ describe("FR-017 deriveM2MFields", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "related", "@cardinality": "many", "@objectRef": "User",
             "@through": "UserLink" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "UserLink", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "aId" } },
         { "field.long": { name: "bId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "aRef", "@fields": ["aId"], "@references": "User" } },
         { "identity.reference": { name: "bRef", "@fields": ["bId"], "@references": "User" } } ] } },
     ] } });
@@ -200,13 +200,13 @@ describe("FR-017 M:N validation rules", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag",
             "@through": "PostTag", "@symmetric": true } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
-        { "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } } ] } },
+        { "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "PostTag", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "postId" } }, { "field.long": { name: "tagId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "p", "@fields": ["postId"], "@references": "Post" } },
         { "identity.reference": { name: "t", "@fields": ["tagId"], "@references": "Tag" } } ] } },
     ] } });
@@ -220,11 +220,11 @@ describe("FR-017 M:N validation rules", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "friends", "@cardinality": "many", "@objectRef": "User",
             "@through": "Friendship", "@symmetric": true, "@sourceRefField": "userAId" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Friendship", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "userAId" } }, { "field.long": { name: "userBId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "a", "@fields": ["userAId"], "@references": "User" } },
         { "identity.reference": { name: "b", "@fields": ["userBId"], "@references": "User" } } ] } },
     ] } });
@@ -237,13 +237,13 @@ describe("FR-017 M:N validation rules", () => {
       { "object.entity": { name: "Post", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
-        { "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } } ] } },
+        { "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "PostTag", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "postId" } }, { "field.long": { name: "tagId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "p", "@fields": ["postId"], "@references": "Post" } } ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
@@ -256,11 +256,11 @@ describe("FR-017 M:N validation rules", () => {
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "follows", "@cardinality": "many", "@objectRef": "User",
             "@through": "Follow", "@sourceRefField": "nope" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Follow", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "followerId" } }, { "field.long": { name: "followeeId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "a", "@fields": ["followerId"], "@references": "User" } },
         { "identity.reference": { name: "b", "@fields": ["followeeId"], "@references": "User" } } ] } },
     ] } });
@@ -274,9 +274,9 @@ describe("FR-017 M:N validation rules", () => {
         { "field.long": { name: "id" } },
         { "relationship.composition": { name: "program", "@objectRef": "Program",
             "@cardinality": "one", "@through": "X" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Program", children: [
-        { "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } } ] } },
+        { "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
   });
@@ -286,9 +286,9 @@ describe("FR-017 M:N validation rules", () => {
       { "object.entity": { name: "Week", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "program", "@objectRef": "Program", "@symmetric": true } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Program", children: [
-        { "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } } ] } },
+        { "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
     ] } });
     expect(codesOf(errors)).toContain("ERR_INVALID_RELATIONSHIP");
   });
@@ -298,13 +298,13 @@ describe("FR-017 M:N validation rules", () => {
       { "object.entity": { name: "Post", children: [
         { "field.long": { name: "id" } },
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag" } },
-        { "identity.primary": { "@fields": "id" } } ] } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "Tag", children: [
-        { "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } } ] } },
+        { "field.long": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
       { "object.entity": { name: "PostTag", children: [
         { "field.long": { name: "id" } },
         { "field.long": { name: "postId" } }, { "field.long": { name: "tagId" } },
-        { "identity.primary": { "@fields": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { name: "p", "@fields": ["postId"], "@references": "Post" } },
         { "identity.reference": { name: "t", "@fields": ["tagId"], "@references": "Tag" } } ] } },
     ] } });

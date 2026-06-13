@@ -21,7 +21,7 @@ const meta = {
             { "field.long": { name: "id" } },
             { "field.string": { name: "firstName", "@column": "first_name" } },
             { "field.string": { name: "lastName" } },
-            { "identity.primary": { "@fields": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
       },

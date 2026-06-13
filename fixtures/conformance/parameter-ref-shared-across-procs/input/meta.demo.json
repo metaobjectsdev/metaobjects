@@ -6,40 +6,54 @@
         "object.value": {
           "name": "PagedArgs",
           "children": [
-            { "field.int": { "name": "page" } },
-            { "field.int": { "name": "size" } }
+            {
+              "field.int": {
+                "name": "page"
+              }
+            },
+            {
+              "field.int": {
+                "name": "size"
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcA",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_a",
-                "@parameterRef": "PagedArgs"
+                "@parameterRef": "demo::PagedArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProcB",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
                 "@proc": "fn_b",
-                "@parameterRef": "PagedArgs"
+                "@parameterRef": "demo::PagedArgs"
               }
             },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
           ]
         }
       }

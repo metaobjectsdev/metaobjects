@@ -10,7 +10,7 @@
           "children": [
             { "field.long": { "name": "id" } },
             { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },

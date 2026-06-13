@@ -15,14 +15,14 @@
               }
             },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       },
       {
         "object.entity": {
           "name": "BridgeAuth",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "@discriminatorValue": "Bridge",
           "children": [
             { "field.int": { "name": "quantity" } }
@@ -32,7 +32,7 @@
       {
         "object.entity": {
           "name": "CopayAuth",
-          "extends": "Auth",
+          "extends": "demo::Auth",
           "@discriminatorValue": "Copay",
           "children": [
             { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }

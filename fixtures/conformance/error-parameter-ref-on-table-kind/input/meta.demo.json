@@ -17,11 +17,11 @@
             {
               "source.rdb": {
                 "@table": "regular_table",
-                "@parameterRef": "Args"
+                "@parameterRef": "demo::Args"
               }
             },
             { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

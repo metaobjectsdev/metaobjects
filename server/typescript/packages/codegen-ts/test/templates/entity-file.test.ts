@@ -50,7 +50,7 @@ describe("renderEntityFile", () => {
               "children": [
                 { "field.long": { "name": "id" } },
                 { "field.enum": { "name": "status", "extends": "Status" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }
@@ -92,7 +92,7 @@ describe("renderEntityFile", () => {
                 { "field.long": { "name": "id" } },
                 { "field.enum": { "name": "status", "extends": "Status" } },
                 { "field.enum": { "name": "shipmentStatus", "extends": "Status" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }
@@ -165,7 +165,7 @@ describe("renderEntityFile", () => {
               "@seeAlso": ["https://acme.com/docs/order"],
               "children": [
                 { "field.long": { "name": "id" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }
@@ -204,7 +204,7 @@ describe("renderEntityFile", () => {
                 { "source.rdb": { "@table": "users" } },
                 { "field.long": { "name": "id" } },
                 { "field.string": { "name": "email", "@description": "Primary email address." } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }
@@ -241,7 +241,7 @@ describe("renderEntityFile", () => {
               "@notes": "INTERNAL_SECRET",
               "children": [
                 { "field.long": { "name": "id" } },
-                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
               ]
             }
           }

@@ -135,7 +135,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
                     children: [{ "attr.fizz": { name: "fizz", value: "buzz" } }],
                   },
                 },
-                { "identity.primary": { "@fields": ["label"] } },
+                { "identity.primary": { "name": "id", "@fields": ["label"] } },
               ],
             },
           },
@@ -207,7 +207,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
               name: "Demo",
               children: [
                 { "field.fizz": { name: "label", "@fizz": "nope" } },
-                { "identity.primary": { "@fields": ["label"] } },
+                { "identity.primary": { "name": "id", "@fields": ["label"] } },
               ],
             },
           },
@@ -241,7 +241,7 @@ describe("Open-Closed proof: a new subtype costs one class + one registration li
               name: "Demo",
               children: [
                 { "field.fizz": { name: "label", "@fizz": "fizz" } },
-                { "identity.primary": { "@fields": ["label"] } },
+                { "identity.primary": { "name": "id", "@fields": ["label"] } },
               ],
             },
           },

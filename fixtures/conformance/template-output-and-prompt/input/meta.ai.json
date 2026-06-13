@@ -7,7 +7,7 @@
           "name": "Npc",
           "children": [
             { "field.string": { "name": "name" } },
-            { "identity.primary": { "@fields": "name" } }
+            { "identity.primary": { "name": "id", "@fields": "name" } }
           ]
         }
       },
@@ -23,7 +23,7 @@
       {
         "template.output": {
           "name": "npcCard",
-          "@payloadRef": "NpcPromptPayload",
+          "@payloadRef": "acme::ai::NpcPromptPayload",
           "@textRef": "card/npc",
           "@format": "html"
         }
@@ -31,7 +31,7 @@
       {
         "template.prompt": {
           "name": "npcTurn",
-          "@payloadRef": "NpcPromptPayload",
+          "@payloadRef": "acme::ai::NpcPromptPayload",
           "@textRef": "npc/turn",
           "@format": "xml"
         }

@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            { "source.rdb": { "@table": "countries" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            {
+              "relationship.association": {
+                "name": "country",
+                "@objectRef": "demo::Country",
+                "@cardinality": "one"
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomerSummary",
+          "children": [
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id" } },
+            {
+              "field.int": {
+                "name": "countryCount",
+                "children": [
+                  { "origin.aggregate": { "@agg": "count", "@of": "demo::Country.id", "@via": "demo::Customer.country" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

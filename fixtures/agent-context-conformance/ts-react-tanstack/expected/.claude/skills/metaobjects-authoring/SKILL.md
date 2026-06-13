@@ -34,7 +34,7 @@ subtype — there is **no** separate `subType` body key.
 { "object.entity": { "name": "User" } }
 { "field.string": { "name": "email", "@required": true } }
 { "field.enum":   { "name": "status", "@values": ["OPEN", "CLOSED"] } }
-{ "identity.primary": { "@fields": ["id"] } }
+{ "identity.primary": { "name": "id", "@fields": ["id"] } }
 ```
 
 A complete entity in canonical JSON:
@@ -52,7 +52,7 @@ A complete entity in canonical JSON:
             { "field.long":   { "name": "id" } },
             { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
             { "field.string": { "name": "bio",  "@maxLength": 2000 } },
-            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }
           ]
         }
       }
@@ -74,7 +74,7 @@ metadata:
           - field.long:   { name: id }
           - field.string: { name: name, required: true, maxLength: 200 }
           - field.string: { name: bio, maxLength: 2000 }
-          - identity.primary: { fields: id, generation: increment }
+          - identity.primary: { name: id, fields: id, generation: increment }
 ```
 
 ## Reserved structural keys vs. attributes
@@ -206,8 +206,8 @@ reference for navigation/typing/codegen only. Referential actions
 `relationship.*` node (see Relationships below).
 
 ```json
-{ "identity.primary":   { "@fields": ["id"], "@generation": "increment" } }
-{ "identity.secondary": { "@fields": ["email"] } }
+{ "identity.primary":   { "name": "id", "@fields": ["id"], "@generation": "increment" } }
+{ "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
 { "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@enforce": true } }
 ```
 
@@ -251,8 +251,15 @@ each with a `@role`, exactly one `primary`.
 { "source.rdb": { "@kind": "view", "@table": "v_author", "@schema": "blog" } }
 ```
 
-A `view`-kind entity's fields carry `origin.*` children (`passthrough` /
-`aggregate` / `collection`) declaring where each value comes from.
+**An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
+legal only in non-primary roles (e.g. table `primary` + view `replica` for
+read-through). A derived read model over a view/proc is an **`object.projection`**
+(FR-024): its fields `extends` entity fields (`extends: "Author.id"` — dotted
+child traversal, package only on the root segment) and/or carry `origin.*`
+children (`passthrough` / `aggregate` / `collection`) declaring assembly; its
+identity passes through via `extends` (`identity.primary: { name: id, extends:
+"Author.id" }`); it is read-only by construction and the declared field set IS
+the exposure (fail-closed).
 
 ## Abstracts + `extends` (deferred resolution) + `overlay`
 
@@ -275,7 +282,7 @@ change.
     children:
       - source.rdb: { table: authors }
       - field.string: { name: name, required: true }
-      - identity.primary: { fields: id }
+      - identity.primary: { name: id, fields: id }
 ```
 
 Resolution facts:

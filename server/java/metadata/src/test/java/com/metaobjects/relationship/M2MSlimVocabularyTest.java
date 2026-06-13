@@ -107,7 +107,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     @Test
     public void accessorsReadSlimVocabulary() {
         MetaDataLoader loader = loadThrough(DIRECTED, "directed.json");
-        MetaRelationship r = rel(loader, "acme::User", "acme::follows");
+        MetaRelationship r = rel(loader, "acme::User", "follows");
         assertEquals("Follow", r.getThrough());
         assertEquals("followerId", r.getSourceRefField());
         assertFalse(r.isSymmetric());
@@ -118,7 +118,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     @Test
     public void symmetricAccessorReadsBoolean() {
         MetaDataLoader loader = loadThrough(SYMMETRIC, "symmetric.json");
-        MetaRelationship r = rel(loader, "acme::User", "acme::friends");
+        MetaRelationship r = rel(loader, "acme::User", "friends");
         assertTrue(r.isSymmetric());
         assertEquals("Friendship", r.getThrough());
         assertNull(r.getSourceRefField());
@@ -138,7 +138,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     public void deriveHetero() {
         MetaDataLoader loader = loadThrough(HETERO, "hetero.json");
         MetaRoot root = loader.getRoot();
-        M2MFields f = M2MFields.derive(rel(loader, "acme::Post", "acme::tags"),
+        M2MFields f = M2MFields.derive(rel(loader, "acme::Post", "tags"),
             obj(loader, "acme::Post"), root);
         assertEquals("postId", f.getSourceField());
         assertEquals("tagId", f.getTargetField());
@@ -147,7 +147,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     @Test
     public void deriveDirectedSelfJoin() {
         MetaDataLoader loader = loadThrough(DIRECTED, "directed.json");
-        M2MFields f = M2MFields.derive(rel(loader, "acme::User", "acme::follows"),
+        M2MFields f = M2MFields.derive(rel(loader, "acme::User", "follows"),
             obj(loader, "acme::User"), loader.getRoot());
         assertEquals("followerId", f.getSourceField());
         assertEquals("followeeId", f.getTargetField());
@@ -156,7 +156,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     @Test
     public void deriveSymmetricSelfJoin() {
         MetaDataLoader loader = loadThrough(SYMMETRIC, "symmetric.json");
-        M2MFields f = M2MFields.derive(rel(loader, "acme::User", "acme::friends"),
+        M2MFields f = M2MFields.derive(rel(loader, "acme::User", "friends"),
             obj(loader, "acme::User"), loader.getRoot());
         // Declaration order: userAId first, userBId second.
         assertEquals("userAId", f.getSourceField());

@@ -112,9 +112,9 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
-        val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
-        val parserClass = templateShort + "Parser"
-        val payloadClass = templateShort + "Payload"
+        val outPkg = KotlinNaming.promptsPackage(templatePkg)
+        val parserClass = KotlinNaming.parserName(templateShort)
+        val payloadClass = KotlinNaming.payloadName(templateShort)
         val extractedClass = templateShort + "Extracted"
         val parseFn = "parse$templateShort"
         val safeParseFn = "safeParse$templateShort"

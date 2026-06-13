@@ -8,7 +8,7 @@
           "children": [
             { "field.long": { "name": "id" } },
             { "field.double": { "name": "amount" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
       }

@@ -50,7 +50,7 @@
         "template.prompt": {
           "name": "describeProduct",
           "@format": "xml",
-          "@payloadRef": "ProductPromptPayload",
+          "@payloadRef": "acme::ai::ProductPromptPayload",
           "@textRef": "product/describe"
         }
       },
@@ -58,7 +58,7 @@
         "template.output": {
           "name": "productCard",
           "@format": "html",
-          "@payloadRef": "ProductPromptPayload",
+          "@payloadRef": "acme::ai::ProductPromptPayload",
           "@promptStyle": "guide",
           "@textRef": "product/card"
         }
@@ -66,7 +66,7 @@
       {
         "template.toolcall": {
           "name": "lookupProduct",
-          "@payloadRef": "ProductPromptPayload",
+          "@payloadRef": "acme::ai::ProductPromptPayload",
           "@toolName": "lookup_product"
         }
       },
@@ -154,6 +154,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -306,14 +307,14 @@
             {
               "field.object": {
                 "name": "dimensions",
-                "@objectRef": "Dimensions",
+                "@objectRef": "acme::catalog::Dimensions",
                 "@storage": "flattened"
               }
             },
             {
               "field.object": {
                 "name": "seo",
-                "@objectRef": "SeoMeta",
+                "@objectRef": "acme::catalog::SeoMeta",
                 "@storage": "jsonb"
               }
             },
@@ -326,14 +327,14 @@
               "relationship.aggregation": {
                 "name": "category",
                 "@cardinality": "one",
-                "@objectRef": "Category"
+                "@objectRef": "acme::catalog::Category"
               }
             },
             {
               "relationship.association": {
                 "name": "suppliers",
                 "@cardinality": "many",
-                "@objectRef": "Supplier",
+                "@objectRef": "acme::catalog::Supplier",
                 "@through": "ProductSupplier"
               }
             },
@@ -352,7 +353,7 @@
                 "@fields": [
                   "categoryId"
                 ],
-                "@references": "Category"
+                "@references": "acme::catalog::Category"
               }
             },
             {
@@ -400,6 +401,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -422,7 +424,7 @@
               "relationship.composition": {
                 "name": "products",
                 "@cardinality": "many",
-                "@objectRef": "Product"
+                "@objectRef": "acme::catalog::Product"
               }
             }
           ]
@@ -447,6 +449,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -467,7 +470,7 @@
               "relationship.association": {
                 "name": "peers",
                 "@cardinality": "many",
-                "@objectRef": "Supplier",
+                "@objectRef": "acme::catalog::Supplier",
                 "@symmetric": true,
                 "@through": "SupplierPeer"
               }
@@ -502,6 +505,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -513,7 +517,7 @@
                 "@fields": [
                   "productId"
                 ],
-                "@references": "Product"
+                "@references": "acme::catalog::Product"
               }
             },
             {
@@ -522,7 +526,7 @@
                 "@fields": [
                   "supplierId"
                 ],
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             }
           ]
@@ -555,6 +559,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]
@@ -566,7 +571,7 @@
                 "@fields": [
                   "supplierAId"
                 ],
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             },
             {
@@ -575,40 +580,17 @@
                 "@fields": [
                   "supplierBId"
                 ],
-                "@references": "Supplier"
+                "@references": "acme::catalog::Supplier"
               }
             }
           ]
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "ProductSummary",
-          "extends": "acme::catalog::Product",
           "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
-          "@uiHints": {
-            "group": "inventory",
-            "tier": "standard"
-          },
           "children": [
-            {
-              "field.long": {
-                "name": "id"
-              }
-            },
-            {
-              "field.timestamp": {
-                "name": "createdAt",
-                "@autoSet": "onCreate"
-              }
-            },
-            {
-              "identity.primary": {
-                "@fields": [
-                  "id"
-                ]
-              }
-            },
             {
               "source.rdb": {
                 "@kind": "view",
@@ -616,216 +598,9 @@
               }
             },
             {
-              "field.string": {
-                "name": "sku",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@maxLength": 32,
-                "@required": true,
-                "@unique": true,
-                "children": [
-                  {
-                    "validator.required": {}
-                  },
-                  {
-                    "validator.length": {
-                      "@max": 32,
-                      "@min": 3
-                    }
-                  },
-                  {
-                    "validator.regex": {
-                      "@pattern": "^[A-Z0-9-]+$"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field.string": {
-                "name": "name",
-                "@column": "product_name",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@required": true,
-                "@sortable": true
-              }
-            },
-            {
-              "field.int": {
-                "name": "stockQty",
-                "@db.indexed": true,
-                "@filterable": true,
-                "children": [
-                  {
-                    "validator.numeric": {
-                      "@max": 100000,
-                      "@min": 0
-                    }
-                  }
-                ]
-              }
-            },
-            {
               "field.long": {
-                "name": "viewCount"
-              }
-            },
-            {
-              "field.double": {
-                "name": "rating",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.float": {
-                "name": "discountFactor"
-              }
-            },
-            {
-              "field.decimal": {
-                "name": "weightedScore",
-                "@db.indexed": true,
-                "@filterable": true,
-                "@precision": 12,
-                "@scale": 4
-              }
-            },
-            {
-              "field.boolean": {
-                "name": "active",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.date": {
-                "name": "releaseDate",
-                "@db.indexed": true,
-                "@filterable": true
-              }
-            },
-            {
-              "field.time": {
-                "name": "dailyRestockAt"
-              }
-            },
-            {
-              "field.timestamp": {
-                "name": "updatedAt",
-                "@autoSet": "onUpdate",
-                "@dbColumnType": "timestamp_with_tz"
-              }
-            },
-            {
-              "field.uuid": {
-                "name": "externalRef",
-                "@unique": true
-              }
-            },
-            {
-              "field.enum": {
-                "name": "status",
-                "extends": "acme::common::Lifecycle",
-                "@db.indexed": true,
-                "@description": "Reusable lifecycle enum — extended by concrete enum fields.",
-                "@filterable": true,
-                "@values": [
-                  "DRAFT",
-                  "ACTIVE",
-                  "ARCHIVED"
-                ]
-              }
-            },
-            {
-              "field.currency": {
-                "name": "priceCents",
-                "@currency": "USD",
-                "@db.indexed": true,
-                "@filterable": true,
-                "children": [
-                  {
-                    "view.currency": {
-                      "@locale": "en-US"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field.object": {
-                "name": "dimensions",
-                "@objectRef": "Dimensions",
-                "@storage": "flattened"
-              }
-            },
-            {
-              "field.object": {
-                "name": "seo",
-                "@objectRef": "SeoMeta",
-                "@storage": "jsonb"
-              }
-            },
-            {
-              "field.long": {
-                "name": "categoryId"
-              }
-            },
-            {
-              "relationship.aggregation": {
-                "name": "category",
-                "@cardinality": "one",
-                "@objectRef": "Category"
-              }
-            },
-            {
-              "relationship.association": {
-                "name": "suppliers",
-                "@cardinality": "many",
-                "@objectRef": "Supplier",
-                "@through": "ProductSupplier"
-              }
-            },
-            {
-              "identity.secondary": {
-                "name": "bySku",
-                "@fields": [
-                  "sku"
-                ]
-              }
-            },
-            {
-              "identity.reference": {
-                "name": "fkCategory",
-                "@enforce": true,
-                "@fields": [
-                  "categoryId"
-                ],
-                "@references": "Category"
-              }
-            },
-            {
-              "layout.dataGrid": {
-                "name": "default",
-                "@columns": [
-                  "sku",
-                  "name",
-                  "status",
-                  "priceCents",
-                  "active"
-                ],
-                "@defaultSortField": "name",
-                "@defaultSortOrder": "asc",
-                "@filterable": true,
-                "@pageSize": 50
-              }
-            },
-            {
-              "field.string": {
-                "name": "notes",
-                "@dbColumnType": "jsonb",
-                "@maxLength": 500
+                "name": "id",
+                "extends": "acme::catalog::Product.id"
               }
             },
             {
@@ -834,7 +609,7 @@
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "Product.sku"
+                      "@from": "acme::catalog::Product.sku"
                     }
                   }
                 ]
@@ -847,8 +622,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "Supplier.id",
-                      "@via": "Product.suppliers"
+                      "@of": "acme::catalog::Supplier.id",
+                      "@via": "acme::catalog::Product.suppliers"
                     }
                   }
                 ]
@@ -862,9 +637,18 @@
                 "children": [
                   {
                     "origin.collection": {
-                      "@via": "Product.suppliers"
+                      "@via": "acme::catalog::Product.suppliers"
                     }
                   }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::catalog::Product.id",
+                "@fields": [
+                  "id"
                 ]
               }
             }
@@ -890,6 +674,7 @@
             },
             {
               "identity.primary": {
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

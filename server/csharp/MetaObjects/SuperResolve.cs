@@ -57,18 +57,105 @@ internal static class SuperResolve
     // -----------------------------------------------------------------------
 
     /// <summary>
+    /// FR-024 (ADR-0029): the type-scope of the node whose <c>extends</c> is being
+    /// resolved. A dotted <c>Entity.child</c> ref selects among the owner's children of
+    /// the SAME type as the referrer — a field ref resolves fields, an identity
+    /// ref resolves identities. Required for the dotted branch; ignored for
+    /// dot-free refs (legacy behavior unchanged).
+    /// </summary>
+    public sealed record ReferrerScope(string Type);
+
+    /// <summary>
+    /// FR-024: true when a ref's final <c>::</c>-segment contains a <c>.</c> — i.e. the ref
+    /// targets a child nested inside an object (<c>Customer.id</c>,
+    /// <c>acme::sales::Customer.id</c>). Names cannot contain <c>.</c>, so this is
+    /// unambiguous. Call sites use this to apply the dotted-only
+    /// type/subtype-mismatch check (ERR_EXTENDS_TARGET_MISMATCH) without altering
+    /// shipped top-level extends behavior.
+    /// </summary>
+    public static bool IsChildTargetingRef(string reference)
+    {
+        int lastSep = reference.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        string lastSegment = lastSep == -1 ? reference : reference[(lastSep + PACKAGE_SEPARATOR.Length)..];
+        return lastSegment.Contains(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// FR-024: split a child-targeting ref into the root-object ref and the child
+    /// traversal path. The addressing model: a package qualifies the ROOT-level
+    /// node only; every subsequent dotted segment traverses CHILD NAMES to any
+    /// depth (<c>Customer.id</c>, <c>Customer.priceCents.display</c> — object →
+    /// field → view). Returns null for degenerate empty parts (<c>.id</c>,
+    /// <c>Customer.</c>, <c>Customer..x</c>).
+    /// </summary>
+    private static (string OwnerRef, string[] Path)? ParseChildTargetingRef(string reference)
+    {
+        int lastSep = reference.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        int segStart = lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length;
+        string lastSegment = reference[segStart..];
+        string[] parts = lastSegment.Split(CHILD_REF_SEPARATOR, StringSplitOptions.None);
+        if (parts.Length < 2 || Array.Exists(parts, p => p == "")) return null;
+        return (reference[..segStart] + parts[0], parts[1..]);
+    }
+
+    /// <summary>
     /// Resolve a single super reference string against a tree.
+    ///
+    /// <para>
+    /// FR-024 (ADR-0029): a ref whose final segment is dotted (<c>Customer.id</c>)
+    /// targets a child nested inside an object. The owner part resolves with the
+    /// existing strategies (absolute / relative / bare / same-package); the child
+    /// is then selected among the owner's EFFECTIVE children (so inherited
+    /// children resolve) by name AND the referrer's type (type-scoped). A dotted
+    /// ref that does not resolve returns null WITHOUT falling through to the
+    /// bare lookup; a dotted ref with no <paramref name="referrerScope"/> is unresolvable.
+    /// </para>
     /// </summary>
     /// <param name="reference">
-    /// The raw super reference (e.g. "Fruit", "::pkg::Name", "..::common::id").
+    /// The raw super reference (e.g. "Fruit", "::pkg::Name", "..::common::id", "Customer.id").
     /// </param>
     /// <param name="contextPackage">
     /// The package of the model whose super is being resolved.
     /// </param>
     /// <param name="root">The root MetaData of the accumulating tree to search within.</param>
+    /// <param name="referrerScope">FR-024: the extending node's type — required to resolve dotted refs.</param>
     /// <returns>The resolved MetaData, or null if the reference cannot be resolved.</returns>
-    public static MetaData? ResolveSuperRef(string reference, string contextPackage, MetaData root)
+    public static MetaData? ResolveSuperRef(
+        string reference,
+        string contextPackage,
+        MetaData root,
+        ReferrerScope? referrerScope = null)
     {
+        // ---------------------------------------------------------------------
+        // 0. FR-024 dotted child-targeting ref: `<rootRef>.<child>...<child>`
+        //
+        // Addressing model (ADR-0029): the package qualifies the ROOT-level node
+        // only; each subsequent segment traverses CHILD NAMES to any depth
+        // (object → field → view: `Customer.priceCents.display`). INTERMEDIATE
+        // segments select by UNIQUE name among the current node's effective
+        // children (a cross-type name collision is ambiguous → unresolved); the
+        // FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
+        // ---------------------------------------------------------------------
+        if (IsChildTargetingRef(reference))
+        {
+            if (referrerScope is null) return null;
+            (string OwnerRef, string[] Path)? parsed = ParseChildTargetingRef(reference);
+            if (parsed is null) return null; // degenerate (empty segment)
+            MetaData? current = ResolveSuperRef(parsed.Value.OwnerRef, contextPackage, root);
+            if (current is null) return null;
+            for (int i = 0; i < parsed.Value.Path.Length - 1; i++)
+            {
+                string seg = parsed.Value.Path[i];
+                var matches = current.Children().Where(c => c.Name == seg).ToList();
+                if (matches.Count != 1) return null; // missing or ambiguous intermediate
+                current = matches[0];
+            }
+            string last = parsed.Value.Path[^1];
+            return current
+                .Children()
+                .FirstOrDefault(c => c.Name == last && c.Type == referrerScope.Type);
+        }
+
         // ---------------------------------------------------------------------
         // 1. Absolute reference: leading "::"
         // ---------------------------------------------------------------------
@@ -126,10 +213,37 @@ internal static class SuperResolve
     // Deferred resolution — second pass after all files parsed
     // -----------------------------------------------------------------------
 
+    /// <summary>
+    /// FR-024: why deferred super resolution failed.
+    /// <list type="bullet">
+    /// <item><see cref="Unresolved"/> — no target found (loader emits ERR_UNRESOLVED_SUPER).</item>
+    /// <item><see cref="TargetMismatch"/> — a dotted child-targeting ref resolved, but the
+    /// target's type/subtype differs from the extending node's (loader emits
+    /// ERR_EXTENDS_TARGET_MISMATCH). Applies ONLY to dotted refs — top-level
+    /// extends behavior is unchanged.</item>
+    /// </list>
+    /// </summary>
+    public enum SuperFailureKind
+    {
+        Unresolved,
+        TargetMismatch,
+    }
+
+    /// <summary>A node's type + subType identity, for the target-mismatch message.</summary>
+    public sealed record TypeIdentity(string Type, string SubType);
+
     /// <summary>One node whose extends reference could not be resolved against the full tree.
     /// <see cref="Node"/> is the offending referrer node (useful for FR5a / ADR-0009 to
-    /// attach <c>node.Source</c> to the loader error envelope).</summary>
-    public sealed record DeferredSuperFailure(string NodeFqn, string Ref, MetaData? Node = null);
+    /// attach <c>node.Source</c> to the loader error envelope).
+    /// FR-024: <see cref="Kind"/> distinguishes unresolved refs from dotted target-mismatch;
+    /// <see cref="Target"/> / <see cref="Referrer"/> are populated for target-mismatch only.</summary>
+    public sealed record DeferredSuperFailure(
+        string NodeFqn,
+        string Ref,
+        MetaData? Node = null,
+        SuperFailureKind Kind = SuperFailureKind.Unresolved,
+        TypeIdentity? Target = null,
+        TypeIdentity? Referrer = null);
 
     /// <summary>
     /// Walk the tree, resolve every node's SuperRef against the full root,
@@ -145,9 +259,25 @@ internal static class SuperResolve
             if (node.SuperRef is null) return;
             if (node.SuperData is not null) return;
             string effectivePkg = node.Package ?? ctxPkg;
-            MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root);
+            // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
+            // type-scoped (a field ref selects fields; an identity ref identities).
+            MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root, new ReferrerScope(node.Type));
             if (target is not null)
             {
+                // FR-024: a dotted ref must target a node of the SAME type and subtype
+                // as the extending node. Dotted-only — top-level extends is unchanged.
+                if (IsChildTargetingRef(node.SuperRef) &&
+                    (target.Type != node.Type || target.SubType != node.SubType))
+                {
+                    failures.Add(new DeferredSuperFailure(
+                        node.Fqn(),
+                        node.SuperRef,
+                        node,
+                        SuperFailureKind.TargetMismatch,
+                        new TypeIdentity(target.Type, target.SubType),
+                        new TypeIdentity(node.Type, node.SubType)));
+                    return;
+                }
                 try
                 {
                     node.SetSuperResolved(target);

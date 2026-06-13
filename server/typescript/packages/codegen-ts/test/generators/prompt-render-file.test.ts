@@ -27,7 +27,7 @@ function makeCtx(root: Awaited<ReturnType<typeof loadRoot>>): GenContext {
 describe("promptRender() factory", () => {
   test("emits no files when metadata has no payloads and no prompts", async () => {
     const root = await loadRoot([
-      { "object.entity": { name: "Foo", children: [{ "field.string": { name: "id" } }, { "identity.primary": { "@fields": "id" } }] } },
+      { "object.entity": { name: "Foo", children: [{ "field.string": { name: "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } }] } },
     ]);
     const gen = promptRender();
     const out = await gen.generate(makeCtx(root));
