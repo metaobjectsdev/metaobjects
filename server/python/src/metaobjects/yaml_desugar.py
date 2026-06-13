@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .errors import ErrorCode
+from .naming_refs import REF_BEARING_ATTR_NAMES, expand_ref
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_CLASS,
@@ -97,8 +98,59 @@ class DesugarResult:
 def desugar(input_obj: object, registry: TypeRegistry) -> DesugarResult:
     """Desugar a parsed-YAML authoring document into a canonical-shaped object."""
     errors: list[CollectedError] = []
-    node = _desugar_node(input_obj, registry, errors, "<root>")
+    # FR-026: root package context starts empty; each node's own `package` body
+    # key seeds the context threaded down to its children for ref expansion.
+    node = _desugar_node(input_obj, registry, errors, "<root>", "")
     return DesugarResult(canonical=node if node is not None else {}, errors=errors)
+
+
+def _effective_package_for(raw_body: object, parent_pkg: str) -> str:
+    """FR-026 (ADR-0032) — compute a node's effective package from its raw
+    ``package`` body key (inheriting *parent_pkg* when absent).
+
+    Mirrors TS ``effectivePackageFor`` / the parser's package resolution: a
+    leading ``::`` on a child package prepends the parent; otherwise it is used
+    as-is. The ``package`` attr itself is never ref-expanded — it is identity.
+    """
+    if not isinstance(raw_body, dict):
+        return parent_pkg
+    raw_pkg = raw_body.get(KEY_PACKAGE)
+    if not isinstance(raw_pkg, str):
+        return parent_pkg
+    if parent_pkg != "" and raw_pkg.startswith(PACKAGE_SEP):
+        return parent_pkg + raw_pkg
+    return raw_pkg
+
+
+def _expand_ref_value(
+    raw: object,
+    node_pkg: str,
+    errors: list[CollectedError],
+    path: str,
+    ref_label: str,
+) -> object:
+    """FR-026 — expand a ref-bearing value to FQN. A ref value is a single string
+    (most refs) or a string-array (``@references`` can carry multiple).
+    ``expand_ref`` preserves any FR-024 dotted child suffix. A parent-relative
+    over-drop is collected as ERR_BAD_ATTR_VALUE and the raw value passes through.
+    """
+    if isinstance(raw, str):
+        try:
+            return expand_ref(raw, node_pkg)
+        except ValueError as exc:
+            errors.append(CollectedError(
+                message=f"Cannot expand reference '{ref_label}' at {path}: {exc}",
+                code=ErrorCode.ERR_BAD_ATTR_VALUE,
+            ))
+            return raw
+    if isinstance(raw, list):
+        return [
+            _expand_ref_value(el, node_pkg, errors, path, ref_label)
+            if isinstance(el, str)
+            else el
+            for el in raw
+        ]
+    return raw
 
 
 def _desugar_node(
@@ -106,6 +158,7 @@ def _desugar_node(
     registry: TypeRegistry,
     errors: list[CollectedError],
     path: str,
+    parent_pkg: str,
 ) -> dict[str, Any] | None:
     """Desugar one node - a single-key mapping { "type.subType": body }.
 
@@ -152,6 +205,11 @@ def _desugar_node(
     # Rule 1: a bare `type` key -> the type's registry default subType.
     canonical_key = _resolve_key(key, registry, errors, path)
 
+    # FR-026: this node's effective package context (its own `package` body key,
+    # else inherited). Used to expand its ref-bearing attrs AND threaded to its
+    # children so their bare/relative refs resolve against the right package.
+    node_pkg = _effective_package_for(raw_body, parent_pkg)
+
     # FR5b - position of the wrapper key (the `field.string:` line). Used to
     # back-fill `yaml_position` on synthesized bodies (Rule 2 scalar lift) and
     # on the canonical wrapper after Rule 1 / Rule 4 rewrites.
@@ -161,7 +219,7 @@ def _desugar_node(
 
     # Rule 2: a scalar body -> { name: <scalar> }.
     body = _desugar_body(
-        raw_body, registry, canonical_key, errors, path, wrapper_key_pos,
+        raw_body, registry, canonical_key, errors, path, wrapper_key_pos, node_pkg,
     )
 
     # Rule 4 (cont.): stamp isArray onto the canonical body.
@@ -174,7 +232,7 @@ def _desugar_node(
         children: list[Any] = []
         for i, raw_child in enumerate(raw_children):
             child_path = f"{path}.{KEY_CHILDREN}[{i}]"
-            child = _desugar_node(raw_child, registry, errors, child_path)
+            child = _desugar_node(raw_child, registry, errors, child_path, node_pkg)
             # On a bad child keep an empty-object placeholder so sibling
             # indices stay stable; the error is already collected.
             children.append(child if child is not None else {})
@@ -219,6 +277,7 @@ def _desugar_body(
     errors: list[CollectedError],
     path: str,
     wrapper_key_pos: YamlPosition | None = None,
+    node_pkg: str = "",
 ) -> dict[str, Any]:
     """Rule 2 + 5 - normalize a node body into a canonical mapping.
 
@@ -291,16 +350,25 @@ def _desugar_body(
             continue
 
         if key in RESERVED_KEYS or key.startswith(ATTR_PREFIX):
-            out[key] = value
             out_key = key
+            # FR-026: expand a ref-bearing value to FQN. `extends` (reserved) and
+            # the @-prefixed ref attrs are expanded; everything else is verbatim.
+            # The `package` key is never expanded (it is identity).
+            attr_name = key[len(ATTR_PREFIX):] if key.startswith(ATTR_PREFIX) else ""
+            if key == KEY_EXTENDS or (attr_name and attr_name in REF_BEARING_ATTR_NAMES):
+                out[key] = _expand_ref_value(value, node_pkg, errors, path, key)
+            else:
+                out[key] = value
             # D2 also applies to author-written @-keys (the awkward form).
-            if key.startswith(ATTR_PREFIX):
-                attr_name = key[len(ATTR_PREFIX):]
-                if attr_name and attr_name not in RESERVED_KEYS:
-                    _check_coercion(attr_name, value, schema_index, errors, path)
+            if attr_name and attr_name not in RESERVED_KEYS:
+                _check_coercion(attr_name, value, schema_index, errors, path)
         else:
             out_key = f"{ATTR_PREFIX}{key}"
-            out[out_key] = value
+            # FR-026: a bare (sigil-free) ref-bearing attr is expanded to FQN too.
+            if key in REF_BEARING_ATTR_NAMES:
+                out[out_key] = _expand_ref_value(value, node_pkg, errors, path, out_key)
+            else:
+                out[out_key] = value
             _check_coercion(key, value, schema_index, errors, path)
 
         if src_positions is not None:
