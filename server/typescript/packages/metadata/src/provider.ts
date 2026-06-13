@@ -7,6 +7,8 @@
 
 import { TypeRegistry } from "./registry.js";
 import { MetaModelError } from "./errors.js";
+import { mergeConstraints } from "./constraint-merge.js";
+import { validateConstraints } from "./constraint-validate.js";
 
 /** A unit of metamodel registration. One provider per package. */
 export interface MetaDataTypeProvider {
@@ -28,11 +30,27 @@ export interface MetaDataTypeProvider {
  */
 export function composeRegistry(
   providers: readonly MetaDataTypeProvider[],
+  opts?: { validate?: boolean },
 ): TypeRegistry {
   const ordered = topoSortProviders(providers);
   const registry = new TypeRegistry();
   for (const provider of ordered) {
     provider.registerTypes(registry);
+  }
+  // FR-033 — opt-in metamodel contradiction gate. The library bootstrap (the
+  // loader's default registry) sets validate:true so a contradictory provider set
+  // fails fast at bootstrap (mirrors ADR-0023 strictness). Off by default so
+  // synthetic/partial registries (tests, incremental composition) are unaffected.
+  if (opts?.validate === true) {
+    const contradictions = validateConstraints(mergeConstraints(registry), registry);
+    if (contradictions.length > 0) {
+      throw new MetaModelError(
+        `composeRegistry: the provider set has ${contradictions.length} metamodel ` +
+          `constraint contradiction(s) (FR-033):\n` +
+          contradictions.map((e) => `  - ${e.message}`).join("\n"),
+        { code: "ERR_INVALID_METAMODEL_CONSTRAINT" },
+      );
+    }
   }
   return registry;
 }

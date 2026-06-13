@@ -136,6 +136,12 @@ export const ERROR_CODES = [
   // is the self-contained interchange form: every ref MUST be fully-qualified.
   // Relative navigation is YAML-only (the desugar expands it via expandRef).
   "ERR_RELATIVE_REF_IN_CANONICAL",
+  // FR-033 — a provider set's merged metamodel constraint graph is contradictory.
+  // Surfaced by validateConstraints (constraint-validate.ts) at registry compose:
+  // dangling ref / unsatisfiable required child / bad cardinality / closed-set
+  // clash / required-child cycle / conflicting attr redefinition. The detail names
+  // which of the six checks fired and the offending type(s).
+  "ERR_INVALID_METAMODEL_CONSTRAINT",
   "ERR_UNKNOWN",
 ] as const;
 

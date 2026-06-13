@@ -135,6 +135,11 @@ export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
 
+// FR-033 — the constraint engine: additive merge + the contradiction validator.
+export { mergeConstraints } from "./constraint-merge.js";
+export type { EffectiveConstraints } from "./constraint-merge.js";
+export { validateConstraints } from "./constraint-validate.js";
+
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
 export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "./registry-manifest.js";
 export type { AttrClassification } from "./registry-manifest.js";
