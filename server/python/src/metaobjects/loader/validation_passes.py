@@ -88,6 +88,23 @@ from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SU
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..source import resolved_source
 
+# A subtype-specific template attr is valid ONLY on the subtype it is registered
+# for. The metamodel registers these per-subtype (see the core_types template block),
+# but the lenient loader does not reject a misplaced one — _validate_templates does.
+# Mirrors the per-subtype TEMPLATE_ATTRS_MAP split across the other ports.
+_TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, str] = {
+    tc.TEMPLATE_ATTR_MAX_TOKENS: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_REQUIRED_SLOTS: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_MODEL: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_RESPONSE_REF: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_PROMPT_STYLE: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_KIND: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_SUBJECT_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_HTML_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_TEXT_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_TOOL_NAME: tc.TEMPLATE_SUBTYPE_TOOLCALL,
+}
+
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
@@ -1433,6 +1450,21 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
         payload_ref = tpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
         has_payload_ref = isinstance(payload_ref, str) and payload_ref
+
+        # --- subtype-specific attr on the wrong subtype ---
+        # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
+        # (output-only) on a template.prompt. tpl.attr() reads the node's own
+        # attrs (not the @extends super-chain), matching the other checks here.
+        for attr_name, allowed_sub in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
+            if tpl.attr(attr_name) is not None and tpl.sub_type != allowed_sub:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_TEMPLATE,
+                    message=(
+                        f'template.{tpl.sub_type} "{tpl.name}" carries @{attr_name}, '
+                        f"which is only valid on template.{allowed_sub}"
+                    ),
+                    envelope=tpl.source,
+                ))
 
         # --- @kind / textRef / email part-ref cross-field rules ---
         # template.output is either a document (@kind absent/"document" -> @textRef
