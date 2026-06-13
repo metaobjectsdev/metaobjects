@@ -1,6 +1,6 @@
 # Provider definitions as declarative data + metamodel docs for LLMs (design)
 
-_Status: DESIGNED (brainstormed + approved 2026-06-13). Not yet numbered as an FR._
+_Status: DESIGNED (brainstormed + approved 2026-06-13). FR-033 (GH #23)._
 
 ## 1. Problem
 
