@@ -7,18 +7,24 @@
 // vocabulary drift (a port's registry diverging — wrong attr names, missing
 // subtypes, different required-ness — with every behavioral corpus still green).
 //
-// The IN/OUT boundary (the v1 logical subset emittable byte-identically by all
-// five ports) is documented in fixtures/registry-conformance/README.md. In
-// short: type.subType + attrs[{name, valueType, required}] + commonAttrs +
-// defaultSubTypes. EXCLUDED from v1 (per-port-physical or not-universally-
-// tracked-on-the-registry): factories/native bindings; AttrSchema.default and
-// allowedValues (Java's attr model — ChildRequirement — carries neither);
-// inheritsFrom (only Java tracks a declared parent on the registry); childRules
-// (Java conflates attrs + child-type rules + placement/validation constraints
-// in one ChildRequirement list — mapping is non-trivial; deferred to a
-// follow-on rather than guessed).
+// The IN/OUT boundary is documented in fixtures/registry-conformance/README.md.
+// In short, the manifest emits: type.subType + per-type/per-attr `description`
+// (FR-033) + attrs[{name, valueType, isArray, required, description, rules?,
+// example?, whenToUse?}] + the structural constraint graph (children / parents /
+// cardinality, FR-033) + commonAttrs + defaultSubTypes. EXCLUDED (per-port-
+// physical or not-universally-tracked-on-the-registry): factories/native
+// bindings; AttrSchema.default and allowedValues (Java's attr model —
+// ChildRequirement — carries neither).
+//
+// FR-033 Task 5 GREW the manifest: it now also emits the documentation surface
+// (every type/attr carries a required, non-empty `description`; optional `rules`/
+// `example`/`whenToUse`) AND the full structural constraint graph (each type's
+// `children` from childRules — childType/childSubType/childName + optional
+// cardinality min/max/named — and optional `parents`). Growing the canonical
+// RED-flags the other four ports' registry-conformance until they reconcile
+// (the intended intermediate state, same as the FR-032 sweep).
 
-import type { AttrSchema, TypeRegistry } from "./registry.js";
+import type { AttrSchema, ChildRule, TypeDefinition, TypeRegistry } from "./registry.js";
 import { ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
 import {
   EXCLUDED_PER_TYPE_ATTRS,
@@ -35,13 +41,49 @@ interface ManifestAttr {
   /** True for an array-valued attr (a list of the scalar `valueType`); the orthogonal array axis. */
   isArray: boolean;
   required: boolean;
+  /** FR-033 — human/AI-facing description of the attribute (required, non-empty). */
+  description: string;
+  /** FR-033 — prose documenting the complex rules enforced in code. Emitted only when present. */
+  rules?: string;
+  /** FR-033 — an example value. Emitted only when present. */
+  example?: string;
+  /** FR-033 — guidance on when to reach for this attribute. Emitted only when present. */
+  whenToUse?: string;
 }
 
-/** One registered (type, subType) in the manifest, with its declared attrs. */
+/** One structural child rule of a type (FR-033 constraint graph). */
+interface ManifestChild {
+  /** The admitted child `type` (`"*"` = any). */
+  childType: string;
+  /** The admitted child subType — a single subtype, `"*"` (any), or a list of admitted subtypes. */
+  childSubType: string | readonly string[];
+  /** The admitted child name (`"*"` = any). */
+  childName: string;
+  /** Cardinality lower bound — emitted only when defined on the rule. */
+  min?: number;
+  /** Cardinality upper bound (`null` = unbounded) — emitted only when defined on the rule. */
+  max?: number | null;
+  /** Whether the child must carry an explicit name — emitted only when defined on the rule. */
+  named?: boolean;
+}
+
+/** One registered (type, subType) in the manifest, with its docs + attrs + constraint graph. */
 interface ManifestType {
   type: string;
   subType: string;
+  /** FR-033 — human/AI-facing description of the type/subType (required, non-empty). */
+  description: string;
+  /** FR-033 — prose documenting the complex rules enforced in code. Emitted only when present. */
+  rules?: string;
+  /** FR-033 — an example. Emitted only when present. */
+  example?: string;
+  /** FR-033 — guidance on when to reach for this type/subType. Emitted only when present. */
+  whenToUse?: string;
   attrs: ManifestAttr[];
+  /** FR-033 — the type's structural child rules (sorted), the constraint graph. */
+  children: ManifestChild[];
+  /** FR-033 — the child-side placement claim (sorted). Emitted only when present + non-empty. */
+  parents?: string[];
 }
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
@@ -74,12 +116,57 @@ function toManifestAttr(attr: AttrSchema): ManifestAttr {
   const valueType = isLegacyStringArray
     ? ATTR_SUBTYPE_STRING
     : (attr.valueType ?? null);
-  return {
+  // FR-033: the documentation surface (`description` required + non-empty;
+  // `rules`/`example`/`whenToUse` emitted ONLY when present) follows the
+  // existing facets, preserving key order for byte-stability.
+  const out: ManifestAttr = {
     name: attr.name,
     valueType,
     isArray,
     required: attr.required,
+    description: attr.description,
   };
+  if (attr.rules !== undefined) out.rules = attr.rules;
+  if (attr.example !== undefined) out.example = attr.example;
+  if (attr.whenToUse !== undefined) out.whenToUse = attr.whenToUse;
+  return out;
+}
+
+/** The canonical sort key for a child rule: childType, then the childSubType
+ *  string (or comma-joined list), then childName — ASCII codepoint compare. */
+function childSubTypeKey(childSubType: string | readonly string[]): string {
+  return Array.isArray(childSubType) ? childSubType.join(",") : (childSubType as string);
+}
+
+/**
+ * Normalize one structural ChildRule to the manifest's child shape (FR-033).
+ * Cardinality (`min`/`max`/`named`) is emitted ONLY when defined on the rule —
+ * legacy wildcard rules leave them undefined and must NOT fabricate cardinality.
+ * `max` may legitimately be `null` (unbounded); `null` is emitted, `undefined`
+ * is omitted.
+ */
+function toManifestChild(rule: ChildRule): ManifestChild {
+  const out: ManifestChild = {
+    childType: rule.childType,
+    childSubType: rule.childSubType,
+    childName: rule.childName,
+  };
+  if (rule.min !== undefined) out.min = rule.min;
+  if (rule.max !== undefined) out.max = rule.max;
+  if (rule.named !== undefined) out.named = rule.named;
+  return out;
+}
+
+/** Sort the constraint graph by (childType, childSubTypeKey, childName) — ASCII. */
+function sortedChildren(rules: readonly ChildRule[]): ManifestChild[] {
+  return rules
+    .map(toManifestChild)
+    .sort(
+      (a, b) =>
+        compareStrings(a.childType, b.childType) ||
+        compareStrings(childSubTypeKey(a.childSubType), childSubTypeKey(b.childSubType)) ||
+        compareStrings(a.childName, b.childName),
+    );
 }
 
 /** Sort attrs by name (ascending, ASCII). */
@@ -144,6 +231,33 @@ export function classifyPerTypeAttr(name: string): AttrClassification {
 }
 
 /**
+ * Build one manifest type entry from its full TypeDefinition (FR-033). Key order
+ * is fixed for byte-stability: `type`, `subType`, `description`, then optional
+ * `rules`/`example`/`whenToUse` (emitted only when present), then `attrs`,
+ * `children` (the sorted constraint graph), and optional `parents` (emitted only
+ * when present + non-empty, sorted ASCII).
+ */
+function toManifestType(def: TypeDefinition): ManifestType {
+  // Build in fixed key order. Optional docs facets (rules/example/whenToUse) sit
+  // between `description` and `attrs`, so they are spread into the literal (when
+  // present) to preserve insertion order — `attrs`/`children`/`parents` follow.
+  const out: ManifestType = {
+    type: def.typeId.type,
+    subType: def.typeId.subType,
+    description: def.description,
+    ...(def.rules !== undefined ? { rules: def.rules } : {}),
+    ...(def.example !== undefined ? { example: def.example } : {}),
+    ...(def.whenToUse !== undefined ? { whenToUse: def.whenToUse } : {}),
+    attrs: sortedPerTypeAttrs(def.attributes, def.typeId.type, def.typeId.subType),
+    children: sortedChildren(def.childRules),
+  };
+  if (def.parents !== undefined && def.parents.length > 0) {
+    out.parents = [...def.parents].sort(compareStrings);
+  }
+  return out;
+}
+
+/**
  * Build the canonical registry manifest object from an assembled registry.
  *
  * The registry must already be composed (e.g. `composeRegistry(coreProviders)`)
@@ -151,21 +265,19 @@ export function classifyPerTypeAttr(name: string): AttrClassification {
  */
 export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest {
   // Walk every registered (type, subType). `allTypes()` returns the TypeIds;
-  // `attrsOf` gives each one's declared attribute schemas.
+  // `find` gives each one's full TypeDefinition (description / attributes /
+  // childRules / parents / rules / example / whenToUse) in a single lookup.
   const types: ManifestType[] = registry
     .allTypes()
     // Skip excluded (type, subType) rows: the `metadata.base` inheritance
     // anchor (C-5) + the generic TS-presentation `view.*` controls (B-2).
     .filter((typeId) => !isExcludedTypeSubType(typeId.type, typeId.subType))
-    .map((typeId) => ({
-      type: typeId.type,
-      subType: typeId.subType,
-      attrs: sortedPerTypeAttrs(
-        registry.attrsOf(typeId.type, typeId.subType),
-        typeId.type,
-        typeId.subType,
+    .map((typeId) =>
+      toManifestType(
+        // The type IS registered (it came from allTypes()), so find() is defined.
+        registry.find(typeId.type, typeId.subType) as TypeDefinition,
       ),
-    }))
+    )
     // Sort by the full "type.subType" key for a stable, port-independent order.
     .sort((a, b) =>
       compareStrings(`${a.type}.${a.subType}`, `${b.type}.${b.subType}`),
@@ -195,13 +307,25 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
  *
  * Serialization contract — every port MUST match this exactly:
  *  - 2-space indentation (JSON.stringify(_, _, 2)).
- *  - Object keys in a fixed order: the manifest is built with `types`,
- *    `commonAttrs`, `defaultSubTypes` (and each attr with `name`, `valueType`,
- *    `isArray`, `required`; each type with `type`, `subType`, `attrs`);
- *    JSON.stringify preserves insertion order.
+ *  - Object keys in a fixed order (JSON.stringify preserves insertion order):
+ *    the manifest is built with `types`, `commonAttrs`, `defaultSubTypes`.
+ *    - Each attr: `name`, `valueType`, `isArray`, `required`, `description`,
+ *      then optional `rules`, `example`, `whenToUse` (each omitted when absent).
+ *    - Each type: `type`, `subType`, `description`, then optional `rules`,
+ *      `example`, `whenToUse` (omitted when absent), then `attrs`, `children`,
+ *      then optional `parents` (omitted when absent/empty).
+ *    - Each child (FR-033 constraint graph): `childType`, `childSubType`,
+ *      `childName`, then optional `min`, `max`, `named` (each emitted ONLY when
+ *      defined on the rule — legacy wildcard rules omit all three; `max: null`
+ *      is emitted when the rule sets it null, omitted when undefined).
  *  - All arrays sorted: `types` by "type.subType"; each `attrs` by name;
- *    `commonAttrs` by name; `defaultSubTypes` keys sorted.
+ *    each type's `children` by the tuple (childType, childSubTypeKey, childName)
+ *    where childSubTypeKey is the string or the comma-joined list; `parents`
+ *    ascending; `commonAttrs` by name; `defaultSubTypes` keys sorted.
  *  - `valueType: null` literal for polymorphic/untyped attrs.
+ *  - `childSubType` is a string OR a string[] (a list of admitted subtypes).
+ *  - `description` is required + non-empty on every type and attr (gated by the
+ *    coverage assertion in registry-conformance.test.ts — mirrors ADR-0023).
  *  - A single trailing newline (matches the repo's committed-canonical style).
  */
 export function emitRegistryManifest(registry: TypeRegistry): string {

@@ -25,7 +25,13 @@ This is the same proven pattern as `render-conformance` and
 strongest signal, simplest model, no escape-hatch ledger. The logical
 vocabulary must have **zero** per-port divergence by contract.
 
-## Manifest schema (v1)
+## Manifest schema (FR-033)
+
+The manifest carries the cross-port logical vocabulary **plus** (FR-033 Task 5)
+the documentation surface (per-type / per-attr `description`, optional `rules` /
+`example` / `whenToUse`) and the structural **constraint graph** (each type's
+`children` from its child rules — with optional cardinality — and optional
+`parents`).
 
 ```jsonc
 {
@@ -33,26 +39,32 @@ vocabulary must have **zero** per-port divergence by contract.
     {
       "type": "validator",
       "subType": "regex",
+      "description": "...",                  // FR-033 — required, non-empty
+      // optional: "rules", "example", "whenToUse" (emitted only when present)
       "attrs": [                             // sorted by name
-        { "name": "max",     "valueType": "int",    "isArray": false, "required": false },
-        { "name": "min",     "valueType": "int",    "isArray": false, "required": false },
-        { "name": "pattern", "valueType": "string", "isArray": false, "required": false }
-      ]
+        { "name": "max",     "valueType": "int",    "isArray": false, "required": false, "description": "..." },
+        { "name": "min",     "valueType": "int",    "isArray": false, "required": false, "description": "..." },
+        { "name": "pattern", "valueType": "string", "isArray": false, "required": false, "description": "..." }
+      ],
+      "children": []                         // FR-033 — sorted constraint graph (possibly empty)
     },
     {
-      "type": "field",
-      "subType": "enum",
-      "attrs": [
-        // An array-valued attr: the SCALAR value-type plus an explicit isArray
-        // flag. There is NO "stringarray" valueType token and NO attr.stringarray
-        // subtype — array-ness is a single orthogonal axis (the isArray flag),
-        // matching Java's `StringAttribute + @isArray` model.
-        { "name": "values", "valueType": "string", "isArray": true, "required": true }
+      "type": "object",
+      "subType": "entity",
+      "description": "...",
+      "attrs": [ /* ... each carrying a "description"; "rules"/"example"/"whenToUse" only when present ... */ ],
+      "children": [                          // sorted by (childType, childSubTypeKey, childName)
+        { "childType": "field",    "childSubType": "*", "childName": "*" },
+        // a child rule MAY carry cardinality (FR-033) — emitted ONLY when defined:
+        { "childType": "identity", "childSubType": ["primary", "secondary"], "childName": "*", "min": 1, "max": null, "named": true }
+        // "childSubType" is a string, "*" (any), OR a string[] (a list of admitted subtypes).
+        // "max": null means unbounded; "min"/"max"/"named" are OMITTED when undefined.
       ]
+      // optional: "parents": ["object.entity"] — emitted only when present + non-empty, sorted ASCII
     }
   ],
   "commonAttrs": [                           // sorted by name — the registerCommonAttribute set
-    { "name": "description", "valueType": "string", "isArray": false, "required": false }
+    { "name": "description", "valueType": "string", "isArray": false, "required": false, "description": "..." }
   ],
   "defaultSubTypes": { "metadata": "root", "object": "entity" }  // sorted keys
 }
@@ -62,11 +74,21 @@ vocabulary must have **zero** per-port divergence by contract.
 
 - 2-space indentation.
 - Object key order is fixed by construction: `types`, `commonAttrs`,
-  `defaultSubTypes`; each type as `type`, `subType`, `attrs`; each attr as
-  `name`, `valueType`, `isArray`, `required`.
+  `defaultSubTypes`.
+  - Each **attr**: `name`, `valueType`, `isArray`, `required`, `description`,
+    then optional `rules`, `example`, `whenToUse` (each omitted when absent).
+  - Each **type**: `type`, `subType`, `description`, then optional `rules`,
+    `example`, `whenToUse` (omitted when absent), then `attrs`, `children`, then
+    optional `parents` (omitted when absent/empty).
+  - Each **child** (constraint graph): `childType`, `childSubType`, `childName`,
+    then optional `min`, `max`, `named` (each emitted ONLY when defined on the
+    rule — legacy wildcard rules omit all three; `max: null` is emitted when the
+    rule sets it null, omitted when undefined).
 - **Everything sorted** (locale-independent, ASCII codepoint compare):
-  `types` by `"<type>.<subType>"`; each `attrs` array by `name`; `commonAttrs`
-  by `name`; `defaultSubTypes` keys sorted.
+  `types` by `"<type>.<subType>"`; each `attrs` array by `name`; each type's
+  `children` by the tuple `(childType, childSubTypeKey, childName)` where
+  `childSubTypeKey` is the string or the comma-joined list; `parents` ascending;
+  `commonAttrs` by `name`; `defaultSubTypes` keys sorted.
 - `valueType` is the attr's **scalar** value-type (`string`/`int`/`boolean`/…),
   or `null` (literal) for polymorphic/untyped attrs (e.g. `@default`, whose value
   type follows its owning field's subtype).
@@ -74,7 +96,20 @@ vocabulary must have **zero** per-port divergence by contract.
   `valueType`), `false` otherwise. Array-ness is modeled as a single orthogonal
   axis — there is no `stringarray` value-type token and no `attr.stringarray`
   subtype. A polymorphic attr (`valueType: null`) is `isArray: false`.
+- `description` is **required and non-empty** on every type and attr — a
+  coverage gate (`registry-conformance.test.ts`) hard-fails CI on any
+  empty/missing description (mirrors ADR-0023 strict provenance for the
+  documentation surface). Generic descriptions are acceptable for now; FR-033
+  Phase 2 improves the non-`field` providers and regenerates.
 - A single trailing newline.
+
+> **FR-033 Task 5 grew the canonical** (descriptions + constraint graph). This is
+> a purely-additive growth (every pre-existing field — `type`/`subType`, attr
+> `name`/`valueType`/`isArray`/`required` — is byte-unchanged; only new keys were
+> added). Per the fix-at-source rule below, the grown canonical **RED-flags the
+> other four ports' registry-conformance until they reconcile in Phase 4** — the
+> intended, documented intermediate state (the same lifecycle as the FR-032
+> sweep). The TS reference is correctly advanced; the ports reconcile later.
 
 The TS emitter (`server/typescript/packages/metadata/src/registry-manifest.ts`,
 `emitRegistryManifest`) is the reference implementation; the TS constants are
@@ -152,16 +187,24 @@ try to attribute an attr to its *declaring* level, only to report the resolved s
 *present* at each level, which every port computes identically and the byte-gate
 verifies.
 
-### INCLUDED (v1 — the logical vocabulary, must be identical)
+### INCLUDED (the logical vocabulary, must be identical)
 
-- Every registered `(type, subType)`.
-- Each type's declared attrs as `{ name, valueType, isArray, required }`
+- Every registered `(type, subType)`, each with its `description` (FR-033 —
+  required + non-empty) and optional `rules` / `example` / `whenToUse`.
+- Each type's declared attrs as
+  `{ name, valueType, isArray, required, description, rules?, example?, whenToUse? }`
   (`valueType: null` for polymorphic/untyped attrs; `isArray: true` for
   array-valued attrs — the scalar `valueType` plus the orthogonal array flag,
-  NOT a conflated `stringarray` token, and NO `attr.stringarray` subtype).
+  NOT a conflated `stringarray` token, and NO `attr.stringarray` subtype;
+  `description` required + non-empty; the rest emitted only when present).
+- Each type's **structural constraint graph** (FR-033): `children` — the type's
+  child rules as `{ childType, childSubType, childName, min?, max?, named? }`
+  (cardinality emitted only when defined on the rule; `childSubType` may be a
+  single subtype, `"*"`, or a list) — and optional `parents` (the child-side
+  placement claim, emitted only when present + non-empty).
 - `commonAttrs` — the `registerCommonAttribute` / `registerCommonAttrs` set
   (the doc attrs: `aliases`, `deprecated`, `description`, `notes`, `replacedBy`,
-  `seeAlso`, `title`).
+  `seeAlso`, `title`), each carrying its `description`.
 - `defaultSubTypes` — the per-type designated default subType for bare-key YAML
   authoring sugar (`metadata` → `root`, `object` → `entity`).
 
@@ -226,24 +269,26 @@ NOT silent omissions.
   `ChildRequirement` (`expectedType="attr"`), which has no `allowedValues` /
   `default` fields. Including these would require a per-port-conditional manifest
   (forbidden) or a Java registry change beyond the scope of a detection gate.
-  **Excluded from v1.**
+  **Still excluded.**
 
-- **`inheritsFrom` (the declared parent `type.subType`).** Only the Java
-  `TypeDefinition` tracks a declared `parentType` / `parentSubType` on the
-  registry. TS, C#, and Python do not expose a declared parent on the registry
-  at all (subtype inheritance, where it exists, is resolved differently). Not
-  universally tracked → **excluded from v1.**
+- ~~**`inheritsFrom` (the declared parent `type.subType`).**~~ **Superseded by
+  FR-033.** The manifest now emits a type's `parents` (the FR-033 child-side
+  placement claim) whenever the `TypeDefinition` declares them. This is the
+  cross-port additive grammar (an extension provider names a parent without
+  editing the parent's definition), not the prior Java-only `parentType` /
+  `parentSubType` inheritance facet. The TS reference advances first; the other
+  ports reconcile in Phase 4.
 
-- **`childRules` (structural child-type vocabulary).** TS / C# / Python model
-  these as a clean `ChildRule { childType, childSubType, childName }` list. Java
-  conflates **attrs, child-type rules, and placement/validation constraints**
-  into a single `ChildRequirement` list (an attr is a `ChildRequirement` with
-  `expectedType="attr"`; a child-type rule is one with `name="*"`; there are also
-  placement/validation-constraint variants). Mapping Java's list to
-  `{childType, childSubType}` without guessing which requirements are "pure
-  structural child rules" is non-trivial. Per the design spec's explicit
-  guidance, **childRules is scoped out of v1** and is the primary candidate for a
-  follow-on once the Java representation is reconciled.
+- ~~**`childRules` (structural child-type vocabulary).**~~ **Now INCLUDED
+  (FR-033 Task 5).** The manifest emits each type's `children` —
+  `{ childType, childSubType, childName, min?, max?, named? }`, sorted and with
+  cardinality emitted only when defined on the rule. The TS / C# / Python clean
+  `ChildRule` model maps directly; reconciling Java's conflated
+  `ChildRequirement` list (where an attr is a `ChildRequirement` with
+  `expectedType="attr"` and a child-type rule is one with `name="*"`, alongside
+  placement/validation-constraint variants) to the same `{childType,
+  childSubType, childName, …}` shape is the cross-port reconciliation work for
+  the JVM ports in **Phase 4** (the grown canonical RED-flags them until then).
 
 ## Fix-at-source on divergence
 
