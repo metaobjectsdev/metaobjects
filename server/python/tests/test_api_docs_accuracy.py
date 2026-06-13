@@ -186,8 +186,10 @@ def test_every_rest_symbol_maps_to_a_real_route_registration() -> None:
         # The generated router registers @router.<verb>("<remainder-after-prefix>").
         # The APIRouter prefix is "/api/authors", so the registered route path is the
         # remainder AFTER "/api/authors" ("" for list, "/{author_id}" for item).
-        suffix = remainder[len("/authors") :]  # "" | "/{id}"
-        route = suffix.replace("{id}", "{author_id}")
+        # The documented path param must now EXACTLY equal the router's registered
+        # path (no rewrite): the builder documents "/{author_id}", not a generic
+        # "/{id}". If this drifts, the doc path no longer matches the FastAPI route.
+        route = remainder[len("/authors") :]  # "" | "/{author_id}"
         decorator = {
             "GET": f'@router.get("{route}")',
             "POST": f'@router.post("{route}"',

@@ -199,13 +199,19 @@ def _cmd_docs(args: argparse.Namespace) -> int:
             raise ValueError(f"docs — duplicate api page output path: {path}")
         emitted[path] = content
 
-    for unit in model.units:
-        page_path = doc_page_output_path(layout, unit.package, unit.node)
-        api_page_path_from_docs_root = f"{api_subdir}/{page_path}"
-        href = model_cross_href(api_page_path_from_docs_root, page_path, model_base_url)
-        _put(page_path, renderer.render_unit_page(unit, href))
-    _put("README.md", renderer.render_index(model, layout))
-    _put("AGENT-API.md", renderer.render_agent_api(model))
+    try:
+        for unit in model.units:
+            page_path = doc_page_output_path(layout, unit.package, unit.node)
+            api_page_path_from_docs_root = f"{api_subdir}/{page_path}"
+            href = model_cross_href(api_page_path_from_docs_root, page_path, model_base_url)
+            _put(page_path, renderer.render_unit_page(unit, href))
+        _put("README.md", renderer.render_index(model, layout))
+        _put("AGENT-API.md", renderer.render_agent_api(model))
+    except ValueError as exc:
+        # A duplicate output path (e.g. two units that resolve to the same page) is a
+        # clean user-facing failure, not a stack trace.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     api_root = Path(args.out) / api_subdir
     written: list[str] = []

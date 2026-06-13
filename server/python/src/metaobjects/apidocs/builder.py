@@ -221,7 +221,11 @@ class PythonApiModelBuilder:
     ) -> None:
         router_module = naming.router_module_name(entity.name)
         base_path = "/api/" + naming.route_path(entity.name)
-        item = base_path + "/{id}"
+        # The router registers the item routes with a per-entity path param
+        # (`/{<entity>_id}`, e.g. `/{customer_id}`) — document that exact name, not
+        # a generic `{id}`, so the docs match the generated FastAPI routes.
+        pk = naming.pk_param(entity.name)
+        item = base_path + "/{" + pk + "}"
 
         def add(verb_path: str, usage: str) -> None:
             symbols.append(
@@ -234,8 +238,8 @@ class PythonApiModelBuilder:
                 )
             )
 
-        # The router registers GET list, GET /{id}, POST, PATCH /{id}, PUT /{id},
-        # DELETE /{id} (PATCH + PUT share a handler but are two registered routes).
+        # The router registers GET list, GET item, POST, PATCH item, PUT item,
+        # DELETE item (PATCH + PUT share a handler but are two registered routes).
         add("GET " + base_path, "list with pagination / sort / filters")
         add("GET " + item, "fetch one by id")
         add("POST " + base_path, "create")
@@ -248,7 +252,7 @@ class PythonApiModelBuilder:
             target = object_index.get(d.target_entity)
             target_name = target.name if target is not None else d.target_entity
             add(
-                "GET " + base_path + "/{id}/" + d.relation_name,
+                "GET " + base_path + "/{" + pk + "}/" + d.relation_name,
                 f"M:N traversal — the related {target_name} rows",
             )
 
