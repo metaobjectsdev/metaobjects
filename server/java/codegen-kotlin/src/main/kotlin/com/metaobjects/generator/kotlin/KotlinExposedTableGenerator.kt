@@ -163,7 +163,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val isView = isViewKind(sourceRdb)
-        val tableObjectName = shortName + "Table"
+        val tableObjectName = KotlinNaming.tableObjectName(shortName)
         // FR-016: getPhysicalName() implements the four-step rule (kind-matching
         // alias -> legacy @table -> snake_case(source.name) -> pluralize(snake_case(entity))),
         // so it returns a valid name for any rdb @kind. The local fallback is

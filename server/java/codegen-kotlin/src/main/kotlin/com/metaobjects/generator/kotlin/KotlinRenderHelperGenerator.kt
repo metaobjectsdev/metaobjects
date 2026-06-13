@@ -97,9 +97,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         val payloadVo = resolveValueObject(loader, payloadRef) ?: return // not a VO
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
-        val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
+        val outPkg = KotlinNaming.promptsPackage(templatePkg)
         val capitalized = capitalizeFirst(templateShort)
-        val helperClass = "${capitalized}RenderHelper"
+        val helperClass = KotlinNaming.renderHelperName(templateShort)
         // KotlinPayloadGenerator names the payload data class <TemplateShortName>Payload
         // (derived from the template short name, NOT the VO name) into the same
         // <pkg>.prompts package — reference it by its same-package short name.

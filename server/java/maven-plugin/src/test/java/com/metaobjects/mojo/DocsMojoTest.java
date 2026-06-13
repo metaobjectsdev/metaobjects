@@ -48,4 +48,27 @@ public class DocsMojoTest {
                 page.contains("**Model / metadata:**"));
         assertTrue("unit page emits a java code fence", page.contains("```java"));
     }
+
+    @Test
+    public void emitsTheKotlinApiSurface() throws Exception {
+        File pom = new File(PlexusTestCase.getBasedir(), "src/test/resources/mojo/pom-docs-kotlin.xml");
+
+        DocsMojo mojo = (DocsMojo) rule.lookupMojo("docs", pom);
+        assertNotNull(mojo);
+        mojo.execute();
+
+        // <language>kotlin</language> with no explicit <apiSubDir> → api/kotlin.
+        Path apiBase = new File(PlexusTestCase.getBasedir(),
+                "target/docs-mojo-test-kotlin/docs/api/kotlin").toPath();
+
+        Path basketPage = apiBase.resolve("simple/fruitbasket/Basket.md");
+        assertTrue("expected entity api page at " + basketPage, Files.exists(basketPage));
+        assertTrue("expected index README.md", Files.exists(apiBase.resolve("README.md")));
+        assertTrue("expected condensed AGENT-API.md", Files.exists(apiBase.resolve("AGENT-API.md")));
+
+        String page = Files.readString(basketPage);
+        assertTrue("unit page emits the model/metadata cross-link",
+                page.contains("**Model / metadata:**"));
+        assertTrue("unit page emits a kotlin code fence", page.contains("```kotlin"));
+    }
 }

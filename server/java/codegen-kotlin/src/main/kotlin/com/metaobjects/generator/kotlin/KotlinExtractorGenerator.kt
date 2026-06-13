@@ -106,14 +106,14 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         }
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
-        val outPkg = if (templatePkg.isEmpty()) "prompts" else "$templatePkg.prompts"
+        val outPkg = KotlinNaming.promptsPackage(templatePkg)
         // Root mirror + payload are keyed on the TEMPLATE short name (matching the parser's
         // `<TemplateShort>Extracted` and the payload generator's `<TemplateShort>Payload`); the
         // nested mirrors/payloads are keyed on the value-object short name.
-        val extractorClass = templateShort + "Extractor"
-        val parserClass = templateShort + "Parser"
+        val extractorClass = KotlinNaming.extractorName(templateShort)
+        val parserClass = KotlinNaming.parserName(templateShort)
         val rootMirror = templateShort + "Extracted"
-        val rootStrict = templateShort + "Payload"
+        val rootStrict = KotlinNaming.payloadName(templateShort)
 
         val src = buildString {
             append("// GENERATED — DO NOT EDIT — extractor for template.output `")

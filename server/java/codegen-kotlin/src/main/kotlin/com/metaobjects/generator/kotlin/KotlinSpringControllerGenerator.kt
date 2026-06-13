@@ -128,7 +128,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
-        val tableObjectName = shortName + "Table"
+        val tableObjectName = KotlinNaming.tableObjectName(shortName)
         val routePath = pluralLowercase(shortName)
         val routeBase = "/api/$routePath"
 
@@ -870,7 +870,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * regeneration overwrites.
      */
     private fun pluralLowercase(shortName: String): String =
-        shortName.lowercase() + "s"
+        KotlinNaming.pluralLowercase(shortName)
 
     /**
      * Emit one M:N traversal sub-resource: {@code GET /{id}/<relationName>} returning
@@ -954,5 +954,5 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     override fun getSingleOutputFilePath(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
-        PackageMapping.splitFqn(md.name).second + "Controller.kt"
+        KotlinNaming.controllerName(PackageMapping.splitFqn(md.name).second) + ".kt"
 }
