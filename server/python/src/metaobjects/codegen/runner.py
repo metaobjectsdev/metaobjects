@@ -11,6 +11,7 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
 from .config import GenConfig
+from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .overwrite_policy import decide_and_write
 
@@ -99,6 +100,25 @@ def run_gen(
                     f"{emitted[full][1]!r} and {gen.name!r}."
                 )
             emitted[full] = (f.content, gen.name)
+
+    # Make the out dir an importable package: emit an @generated __init__.py in
+    # every directory that received a generated file (and the intermediate dirs up
+    # to out_dir). The generated modules use package-relative imports, so without
+    # this a consumer can't import them. A generator-emitted __init__.py wins; a
+    # hand-authored one is left untouched by the overwrite policy below.
+    if config.emit_package_init:
+        pkg_rel_dirs: set[str] = set()
+        for full in list(emitted):
+            d = os.path.dirname(os.path.relpath(full, config.out_dir))
+            while True:
+                pkg_rel_dirs.add(d)
+                if d == "":
+                    break
+                d = os.path.dirname(d)
+        for d in pkg_rel_dirs:
+            init_full = os.path.join(config.out_dir, d, "__init__.py")
+            if init_full not in emitted:
+                emitted[init_full] = (generated_package_init(), "package-init")
 
     for full, (content, _by) in emitted.items():
         status = decide_and_write(full, content, merge_strategy)

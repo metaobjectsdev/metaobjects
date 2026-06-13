@@ -296,22 +296,28 @@ string output = Renderer.Render(new RenderRequest(
 ### Python
 
 `metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
-recognizes `template.*` + `origin.*`. Payload-VO codegen is not yet emitted —
-consumers pass a `dict` (or any pystache-compatible mapping).
+recognizes `template.*` + `origin.*`. Payload-VO codegen **is** emitted (the
+`payload` generator emits a Pydantic `BaseModel` per template, origin-aware — see
+[Output parsing (FR-006)](#output-parsing-fr-006)), so a consumer can render from
+the generated payload type or from a plain `dict`.
+
+`render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`
+defaults to `None`, `format` to `"text"`):
 
 ```python
-from metaobjects.render import render, FilesystemProvider
+from metaobjects.render import FilesystemProvider
+from metaobjects.render.renderer import render, RenderRequest
 
-out = render(
-    ref="lobby/welcome",
+out = render(RenderRequest(
     payload={
         "displayName": "Ada",
         "postCount": 12,
         "posts": [{"title": "Hello"}],
     },
     provider=FilesystemProvider("./prompts"),
+    ref="lobby/welcome",
     format="xml",
-)
+))
 ```
 
 ## Output parsing (FR-006)

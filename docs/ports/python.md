@@ -2,8 +2,10 @@
 
 Targets Python 3.11+ on the SQLAlchemy + FastAPI / Pydantic stack. Ships the
 metadata loader (canonical JSON + sigil-free YAML), conformance runner over the
-shared corpora, the FR-004 render engine, and the entity-model codegen. The
-persistence + migration tier is in progress.
+shared corpora, the FR-004 render engine, and the entity / payload / router
+codegen. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
+Python port has no `migrate` command by design; it consumes the canonical
+`schema.postgres.sql` artifact verbatim.
 
 ## Install
 
@@ -168,19 +170,23 @@ print(name_field.attr_string_or_none("maxLength"))   # → "200"
 
 ## FR-004 — render
 
-```python
-from metaobjects.render import render, FilesystemProvider
+`render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`
+defaults to `None`, `format` to `"text"`):
 
-out = render(
-    ref="lobby/welcome",
+```python
+from metaobjects.render import FilesystemProvider
+from metaobjects.render.renderer import render, RenderRequest
+
+out = render(RenderRequest(
     payload={
         "displayName": "Ada",
         "postCount": 12,
         "posts": [{"title": "Hello"}],
     },
     provider=FilesystemProvider("./prompts"),
+    ref="lobby/welcome",
     format="xml",
-)
+))
 ```
 
 `metaobjects.render.verify` drift-checks every `template.*` against its
@@ -284,7 +290,7 @@ import lines are stable.
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
 | Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, origin-aware) |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the payload class from the sibling payload module) |
-| Migrations | In progress (`python -m metaobjects.migrate` planned) |
+| Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
 | Runtime metadata | Loader API + render engine; SQLAlchemy ObjectManager-equivalent on the roadmap |
 
