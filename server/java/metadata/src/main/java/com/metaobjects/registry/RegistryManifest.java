@@ -189,6 +189,12 @@ public final class RegistryManifest {
                 new com.metaobjects.view.ViewTypesMetaDataProvider(),
                 new com.metaobjects.layout.LayoutTypesMetaDataProvider(),
                 new com.metaobjects.template.TemplateTypesMetaDataProvider(),
+                // FR-033 concern providers — re-home UI / prompt attrs out of the
+                // core type classes (read spec/metamodel/ui.json + prompt.json).
+                // Placed after their type deps (field/view/layout/template/object);
+                // compose() re-resolves order via getDependencies() regardless.
+                new com.metaobjects.presentation.ui.UiTypesMetaDataProvider(),
+                new com.metaobjects.template.PromptTypesMetaDataProvider(),
                 new com.metaobjects.object.CoreObjectsMetaDataProvider());
     }
 

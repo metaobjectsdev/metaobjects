@@ -331,6 +331,117 @@ public class MetaDataRegistry {
         return this;
     }
 
+    /**
+     * FR-033 — apply a concern provider's {@code extends} directives (read from the
+     * embedded {@code spec/metamodel/<provider>.json}) onto the registered types,
+     * re-homing the provider's attrs out of the CORE type classes and into the
+     * concern provider. This is the data-driven mechanism the
+     * {@code metaobjects-ui} / {@code metaobjects-prompt} providers use — the Java
+     * analogue of TS/Python reading the same {@code extends} blocks.
+     *
+     * <p>For each directive, the target subtypes are resolved: an exact subtype, a
+     * list, or the {@code "*"} wildcard expanded via {@code subtypeExpansion} (when no
+     * explicit expansion is supplied for a wildcarded type, the wildcard is expanded
+     * to every CURRENTLY-REGISTERED subtype of that type — matching the historical
+     * {@code @xmlText} loop that iterated the registered field subtypes). Each attr is
+     * added to the resolved subtype's {@link TypeDefinition} via the same builder DSL
+     * the core type classes use ({@code optionalAttributeWithConstraints} /
+     * {@code requiredAttributeWithConstraints} + {@code .ofType(...)} +
+     * {@code .asArray()}/{@code .asSingle()}), with {@code withRegistry(this)} set so
+     * the {@code .asArray()} cardinality constraint is registered (the manifest reads
+     * it to mark {@code isArray}).</p>
+     *
+     * <p>A duplicate attr on a subtype trips the {@link TypeDefinitionBuilder}'s
+     * already-exists guard — the intended backstop ensuring an attr is registered by
+     * exactly ONE provider (no double-registration with core).</p>
+     *
+     * @param reader           the parsed spec reader (source of the extends directives)
+     * @param providerName     the concern provider name (e.g. {@code "metaobjects-ui"})
+     * @param subtypeExpansion explicit {@code "*"}-expansion per type, or empty to fall
+     *                         back to the currently-registered subtypes of the type
+     */
+    public synchronized void applyProviderExtends(
+            com.metaobjects.registry.spec.SpecMetamodelReader reader,
+            String providerName,
+            Map<String, List<String>> subtypeExpansion) {
+        Objects.requireNonNull(reader, "reader must not be null");
+        Objects.requireNonNull(providerName, "providerName must not be null");
+        checkNotSealed("applyProviderExtends");
+
+        for (com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsDirective d
+                : reader.extendsDirectives(providerName)) {
+            List<String> targets;
+            if (d.wildcardSubType()) {
+                List<String> explicit = subtypeExpansion != null ? subtypeExpansion.get(d.type()) : null;
+                if (explicit != null) {
+                    targets = explicit;
+                } else {
+                    // Fall back to the currently-registered subtypes of the type
+                    // (matches the historical @xmlText loop over registered fields).
+                    targets = new ArrayList<>();
+                    for (MetaDataTypeId id : getRegisteredTypes()) {
+                        if (id.type().equals(d.type())) {
+                            targets.add(id.subType());
+                        }
+                    }
+                }
+            } else {
+                targets = d.subTypes();
+            }
+            for (String subType : targets) {
+                applyExtendsAttrs(d.type(), subType, d.attrs());
+            }
+        }
+    }
+
+    /**
+     * FR-033 helper — add a directive's attrs to one registered {@code (type, subType)}
+     * via the builder DSL, then re-register the rebuilt definition.
+     */
+    private void applyExtendsAttrs(String type, String subType,
+            List<com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr> attrs) {
+        MetaDataTypeId typeId = new MetaDataTypeId(type, subType);
+        TypeDefinition existing = typeDefinitions.get(typeId);
+        if (existing == null) {
+            throw new MetaDataException(
+                "FR-033 applyProviderExtends: target type must be registered before extension: "
+                        + typeId.toQualifiedName());
+        }
+
+        TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing);
+        builder.withRegistry(this); // so .asArray() cardinality constraints are registered
+        for (com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr a : attrs) {
+            com.metaobjects.registry.AttributeConstraintBuilder acb = a.required()
+                    ? builder.requiredAttributeWithConstraints(a.name())
+                    : builder.optionalAttributeWithConstraints(a.name());
+            com.metaobjects.registry.AttributeConstraintBuilder.AttributeTypeBuilder atb =
+                    acb.ofType(extendsValueTypeToAttrSubtype(a.valueType()));
+            if (a.isArray()) {
+                atb.asArray();
+            } else {
+                atb.asSingle();
+            }
+        }
+        register(builder.build());
+    }
+
+    /** Map a spec {@code valueType} string to the Java attr subtype constant. */
+    private static String extendsValueTypeToAttrSubtype(String valueType) {
+        if (valueType == null) {
+            throw new MetaDataException("FR-033 applyProviderExtends: attr valueType must not be null");
+        }
+        switch (valueType) {
+            case "string":     return com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
+            case "boolean":    return com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN;
+            case "int":        return com.metaobjects.attr.IntAttribute.SUBTYPE_INT;
+            case "properties": return com.metaobjects.attr.PropertiesAttribute.SUBTYPE_PROPERTIES;
+            case "filter":     return com.metaobjects.attr.FilterAttribute.SUBTYPE_FILTER;
+            default:
+                throw new MetaDataException(
+                        "FR-033 applyProviderExtends: unsupported attr valueType '" + valueType + "'");
+        }
+    }
+
 
     /**
      * Register a type definition with inheritance resolution

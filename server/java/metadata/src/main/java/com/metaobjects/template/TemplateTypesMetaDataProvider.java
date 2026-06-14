@@ -1,8 +1,5 @@
 package com.metaobjects.template;
 
-import com.metaobjects.MetaDataTypeId;
-import com.metaobjects.attr.BooleanAttribute;
-import com.metaobjects.field.MetaField;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
@@ -38,24 +35,12 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
         // MetaRoot's static initializer alongside object/field/attr/validator/view/
         // identity/relationship — templates are a top-level metadata type.
 
-        // FR-004 extract: the prompt/output domain EXTENDS field.base with the @xmlText marker
-        // (a field receives its element's XML text content — see TemplateConstants#ATTR_XML_TEXT).
-        // This is an output/extract concern, NOT a core field property, so it is registered here
-        // (the prompt domain provider) rather than on the core field type — mirroring how
-        // CoreDBMetaDataProvider extends field.base with @dbColumn etc. from the database domain.
-        // Extend EVERY registered field subtype (base + all concretes) with @xmlText.
-        // The concrete field subtypes snapshot their effective attrs from field.base
-        // when they are registered (by the field-types provider, a dependency) — which
-        // happens BEFORE this provider runs — so a lone field.base extension does not
-        // propagate to them in the emitted registry manifest. Iterating the registered
-        // field subtypes mirrors the TS reference (which extends the full FIELD_SUBTYPES
-        // set) and keeps the cross-port registry manifest byte-identical.
-        for (MetaDataTypeId id : registry.getRegisteredTypes()) {
-            if (MetaField.TYPE_FIELD.equals(id.type())) {
-                registry.findType(MetaField.TYPE_FIELD, id.subType())
-                        .optionalAttribute(TemplateConstants.ATTR_XML_TEXT, BooleanAttribute.SUBTYPE_BOOLEAN);
-            }
-        }
+        // FR-033: the @xmlText field-extract marker (formerly extended onto every
+        // registered field subtype here) is re-homed to the metaobjects-prompt
+        // concern provider (reads spec/metamodel/prompt.json's field.* extends),
+        // alongside the rest of the prompt-construction attrs. This provider now
+        // registers ONLY the template TYPE definitions; their attrs are owned by
+        // metaobjects-prompt.
     }
 
     @Override
@@ -65,9 +50,8 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // core-types for metadata.base inheritance; field-types because we extend field.base
-        // with the @xmlText extract marker (registered above).
-        return new String[]{"core-types", "field-types"};
+        // core-types for metadata.base inheritance (the template TYPE definitions).
+        return new String[]{"core-types"};
     }
 
     @Override

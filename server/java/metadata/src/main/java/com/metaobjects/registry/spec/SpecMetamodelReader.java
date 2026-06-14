@@ -129,6 +129,27 @@ public final class SpecMetamodelReader {
                                 Map<String, AttrEntry> attrs) {
     }
 
+    /**
+     * FR-033 — one re-homed attr declared in a provider's {@code extends} directive,
+     * with the cross-port value-type / array-ness / required-ness needed to register
+     * it on the matching subtype via the builder DSL.
+     */
+    public record ExtendsAttr(String name, String valueType, boolean isArray, boolean required) {
+    }
+
+    /**
+     * FR-033 — one {@code extends} directive from a named concern provider's spec file
+     * (e.g. {@code ui.json}'s {@code field.*} or {@code prompt.json}'s
+     * {@code template.prompt}). {@code wildcardSubType} is true for the {@code "*"}
+     * any-subtype matcher; otherwise {@code subTypes} lists the exact subtypes.
+     */
+    public record ExtendsDirective(String type, List<String> subTypes, boolean wildcardSubType,
+                                   List<ExtendsAttr> attrs) {
+    }
+
+    // providerName -> the extends directives declared in that provider's spec file
+    private final Map<String, List<ExtendsDirective>> providerExtends = new LinkedHashMap<>();
+
     private SpecMetamodelReader() {
     }
 
@@ -168,6 +189,7 @@ public final class SpecMetamodelReader {
     }
 
     private void parse(JsonObject provider) {
+        String providerName = str(provider, "provider");
         JsonArray types = provider.getAsJsonArray("types");
         if (types != null) {
             for (JsonElement el : types) {
@@ -219,12 +241,33 @@ public final class SpecMetamodelReader {
                     }
                 }
                 Map<String, AttrEntry> attrs = new LinkedHashMap<>();
+                List<ExtendsAttr> directiveAttrs = new ArrayList<>();
                 for (AttrEntry a : parseAttrChildren(e)) {
                     attrs.put(a.name(), a);
+                    // min==1 ⇒ required (matches the cross-port golden's required flag).
+                    boolean required = a.min() != null && a.min() == 1;
+                    directiveAttrs.add(new ExtendsAttr(a.name(), a.subType(), a.isArray(), required));
                 }
                 extendsBlocks.add(new ExtendsBlock(type, subTypes, wildcard, attrs));
+                if (providerName != null) {
+                    providerExtends
+                            .computeIfAbsent(providerName, k -> new ArrayList<>())
+                            .add(new ExtendsDirective(type, subTypes, wildcard, directiveAttrs));
+                }
             }
         }
+    }
+
+    /**
+     * FR-033 — the {@code extends} directives declared by the named concern provider
+     * (e.g. {@code "metaobjects-ui"} / {@code "metaobjects-prompt"}). Each directive
+     * carries its target {@code (type, subTypes/"*")} and the re-homed attrs with their
+     * cross-port value-type / array-ness / required-ness — the data a concern-provider
+     * uses to register those attrs on the matching subtypes via the builder DSL.
+     * Empty when the provider declares no {@code extends} block.
+     */
+    public List<ExtendsDirective> extendsDirectives(String providerName) {
+        return providerExtends.getOrDefault(providerName, List.of());
     }
 
     private List<AttrEntry> parseAttrChildren(JsonObject owner) {
