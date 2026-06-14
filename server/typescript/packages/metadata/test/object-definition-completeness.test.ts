@@ -1,22 +1,29 @@
-// object-definition-completeness — proves the FR-033 externalization of the
-// object provider (spec/metamodel/object.json, read via defineProviderFromData)
-// is FAITHFUL and COMPLETE. Object is the most complex core provider: its attr
-// set varies by subtype (object.value carries an extra @normalize) AND its
-// structural childRules vary by subtype (entity co-locates templates; projection
-// admits neither relationship nor template; base/value admit relationship but no
-// template). This test pins BOTH dimensions, per subtype, against the
-// pre-FR-033 hand-coded registration (objectAttrs + normalizeAttr + the
-// objectRules/projectionRules child arrays).
-//
-// The per-subtype childRules assertion is the critical safety net: a mistake here
-// (projection gaining relationship, entity losing template) would be a silent
-// behavior change. expected-registry.json (children byte-identical) is the second
-// gate.
+// object-definition-completeness — proves the FR-033 S1-object strict re-scope of
+// the object provider (spec/metamodel/object.json, read via defineProviderFromData)
+// is FAITHFUL and STRICT. Object is the last core provider made strict: object.base
+// holds the INTERSECTION of every subtype's structural children
+// (field/identity/validator/layout/source); each concrete subtype sets
+// extendsBase:true and adds ONLY its own children — value adds relationship; entity
+// adds relationship + template + the FR-014 TPH attrs @discriminator/
+// @discriminatorValue (an entity-inheritance concept); projection inherits the base
+// intersection ONLY (no relationship, no template). The "any attr" wildcard child
+// rule is GONE from all four. This test pins the EXACT composed per-subtype
+// childRules (base=5 / value=6 / entity=7 / projection=5, none with an attr
+// wildcard) AND the attr scoping (@discriminator/@discriminatorValue ONLY on
+// entity), with explicit negatives. expected-registry.json (children byte-identical)
+// is the second gate; enforcement (ERR_UNKNOWN_ATTR / ERR_CHILD_NOT_ALLOWED) is the
+// runtime backstop.
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreProviders } from "../src/core-types.js";
-import { TYPE_OBJECT, TYPE_TEMPLATE } from "../src/shared/base-types.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
+import {
+  TYPE_OBJECT,
+  TYPE_TEMPLATE,
+  TYPE_RELATIONSHIP,
+} from "../src/shared/base-types.js";
 import {
   OBJECT_SUBTYPES,
   OBJECT_SUBTYPE_ENTITY,
@@ -41,14 +48,15 @@ interface ExpectedAttr {
   allowedValues?: readonly string[];
 }
 
-// The 2 discriminator attrs every object subtype carries (objectAttrs).
-const COMMON: Record<string, ExpectedAttr> = {
+// FR-014 TPH discriminator attrs — entity-inheritance only ⇒ object.entity ONLY.
+const DISCRIMINATOR: Record<string, ExpectedAttr> = {
   discriminator: { valueType: "string", required: false },
   discriminatorValue: { valueType: "string", required: false },
 };
 
-// object.value additionally carries @normalize (was normalizeAttr).
-const NORMALIZE_EXTRA: Record<string, ExpectedAttr> = {
+// object.value carries @normalize (the object-level default normalization mode,
+// contributed by metaobjects-prompt).
+const NORMALIZE: Record<string, ExpectedAttr> = {
   normalize: {
     valueType: "string",
     required: false,
@@ -58,30 +66,37 @@ const NORMALIZE_EXTRA: Record<string, ExpectedAttr> = {
 };
 
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
-  return subType === OBJECT_SUBTYPE_VALUE ? { ...COMMON, ...NORMALIZE_EXTRA } : { ...COMMON };
+  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR };
+  if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE };
+  // base + projection carry NO attrs (discriminator moved to entity only).
+  return {};
 }
 
-// The EXACT structural childRule childType set per subtype (the critical
-// safety net). objectRules carries field/identity/relationship/validator/
-// layout/source/attr; projectionRules drops relationship; entity adds template.
-const OBJECT_RULE_TYPES = ["field", "identity", "relationship", "validator", "layout", "source", "attr"];
-const PROJECTION_RULE_TYPES = ["field", "identity", "validator", "layout", "source", "attr"];
+// The EXACT composed structural childRule childType set per subtype (the critical
+// safety net). Base is the intersection of all subtypes (5 rules); value adds
+// relationship (6); entity adds relationship + template (7); projection inherits
+// base only (5). NO subtype carries an `attr` wildcard rule (strict/fail-closed —
+// attrs enforce via the named AttrSchema set, ERR_UNKNOWN_ATTR).
+const BASE_RULE_TYPES = ["field", "identity", "validator", "layout", "source"];
+const VALUE_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP];
+const ENTITY_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP, TYPE_TEMPLATE];
+const PROJECTION_RULE_TYPES = [...BASE_RULE_TYPES];
 
 function expectedChildTypesFor(subType: string): string[] {
-  if (subType === OBJECT_SUBTYPE_ENTITY) return [...OBJECT_RULE_TYPES, TYPE_TEMPLATE];
+  if (subType === OBJECT_SUBTYPE_ENTITY) return ENTITY_RULE_TYPES;
+  if (subType === OBJECT_SUBTYPE_VALUE) return VALUE_RULE_TYPES;
   if (subType === OBJECT_SUBTYPE_PROJECTION) return PROJECTION_RULE_TYPES;
-  // base + value
-  return OBJECT_RULE_TYPES;
+  return BASE_RULE_TYPES; // base
 }
 
-describe("object provider externalization — completeness", () => {
+describe("object provider — strict per-subtype completeness (FR-033 S1-object)", () => {
   test("registers all 4 object subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_OBJECT).sort();
     expect(registered).toEqual([...OBJECT_SUBTYPES].sort());
   });
 
   for (const subType of OBJECT_SUBTYPES) {
-    test(`object.${subType} — attr name-set, valueType, required, default, allowedValues match the pre-FR-033 schema`, () => {
+    test(`object.${subType} — attr name-set, valueType, required, default, allowedValues match the strict per-subtype schema`, () => {
       const def = registry.find(TYPE_OBJECT, subType);
       expect(def).toBeDefined();
       const expected = expectedAttrsFor(subType);
@@ -101,10 +116,13 @@ describe("object provider externalization — completeness", () => {
       }
     });
 
-    test(`object.${subType} — structural childRules match the EXACT per-subtype expected set`, () => {
+    test(`object.${subType} — structural childRules match the EXACT composed per-subtype set (no attr wildcard)`, () => {
       const def = registry.find(TYPE_OBJECT, subType)!;
       const actualTypes = def.childRules.map((r) => r.childType).sort();
       expect(actualTypes).toEqual([...expectedChildTypesFor(subType)].sort());
+
+      // The "any attr" wildcard child rule is GONE from every subtype.
+      expect(def.childRules.some((r) => r.childType === "attr")).toBe(false);
 
       // All structural rules are wildcard (subType/name = "*").
       for (const rule of def.childRules) {
@@ -114,6 +132,13 @@ describe("object provider externalization — completeness", () => {
     });
   }
 
+  test("composed childRule counts: base=5, value=6, entity=7, projection=5", () => {
+    expect(registry.find(TYPE_OBJECT, SUBTYPE_BASE)!.childRules.length).toBe(5);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_VALUE)!.childRules.length).toBe(6);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)!.childRules.length).toBe(7);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_PROJECTION)!.childRules.length).toBe(5);
+  });
+
   test("only object.entity carries the template childRule", () => {
     for (const subType of OBJECT_SUBTYPES) {
       const def = registry.find(TYPE_OBJECT, subType)!;
@@ -122,20 +147,75 @@ describe("object provider externalization — completeness", () => {
     }
   });
 
-  test("only object.projection omits the relationship childRule", () => {
+  test("relationship childRule is on object.value + object.entity ONLY (base = intersection, projection forbids it)", () => {
+    const withRelationship = new Set<string>([OBJECT_SUBTYPE_VALUE, OBJECT_SUBTYPE_ENTITY]);
     for (const subType of OBJECT_SUBTYPES) {
       const def = registry.find(TYPE_OBJECT, subType)!;
-      const hasRelationship = def.childRules.some((r) => r.childType === "relationship");
-      expect(hasRelationship).toBe(subType !== OBJECT_SUBTYPE_PROJECTION);
+      const hasRelationship = def.childRules.some((r) => r.childType === TYPE_RELATIONSHIP);
+      expect(hasRelationship).toBe(withRelationship.has(subType));
     }
   });
 
-  test("base + value carry relationship but not template", () => {
-    for (const subType of [SUBTYPE_BASE, OBJECT_SUBTYPE_VALUE]) {
+  test("@discriminator / @discriminatorValue are scoped to object.entity ONLY", () => {
+    for (const subType of OBJECT_SUBTYPES) {
       const def = registry.find(TYPE_OBJECT, subType)!;
-      const types = def.childRules.map((r) => r.childType);
-      expect(types).toContain("relationship");
-      expect(types).not.toContain(TYPE_TEMPLATE);
+      const names = def.attributes.map((a) => a.name);
+      const hasDiscriminator = names.includes("discriminator") || names.includes("discriminatorValue");
+      expect(hasDiscriminator).toBe(subType === OBJECT_SUBTYPE_ENTITY);
     }
+  });
+
+  // --- explicit enforcement negatives (strict fail-closed bites now) ---
+
+  // Strict load is what bites: the S0 placement + attr-schema checks run in
+  // strict mode (library boots strict; ERR_UNKNOWN_ATTR / ERR_CHILD_NOT_ALLOWED).
+  async function load(doc: unknown) {
+    return new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(doc), { id: "test.json" }),
+    ]);
+  }
+
+  test("@discriminator on object.value → ERR_UNKNOWN_ATTR (entity-only attr)", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test::strict",
+        children: [
+          {
+            "object.value": {
+              name: "Money",
+              "@discriminator": "kind",
+              children: [{ "field.int": { name: "amount" } }],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors.some((e) => (e as { code?: string }).code === "ERR_UNKNOWN_ATTR")).toBe(true);
+  });
+
+  test("a relationship child under object.projection → ERR_CHILD_NOT_ALLOWED", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "test::strict",
+        children: [
+          {
+            "object.projection": {
+              name: "OrderView",
+              children: [
+                { "field.int": { name: "id" } },
+                {
+                  "relationship.association": {
+                    name: "customer",
+                    "@objectRef": "Customer",
+                    "@cardinality": "one",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors.some((e) => (e as { code?: string }).code === "ERR_CHILD_NOT_ALLOWED")).toBe(true);
   });
 });

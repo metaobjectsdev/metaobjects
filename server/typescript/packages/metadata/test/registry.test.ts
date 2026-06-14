@@ -399,13 +399,20 @@ describe("registerCoreTypes", () => {
   });
 
   // 5. Child rules spot-checks per base type
-  it("object.base has the correct 7 child-type wildcards", () => {
+  it("object.base has the 5 intersection child-type wildcards (no attr, no relationship — strict model)", () => {
+    // FR-033 S1-object: object.base is the INTERSECTION of every object subtype's
+    // structural children (field / identity / validator / layout / source). The
+    // "any attr" wildcard is dropped (strict/fail-closed); relationship rides
+    // value + entity only (NOT base — extendsBase is additive, and projection,
+    // which forbids relationship, inherits base).
     const def = registry.find(TYPE_OBJECT, SUBTYPE_BASE);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
     expect(childTypes).toEqual(
-      [TYPE_ATTR, TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_RELATIONSHIP, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
+      [TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
     );
+    expect(childTypes).not.toContain(TYPE_ATTR);
+    expect(childTypes).not.toContain(TYPE_RELATIONSHIP);
     // All rules are wildcards on subType and name
     for (const rule of def!.childRules) {
       expect(rule.childSubType).toBe(CHILD_RULE_WILDCARD);

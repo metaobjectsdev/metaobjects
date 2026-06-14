@@ -67,7 +67,7 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
 import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
@@ -178,40 +178,23 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ], MetaRoot),
   );
 
-  // object — 4 subtypes. FR-033: the object provider's declarative definition
-  // (vocabulary + per-subtype attr constraints + real descriptions + the
-  // ADR-0028 taxonomy rule prose) is externalized to spec/metamodel/object.json,
-  // embedded at build into OBJECT_DEFINITION. defineProviderFromData lowers it to
-  // TypeDefinitions; the factory (behavior) stays code via OBJECT_FACTORIES,
-  // mapping every subType → MetaObject. object.value additionally carries the
-  // @normalize attr (declared inline in object.json's value children) — the
-  // object-level default normalization mode for its enum fields' tolerant extract.
-  //
-  // Unlike the other converted providers, object's structural childRules VARY by
-  // subtype, so they are NOT modeled in the JSON (attrs only) and are post-assigned
-  // here per subtype, byte-identical to the pre-FR-033 registration:
-  //   - entity     → objectRules + template (templates may be co-located)
-  //   - projection → projectionRules (a derived read-only representation: NO
-  //                  relationship — derivation is via @via, not a relationship
-  //                  child — and NO template)
-  //   - base/value → objectRules (no template)
-  const objectRules = [
-    wildcard(TYPE_FIELD),
-    wildcard(TYPE_IDENTITY),
-    wildcard(TYPE_RELATIONSHIP),
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_LAYOUT),
-    wildcard(TYPE_SOURCE),
-    wildcard(TYPE_ATTR),
-  ];
-  const projectionRules = [
-    wildcard(TYPE_FIELD),
-    wildcard(TYPE_IDENTITY),
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_LAYOUT),
-    wildcard(TYPE_SOURCE),
-    wildcard(TYPE_ATTR),
-  ];
+  // object — 4 subtypes. FR-033 S1-object: the object provider's declarative
+  // definition (vocabulary + per-subtype attr constraints + the structural child
+  // rules + real descriptions + the ADR-0028 taxonomy rule prose) is externalized
+  // to spec/metamodel/object.json, embedded at build into OBJECT_DEFINITION. The
+  // strict per-subtype model lives entirely in the JSON now: object.base carries
+  // the INTERSECTION of every subtype's structural children (field/identity/
+  // validator/layout/source); each concrete subtype sets extendsBase:true
+  // (composeWithBase folds the base childRules in at registration) and adds ONLY
+  // its subtype-specific children — value adds relationship; entity adds
+  // relationship + template (templates may be co-located) + the FR-014 TPH attrs
+  // @discriminator/@discriminatorValue (an entity-inheritance concept — a value
+  // object / derived projection carries no discriminator); projection inherits the
+  // base intersection ONLY (NO relationship — derivation is via @via, not a
+  // relationship child — and NO template). The "any attr" wildcard child rule is
+  // DROPPED (strict/fail-closed) and childRules are NO LONGER post-assigned in
+  // code. defineProviderFromData lowers it to TypeDefinitions; the factory
+  // (behavior) stays code via OBJECT_FACTORIES, mapping every subType → MetaObject.
   const OBJECT_FACTORIES: FactoryMap = Object.fromEntries(
     OBJECT_SUBTYPES.map((subType) => [
       `${TYPE_OBJECT}.${subType}`,
@@ -219,13 +202,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const objectDef of defineProviderFromData(OBJECT_DEFINITION, OBJECT_FACTORIES)) {
-    const subType = objectDef.typeId.subType;
-    objectDef.childRules =
-      subType === OBJECT_SUBTYPE_ENTITY
-        ? [...objectRules, wildcard(TYPE_TEMPLATE)]
-        : subType === OBJECT_SUBTYPE_PROJECTION
-          ? [...projectionRules]
-          : [...objectRules];
     registry.register(objectDef);
   }
 
