@@ -33,7 +33,16 @@ public class ChildRequirement {
     private final BiPredicate<MetaData, Object> valueValidator; // Value validation logic
     private final String constraintId;                  // Unique constraint identifier
     private final String validationDescription;         // Human-readable validation description
-    
+
+    /**
+     * FR-033 — the per-attr/-child human/AI-facing documentation description
+     * (distinct from {@link #validationDescription}, which drives constraint
+     * error messages, and from {@link #getDescription()}, which composes an
+     * error-message string). Optional (null when not sourced); sub-step B
+     * populates it from the embedded {@code spec/metamodel/*.json}.
+     */
+    private final String docDescription;
+
     /**
      * Create a basic child requirement with pattern matching only
      *
@@ -62,6 +71,29 @@ public class ChildRequirement {
     public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
                           Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
                           BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription) {
+        this(name, expectedType, expectedSubType, required, parentMatcher, childMatcher,
+             valueValidator, constraintId, validationDescription, null);
+    }
+
+    /**
+     * Create an enhanced child requirement with constraint validation support AND
+     * a doc description (FR-033).
+     *
+     * @param name Expected child name or "*" for any name
+     * @param expectedType Expected child type or "*" for any type
+     * @param expectedSubType Expected child subType or "*" for any subType
+     * @param required Whether this child is required (true) or optional (false)
+     * @param parentMatcher Custom predicate for parent validation (null for none)
+     * @param childMatcher Custom predicate for child validation (null for none)
+     * @param valueValidator Custom value validation logic (null for none)
+     * @param constraintId Unique constraint identifier (null for none)
+     * @param validationDescription Human-readable validation description (null for none)
+     * @param docDescription FR-033 human/AI-facing documentation description (null for none)
+     */
+    public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
+                          Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
+                          BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription,
+                          String docDescription) {
         this.name = name != null ? name : "*";
         // Types are stored verbatim; matching is case-sensitive against the canonical vocabulary
         this.expectedType = expectedType != null ? expectedType : "*";
@@ -72,6 +104,7 @@ public class ChildRequirement {
         this.valueValidator = valueValidator;
         this.constraintId = constraintId;
         this.validationDescription = validationDescription;
+        this.docDescription = docDescription;
     }
     
     /**
@@ -275,7 +308,18 @@ public class ChildRequirement {
     public String getValidationDescription() {
         return validationDescription;
     }
-    
+
+    /**
+     * Get the FR-033 doc description — the per-attr/-child human/AI-facing
+     * documentation prose, distinct from the constraint {@link #getValidationDescription()
+     * validation description} and the error-message {@link #getDescription()}.
+     *
+     * @return The doc description, or null if not provided
+     */
+    public String getDocDescription() {
+        return docDescription;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;

@@ -19,6 +19,14 @@ public class TypeDefinition {
     private final String type;
     private final String subType;
     private final String description;
+    /** FR-033 — prose documenting the complex rules enforced in code (null when absent). */
+    private final String rules;
+    /** FR-033 — an example (null when absent). */
+    private final String example;
+    /** FR-033 — guidance on when to reach for this type/subType (null when absent). */
+    private final String whenToUse;
+    /** FR-033 — the child-side placement claim (never null; empty when absent). */
+    private final List<String> parents;
     private final String parentType;
     private final String parentSubType;
     private final Map<String, ChildRequirement> childRequirements;
@@ -43,10 +51,48 @@ public class TypeDefinition {
                          Map<String, ChildRequirement> childRequirements,
                          String parentType,
                          String parentSubType) {
+        this(implementationClass, type, subType, description, childRequirements,
+             parentType, parentSubType, null, null, null, null);
+    }
+
+    /**
+     * Create a type definition with the FR-033 documentation slots
+     * ({@code rules}/{@code example}/{@code whenToUse}) and the child-side
+     * {@code parents} placement claim. All four are optional (null/empty when
+     * absent) — sub-step B sources them from the embedded
+     * {@code spec/metamodel/*.json}.
+     *
+     * @param implementationClass Java class that implements this type
+     * @param type Primary type identifier (e.g., "field", "object")
+     * @param subType Specific subtype identifier (e.g., "string", "base")
+     * @param description Human-readable description
+     * @param childRequirements Map of child name to requirement (direct requirements)
+     * @param parentType Parent type for inheritance (can be null)
+     * @param parentSubType Parent subType for inheritance (can be null)
+     * @param rules FR-033 rules prose (can be null)
+     * @param example FR-033 example (can be null)
+     * @param whenToUse FR-033 when-to-use guidance (can be null)
+     * @param parents FR-033 child-side placement claim (can be null → empty)
+     */
+    public TypeDefinition(Class<? extends MetaData> implementationClass,
+                         String type,
+                         String subType,
+                         String description,
+                         Map<String, ChildRequirement> childRequirements,
+                         String parentType,
+                         String parentSubType,
+                         String rules,
+                         String example,
+                         String whenToUse,
+                         List<String> parents) {
         this.implementationClass = Objects.requireNonNull(implementationClass, "Implementation class cannot be null");
         this.type = Objects.requireNonNull(type, "Type cannot be null");
         this.subType = Objects.requireNonNull(subType, "SubType cannot be null");
         this.description = description != null ? description : "";
+        this.rules = rules;
+        this.example = example;
+        this.whenToUse = whenToUse;
+        this.parents = parents != null ? List.copyOf(parents) : List.of();
         this.parentType = parentType;
         this.parentSubType = parentSubType;
 
@@ -123,7 +169,45 @@ public class TypeDefinition {
     public String getDescription() {
         return description;
     }
-    
+
+    /**
+     * Get the FR-033 rules prose — documentation of the complex rules enforced
+     * in code for this type/subType.
+     *
+     * @return The rules prose, or null if absent
+     */
+    public String getRules() {
+        return rules;
+    }
+
+    /**
+     * Get the FR-033 example for this type/subType.
+     *
+     * @return The example, or null if absent
+     */
+    public String getExample() {
+        return example;
+    }
+
+    /**
+     * Get the FR-033 when-to-use guidance for this type/subType.
+     *
+     * @return The when-to-use guidance, or null if absent
+     */
+    public String getWhenToUse() {
+        return whenToUse;
+    }
+
+    /**
+     * Get the FR-033 child-side placement claim ({@code parents}) — the set of
+     * parent type/subTypes this type declares it may be placed under.
+     *
+     * @return An immutable list of parent claims (never null; empty when absent)
+     */
+    public List<String> getParents() {
+        return parents;
+    }
+
     /**
      * Get qualified type name for display and logging
      *
