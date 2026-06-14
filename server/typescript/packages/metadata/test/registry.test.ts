@@ -413,11 +413,16 @@ describe("registerCoreTypes", () => {
     }
   });
 
-  it("field.string has validator, view, attr, and origin child-type wildcards", () => {
+  it("field.string has validator, view, and origin child-type wildcards (no attr wildcard under the strict model)", () => {
+    // FR-033 S1-field-B: the strict per-subtype model drops the "any attr"
+    // wildcard child rule — concrete attrs are named attr schemas, not childRules.
+    // The remaining structural rules are the genuinely-open sets validator / view /
+    // origin (subType + name still "*", now with explicit open cardinality).
     const def = registry.find(TYPE_FIELD, FIELD_SUBTYPE_STRING);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_ATTR, TYPE_VALIDATOR, TYPE_VIEW, TYPE_ORIGIN].sort());
+    expect(childTypes).toEqual([TYPE_VALIDATOR, TYPE_VIEW, TYPE_ORIGIN].sort());
+    expect(childTypes).not.toContain(TYPE_ATTR);
     for (const rule of def!.childRules) {
       expect(rule.childSubType).toBe(CHILD_RULE_WILDCARD);
       expect(rule.childName).toBe(CHILD_RULE_WILDCARD);

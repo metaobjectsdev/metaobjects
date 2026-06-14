@@ -226,19 +226,20 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(objectDef);
   }
 
-  // field — 15 subtypes. FR-033: the field provider's declarative definition
-  // (vocabulary + per-subtype attr constraints + descriptions + rule prose) is
-  // externalized to spec/metamodel/field.json, embedded at build into
-  // FIELD_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
-  // factory (behavior) stays code via FIELD_FACTORIES. The structural childRules
-  // are kept identical to today by post-assigning the same `fieldRules` array —
-  // they are not modeled in the JSON (which carries attrs only).
-  const fieldRules = [
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_VIEW),
-    wildcard(TYPE_ATTR),
-    wildcard(TYPE_ORIGIN),
-  ];
+  // field — 15 subtypes. FR-033 S1-field-B: the field provider's declarative
+  // definition (vocabulary + per-subtype attr constraints + the structural child
+  // rules + descriptions + rule prose) is externalized to spec/metamodel/field.json,
+  // embedded at build into FIELD_DEFINITION. The strict per-subtype model lives
+  // entirely in the JSON now: field.base carries the universal core attrs
+  // (@required/@readOnly/@default/@unique) + the open validator/view/origin child
+  // rules; each concrete subtype sets extendsBase:true (composeWithBase folds the
+  // base attrs+childRules in at registration) and adds ONLY its subtype-specific
+  // attrs (@maxLength→string, @precision/@scale→decimal, @currency→currency,
+  // @objectRef→object, @values/@provided→enum). The "any attr" wildcard child rule
+  // is DROPPED (strict/fail-closed) and childRules are NO LONGER post-assigned in
+  // code. defineProviderFromData lowers it to TypeDefinitions; the factory
+  // (behavior) stays code via FIELD_FACTORIES.
+  //
   // (id, name) → MetaField for every field subtype. MetaField computes its own
   // dataType from subType (FIELD_DATA_TYPE getter), so no setDataType is needed;
   // FIELD_DEFINITION.dataType carries the same per-subtype value onto the def.
@@ -249,11 +250,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const fieldDef of defineProviderFromData(FIELD_DEFINITION, FIELD_FACTORIES)) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the
-    // wildcard structural rules below are never read by the parser; they ARE
-    // consumed by the Phase-1b constraint validator and excluded from the
-    // registry manifest). A fresh copy per def matches the original semantics.
-    fieldDef.childRules = [...fieldRules];
     registry.register(fieldDef);
   }
 

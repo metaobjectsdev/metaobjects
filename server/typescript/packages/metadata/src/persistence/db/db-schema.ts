@@ -58,8 +58,8 @@ export const dbColumnTypeSchema: AttrSchema = {
 /**
  * `@storage` — physical-storage strategy for an object-typed field (set with
  * @objectRef). Re-homed out of the core field definition by FR-033 S1-field-A
- * (it is a physical-storage concern). Still on every field subtype at this step;
- * step B narrows it to field.object. Description copied VERBATIM from field.json.
+ * (it is a physical-storage concern) and scoped to field.object ONLY by
+ * S1-field-B. Description copied VERBATIM from the original field.json.
  */
 export const storageSchema: AttrSchema = {
   name: FIELD_ATTR_STORAGE,
@@ -72,9 +72,9 @@ export const storageSchema: AttrSchema = {
 
 /**
  * `@autoSet` — auto-set semantics for timestamp-like fields. Re-homed out of the
- * core field definition by FR-033 S1-field-A (it is a DB-write-time concern).
- * Still on every field subtype at this step; step B narrows it to temporal
- * subtypes. Description copied VERBATIM from field.json.
+ * core field definition by FR-033 S1-field-A (it is a DB-write-time concern) and
+ * scoped to the temporal field subtypes (date/time/timestamp) ONLY by S1-field-B.
+ * Description copied VERBATIM from the original field.json.
  */
 export const autoSetSchema: AttrSchema = {
   name: FIELD_ATTR_AUTO_SET,

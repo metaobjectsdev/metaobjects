@@ -16,12 +16,25 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).",
       "children": [
         {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
+          "type": "validator",
+          "subType": "*",
+          "name": "*",
           "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
+          "max": null
+        },
+        {
+          "type": "view",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "type": "origin",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
         },
         {
           "type": "attr",
@@ -41,14 +54,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
           "name": "default",
           "min": 0,
           "max": 1,
@@ -56,27 +61,11 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
+          "subType": "boolean",
+          "name": "unique",
           "min": 0,
           "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         }
       ]
     },
@@ -84,47 +73,9 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "string",
       "dataType": "string",
+      "extendsBase": true,
       "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
       "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
         {
           "type": "attr",
           "subType": "int",
@@ -132,22 +83,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
         }
       ]
     },
@@ -155,340 +90,38 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "int",
       "dataType": "int",
-      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER."
     },
     {
       "type": "field",
       "subType": "long",
       "dataType": "long",
-      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT."
     },
     {
       "type": "field",
       "subType": "double",
       "dataType": "double",
-      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal."
     },
     {
       "type": "field",
       "subType": "float",
       "dataType": "double",
-      "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money."
     },
     {
       "type": "field",
       "subType": "decimal",
       "dataType": "string",
+      "extendsBase": true,
       "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
       "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
       "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
         {
           "type": "attr",
           "subType": "int",
@@ -511,290 +144,35 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "boolean",
       "dataType": "boolean",
-      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN."
     },
     {
       "type": "field",
       "subType": "date",
       "dataType": "date",
-      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE."
     },
     {
       "type": "field",
       "subType": "time",
       "dataType": "date",
-      "description": "Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME."
     },
     {
       "type": "field",
       "subType": "timestamp",
       "dataType": "date",
-      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping."
     },
     {
       "type": "field",
       "subType": "object",
       "dataType": "object",
+      "extendsBase": true,
       "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
       "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
       "children": [
@@ -805,61 +183,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
         }
       ]
     },
@@ -867,72 +190,10 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "currency",
       "dataType": "long",
+      "extendsBase": true,
       "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
       "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
       "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
         {
           "type": "attr",
           "subType": "string",
@@ -948,72 +209,10 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "enum",
       "dataType": "string",
+      "extendsBase": true,
       "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
         {
           "type": "attr",
           "subType": "string",
@@ -1037,72 +236,8 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "type": "field",
       "subType": "uuid",
       "dataType": "string",
-      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "objectRef",
-          "min": 0,
-          "max": 1,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "required",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
-          "min": 0,
-          "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field gets a column-level UNIQUE constraint."
-        },
-        {
-          "type": "attr",
-          "name": "default",
-          "min": 0,
-          "max": 1,
-          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "maxLength",
-          "min": 0,
-          "max": 1,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "precision",
-          "min": 0,
-          "max": 1,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "int",
-          "name": "scale",
-          "min": 0,
-          "max": 1,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        }
-      ]
+      "extendsBase": true,
+      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid."
     }
   ]
 };

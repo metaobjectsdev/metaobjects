@@ -44,13 +44,19 @@ describe("currency registered in core types", () => {
     registerCoreTypes(registry);
     expect(registry.has(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY)).toBe(true);
   });
-  test("field/currency accepts standard children (view, attr)", () => {
+  test("field/currency accepts the open structural children (validator, view, origin)", () => {
+    // FR-033 S1-field-B: under the strict per-subtype model the "any attr"
+    // wildcard child rule is dropped — concrete attrs are named attr schemas,
+    // not a wildcard childRule. The remaining childRules are the genuinely-open
+    // structural sets: validator / view / origin.
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const def = registry.find(TYPE_FIELD, FIELD_SUBTYPE_CURRENCY);
     const childTypes = def!.childRules.map((r) => r.childType);
     expect(childTypes).toContain("view");
-    expect(childTypes).toContain("attr");
+    expect(childTypes).toContain("validator");
+    expect(childTypes).toContain("origin");
+    expect(childTypes).not.toContain("attr");
   });
   test("view/currency accepts only attr children", () => {
     const registry = new TypeRegistry();

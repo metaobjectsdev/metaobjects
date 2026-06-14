@@ -69,13 +69,6 @@
       "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -125,27 +118,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -160,13 +132,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -179,13 +144,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -204,24 +162,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -231,13 +190,6 @@
       "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -287,27 +239,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -322,13 +253,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -341,13 +265,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -366,24 +283,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -393,13 +311,6 @@
       "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
       "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
         {
           "name": "column",
           "valueType": "string",
@@ -457,27 +368,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -492,13 +382,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -511,13 +394,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -536,24 +412,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -619,27 +496,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -654,13 +510,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -673,13 +522,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -698,24 +540,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -726,13 +569,6 @@
       "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -782,20 +618,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
           "name": "precision",
           "valueType": "int",
           "isArray": false,
@@ -838,13 +660,6 @@
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
@@ -861,24 +676,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -888,13 +704,6 @@
       "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -944,27 +753,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -979,13 +767,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -998,13 +779,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -1023,24 +797,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1050,13 +825,6 @@
       "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
         {
           "name": "coerceDefault",
           "valueType": "string",
@@ -1128,32 +896,11 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
           "name": "normalize",
           "valueType": "string",
           "isArray": false,
           "required": false,
           "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
         },
         {
           "name": "provided",
@@ -1177,13 +924,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -1196,13 +936,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -1228,24 +961,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1255,13 +989,6 @@
       "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -1311,27 +1038,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -1346,13 +1052,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -1365,13 +1064,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -1390,24 +1082,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1417,13 +1110,6 @@
       "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -1473,27 +1159,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -1508,13 +1173,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -1527,13 +1185,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -1552,24 +1203,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1579,13 +1231,6 @@
       "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -1635,27 +1280,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -1670,13 +1294,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -1689,13 +1306,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -1714,24 +1324,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1742,13 +1353,6 @@
       "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -1798,25 +1402,11 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
           "required": false,
           "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
         },
         {
           "name": "readOnly",
@@ -1831,13 +1421,6 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
         },
         {
           "name": "sortable",
@@ -1877,24 +1460,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -1904,13 +1488,6 @@
       "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
       "attrs": [
         {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
           "name": "column",
           "valueType": "string",
           "isArray": false,
@@ -1967,20 +1544,6 @@
           "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
         },
         {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -1995,13 +1558,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -2014,13 +1570,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -2039,24 +1588,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -2122,27 +1672,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -2157,13 +1686,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -2176,13 +1698,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -2201,24 +1716,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -2284,27 +1800,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -2319,13 +1814,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -2338,13 +1826,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -2363,24 +1844,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
@@ -2389,13 +1871,6 @@
       "subType": "uuid",
       "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
         {
           "name": "column",
           "valueType": "string",
@@ -2446,27 +1921,6 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Total number of significant digits for decimal-typed fields."
-        },
-        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -2481,13 +1935,6 @@
           "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false,
-          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
@@ -2500,13 +1947,6 @@
           "isArray": false,
           "required": false,
           "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false,
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
@@ -2525,24 +1965,25 @@
       ],
       "children": [
         {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
-        {
           "childType": "origin",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "validator",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
           "childType": "view",
           "childSubType": "*",
-          "childName": "*"
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
