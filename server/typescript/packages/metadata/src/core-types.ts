@@ -41,9 +41,9 @@ import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
 import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
+import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
-import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
@@ -353,16 +353,35 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // identity — 2 subtypes (no base; Java doesn't register one).
-  // Subtype→class dispatch for TYPE_IDENTITY (formerly handled by metaOf()):
+  // identity — 3 subtypes (primary/secondary/reference; no base — Java doesn't
+  // register one).
+  // FR-033: the identity provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + descriptions) is externalized to
+  // spec/metamodel/identity.json, embedded at build into IDENTITY_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via IDENTITY_FACTORIES, dispatching subType→class:
   //   primary → MetaPrimaryIdentity, secondary → MetaSecondaryIdentity,
-  //   default → MetaIdentity (fallback, not currently registered).
-  for (const subType of IDENTITY_SUBTYPES) {
-    const NodeClass = IDENTITY_CLASS_MAP.get(subType) ?? MetaIdentity;
-    const idAttrs = IDENTITY_ATTRS_MAP.get(subType) ?? [{ ...identityFieldsAttr }];
-    registry.register(
-      def(TYPE_IDENTITY, subType, `Identity (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, idAttrs),
-    );
+  //   reference → MetaReferenceIdentity, default → MetaIdentity (fallback).
+  // The structural childRules are kept byte-identical to the pre-FR-033
+  // registration by post-assigning the same `identityRules` array — they are not
+  // modeled in the JSON (which carries attrs only). Attr schemas: all three carry
+  // the required @fields; primary adds @generation, secondary @unique, reference
+  // @references (required) + @enforce.
+  const identityRules = [wildcard(TYPE_ATTR)];
+  const IDENTITY_FACTORIES: FactoryMap = Object.fromEntries(
+    IDENTITY_SUBTYPES.map((subType) => [
+      `${TYPE_IDENTITY}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (IDENTITY_CLASS_MAP.get(subType) ?? MetaIdentity)(typeId, name),
+    ]),
+  );
+  for (const identityDef of defineProviderFromData(IDENTITY_DEFINITION, IDENTITY_FACTORIES)) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
+    // wildcard is never read by the parser; it IS consumed by the Phase-1b
+    // constraint validator and excluded from the registry manifest). A fresh copy
+    // per def matches the original semantics.
+    identityDef.childRules = [...identityRules];
+    registry.register(identityDef);
   }
 
   // relationship — 4 subtypes

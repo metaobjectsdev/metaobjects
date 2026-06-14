@@ -2549,7 +2549,7 @@
     {
       "type": "identity",
       "subType": "primary",
-      "description": "Identity (primary)",
+      "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
       "attrs": [
         {
           "name": "fields",
@@ -2577,7 +2577,7 @@
     {
       "type": "identity",
       "subType": "reference",
-      "description": "Identity (reference)",
+      "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
       "attrs": [
         {
           "name": "enforce",
@@ -2612,7 +2612,7 @@
     {
       "type": "identity",
       "subType": "secondary",
-      "description": "Identity (secondary)",
+      "description": "A secondary index (unique by default via @unique).",
       "attrs": [
         {
           "name": "fields",
