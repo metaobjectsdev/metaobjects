@@ -45,7 +45,7 @@ import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedde
 import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
 import { ORIGIN_DEFINITION } from "./persistence/origin/origin-definition.embedded.js";
 import { SOURCE_DEFINITION } from "./persistence/source/source-definition.embedded.js";
-import { currencyViewAttrs } from "./presentation/view/view-schema.js";
+import { VIEW_DEFINITION } from "./presentation/view/view-definition.embedded.js";
 import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embedded.js";
 import { MetaTemplate } from "./template/meta-template.js";
 import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
@@ -77,10 +77,7 @@ import {
   VALIDATOR_SUBTYPE_NUMERIC,
   VALIDATOR_SUBTYPE_ARRAY,
 } from "./core/validator/validator-constants.js";
-import {
-  VIEW_SUBTYPES,
-  VIEW_SUBTYPE_CURRENCY,
-} from "./presentation/view/view-constants.js";
+import { VIEW_SUBTYPES } from "./presentation/view/view-constants.js";
 import {
   IDENTITY_SUBTYPES,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -308,14 +305,29 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(validatorDef);
   }
 
-  // view — N subtypes. Each view permits only attr children (Java parity:
-  // MetaView only attaches to fields, never aggregates child views).
-  // Only view.currency carries a documented attr (@locale); others have none.
-  for (const subType of VIEW_SUBTYPES) {
-    const viewAttrs = subType === VIEW_SUBTYPE_CURRENCY ? [...currencyViewAttrs] : [];
-    registry.register(
-      def(TYPE_VIEW, subType, `View (${subType})`, [wildcard(TYPE_ATTR)], MetaView, viewAttrs),
-    );
+  // view — 13 subtypes (base + 12 field-level UI/render hints). Each view permits
+  // only attr children (Java parity: MetaView only attaches to fields, never
+  // aggregates child views).
+  // FR-033: the view provider's declarative definition (vocabulary + real
+  // per-subtype descriptions + the single @locale attr on view.currency) is
+  // externalized to spec/metamodel/view.json, embedded at build into
+  // VIEW_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via VIEW_FACTORIES — every subtype maps to the
+  // single MetaView class (views carry no per-subtype behavior). Only
+  // view.currency carries a documented attr (@locale, default "en-US"); the
+  // other 12 subtypes have none. The structural childRules ([wildcard(attr)]) are
+  // kept byte-identical to the pre-FR-033 registration by post-assigning them
+  // here (they are not modeled in the JSON, which carries attrs only).
+  const VIEW_FACTORIES: FactoryMap = Object.fromEntries(
+    VIEW_SUBTYPES.map((subType) => [
+      `${TYPE_VIEW}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaView(typeId, name),
+    ]),
+  );
+  const viewDefs = defineProviderFromData(VIEW_DEFINITION, VIEW_FACTORIES);
+  for (const viewDef of viewDefs) {
+    viewDef.childRules = [wildcard(TYPE_ATTR)];
+    registry.register(viewDef);
   }
 
   // layout — object-level UI surfaces (data grids, forms, tabs, cards).

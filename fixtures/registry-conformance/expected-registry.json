@@ -3833,7 +3833,7 @@
     {
       "type": "view",
       "subType": "base",
-      "description": "View (base)",
+      "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own.",
       "attrs": [],
       "children": [
         {
@@ -3846,7 +3846,7 @@
     {
       "type": "view",
       "subType": "currency",
-      "description": "View (currency)",
+      "description": "Currency display formatting (locale-aware via @locale).",
       "attrs": [
         {
           "name": "locale",
