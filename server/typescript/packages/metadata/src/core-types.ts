@@ -48,7 +48,7 @@ import { SOURCE_DEFINITION } from "./persistence/source/source-definition.embedd
 import { VIEW_DEFINITION } from "./presentation/view/view-definition.embedded.js";
 import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embedded.js";
 import { MetaTemplate } from "./template/meta-template.js";
-import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
+import { TEMPLATE_DEFINITION } from "./template/template-definition.embedded.js";
 import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import {
   TYPE_METADATA,
@@ -415,17 +415,38 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   }
 
   // template — renderable text artifacts (FR-004) + tool-call envelopes
-  // (ADR-0011). Three subtypes: prompt + output + toolcall; attr-only children.
-  // A single MetaTemplate class backs all three subtypes (mirrors source);
+  // (ADR-0011). Four subtypes: base + prompt + output + toolcall; attr-only
+  // children. A single MetaTemplate class backs every subtype (mirrors source);
   // per-subtype attr schemas drive validation (prompt + output require
   // @payloadRef + @textRef + @format closed enum; prompt adds the LLM overlay;
-  // toolcall has its own set — @toolName + @payloadRef + @description, no
-  // @textRef requirement since toolcalls have no renderable body).
-  for (const subType of TEMPLATE_SUBTYPES) {
-    const templateAttrs = TEMPLATE_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_TEMPLATE, subType, `Template (${subType})`, [wildcard(TYPE_ATTR)], MetaTemplate, templateAttrs),
-    );
+  // output adds @promptStyle + @kind/email part-refs; toolcall has its own set —
+  // @toolName + @payloadRef, no @textRef requirement since toolcalls have no
+  // renderable body).
+  // FR-033: the template provider's declarative definition (the 4-subtype
+  // vocabulary + the full per-subtype attr constraints — incl. @format/@promptStyle/
+  // @kind closed-enum allowedValues + defaults + required @payloadRef/@toolName —
+  // + real descriptions + the FR-004/ADR-0011 rules prose) is externalized to
+  // spec/metamodel/template.json, embedded at build into TEMPLATE_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via TEMPLATE_FACTORIES, mapping every subType → MetaTemplate.
+  // The structural childRules are kept byte-identical to the pre-FR-033
+  // registration by post-assigning the same `templateRules` array — they are not
+  // modeled in the JSON (attrs only). (The separate templateProvider — which
+  // EXTENDS every field subtype with @xmlText — is untouched by this conversion.)
+  const templateRules = [wildcard(TYPE_ATTR)];
+  const TEMPLATE_FACTORIES: FactoryMap = Object.fromEntries(
+    TEMPLATE_SUBTYPES.map((subType) => [
+      `${TYPE_TEMPLATE}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaTemplate(typeId, name),
+    ]),
+  );
+  for (const templateDef of defineProviderFromData(TEMPLATE_DEFINITION, TEMPLATE_FACTORIES)) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
+    // wildcard is never read by the parser; it IS consumed by the Phase-1b
+    // constraint validator and excluded from the registry manifest). A fresh copy
+    // per def matches the original semantics.
+    templateDef.childRules = [...templateRules];
+    registry.register(templateDef);
   }
 
   // identity — 3 subtypes (primary/secondary/reference; no base — Java doesn't
