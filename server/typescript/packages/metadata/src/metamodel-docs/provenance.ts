@@ -17,6 +17,7 @@
 import type { TypeRegistry } from "../registry.js";
 import type { ProviderDefinition, TypeDef, ChildDef } from "../provider-data.js";
 import { CHILD_RULE_WILDCARD } from "../shared/structural.js";
+import { isExcludedTypeSubType } from "../registry-manifest-exclusions.js";
 import { ALL_PROVIDER_DEFINITIONS } from "./provider-definitions.js";
 
 const ATTR_CHILD_TYPE = "attr";
@@ -123,7 +124,12 @@ export function buildMetamodelProvenance(
       // A real type this provider OWNS (registers).
       const tk = typeKey(t.type, t.subType);
       if (!ownerType.has(tk)) ownerType.set(tk, id);
-      ownedByProvider.get(id)!.add(tk);
+      // The provider lens ("Owns (registers)" on providers.md) advertises the
+      // SAME agreed vocabulary INDEX/type pages cover — skip the manifest-
+      // excluded rows (the TS-web-presentation `view.*` controls) so all three
+      // doc surfaces share one consistent set. (`ownerType` still records the
+      // raw owner for any internal lookup; only the published list is filtered.)
+      if (!isExcludedTypeSubType(t.type, t.subType)) ownedByProvider.get(id)!.add(tk);
       // Inline attrs on an owned type are contributed by the same provider.
       for (const c of t.children ?? []) {
         if (isAttrChild(c)) recordContribution(id, t.type, t.subType, c.name);

@@ -132,6 +132,37 @@ test("providers.md indexes all five concern providers with descriptions", () => 
   }
 });
 
+test("providers.md 'Owns' honors the same exclusions as INDEX/type pages (no generic view.* controls)", () => {
+  const out = docs();
+  const providers = out.get("providers.md")!;
+  // The "Owns (registers)" core list must NOT advertise the 11 manifest-
+  // excluded TS-web-presentation controls (absent from INDEX/type pages) ...
+  for (const excluded of [
+    "view.checkbox",
+    "view.date",
+    "view.dropdown",
+    "view.hidden",
+    "view.hotlink",
+    "view.month",
+    "view.number",
+    "view.password",
+    "view.radio",
+    "view.text",
+    "view.textarea",
+    "view.web",
+  ]) {
+    expect(providers).not.toContain(`\`${excluded}\``);
+  }
+  // ... but DOES keep the agreed view subtypes (`view.base`, `view.currency`).
+  expect(providers).toContain("`view.base`");
+  expect(providers).toContain("`view.currency`");
+
+  // The same vocabulary INDEX covers: no excluded control leaks into INDEX either.
+  const index = out.get("INDEX.md")!;
+  expect(index).not.toContain("`view.text`");
+  expect(index).toContain("`view.currency`");
+});
+
 test("provenance: core owns field.currency; db contributes @column; ui contributes @filterable", () => {
   const registry = composeRegistry(coreProviders);
   const p = buildMetamodelProvenance(registry);
