@@ -277,7 +277,10 @@ class EntityModelGenerator:
         ]
         for e in shared:
             parts += ["", f"class {e.name}(str, Enum):"]
-            parts += [f'    {m} = "{m}"' for m in e.values]
+            # Member names follow the Python convention (UPPER_CASE constants); the
+            # value preserves the wire form, so ``Enum("statistical")`` and
+            # ``member == "statistical"`` still work (str-enum).
+            parts += [f'    {m.upper()} = "{m}"' for m in e.values]
         parts.append("")
         return EmittedFile(path="enums.py", content=ruff_format("\n".join(parts)))
 
