@@ -42,8 +42,8 @@ import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
 import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
 import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
+import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
 import { objectAttrs } from "./core/object/object-schema.js";
-import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
@@ -384,18 +384,33 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(identityDef);
   }
 
-  // relationship — 4 subtypes
-  for (const subType of RELATIONSHIP_SUBTYPES) {
-    registry.register(
-      def(
-        TYPE_RELATIONSHIP,
-        subType,
-        `Relationship (${subType})`,
-        [wildcard(TYPE_ATTR)],
-        MetaRelationship,
-        [...relationshipAttrs],
-      ),
-    );
+  // relationship — 4 subtypes (base/association/aggregation/composition), all
+  // backed by the single MetaRelationship node class (no subType→class dispatch).
+  // FR-033: the relationship provider's declarative definition (vocabulary +
+  // the 7 shared attr constraints + real descriptions + the complex M:N rules
+  // prose) is externalized to spec/metamodel/relationship.json, embedded at build
+  // into RELATIONSHIP_DEFINITION. defineProviderFromData lowers it to
+  // TypeDefinitions; the factory (behavior) stays code via RELATIONSHIP_FACTORIES,
+  // mapping every subType → MetaRelationship. The structural childRules are kept
+  // byte-identical to the pre-FR-033 registration by post-assigning the same
+  // `relationshipRules` array — they are not modeled in the JSON (attrs only).
+  const relationshipRules = [wildcard(TYPE_ATTR)];
+  const RELATIONSHIP_FACTORIES: FactoryMap = Object.fromEntries(
+    RELATIONSHIP_SUBTYPES.map((subType) => [
+      `${TYPE_RELATIONSHIP}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaRelationship(typeId, name),
+    ]),
+  );
+  for (const relationshipDef of defineProviderFromData(
+    RELATIONSHIP_DEFINITION,
+    RELATIONSHIP_FACTORIES,
+  )) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
+    // wildcard is never read by the parser; it IS consumed by the Phase-1b
+    // constraint validator and excluded from the registry manifest). A fresh copy
+    // per def matches the original semantics.
+    relationshipDef.childRules = [...relationshipRules];
+    registry.register(relationshipDef);
   }
 
   // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`

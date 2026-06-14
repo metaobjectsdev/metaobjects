@@ -3078,7 +3078,8 @@
     {
       "type": "relationship",
       "subType": "aggregation",
-      "description": "Relationship (aggregation)",
+      "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).",
       "attrs": [
         {
           "name": "cardinality",
@@ -3141,7 +3142,8 @@
     {
       "type": "relationship",
       "subType": "association",
-      "description": "Relationship (association)",
+      "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).",
       "attrs": [
         {
           "name": "cardinality",
@@ -3204,7 +3206,8 @@
     {
       "type": "relationship",
       "subType": "base",
-      "description": "Relationship (base)",
+      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.",
+      "rules": "@cardinality is an open string at the metamodel level ('one'/'many', and Java-canonical composite forms such as 'many-to-one'); @objectRef names the target entity. M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. @onDelete/@onUpdate carry referential actions (cascade/set-null/restrict/no-action).",
       "attrs": [
         {
           "name": "cardinality",
@@ -3267,7 +3270,8 @@
     {
       "type": "relationship",
       "subType": "composition",
-      "description": "Relationship (composition)",
+      "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).",
       "attrs": [
         {
           "name": "cardinality",
