@@ -79,6 +79,35 @@ public sealed record SpecStructChild(
     bool? Named);
 
 /// <summary>
+/// FR-033 (provider re-home) — one re-homed attr declared in a provider's
+/// <c>extends</c> directive, with the cross-port value-type / array-ness /
+/// required-ness needed to build a fully-specified <c>AttrSchema</c> and register
+/// it on the matching subtype. Allowed-values + default carry through so the attr
+/// is single-sourced from the JSON, never hand-copied. Mirrors the Java
+/// <c>ExtendsAttr</c> / Python <c>AttrEntry</c>.
+/// </summary>
+public sealed record SpecExtendsAttr(
+    string Name,
+    string? ValueType,
+    bool IsArray,
+    bool Required,
+    IReadOnlyList<object>? AllowedValues,
+    object? Default);
+
+/// <summary>
+/// FR-033 (provider re-home) — one <c>extends</c> directive from a named concern
+/// provider's spec file (e.g. <c>ui.json</c>'s <c>field.*</c> or <c>prompt.json</c>'s
+/// <c>template.prompt</c>). <c>WildcardSubType</c> is true for the <c>"*"</c>
+/// any-subtype matcher; otherwise <c>SubTypes</c> lists the exact subtypes. Mirrors
+/// the Java <c>ExtendsDirective</c> / Python <c>ExtendsTarget</c>.
+/// </summary>
+public sealed record SpecExtendsDirective(
+    string Type,
+    IReadOnlyList<string> SubTypes,
+    bool WildcardSubType,
+    IReadOnlyList<SpecExtendsAttr> Attrs);
+
+/// <summary>
 /// FR-033 — the C# reader over the embedded <c>spec/metamodel/*.json</c> provider files.
 /// </summary>
 public sealed class SpecMetamodelReader
@@ -124,6 +153,15 @@ public sealed class SpecMetamodelReader
         bool WildcardSubType,
         IReadOnlyDictionary<string, SpecAttrEntry> Attrs);
 
+    // FR-033 (provider re-home) — per-provider extends directives, keyed by the
+    // spec file's "provider" name (e.g. "metaobjects-ui" / "metaobjects-prompt").
+    // A DATA-DRIVEN concern provider reads its own directives to register the
+    // re-homed attrs onto the core types — single-sourced from the JSON, never
+    // hand-copied. Mirrors the Java SpecMetamodelReader.extendsDirectives /
+    // Python load_provider_extends.
+    private readonly Dictionary<string, List<SpecExtendsDirective>> _providerExtends =
+        new(StringComparer.Ordinal);
+
     private SpecMetamodelReader() { }
 
     // ------------------------------------------------------------------
@@ -167,6 +205,9 @@ public sealed class SpecMetamodelReader
 
     private void Parse(JsonElement provider)
     {
+        // FR-033 — the spec file's "provider" name keys its extends directives so a
+        // concern provider can read its own (and only its own) re-homed attrs.
+        string? providerName = Str(provider, "provider");
         if (provider.TryGetProperty("types", out JsonElement types) && types.ValueKind == JsonValueKind.Array)
         {
             foreach (JsonElement t in types.EnumerateArray())
@@ -235,14 +276,48 @@ public sealed class SpecMetamodelReader
                     }
                 }
                 var attrs = new Dictionary<string, SpecAttrEntry>(StringComparer.Ordinal);
+                var directiveAttrs = new List<SpecExtendsAttr>();
                 foreach (SpecAttrEntry a in ParseAttrChildren(e))
                 {
                     attrs[a.Name] = a;
+                    // The JSON `subType` of an attr child is its value-type (string /
+                    // boolean / int / properties / filter); `min == 1` ⇒ required.
+                    directiveAttrs.Add(new SpecExtendsAttr(
+                        Name: a.Name,
+                        ValueType: a.SubType,
+                        IsArray: a.IsArray,
+                        Required: a.Required,
+                        AllowedValues: a.AllowedValues,
+                        Default: a.Default));
                 }
                 _extendsBlocks.Add(new ExtendsBlock(type, subTypes, wildcard, attrs));
+                if (providerName is not null)
+                {
+                    if (!_providerExtends.TryGetValue(providerName, out List<SpecExtendsDirective>? list))
+                    {
+                        list = new List<SpecExtendsDirective>();
+                        _providerExtends[providerName] = list;
+                    }
+                    list.Add(new SpecExtendsDirective(type, subTypes, wildcard, directiveAttrs));
+                }
             }
         }
     }
+
+    /// <summary>
+    /// FR-033 (provider re-home) — the <c>extends</c> directives declared by the named
+    /// concern provider (e.g. <c>"metaobjects-ui"</c> / <c>"metaobjects-prompt"</c>).
+    /// Each directive carries its target <c>(type, subTypes/"*")</c> and the re-homed
+    /// attrs with their cross-port value-type / array-ness / required-ness / allowed
+    /// values / default — the data a concern provider uses to register those attrs on
+    /// the matching subtypes via <see cref="TypeRegistry.Extend"/>. Empty when the
+    /// provider declares no <c>extends</c> block. Mirrors the Java
+    /// <c>extendsDirectives</c> / Python <c>load_provider_extends</c>.
+    /// </summary>
+    public IReadOnlyList<SpecExtendsDirective> ExtendsDirectives(string providerName) =>
+        _providerExtends.TryGetValue(providerName, out List<SpecExtendsDirective>? list)
+            ? list
+            : Array.Empty<SpecExtendsDirective>();
 
     private static List<SpecAttrEntry> ParseAttrChildren(JsonElement owner)
     {

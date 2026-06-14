@@ -392,6 +392,79 @@ public sealed class TypeRegistry
     }
 
     // ------------------------------------------------------------------
+    // FR-033 (provider re-home) — apply a concern provider's extends directives
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-033 — apply a concern provider's <c>extends</c> directives (read from the
+    /// embedded <c>spec/metamodel/&lt;provider&gt;.json</c> by
+    /// <see cref="MetaObjects.Registry.Spec.SpecMetamodelReader"/>) onto the
+    /// already-registered types, re-homing the provider's attrs OUT of the core type
+    /// classes and INTO the concern provider. This is the data-driven mechanism the
+    /// <c>metaobjects-ui</c> / <c>metaobjects-prompt</c> providers use — the C#
+    /// analogue of TS/Java/Python reading the same <c>extends</c> blocks.
+    /// <para>
+    /// For each directive the target subtypes are resolved: an exact subtype, a list,
+    /// or the <c>"*"</c> wildcard expanded via <paramref name="fieldSubtypeExpansion"/>
+    /// (when no explicit expansion is supplied for a wildcarded type, the wildcard
+    /// expands to every CURRENTLY-REGISTERED subtype of that type — matching the
+    /// historical per-subtype loops). Each attr is added via <see cref="Extend"/>,
+    /// whose already-exists guard is the backstop ensuring an attr is registered by
+    /// exactly ONE provider (no double-registration with core).
+    /// </para>
+    /// </summary>
+    public void ApplyProviderExtends(
+        MetaObjects.Registry.Spec.SpecMetamodelReader reader,
+        string providerName,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? fieldSubtypeExpansion = null)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(providerName);
+        CheckNotSealed($"ApplyProviderExtends(\"{providerName}\")");
+
+        foreach (MetaObjects.Registry.Spec.SpecExtendsDirective d in reader.ExtendsDirectives(providerName))
+        {
+            IReadOnlyList<string> targets;
+            if (d.WildcardSubType)
+            {
+                if (fieldSubtypeExpansion is not null
+                    && fieldSubtypeExpansion.TryGetValue(d.Type, out IReadOnlyList<string>? explicitExpansion))
+                {
+                    targets = explicitExpansion;
+                }
+                else
+                {
+                    // Fall back to every currently-registered subtype of the type.
+                    targets = AllTypes()
+                        .Where(id => id.Type == d.Type)
+                        .Select(id => id.SubType)
+                        .ToList();
+                }
+            }
+            else
+            {
+                targets = d.SubTypes;
+            }
+
+            List<AttrSchema> schemas = d.Attrs.Select(ToAttrSchema).ToList();
+            foreach (string subType in targets)
+            {
+                Extend(d.Type, subType, attributes: schemas);
+            }
+        }
+    }
+
+    /// <summary>FR-033 — build a fully-specified <see cref="AttrSchema"/> from a JSON extends attr entry (single-sourced, never hand-copied).</summary>
+    private static AttrSchema ToAttrSchema(MetaObjects.Registry.Spec.SpecExtendsAttr a) =>
+        new(
+            Name: a.Name,
+            ValueType: a.ValueType,
+            Required: a.Required,
+            Default: a.Default,
+            AllowedValues: a.AllowedValues,
+            IsArray: a.IsArray);
+
+    // ------------------------------------------------------------------
     // FR-033 (sub-step B1) — apply spec/metamodel descriptions (pre-seal)
     // ------------------------------------------------------------------
 

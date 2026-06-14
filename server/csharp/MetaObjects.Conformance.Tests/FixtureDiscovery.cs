@@ -74,8 +74,23 @@ public sealed record Fixture(
 /// </summary>
 public static class FixtureDiscovery
 {
+    // FR-033 — the default provider set for a fixture with no providers.json is the
+    // FULL core bundle (core types + the four concern providers), NOT core-types alone.
+    // The field's filter/sort/teaching/extract attrs + the view/layout/template attrs
+    // were re-homed out of core-types into the db/ui/prompt concern providers (matching
+    // the TS provider split), so a fixture exercising @filterable / @example / @normalize
+    // / a template.* attr / a layout.dataGrid attr needs those providers composed. Mirrors
+    // the TS conformance DEFAULT_PROVIDERS (server/typescript/.../conformance/src/fixture.ts)
+    // and the Python adapter, keeping the cross-port no-providers.json fixtures green.
     private static readonly IReadOnlyList<string> DefaultProviders =
-        new[] { "metaobjects-core-types" };
+        new[]
+        {
+            "metaobjects-core-types",
+            "metaobjects-db",
+            "metaobjects-documentation",
+            "metaobjects-prompt",
+            "metaobjects-ui",
+        };
 
     /// <summary>
     /// Discover every scenario directory under <paramref name="corpusRoot"/>,
