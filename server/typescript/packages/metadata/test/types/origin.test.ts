@@ -12,7 +12,6 @@ import {
   AGGREGATE_FUNCTIONS,
   SUBTYPE_BASE,
   TYPE_FIELD,
-  TYPE_ATTR,
 } from "../../src/index.js";
 import { TypeRegistry } from "../../src/registry.js";
 import { registerCoreTypes } from "../../src/core-types.js";
@@ -51,12 +50,14 @@ describe("origin registration in core types", () => {
     expect(registry.has(TYPE_ORIGIN, ORIGIN_SUBTYPE_AGGREGATE)).toBe(true);
   });
 
-  test("origin subtypes only accept attr children", () => {
+  test("origin subtypes have EMPTY childRules (attr-only type, no any-attr wildcard)", () => {
+    // FR-033 S1-simple: origin is attr-only; the "any attr" wildcard child rule
+    // is dropped. Named attrs (@from/@via/@agg/@of) enforce strictly; a structural
+    // child would be ERR_CHILD_NOT_ALLOWED.
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const def = registry.find(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH)!;
-    expect(def.childRules.length).toBe(1);
-    expect(def.childRules[0]!.childType).toBe(TYPE_ATTR);
+    expect(def.childRules.length).toBe(0);
   });
 
   test("field child rules accept origin", () => {

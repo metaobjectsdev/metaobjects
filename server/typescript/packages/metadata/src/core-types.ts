@@ -164,12 +164,15 @@ const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
 // re-exported from the package index for the same public surface.
 
 function registerCoreTypeDefs(registry: TypeRegistry): void {
-  // metadata — 1 subtype (the document root: metadata.root)
+  // metadata — 1 subtype (the document root: metadata.root). FR-033 S1-simple:
+  // the any-attr wildcard child rule is DROPPED (strict/fail-closed — a document
+  // root holds structural nodes, never bare attrs); the genuinely-open structural
+  // wildcards (object/field/validator/template) are KEPT — a root legitimately
+  // holds arbitrary nodes of those types.
   registry.register(
     def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document", [
       wildcard(TYPE_OBJECT),
       wildcard(TYPE_FIELD),
-      wildcard(TYPE_ATTR),
       wildcard(TYPE_VALIDATOR),
       wildcard(TYPE_TEMPLATE),
     ], MetaRoot),
@@ -280,12 +283,14 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   //   required → MetaRequiredValidator, length → MetaLengthValidator,
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
-  // The structural childRules are kept byte-identical to the pre-FR-033
-  // registration by post-assigning the same `validatorRules` array — they are
-  // not modeled in the JSON (which carries attrs only). Attr schemas: base +
-  // length/numeric/array read @min/@max via this.ownAttr(VALIDATOR_ATTR_MIN/MAX);
-  // regex also reads @pattern; required has no extra attrs.
-  const validatorRules = [wildcard(TYPE_ATTR)];
+  // FR-033 S1-simple: validator is an ATTR-ONLY type — its only children are its
+  // declared named attrs (no structural children, ever). The "any attr" wildcard
+  // child rule is DROPPED (strict/fail-closed); defineProviderFromData leaves
+  // childRules EMPTY. The named attrs still enforce strictly via attr-schema-
+  // validate (ERR_UNKNOWN_ATTR); a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: base + length/numeric/array read @min/@max
+  // via this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern; required
+  // has no extra attrs.
   const VALIDATOR_FACTORIES: FactoryMap = Object.fromEntries(
     VALIDATOR_SUBTYPES.map((subType) => [
       `${TYPE_VALIDATOR}.${subType}`,
@@ -294,11 +299,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const validatorDef of defineProviderFromData(VALIDATOR_DEFINITION, VALIDATOR_FACTORIES)) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the
-    // attr wildcard below is never read by the parser; it IS consumed by the
-    // Phase-1b constraint validator and excluded from the registry manifest).
-    // A fresh copy per def matches the original semantics.
-    validatorDef.childRules = [...validatorRules];
     registry.register(validatorDef);
   }
 
@@ -312,18 +312,17 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // factory (behavior) stays code via VIEW_FACTORIES — every subtype maps to the
   // single MetaView class (views carry no per-subtype behavior). Only
   // view.currency carries a documented attr (@locale, default "en-US"); the
-  // other 12 subtypes have none. The structural childRules ([wildcard(attr)]) are
-  // kept byte-identical to the pre-FR-033 registration by post-assigning them
-  // here (they are not modeled in the JSON, which carries attrs only).
+  // other 12 subtypes have none. FR-033 S1-simple: view is an ATTR-ONLY type —
+  // the "any attr" wildcard child rule is DROPPED (strict/fail-closed) and
+  // childRules are left EMPTY; the declared named attrs still enforce strictly,
+  // a misplaced STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
   const VIEW_FACTORIES: FactoryMap = Object.fromEntries(
     VIEW_SUBTYPES.map((subType) => [
       `${TYPE_VIEW}.${subType}`,
       (typeId: TypeId, name: string) => new MetaView(typeId, name),
     ]),
   );
-  const viewDefs = defineProviderFromData(VIEW_DEFINITION, VIEW_FACTORIES);
-  for (const viewDef of viewDefs) {
-    viewDef.childRules = [wildcard(TYPE_ATTR)];
+  for (const viewDef of defineProviderFromData(VIEW_DEFINITION, VIEW_FACTORIES)) {
     registry.register(viewDef);
   }
 
@@ -334,19 +333,18 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // LAYOUT_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
   // factory (behavior) stays code via LAYOUT_FACTORIES — every subtype maps to
   // the single MetaLayout class (layouts are config carriers, no per-subtype
-  // behavior). Each subtype permits only attr children — like views, layouts are
-  // config carriers — so the structural childRules ([wildcard(attr)]) are kept
-  // byte-identical to the pre-FR-033 registration by post-assigning them here
-  // (they are not modeled in the JSON, which carries attrs only).
+  // behavior). FR-033 S1-simple: layout is an ATTR-ONLY type — like views,
+  // layouts are config carriers — the "any attr" wildcard child rule is DROPPED
+  // (strict/fail-closed) and childRules are left EMPTY; the declared named attrs
+  // still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED.
   const LAYOUT_FACTORIES: FactoryMap = Object.fromEntries(
     LAYOUT_SUBTYPES.map((subType) => [
       `${TYPE_LAYOUT}.${subType}`,
       (typeId: TypeId, name: string) => new MetaLayout(typeId, name),
     ]),
   );
-  const layoutDefs = defineProviderFromData(LAYOUT_DEFINITION, LAYOUT_FACTORIES);
-  for (const layoutDef of layoutDefs) {
-    layoutDef.childRules = [wildcard(TYPE_ATTR)];
+  for (const layoutDef of defineProviderFromData(LAYOUT_DEFINITION, LAYOUT_FACTORIES)) {
     registry.register(layoutDef);
   }
 
@@ -362,10 +360,11 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // per-subtype @table/@kind/@role/@schema/@parameterRef attrs on source.rdb are
   // contributed by a SEPARATE provider (dbProvider, persistence/db) via
   // registry.extend(TYPE_SOURCE, "rdb", ...) — untouched by this conversion.
-  // The structural childRules are kept byte-identical to the pre-FR-033
-  // registration by post-assigning the same `sourceRules` array (the attr
-  // wildcard is not modeled in the JSON, which carries types only).
-  const sourceRules = [wildcard(TYPE_ATTR)];
+  // FR-033 S1-simple: source is an ATTR-ONLY type (configuration carrier, never
+  // nested structure) — the "any attr" wildcard child rule is DROPPED (strict/
+  // fail-closed) and childRules are left EMPTY; the per-subtype @table/@kind/
+  // @role/@schema attrs (from dbProvider) still enforce strictly, a misplaced
+  // STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
   const SOURCE_FACTORIES: FactoryMap = Object.fromEntries(
     SOURCE_SUBTYPES.map((subType) => [
       `${TYPE_SOURCE}.${subType}`,
@@ -373,9 +372,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const sourceDef of defineProviderFromData(SOURCE_DEFINITION, SOURCE_FACTORIES)) {
-    // childRules kept byte-identical to the pre-FR-033 registration; a fresh
-    // copy per def matches the original semantics.
-    sourceDef.childRules = [...sourceRules];
     registry.register(sourceDef);
   }
 
@@ -389,12 +385,12 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   //   passthrough → MetaPassthroughOrigin, aggregate → MetaAggregateOrigin,
   //   collection → MetaCollectionOrigin, base (and any unmapped subtype) →
   //   MetaOrigin (fallback).
-  // The structural childRules are kept byte-identical to the pre-FR-033
-  // registration by post-assigning the same `originRules` array — they are not
-  // modeled in the JSON (which carries attrs only). Attr schemas: base has none;
-  // passthrough adds @from (required) + @via; aggregate adds @agg (required) +
-  // @of (required) + @via; collection adds @via (required).
-  const originRules = [wildcard(TYPE_ATTR)];
+  // FR-033 S1-simple: origin is an ATTR-ONLY type — the "any attr" wildcard child
+  // rule is DROPPED (strict/fail-closed) and childRules are left EMPTY; the named
+  // attrs still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: base has none; passthrough adds @from
+  // (required) + @via; aggregate adds @agg (required) + @of (required) + @via;
+  // collection adds @via (required).
   const ORIGIN_FACTORIES: FactoryMap = Object.fromEntries(
     ORIGIN_SUBTYPES.map((subType) => [
       `${TYPE_ORIGIN}.${subType}`,
@@ -403,11 +399,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const originDef of defineProviderFromData(ORIGIN_DEFINITION, ORIGIN_FACTORIES)) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
-    // wildcard is never read by the parser; it IS consumed by the Phase-1b
-    // constraint validator and excluded from the registry manifest). A fresh copy
-    // per def matches the original semantics.
-    originDef.childRules = [...originRules];
     registry.register(originDef);
   }
 
@@ -457,12 +448,12 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // stays code via IDENTITY_FACTORIES, dispatching subType→class:
   //   primary → MetaPrimaryIdentity, secondary → MetaSecondaryIdentity,
   //   reference → MetaReferenceIdentity, default → MetaIdentity (fallback).
-  // The structural childRules are kept byte-identical to the pre-FR-033
-  // registration by post-assigning the same `identityRules` array — they are not
-  // modeled in the JSON (which carries attrs only). Attr schemas: all three carry
-  // the required @fields; primary adds @generation, secondary @unique, reference
-  // @references (required) + @enforce.
-  const identityRules = [wildcard(TYPE_ATTR)];
+  // FR-033 S1-simple: identity is an ATTR-ONLY type — the "any attr" wildcard
+  // child rule is DROPPED (strict/fail-closed) and childRules are left EMPTY; the
+  // named attrs still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: all three carry the required @fields;
+  // primary adds @generation, secondary @unique, reference @references (required)
+  // + @enforce.
   const IDENTITY_FACTORIES: FactoryMap = Object.fromEntries(
     IDENTITY_SUBTYPES.map((subType) => [
       `${TYPE_IDENTITY}.${subType}`,
@@ -471,11 +462,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const identityDef of defineProviderFromData(IDENTITY_DEFINITION, IDENTITY_FACTORIES)) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
-    // wildcard is never read by the parser; it IS consumed by the Phase-1b
-    // constraint validator and excluded from the registry manifest). A fresh copy
-    // per def matches the original semantics.
-    identityDef.childRules = [...identityRules];
     registry.register(identityDef);
   }
 
@@ -486,10 +472,10 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // prose) is externalized to spec/metamodel/relationship.json, embedded at build
   // into RELATIONSHIP_DEFINITION. defineProviderFromData lowers it to
   // TypeDefinitions; the factory (behavior) stays code via RELATIONSHIP_FACTORIES,
-  // mapping every subType → MetaRelationship. The structural childRules are kept
-  // byte-identical to the pre-FR-033 registration by post-assigning the same
-  // `relationshipRules` array — they are not modeled in the JSON (attrs only).
-  const relationshipRules = [wildcard(TYPE_ATTR)];
+  // mapping every subType → MetaRelationship. FR-033 S1-simple: relationship is an
+  // ATTR-ONLY type — the "any attr" wildcard child rule is DROPPED (strict/fail-
+  // closed) and childRules are left EMPTY; the named attrs still enforce strictly,
+  // a misplaced STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
   const RELATIONSHIP_FACTORIES: FactoryMap = Object.fromEntries(
     RELATIONSHIP_SUBTYPES.map((subType) => [
       `${TYPE_RELATIONSHIP}.${subType}`,
@@ -500,11 +486,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     RELATIONSHIP_DEFINITION,
     RELATIONSHIP_FACTORIES,
   )) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
-    // wildcard is never read by the parser; it IS consumed by the Phase-1b
-    // constraint validator and excluded from the registry manifest). A fresh copy
-    // per def matches the original semantics.
-    relationshipDef.childRules = [...relationshipRules];
     registry.register(relationshipDef);
   }
 

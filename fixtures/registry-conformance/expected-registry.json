@@ -2007,13 +2007,7 @@
           "description": "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "identity",
@@ -2042,13 +2036,7 @@
           "description": "Target of the reference. Bare entity name (e.g. 'Program') resolves to that entity's primary identity. Dotted forms ('Program.id' or 'Program.fieldA,fieldB') target an explicit field set on the entity."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "identity",
@@ -2070,26 +2058,14 @@
           "description": "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "layout",
       "subType": "base",
       "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.",
       "attrs": [],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "layout",
@@ -2139,13 +2115,7 @@
           "description": "Number of rows per page in the generated data grid."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "metadata",
@@ -2153,11 +2123,6 @@
       "description": "Root metadata document",
       "attrs": [],
       "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        },
         {
           "childType": "field",
           "childSubType": "*",
@@ -2450,26 +2415,14 @@
           "description": "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "origin",
       "subType": "base",
       "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.",
       "attrs": [],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "origin",
@@ -2484,13 +2437,7 @@
           "description": "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "origin",
@@ -2512,13 +2459,7 @@
           "description": "Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks')."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "relationship",
@@ -2576,13 +2517,7 @@
           "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "relationship",
@@ -2640,13 +2575,7 @@
           "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "relationship",
@@ -2704,13 +2633,7 @@
           "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "relationship",
@@ -2768,26 +2691,14 @@
           "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "source",
       "subType": "base",
       "description": "Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.",
       "attrs": [],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "source",
@@ -2859,13 +2770,7 @@
           "description": "Physical SQL view name for source.rdb @kind: \"view\". Same internal slot as @table."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "template",
@@ -3135,13 +3040,7 @@
           "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "validator",
@@ -3163,13 +3062,7 @@
           "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "validator",
@@ -3191,13 +3084,7 @@
           "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "validator",
@@ -3219,13 +3106,7 @@
           "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "validator",
@@ -3254,39 +3135,21 @@
           "description": "Regular expression the value must match."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "validator",
       "subType": "required",
       "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
       "attrs": [],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "view",
       "subType": "base",
       "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own.",
       "attrs": [],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     },
     {
       "type": "view",
@@ -3301,13 +3164,7 @@
           "description": "BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted."
         }
       ],
-      "children": [
-        {
-          "childType": "attr",
-          "childSubType": "*",
-          "childName": "*"
-        }
-      ]
+      "children": []
     }
   ],
   "commonAttrs": [

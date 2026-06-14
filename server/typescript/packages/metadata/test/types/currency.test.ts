@@ -58,11 +58,13 @@ describe("currency registered in core types", () => {
     expect(childTypes).toContain("origin");
     expect(childTypes).not.toContain("attr");
   });
-  test("view/currency accepts only attr children", () => {
+  test("view/currency has EMPTY childRules (attr-only type, no any-attr wildcard)", () => {
+    // FR-033 S1-simple: view is attr-only; the "any attr" wildcard child rule is
+    // dropped. @locale enforces as a named attr; a structural child would be
+    // ERR_CHILD_NOT_ALLOWED.
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const def = registry.find(TYPE_VIEW, VIEW_SUBTYPE_CURRENCY);
-    expect(def!.childRules.length).toBe(1);
-    expect(def!.childRules[0]!.childType).toBe("attr");
+    expect(def!.childRules.length).toBe(0);
   });
 });

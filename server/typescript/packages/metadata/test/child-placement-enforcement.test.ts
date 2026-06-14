@@ -10,6 +10,8 @@
 import { describe, it, expect } from "bun:test";
 import { TypeRegistry, TypeId, type TypeDefinition } from "../src/registry.js";
 import { validateAttrSchema } from "../src/attr-schema-validate.js";
+import { composeRegistry } from "../src/provider.js";
+import { coreProviders } from "../src/core-types.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import { MetaValidator } from "../src/core/validator/meta-validator.js";
@@ -128,6 +130,27 @@ describe("FR-033 — structural-child placement (Check 0b)", () => {
     // validator-under-closed-field placement is.
     const childErrors = errors.filter((e) => e.code === "ERR_CHILD_NOT_ALLOWED");
     expect(childErrors).toHaveLength(1);
+    expect(childErrors[0]!.message).toContain("validator.required");
+  });
+
+  // FR-033 S1-simple: the attr-only core types (validator/view/layout/source/
+  // origin/identity/relationship) now register EMPTY childRules — no any-attr
+  // wildcard. Against the REAL composed core registry, a structural child placed
+  // under one of them is therefore ERR_CHILD_NOT_ALLOWED. This self-documents the
+  // strict bite the dropped wildcard buys: e.g. a field child under a validator.
+  it("strict bite: a structural child under an attr-only type (validator) → ERR_CHILD_NOT_ALLOWED", () => {
+    const registry = composeRegistry([...coreProviders]);
+    const validator = new MetaValidator(
+      new TypeId(TYPE_VALIDATOR, VALIDATOR_REQUIRED),
+      "req",
+    );
+    // A field is structural — never a legitimate child of a validator.
+    validator.addChild(new MetaField(new TypeId(TYPE_FIELD, FIELD_STRING), "bogus"));
+
+    const { errors } = validateAttrSchema(validator, registry, /* strict */ true);
+    const childErrors = errors.filter((e) => e.code === "ERR_CHILD_NOT_ALLOWED");
+    expect(childErrors).toHaveLength(1);
+    expect(childErrors[0]!.message).toContain("field.string");
     expect(childErrors[0]!.message).toContain("validator.required");
   });
 });

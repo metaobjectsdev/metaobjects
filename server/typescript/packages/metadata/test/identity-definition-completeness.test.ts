@@ -13,9 +13,8 @@
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreTypesProvider } from "../src/core-types.js";
-import { TYPE_IDENTITY, TYPE_ATTR } from "../src/shared/base-types.js";
+import { TYPE_IDENTITY } from "../src/shared/base-types.js";
 import { IDENTITY_SUBTYPES } from "../src/core/identity/identity-constants.js";
-import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
 
 // Compose with ONLY the core-types provider — so `def.attributes` reflects
 // exactly what the IDENTITY provider registered, not the doc-domain attrs that
@@ -82,15 +81,13 @@ describe("identity provider externalization — completeness", () => {
       }
     });
 
-    test(`identity.${subType} — childRules == [wildcard(attr)]`, () => {
+    test(`identity.${subType} — childRules == [] (no any-attr wildcard)`, () => {
+      // FR-033 S1-simple: identity is an ATTR-ONLY type. The "any attr"
+      // wildcard child rule is DROPPED — childRules are EMPTY (named attrs only,
+      // no structural children, no catch-all). A misplaced structural child is
+      // now ERR_CHILD_NOT_ALLOWED (see child-placement-enforcement.test.ts).
       const def = registry.find(TYPE_IDENTITY, subType)!;
-      expect(def.childRules).toEqual([
-        {
-          childType: TYPE_ATTR,
-          childSubType: CHILD_RULE_WILDCARD,
-          childName: CHILD_RULE_WILDCARD,
-        },
-      ]);
+      expect(def.childRules).toEqual([]);
     });
   }
 

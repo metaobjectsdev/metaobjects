@@ -429,22 +429,22 @@ describe("registerCoreTypes", () => {
     }
   });
 
-  it("identity.primary has only attr child-type wildcard", () => {
+  it("identity.primary has EMPTY child rules (no any-attr wildcard — strict model)", () => {
+    // FR-033 S1-simple: identity is an attr-only type; the "any attr" wildcard
+    // child rule is dropped. Its named attrs (@fields/@generation) enforce via
+    // attr-schema-validate; a misplaced structural child is ERR_CHILD_NOT_ALLOWED.
     const def = registry.find(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY);
     expect(def).toBeDefined();
-    expect(def!.childRules).toHaveLength(1);
-    expect(def!.childRules[0]).toEqual({
-      childType: TYPE_ATTR,
-      childSubType: CHILD_RULE_WILDCARD,
-      childName: CHILD_RULE_WILDCARD,
-    });
+    expect(def!.childRules).toHaveLength(0);
   });
 
-  it("metadata.root allows object, field, attr, validator, and template children", () => {
+  it("metadata.root allows object, field, validator, and template children (NOT a bare attr — strict model)", () => {
+    // FR-033 S1-simple: the attr wildcard is dropped from the document root; the
+    // genuinely-open structural wildcards (object/field/validator/template) stay.
     const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE].sort());
+    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE].sort());
   });
 
   // 6. attr.* has empty child rules

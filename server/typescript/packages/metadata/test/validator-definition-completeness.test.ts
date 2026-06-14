@@ -14,9 +14,8 @@
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreTypesProvider } from "../src/core-types.js";
-import { TYPE_VALIDATOR, TYPE_ATTR } from "../src/shared/base-types.js";
+import { TYPE_VALIDATOR } from "../src/shared/base-types.js";
 import { VALIDATOR_SUBTYPES } from "../src/core/validator/validator-constants.js";
-import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
 
 // Compose with ONLY the core-types provider — so `def.attributes` reflects
 // exactly what the VALIDATOR provider registered, not the doc-domain attrs that
@@ -62,15 +61,13 @@ describe("validator provider externalization — completeness", () => {
       }
     });
 
-    test(`validator.${subType} — childRules == [wildcard(attr)]`, () => {
+    // FR-033 S1-simple: validator is an ATTR-ONLY type. The "any attr" wildcard
+    // child rule is DROPPED — childRules are EMPTY (named attrs only, no
+    // structural children, no catch-all). A misplaced structural child is now
+    // ERR_CHILD_NOT_ALLOWED (asserted below).
+    test(`validator.${subType} — childRules == [] (no any-attr wildcard)`, () => {
       const def = registry.find(TYPE_VALIDATOR, subType)!;
-      expect(def.childRules).toEqual([
-        {
-          childType: TYPE_ATTR,
-          childSubType: CHILD_RULE_WILDCARD,
-          childName: CHILD_RULE_WILDCARD,
-        },
-      ]);
+      expect(def.childRules).toEqual([]);
     });
   }
 

@@ -14,9 +14,8 @@
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
 import { coreTypesProvider } from "../src/core-types.js";
-import { TYPE_SOURCE, TYPE_ATTR } from "../src/shared/base-types.js";
+import { TYPE_SOURCE } from "../src/shared/base-types.js";
 import { SOURCE_SUBTYPES } from "../src/persistence/source/source-constants.js";
-import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
 
 // Compose with ONLY the core-types provider — so `def.attributes` reflects
 // exactly what the CORE source registration produced, NOT the db-domain attrs
@@ -37,15 +36,13 @@ describe("source CORE registration externalization — completeness", () => {
       expect(def!.attributes).toEqual([]);
     });
 
-    test(`source.${subType} — childRules == [wildcard(attr)]`, () => {
+    test(`source.${subType} — childRules == [] (no any-attr wildcard)`, () => {
+      // FR-033 S1-simple: source is an ATTR-ONLY type. The "any attr"
+      // wildcard child rule is DROPPED — childRules are EMPTY (named attrs only,
+      // no structural children, no catch-all). A misplaced structural child is
+      // now ERR_CHILD_NOT_ALLOWED (see child-placement-enforcement.test.ts).
       const def = registry.find(TYPE_SOURCE, subType)!;
-      expect(def.childRules).toEqual([
-        {
-          childType: TYPE_ATTR,
-          childSubType: CHILD_RULE_WILDCARD,
-          childName: CHILD_RULE_WILDCARD,
-        },
-      ]);
+      expect(def.childRules).toEqual([]);
     });
 
     test(`source.${subType} — carries no dataType`, () => {
