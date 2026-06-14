@@ -449,9 +449,11 @@ public final class RegistryManifest {
             String childType = expectedType;
             String childSubType = req.getExpectedSubType();
             String childName = req.getName();
-            // Java has no cardinality on a ChildRequirement → min/max/named absent.
+            // FR-033 B2a — cardinality (min/max/named) is now sourced from the strict
+            // spec/metamodel graph onto the ChildRequirement (Pass 4 of
+            // applySpecDescriptions); emit it (max:null literal when declared-unbounded).
             ManifestChild child = new ManifestChild(childType, childSubType, childName,
-                    null, null, null, false);
+                    req.getMin(), req.getMax(), req.getNamed(), req.isMaxNull());
             String key = childType + " " + childSubTypeKey(childSubType) + " " + childName;
             byKey.putIfAbsent(key, child);
         }

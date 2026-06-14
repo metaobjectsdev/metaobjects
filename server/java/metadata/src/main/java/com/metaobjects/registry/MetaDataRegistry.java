@@ -804,6 +804,101 @@ public class MetaDataRegistry {
                 commonAttributes.put(e.getKey(), e.getValue().withDescription(doc.description()));
             }
         }
+
+        // Pass 4 (FR-033 B2a) — REPLACE each declared type's STRUCTURAL child
+        // requirements with the strict cross-port graph from spec/metamodel/*.json
+        // (extendsBase-composed), carrying cardinality (min/max/named). Java
+        // registers broad/inherited structural wildcards (e.g. object.base accepts
+        // field/object/identity/attr/validator/view/layout/relationship/source/
+        // template; every field subtype inherits attr/validator/view/origin); the
+        // strict graph is the INTERSECTION the cross-port golden carries. The attr
+        // child requirements + the any-attr wildcard + placement/validation
+        // constraints + factories/bindings are left UNTOUCHED (attr scoping is B2b).
+        // Types NOT declared in the JSON (metadata.root, attr.*, object.managed,
+        // the generic view.* controls) keep their existing structural children.
+        applyStrictStructuralChildren(reader);
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — Pass 4 of {@link #applySpecDescriptions}. For every
+     * registered {@code (type, subType)} the spec declares, rebuild its
+     * {@link TypeDefinition} so its STRUCTURAL (non-attr) child requirements are
+     * EXACTLY the strict {@code spec/metamodel/*.json} graph (extendsBase-composed,
+     * carrying {@code min}/{@code max}/{@code named}). The attr child requirements
+     * (direct + inherited) and the placement/validation constraints are preserved
+     * verbatim; only the structural requirements are swapped. Inherited structural
+     * requirements are stripped (the strict graph is computed per-subtype, so a
+     * subtype no longer inherits the parent's broad structural wildcards).
+     */
+    private void applyStrictStructuralChildren(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            if (!reader.isDeclared(id.type(), id.subType())) {
+                continue; // not in the spec → keep Java's existing structural children
+            }
+
+            // Rebuild DIRECT requirements: keep non-structural (attrs + constraints),
+            // drop the broad structural wildcards, add the strict structural graph.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                if (isStructuralPlacement(req)) {
+                    continue; // dropped — replaced by the strict graph below
+                }
+                directReqs.put(directKey(req), req);
+            }
+            for (com.metaobjects.registry.spec.SpecMetamodelReader.StructChild sc
+                    : reader.structuralChildren(id.type(), id.subType())) {
+                ChildRequirement req = ChildRequirement.structural(
+                        sc.childName(), sc.childType(), sc.childSubType(),
+                        sc.min(), sc.max(), sc.maxIsNull(), sc.named());
+                directReqs.put(directKey(req), req);
+            }
+
+            TypeDefinition rebuilt = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), def.getDescription(),
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    def.getRules(), def.getExample(), def.getWhenToUse(), def.getParents());
+
+            // Re-populate inherited requirements minus the parent's structural
+            // wildcards (the strict graph is per-subtype, NOT inherited). The
+            // inherited ATTR requirements (carrying their descriptions) are kept.
+            Map<String, ChildRequirement> inheritedNonStructural = new LinkedHashMap<>();
+            for (Map.Entry<String, ChildRequirement> e : def.getInheritedChildRequirements().entrySet()) {
+                if (!isStructuralPlacement(e.getValue())) {
+                    inheritedNonStructural.put(e.getKey(), e.getValue());
+                }
+            }
+            rebuilt.populateInheritedRequirements(inheritedNonStructural);
+
+            typeDefinitions.put(id, rebuilt);
+        }
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — true when a requirement is a STRUCTURAL placement rule
+     * (a non-attr, concrete child type — {@code field}/{@code validator}/{@code view}/
+     * {@code origin}/{@code identity}/{@code source}/{@code relationship}/
+     * {@code template}/{@code layout}/{@code object}/…), as opposed to an attr
+     * requirement, the any-{@code *} wildcard, or a placement/validation constraint.
+     * These are the requirements Pass 4 replaces with the strict graph.
+     */
+    private static boolean isStructuralPlacement(ChildRequirement req) {
+        if (req.isPlacementConstraint() || req.isValidationConstraint()) {
+            return false;
+        }
+        String type = req.getExpectedType();
+        return type != null && !"*".equals(type) && !MetaAttribute.TYPE_ATTR.equals(type);
+    }
+
+    /** The TypeDefinition direct-requirement map key (name, or a wildcard tuple key). */
+    private static String directKey(ChildRequirement req) {
+        String key = req.getName();
+        if (key == null || "*".equals(key)) {
+            key = "*:" + req.getExpectedType() + ":" + req.getExpectedSubType();
+        }
+        return key;
     }
 
     /**

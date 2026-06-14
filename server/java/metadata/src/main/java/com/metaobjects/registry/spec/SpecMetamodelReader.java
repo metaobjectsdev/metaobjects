@@ -94,10 +94,32 @@ public final class SpecMetamodelReader {
                             String description, String rules, String example, String whenToUse) {
     }
 
+    /**
+     * FR-033 (sub-step B2a) — one STRUCTURAL child entry parsed from a type's
+     * {@code children} list (every {@code type != "attr"} entry: {@code field},
+     * {@code identity}, {@code validator}, {@code view}, {@code origin},
+     * {@code source}, {@code relationship}, {@code template}, {@code layout}, …),
+     * carrying the strict cross-port cardinality. {@code childSubType}/{@code childName}
+     * default to {@code "*"} when omitted; {@code min}/{@code max} are the strict
+     * cardinality ({@code maxIsNull} distinguishes a declared {@code max:null} =
+     * unbounded from an absent {@code max}); {@code named} is the optional
+     * named-placement flag.
+     */
+    public record StructChild(String childType, String childSubType, String childName,
+                              Integer min, Integer max, boolean maxIsNull, Boolean named) {
+    }
+
     // (type.subType) -> the type's own DocFacet
     private final Map<String, DocFacet> typeDocs = new LinkedHashMap<>();
     // (type.subType) -> attrName -> AttrEntry (from the types[].children attr entries)
     private final Map<String, Map<String, AttrEntry>> typeAttrDocs = new LinkedHashMap<>();
+    // (type.subType) -> the type's OWN structural children (pre-extendsBase composition)
+    private final Map<String, List<StructChild>> typeStructChildren = new LinkedHashMap<>();
+    // (type.subType) -> true when the subtype additively inherits <type>.base's children
+    private final Map<String, Boolean> typeExtendsBase = new LinkedHashMap<>();
+    // every (type.subType) key that appeared in a spec file (so callers can tell
+    // "described as empty" from "not described at all")
+    private final java.util.Set<String> declaredKeys = new java.util.LinkedHashSet<>();
     // extends directives: matcher + its attr entries (applied additively to matching subtypes)
     private final List<ExtendsBlock> extendsBlocks = new ArrayList<>();
     // the universal *.* common-attr entries (the documentation vocabulary), by name
@@ -160,6 +182,7 @@ public final class SpecMetamodelReader {
                     continue;
                 }
                 String key = key(type, subType);
+                declaredKeys.add(key);
                 typeDocs.put(key, new DocFacet(
                         nullable(t, "description"), nullable(t, "rules"),
                         nullable(t, "example"), nullable(t, "whenToUse")));
@@ -167,6 +190,11 @@ public final class SpecMetamodelReader {
                 for (AttrEntry a : parseAttrChildren(t)) {
                     attrs.put(a.name(), a);
                 }
+                // FR-033 B2a — the type's OWN structural children + extendsBase flag.
+                typeStructChildren.put(key, parseStructChildren(t));
+                typeExtendsBase.put(key, t.has("extendsBase")
+                        && !t.get("extendsBase").isJsonNull()
+                        && t.get("extendsBase").getAsBoolean());
             }
         }
 
@@ -218,6 +246,36 @@ public final class SpecMetamodelReader {
                     str(c, "name"), nullable(c, "subType"), isArray, min, max, maxIsNull,
                     nullable(c, "description"), nullable(c, "rules"),
                     nullable(c, "example"), nullable(c, "whenToUse")));
+        }
+        return out;
+    }
+
+    /**
+     * FR-033 B2a — parse a type's STRUCTURAL children (every {@code children}
+     * entry whose {@code type != "attr"}), preserving the strict cardinality.
+     */
+    private List<StructChild> parseStructChildren(JsonObject owner) {
+        List<StructChild> out = new ArrayList<>();
+        JsonArray children = owner.getAsJsonArray("children");
+        if (children == null) {
+            return out;
+        }
+        for (JsonElement el : children) {
+            JsonObject c = el.getAsJsonObject();
+            String childType = str(c, "type");
+            if (childType == null || "attr".equals(childType)) {
+                continue; // attr children are the attrs block (B1) — not structural
+            }
+            String childSubType = c.has("subType") && !c.get("subType").isJsonNull()
+                    ? c.get("subType").getAsString() : WILDCARD;
+            String childName = c.has("name") && !c.get("name").isJsonNull()
+                    ? c.get("name").getAsString() : WILDCARD;
+            Integer min = c.has("min") && !c.get("min").isJsonNull() ? c.get("min").getAsInt() : null;
+            boolean maxIsNull = c.has("max") && c.get("max").isJsonNull();
+            Integer max = c.has("max") && !c.get("max").isJsonNull() ? c.get("max").getAsInt() : null;
+            Boolean named = c.has("named") && !c.get("named").isJsonNull()
+                    ? c.get("named").getAsBoolean() : null;
+            out.add(new StructChild(childType, childSubType, childName, min, max, maxIsNull, named));
         }
         return out;
     }
@@ -280,6 +338,53 @@ public final class SpecMetamodelReader {
     /** The universal {@code *.*} common-attr doc entry by name, or {@code null}. */
     public AttrEntry commonAttrDoc(String name) {
         return commonAttrDocs.get(name);
+    }
+
+    /**
+     * FR-033 B2a — whether the JSON declares this {@code (type, subType)} at all
+     * (so a caller can distinguish "described with an empty children list", e.g.
+     * an attr-only type like {@code validator.regex}, from "absent from the spec",
+     * e.g. {@code metadata.root}).
+     */
+    public boolean isDeclared(String type, String subType) {
+        return declaredKeys.contains(key(type, subType));
+    }
+
+    /**
+     * FR-033 B2a — the STRICT structural children for {@code (type, subType)},
+     * composed with {@code <type>.base} when the subtype carries {@code extendsBase:true}
+     * (the TS {@code composeWithBase} rule: base children ∪ own children, additively).
+     * Returns the type's OWN structural children when not declared {@code extendsBase}
+     * (the base subtype itself, or a non-composing concern). Returns an empty list
+     * when the type is declared with no structural children (an attr-only type) or
+     * is not declared at all — callers gate on {@link #isDeclared} first.
+     *
+     * <p>The returned order is base-children-then-own; the emitter sorts the final
+     * children block, so order here is not load-bearing. De-dupe (an own entry
+     * repeating a base entry by {@code (childType, childSubType, childName)}) keeps
+     * the OWN entry — matching {@code composeWithBase}'s own-wins merge — though no
+     * current spec file actually overlaps base + own.</p>
+     */
+    public List<StructChild> structuralChildren(String type, String subType) {
+        String key = key(type, subType);
+        List<StructChild> own = typeStructChildren.getOrDefault(key, List.of());
+        boolean extendsBase = Boolean.TRUE.equals(typeExtendsBase.get(key));
+        if (!extendsBase || BASE_SUBTYPE.equals(subType)) {
+            return new ArrayList<>(own);
+        }
+        List<StructChild> base = typeStructChildren.getOrDefault(key(type, BASE_SUBTYPE), List.of());
+        Map<String, StructChild> merged = new LinkedHashMap<>();
+        for (StructChild b : base) {
+            merged.put(structKey(b), b);
+        }
+        for (StructChild o : own) {
+            merged.put(structKey(o), o); // own wins on overlap
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    private static String structKey(StructChild c) {
+        return c.childType() + " " + c.childSubType() + " " + c.childName();
     }
 
     /** All registered {@code (type.subType)} keys parsed from the JSON (debug/diagnostics). */
