@@ -42,6 +42,13 @@ export const ERROR_CODES = [
   // derived read-only representations; their sources must be read-only kinds.
   "ERR_PROJECTION_SOURCE_WRITABLE",
   "ERR_INVALID_SUBTYPE_CHILD",
+  // FR-033 — a STRUCTURAL child (field/identity/source/validator/… — not an
+  // attr) is placed under a parent whose registered childRules do not admit it
+  // (the structural analogue of ERR_UNKNOWN_ATTR). Enforced in validate()
+  // against the merged wildcard-match semantics; a NO-OP under today's wildcard
+  // childRules (the rail strict per-subtype rules will use in S1). Strict-load
+  // only. Detail names the parent, the child, and which placement was rejected.
+  "ERR_CHILD_NOT_ALLOWED",
   "ERR_UNKNOWN_ATTR",
   "ERR_BAD_ATTR_VALUE",
   "ERR_BAD_DEFAULT_SORT_FIELD",

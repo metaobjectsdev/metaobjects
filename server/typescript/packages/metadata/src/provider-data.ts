@@ -11,12 +11,13 @@
 // §3.1 (the constraint model). This module implements Plan Task 1, Task 2, and
 // the format half of Task 7.
 
-import type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
+import type { AttrSchema, ChildRule, TypeDefinition, TypeRegistry } from "./registry.js";
 import { TypeId } from "./registry.js";
 import type { AttrSubType } from "./core/attr/attr-constants.js";
 import type { AttrValue, MetaData } from "./shared/meta-data.js";
 import type { DataType } from "./data-type.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
+import { SUBTYPE_BASE } from "./shared/base-types.js";
 
 /**
  * A UNIFIED child requirement (spec §3.1). Every constraint on a type — both its
@@ -70,26 +71,6 @@ export interface ChildDef {
 }
 
 /**
- * A declarative attribute definition (spec §3). Mirrors the data facets of
- * `AttrSchema`. Authored inside a `TypeDef.children` list as a `type: "attr"`
- * `ChildDef`; this standalone shape is exported for callers that build attr data
- * directly.
- */
-export interface AttrDef {
-  name: string;
-  /** The attr's value-type (a registered attr subtype). */
-  subType?: string;
-  isArray?: boolean;
-  required: boolean;
-  default?: unknown;
-  allowedValues?: readonly unknown[];
-  description: string;
-  rules?: string;
-  example?: string;
-  whenToUse?: string;
-}
-
-/**
  * A declarative type/subtype definition (spec §3). The `factory` is NOT here — it
  * is code, supplied via the `FactoryMap`. An attribute is a `type: "attr"` entry
  * inside `children`; structural children are the non-`"attr"` entries.
@@ -106,18 +87,28 @@ export interface TypeDef {
   children?: ChildDef[];
   /** Child-side placement: the `type.subType`s under which this type is allowed. */
   parents?: readonly string[];
+  /**
+   * FR-033 base-composition opt-in. When `true` (and this is a non-base subtype),
+   * the subtype additively inherits its `<type>.base`'s attrs (dedup by name) and
+   * childRules (dedup structurally) — letting the JSON declare per-type-universal
+   * rules once on `base`. Default/absent = OFF, so a subtype that deliberately
+   * declares FEWER attrs than base (e.g. `validator.required`, which wants no
+   * `min`/`max`) is never silently widened. Opted in per-subtype in S1; inert (no
+   * registered output change) under S0.
+   */
+  extendsBase?: boolean;
 }
 
 export interface ProviderDefinition {
   /** Owning provider id (groups doc pages). */
   provider: string;
-  types: TypeDef[];
   /**
-   * Universal common attrs accepted on EVERY node (registered via
-   * `registry.registerCommonAttrs`, NOT per-type). Used by the documentation
-   * provider; absent for ordinary type-registering providers.
+   * The provider's type definitions. ONE entry may be the **universal** `*.*`
+   * entry (`type: "*", subType: "*"`): it is NOT a registered type — its named
+   * `attr` children are COMMON attributes (accepted on every node, registered via
+   * `registry.registerCommonAttrs`). Every other entry is a real `type.subType`.
    */
-  commonAttrs?: AttrDef[];
+  types: TypeDef[];
 }
 
 /**
@@ -134,13 +125,33 @@ function isAttrChild(child: ChildDef): boolean {
 }
 
 /**
+ * Whether a `TypeDef` is the UNIVERSAL `*.*` entry — the carrier for COMMON
+ * attributes (attrs accepted on EVERY node). It is NOT a real registered type;
+ * its named `attr` children are routed to `registry.registerCommonAttrs(...)` by
+ * the unified apply path. Documentation uses this; ordinary providers do not.
+ */
+function isUniversalEntry(t: TypeDef): boolean {
+  return t.type === CHILD_RULE_WILDCARD && t.subType === CHILD_RULE_WILDCARD;
+}
+
+/**
  * Turn a declarative `ProviderDefinition` + a code-supplied factory map into the
  * `TypeDefinition`s a provider passes to `registry.register()`.
  *
- * For each `TypeDef`: look up its factory (throws if missing); fan its `children`
- * out so `type: "attr"` entries become `AttrSchema`s and structural entries
- * become `ChildRule`s; carry `parents` and the optional `rules`/`example`/
- * `whenToUse` doc fields through onto the returned `TypeDefinition`.
+ * For each real `TypeDef` (every entry EXCEPT the universal `*.*` entry, which
+ * carries common attrs and is handled by `applyProviderDefinition`): look up its
+ * factory (throws if missing); fan its `children` out so `type: "attr"` entries
+ * become `AttrSchema`s and structural entries become `ChildRule`s; carry `parents`
+ * and the optional `rules`/`example`/`whenToUse` doc fields through onto the
+ * returned `TypeDefinition`.
+ *
+ * BASE-COMPOSITION (FR-033): a non-base subtype that opts in via
+ * `extendsBase: true` additively inherits its `<type>.base`'s `attributes` (dedup
+ * by name) and `childRules` (dedup structurally) — letting a JSON declare
+ * universal-per-type rules once on `base`. Purely additive (a subtype's own
+ * declarations win on a name/shape collision). OFF by default so a subtype that
+ * deliberately declares fewer attrs than base is never widened — inert under S0
+ * (no provider opts in yet), the rail S1 will use.
  *
  * Builder-local validation (cheap, structural): an attr entry must be
  * single-valued (`max === 1`) unless `isArray`; an attr entry's `subType` must be
@@ -151,16 +162,18 @@ export function defineProviderFromData(
   data: ProviderDefinition,
   factories: FactoryMap,
 ): TypeDefinition[] {
-  return data.types.map((t): TypeDefinition => {
-    const key = `${t.type}.${t.subType}`;
-    const factory = factories[key];
-    if (factory === undefined) {
-      throw new Error(`defineProviderFromData(${data.provider}): no factory for "${key}"`);
-    }
+  // Pre-compute each type's OWN lowered attrs + childRules, keyed by "type.subType",
+  // so base-composition can fold a base's contributions into its subtypes.
+  const realTypes = data.types.filter((t) => !isUniversalEntry(t));
+  const lowered = new Map<
+    string,
+    { attributes: AttrSchema[]; childRules: ChildRule[] }
+  >();
 
+  for (const t of realTypes) {
+    const key = `${t.type}.${t.subType}`;
     const attributes: AttrSchema[] = [];
     const childRules: ChildRule[] = [];
-
     for (const child of t.children ?? []) {
       validateCardinality(data.provider, key, child);
       if (isAttrChild(child)) {
@@ -169,6 +182,18 @@ export function defineProviderFromData(
         childRules.push(toChildRule(child));
       }
     }
+    lowered.set(key, { attributes, childRules });
+  }
+
+  return realTypes.map((t): TypeDefinition => {
+    const key = `${t.type}.${t.subType}`;
+    const factory = factories[key];
+    if (factory === undefined) {
+      throw new Error(`defineProviderFromData(${data.provider}): no factory for "${key}"`);
+    }
+
+    const self = lowered.get(key)!;
+    const { attributes, childRules } = composeWithBase(t, self, lowered);
 
     return {
       typeId: new TypeId(t.type, t.subType),
@@ -186,28 +211,106 @@ export function defineProviderFromData(
 }
 
 /**
- * Lower a `ProviderDefinition`'s `commonAttrs` (universal attrs accepted on every
- * node) into `AttrSchema[]` for `registry.registerCommonAttrs(...)`. The common-attr
- * analog of `defineProviderFromData`: same field mapping as `toAttrSchema` (name;
- * valueType from `subType`; isArray; default; allowedValues; description; optional
- * rules/example/whenToUse) but reading `AttrDef.required` directly (these are
- * standalone `AttrDef`s carrying an explicit `required` flag, not min/max `ChildDef`s).
+ * Apply a `ProviderDefinition` to a registry via the ONE uniform path: register
+ * every real `type.subType` (with base-composition) AND register the universal
+ * `*.*` entry's named `attr` children as COMMON attrs. This replaces the bespoke
+ * `commonAttrs` helper — documentation rides the same mechanism as every other
+ * provider.
  */
-export function defineCommonAttrsFromData(data: ProviderDefinition): AttrSchema[] {
-  return (data.commonAttrs ?? []).map((attr): AttrSchema => ({
-    name: attr.name,
-    ...(attr.subType !== undefined ? { valueType: attr.subType as AttrSubType } : {}),
-    ...(attr.isArray !== undefined ? { isArray: attr.isArray } : {}),
-    required: attr.required,
-    ...(attr.default !== undefined ? { default: attr.default as AttrValue } : {}),
-    ...(attr.allowedValues !== undefined
-      ? { allowedValues: attr.allowedValues as readonly AttrValue[] }
-      : {}),
-    description: attr.description ?? "",
-    ...(attr.rules !== undefined ? { rules: attr.rules } : {}),
-    ...(attr.example !== undefined ? { example: attr.example } : {}),
-    ...(attr.whenToUse !== undefined ? { whenToUse: attr.whenToUse } : {}),
-  }));
+export function applyProviderDefinition(
+  registry: TypeRegistry,
+  data: ProviderDefinition,
+  factories: FactoryMap,
+): void {
+  for (const def of defineProviderFromData(data, factories)) {
+    registry.register(def);
+  }
+  const commonAttrs = universalCommonAttrs(data);
+  if (commonAttrs.length > 0) {
+    registry.registerCommonAttrs(commonAttrs);
+  }
+}
+
+/**
+ * Lower the universal `*.*` entry's named `attr` children into `AttrSchema[]` for
+ * `registry.registerCommonAttrs(...)`. Returns `[]` when no `*.*` entry is present.
+ * Same field mapping as `toAttrSchema`. Exported for callers that register common
+ * attrs themselves; `applyProviderDefinition` is the usual door.
+ */
+export function universalCommonAttrs(data: ProviderDefinition): AttrSchema[] {
+  const universal = data.types.find(isUniversalEntry);
+  if (universal === undefined) return [];
+  const key = `${universal.type}.${universal.subType}`;
+  const out: AttrSchema[] = [];
+  for (const child of universal.children ?? []) {
+    if (!isAttrChild(child)) {
+      throw new Error(
+        `applyProviderDefinition(${data.provider}): the universal "${key}" entry may only ` +
+          `carry attr children (common attrs); found a structural child "${child.type}".`,
+      );
+    }
+    validateCardinality(data.provider, key, child);
+    out.push(toAttrSchema(data.provider, key, child));
+  }
+  return out;
+}
+
+/**
+ * Fold a real `TypeDef`'s OWN lowered attrs/childRules with its `<type>.base`'s
+ * (when the definition declares one and this subtype is not itself `base`).
+ * Additive: own entries win on a name (attr) / structural-shape (rule) collision;
+ * base entries the subtype lacks are appended. A NO-OP when there is no base in
+ * THIS definition, or when the subtype already declares the full base set.
+ */
+function composeWithBase(
+  t: TypeDef,
+  self: { attributes: AttrSchema[]; childRules: ChildRule[] },
+  lowered: Map<string, { attributes: AttrSchema[]; childRules: ChildRule[] }>,
+): { attributes: AttrSchema[]; childRules: ChildRule[] } {
+  // OFF by default (S0): a subtype inherits its base only when it opts in via
+  // `extendsBase: true`. Keeps the current canonical byte-identical — no provider
+  // sets it yet — while the rail is in place for S1.
+  if (t.extendsBase !== true) return self;
+  if (t.subType === SUBTYPE_BASE) return self;
+  const base = lowered.get(`${t.type}.${SUBTYPE_BASE}`);
+  if (base === undefined) return self;
+
+  const attributes = [...self.attributes];
+  const haveAttr = new Set(attributes.map((a) => a.name));
+  for (const baseAttr of base.attributes) {
+    if (!haveAttr.has(baseAttr.name)) {
+      attributes.push(baseAttr);
+      haveAttr.add(baseAttr.name);
+    }
+  }
+
+  const childRules = [...self.childRules];
+  const haveRule = new Set(childRules.map(childRuleId));
+  for (const baseRule of base.childRules) {
+    const id = childRuleId(baseRule);
+    if (!haveRule.has(id)) {
+      childRules.push(baseRule);
+      haveRule.add(id);
+    }
+  }
+
+  return { attributes, childRules };
+}
+
+/** A stable structural identity for a ChildRule (base-composition dedup). */
+function childRuleId(rule: ChildRule): string {
+  const sub =
+    typeof rule.childSubType === "string"
+      ? rule.childSubType
+      : [...rule.childSubType].sort().join("|");
+  return [
+    rule.childType,
+    sub,
+    rule.childName,
+    rule.min ?? "",
+    rule.max === null ? "null" : (rule.max ?? ""),
+    rule.named ?? "",
+  ].join(" ");
 }
 
 /** Validate the min/max axis (and attr single-valuedness) for one child entry. */

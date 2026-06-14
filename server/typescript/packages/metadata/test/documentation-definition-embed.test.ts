@@ -37,8 +37,12 @@ describe("DOCUMENTATION_DEFINITION — drift gate", () => {
     expect(DOCUMENTATION_DEFINITION.provider).toBe("metaobjects-documentation");
   });
 
-  test("declares no types — only commonAttrs", () => {
-    expect(DOCUMENTATION_DEFINITION.types).toEqual([]);
-    expect(DOCUMENTATION_DEFINITION.commonAttrs).toHaveLength(8);
+  test("declares exactly the universal `*.*` entry carrying the 8 doc attrs", () => {
+    expect(DOCUMENTATION_DEFINITION.types).toHaveLength(1);
+    const universal = DOCUMENTATION_DEFINITION.types[0]!;
+    expect(universal.type).toBe("*");
+    expect(universal.subType).toBe("*");
+    const attrChildren = (universal.children ?? []).filter((c) => c.type === "attr");
+    expect(attrChildren).toHaveLength(8);
   });
 });

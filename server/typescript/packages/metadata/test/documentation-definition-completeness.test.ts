@@ -1,9 +1,9 @@
 // documentation-definition-completeness — proves the FR-033 externalization of
-// the documentation provider (spec/metamodel/documentation.json, registered via
-// defineCommonAttrsFromData) is FAITHFUL and COMPLETE: a registry composed from
-// the full coreProviders set exposes, via registry.getCommonAttrs(), EXACTLY the
-// 8 universal doc common attrs with matching name / valueType / isArray /
-// required / description.
+// the documentation provider (spec/metamodel/documentation.json — the universal
+// `*.*` entry, registered via applyProviderDefinition → registerCommonAttrs) is
+// FAITHFUL and COMPLETE: a registry composed from the full coreProviders set
+// exposes, via registry.getCommonAttrs(), EXACTLY the 8 universal doc common
+// attrs with matching name / valueType / isArray / required / description.
 //
 // The EXPECTED table below is hardcoded verbatim from the pre-FR-033 hand-coded
 // commonDocAttrs in core/documentation/doc-schema.ts (now deleted). It is the
