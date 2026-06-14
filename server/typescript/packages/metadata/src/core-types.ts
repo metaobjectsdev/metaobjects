@@ -46,7 +46,7 @@ import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-defini
 import { ORIGIN_DEFINITION } from "./persistence/origin/origin-definition.embedded.js";
 import { SOURCE_DEFINITION } from "./persistence/source/source-definition.embedded.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
-import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
+import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embedded.js";
 import { MetaTemplate } from "./template/meta-template.js";
 import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
 import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
@@ -88,7 +88,7 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
 } from "./core/identity/identity-constants.js";
 import { RELATIONSHIP_SUBTYPES } from "./core/relationship/relationship-constants.js";
-import { LAYOUT_SUBTYPES, LAYOUT_SUBTYPE_DATA_GRID } from "./presentation/layout/layout-constants.js";
+import { LAYOUT_SUBTYPES } from "./presentation/layout/layout-constants.js";
 import { SOURCE_SUBTYPES } from "./persistence/source/source-constants.js";
 import {
   ORIGIN_SUBTYPES,
@@ -319,12 +319,26 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   }
 
   // layout — object-level UI surfaces (data grids, forms, tabs, cards).
-  // Each subtype permits only attr children — like views, layouts are config carriers.
-  for (const subType of LAYOUT_SUBTYPES) {
-    const layoutAttrs = subType === LAYOUT_SUBTYPE_DATA_GRID ? [...dataGridLayoutAttrs] : [];
-    registry.register(
-      def(TYPE_LAYOUT, subType, `Layout (${subType})`, [wildcard(TYPE_ATTR)], MetaLayout, layoutAttrs),
-    );
+  // FR-033: the layout provider's declarative definition (2 subtypes — base +
+  // dataGrid — vocabulary + the 6 dataGrid attr constraints + descriptions) is
+  // externalized to spec/metamodel/layout.json, embedded at build into
+  // LAYOUT_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via LAYOUT_FACTORIES — every subtype maps to
+  // the single MetaLayout class (layouts are config carriers, no per-subtype
+  // behavior). Each subtype permits only attr children — like views, layouts are
+  // config carriers — so the structural childRules ([wildcard(attr)]) are kept
+  // byte-identical to the pre-FR-033 registration by post-assigning them here
+  // (they are not modeled in the JSON, which carries attrs only).
+  const LAYOUT_FACTORIES: FactoryMap = Object.fromEntries(
+    LAYOUT_SUBTYPES.map((subType) => [
+      `${TYPE_LAYOUT}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaLayout(typeId, name),
+    ]),
+  );
+  const layoutDefs = defineProviderFromData(LAYOUT_DEFINITION, LAYOUT_FACTORIES);
+  for (const layoutDef of layoutDefs) {
+    layoutDef.childRules = [wildcard(TYPE_ATTR)];
+    registry.register(layoutDef);
   }
 
   // source — declares where an object's data lives (2 subtypes: base/rdb, per
