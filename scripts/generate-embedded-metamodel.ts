@@ -72,6 +72,7 @@ const CONCEPT_DIRS: Record<string, string> = {
   identity: "core/identity",
   relationship: "core/relationship",
   object: "core/object",
+  documentation: "core/documentation",
   // persistence/
   origin: "persistence/origin",
   source: "persistence/source",

@@ -152,7 +152,6 @@ export { ExclusionReason } from "./registry-manifest-exclusions.js";
 // browser-safety.test.ts). It is a build-time tooling module — consumers (and
 // its test) import it directly by path: `@metaobjectsdev/metadata/src/registry-coverage`.
 export { dbProvider } from "./persistence/db/db-provider.js";
-export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
 export { templateProvider, xmlTextSchema } from "./template/template-provider.js";
 export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";

@@ -112,6 +112,12 @@ export interface ProviderDefinition {
   /** Owning provider id (groups doc pages). */
   provider: string;
   types: TypeDef[];
+  /**
+   * Universal common attrs accepted on EVERY node (registered via
+   * `registry.registerCommonAttrs`, NOT per-type). Used by the documentation
+   * provider; absent for ordinary type-registering providers.
+   */
+  commonAttrs?: AttrDef[];
 }
 
 /**
@@ -177,6 +183,31 @@ export function defineProviderFromData(
       ...(t.whenToUse !== undefined ? { whenToUse: t.whenToUse } : {}),
     };
   });
+}
+
+/**
+ * Lower a `ProviderDefinition`'s `commonAttrs` (universal attrs accepted on every
+ * node) into `AttrSchema[]` for `registry.registerCommonAttrs(...)`. The common-attr
+ * analog of `defineProviderFromData`: same field mapping as `toAttrSchema` (name;
+ * valueType from `subType`; isArray; default; allowedValues; description; optional
+ * rules/example/whenToUse) but reading `AttrDef.required` directly (these are
+ * standalone `AttrDef`s carrying an explicit `required` flag, not min/max `ChildDef`s).
+ */
+export function defineCommonAttrsFromData(data: ProviderDefinition): AttrSchema[] {
+  return (data.commonAttrs ?? []).map((attr): AttrSchema => ({
+    name: attr.name,
+    ...(attr.subType !== undefined ? { valueType: attr.subType as AttrSubType } : {}),
+    ...(attr.isArray !== undefined ? { isArray: attr.isArray } : {}),
+    required: attr.required,
+    ...(attr.default !== undefined ? { default: attr.default as AttrValue } : {}),
+    ...(attr.allowedValues !== undefined
+      ? { allowedValues: attr.allowedValues as readonly AttrValue[] }
+      : {}),
+    description: attr.description ?? "",
+    ...(attr.rules !== undefined ? { rules: attr.rules } : {}),
+    ...(attr.example !== undefined ? { example: attr.example } : {}),
+    ...(attr.whenToUse !== undefined ? { whenToUse: attr.whenToUse } : {}),
+  }));
 }
 
 /** Validate the min/max axis (and attr single-valuedness) for one child entry. */
