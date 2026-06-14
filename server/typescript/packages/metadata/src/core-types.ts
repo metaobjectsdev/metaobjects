@@ -3,7 +3,8 @@ import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegis
 import type { MetaDataTypeProvider } from "./provider.js";
 import { dbProvider } from "./persistence/db/db-provider.js";
 import { docProvider } from "./core/documentation/doc-provider.js";
-import { templateProvider } from "./template/template-provider.js";
+import { promptProvider } from "./template/prompt-provider.js";
+import { uiProvider } from "./presentation/ui/ui-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -431,8 +432,10 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // stays code via TEMPLATE_FACTORIES, mapping every subType → MetaTemplate.
   // The structural childRules are kept byte-identical to the pre-FR-033
   // registration by post-assigning the same `templateRules` array — they are not
-  // modeled in the JSON (attrs only). (The separate templateProvider — which
-  // EXTENDS every field subtype with @xmlText — is untouched by this conversion.)
+  // modeled in the JSON (attrs only). (The separate promptProvider — which
+  // EXTENDS every field subtype with @xmlText / @example / @instruction + the
+  // field.enum extract attrs + the object.value @normalize default — is a
+  // distinct concern provider, untouched by this conversion.)
   const templateRules = [wildcard(TYPE_ATTR)];
   const TEMPLATE_FACTORIES: FactoryMap = Object.fromEntries(
     TEMPLATE_SUBTYPES.map((subType) => [
@@ -531,9 +534,18 @@ export const coreTypesProvider: MetaDataTypeProvider = {
   },
 };
 
-/** The default provider bundle — core metamodel types plus DB-domain attrs.
- *  Spread it to add more: `[...coreProviders, mine]`. */
-export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider, templateProvider];
+/** The default provider bundle — core metamodel types plus the four concern
+ *  providers (DB-domain attrs, documentation common-attrs, prompt/AI + the
+ *  UI/query-surface markers). FR-033 S1-field-A re-homed the field's
+ *  filter/sort/teaching/extract/storage attrs out of core into db/ui/prompt;
+ *  the composed set is unchanged. Spread it to add more: `[...coreProviders, mine]`. */
+export const coreProviders: readonly MetaDataTypeProvider[] = [
+  coreTypesProvider,
+  dbProvider,
+  docProvider,
+  promptProvider,
+  uiProvider,
+];
 
 /**
  * Register the core metamodel into an existing registry. Thin convenience

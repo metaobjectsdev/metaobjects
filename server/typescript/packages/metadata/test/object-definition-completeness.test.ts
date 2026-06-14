@@ -15,7 +15,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
-import { coreTypesProvider } from "../src/core-types.js";
+import { coreProviders } from "../src/core-types.js";
 import { TYPE_OBJECT, TYPE_TEMPLATE } from "../src/shared/base-types.js";
 import {
   OBJECT_SUBTYPES,
@@ -25,10 +25,14 @@ import {
 } from "../src/core/object/object-constants.js";
 import { SUBTYPE_BASE } from "../src/shared/base-types.js";
 
-// Compose with ONLY the core-types provider — so `def.attributes` / `childRules`
-// reflect exactly what the OBJECT provider registered, not the db/doc-domain
-// attrs that other providers add via registry.extend(). This isolates the gate.
-const registry = composeRegistry([coreTypesProvider]);
+// FR-033 S1-field-A re-homed the object.value @normalize default out of the core
+// object definition into metaobjects-prompt, so this gate composes the WHOLE
+// coreProviders bundle (not coreTypesProvider alone) to see the full composed
+// object attr set. The concern providers add no attrs to the object subtypes
+// EXCEPT promptProvider's @normalize on object.value (their field attrs land on
+// field subtypes, not object subtypes); doc commonAttrs are registry-level, not
+// per-type — so the object-subtype attr sets below are exactly as expected.
+const registry = composeRegistry([...coreProviders]);
 
 interface ExpectedAttr {
   valueType: string | null;

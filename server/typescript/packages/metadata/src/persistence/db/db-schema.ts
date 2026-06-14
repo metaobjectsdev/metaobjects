@@ -12,6 +12,12 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_VALUES,
 } from "./db-constants.js";
+import {
+  FIELD_ATTR_STORAGE,
+  FIELD_ATTR_AUTO_SET,
+  STORAGE_VALUES,
+  AUTO_SET_VALUES,
+} from "../../core/field/field-constants.js";
 
 /** `@column` — column-name override on every field subtype (source.rdb). */
 export const columnSchema: AttrSchema = {
@@ -47,4 +53,34 @@ export const dbColumnTypeSchema: AttrSchema = {
     `${DB_COLUMN_TYPE_VALUES.join(" | ")}, each legal only on a specific logical ` +
     "field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
     "The logical field type and its native binding are unchanged.",
+};
+
+/**
+ * `@storage` — physical-storage strategy for an object-typed field (set with
+ * @objectRef). Re-homed out of the core field definition by FR-033 S1-field-A
+ * (it is a physical-storage concern). Still on every field subtype at this step;
+ * step B narrows it to field.object. Description copied VERBATIM from field.json.
+ */
+export const storageSchema: AttrSchema = {
+  name: FIELD_ATTR_STORAGE,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  allowedValues: [...STORAGE_VALUES],
+  description:
+    'Storage strategy for an object-typed field (set with @objectRef). "flattened" expands the nested value into prefixed columns on the parent table. "jsonb" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). "subdocument" is a hint for document-store codegen targets and emits no Postgres column.',
+};
+
+/**
+ * `@autoSet` — auto-set semantics for timestamp-like fields. Re-homed out of the
+ * core field definition by FR-033 S1-field-A (it is a DB-write-time concern).
+ * Still on every field subtype at this step; step B narrows it to temporal
+ * subtypes. Description copied VERBATIM from field.json.
+ */
+export const autoSetSchema: AttrSchema = {
+  name: FIELD_ATTR_AUTO_SET,
+  valueType: ATTR_SUBTYPE_STRING,
+  required: false,
+  allowedValues: [...AUTO_SET_VALUES],
+  description:
+    "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write.",
 };

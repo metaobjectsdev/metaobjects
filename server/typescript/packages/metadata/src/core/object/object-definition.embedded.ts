@@ -77,20 +77,6 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "normalize",
-          "min": 0,
-          "max": 1,
-          "default": "strip",
-          "allowedValues": [
-            "none",
-            "collapse",
-            "strip"
-          ],
-          "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
         }
       ]
     },

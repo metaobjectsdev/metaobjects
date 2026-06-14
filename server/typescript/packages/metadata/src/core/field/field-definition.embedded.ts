@@ -25,19 +25,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -90,62 +77,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -165,19 +96,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -230,62 +148,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -305,19 +167,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -370,62 +219,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -445,19 +238,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -510,62 +290,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -585,19 +309,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -650,62 +361,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -725,19 +380,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -790,62 +432,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -866,19 +452,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -931,62 +504,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1006,19 +523,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1071,62 +575,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1146,19 +594,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1211,62 +646,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1286,19 +665,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1351,62 +717,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1426,19 +736,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1491,62 +788,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1567,19 +808,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1632,62 +860,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     },
@@ -1708,19 +880,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1773,62 +932,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "type": "attr",
@@ -1858,19 +961,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -1926,62 +1016,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
           "subType": "string",
           "name": "values",
           "isArray": true,
@@ -1996,44 +1030,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FR-019: marks an abstract package-level field.enum as externally provided — codegen references the type (resolved via per-port codegen config) instead of materializing it. Default false. Not a field attr — it lives on the type declaration."
-        },
-        {
-          "type": "attr",
-          "subType": "properties",
-          "name": "enumAlias",
-          "min": 0,
-          "max": 1,
-          "description": "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold."
-        },
-        {
-          "type": "attr",
-          "subType": "properties",
-          "name": "enumDoc",
-          "min": 0,
-          "max": 1,
-          "description": "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "coerceDefault",
-          "min": 0,
-          "max": 1,
-          "description": "Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "normalize",
-          "min": 0,
-          "max": 1,
-          "default": "strip",
-          "allowedValues": [
-            "none",
-            "collapse",
-            "strip"
-          ],
-          "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
         }
       ]
     },
@@ -2053,19 +1049,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "string",
-          "name": "storage",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "flattened",
-            "jsonb",
-            "subdocument"
-          ],
-          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
-        },
-        {
-          "type": "attr",
           "subType": "boolean",
           "name": "required",
           "min": 0,
@@ -2118,62 +1101,6 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Number of digits to the right of the decimal point for decimal-typed fields."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "filterable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "sortable",
-          "min": 0,
-          "max": 1,
-          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "sortableDefaultOrder",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "asc",
-            "desc"
-          ],
-          "description": "Default sort direction applied when this field is the default sort field."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "autoSet",
-          "min": 0,
-          "max": 1,
-          "allowedValues": [
-            "onCreate",
-            "onUpdate"
-          ],
-          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "example",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "instruction",
-          "min": 0,
-          "max": 1,
-          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         }
       ]
     }
