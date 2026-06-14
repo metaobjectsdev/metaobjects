@@ -1,0 +1,73 @@
+<!-- @generated — DO NOT EDIT.
+     Metamodel vocabulary index — every type.subType, its one-line description, and a link to its type page.
+     Regenerate with: meta docs --metamodel -->
+
+# MetaObjects Metamodel — Index
+
+This documents the **metamodel itself** — the type / subtype / attribute
+vocabulary the loader accepts — generated from the strict registry. It is
+NOT documentation of a user's entities (that is `meta docs --model`).
+
+Follow a link into `types/<family>.md` for the full attribute table, allowed
+children, and cardinality of a subtype. Universal documentation attributes
+(`@description`/`@title`/…) apply to every node and are listed once in
+[providers.md](providers.md) under `metaobjects-documentation`.
+
+| Type.subType | Description | Page |
+| --- | --- | --- |
+| `attr.base` | Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). | [types/attr.md#attrbase](types/attr.md#attrbase) |
+| `attr.boolean` | A boolean-valued metadata attribute. Coerces to and validates as true/false. | [types/attr.md#attrboolean](types/attr.md#attrboolean) |
+| `attr.class` | A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets. | [types/attr.md#attrclass](types/attr.md#attrclass) |
+| `attr.double` | A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number. | [types/attr.md#attrdouble](types/attr.md#attrdouble) |
+| `attr.filter` | A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse). | [types/attr.md#attrfilter](types/attr.md#attrfilter) |
+| `attr.int` | A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number. | [types/attr.md#attrint](types/attr.md#attrint) |
+| `attr.long` | A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number. | [types/attr.md#attrlong](types/attr.md#attrlong) |
+| `attr.properties` | A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023). | [types/attr.md#attrproperties](types/attr.md#attrproperties) |
+| `attr.string` | A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray). | [types/attr.md#attrstring](types/attr.md#attrstring) |
+| `field.base` | Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). | [types/field.md#fieldbase](types/field.md#fieldbase) |
+| `field.boolean` | True/false flag. Binds to the native boolean type; DB column is BOOLEAN. | [types/field.md#fieldboolean](types/field.md#fieldboolean) |
+| `field.currency` | Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden. | [types/field.md#fieldcurrency](types/field.md#fieldcurrency) |
+| `field.date` | Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE. | [types/field.md#fielddate](types/field.md#fielddate) |
+| `field.decimal` | Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double. | [types/field.md#fielddecimal](types/field.md#fielddecimal) |
+| `field.double` | Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal. | [types/field.md#fielddouble](types/field.md#fielddouble) |
+| `field.enum` | String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence. | [types/field.md#fieldenum](types/field.md#fieldenum) |
+| `field.float` | Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money. | [types/field.md#fieldfloat](types/field.md#fieldfloat) |
+| `field.int` | 32-bit signed integer. Binds to the native int type; DB column is INTEGER. | [types/field.md#fieldint](types/field.md#fieldint) |
+| `field.long` | 64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT. | [types/field.md#fieldlong](types/field.md#fieldlong) |
+| `field.object` | A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint). | [types/field.md#fieldobject](types/field.md#fieldobject) |
+| `field.string` | Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)). | [types/field.md#fieldstring](types/field.md#fieldstring) |
+| `field.time` | Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME. | [types/field.md#fieldtime](types/field.md#fieldtime) |
+| `field.timestamp` | Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping. | [types/field.md#fieldtimestamp](types/field.md#fieldtimestamp) |
+| `field.uuid` | Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid. | [types/field.md#fielduuid](types/field.md#fielduuid) |
+| `identity.primary` | The primary key — one per entity; @fields names its column(s), @generation the value strategy. | [types/identity.md#identityprimary](types/identity.md#identityprimary) |
+| `identity.reference` | A foreign-key reference to another entity (@references target; @enforce toggles a physical FK). | [types/identity.md#identityreference](types/identity.md#identityreference) |
+| `identity.secondary` | A secondary index (unique by default via @unique). | [types/identity.md#identitysecondary](types/identity.md#identitysecondary) |
+| `layout.base` | Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. | [types/layout.md#layoutbase](types/layout.md#layoutbase) |
+| `layout.dataGrid` | A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders. | [types/layout.md#layoutdatagrid](types/layout.md#layoutdatagrid) |
+| `metadata.root` | Root metadata document | [types/metadata.md#metadataroot](types/metadata.md#metadataroot) |
+| `object.base` | Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. | [types/object.md#objectbase](types/object.md#objectbase) |
+| `object.entity` | An object that owns its data: own identity, writable sources, and lifecycle. The default object subtype — a bare `object:` key resolves to entity. May co-locate templates (template.prompt and friends) with the owning entity. | [types/object.md#objectentity](types/object.md#objectentity) |
+| `object.projection` | A derived read-only representation of entities. Its fields are extends-bound / origin-derived / self-declared-under-external-assembly, all read-only at the subtype level. Identity is optional and MUST extend an entity identity; sources are restricted to read-only @kinds. The declared field set IS the exposure (inclusive, fail-closed). | [types/object.md#objectprojection](types/object.md#objectprojection) |
+| `object.value` | A value object — pure shape with NO identity and NO source, ever. Constructed (by caller / assembly / embedding), never populated from a store. May `extends` an entity's fields to reuse shape. Equality is by content. | [types/object.md#objectvalue](types/object.md#objectvalue) |
+| `origin.aggregate` | A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity. | [types/origin.md#originaggregate](types/origin.md#originaggregate) |
+| `origin.base` | Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs. | [types/origin.md#originbase](types/origin.md#originbase) |
+| `origin.collection` | A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection. | [types/origin.md#origincollection](types/origin.md#origincollection) |
+| `origin.passthrough` | A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via). | [types/origin.md#originpassthrough](types/origin.md#originpassthrough) |
+| `relationship.aggregation` | A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null). | [types/relationship.md#relationshipaggregation](types/relationship.md#relationshipaggregation) |
+| `relationship.association` | A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict). | [types/relationship.md#relationshipassociation](types/relationship.md#relationshipassociation) |
+| `relationship.base` | Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly. | [types/relationship.md#relationshipbase](types/relationship.md#relationshipbase) |
+| `relationship.composition` | An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade). | [types/relationship.md#relationshipcomposition](types/relationship.md#relationshipcomposition) |
+| `source.base` | Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider. | [types/source.md#sourcebase](types/source.md#sourcebase) |
+| `source.rdb` | The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural `name`), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types. | [types/source.md#sourcerdb](types/source.md#sourcerdb) |
+| `template.base` | Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs. | [types/template.md#templatebase](types/template.md#templatebase) |
+| `template.output` | An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs, the FR-010 @promptStyle, and the @kind + email part-refs. | [types/template.md#templateoutput](types/template.md#templateoutput) |
+| `template.prompt` | An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef. | [types/template.md#templateprompt](types/template.md#templateprompt) |
+| `template.toolcall` | A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs. | [types/template.md#templatetoolcall](types/template.md#templatetoolcall) |
+| `validator.array` | Bounds the element count of an array-valued field via @min/@max. | [types/validator.md#validatorarray](types/validator.md#validatorarray) |
+| `validator.base` | Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. | [types/validator.md#validatorbase](types/validator.md#validatorbase) |
+| `validator.length` | Bounds string length / collection size via @min/@max. | [types/validator.md#validatorlength](types/validator.md#validatorlength) |
+| `validator.numeric` | Bounds a numeric value's magnitude via @min/@max. | [types/validator.md#validatornumeric](types/validator.md#validatornumeric) |
+| `validator.regex` | Requires the value match a regular expression (@pattern). | [types/validator.md#validatorregex](types/validator.md#validatorregex) |
+| `validator.required` | Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field. | [types/validator.md#validatorrequired](types/validator.md#validatorrequired) |
+| `view.base` | Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own. | [types/view.md#viewbase](types/view.md#viewbase) |
+| `view.currency` | Currency display formatting (locale-aware via @locale). | [types/view.md#viewcurrency](types/view.md#viewcurrency) |

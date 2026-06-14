@@ -145,6 +145,17 @@ export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from
 export type { AttrClassification } from "./registry-manifest.js";
 export { ExclusionReason } from "./registry-manifest-exclusions.js";
 
+// FR-033 S3 — metamodel doc-gen: tiered, LLM-readable docs FOR THE METAMODEL
+// (the type/subtype/attr vocabulary), generated from the strict registry.
+// Distinct from `meta docs --model` (which documents a user's entities).
+export {
+  renderMetamodelDocs,
+  buildMetamodelProvenance,
+  coreProviderDescriptions,
+  renderCoreMetamodelDocs,
+} from "./metamodel-docs/index.js";
+export type { MetamodelProvenance } from "./metamodel-docs/index.js";
+
 // Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs
 // fixture corpora). NODE-ONLY: registry-coverage.ts statically imports node:fs
 // to scan the fixture corpora, so it must NOT be re-exported from this
