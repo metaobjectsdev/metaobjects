@@ -76,11 +76,16 @@ const CONCEPT_DIRS: Record<string, string> = {
   // persistence/
   origin: "persistence/origin",
   source: "persistence/source",
+  db: "persistence/db",
   // presentation/
   layout: "presentation/layout",
   view: "presentation/view",
+  ui: "presentation/ui",
   // depth-1
   template: "template",
+  // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider
+  // → promptProvider, S1-A). Its data file is spec/metamodel/prompt.json.
+  prompt: "template",
 };
 
 /**

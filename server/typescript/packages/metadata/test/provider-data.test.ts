@@ -2,12 +2,26 @@
 import { test, expect } from "bun:test";
 import {
   defineProviderFromData,
+  applyProviderDefinition,
   type ProviderDefinition,
 } from "../src/provider-data.js";
 import { TypeId, TypeRegistry } from "../src/registry.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 
 const FIELD_FACTORY = (id: TypeId, name: string) => new MetaField(id, name);
+
+/** Register a few field subtypes (string/int/object) on a fresh registry so the
+ *  S1.5 `extends` path has real targets to extend. */
+function registryWithFields(...subTypes: string[]): TypeRegistry {
+  const reg = new TypeRegistry();
+  const data: ProviderDefinition = {
+    provider: "core-fixture",
+    types: subTypes.map((subType) => ({ type: "field", subType, description: `field.${subType}` })),
+  };
+  const factories = Object.fromEntries(subTypes.map((s) => [`field.${s}`, FIELD_FACTORY]));
+  applyProviderDefinition(reg, data, factories);
+  return reg;
+}
 
 test("an attr child entry → produces an AttrSchema (value-type/default/allowedValues/description)", () => {
   const data: ProviderDefinition = {
@@ -278,6 +292,149 @@ test("max < min → throws", () => {
     ],
   };
   expect(() => defineProviderFromData(data, { "object.entity": FIELD_FACTORY })).toThrow(/max/);
+});
+
+// ---------------------------------------------------------------------------
+// FR-033 S1.5 — data-driven `extends` (concern providers add attrs to types
+// an upstream provider already registered).
+// ---------------------------------------------------------------------------
+
+test("extends subType:'*' → fans the attrs out to EVERY registered subtype of the type", () => {
+  const reg = registryWithFields("string", "int", "object");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "*",
+        children: [
+          { type: "attr", subType: "string", name: "column", min: 0, max: 1, description: "Physical column name." },
+        ],
+      },
+    ],
+  };
+  applyProviderDefinition(reg, data, {});
+  for (const sub of ["string", "int", "object"]) {
+    const attrs = reg.find("field", sub)!.attributes;
+    expect(attrs.map((a) => a.name)).toContain("column");
+  }
+});
+
+test("extends subType list → targets ONLY the named subtypes", () => {
+  const reg = registryWithFields("string", "int", "object");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: ["string", "object"],
+        children: [
+          { type: "attr", subType: "boolean", name: "db.indexed", min: 0, max: 1, description: "Indexed." },
+        ],
+      },
+    ],
+  };
+  applyProviderDefinition(reg, data, {});
+  expect(reg.find("field", "string")!.attributes.map((a) => a.name)).toContain("db.indexed");
+  expect(reg.find("field", "object")!.attributes.map((a) => a.name)).toContain("db.indexed");
+  expect(reg.find("field", "int")!.attributes.map((a) => a.name)).not.toContain("db.indexed");
+});
+
+test("extends single subType → targets exactly that one subtype", () => {
+  const reg = registryWithFields("string", "object");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "object",
+        children: [
+          { type: "attr", subType: "string", name: "storage", min: 0, max: 1, description: "Storage strategy." },
+        ],
+      },
+    ],
+  };
+  applyProviderDefinition(reg, data, {});
+  expect(reg.find("field", "object")!.attributes.map((a) => a.name)).toContain("storage");
+  expect(reg.find("field", "string")!.attributes.map((a) => a.name)).not.toContain("storage");
+});
+
+test("extends attrs lower correctly (name/valueType/required/default/allowedValues/description)", () => {
+  const reg = registryWithFields("string");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "string",
+        children: [
+          {
+            type: "attr",
+            subType: "string",
+            name: "storage",
+            min: 1,
+            max: 1,
+            default: "jsonb",
+            allowedValues: ["flattened", "jsonb", "subdocument"],
+            description: "Storage strategy.",
+          },
+        ],
+      },
+    ],
+  };
+  applyProviderDefinition(reg, data, {});
+  const attr = reg.find("field", "string")!.attributes.find((a) => a.name === "storage")!;
+  expect(attr.valueType).toBe("string");
+  expect(attr.required).toBe(true);
+  expect(attr.default).toBe("jsonb");
+  expect(attr.allowedValues).toEqual(["flattened", "jsonb", "subdocument"]);
+  expect(attr.description).toBe("Storage strategy.");
+});
+
+test("extends with a structural child → throws (concern providers add attrs only)", () => {
+  const reg = registryWithFields("string");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "string",
+        children: [{ type: "validator", subType: "*", name: "*", min: 0, max: null }],
+      },
+    ],
+  };
+  expect(() => applyProviderDefinition(reg, data, {})).toThrow(/may only carry attr children/);
+});
+
+test("extends targeting an unregistered subtype → throws (registry.extend has no target)", () => {
+  const reg = registryWithFields("string");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "object",
+        children: [{ type: "attr", subType: "string", name: "storage", min: 0, max: 1, description: "s" }],
+      },
+    ],
+  };
+  expect(() => applyProviderDefinition(reg, data, {})).toThrow(/no registered type "field\.object"/);
+});
+
+test("a definition with only `extends` (no `types`) is valid (concern provider)", () => {
+  const reg = registryWithFields("int");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "int",
+        children: [{ type: "attr", subType: "string", name: "column", min: 0, max: 1, description: "c" }],
+      },
+    ],
+  };
+  expect(() => applyProviderDefinition(reg, data, {})).not.toThrow();
+  expect(reg.find("field", "int")!.attributes.map((a) => a.name)).toContain("column");
 });
 
 test("a type with no children → empty attributes and childRules", () => {

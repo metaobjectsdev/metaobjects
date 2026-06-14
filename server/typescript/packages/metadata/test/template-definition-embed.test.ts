@@ -37,7 +37,7 @@ describe("TEMPLATE_DEFINITION — drift gate", () => {
   });
 
   test("declares exactly the 4 template subtypes", () => {
-    const subTypes = TEMPLATE_DEFINITION.types.map((t) => t.subType).sort();
+    const subTypes = TEMPLATE_DEFINITION.types!.map((t) => t.subType).sort();
     expect(subTypes).toEqual(["base", "output", "prompt", "toolcall"]);
   });
 });

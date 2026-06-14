@@ -38,8 +38,8 @@ describe("DOCUMENTATION_DEFINITION — drift gate", () => {
   });
 
   test("declares exactly the universal `*.*` entry carrying the 8 doc attrs", () => {
-    expect(DOCUMENTATION_DEFINITION.types).toHaveLength(1);
-    const universal = DOCUMENTATION_DEFINITION.types[0]!;
+    expect(DOCUMENTATION_DEFINITION.types!).toHaveLength(1);
+    const universal = DOCUMENTATION_DEFINITION.types![0]!;
     expect(universal.type).toBe("*");
     expect(universal.subType).toBe("*");
     const attrChildren = (universal.children ?? []).filter((c) => c.type === "attr");

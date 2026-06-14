@@ -99,6 +99,30 @@ export interface TypeDef {
   extendsBase?: boolean;
 }
 
+/**
+ * FR-033 S1.5 — a declarative `registry.extend` directive. A **concern** provider
+ * (db / ui / prompt) does NOT register new `type.subType`s; it ADDS attrs to types
+ * an upstream provider (core) already registered. This entry is the data form of a
+ * `registry.extend(type, sub, { attributes })` call: `subType` selects the target
+ * subtype(s) and `children` are the `type: "attr"` entries (→ `AttrSchema`) to add.
+ */
+export interface ExtendDef {
+  /** Target type whose subtype(s) are extended (e.g. `"field"`, `"source"`). */
+  type: string;
+  /**
+   * Target subtype(s): a single subtype name, a LIST of subtype names, or the
+   * `"*"` wildcard (= every currently-registered subtype of `type`). Resolved at
+   * apply time against the registry.
+   */
+  subType: string | readonly string[];
+  /**
+   * Attrs to add to each resolved target. Concern providers add attrs only — these
+   * must all be `type: "attr"` entries (lowered via `toAttrSchema`). A structural
+   * child here is rejected (concern providers do not contribute child rules).
+   */
+  children: ChildDef[];
+}
+
 export interface ProviderDefinition {
   /** Owning provider id (groups doc pages). */
   provider: string;
@@ -107,8 +131,17 @@ export interface ProviderDefinition {
    * entry (`type: "*", subType: "*"`): it is NOT a registered type — its named
    * `attr` children are COMMON attributes (accepted on every node, registered via
    * `registry.registerCommonAttrs`). Every other entry is a real `type.subType`.
+   * Optional — a concern (extends-only) provider declares no new types and may
+   * omit this entirely (it carries only `extends`).
    */
-  types: TypeDef[];
+  types?: TypeDef[];
+  /**
+   * FR-033 S1.5 — DATA-DRIVEN `registry.extend` directives. A **concern** provider
+   * (db / ui / prompt) declares no new types; it reads its attrs from data and ADDS
+   * them to already-registered types via these entries. Applied AFTER `types` in
+   * `applyProviderDefinition`. Optional — a provider with only `types` is unaffected.
+   */
+  extends?: ExtendDef[];
 }
 
 /**
@@ -163,8 +196,9 @@ export function defineProviderFromData(
   factories: FactoryMap,
 ): TypeDefinition[] {
   // Pre-compute each type's OWN lowered attrs + childRules, keyed by "type.subType",
-  // so base-composition can fold a base's contributions into its subtypes.
-  const realTypes = data.types.filter((t) => !isUniversalEntry(t));
+  // so base-composition can fold a base's contributions into its subtypes. A
+  // concern (extends-only) provider may omit `types` entirely.
+  const realTypes = (data.types ?? []).filter((t) => !isUniversalEntry(t));
   const lowered = new Map<
     string,
     { attributes: AttrSchema[]; childRules: ChildRule[] }
@@ -229,6 +263,46 @@ export function applyProviderDefinition(
   if (commonAttrs.length > 0) {
     registry.registerCommonAttrs(commonAttrs);
   }
+  applyExtends(registry, data);
+}
+
+/**
+ * Apply a definition's `extends` directives (FR-033 S1.5) via `registry.extend`.
+ * For each directive: resolve the target subtypes (`"*"` → every registered subtype
+ * of the type; a list → each named subtype; a string → that one), lower its `attr`
+ * children to `AttrSchema[]`, and `registry.extend(type, sub, { attributes })`.
+ * Concern providers contribute attrs only — a non-`attr` child is rejected.
+ */
+function applyExtends(registry: TypeRegistry, data: ProviderDefinition): void {
+  for (const ext of data.extends ?? []) {
+    const attributes: AttrSchema[] = [];
+    for (const child of ext.children) {
+      if (!isAttrChild(child)) {
+        throw new Error(
+          `applyProviderDefinition(${data.provider}): extends "${ext.type}" may only carry attr ` +
+            `children; found a structural child "${child.type}".`,
+        );
+      }
+      validateCardinality(data.provider, ext.type, child);
+      attributes.push(toAttrSchema(data.provider, ext.type, child));
+    }
+    for (const subType of resolveExtendSubTypes(registry, ext)) {
+      registry.extend(ext.type, subType, { attributes });
+    }
+  }
+}
+
+/**
+ * Resolve an `ExtendDef`'s `subType` selector to concrete subtype names:
+ *   - `"*"` → every currently-registered subtype of `ext.type`;
+ *   - a list → each named subtype, in declared order;
+ *   - a single string → that one subtype.
+ */
+function resolveExtendSubTypes(registry: TypeRegistry, ext: ExtendDef): readonly string[] {
+  if (ext.subType === CHILD_RULE_WILDCARD) {
+    return registry.allSubTypesOf(ext.type);
+  }
+  return Array.isArray(ext.subType) ? ext.subType : [ext.subType as string];
 }
 
 /**
@@ -238,7 +312,7 @@ export function applyProviderDefinition(
  * attrs themselves; `applyProviderDefinition` is the usual door.
  */
 export function universalCommonAttrs(data: ProviderDefinition): AttrSchema[] {
-  const universal = data.types.find(isUniversalEntry);
+  const universal = (data.types ?? []).find(isUniversalEntry);
   if (universal === undefined) return [];
   const key = `${universal.type}.${universal.subType}`;
   const out: AttrSchema[] = [];
