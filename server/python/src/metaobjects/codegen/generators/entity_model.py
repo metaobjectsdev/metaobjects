@@ -112,7 +112,10 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
-            imports.add(f"from .{ref} import {ref}")
+            # @objectRef is FQN-expanded at load time; the generated VOs live
+            # flat in one package, so import by the bare class name.
+            ref_name = str(ref).split("::")[-1]
+            imports.add(f"from .{ref_name} import {ref_name}")
     required = field.attr(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attr(fc.FIELD_ATTR_DEFAULT)
     has_default = default_raw is not None
@@ -152,14 +155,12 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
 
 
 def _effective_fqn(entity: MetaObject) -> str:
-    """`package::name`, resolving the package from the nearest ancestor that carries
-    one (objects inherit the file/root package). Falls back to the bare name."""
-    pkg = entity.package
-    parent = entity.parent
-    while pkg is None and parent is not None:
-        pkg = parent.package
-        parent = parent.parent
-    return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
+    """`package::name` via the canonical :meth:`MetaData.resolution_key` — own
+    package, else the file-default package (captured at parse), else the nearest
+    ancestor's. The ``file_default_package`` step is load-bearing after a multi-file
+    merge: every node hangs under one package-less merged root, so the ancestor walk
+    alone would fold each object onto the alphabetically-first file's package."""
+    return entity.resolution_key()
 
 
 class EntityModelGenerator:

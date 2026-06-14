@@ -67,7 +67,10 @@ def py_type_for(field: MetaField) -> PyType:
     ``str``."""
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
-        base = PyType(str(ref)) if ref else PyType("object")
+        # @objectRef is expanded to a package-qualified FQN at load time
+        # (e.g. ``app::pkg::Thing``); the emitted VOs all live flat in one
+        # generated package, so type by the bare class name.
+        base = PyType(str(ref).split("::")[-1]) if ref else PyType("object")
     elif field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values = effective_enum_values(field)
         if values:

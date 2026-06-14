@@ -57,14 +57,10 @@ _OPS_BOOLEAN: tuple[str, ...] = ("eq", "isNull")
 
 
 def _effective_fqn(entity: MetaObject) -> str:
-    """``package::name``, resolving package from the nearest ancestor that carries
-    one. Mirror of the router generator's helper of the same name."""
-    pkg = entity.package
-    parent = entity.parent
-    while pkg is None and parent is not None:
-        pkg = parent.package
-        parent = parent.parent
-    return f"{pkg}{PACKAGE_SEP}{entity.name}" if pkg else entity.name
+    """``package::name`` via the canonical :meth:`MetaData.resolution_key` (own
+    package, else file-default, else ancestor) — multi-file-merge safe. Mirror of
+    the router generator's helper of the same name."""
+    return entity.resolution_key()
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:

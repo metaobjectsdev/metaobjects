@@ -74,6 +74,38 @@ def test_nested_object_array_imports_ref() -> None:
     assert "posts: list[PostBrief] | None = None" in out
 
 
+def test_header_fqn_folds_file_default_package_after_merge() -> None:
+    """After a multi-file merge an object hangs under one package-less merged
+    root, so the naive nearest-ancestor walk would fold every object onto the
+    alphabetically-first file's package. The header FQN must instead use the
+    canonical ``resolution_key`` (own → file-default → ancestor), so an object
+    keeps its true source-file package regardless of merge order."""
+    from metaobjects.codegen.generators.entity_model import _effective_fqn
+
+    obj = _entity("ClaimComplexity", [_f("confidence", fc.FIELD_SUBTYPE_DOUBLE)])
+    # Post-merge shape: no own package, captured file-default from its real file,
+    # parent is the merged super-root carrying a DIFFERENT (first-file) package.
+    obj.file_default_package = "app::reasoning"
+    merged_root = _entity("_merged", [], package="app::orchestration")
+    merged_root.add_child(obj)
+
+    assert _effective_fqn(obj) == "app::reasoning::ClaimComplexity"
+
+
+def test_object_ref_fqn_is_shortened_to_class_name() -> None:
+    """@objectRef is FQN-expanded at load time (``app::pkg::Thing``); the type
+    annotation and the relative import must use the bare class name, not the
+    raw FQN (which is not valid Python). Regression: object.value VOs emitted
+    ``list[app::pkg::Thing]`` and ``from .app::pkg::Thing import ...``."""
+    e = _entity("Catalog", [
+        _f("tools", fc.FIELD_SUBTYPE_OBJECT, object_ref="myapp::orch::ToolDescriptor", is_array=True),
+    ])
+    out = render_entity_model(e)
+    assert "from .ToolDescriptor import ToolDescriptor" in out
+    assert "tools: list[ToolDescriptor] | None = None" in out
+    assert "::" not in out
+
+
 def test_field_default_is_emitted_as_literal() -> None:
     """@default renders a Python-literal default and makes the field non-Optional."""
     flag = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_BOOLEAN, "flag")

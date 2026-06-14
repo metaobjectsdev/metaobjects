@@ -571,19 +571,15 @@ def render_payload_vo(
 
 
 def _effective_fqn_for(template: MetaTemplate, payload: MetaObject) -> str:
-    """``package::name`` for the doc-header. Prefer the template's own package
-    chain; fall back to the payload's; finally the bare template name."""
-
-    def _walk(node: MetaData) -> str | None:
-        pkg = node.package
-        parent = node.parent
-        while pkg is None and parent is not None:
-            pkg = parent.package
-            parent = parent.parent
-        return pkg
-
-    pkg = _walk(template) or _walk(payload)
-    return f"{pkg}{PACKAGE_SEP}{template.name}" if pkg else template.name
+    """``package::name`` for the doc-header, via the canonical
+    :meth:`MetaData.resolution_key` (own package, else the file-default captured at
+    parse, else the nearest ancestor) — multi-file-merge safe. Falls back to the
+    payload's package only if the template resolves to a bare (package-less) name."""
+    key = template.resolution_key()
+    if PACKAGE_SEP in key:
+        return key
+    payload_pkg = payload.package or payload.file_default_package
+    return f"{payload_pkg}{PACKAGE_SEP}{template.name}" if payload_pkg else template.name
 
 
 # ---------------------------------------------------------------------------
