@@ -23,8 +23,25 @@ public sealed record TypeId(string Type, string SubType)
 /// Declares which child (type, subType, name) combinations are legal under a
 /// parent node. Any field set to <see cref="MetaObjects.Shared.Structural.CHILD_RULE_WILDCARD"/>
 /// ("*") matches any value.
+/// <para>
+/// FR-033 — the strict structural constraint graph. Cardinality
+/// (<paramref name="Min"/>/<paramref name="Max"/>) is emitted only when set;
+/// <paramref name="MaxIsNull"/> distinguishes a declared <c>max: null</c>
+/// (unbounded) from an absent <c>max</c> (mirrors Java's <c>maxIsNull</c>).
+/// <paramref name="Named"/> records whether the child must carry an explicit
+/// name. All additive — existing <c>new ChildRule(t, s, n)</c> calls keep
+/// working via the defaults. (<paramref name="ChildSubType"/> stays a single
+/// string for now; a list-of-admitted-subtypes form arrives in S-B2a.)
+/// </para>
 /// </summary>
-public sealed record ChildRule(string ChildType, string ChildSubType, string ChildName);
+public sealed record ChildRule(
+    string ChildType,
+    string ChildSubType,
+    string ChildName,
+    int? Min = null,
+    int? Max = null,
+    bool MaxIsNull = false,
+    bool? Named = null);
 
 // ---------------------------------------------------------------------------
 // AttrSchema
@@ -52,7 +69,10 @@ public sealed record AttrSchema(
     object? Default = null,
     IReadOnlyList<object>? AllowedValues = null,
     string Description = "",
-    bool IsArray = false);
+    bool IsArray = false,
+    string? Rules = null,
+    string? Example = null,
+    string? WhenToUse = null);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition
@@ -75,13 +95,28 @@ public sealed class TypeDefinition
     public IReadOnlyList<AttrSchema> Attributes => _attributes;
     public DataType? DataType { get; }
 
+    // FR-033 — the documentation surface + child-side placement claim (sourced
+    // from the embedded spec/metamodel/*.json in sub-step B1). <c>Description</c>
+    // is required + non-empty in the canonical; <c>Rules</c>/<c>Example</c>/
+    // <c>WhenToUse</c> are optional (emitted only when present); <c>Parents</c> is
+    // the child-side placement claim (emitted only when non-empty, sorted ASCII).
+    // All additive with empty/null defaults so existing constructions keep working.
+    public string? Rules { get; }
+    public string? Example { get; }
+    public string? WhenToUse { get; }
+    public IReadOnlyList<string> Parents { get; }
+
     public TypeDefinition(
         TypeId typeId,
         string description,
         List<ChildRule> childRules,
         Func<TypeId, string, MetaData> factory,
         List<AttrSchema> attributes,
-        DataType? dataType = null)
+        DataType? dataType = null,
+        string? rules = null,
+        string? example = null,
+        string? whenToUse = null,
+        IReadOnlyList<string>? parents = null)
     {
         TypeId = typeId;
         Description = description;
@@ -89,6 +124,10 @@ public sealed class TypeDefinition
         Factory = factory;
         _attributes = new List<AttrSchema>(attributes);
         DataType = dataType;
+        Rules = rules;
+        Example = example;
+        WhenToUse = whenToUse;
+        Parents = parents is null ? [] : new List<string>(parents);
     }
 
     internal void AppendAttr(AttrSchema attr) => _attributes.Add(attr);
