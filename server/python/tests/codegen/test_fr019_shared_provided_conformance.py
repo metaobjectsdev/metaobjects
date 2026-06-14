@@ -16,7 +16,9 @@ import pytest
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
 
-from metaobjects import MetaDataLoader
+import json
+
+from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
@@ -69,3 +71,29 @@ def test_provided_enum_with_no_module_config_is_a_codegen_error_naming_the_enum(
     with pytest.raises(ValueError) as excinfo:
         _emit(GenConfig(out_dir=""))  # no provided module configured
     assert "Currency" in str(excinfo.value)
+
+
+def _emit_doc(doc: dict) -> dict[str, str]:
+    root = MetaDataLoader().load(
+        [InMemoryStringSource(json.dumps(doc), id="m.json", format=MetaDataFormat.JSON)]
+    ).root
+    entities = [o for o in root.own_children() if isinstance(o, MetaObject)]
+    ctx = GenContext(
+        entities=entities, loaded_root=root, matches=lambda _e: True,
+        config=GenConfig(out_dir=""), warn=lambda _m: None,
+    )
+    return {f.path: f.content for f in EntityModelGenerator().generate(ctx)}
+
+
+def test_shared_enum_members_are_uppercase_with_wire_value_preserved() -> None:
+    """Python enum members follow the UPPER_CASE constant convention; the value keeps
+    the wire form, so ``Enum("statistical")`` and ``member == "statistical"`` still work."""
+    enums = _emit_doc({"metadata.root": {"package": "a::b", "children": [
+        {"field.enum": {"name": "NumericalType", "abstract": True,
+                        "@values": ["none", "statistical", "search_web"]}},
+        {"object.value": {"name": "M", "children": [
+            {"field.enum": {"name": "nt", "extends": "a::b::NumericalType"}}]}},
+    ]}})["enums.py"]
+    assert 'STATISTICAL = "statistical"' in enums
+    assert 'SEARCH_WEB = "search_web"' in enums
+    assert 'statistical = "statistical"' not in enums  # member is not the lowercase value
