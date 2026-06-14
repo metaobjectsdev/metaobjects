@@ -25,16 +25,47 @@
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
-import { coreTypesProvider } from "../src/core-types.js";
-import { TYPE_TEMPLATE, TYPE_ATTR } from "../src/shared/base-types.js";
+import { coreProviders, coreTypesProvider } from "../src/core-types.js";
+import { TYPE_TEMPLATE } from "../src/shared/base-types.js";
 import { TEMPLATE_SUBTYPES } from "../src/template/template-constants.js";
-import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
+import { validateAttrSchema } from "../src/attr-schema-validate.js";
+import { parseJson } from "../src/parser-json.js";
 
-// Compose with ONLY the core-types provider — so `def.attributes` reflects
-// exactly what the TEMPLATE provider registered, not the doc-domain attrs that
-// other providers add via registry.extend(). This isolates the externalization
-// gate.
-const registry = composeRegistry([coreTypesProvider]);
+// FR-033 S2: the template.* type attrs (@payloadRef/@textRef/@format/@kind/…) were
+// re-homed OUT of core into the PROMPT concern provider (spec/metamodel/prompt.json
+// → promptProvider, applied via registry.extend). To see the COMPOSED template
+// schema (the re-homed attrs on prompt/output/toolcall) we compose the full
+// `coreProviders` bundle. We additionally compose with ONLY the core-types
+// provider to prove core itself now registers NO own attrs on any template subtype
+// — the strict-completion invariant. The doc-domain common attrs (added
+// universally by docProvider) are filtered out so this gate stays focused on the
+// template/prompt-owned attrs.
+const registry = composeRegistry(coreProviders);
+const coreOnlyRegistry = composeRegistry([coreTypesProvider]);
+
+// The documentation common attrs are added to EVERY type by docProvider; they are
+// not template/prompt-owned, so the completeness gate ignores them.
+const DOC_COMMON_ATTRS = new Set([
+  "description",
+  "title",
+  "notes",
+  "deprecated",
+  "replacedBy",
+  "seeAlso",
+  "aliases",
+  "summary",
+]);
+
+// Strict-load validation (ADR-0023): the any-attr/structural strict checks fire
+// only under strict=true. Compose the full coreProviders bundle so the re-homed
+// template attrs (prompt provider) are registered, then run validateAttrSchema
+// strict over the parsed document — mirroring the strict-load gate.
+function strictErrors(children: unknown[]) {
+  const registry = composeRegistry(coreProviders);
+  const json = JSON.stringify({ "metadata.root": { package: "test", children } });
+  const { root } = parseJson(json, { registry });
+  return validateAttrSchema(root, registry, true).errors.map((e) => e.code);
+}
 
 type ExpectedAttr = {
   valueType: string;
@@ -118,10 +149,11 @@ describe("template provider externalization — completeness", () => {
       expect(def).toBeDefined();
       const expected = EXPECTED[subType]!;
 
-      const actualNames = def!.attributes.map((a) => a.name).sort();
+      const ownAttrs = def!.attributes.filter((a) => !DOC_COMMON_ATTRS.has(a.name));
+      const actualNames = ownAttrs.map((a) => a.name).sort();
       expect(actualNames).toEqual(Object.keys(expected).sort());
 
-      for (const attr of def!.attributes) {
+      for (const attr of ownAttrs) {
         const exp = expected[attr.name];
         expect(exp).toBeDefined();
         expect(attr.valueType as string).toBe(exp!.valueType);
@@ -140,15 +172,20 @@ describe("template provider externalization — completeness", () => {
       }
     });
 
-    test(`template.${subType} — childRules == [wildcard(attr)]`, () => {
+    test(`template.${subType} — core registers NO own attrs (re-homed to prompt)`, () => {
+      // FR-033 S2: the template.* type attrs are re-homed to the prompt provider.
+      // Core itself registers NO own (non-doc-common) attr on any template subtype.
+      const def = coreOnlyRegistry.find(TYPE_TEMPLATE, subType)!;
+      const ownAttrs = def.attributes.filter((a) => !DOC_COMMON_ATTRS.has(a.name));
+      expect(ownAttrs.map((a) => a.name)).toEqual([]);
+    });
+
+    test(`template.${subType} — childRules == [] (no any-attr wildcard)`, () => {
+      // FR-033 S2: with the type attrs re-homed to the prompt provider, template
+      // is now an ATTR-ONLY type. The "any attr" wildcard child rule is DROPPED
+      // (strict completion — like view/layout/source) — childRules are EMPTY.
       const def = registry.find(TYPE_TEMPLATE, subType)!;
-      expect(def.childRules).toEqual([
-        {
-          childType: TYPE_ATTR,
-          childSubType: CHILD_RULE_WILDCARD,
-          childName: CHILD_RULE_WILDCARD,
-        },
-      ]);
+      expect(def.childRules).toEqual([]);
     });
   }
 
@@ -157,5 +194,45 @@ describe("template provider externalization — completeness", () => {
       const def = registry.find(TYPE_TEMPLATE, subType)!;
       expect(def.dataType).toBeUndefined();
     }
+  });
+
+  // FR-033 S2 strict-bite — with the any-attr wildcard gone, template is
+  // fail-closed: a non-declared attr → ERR_UNKNOWN_ATTR; a structural child under
+  // a template → ERR_CHILD_NOT_ALLOWED.
+  const authorBrief = {
+    "object.value": {
+      name: "AuthorBrief",
+      children: [{ "field.string": { name: "displayName" } }],
+    },
+  };
+
+  test("an undeclared attr on template.prompt → ERR_UNKNOWN_ATTR (strict)", () => {
+    const errs = strictErrors([
+      authorBrief,
+      {
+        "template.prompt": {
+          name: "strategy",
+          "@payloadRef": "AuthorBrief",
+          "@textRef": "prompt/strategy",
+          "@notADeclaredAttr": "boom",
+        },
+      },
+    ]);
+    expect(errs).toContain("ERR_UNKNOWN_ATTR");
+  });
+
+  test("a field structural child under template.output → ERR_CHILD_NOT_ALLOWED (strict)", () => {
+    const errs = strictErrors([
+      authorBrief,
+      {
+        "template.output": {
+          name: "doc",
+          "@payloadRef": "AuthorBrief",
+          "@textRef": "doc/body",
+          children: [{ "field.string": { name: "stray" } }],
+        },
+      },
+    ]);
+    expect(errs).toContain("ERR_CHILD_NOT_ALLOWED");
   });
 });

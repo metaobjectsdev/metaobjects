@@ -16,15 +16,34 @@
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
-import { coreTypesProvider } from "../src/core-types.js";
+import { coreProviders, coreTypesProvider } from "../src/core-types.js";
 import { TYPE_LAYOUT } from "../src/shared/base-types.js";
 import { LAYOUT_SUBTYPES } from "../src/presentation/layout/layout-constants.js";
 
-// Compose with ONLY the core-types provider — so `def.attributes` reflects
-// exactly what the LAYOUT provider registered, not the doc-domain attrs that
-// other providers add via registry.extend(). This isolates the externalization
-// gate.
-const registry = composeRegistry([coreTypesProvider]);
+// FR-033 S2: the layout.dataGrid type attrs (@pageSize/@defaultSortField/
+// @defaultSortOrder/@filterable/@filter/@columns) were re-homed OUT of core into
+// the UI concern provider (spec/metamodel/ui.json → uiProvider, applied via
+// registry.extend). To see the COMPOSED layout schema (the re-homed attrs on
+// layout.dataGrid) we compose the full `coreProviders` bundle. We additionally
+// compose with ONLY the core-types provider to prove core itself now registers
+// NO own attrs on any layout subtype — the strict-completion invariant. The
+// doc-domain common attrs (added universally by docProvider) are filtered out so
+// this gate stays focused on the layout/ui-owned attrs.
+const registry = composeRegistry(coreProviders);
+const coreOnlyRegistry = composeRegistry([coreTypesProvider]);
+
+// The documentation common attrs are added to EVERY type by docProvider; they are
+// not layout/ui-owned, so the completeness gate ignores them.
+const DOC_COMMON_ATTRS = new Set([
+  "description",
+  "title",
+  "notes",
+  "deprecated",
+  "replacedBy",
+  "seeAlso",
+  "aliases",
+  "summary",
+]);
 
 type ExpectedAttr = {
   valueType: string;
@@ -62,10 +81,11 @@ describe("layout provider externalization — completeness", () => {
       expect(def).toBeDefined();
       const expected = EXPECTED[subType]!;
 
-      const actualNames = def!.attributes.map((a) => a.name).sort();
+      const ownAttrs = def!.attributes.filter((a) => !DOC_COMMON_ATTRS.has(a.name));
+      const actualNames = ownAttrs.map((a) => a.name).sort();
       expect(actualNames).toEqual(Object.keys(expected).sort());
 
-      for (const attr of def!.attributes) {
+      for (const attr of ownAttrs) {
         const exp = expected[attr.name];
         expect(exp).toBeDefined();
         expect(attr.valueType as string).toBe(exp!.valueType);
@@ -77,6 +97,14 @@ describe("layout provider externalization — completeness", () => {
           expect(attr.allowedValues).toBeUndefined();
         }
       }
+    });
+
+    test(`layout.${subType} — core registers NO own attrs (re-homed to ui)`, () => {
+      // FR-033 S2: the layout.dataGrid type attrs are re-homed to the ui provider.
+      // Core itself registers NO own (non-doc-common) attr on any layout subtype.
+      const def = coreOnlyRegistry.find(TYPE_LAYOUT, subType)!;
+      const ownAttrs = def.attributes.filter((a) => !DOC_COMMON_ATTRS.has(a.name));
+      expect(ownAttrs.map((a) => a.name)).toEqual([]);
     });
 
     test(`layout.${subType} — childRules == [] (no any-attr wildcard)`, () => {

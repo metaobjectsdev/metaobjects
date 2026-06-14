@@ -393,13 +393,15 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // spec/metamodel/template.json, embedded at build into TEMPLATE_DEFINITION.
   // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
   // stays code via TEMPLATE_FACTORIES, mapping every subType → MetaTemplate.
-  // The structural childRules are kept byte-identical to the pre-FR-033
-  // registration by post-assigning the same `templateRules` array — they are not
-  // modeled in the JSON (attrs only). (The separate promptProvider — which
-  // EXTENDS every field subtype with @xmlText / @example / @instruction + the
-  // field.enum extract attrs + the object.value @normalize default — is a
-  // distinct concern provider, untouched by this conversion.)
-  const templateRules = [wildcard(TYPE_ATTR)];
+  // FR-033 S2: template's CORE registration carries NO own attrs (children == []);
+  // the per-subtype type attrs (@payloadRef/@textRef/@format/@kind/…) on prompt/
+  // output/toolcall are contributed by a SEPARATE provider (promptProvider,
+  // template/prompt-provider) via registry.extend(TYPE_TEMPLATE, sub, ...). With
+  // those attrs re-homed, template is now an ATTR-ONLY type and the "any attr"
+  // wildcard child rule is DROPPED (strict completion — like view/layout/source);
+  // childRules are left EMPTY, so a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED and a non-declared attr is ERR_UNKNOWN_ATTR. Vendor
+  // toolcall attrs stay extensible via consumer registry.extend (ADR-0011).
   const TEMPLATE_FACTORIES: FactoryMap = Object.fromEntries(
     TEMPLATE_SUBTYPES.map((subType) => [
       `${TYPE_TEMPLATE}.${subType}`,
@@ -407,11 +409,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ]),
   );
   for (const templateDef of defineProviderFromData(TEMPLATE_DEFINITION, TEMPLATE_FACTORIES)) {
-    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
-    // wildcard is never read by the parser; it IS consumed by the Phase-1b
-    // constraint validator and excluded from the registry manifest). A fresh copy
-    // per def matches the original semantics.
-    templateDef.childRules = [...templateRules];
     registry.register(templateDef);
   }
 

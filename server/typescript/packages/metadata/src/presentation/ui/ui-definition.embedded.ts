@@ -42,6 +42,80 @@ export const UI_DEFINITION: ProviderDefinition = {
           "description": "Default sort direction applied when this field is the default sort field."
         }
       ]
+    },
+    {
+      "type": "view",
+      "subType": "currency",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "locale",
+          "min": 0,
+          "max": 1,
+          "default": "en-US",
+          "description": "BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted."
+        }
+      ]
+    },
+    {
+      "type": "layout",
+      "subType": "dataGrid",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "pageSize",
+          "min": 0,
+          "max": 1,
+          "description": "Number of rows per page in the generated data grid."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "defaultSortField",
+          "min": 0,
+          "max": 1,
+          "description": "Field name the grid is sorted by on initial render. Must reference an actual field on the entity."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "defaultSortOrder",
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
+          "description": "Initial sort direction for the default sort field: 'asc' or 'desc'."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "filterable",
+          "min": 0,
+          "max": 1,
+          "description": "When true, the generated grid exposes column filtering UI."
+        },
+        {
+          "type": "attr",
+          "subType": "filter",
+          "name": "filter",
+          "min": 0,
+          "max": 1,
+          "description": "Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "columns",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Flat ordered list of field names to display as grid columns."
+        }
+      ]
     }
   ]
 };

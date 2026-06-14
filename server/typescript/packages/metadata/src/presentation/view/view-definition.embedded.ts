@@ -77,18 +77,7 @@ export const VIEW_DEFINITION: ProviderDefinition = {
     {
       "type": "view",
       "subType": "currency",
-      "description": "Currency display formatting (locale-aware via @locale).",
-      "children": [
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "locale",
-          "min": 0,
-          "max": 1,
-          "default": "en-US",
-          "description": "BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted."
-        }
-      ]
+      "description": "Currency display formatting (locale-aware via @locale)."
     }
   ]
 };

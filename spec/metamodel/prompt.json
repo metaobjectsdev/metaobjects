@@ -26,6 +26,51 @@
       "children": [
         { "type": "attr", "subType": "string", "name": "normalize", "min": 0, "max": 1, "default": "strip", "allowedValues": ["none", "collapse", "strip"], "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields." }
       ]
+    },
+    {
+      "type": "template",
+      "subType": "prompt",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "payloadRef", "min": 1, "max": 1, "description": "Reference to the payload (a view-object / projection) this template renders against." },
+        { "type": "attr", "subType": "string", "name": "textRef", "min": 0, "max": 1, "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time." },
+        { "type": "attr", "subType": "string", "name": "format", "min": 0, "max": 1, "default": "text", "allowedValues": ["text", "html", "xml", "csv", "json", "markdown", "spreadsheet"], "description": "Output format; drives the render engine's escaping/whitespace behavior." },
+        { "type": "attr", "subType": "int", "name": "maxChars", "min": 0, "max": 1, "description": "Size budget for the rendered output, in characters." },
+        { "type": "attr", "subType": "string", "name": "owner", "min": 0, "max": 1, "description": "Governance: the owner of this template." },
+        { "type": "attr", "subType": "string", "name": "since", "min": 0, "max": 1, "description": "Governance: the version this template was introduced in." },
+        { "type": "attr", "subType": "string", "name": "requiredTags", "isArray": true, "min": 0, "max": 1, "description": "Output tags the rendered text must contain (drives the verify output-tag check)." },
+        { "type": "attr", "subType": "int", "name": "maxTokens", "min": 0, "max": 1, "description": "Token budget for the rendered prompt (LLM-specific)." },
+        { "type": "attr", "subType": "string", "name": "requiredSlots", "isArray": true, "min": 0, "max": 1, "description": "Slots that must resolve at render time (drives the verify check)." },
+        { "type": "attr", "subType": "string", "name": "model", "min": 0, "max": 1, "description": "Target model id (LLM-specific)." },
+        { "type": "attr", "subType": "string", "name": "responseRef", "min": 0, "max": 1, "description": "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation)." }
+      ]
+    },
+    {
+      "type": "template",
+      "subType": "output",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "payloadRef", "min": 1, "max": 1, "description": "Reference to the payload (a view-object / projection) this template renders against." },
+        { "type": "attr", "subType": "string", "name": "textRef", "min": 0, "max": 1, "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time." },
+        { "type": "attr", "subType": "string", "name": "format", "min": 0, "max": 1, "default": "text", "allowedValues": ["text", "html", "xml", "csv", "json", "markdown", "spreadsheet"], "description": "Output format; drives the render engine's escaping/whitespace behavior." },
+        { "type": "attr", "subType": "int", "name": "maxChars", "min": 0, "max": 1, "description": "Size budget for the rendered output, in characters." },
+        { "type": "attr", "subType": "string", "name": "owner", "min": 0, "max": 1, "description": "Governance: the owner of this template." },
+        { "type": "attr", "subType": "string", "name": "since", "min": 0, "max": 1, "description": "Governance: the version this template was introduced in." },
+        { "type": "attr", "subType": "string", "name": "requiredTags", "isArray": true, "min": 0, "max": 1, "description": "Output tags the rendered text must contain (drives the verify output-tag check)." },
+        { "type": "attr", "subType": "string", "name": "promptStyle", "min": 0, "max": 1, "default": "guide", "allowedValues": ["guide", "inline", "exampleOnly"], "description": "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments." },
+        { "type": "attr", "subType": "string", "name": "kind", "min": 0, "max": 1, "default": "document", "allowedValues": ["document", "email"], "description": "Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument)." },
+        { "type": "attr", "subType": "string", "name": "subjectRef", "min": 0, "max": 1, "description": "Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind=\"email\"." },
+        { "type": "attr", "subType": "string", "name": "htmlBodyRef", "min": 0, "max": 1, "description": "Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind=\"email\"." },
+        { "type": "attr", "subType": "string", "name": "textBodyRef", "min": 0, "max": 1, "description": "Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body." }
+      ]
+    },
+    {
+      "type": "template",
+      "subType": "toolcall",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "toolName", "min": 1, "max": 1, "description": "Wire tool name surfaced to the LLM (vendor-specific format)." },
+        { "type": "attr", "subType": "string", "name": "payloadRef", "min": 1, "max": 1, "description": "Output value-object the tool produces (resolved against the metamodel)." },
+        { "type": "attr", "subType": "string", "name": "owner", "min": 0, "max": 1, "description": "Governance: the owner of this toolcall." },
+        { "type": "attr", "subType": "string", "name": "since", "min": 0, "max": 1, "description": "Governance: the version this toolcall was introduced in." }
+      ]
     }
   ]
 }
