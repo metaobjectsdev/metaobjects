@@ -713,6 +713,134 @@ public class MetaDataRegistry {
     }
 
     /**
+     * FR-033 (sub-step B1) — source every type / attr / common-attr <em>description</em>
+     * (+ optional {@code rules}/{@code example}/{@code whenToUse}) from the shared
+     * {@code spec/metamodel/*.json} (the cross-port single source of truth, read by
+     * {@link com.metaobjects.registry.spec.SpecMetamodelReader}) onto this registry.
+     *
+     * <p>Applied DURING composition, BEFORE {@link #seal()} (the type definitions are
+     * immutable, so each {@link TypeDefinition} carrying a JSON description is rebuilt
+     * and re-put; each attr {@link ChildRequirement} that the JSON describes is copied
+     * with its {@code docDescription}; each {@link CommonAttributeDef} is replaced by a
+     * copy carrying the universal {@code *.*} description). Descriptions come from the
+     * JSON ONLY — never hand-copied — so they are byte-identical to the TS reference.</p>
+     *
+     * <p>Where Java registers an attr the JSON does NOT describe for that subtype (or
+     * vice-versa) this is left untouched — that scoping mismatch is reconciled in
+     * sub-step B2; B1 applies descriptions only where they match.</p>
+     *
+     * @param reader the parsed embedded spec/metamodel reader
+     */
+    public synchronized void applySpecDescriptions(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        Objects.requireNonNull(reader, "reader must not be null");
+        checkNotSealed("applySpecDescriptions");
+
+        // Pass 1 — rebuild every TypeDefinition with the JSON type docs + per-attr
+        // doc descriptions on its DIRECT (+ wildcard) child requirements.
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            com.metaobjects.registry.spec.SpecMetamodelReader.DocFacet typeDoc =
+                    reader.typeDoc(id.type(), id.subType());
+            String description = (typeDoc != null && typeDoc.description() != null)
+                    ? typeDoc.description() : def.getDescription();
+            String rules = typeDoc != null ? typeDoc.rules() : def.getRules();
+            String example = typeDoc != null ? typeDoc.example() : def.getExample();
+            String whenToUse = typeDoc != null ? typeDoc.whenToUse() : def.getWhenToUse();
+
+            // Rebuild the DIRECT child requirements, threading attr doc descriptions.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                ChildRequirement rebuilt = req;
+                if (MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                        && req.getName() != null && !"*".equals(req.getName())) {
+                    com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry attrDoc =
+                            reader.attrDoc(id.type(), id.subType(), req.getName());
+                    if (attrDoc != null && attrDoc.description() != null) {
+                        rebuilt = req.withDocDescription(attrDoc.description());
+                    }
+                }
+                String key = rebuilt.getName();
+                if (key == null || "*".equals(key)) {
+                    key = "*:" + rebuilt.getExpectedType() + ":" + rebuilt.getExpectedSubType();
+                }
+                directReqs.put(key, rebuilt);
+            }
+
+            TypeDefinition rebuiltDef = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), description,
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    rules, example, whenToUse, def.getParents());
+            typeDefinitions.put(id, rebuiltDef);
+        }
+
+        // Pass 2 — re-resolve inheritance so each child re-inherits the REBUILT parent
+        // requirements (carrying descriptions). Crucially, an inherited attr req is
+        // re-described against the CHILD's own (type, subType): the JSON sometimes
+        // scopes an attr to a concrete subtype (e.g. @discriminator on object.entity)
+        // while Java declares it on the base (object.base) and inherits it. Describing
+        // the inherited copy by the child subtype lands the JSON description on the
+        // child where the cross-port golden carries it, and correctly leaves it empty
+        // on a sibling the JSON does NOT scope it to. Where Java's inheritance direction
+        // disagrees with the JSON scope, that is the B2 scoping reconciliation — B1 only
+        // applies the description where the JSON declares it for that subtype.
+        for (TypeDefinition def : new ArrayList<>(typeDefinitions.values())) {
+            if (def.hasParent()) {
+                TypeDefinition parent = typeDefinitions.get(
+                        new MetaDataTypeId(def.getParentType(), def.getParentSubType()));
+                if (parent != null) {
+                    resolveInheritanceForDefinition(def, parent);
+                    describeInheritedAttrs(def, reader);
+                }
+            }
+        }
+
+        // Pass 3 — common-attr descriptions from the universal *.* documentation entry.
+        for (Map.Entry<String, CommonAttributeDef> e : new ArrayList<>(commonAttributes.entrySet())) {
+            com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry doc =
+                    reader.commonAttrDoc(e.getKey());
+            if (doc != null && doc.description() != null) {
+                commonAttributes.put(e.getKey(), e.getValue().withDescription(doc.description()));
+            }
+        }
+    }
+
+    /**
+     * FR-033 (sub-step B1) — re-describe a definition's INHERITED attr requirements
+     * against the definition's OWN {@code (type, subType)}, so a JSON description that
+     * the spec scopes to a concrete subtype lands on the inherited copy where the
+     * cross-port golden carries it. Replaces each inherited attr requirement with a
+     * doc-described copy when the spec describes that attr for this subtype.
+     */
+    private void describeInheritedAttrs(TypeDefinition def,
+                                        com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        Map<String, ChildRequirement> inherited = def.getInheritedChildRequirements();
+        if (inherited.isEmpty()) {
+            return;
+        }
+        Map<String, ChildRequirement> redescribed = new LinkedHashMap<>(inherited);
+        boolean changed = false;
+        for (Map.Entry<String, ChildRequirement> e : inherited.entrySet()) {
+            ChildRequirement req = e.getValue();
+            if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                    || req.getName() == null || "*".equals(req.getName())) {
+                continue;
+            }
+            com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry doc =
+                    reader.attrDoc(def.getType(), def.getSubType(), req.getName());
+            if (doc != null && doc.description() != null
+                    && !doc.description().equals(req.getDocDescription())) {
+                redescribed.put(e.getKey(), req.withDocDescription(doc.description()));
+                changed = true;
+            }
+        }
+        if (changed) {
+            def.populateInheritedRequirements(redescribed);
+        }
+    }
+
+    /**
      * Lightweight array-shape predicate for common-array-attr validation. Mirrors
      * the per-type {@code AttributeConstraintBuilder.isArrayValue} contract:
      * {@code null} is permitted (optional), bracketed or comma-delimited string

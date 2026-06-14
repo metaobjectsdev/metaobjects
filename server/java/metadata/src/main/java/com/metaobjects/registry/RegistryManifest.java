@@ -106,7 +106,20 @@ public final class RegistryManifest {
      * @return a new registry composed from the metamodel provider set
      */
     public static MetaDataRegistry composeMetamodelRegistry() {
-        return MetaDataRegistry.compose(metamodelProviders());
+        MetaDataRegistry registry = MetaDataRegistry.compose(metamodelProviders());
+        // Force the lazy core-constraint init NOW: it expands the named inherited
+        // attr child-requirements (e.g. field.base's `required`/`default`/`unique`
+        // onto each concrete field subtype). Those named requirements must exist
+        // BEFORE applySpecDescriptions rebuilds the type definitions, otherwise the
+        // rebuild would not see them and their descriptions would never land.
+        registry.getAllValidationConstraints();
+        // FR-033 (sub-step B1): source every type / attr / common-attr description
+        // (+ rules/example/whenToUse) from the embedded spec/metamodel/*.json — the
+        // cross-port single source of truth — onto the freshly-composed registry,
+        // BEFORE any seal. Single-sourced, byte-identical to TS; never hand-copied.
+        registry.applySpecDescriptions(
+                com.metaobjects.registry.spec.SpecMetamodelReader.load());
+        return registry;
     }
 
     /**
@@ -572,12 +585,13 @@ public final class RegistryManifest {
         // commonAttrs: sorted by name. An array-shaped common attr is the scalar
         // value-type plus the orthogonal isArray flag (the retired stringarray
         // subtype) — matching the cross-port {valueType, isArray} contract. The
-        // FR-033 per-commonAttr description has no Java source yet (CommonAttributeDef
-        // carries none) → empty string; sub-step B sources it from the embedded JSON.
+        // FR-033 (sub-step B): the per-commonAttr description is now sourced from the
+        // universal *.* entry of the embedded spec/metamodel/documentation.json and
+        // applied onto each CommonAttributeDef at composition time (pre-seal).
         List<ManifestAttr> commonAttrs = new ArrayList<>();
         for (CommonAttributeDef def : registry.getCommonAttributes()) {
             commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false,
-                "", null, null, null));
+                def.description() != null ? def.description() : "", null, null, null));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 

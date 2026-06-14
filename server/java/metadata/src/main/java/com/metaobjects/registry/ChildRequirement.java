@@ -320,6 +320,23 @@ public class ChildRequirement {
         return docDescription;
     }
 
+    /**
+     * FR-033 — a copy of this requirement carrying the given doc description, with
+     * all other facets (name/type/subType/required + the constraint matchers /
+     * constraintId / validationDescription) preserved. Used by
+     * {@link MetaDataRegistry#applySpecDescriptions} to thread the
+     * {@code spec/metamodel/*.json} attr description onto an already-registered
+     * requirement without disturbing its placement/validation behavior.
+     *
+     * @param docDescription the FR-033 doc description to carry
+     * @return a new ChildRequirement identical apart from the doc description
+     */
+    public ChildRequirement withDocDescription(String docDescription) {
+        return new ChildRequirement(name, expectedType, expectedSubType, required,
+                parentMatcher, childMatcher, valueValidator, constraintId, validationDescription,
+                docDescription);
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
