@@ -2984,7 +2984,8 @@
     {
       "type": "origin",
       "subType": "aggregate",
-      "description": "Origin (aggregate)",
+      "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
       "attrs": [
         {
           "name": "agg",
@@ -3019,7 +3020,7 @@
     {
       "type": "origin",
       "subType": "base",
-      "description": "Origin (base)",
+      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.",
       "attrs": [],
       "children": [
         {
@@ -3032,7 +3033,7 @@
     {
       "type": "origin",
       "subType": "collection",
-      "description": "Origin (collection)",
+      "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
       "attrs": [
         {
           "name": "via",
@@ -3053,7 +3054,7 @@
     {
       "type": "origin",
       "subType": "passthrough",
-      "description": "Origin (passthrough)",
+      "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
       "attrs": [
         {
           "name": "from",

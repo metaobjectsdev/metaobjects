@@ -21,7 +21,7 @@
 //   server/typescript/packages/metadata/test/field-definition-embed.test.ts).
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Resolve the repo root relative to THIS script (walk up to the dir containing
@@ -60,16 +60,64 @@ if (jsonFiles.length === 0) {
   process.exit(1);
 }
 
-/** field → core/field/field-definition.embedded.ts, exporting FIELD_DEFINITION. */
-function targetFor(name: string): { outFile: string; constName: string } {
+// Concept → source-dir (relative to the metadata `src/`) map. Covers EVERY
+// metamodel concept so a later provider conversion never has to re-touch this
+// file. A concept with no entry errors loudly (NOT a silent `core/<name>`
+// default) — an unmapped future spec/metamodel/<x>.json must fail the run.
+const CONCEPT_DIRS: Record<string, string> = {
+  // core/
+  field: "core/field",
+  attr: "core/attr",
+  validator: "core/validator",
+  identity: "core/identity",
+  relationship: "core/relationship",
+  object: "core/object",
+  // persistence/
+  origin: "persistence/origin",
+  source: "persistence/source",
+  // presentation/
+  layout: "presentation/layout",
+  view: "presentation/view",
+  // depth-1
+  template: "template",
+};
+
+/**
+ * Resolve the output file + export const + the relative import to provider-data.js.
+ * field → core/field/field-definition.embedded.ts, exporting FIELD_DEFINITION.
+ */
+function targetFor(name: string): {
+  outFile: string;
+  constName: string;
+  providerDataImport: string;
+} {
+  const dir = CONCEPT_DIRS[name];
+  if (dir === undefined) {
+    throw new Error(
+      `no source-dir mapping for metamodel concept "${name}" — add it to CONCEPT_DIRS in scripts/generate-embedded-metamodel.ts`,
+    );
+  }
   const constName = `${name.toUpperCase()}_DEFINITION`;
-  const outFile = join(metadataSrc, "core", name, `${name}-definition.embedded.ts`);
-  return { outFile, constName };
+  const outFile = join(metadataSrc, ...dir.split("/"), `${name}-definition.embedded.ts`);
+  // Compute the import to provider-data.js RELATIVELY from the embed file's dir,
+  // as a POSIX path with a guaranteed leading "./". core/field/ → ../../provider-data.js;
+  // template/ → ../provider-data.js.
+  const rel = posix.relative(
+    posix.dirname(toPosix(outFile)),
+    toPosix(join(metadataSrc, "provider-data.js")),
+  );
+  const providerDataImport = rel.startsWith(".") ? rel : `./${rel}`;
+  return { outFile, constName, providerDataImport };
+}
+
+/** Normalize an OS path to POSIX separators (no-op on POSIX, fixes Windows). */
+function toPosix(p: string): string {
+  return p.split(/[\\/]/).join("/");
 }
 
 for (const file of jsonFiles) {
   const name = file.replace(/\.json$/, "");
-  const { outFile, constName } = targetFor(name);
+  const { outFile, constName, providerDataImport } = targetFor(name);
   if (!existsSync(dirname(outFile))) {
     console.error(`error: target dir for "${name}" does not exist: ${dirname(outFile)}`);
     process.exit(1);
@@ -87,7 +135,7 @@ for (const file of jsonFiles) {
 //
 // Embeds the canonical FR-033 ProviderDefinition so the provider can register
 // itself wherever the on-disk spec/ tree is unavailable (bundled builds).
-import type { ProviderDefinition } from "../../provider-data.js";
+import type { ProviderDefinition } from "${providerDataImport}";
 
 export const ${constName}: ProviderDefinition = ${literal};
 `;

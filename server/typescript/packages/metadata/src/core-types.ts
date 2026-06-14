@@ -43,9 +43,9 @@ import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
 import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
 import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
 import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
+import { ORIGIN_DEFINITION } from "./persistence/origin/origin-definition.embedded.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
-import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
 import { MetaTemplate } from "./template/meta-template.js";
 import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
 import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
@@ -98,7 +98,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // The per-(type, subType) attribute schemas live in per-concern *-schema.ts
-// modules (e.g. persistence/origin/origin-schema.ts) or, increasingly under
+// modules (e.g. presentation/view/view-schema.ts) or, increasingly under
 // FR-033, in the externalized spec/metamodel/*.json provider definitions.
 // This file keeps only the registration logic: the def() helper, the
 // subtype→class dispatch maps, and registerCoreTypes() itself.
@@ -336,16 +336,36 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // origin — field-level provenance. Only attr children.
-  // Subtype→class dispatch (mirrors validator / identity patterns):
+  // origin — field-level provenance (4 subtypes: base/passthrough/aggregate/
+  // collection; only attr children).
+  // FR-033: the origin provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + real descriptions) is externalized to
+  // spec/metamodel/origin.json, embedded at build into ORIGIN_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via ORIGIN_FACTORIES, dispatching subType→class:
   //   passthrough → MetaPassthroughOrigin, aggregate → MetaAggregateOrigin,
-  //   base (and any unmapped subtype) → MetaOrigin.
-  for (const subType of ORIGIN_SUBTYPES) {
-    const NodeClass = ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin;
-    const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, originAttrs),
-    );
+  //   collection → MetaCollectionOrigin, base (and any unmapped subtype) →
+  //   MetaOrigin (fallback).
+  // The structural childRules are kept byte-identical to the pre-FR-033
+  // registration by post-assigning the same `originRules` array — they are not
+  // modeled in the JSON (which carries attrs only). Attr schemas: base has none;
+  // passthrough adds @from (required) + @via; aggregate adds @agg (required) +
+  // @of (required) + @via; collection adds @via (required).
+  const originRules = [wildcard(TYPE_ATTR)];
+  const ORIGIN_FACTORIES: FactoryMap = Object.fromEntries(
+    ORIGIN_SUBTYPES.map((subType) => [
+      `${TYPE_ORIGIN}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin)(typeId, name),
+    ]),
+  );
+  for (const originDef of defineProviderFromData(ORIGIN_DEFINITION, ORIGIN_FACTORIES)) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the attr
+    // wildcard is never read by the parser; it IS consumed by the Phase-1b
+    // constraint validator and excluded from the registry manifest). A fresh copy
+    // per def matches the original semantics.
+    originDef.childRules = [...originRules];
+    registry.register(originDef);
   }
 
   // template — renderable text artifacts (FR-004) + tool-call envelopes
