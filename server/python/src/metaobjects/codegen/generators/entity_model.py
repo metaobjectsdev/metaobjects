@@ -114,6 +114,9 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
         if ref:
             imports.add(f"from .{ref} import {ref}")
     required = field.attr(fc.FIELD_ATTR_REQUIRED) is True
+    default_raw = field.attr(fc.FIELD_ATTR_DEFAULT)
+    has_default = default_raw is not None
+    enum_type_name = type_name if shared is not None else None
 
     constraints = _validator_constraints(field)
     # Emit kwargs in a stable order so generated output is deterministic.
@@ -121,8 +124,22 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     parts = [f"{k}={constraints[k]!r}" for k in _order if k in constraints]
     uses_field = bool(parts)
 
-    annotation = type_expr if required else f"{type_expr} | None"
-    if required and uses_field:
+    # @default — render an enum member (Type.MEMBER, UPPER_CASE) or a Python literal.
+    if has_default:
+        if enum_type_name is not None and not field_is_array(field):
+            default_expr = f"{enum_type_name}.{str(default_raw).upper()}"
+        else:
+            default_expr = repr(default_raw)
+    else:
+        default_expr = None
+
+    # A field is Optional only when it is neither required nor carries a @default.
+    annotation = type_expr if (required or has_default) else f"{type_expr} | None"
+    if has_default and uses_field:
+        assignment = f" = Field(default={default_expr}, {', '.join(parts)})"
+    elif has_default:
+        assignment = f" = {default_expr}"
+    elif required and uses_field:
         assignment = f" = Field({', '.join(parts)})"
     elif required:
         assignment = ""

@@ -17,3 +17,14 @@ def test_ruff_format_sorts_imports() -> None:
     src = "from .local import L\nimport os\n\nfrom pydantic import BaseModel\n"
     out = ruff_format(src)
     assert out.index("import os") < out.index("from pydantic") < out.index("from .local import L")
+
+
+def test_ruff_format_no_op_when_ruff_absent(monkeypatch) -> None:
+    """ruff is a codegen-time convenience, not a runtime requirement — when it's not
+    installed, ruff_format returns the source unformatted (still valid Python) rather
+    than crashing the whole gen run."""
+    import metaobjects.codegen.format as fmt
+
+    monkeypatch.setattr(fmt, "_RUFF_AVAILABLE", False)
+    messy = "x={'a':1}\n"
+    assert fmt.ruff_format(messy) == messy
