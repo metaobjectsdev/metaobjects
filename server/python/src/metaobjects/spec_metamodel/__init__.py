@@ -110,6 +110,12 @@ class StructChild:
     named: bool | None
 
 
+def _struct_key(c: "StructChild") -> str:
+    """The ``composeWithBase`` de-dupe key for a structural child (matches the Java
+    ``SpecMetamodelReader.structKey``)."""
+    return f"{c.child_type} {c.child_sub_type} {c.child_name}"
+
+
 @dataclass(frozen=True)
 class _ExtendsBlock:
     type: str
@@ -298,6 +304,68 @@ class SpecMetamodelReader:
         spec", e.g. ``metadata.root``)."""
         return (type_, sub_type) in self._declared_keys
 
+    # ------------------------------------------------------------------
+    # Strict constraint surface (B2)
+    # ------------------------------------------------------------------
+
+    def structural_children(self, type_: str, sub_type: str) -> list[StructChild]:
+        """FR-033 (sub-step B2a) — the STRICT structural children for
+        ``(type, subType)``, composed with ``<type>.base`` when the subtype carries
+        ``extendsBase: true`` (the TS ``composeWithBase`` rule: base children ∪ own
+        children, additively). Returns the type's OWN structural children when not
+        declared ``extendsBase`` (the base subtype itself, or a non-composing
+        concern). Returns an empty list when the type is declared with no structural
+        children (an attr-only type) — callers gate on :meth:`is_declared` first.
+
+        Order is base-then-own; the emitter sorts the final children block, so order
+        here is not load-bearing. De-dupe by ``(child_type, child_sub_type,
+        child_name)`` keeps the OWN entry (own-wins), mirroring ``composeWithBase``.
+        Mirrors the Java ``SpecMetamodelReader.structuralChildren``."""
+        own = self._type_struct_children.get((type_, sub_type), [])
+        extends_base = self._type_extends_base.get((type_, sub_type), False)
+        if not extends_base or sub_type == _BASE_SUBTYPE:
+            return list(own)
+        base = self._type_struct_children.get((type_, _BASE_SUBTYPE), [])
+        merged: dict[str, StructChild] = {}
+        for b in base:
+            merged[_struct_key(b)] = b
+        for o in own:
+            merged[_struct_key(o)] = o  # own wins on overlap
+        return list(merged.values())
+
+    def strict_attr_names(self, type_: str, sub_type: str) -> set[str]:
+        """FR-033 (sub-step B2b) — the STRICT per-subtype attr-name allow-list for
+        ``(type, subType)``: the attr names the cross-port golden scopes to this
+        subtype. Composed from the shared JSON exactly as TS composes it:
+
+        - the subtype's OWN ``types[].children`` attr entries, PLUS
+        - ``<type>.base``'s attrs when the subtype carries ``extendsBase: true``
+          (the ``composeWithBase`` rule — base attrs ∪ own attrs; the base subtype
+          contributes only its own), PLUS
+        - every ``extends`` block (db/ui/prompt JSON) whose matcher targets this
+          ``(type, subType)`` — an exact subType, a list membership, or the ``"*"``
+          wildcard (e.g. db.json's ``@column`` on ``field.*``, ``@storage`` on
+          ``field.object``, ``@autoSet`` on ``field.[date, time, timestamp]``).
+
+        Callers gate on :meth:`is_declared` first — an undeclared ``(type, subType)``
+        (e.g. ``metadata.root``, ``attr.*``) has no JSON-sourced strict set and must
+        NOT be pruned. Mirrors the Java ``SpecMetamodelReader.strictAttrNames``."""
+        names: set[str] = set()
+        own = self._type_attr_docs.get((type_, sub_type))
+        if own is not None:
+            names.update(own.keys())
+        extends_base = self._type_extends_base.get((type_, sub_type), False)
+        if extends_base and sub_type != _BASE_SUBTYPE:
+            base = self._type_attr_docs.get((type_, _BASE_SUBTYPE))
+            if base is not None:
+                names.update(base.keys())
+        for b in self._extends_blocks:
+            if b.type != type_:
+                continue
+            if b.wildcard_sub_type or sub_type in b.sub_types:
+                names.update(b.attrs.keys())
+        return names
+
     def all_type_keys(self) -> list[tuple[str, str]]:
         """All registered ``(type, subType)`` keys parsed from the JSON (diagnostics)."""
         return list(self._declared_keys)
@@ -371,6 +439,10 @@ def apply_spec_descriptions(registry) -> None:
                 new_attrs.append(attr)
         definition.attrs[:] = new_attrs
 
+    # FR-033 B2 — strict structural children + per-subtype attr scoping.
+    _apply_strict_structural_children(registry, reader)
+    _apply_strict_attr_scoping(registry, reader)
+
     # Common-attr descriptions (the universal *.* documentation vocabulary).
     new_common = []
     for attr in registry._common_attrs:  # noqa: SLF001
@@ -388,3 +460,75 @@ def apply_spec_descriptions(registry) -> None:
         else:
             new_common.append(attr)
     registry._common_attrs[:] = new_common  # noqa: SLF001
+
+
+def _apply_strict_structural_children(registry, reader: SpecMetamodelReader) -> None:
+    """FR-033 (sub-step B2a) — REPLACE every declared type's STRUCTURAL child_rules
+    with the strict cross-port graph from ``spec/metamodel/*.json`` (extendsBase-
+    composed), carrying cardinality (``min``/``max``/``named``). Python registers
+    broad, cardinality-less structural wildcards (e.g. ``object.entity`` accepts
+    field/identity/attr/source/relationship/layout/template; every field subtype
+    inherits validator/view/origin); the strict graph is the intersection the
+    cross-port golden carries. The any-attr wildcard (an ``attr`` child rule) and
+    the per-type attr requirements are left UNTOUCHED here (attr scoping is B2b).
+    Types NOT declared in the JSON (e.g. ``attr.*``) keep their existing children.
+
+    Deferred import of the registry types avoids the provider import cycle.
+    """
+    from ..registry import ChildRule
+    from ..shared.base_types import TYPE_ATTR
+
+    for definition in registry._defs.values():  # noqa: SLF001
+        if not reader.is_declared(definition.type, definition.sub_type):
+            continue  # not in the spec → keep Python's existing structural children
+        # Keep only the non-structural rules (the any-attr wildcard); drop every
+        # broad structural placement, then add the strict graph.
+        kept = [r for r in definition.child_rules if r.child_type == TYPE_ATTR]
+        for sc in reader.structural_children(definition.type, definition.sub_type):
+            kept.append(
+                ChildRule(
+                    child_type=sc.child_type,
+                    child_sub_type=sc.child_sub_type,
+                    child_name=sc.child_name,
+                    min=sc.min,
+                    max=sc.max,
+                    max_is_null=sc.max_is_null,
+                    named=sc.named,
+                )
+            )
+        definition.child_rules[:] = kept
+
+
+def _apply_strict_attr_scoping(registry, reader: SpecMetamodelReader) -> None:
+    """FR-033 (sub-step B2b) — PRUNE every declared type's LOGICAL (INCLUDED) attrs
+    down to the strict per-subtype allow-list the cross-port golden carries (sourced
+    from ``spec/metamodel/*.json``, extendsBase- and extends-composed). Python
+    registers some attrs broadly (e.g. ``@maxLength``/``@precision``/``@scale``/
+    ``@objectRef``/``@storage``/``@autoSet`` on ``field.base`` + every field subtype,
+    ``@discriminator``/``@discriminatorValue`` on every object subtype); the strict
+    graph scopes each to exactly the subtypes the JSON declares (e.g. ``@maxLength``
+    → ``field.string`` only, ``@autoSet`` → ``field.date``/``time``/``timestamp``,
+    ``@discriminator*`` → ``object.entity``).
+
+    CARVED-OUT attrs (the ``classify_per_type_attr`` exclusions — isArray/isAbstract/
+    extends/implements/isInterface/object/objectAdapter/description) are LEFT
+    REGISTERED: the emitter drops them from the manifest anyway and the loader still
+    needs them. Only INCLUDED logical attrs are pruned — which also TIGHTENS the
+    loader (a misplaced attr → ``ERR_UNKNOWN_ATTR``). Types NOT declared in the JSON
+    keep their attrs untouched (no JSON-sourced strict set exists).
+
+    Deferred import avoids the provider import cycle.
+    """
+    from ..registry_manifest import ExclusionReason, classify_per_type_attr
+
+    for definition in registry._defs.values():  # noqa: SLF001
+        if not reader.is_declared(definition.type, definition.sub_type):
+            continue  # not in the spec → keep Python's existing attr scoping
+        allow = reader.strict_attr_names(definition.type, definition.sub_type)
+        kept = []
+        for attr in definition.attrs:
+            is_logical = classify_per_type_attr(attr.name) is ExclusionReason.INCLUDED
+            if is_logical and attr.name not in allow:
+                continue  # logical attr not scoped to this subtype → prune
+            kept.append(attr)
+        definition.attrs[:] = kept

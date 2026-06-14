@@ -189,17 +189,27 @@ def _register_subtypes(
         )
 
 
-# metadata.root — accepts top-level objects, root-level fields (shared abstracts),
-# and template.* (FR-004).
+# metadata.root — the document-root WRAPPER. FR-033 (sub-step B2): metadata.root is
+# NOT declared in any spec/metamodel/*.json provider file; both this port and the TS
+# reference HAND-CODE the root (the single documented hand-coded exception to the
+# JSON-sourced model). Its STRUCTURAL children must byte-match the cross-port golden:
+# description "Root metadata document" and EXACTLY the four genuinely-open structural
+# wildcards a document root legitimately holds — field / object / template / validator
+# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). Because
+# it is undeclared in the JSON, the strict-children pass leaves it untouched, so the
+# children registered HERE are emitted verbatim. The any-attr wildcard is intentionally
+# omitted — the golden carries attrs:[] for the root (no metadata-attr vocabulary).
 core_provider.add(
     TypeDefinition(
         type=TYPE_METADATA,
         sub_type=SUBTYPE_ROOT,
         factory=MetaRoot,
+        description="Root metadata document",
         child_rules=[
-            ChildRule(TYPE_OBJECT, "*"),
             ChildRule(TYPE_FIELD, "*"),
+            ChildRule(TYPE_OBJECT, "*"),
             ChildRule(TYPE_TEMPLATE, "*"),
+            ChildRule(TYPE_VALIDATOR, "*"),
         ],
     )
 )
