@@ -25,6 +25,7 @@ from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
 from metaobjects.codegen.generators.render_helper_generator import (
     RenderHelperGenerator,
+    _resolve_payload_vo,
     _snake_case,
     render_helper_generator,
 )
@@ -394,3 +395,24 @@ def test_generator_requires_template_root() -> None:
 def test_snake_case_pascal_to_snake() -> None:
     assert _snake_case("WelcomePage") == "welcome_page"
     assert _snake_case("Alpha") == "alpha"
+
+
+def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
+    """FR-026 expands @payloadRef to a fully-qualified ``a::b::Name`` while the
+    object.value child still carries the short ``name`` — both forms must resolve."""
+    import json
+
+    from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
+
+    root = MetaDataLoader().load([
+        InMemoryStringSource(
+            json.dumps({"metadata.root": {"package": "acme::blog", "children": [
+                {"object.value": {"name": "WelcomePayload",
+                                  "children": [{"field.string": {"name": "x"}}]}},
+            ]}}),
+            id="m.json", format=MetaDataFormat.JSON,
+        )
+    ]).root
+    assert _resolve_payload_vo(root, "WelcomePayload") is not None  # short ref
+    assert _resolve_payload_vo(root, "acme::blog::WelcomePayload") is not None  # FQN ref
+    assert _resolve_payload_vo(root, "acme::blog::Missing") is None

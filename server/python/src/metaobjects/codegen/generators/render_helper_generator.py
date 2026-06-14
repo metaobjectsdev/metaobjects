@@ -144,11 +144,14 @@ def _field_tree_literal(fields: list[PayloadField]) -> str:
 
 def _resolve_payload_vo(root: MetaData, payload_ref: str) -> MetaObject | None:
     """``@payloadRef`` must resolve to an ``object.value`` (same contract as the
-    parser/prompt generators). Bare short-name match on a value-object child."""
+    parser/prompt generators). Matches a value-object child by short name OR by the
+    last segment of a fully-qualified ``a::b::Name`` ref (FR-026 expands refs to FQN,
+    while the child node still carries the short ``name``)."""
+    ref_short = payload_ref.rsplit("::", 1)[-1]
     for child in root.own_children():
         if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
             continue
-        if child.sub_type == OBJECT_SUBTYPE_VALUE and child.name == payload_ref:
+        if child.sub_type == OBJECT_SUBTYPE_VALUE and child.name in (payload_ref, ref_short):
             return child
     return None
 
