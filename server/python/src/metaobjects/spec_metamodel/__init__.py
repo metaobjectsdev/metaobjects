@@ -79,7 +79,12 @@ class DocFacet:
 @dataclass(frozen=True)
 class AttrEntry:
     """An attr child entry parsed from the JSON — the description-bearing facet B1
-    uses, plus the structural cardinality fields B2 will consume."""
+    uses, plus the structural cardinality fields B2 will consume.
+
+    FR-033 (provider re-home): ``allowed_values`` / ``default`` are additionally
+    parsed so a DATA-DRIVEN provider (``metaobjects-ui`` / ``metaobjects-prompt``)
+    can build a fully-specified ``AttrSchema`` from a JSON ``extends`` entry —
+    single-sourced, never hand-copied. ``required`` is derived (``min == 1``)."""
 
     name: str
     sub_type: str | None
@@ -91,6 +96,13 @@ class AttrEntry:
     rules: str | None = None
     example: str | None = None
     when_to_use: str | None = None
+    allowed_values: tuple[str, ...] | None = None
+    default: object | None = None
+
+    @property
+    def required(self) -> bool:
+        """Whether this attr is required — the JSON encodes requiredness as ``min: 1``."""
+        return self.min == 1
 
 
 @dataclass(frozen=True)
@@ -221,6 +233,7 @@ class SpecMetamodelReader:
                 continue  # structural child — parsed for B2; B1 reads only attr docs
             has_max = "max" in c
             max_val = c.get("max")
+            allowed = c.get("allowedValues")
             out.append(
                 AttrEntry(
                     name=c.get("name"),
@@ -233,6 +246,8 @@ class SpecMetamodelReader:
                     rules=c.get("rules"),
                     example=c.get("example"),
                     when_to_use=c.get("whenToUse"),
+                    allowed_values=tuple(allowed) if allowed is not None else None,
+                    default=c.get("default"),
                 )
             )
         return out
@@ -369,6 +384,52 @@ class SpecMetamodelReader:
     def all_type_keys(self) -> list[tuple[str, str]]:
         """All registered ``(type, subType)`` keys parsed from the JSON (diagnostics)."""
         return list(self._declared_keys)
+
+
+@dataclass(frozen=True)
+class ExtendsTarget:
+    """FR-033 (provider re-home) — one resolved ``extends`` directive from a single
+    provider file: the ``(type, subType)`` it enriches (``subType`` is ``"*"`` for a
+    field-wide extend, an explicit subtype, or one of an explicit list) plus the
+    ordered attr entries to add. A DATA-DRIVEN provider (``metaobjects-ui`` /
+    ``metaobjects-prompt``) iterates these to ``registry.extend`` each target —
+    single-sourced from the embedded JSON, never hand-copied."""
+
+    type: str
+    sub_type: str
+    attrs: tuple[AttrEntry, ...]
+
+
+def load_provider_extends(file_name: str) -> list[ExtendsTarget]:
+    """Parse ONE embedded ``spec/metamodel/<file_name>`` provider file and return its
+    ordered ``extends`` directives as :class:`ExtendsTarget`s (one per concrete
+    ``(type, subType)``).
+
+    A ``subType`` list in the JSON (e.g. db.json's ``@autoSet`` on
+    ``field: [date, time, timestamp]``) expands to one target per member;
+    ``subType: "*"`` is preserved as the literal ``"*"`` (the provider hands it to
+    ``registry.extend`` per the field-wide subtype loop). The attr ENTRIES preserve
+    JSON document order so the registered attr list matches TS.
+
+    Used by ``ui_provider`` / ``prompt_provider`` to build their ``registry.extend``
+    sets from the single shared source (FR-033 — kills the cross-port prose/attr
+    duplication)."""
+    pkg = resources.files(__package__)
+    text = (pkg / file_name).read_text(encoding="utf-8")
+    provider = json.loads(text)
+    out: list[ExtendsTarget] = []
+    for e in provider.get("extends") or []:
+        type_ = e.get("type")
+        sub_el = e.get("subType")
+        attrs = tuple(SpecMetamodelReader._parse_attr_children(e))
+        sub_types: list[str]
+        if isinstance(sub_el, list):
+            sub_types = [str(s) for s in sub_el]
+        else:
+            sub_types = [str(sub_el)]  # explicit subtype, or the literal "*"
+        for st in sub_types:
+            out.append(ExtendsTarget(type=type_, sub_type=st, attrs=attrs))
+    return out
 
 
 # ----------------------------------------------------------------------

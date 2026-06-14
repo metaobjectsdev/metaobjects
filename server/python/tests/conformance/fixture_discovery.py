@@ -5,9 +5,22 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-# Default provider id list when a fixture omits providers.json (parity with
-# the C# adapter's FixtureDiscovery.DefaultProviders).
-_DEFAULT_PROVIDERS: tuple[str, ...] = ("metaobjects-core-types",)
+# FR-033 — the default provider set for a fixture with no providers.json is the
+# FULL core bundle (core types + the four concern providers), NOT core-types alone.
+# The field's filter/sort/teaching/extract attrs + the view/layout/template attrs
+# were re-homed out of core-types into the db/ui/prompt concern providers (matching
+# the TS provider split), so a fixture exercising @filterable / @example / @normalize
+# / a template.* attr / a layout.dataGrid attr needs those providers composed. This
+# mirrors the TS conformance ``DEFAULT_PROVIDERS`` (server/typescript/packages/
+# conformance/src/fixture.ts) and keeps the cross-port corpus's no-providers.json
+# fixtures green.
+_DEFAULT_PROVIDERS: tuple[str, ...] = (
+    "metaobjects-core-types",
+    "metaobjects-db",
+    "metaobjects-documentation",
+    "metaobjects-prompt",
+    "metaobjects-ui",
+)
 
 
 @dataclass(frozen=True)

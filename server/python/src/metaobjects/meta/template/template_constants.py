@@ -106,7 +106,7 @@ PROMPT_STYLES = (
 # @xmlText — a FIELD-level marker (boolean) for the tolerant extract engine: this field
 # receives its element's TEXT CONTENT when a template.output response is parsed from XML
 # (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]). Registered on field.* by
-# template_provider (the prompt/output domain owns this extract concern — NOT a core field
+# prompt_provider (the prompt/output domain owns this extract concern — NOT a core field
 # property). No effect for @format: json. Mirrors Java TemplateConstants.ATTR_XML_TEXT,
 # TS FIELD_ATTR_XML_TEXT, and C# TemplateConstants.ATTR_XML_TEXT.
 TEMPLATE_ATTR_XML_TEXT = "xmlText"
