@@ -36,14 +36,13 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { normalizeAttr } from "./core/field/field-schema.js";
 import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
+import { OBJECT_DEFINITION } from "./core/object/object-definition.embedded.js";
 import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
 import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
 import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
 import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
-import { objectAttrs } from "./core/object/object-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
@@ -66,7 +65,7 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
 import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
@@ -99,7 +98,8 @@ import {
 
 // ---------------------------------------------------------------------------
 // The per-(type, subType) attribute schemas live in per-concern *-schema.ts
-// modules (e.g. core/field/field-schema.ts, persistence/origin/origin-schema.ts).
+// modules (e.g. persistence/origin/origin-schema.ts) or, increasingly under
+// FR-033, in the externalized spec/metamodel/*.json provider definitions.
 // This file keeps only the registration logic: the def() helper, the
 // subtype→class dispatch maps, and registerCoreTypes() itself.
 // ---------------------------------------------------------------------------
@@ -176,7 +176,23 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     ], MetaRoot),
   );
 
-  // object — 5 subtypes
+  // object — 4 subtypes. FR-033: the object provider's declarative definition
+  // (vocabulary + per-subtype attr constraints + real descriptions + the
+  // ADR-0028 taxonomy rule prose) is externalized to spec/metamodel/object.json,
+  // embedded at build into OBJECT_DEFINITION. defineProviderFromData lowers it to
+  // TypeDefinitions; the factory (behavior) stays code via OBJECT_FACTORIES,
+  // mapping every subType → MetaObject. object.value additionally carries the
+  // @normalize attr (declared inline in object.json's value children) — the
+  // object-level default normalization mode for its enum fields' tolerant extract.
+  //
+  // Unlike the other converted providers, object's structural childRules VARY by
+  // subtype, so they are NOT modeled in the JSON (attrs only) and are post-assigned
+  // here per subtype, byte-identical to the pre-FR-033 registration:
+  //   - entity     → objectRules + template (templates may be co-located)
+  //   - projection → projectionRules (a derived read-only representation: NO
+  //                  relationship — derivation is via @via, not a relationship
+  //                  child — and NO template)
+  //   - base/value → objectRules (no template)
   const objectRules = [
     wildcard(TYPE_FIELD),
     wildcard(TYPE_IDENTITY),
@@ -186,10 +202,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     wildcard(TYPE_SOURCE),
     wildcard(TYPE_ATTR),
   ];
-  // FR-024: object.projection is a derived read-only representation of
-  // entities — it carries fields/identities/sources but never declares
-  // relationships (derivation is expressed via @via, Task B5) and never
-  // co-locates templates.
   const projectionRules = [
     wildcard(TYPE_FIELD),
     wildcard(TYPE_IDENTITY),
@@ -198,24 +210,21 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     wildcard(TYPE_SOURCE),
     wildcard(TYPE_ATTR),
   ];
-  for (const subType of OBJECT_SUBTYPES) {
-    // FR-011: object.value additionally carries @normalize — the object-level
-    // default normalization mode for its enum fields' tolerant extract.
-    const subTypeObjectAttrs =
-      subType === OBJECT_SUBTYPE_VALUE
-        ? [...objectAttrs, { ...normalizeAttr }]
-        : [...objectAttrs];
-    // template.prompt (and other template subtypes) may be nested inside
-    // object.entity so a prompt can be co-located with its owning entity.
-    const rules =
+  const OBJECT_FACTORIES: FactoryMap = Object.fromEntries(
+    OBJECT_SUBTYPES.map((subType) => [
+      `${TYPE_OBJECT}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaObject(typeId, name),
+    ]),
+  );
+  for (const objectDef of defineProviderFromData(OBJECT_DEFINITION, OBJECT_FACTORIES)) {
+    const subType = objectDef.typeId.subType;
+    objectDef.childRules =
       subType === OBJECT_SUBTYPE_ENTITY
         ? [...objectRules, wildcard(TYPE_TEMPLATE)]
         : subType === OBJECT_SUBTYPE_PROJECTION
-          ? projectionRules
-          : objectRules;
-    registry.register(
-      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, rules, MetaObject, subTypeObjectAttrs),
-    );
+          ? [...projectionRules]
+          : [...objectRules];
+    registry.register(objectDef);
   }
 
   // field — 15 subtypes. FR-033: the field provider's declarative definition
