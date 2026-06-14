@@ -390,6 +390,93 @@ public sealed class TypeRegistry
             def.AppendChildRule(rule);
         }
     }
+
+    // ------------------------------------------------------------------
+    // FR-033 (sub-step B1) — apply spec/metamodel descriptions (pre-seal)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-033 (sub-step B1) — source every type / attr / common-attr DESCRIPTION
+    /// (+ optional <c>rules</c>/<c>example</c>/<c>whenToUse</c>) from the shared
+    /// <c>spec/metamodel/*.json</c> (read by
+    /// <see cref="MetaObjects.Registry.Spec.SpecMetamodelReader"/>) onto this registry.
+    /// <para>
+    /// Applied DURING composition, BEFORE <see cref="Seal"/>: <see cref="TypeDefinition"/>
+    /// has get-only doc props, so each definition the JSON describes is REBUILT (preserving
+    /// factory / dataType / child rules / the S-A doc slots) carrying the JSON type docs
+    /// + per-attr doc descriptions; <see cref="AttrSchema"/> is a record, rebuilt via
+    /// <c>with</c> matched by <c>(type.subType, attrName)</c>; each common attr is rebuilt
+    /// with its description from the universal <c>*.*</c> documentation entry. Descriptions
+    /// come from the JSON ONLY — never hand-copied — so they are byte-identical to TS.
+    /// </para>
+    /// <para>
+    /// Where C# registers an attr the JSON does NOT describe for that subtype (or
+    /// vice-versa) the attr keeps its existing description — that scoping mismatch is the
+    /// S-B2 per-subtype attr-scoping residual; B1 applies descriptions only where they match.
+    /// </para>
+    /// </summary>
+    internal void ApplySpecDescriptions(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        CheckNotSealed("ApplySpecDescriptions");
+
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+
+            MetaObjects.Registry.Spec.SpecDocFacet? typeDoc = reader.TypeDoc(id.Type, id.SubType);
+            string description = typeDoc?.Description ?? def.Description;
+            string? rules = typeDoc is not null ? typeDoc.Rules : def.Rules;
+            string? example = typeDoc is not null ? typeDoc.Example : def.Example;
+            string? whenToUse = typeDoc is not null ? typeDoc.WhenToUse : def.WhenToUse;
+
+            // Rebuild each attr with its JSON doc fields (matched by (type.subType, name),
+            // honouring extends blocks + the <type>.base fallback). Unmatched attrs keep
+            // their existing description (the S-B2 scoping residual).
+            List<AttrSchema> attrs = def.Attributes.Select(attr =>
+            {
+                MetaObjects.Registry.Spec.SpecAttrEntry? a = reader.AttrDoc(id.Type, id.SubType, attr.Name);
+                return a is null
+                    ? attr
+                    : attr with
+                    {
+                        Description = a.Description ?? "",
+                        Rules = a.Rules,
+                        Example = a.Example,
+                        WhenToUse = a.WhenToUse,
+                    };
+            }).ToList();
+
+            _defs[key] = new TypeDefinition(
+                id,
+                description,
+                new List<ChildRule>(def.ChildRules),
+                def.Factory,
+                attrs,
+                def.DataType,
+                rules,
+                example,
+                whenToUse,
+                def.Parents);
+        }
+
+        // Common-attr descriptions from the universal *.* documentation entry.
+        for (int i = 0; i < _commonAttrs.Count; i++)
+        {
+            AttrSchema attr = _commonAttrs[i];
+            MetaObjects.Registry.Spec.SpecAttrEntry? a = reader.CommonAttrDoc(attr.Name);
+            if (a is not null)
+            {
+                _commonAttrs[i] = attr with
+                {
+                    Description = a.Description ?? "",
+                    Rules = a.Rules,
+                    Example = a.Example,
+                    WhenToUse = a.WhenToUse,
+                };
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
