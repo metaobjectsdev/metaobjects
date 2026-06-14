@@ -72,3 +72,20 @@ def test_nested_object_array_imports_ref() -> None:
     out = render_entity_model(e)
     assert "from .PostBrief import PostBrief" in out
     assert "posts: list[PostBrief] | None = None" in out
+
+
+def test_field_default_is_emitted_as_literal() -> None:
+    """@default renders a Python-literal default and makes the field non-Optional."""
+    flag = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_BOOLEAN, "flag")
+    flag.set_attr(fc.FIELD_ATTR_DEFAULT, False)
+    n = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_INT, "n")
+    n.set_attr(fc.FIELD_ATTR_DEFAULT, 1)
+    c = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_DOUBLE, "c")
+    c.set_attr(fc.FIELD_ATTR_DEFAULT, 0.5)
+    s = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "s")
+    s.set_attr(fc.FIELD_ATTR_DEFAULT, "approx")
+    out = render_entity_model(_entity("M", [flag, n, c, s]))
+    assert "flag: bool = False" in out
+    assert "n: int = 1" in out
+    assert "c: float = 0.5" in out
+    assert "s: str = 'approx'" in out
