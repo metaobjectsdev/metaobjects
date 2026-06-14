@@ -44,6 +44,7 @@ import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embe
 import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
 import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
 import { ORIGIN_DEFINITION } from "./persistence/origin/origin-definition.embedded.js";
+import { SOURCE_DEFINITION } from "./persistence/source/source-definition.embedded.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { MetaTemplate } from "./template/meta-template.js";
@@ -326,14 +327,33 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     );
   }
 
-  // source — declares where an object's data lives (rdb, ... per ADR-0007).
-  // Only attr children; sources carry only configuration, never nested structure.
-  // Per-subtype attrs (@table/@kind/@role/@schema for rdb) are added by
-  // dbProvider via TypeRegistry.extend.
-  for (const subType of SOURCE_SUBTYPES) {
-    registry.register(
-      def(TYPE_SOURCE, subType, `Source (${subType})`, [wildcard(TYPE_ATTR)], MetaSource, []),
-    );
+  // source — declares where an object's data lives (2 subtypes: base/rdb, per
+  // ADR-0007). Only attr children; sources carry only configuration, never
+  // nested structure.
+  // FR-033: the CORE source registration (the bare source shells + real
+  // descriptions + ADR-0007 rules prose) is externalized to
+  // spec/metamodel/source.json, embedded at build into SOURCE_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via SOURCE_FACTORIES — a single MetaSource class backs all
+  // subtypes. The CORE registration carries NO own attrs (children == []); the
+  // per-subtype @table/@kind/@role/@schema/@parameterRef attrs on source.rdb are
+  // contributed by a SEPARATE provider (dbProvider, persistence/db) via
+  // registry.extend(TYPE_SOURCE, "rdb", ...) — untouched by this conversion.
+  // The structural childRules are kept byte-identical to the pre-FR-033
+  // registration by post-assigning the same `sourceRules` array (the attr
+  // wildcard is not modeled in the JSON, which carries types only).
+  const sourceRules = [wildcard(TYPE_ATTR)];
+  const SOURCE_FACTORIES: FactoryMap = Object.fromEntries(
+    SOURCE_SUBTYPES.map((subType) => [
+      `${TYPE_SOURCE}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaSource(typeId, name),
+    ]),
+  );
+  for (const sourceDef of defineProviderFromData(SOURCE_DEFINITION, SOURCE_FACTORIES)) {
+    // childRules kept byte-identical to the pre-FR-033 registration; a fresh
+    // copy per def matches the original semantics.
+    sourceDef.childRules = [...sourceRules];
+    registry.register(sourceDef);
   }
 
   // origin — field-level provenance (4 subtypes: base/passthrough/aggregate/
