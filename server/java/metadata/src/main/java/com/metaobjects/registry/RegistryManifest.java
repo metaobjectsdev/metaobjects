@@ -454,7 +454,7 @@ public final class RegistryManifest {
             // applySpecDescriptions); emit it (max:null literal when declared-unbounded).
             ManifestChild child = new ManifestChild(childType, childSubType, childName,
                     req.getMin(), req.getMax(), req.getNamed(), req.isMaxNull());
-            String key = childType + " " + childSubTypeKey(childSubType) + " " + childName;
+            String key = childType + " " + childSubTypeKey(childSubType) + " " + childName;
             byKey.putIfAbsent(key, child);
         }
 

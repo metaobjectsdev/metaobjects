@@ -817,6 +817,98 @@ public class MetaDataRegistry {
         // Types NOT declared in the JSON (metadata.root, attr.*, object.managed,
         // the generic view.* controls) keep their existing structural children.
         applyStrictStructuralChildren(reader);
+
+        // Pass 5 (FR-033 B2b) — PRUNE each declared type's LOGICAL (INCLUDED) attr
+        // requirements down to the strict per-subtype allow-list the cross-port
+        // golden carries (sourced from spec/metamodel/*.json, extendsBase- and
+        // extends-composed). Java registers some attrs broadly (e.g. @maxLength /
+        // @storage / @objectRef / @autoSet / @precision / @scale on field.base +
+        // every field subtype, or @discriminator/@discriminatorValue on object.base
+        // inherited by value/projection); the strict graph scopes each to exactly
+        // the subtypes the JSON declares (e.g. @maxLength → field.string only,
+        // @precision/@scale → field.decimal, @storage/@objectRef → field.object,
+        // @autoSet → field.date/time/timestamp, @discriminator* → object.entity).
+        // CARVED-OUT attrs (the classifyPerTypeAttr exclusions — isArray/isAbstract/
+        // extends/implements/isInterface/object/objectAdapter/description) are LEFT
+        // REGISTERED: the emitter drops them from the manifest anyway and the loader
+        // needs them (e.g. an authored `extends:`). Only the INCLUDED logical attrs
+        // are pruned, which also TIGHTENS the loader — a misplaced attr (e.g.
+        // @maxLength on field.boolean) now → ERR_UNKNOWN_ATTR. Types NOT declared in
+        // the JSON keep their attrs untouched (no JSON-sourced strict set exists).
+        applyStrictAttrScoping(reader);
+    }
+
+    /**
+     * FR-033 (sub-step B2b) — Pass 5 of {@link #applySpecDescriptions}. For every
+     * registered {@code (type, subType)} the spec declares, drop every LOGICAL
+     * ({@link RegistryManifest.ExclusionReason#INCLUDED}) attr requirement whose name
+     * is NOT in the strict per-subtype allow-list
+     * ({@link com.metaobjects.registry.spec.SpecMetamodelReader#strictAttrNames}).
+     * Carved-out attrs (structural keywords / native bindings / the per-type
+     * {@code description} dup) are preserved — they are excluded from the manifest by
+     * the emitter and the loader still needs them. Pruning is applied to BOTH the
+     * direct and the inherited attr requirements (the strict set is per-subtype, so a
+     * subtype no longer keeps a broadly-inherited attr the JSON does not scope to it).
+     */
+    private void applyStrictAttrScoping(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            if (!reader.isDeclared(id.type(), id.subType())) {
+                continue; // not in the spec → keep Java's existing attr scoping
+            }
+
+            Set<String> allow = reader.strictAttrNames(id.type(), id.subType());
+
+            // Rebuild DIRECT requirements, dropping disallowed INCLUDED attrs.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                directReqs.put(directKey(req), req);
+            }
+
+            TypeDefinition rebuilt = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), def.getDescription(),
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    def.getRules(), def.getExample(), def.getWhenToUse(), def.getParents());
+
+            // Re-populate inherited requirements, dropping disallowed INCLUDED attrs.
+            Map<String, ChildRequirement> inherited = new LinkedHashMap<>();
+            for (Map.Entry<String, ChildRequirement> e : def.getInheritedChildRequirements().entrySet()) {
+                ChildRequirement req = e.getValue();
+                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                inherited.put(e.getKey(), req);
+            }
+            rebuilt.populateInheritedRequirements(inherited);
+
+            typeDefinitions.put(id, rebuilt);
+        }
+    }
+
+    /**
+     * FR-033 (sub-step B2b) — true when a requirement is a NAMED, LOGICAL attr the
+     * strict per-subtype scoping may prune: an {@code attr}-typed requirement with a
+     * concrete (non-wildcard) name that the manifest classifies as
+     * {@link RegistryManifest.ExclusionReason#INCLUDED}. Returns false for the
+     * any-attr wildcard, structural placement rules, and the carved-out attrs
+     * (structural keywords / native bindings / the {@code description} common-attr
+     * dup) — those are left registered.
+     */
+    private static boolean isPrunableAttr(ChildRequirement req) {
+        if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) {
+            return false; // structural placement rule
+        }
+        String name = req.getName();
+        if (name == null || "*".equals(name)) {
+            return false; // the any-attr wildcard
+        }
+        return RegistryManifest.classifyPerTypeAttr(name)
+                == RegistryManifest.ExclusionReason.INCLUDED;
     }
 
     /**

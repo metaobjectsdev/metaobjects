@@ -384,7 +384,52 @@ public final class SpecMetamodelReader {
     }
 
     private static String structKey(StructChild c) {
-        return c.childType() + " " + c.childSubType() + " " + c.childName();
+        return c.childType() + " " + c.childSubType() + " " + c.childName();
+    }
+
+    /**
+     * FR-033 (sub-step B2b) — the STRICT per-subtype attr-name allow-list for
+     * {@code (type, subType)}: the set of attr names the cross-port golden scopes to
+     * this subtype. Composed from the shared JSON exactly as TS composes it:
+     * <ul>
+     *   <li>the subtype's OWN {@code types[].children} attr entries, PLUS</li>
+     *   <li>{@code <type>.base}'s attrs when the subtype carries
+     *       {@code extendsBase:true} (the {@code composeWithBase} rule — base attrs
+     *       union own attrs); the base subtype contributes only its own, and</li>
+     *   <li>every {@code extends} block (db/ui/prompt JSON) whose matcher targets
+     *       this {@code (type, subType)} — an exact subType, a list membership, or
+     *       the {@code "*"} wildcard (e.g. db.json's {@code @column} on
+     *       {@code field.*}, {@code @storage} on {@code field.object},
+     *       {@code @autoSet} on {@code field.[date,time,timestamp]}).</li>
+     * </ul>
+     *
+     * <p>This is the loader's strict attr allow-list for the subtype. Callers gate on
+     * {@link #isDeclared} first — an undeclared {@code (type, subType)} (e.g.
+     * {@code metadata.root}, {@code attr.*}, {@code object.managed}) has no
+     * JSON-sourced strict set and must NOT be pruned.</p>
+     */
+    public java.util.Set<String> strictAttrNames(String type, String subType) {
+        java.util.Set<String> names = new java.util.LinkedHashSet<>();
+        Map<String, AttrEntry> own = typeAttrDocs.get(key(type, subType));
+        if (own != null) {
+            names.addAll(own.keySet());
+        }
+        boolean extendsBase = Boolean.TRUE.equals(typeExtendsBase.get(key(type, subType)));
+        if (extendsBase && !BASE_SUBTYPE.equals(subType)) {
+            Map<String, AttrEntry> base = typeAttrDocs.get(key(type, BASE_SUBTYPE));
+            if (base != null) {
+                names.addAll(base.keySet());
+            }
+        }
+        for (ExtendsBlock b : extendsBlocks) {
+            if (!b.type().equals(type)) {
+                continue;
+            }
+            if (b.wildcardSubType() || b.subTypes().contains(subType)) {
+                names.addAll(b.attrs().keySet());
+            }
+        }
+        return names;
     }
 
     /** All registered {@code (type.subType)} keys parsed from the JSON (debug/diagnostics). */
