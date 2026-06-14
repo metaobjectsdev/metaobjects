@@ -40,10 +40,10 @@ import { normalizeAttr } from "./core/field/field-schema.js";
 import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
+import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
 import { objectAttrs } from "./core/object/object-schema.js";
 import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
 import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
-import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
 import { currencyViewAttrs } from "./presentation/view/view-schema.js";
 import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
 import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
@@ -268,20 +268,34 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   }
 
   // validator — 6 subtypes (base + 5 named); dispatch to subtype-specific class.
-  // Subtype→class dispatch for TYPE_VALIDATOR (formerly handled by metaOf()):
+  // FR-033: the validator provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + descriptions + rule prose) is externalized to
+  // spec/metamodel/validator.json, embedded at build into VALIDATOR_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via VALIDATOR_FACTORIES, dispatching subType→class:
   //   required → MetaRequiredValidator, length → MetaLengthValidator,
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
-  // Attr schemas: MetaValidator (base) + length/numeric/array read @min/@max via
-  //   this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern via this.ownAttr().
-  //   required has no extra attrs.
+  // The structural childRules are kept byte-identical to the pre-FR-033
+  // registration by post-assigning the same `validatorRules` array — they are
+  // not modeled in the JSON (which carries attrs only). Attr schemas: base +
+  // length/numeric/array read @min/@max via this.ownAttr(VALIDATOR_ATTR_MIN/MAX);
+  // regex also reads @pattern; required has no extra attrs.
   const validatorRules = [wildcard(TYPE_ATTR)];
-  for (const subType of VALIDATOR_SUBTYPES) {
-    const NodeClass = VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator;
-    const validatorAttrs = VALIDATOR_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass, validatorAttrs),
-    );
+  const VALIDATOR_FACTORIES: FactoryMap = Object.fromEntries(
+    VALIDATOR_SUBTYPES.map((subType) => [
+      `${TYPE_VALIDATOR}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator)(typeId, name),
+    ]),
+  );
+  for (const validatorDef of defineProviderFromData(VALIDATOR_DEFINITION, VALIDATOR_FACTORIES)) {
+    // childRules are kept byte-identical to the pre-FR-033 registration (the
+    // attr wildcard below is never read by the parser; it IS consumed by the
+    // Phase-1b constraint validator and excluded from the registry manifest).
+    // A fresh copy per def matches the original semantics.
+    validatorDef.childRules = [...validatorRules];
+    registry.register(validatorDef);
   }
 
   // view — N subtypes. Each view permits only attr children (Java parity:

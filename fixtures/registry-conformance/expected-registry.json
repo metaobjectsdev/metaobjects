@@ -3664,7 +3664,7 @@
     {
       "type": "validator",
       "subType": "array",
-      "description": "Validator (array)",
+      "description": "Bounds the element count of an array-valued field via @min/@max.",
       "attrs": [
         {
           "name": "max",
@@ -3692,7 +3692,7 @@
     {
       "type": "validator",
       "subType": "base",
-      "description": "Validator (base)",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
       "attrs": [
         {
           "name": "max",
@@ -3720,7 +3720,7 @@
     {
       "type": "validator",
       "subType": "length",
-      "description": "Validator (length)",
+      "description": "Bounds string length / collection size via @min/@max.",
       "attrs": [
         {
           "name": "max",
@@ -3748,7 +3748,7 @@
     {
       "type": "validator",
       "subType": "numeric",
-      "description": "Validator (numeric)",
+      "description": "Bounds a numeric value's magnitude via @min/@max.",
       "attrs": [
         {
           "name": "max",
@@ -3776,7 +3776,7 @@
     {
       "type": "validator",
       "subType": "regex",
-      "description": "Validator (regex)",
+      "description": "Requires the value match a regular expression (@pattern).",
       "attrs": [
         {
           "name": "max",
@@ -3811,7 +3811,7 @@
     {
       "type": "validator",
       "subType": "required",
-      "description": "Validator (required)",
+      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
       "attrs": [],
       "children": [
         {
