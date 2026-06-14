@@ -476,6 +476,103 @@ public sealed class TypeRegistry
                 };
             }
         }
+
+        // FR-033 (sub-step B2a) — replace each declared type's STRUCTURAL child
+        // rules with the strict cross-port graph + cardinality from the JSON.
+        ApplyStrictStructuralChildren(reader);
+
+        // FR-033 (sub-step B2b) — prune each declared type's LOGICAL attrs to the
+        // strict per-subtype allow-list from the JSON (the loader now rejects a
+        // misplaced attr → ERR_UNKNOWN_ATTR).
+        ApplyStrictAttrScoping(reader);
+    }
+
+    /// <summary>
+    /// FR-033 (sub-step B2a) — for every registered <c>(type, subType)</c> the spec
+    /// declares, REBUILD its <see cref="TypeDefinition"/> so its STRUCTURAL (non-attr)
+    /// child rules are EXACTLY the strict <c>spec/metamodel/*.json</c> graph
+    /// (extendsBase-composed, carrying <c>min</c>/<c>max</c>/<c>maxIsNull</c>/<c>named</c>).
+    /// The attr child rules and any attr requirements are preserved verbatim; only the
+    /// structural rules are swapped — C#'s broad/cardinality-less structural wildcards
+    /// (e.g. <see cref="ChildRuleHelper"/> <c>Wildcard(...)</c>) are dropped. Types NOT
+    /// in the JSON (e.g. <c>metadata.root</c>, <c>attr.*</c>) keep their hand-coded
+    /// structural children. Mirrors the Java/Python reader's pass 4.
+    /// </summary>
+    private void ApplyStrictStructuralChildren(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+            if (!reader.IsDeclared(id.Type, id.SubType))
+            {
+                continue; // not in the spec → keep C#'s existing structural children
+            }
+
+            // Keep every attr child rule (the strict model expresses attrs via the
+            // attrs block, but C# carries an attr-type wildcard the manifest already
+            // drops in SortedChildren); drop the broad structural wildcards.
+            var rules = new List<ChildRule>();
+            foreach (ChildRule rule in def.ChildRules)
+            {
+                if (rule.ChildType == TYPE_ATTR)
+                {
+                    rules.Add(rule); // attr placement — preserved (manifest drops it anyway)
+                }
+            }
+            foreach (MetaObjects.Registry.Spec.SpecStructChild sc in reader.StructuralChildren(id.Type, id.SubType))
+            {
+                rules.Add(new ChildRule(
+                    sc.ChildType, sc.ChildSubType, sc.ChildName,
+                    sc.Min, sc.Max, sc.MaxIsNull, sc.Named));
+            }
+
+            _defs[key] = new TypeDefinition(
+                id, def.Description, rules, def.Factory, def.Attributes.ToList(),
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
+        }
+    }
+
+    /// <summary>
+    /// FR-033 (sub-step B2b) — for every registered <c>(type, subType)</c> the spec
+    /// declares, DROP every LOGICAL (INCLUDED) attr whose name is NOT in the strict
+    /// per-subtype allow-list (<see cref="MetaObjects.Registry.Spec.SpecMetamodelReader.StrictAttrNames"/>).
+    /// The carved-out attrs (the <see cref="RegistryManifest.ClassifyPerTypeAttr"/>
+    /// exclusions — structural keywords / native bindings / the per-type
+    /// <c>description</c> dup) are LEFT REGISTERED: the emitter drops them from the
+    /// manifest anyway and the loader needs them. Only the INCLUDED logical attrs are
+    /// pruned, which TIGHTENS the loader — a misplaced attr → its unknown-attr error.
+    /// Types NOT in the JSON keep their attrs untouched. Mirrors Java/Python's pass 5.
+    /// </summary>
+    private void ApplyStrictAttrScoping(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+            if (!reader.IsDeclared(id.Type, id.SubType))
+            {
+                continue; // not in the spec → keep C#'s existing attr scoping
+            }
+
+            ISet<string> allow = reader.StrictAttrNames(id.Type, id.SubType);
+
+            var attrs = new List<AttrSchema>();
+            foreach (AttrSchema attr in def.Attributes)
+            {
+                bool prunable =
+                    RegistryManifest.ClassifyPerTypeAttr(attr.Name) == RegistryManifest.ExclusionReason.Included;
+                if (prunable && !allow.Contains(attr.Name))
+                {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                attrs.Add(attr);
+            }
+
+            _defs[key] = new TypeDefinition(
+                id, def.Description, def.ChildRules.ToList(), def.Factory, attrs,
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
+        }
     }
 }
 
