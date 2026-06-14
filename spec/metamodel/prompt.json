@@ -1,0 +1,31 @@
+{
+  "provider": "metaobjects-prompt",
+  "extends": [
+    {
+      "type": "field",
+      "subType": "*",
+      "children": [
+        { "type": "attr", "subType": "boolean", "name": "xmlText", "min": 0, "max": 1, "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json." },
+        { "type": "attr", "subType": "string", "name": "example", "min": 0, "max": 1, "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment." },
+        { "type": "attr", "subType": "string", "name": "instruction", "min": 0, "max": 1, "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment." }
+      ]
+    },
+    {
+      "type": "field",
+      "subType": "enum",
+      "children": [
+        { "type": "attr", "subType": "properties", "name": "enumAlias", "min": 0, "max": 1, "description": "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold." },
+        { "type": "attr", "subType": "properties", "name": "enumDoc", "min": 0, "max": 1, "description": "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment." },
+        { "type": "attr", "subType": "string", "name": "coerceDefault", "min": 0, "max": 1, "description": "Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values." },
+        { "type": "attr", "subType": "string", "name": "normalize", "min": 0, "max": 1, "default": "strip", "allowedValues": ["none", "collapse", "strip"], "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields." }
+      ]
+    },
+    {
+      "type": "object",
+      "subType": "value",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "normalize", "min": 0, "max": 1, "default": "strip", "allowedValues": ["none", "collapse", "strip"], "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields." }
+      ]
+    }
+  ]
+}

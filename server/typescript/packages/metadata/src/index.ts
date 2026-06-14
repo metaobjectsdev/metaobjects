@@ -153,7 +153,7 @@ export { ExclusionReason } from "./registry-manifest-exclusions.js";
 // its test) import it directly by path: `@metaobjectsdev/metadata/src/registry-coverage`.
 export { dbProvider } from "./persistence/db/db-provider.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
-export { promptProvider, xmlTextSchema } from "./template/prompt-provider.js";
+export { promptProvider } from "./template/prompt-provider.js";
 export { uiProvider } from "./presentation/ui/ui-provider.js";
 export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 
