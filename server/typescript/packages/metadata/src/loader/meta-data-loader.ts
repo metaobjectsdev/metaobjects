@@ -111,7 +111,9 @@ export class MetaDataLoader {
   }
 
   private static _defaultRegistry(): TypeRegistry {
-    return composeRegistry(coreProviders);
+    // FR-033 — validate the library's own metamodel at bootstrap: a contradictory
+    // core provider set fails fast here (the real metamodel must be contradiction-free).
+    return composeRegistry(coreProviders, { validate: true });
   }
 
   // ---------------------------------------------------------------------------

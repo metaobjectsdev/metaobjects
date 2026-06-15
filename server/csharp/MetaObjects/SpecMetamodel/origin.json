@@ -1,0 +1,38 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "origin",
+      "subType": "base",
+      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs."
+    },
+    {
+      "type": "origin",
+      "subType": "passthrough",
+      "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "from", "min": 1, "max": 1, "description": "Dotted Entity.field reference identifying the source value this projection field passes through (e.g. 'Program.title')." },
+        { "type": "attr", "subType": "string", "name": "via", "min": 0, "max": 1, "description": "Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks')." }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "aggregate",
+      "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "agg", "min": 1, "max": 1, "allowedValues": ["count", "sum", "avg", "min", "max"], "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max." },
+        { "type": "attr", "subType": "string", "name": "of", "min": 1, "max": 1, "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes')." },
+        { "type": "attr", "subType": "string", "name": "via", "min": 0, "max": 1, "description": "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)." }
+      ]
+    },
+    {
+      "type": "origin",
+      "subType": "collection",
+      "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "via", "min": 1, "max": 1, "description": "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')." }
+      ]
+    }
+  ]
+}

@@ -17,7 +17,7 @@ public class Fr011LoaderAttrsTests
 {
     private static LoadResult LoadJson(string json, string id)
     {
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = FullCoreRegistry.Compose();
         var loader = new MetaDataLoader(registry);
         return loader.Load(new IMetaDataSource[]
         {
@@ -26,7 +26,7 @@ public class Fr011LoaderAttrsTests
     }
 
     private static TypeRegistry Registry() =>
-        Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        FullCoreRegistry.Compose();
 
     // ------------------------------------------------------------------------
     // Registration shape.

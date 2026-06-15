@@ -228,11 +228,11 @@ public static class CoreTypes
         ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
-            // FR-011: object.value additionally carries @normalize — the object-level
-            // default normalization mode for its enum fields' tolerant extract.
-            List<AttrSchema> objectAttrs = subType == OBJECT_SUBTYPE_VALUE
-                ? [.. ObjectSchema.ObjectAttrs, FieldSchema.NormalizeAttr]
-                : ObjectSchema.ObjectAttrs.ToList();
+            // FR-033: object.value's @normalize (the object-level default normalization
+            // mode for its enum fields' tolerant extract) is re-homed to the
+            // metaobjects-prompt concern provider (reads prompt.json's object.value
+            // extends), so core no longer appends it here.
+            List<AttrSchema> objectAttrs = ObjectSchema.ObjectAttrs.ToList();
 
             List<ChildRule> rules = subType == OBJECT_SUBTYPE_PROJECTION
                 ? new List<ChildRule>(projectionRules)
@@ -261,7 +261,11 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs = subType switch
             {
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.EnumAliasAttr, FieldSchema.EnumDocAttr, FieldSchema.CoerceDefaultAttr, FieldSchema.NormalizeAttr],
+                // FR-033: field.enum keeps the structural @values / @provided in core; its
+                // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
+                // @normalize) are re-homed to the metaobjects-prompt concern provider
+                // (reads prompt.json's field.enum extends).
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 
@@ -314,13 +318,12 @@ public static class CoreTypes
                     validatorAttrs.ToList()));
         }
 
-        // view — 14 subtypes (base + 13); only attr children
+        // view — 14 subtypes (base + 13); only attr children. FR-033: view.currency's
+        // @locale is re-homed to the metaobjects-ui concern provider (reads ui.json's
+        // view.currency extends), so core registers no view attrs here.
         foreach (string subType in VIEW_SUBTYPES)
         {
-            List<AttrSchema> viewAttrs =
-                subType == VIEW_SUBTYPE_CURRENCY
-                    ? ViewSchema.CurrencyViewAttrs.ToList()
-                    : [];
+            List<AttrSchema> viewAttrs = [];
 
             registry.Register(
                 Def(
@@ -332,13 +335,14 @@ public static class CoreTypes
                     viewAttrs));
         }
 
-        // layout — 2 subtypes (base + dataGrid); only attr children
+        // layout — 2 subtypes (base + dataGrid); only attr children. FR-033: every
+        // layout.dataGrid attr (@pageSize / @defaultSortField / @defaultSortOrder /
+        // @filterable / @filter / @columns) is re-homed to the metaobjects-ui concern
+        // provider (reads ui.json's layout.dataGrid extends), so core registers no
+        // layout attrs here.
         foreach (string subType in LAYOUT_SUBTYPES)
         {
-            List<AttrSchema> layoutAttrs =
-                subType == LAYOUT_SUBTYPE_DATA_GRID
-                    ? LayoutSchema.DataGridLayoutAttrs.ToList()
-                    : [];
+            List<AttrSchema> layoutAttrs = [];
 
             registry.Register(
                 Def(
@@ -433,11 +437,13 @@ public static class CoreTypes
         // per-subtype attr schemas drive validation (both require @payloadRef +
         // @textRef; @format is a closed enum). Reference resolution (@payloadRef) is
         // render-time verify scope, NOT load-time — so no payload-resolution pass here.
+        // FR-033: the per-subtype template attrs (@payloadRef / @textRef / @format /
+        // @maxChars / @kind / @promptStyle / @toolName / …) are re-homed to the
+        // metaobjects-prompt concern provider (reads prompt.json's template.* extends).
+        // Core registers only the template TYPE definitions; their attrs are owned by
+        // metaobjects-prompt.
         foreach (string subType in TEMPLATE_SUBTYPES)
         {
-            IReadOnlyList<AttrSchema> templateAttrs =
-                TemplateSchema.TemplateAttrsMap.TryGetValue(subType, out var ta) ? ta : [];
-
             registry.Register(
                 Def(
                     TYPE_TEMPLATE,
@@ -445,7 +451,7 @@ public static class CoreTypes
                     $"Template ({subType})",
                     [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaTemplate(tid, n),
-                    templateAttrs.ToList()));
+                    []));
         }
 
         // Default subTypes for authoring sugar.

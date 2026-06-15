@@ -137,7 +137,7 @@ public static class ExtractObject
         if (IsArrayType(field))
             return FieldSpec.ScalarArray(name, kind, required);
         // @xmlText: a (non-array) scalar field marked to receive its element's XML text content
-        // (the template/output domain marker — registered by TemplateTypesProvider).
+        // (the template/output domain marker — registered by PromptMetaDataProvider).
         if (IsXmlText(field))
             return FieldSpec.TextContentField(name, kind, required);
         // Numeric range: source the bound from the field's numeric validator (@min/@max) — the single

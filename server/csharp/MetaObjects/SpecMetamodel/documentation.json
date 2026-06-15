@@ -1,0 +1,78 @@
+{
+  "provider": "metaobjects-documentation",
+  "types": [
+    {
+      "type": "*",
+      "subType": "*",
+      "description": "Universal documentation common attrs — accepted on EVERY metatype (registered as common attrs, NOT per-type). The named attr children below are the documentation vocabulary.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "description",
+          "min": 0,
+          "max": 1,
+          "description": "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "summary",
+          "min": 0,
+          "max": 1,
+          "description": "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Optional supplement to @description; when @summary is unset, doc surfaces typically fall back to the first sentence of @description."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "title",
+          "min": 0,
+          "max": 1,
+          "description": "Short single-line human label (e.g. 'Email' for a `field.string email`). Optional supplement to description."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "notes",
+          "min": 0,
+          "max": 1,
+          "description": "Internal-only rationale. Stays in metadata; never emitted to user-facing docs."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "deprecated",
+          "min": 0,
+          "max": 1,
+          "description": "Text reason for deprecation. Presence ⇒ deprecated. Codegen emits @deprecated / [Obsolete] with this reason."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "replacedBy",
+          "min": 0,
+          "max": 1,
+          "description": "FQN reference to the replacement element. Only meaningful with `deprecated`. Codegen appends 'Replaced by <ref>' to deprecation messages."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "seeAlso",
+          "min": 0,
+          "max": 1,
+          "isArray": true,
+          "description": "External documentation URLs. Codegen emits @see / <seealso href=...>."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "aliases",
+          "min": 0,
+          "max": 1,
+          "isArray": true,
+          "description": "Alternate names for this element. Aids AI authoring disambiguation, search, migration."
+        }
+      ]
+    }
+  ]
+}

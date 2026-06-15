@@ -1,0 +1,65 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "relationship",
+      "subType": "base",
+      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.",
+      "rules": "@cardinality is an open string at the metamodel level ('one'/'many', and Java-canonical composite forms such as 'many-to-one'); @objectRef names the target entity. M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. @onDelete/@onUpdate carry referential actions (cascade/set-null/restrict/no-action).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "cardinality", "min": 0, "max": 1, "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')." },
+        { "type": "attr", "subType": "string", "name": "through", "min": 0, "max": 1, "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references." },
+        { "type": "attr", "subType": "string", "name": "sourceRefField", "min": 0, "max": 1, "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric." },
+        { "type": "attr", "subType": "boolean", "name": "symmetric", "min": 0, "max": 1, "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField." },
+        { "type": "attr", "subType": "string", "name": "onDelete", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)." },
+        { "type": "attr", "subType": "string", "name": "onUpdate", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on key update. Default cascade." }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "association",
+      "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "cardinality", "min": 0, "max": 1, "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')." },
+        { "type": "attr", "subType": "string", "name": "through", "min": 0, "max": 1, "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references." },
+        { "type": "attr", "subType": "string", "name": "sourceRefField", "min": 0, "max": 1, "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric." },
+        { "type": "attr", "subType": "boolean", "name": "symmetric", "min": 0, "max": 1, "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField." },
+        { "type": "attr", "subType": "string", "name": "onDelete", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)." },
+        { "type": "attr", "subType": "string", "name": "onUpdate", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on key update. Default cascade." }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "aggregation",
+      "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "cardinality", "min": 0, "max": 1, "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')." },
+        { "type": "attr", "subType": "string", "name": "through", "min": 0, "max": 1, "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references." },
+        { "type": "attr", "subType": "string", "name": "sourceRefField", "min": 0, "max": 1, "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric." },
+        { "type": "attr", "subType": "boolean", "name": "symmetric", "min": 0, "max": 1, "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField." },
+        { "type": "attr", "subType": "string", "name": "onDelete", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)." },
+        { "type": "attr", "subType": "string", "name": "onUpdate", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on key update. Default cascade." }
+      ]
+    },
+    {
+      "type": "relationship",
+      "subType": "composition",
+      "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "cardinality", "min": 0, "max": 1, "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')." },
+        { "type": "attr", "subType": "string", "name": "through", "min": 0, "max": 1, "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references." },
+        { "type": "attr", "subType": "string", "name": "sourceRefField", "min": 0, "max": 1, "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric." },
+        { "type": "attr", "subType": "boolean", "name": "symmetric", "min": 0, "max": 1, "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField." },
+        { "type": "attr", "subType": "string", "name": "onDelete", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)." },
+        { "type": "attr", "subType": "string", "name": "onUpdate", "min": 0, "max": 1, "allowedValues": ["cascade", "set-null", "restrict", "no-action"], "description": "Referential action on key update. Default cascade." }
+      ]
+    }
+  ]
+}

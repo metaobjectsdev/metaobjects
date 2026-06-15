@@ -29,12 +29,14 @@ describe("source registration in core types", () => {
     expect(registry.has(TYPE_SOURCE, SOURCE_SUBTYPE_RDB)).toBe(true);
   });
 
-  test("source subtypes only accept attr children (no nested source/origin)", () => {
+  test("source subtypes have EMPTY childRules (attr-only type, no any-attr wildcard, no nested source/origin)", () => {
+    // FR-033 S1-simple: source is attr-only; the "any attr" wildcard child rule
+    // is dropped. The db-provider @table/@kind/@role/@schema attrs enforce
+    // strictly; a structural child would be ERR_CHILD_NOT_ALLOWED.
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const def = registry.find(TYPE_SOURCE, SOURCE_SUBTYPE_RDB)!;
-    expect(def.childRules.length).toBe(1);
-    expect(def.childRules[0]!.childType).toBe("attr");
+    expect(def.childRules.length).toBe(0);
   });
 
   test("object child rules accept source", () => {

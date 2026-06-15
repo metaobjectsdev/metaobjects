@@ -13,4 +13,20 @@
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
   </ItemGroup>
+  <!--
+    FR-033 — the 15 shared spec/metamodel/*.json provider-definition files are the
+    cross-port single source of truth for every type/attr/common-attr description
+    (+ rules/example/whenToUse). They are embedded as assembly resources (AOT-safe:
+    they ship in the DLL, read via Assembly.GetManifestResourceStream — no arbitrary
+    filesystem scan), mirroring how Java embeds them (maven-resources copy) and Python
+    (package data). The SpecMetamodelReader reads them; a byte-identity gate test
+    (MetaObjects.Conformance.Tests/SpecMetamodelEmbedTests) asserts each embedded copy
+    equals the repo-root spec/metamodel/<name>.json source so the copies cannot drift.
+    REFRESH STEP: if the repo-root spec/metamodel/*.json change, re-copy them with
+    `cp spec/metamodel/*.json server/csharp/MetaObjects/SpecMetamodel/` (the byte gate
+    fails otherwise). The resource logical name is `MetaObjects.SpecMetamodel.<name>.json`.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="SpecMetamodel/*.json" />
+  </ItemGroup>
 </Project>

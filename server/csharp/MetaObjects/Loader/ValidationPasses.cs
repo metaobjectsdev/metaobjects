@@ -734,6 +734,46 @@ public static class ValidationPasses
             }
         }
 
+        // --- Check 0b (FR-033): strict-load structural-child placement ---
+        //
+        // The structural analogue of Check 0. A STRUCTURAL child (field / identity /
+        // source / validator / … — NOT an attr; attrs go through Check 0's
+        // ERR_UNKNOWN_ATTR path) must be admitted by the parent's registered
+        // childRules under the same wildcard match semantics used everywhere
+        // (ChildRuleHelper.ChildRuleMatches — childType / childSubType / childName
+        // may be "*"). A child the rules do not admit -> ERR_CHILD_NOT_ALLOWED (the
+        // structural analogue of Check 0's ERR_UNKNOWN_ATTR). Strict-load only; lax
+        // keeps the legacy open policy. An UNREGISTERED parent cannot be judged here
+        // (ERR_UNKNOWN_TYPE / ERR_UNKNOWN_SUBTYPE is reported elsewhere) -> skip so we
+        // never double-report. Note: on this C# port attrs are dual-stored as
+        // attr.* MetaData children, so OwnChildren() includes them — they are
+        // filtered out (Type == TYPE_ATTR) so they stay on the ERR_UNKNOWN_ATTR path.
+        // Mirrors the TS reference Check 0b in attr-schema-validate.ts + Python's
+        // Check 0b in validation_passes.py.
+        if (strict)
+        {
+            var parentDef = registry.Find(node.Type, node.SubType);
+            if (parentDef is not null)
+            {
+                var rules = parentDef.ChildRules;
+                foreach (var child in node.OwnChildren())
+                {
+                    if (child.Type == TYPE_ATTR) continue; // attrs -> Check 0
+                    bool admitted = rules.Any(r =>
+                        ChildRuleHelper.ChildRuleMatches(r, child.Type, child.SubType, child.Name));
+                    if (!admitted)
+                    {
+                        errors.Add(new MetaError(
+                            $"Child {NodeLabel(child)} is not allowed under {NodeLabel(node)} — " +
+                            $"no registered child rule for {typeKey} admits " +
+                            $"(type='{child.Type}', subType='{child.SubType}', name='{child.Name}')",
+                            ErrorCode.ERR_CHILD_NOT_ALLOWED,
+                            Envelope: node.Source));
+                    }
+                }
+            }
+        }
+
         if (byName.Count == 0) return;
 
         // --- Check 1: required attrs present ---

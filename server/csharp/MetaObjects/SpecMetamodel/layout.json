@@ -1,0 +1,15 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "layout",
+      "subType": "base",
+      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs."
+    },
+    {
+      "type": "layout",
+      "subType": "dataGrid",
+      "description": "A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders."
+    }
+  ]
+}

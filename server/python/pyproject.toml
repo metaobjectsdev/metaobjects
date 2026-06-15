@@ -75,6 +75,12 @@ exclude = ["**/KNOWN_GAPS.md"]
 # falls back to walking up to the monorepo agent-context/.
 [tool.hatch.build.hooks.custom]
 
+# FR-033 — the 15 shared spec/metamodel/*.json files are COMMITTED copies under
+# src/metaobjects/spec_metamodel/ (not build-time-generated), so hatchling's default
+# package inclusion ships them in both the sdist and the wheel (read via
+# importlib.resources, AOT-safe). A byte-identity gate
+# (tests/conformance/test_spec_metamodel_embed.py) keeps the copies from drifting
+# from the repo-root spec/metamodel/ source.
 [tool.hatch.build]
 artifacts = ["src/metaobjects/agent_context/_content/**"]
 

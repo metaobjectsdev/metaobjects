@@ -12,7 +12,7 @@ Registers + validates the FR-011 extract-hardening vocabulary in the Python load
 from __future__ import annotations
 
 from metaobjects import MetaDataLoader
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.core.attr.attr_constants import ATTR_SUBTYPE_STRING
 from metaobjects.meta.core.field.field_constants import (
@@ -31,7 +31,10 @@ from metaobjects.shared.base_types import SUBTYPE_BASE, TYPE_FIELD, TYPE_OBJECT
 
 
 def _registry():
-    return compose_registry([core_provider])
+    # FR-033 — the FR-011 tolerant-extract overlays (@coerceDefault / @normalize on
+    # field.enum + object.value) are re-homed to the prompt domain provider
+    # (metaobjects-prompt); compose the full core bundle so they are present.
+    return compose_registry(list(core_providers))
 
 
 def _load_json(json_text: str):
