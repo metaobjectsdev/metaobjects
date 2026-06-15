@@ -218,6 +218,16 @@ Candidate directions, not actively tracked — pulled up into Planned only when 
 - Date / case transforms.
 - Materialized views, federated entities, search-index sources.
 
+### Theme — metadata as the substrate for LLM-*authored* software
+
+A forward-looking cluster: today the LLM is a *consumer* of metaobjects (it reads the model, proposes metadata, writes against generated code). The next inflection is the LLM as **author of the model** — it emits typed metadata (the durable spine), `verify` gates it *before* it runs, codegen produces disposable per-language code, and escape hatches cover what metadata can't express. This sits in the seam between "the LLM writes the code" (maximally expressive, opaque, ungovernable output) and "the LLM writes config/flows" (safe but locked to a fixed node/component vocabulary). The same typed-payload + declarative-template + `verify` mechanism already describes the data model **and** prompts — extending it to the **UI** makes the model the single spine an LLM authors across all three render targets. These build on shipped primitives + the planned FRs noted; none are scheduled yet.
+
+- **Declared LLM-operation** — a metadata node binding a complete I/O unit (input payload VO + prompt template + output VO + parse strategy) as one codegen'd, runtime-resolvable, `verify`-able unit. The pieces exist separately today (payload, template, render, output parser); this composes them. Completes the prompt pillar; relates to the MCP-exposure item above.
+- **Bindable view/layout fields + UI action model** — a binding attr (literal / data-pointer path / function-call) on `view.*`/`layout.*` nodes, with pointer-resolution validated in `verify` exactly as a `{{slot}}` is validated against a prompt payload; plus a typed UI **action/event** output VO — the UI's response contract, peer to a prompt's output VO. Makes metadata-driven UI symmetric with metadata-driven prompts. Builds on FR-026/FR-029.
+- **Generative-UI interop** — emit a declarative generative-UI catalog (e.g. the [A2UI](https://github.com/google/A2UI) shape: catalog + components + dynamic binding) *from* native `view`/`layout` metadata, and import external catalogs — a standards-interop codegen target alongside Drizzle / EF Core / Pydantic. Builds on FR-022 (contract emitters) machinery.
+- **Portable model interchange** — a vendor-neutral, diffable export/import for a whole declared model (data VOs + prompts + UI + actions), building on the canonical serializer (FR-028/FR-030) and metadata packages (FR-023). The fragmentation evidence is real: declarative-flow/agent platforms each ship their own JSON and none interoperate. A neutral interchange for declared app/agent metadata is unclaimed ground.
+- **Runtime model authoring loop** — dynamic VO instantiation from a field tree with no regen step, pluggable template providers (filesystem / database / custom) behind the `render` resolver, and `verify` promoted to a first-class *runtime* gate (validate an LLM-authored-or-mutated template/model before persisting or rendering). Overlaps FR-029's runtime mode; the authoring-gate framing is the new piece.
+
 (Forms codegen revival has been promoted to **FR-026** in Planned.)
 
 ---
