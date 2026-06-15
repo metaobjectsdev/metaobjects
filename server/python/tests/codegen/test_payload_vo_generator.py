@@ -445,3 +445,32 @@ def test_payload_class_name_appends_payload_suffix() -> None:
 
 def test_payload_module_name_is_snake_case_with_suffix() -> None:
     assert payload_module_name("NpcResponseOutput") == "npc_response_output_payload"
+
+
+def test_template_prompt_payload_forbids_extra_fields() -> None:
+    """A template.prompt payload is the render INPUT, so it forbids unknown fields —
+    a mistyped slot fails at construction instead of silently rendering blank. A
+    template.output payload is a parse target and stays tolerant (extra="ignore")."""
+    payload = _value_object("Q", [_field("query", fc.FIELD_SUBTYPE_STRING)])
+    prompt = _template("AskPrompt", "Q", subtype=tc.TEMPLATE_SUBTYPE_PROMPT)
+    output = _template("AskOut", "Q", subtype=tc.TEMPLATE_SUBTYPE_OUTPUT)
+    root = _root([payload, prompt, output])
+
+    prompt_src = render_payload_vo(prompt, root)
+    output_src = render_payload_vo(output, root)
+
+    assert 'model_config = ConfigDict(extra="forbid")' in prompt_src
+    assert "from pydantic import BaseModel, ConfigDict" in prompt_src
+    assert "ConfigDict" not in output_src  # output payload tolerates extra fields
+
+    # Runtime: the emitted prompt payload actually rejects an unknown field.
+    ns: dict = {}
+    exec(prompt_src, ns)  # noqa: S102 — exercising generated source
+    cls = ns["AskPromptPayload"]
+    cls(query="ok")  # valid construct
+    raised = False
+    try:
+        cls(unknown_field="x")
+    except Exception:
+        raised = True
+    assert raised, "template.prompt payload must reject unknown fields"

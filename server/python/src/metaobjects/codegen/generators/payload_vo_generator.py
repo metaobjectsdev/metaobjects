@@ -452,6 +452,18 @@ def _emit_payload_class(
     return lines
 
 
+def _with_strict_extras(block: list[str]) -> list[str]:
+    """Insert ``model_config = ConfigDict(extra="forbid")`` into an emitted class block
+    (right after its ``class …:`` line + docstring). Used for ``template.prompt`` input
+    payloads so a mistyped field is rejected at construction rather than silently
+    dropped — input is a strict contract. Response/output payloads keep the default
+    (``extra="ignore"``) so they tolerate extra fields in an LLM/parsed payload."""
+    body = block[2:]
+    if body == ["    pass"]:  # an empty model — model_config makes the body non-empty
+        body = []
+    return [*block[:2], '    model_config = ConfigDict(extra="forbid")', *body]
+
+
 def render_payload_vo(
     template: MetaTemplate,
     root: MetaData,
@@ -495,6 +507,11 @@ def render_payload_vo(
     # supplied, else the module-level default (byte-identical back-compat path).
     emit_class = generator._emit_payload_class if generator is not None else _emit_payload_class
 
+    # A template.prompt payload is the RENDER INPUT — make it reject unknown fields so a
+    # mistyped slot fails at construction. Output/toolcall payloads are parse targets and
+    # keep the tolerant default.
+    strict_extras = template.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
+
     # The PRIMARY class (the one named after the template). Its docstring
     # mirrors Kotlin's KDoc.
     primary_block = emit_class(
@@ -510,6 +527,8 @@ def render_payload_vo(
             f"    Field shape derived from the ``{payload.name}`` object.value."
         ),
     )
+    if strict_extras:
+        primary_block = _with_strict_extras(primary_block)
 
     # NESTED classes scheduled by origin.collection. Drain the queue
     # iteratively so nested-of-nested chains also get emitted (Kotlin behaves
@@ -530,6 +549,8 @@ def render_payload_vo(
                 f"GENERATED nested payload for collection target ``{target.name}``."
             ),
         )
+        if strict_extras:
+            block = _with_strict_extras(block)
         nested_blocks.append(block)
         nested_class_names.append(nested_class)
 
@@ -541,7 +562,9 @@ def render_payload_vo(
         lines.append(imp)
     if extra_imports:
         lines.append("")
-    lines.append("from pydantic import BaseModel")
+    lines.append(
+        "from pydantic import BaseModel, ConfigDict" if strict_extras else "from pydantic import BaseModel"
+    )
     lines.append("")
     lines.append("")
     # Shared-enum aliases (module scope, deduped, sorted for deterministic output).
