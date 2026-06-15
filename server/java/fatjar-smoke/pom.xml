@@ -25,7 +25,7 @@
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <metaobjects.version>7.3.0-SNAPSHOT</metaobjects.version>
+    <metaobjects.version>7.3.0</metaobjects.version>
     <spring-boot.version>3.5.6</spring-boot.version>
   </properties>
 

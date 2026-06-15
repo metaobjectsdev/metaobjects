@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/runtime-web",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Pure framework-agnostic browser core for metaobjects: currency, filter URL serialization, fetcher contract types.",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.typecheck.json",
@@ -21,14 +26,24 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "client/web/packages/runtime-web"
   },
-  "keywords": ["metaobjects", "runtime", "browser", "currency", "filter"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "metaobjects",
+    "runtime",
+    "browser",
+    "currency",
+    "filter"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
     "qs": "^6.13.0"

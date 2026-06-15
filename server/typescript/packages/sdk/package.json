@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/sdk",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Workspace helpers and agent-docs utilities for MetaObjects projects.",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,14 @@
       "default": "./dist/agent-context/index.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE", "agent-context", "scripts"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "agent-context",
+    "scripts"
+  ],
   "scripts": {
     "bundle-agent-context": "node scripts/bundle-agent-context.mjs",
     "build": "node scripts/bundle-agent-context.mjs && tsc -p .",
@@ -31,14 +38,23 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "server/typescript/packages/sdk"
   },
-  "keywords": ["metaobjects", "sdk", "agent-docs", "workspace"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "metaobjects",
+    "sdk",
+    "agent-docs",
+    "workspace"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
     "zod": "^3.23.0"

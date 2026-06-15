@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/tanstack",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "TanStack runtime for metaobjects: EntityFetcherProvider, EntityGrid, default cell renderers.",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.typecheck.json",
@@ -21,14 +26,24 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "client/web/packages/tanstack"
   },
-  "keywords": ["metaobjects", "tanstack", "react-query", "react-table", "entity-grid"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "metaobjects",
+    "tanstack",
+    "react-query",
+    "react-table",
+    "entity-grid"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@metaobjectsdev/runtime-web": "workspace:*",
     "@metaobjectsdev/react": "workspace:*"
@@ -39,9 +54,15 @@
     "react": ">=18.0.0"
   },
   "peerDependenciesMeta": {
-    "@tanstack/react-query": { "optional": true },
-    "@tanstack/react-table": { "optional": true },
-    "react": { "optional": true }
+    "@tanstack/react-query": {
+      "optional": true
+    },
+    "@tanstack/react-table": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@tanstack/react-query": "^5.90.0",
