@@ -154,11 +154,54 @@ public static class RegistryManifest
     // fixed by construction (insertion order), never reflection-dependent.
     // ------------------------------------------------------------------
 
-    /// <summary>One attribute in the manifest — the logical, cross-port-identical facet.</summary>
-    private sealed record ManifestAttr(string Name, string? ValueType, bool IsArray, bool Required);
+    /// <summary>
+    /// One attribute in the manifest — the logical, cross-port-identical facet.
+    /// FR-033 — carries the documentation surface: <c>Description</c> (required +
+    /// non-empty in the canonical) followed by the optional <c>Rules</c>/
+    /// <c>Example</c>/<c>WhenToUse</c> (emitted only when present).
+    /// </summary>
+    private sealed record ManifestAttr(
+        string Name,
+        string? ValueType,
+        bool IsArray,
+        bool Required,
+        string Description,
+        string? Rules,
+        string? Example,
+        string? WhenToUse);
 
-    /// <summary>One registered (type, subType) with its declared attrs.</summary>
-    private sealed record ManifestType(string Type, string SubType, IReadOnlyList<ManifestAttr> Attrs);
+    /// <summary>
+    /// One structural child rule of a type (FR-033 constraint graph). Cardinality
+    /// (<c>Min</c>/<c>Max</c>/<c>Named</c>) is emitted only when defined on the
+    /// rule; <c>MaxIsNull</c> emits an explicit JSON <c>null</c> for a
+    /// declared-unbounded upper bound (an absent <c>Max</c> is omitted entirely).
+    /// </summary>
+    private sealed record ManifestChild(
+        string ChildType,
+        string ChildSubType,
+        string ChildName,
+        int? Min,
+        int? Max,
+        bool MaxIsNull,
+        bool? Named);
+
+    /// <summary>
+    /// One registered (type, subType) with its docs surface + declared attrs +
+    /// the structural constraint graph (FR-033). Key order is fixed by
+    /// construction: <c>type</c>, <c>subType</c>, <c>description</c>, optional
+    /// <c>rules</c>/<c>example</c>/<c>whenToUse</c>, <c>attrs</c>, <c>children</c>,
+    /// optional <c>parents</c>.
+    /// </summary>
+    private sealed record ManifestType(
+        string Type,
+        string SubType,
+        string Description,
+        string? Rules,
+        string? Example,
+        string? WhenToUse,
+        IReadOnlyList<ManifestAttr> Attrs,
+        IReadOnlyList<ManifestChild> Children,
+        IReadOnlyList<string> Parents);
 
     // ------------------------------------------------------------------
     // Build
@@ -175,10 +218,8 @@ public static class RegistryManifest
         List<ManifestType> types = registry
             .AllTypes()
             .Where(typeId => !IsExcludedTypeSubType(typeId.Type, typeId.SubType))
-            .Select(typeId => new ManifestType(
-                typeId.Type,
-                typeId.SubType,
-                SortedPerTypeAttrs(registry.AttrsOf(typeId.Type, typeId.SubType), typeId.Type, typeId.SubType)))
+            // The type IS registered (it came from AllTypes()), so Find is non-null.
+            .Select(typeId => ToManifestType(registry.Find(typeId.Type, typeId.SubType)!))
             .OrderBy(t => $"{t.Type}.{t.SubType}", StringComparer.Ordinal)
             .ToList();
 
@@ -235,8 +276,85 @@ public static class RegistryManifest
         bool isLegacyStringArray = a.ValueType == AttrConstants.ATTR_SUBTYPE_STRINGARRAY;
         bool isArray = a.IsArray || isLegacyStringArray;
         string? valueType = isLegacyStringArray ? AttrConstants.ATTR_SUBTYPE_STRING : a.ValueType;
-        return new ManifestAttr(a.Name, valueType, isArray, a.Required);
+        // FR-033 — the documentation surface follows the existing facets, in fixed
+        // key order: name, valueType, isArray, required, description, then the
+        // optional rules/example/whenToUse (emitted only when present).
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required, a.Description, a.Rules, a.Example, a.WhenToUse);
     }
+
+    // ------------------------------------------------------------------
+    // FR-033 — the structural constraint graph (children) + per-type assembly
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The canonical sort key for a child rule's subType: the string itself (the
+    /// single-string / wildcard form). A list-of-admitted-subtypes form arrives in
+    /// S-B2a; for now the comma-join is a no-op over the single string.
+    /// </summary>
+    private static string ChildSubTypeKey(string childSubType) => childSubType;
+
+    /// <summary>
+    /// Normalize one structural <see cref="ChildRule"/> to the manifest's child
+    /// shape (FR-033). Cardinality (<c>Min</c>/<c>Max</c>/<c>Named</c>) is emitted
+    /// ONLY when defined on the rule; <c>Max</c> may be the explicit JSON
+    /// <c>null</c> literal when declared-unbounded (<c>MaxIsNull</c>); an absent
+    /// <c>Max</c> is omitted entirely.
+    /// </summary>
+    private static ManifestChild ToManifestChild(ChildRule rule) =>
+        new(rule.ChildType, rule.ChildSubType, rule.ChildName, rule.Min, rule.Max, rule.MaxIsNull, rule.Named);
+
+    /// <summary>
+    /// Build the FR-033 constraint graph for one (type, subType) from its
+    /// STRUCTURAL child rules — every <see cref="ChildRule"/> whose
+    /// <c>ChildType</c> is NOT the attr type (the strict model has no any-attr
+    /// wildcard; an <c>attr</c> child rule is dropped — it is expressed by the
+    /// attrs block). De-duped + sorted by (childType, childSubTypeKey, childName),
+    /// matching the TS reference's <c>sortedChildren</c>.
+    ///
+    /// NOTE: C#'s current child rules are broad / carry no cardinality, so the
+    /// emitted content is wrong until S-B2a sources the strict graph from
+    /// spec/metamodel/*.json — that is the expected intermediate (VALUE-level) diff.
+    /// </summary>
+    private static List<ManifestChild> SortedChildren(IReadOnlyList<ChildRule> rules)
+    {
+        Dictionary<string, ManifestChild> byKey = new(StringComparer.Ordinal);
+        foreach (ChildRule rule in rules)
+        {
+            if (rule.ChildType == BaseTypes.TYPE_ATTR)
+            {
+                continue; // attr requirement is the attrs block; strict model has no attr wildcard
+            }
+            string key = $"{rule.ChildType} {ChildSubTypeKey(rule.ChildSubType)} {rule.ChildName}";
+            if (!byKey.ContainsKey(key))
+            {
+                byKey[key] = ToManifestChild(rule);
+            }
+        }
+        return byKey.Values
+            .OrderBy(c => c.ChildType, StringComparer.Ordinal)
+            .ThenBy(c => ChildSubTypeKey(c.ChildSubType), StringComparer.Ordinal)
+            .ThenBy(c => c.ChildName, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Build one manifest type entry from its full <see cref="TypeDefinition"/>
+    /// (FR-033). Key order is fixed: <c>type</c>, <c>subType</c>,
+    /// <c>description</c>, optional <c>rules</c>/<c>example</c>/<c>whenToUse</c>,
+    /// <c>attrs</c>, <c>children</c>, optional <c>parents</c> (sorted ASCII when
+    /// present + non-empty).
+    /// </summary>
+    private static ManifestType ToManifestType(TypeDefinition def) =>
+        new(
+            def.TypeId.Type,
+            def.TypeId.SubType,
+            def.Description,
+            def.Rules,
+            def.Example,
+            def.WhenToUse,
+            SortedPerTypeAttrs(def.Attributes, def.TypeId.Type, def.TypeId.SubType),
+            SortedChildren(def.ChildRules),
+            def.Parents);
 
     // ------------------------------------------------------------------
     // Emit
@@ -282,12 +400,36 @@ public static class RegistryManifest
                 writer.WriteStartObject();
                 writer.WriteString("type", t.Type);
                 writer.WriteString("subType", t.SubType);
+                // FR-033 — description (required) then the optional docs facets,
+                // each emitted ONLY when present so absent keys stay absent.
+                writer.WriteString("description", t.Description);
+                if (t.Rules is not null) writer.WriteString("rules", t.Rules);
+                if (t.Example is not null) writer.WriteString("example", t.Example);
+                if (t.WhenToUse is not null) writer.WriteString("whenToUse", t.WhenToUse);
                 writer.WriteStartArray("attrs");
                 foreach (ManifestAttr a in t.Attrs)
                 {
                     WriteAttr(writer, a);
                 }
                 writer.WriteEndArray();
+                // FR-033 — the structural constraint graph.
+                writer.WriteStartArray("children");
+                foreach (ManifestChild c in t.Children)
+                {
+                    WriteChild(writer, c);
+                }
+                writer.WriteEndArray();
+                // FR-033 — the child-side placement claim, emitted only when
+                // present + non-empty (sorted ASCII).
+                if (t.Parents.Count > 0)
+                {
+                    writer.WriteStartArray("parents");
+                    foreach (string parent in t.Parents.OrderBy(p => p, StringComparer.Ordinal))
+                    {
+                        writer.WriteStringValue(parent);
+                    }
+                    writer.WriteEndArray();
+                }
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
@@ -331,6 +473,38 @@ public static class RegistryManifest
         }
         writer.WriteBoolean("isArray", a.IsArray);
         writer.WriteBoolean("required", a.Required);
+        // FR-033 — description (required) then the optional docs facets, each
+        // emitted ONLY when present.
+        writer.WriteString("description", a.Description);
+        if (a.Rules is not null) writer.WriteString("rules", a.Rules);
+        if (a.Example is not null) writer.WriteString("example", a.Example);
+        if (a.WhenToUse is not null) writer.WriteString("whenToUse", a.WhenToUse);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Write one structural child rule (FR-033 constraint graph). Key order:
+    /// <c>childType</c>, <c>childSubType</c>, <c>childName</c>, then optional
+    /// <c>min</c>/<c>max</c>/<c>named</c> (each emitted ONLY when defined on the
+    /// rule). <c>max: null</c> is written when <c>MaxIsNull</c>; an absent
+    /// <c>Max</c> is omitted entirely.
+    /// </summary>
+    private static void WriteChild(Utf8JsonWriter writer, ManifestChild c)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("childType", c.ChildType);
+        writer.WriteString("childSubType", c.ChildSubType);
+        writer.WriteString("childName", c.ChildName);
+        if (c.Min is not null) writer.WriteNumber("min", c.Min.Value);
+        if (c.Max is not null)
+        {
+            writer.WriteNumber("max", c.Max.Value);
+        }
+        else if (c.MaxIsNull)
+        {
+            writer.WriteNull("max"); // declared-unbounded upper bound
+        }
+        if (c.Named is not null) writer.WriteBoolean("named", c.Named.Value);
         writer.WriteEndObject();
     }
 }

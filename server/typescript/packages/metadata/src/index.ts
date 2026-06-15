@@ -135,10 +135,26 @@ export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
 
+// FR-033 — the constraint engine: additive merge + the contradiction validator.
+export { mergeConstraints } from "./constraint-merge.js";
+export type { EffectiveConstraints } from "./constraint-merge.js";
+export { validateConstraints } from "./constraint-validate.js";
+
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
 export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "./registry-manifest.js";
 export type { AttrClassification } from "./registry-manifest.js";
 export { ExclusionReason } from "./registry-manifest-exclusions.js";
+
+// FR-033 S3 — metamodel doc-gen: tiered, LLM-readable docs FOR THE METAMODEL
+// (the type/subtype/attr vocabulary), generated from the strict registry.
+// Distinct from `meta docs --model` (which documents a user's entities).
+export {
+  renderMetamodelDocs,
+  buildMetamodelProvenance,
+  coreProviderDescriptions,
+  renderCoreMetamodelDocs,
+} from "./metamodel-docs/index.js";
+export type { MetamodelProvenance } from "./metamodel-docs/index.js";
 
 // Registry coverage (SP-G Unit 5) — untested-vocabulary report (manifest vs
 // fixture corpora). NODE-ONLY: registry-coverage.ts statically imports node:fs
@@ -147,9 +163,9 @@ export { ExclusionReason } from "./registry-manifest-exclusions.js";
 // browser-safety.test.ts). It is a build-time tooling module — consumers (and
 // its test) import it directly by path: `@metaobjectsdev/metadata/src/registry-coverage`.
 export { dbProvider } from "./persistence/db/db-provider.js";
-export { commonDocAttrs } from "./core/documentation/doc-schema.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
-export { templateProvider, xmlTextSchema } from "./template/template-provider.js";
+export { promptProvider } from "./template/prompt-provider.js";
+export { uiProvider } from "./presentation/ui/ui-provider.js";
 export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 
 // Type provider model

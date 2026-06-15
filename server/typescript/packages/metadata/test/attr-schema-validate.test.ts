@@ -9,7 +9,8 @@ import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import { validateAttrSchema } from "../src/attr-schema-validate.js";
 import { TypeRegistry } from "../src/registry.js";
-import { registerCoreTypes } from "../src/core-types.js";
+import { coreProviders, registerCoreTypes } from "../src/core-types.js";
+import { composeRegistry } from "../src/provider.js";
 import { parseJson } from "../src/parser-json.js";
 
 async function load(doc: unknown) {
@@ -19,10 +20,12 @@ async function load(doc: unknown) {
   ]);
 }
 
-/** Parse a doc and run validateAttrSchema directly (bypasses other passes). */
+/** Parse a doc and run validateAttrSchema directly (bypasses other passes).
+ *  Composes the full coreProviders bundle so the re-homed concern attrs
+ *  (FR-033 S1-field-A: @filterable/@storage/@example/... now on db/ui/prompt)
+ *  are registered for value-type checking, mirroring the default loader. */
 function validateDirect(doc: unknown) {
-  const registry = new TypeRegistry();
-  registerCoreTypes(registry);
+  const registry = composeRegistry(coreProviders);
   const { root } = parseJson(JSON.stringify(doc), { registry });
   return validateAttrSchema(root, registry);
 }

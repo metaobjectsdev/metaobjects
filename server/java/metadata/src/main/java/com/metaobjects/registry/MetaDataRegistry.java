@@ -331,6 +331,117 @@ public class MetaDataRegistry {
         return this;
     }
 
+    /**
+     * FR-033 — apply a concern provider's {@code extends} directives (read from the
+     * embedded {@code spec/metamodel/<provider>.json}) onto the registered types,
+     * re-homing the provider's attrs out of the CORE type classes and into the
+     * concern provider. This is the data-driven mechanism the
+     * {@code metaobjects-ui} / {@code metaobjects-prompt} providers use — the Java
+     * analogue of TS/Python reading the same {@code extends} blocks.
+     *
+     * <p>For each directive, the target subtypes are resolved: an exact subtype, a
+     * list, or the {@code "*"} wildcard expanded via {@code subtypeExpansion} (when no
+     * explicit expansion is supplied for a wildcarded type, the wildcard is expanded
+     * to every CURRENTLY-REGISTERED subtype of that type — matching the historical
+     * {@code @xmlText} loop that iterated the registered field subtypes). Each attr is
+     * added to the resolved subtype's {@link TypeDefinition} via the same builder DSL
+     * the core type classes use ({@code optionalAttributeWithConstraints} /
+     * {@code requiredAttributeWithConstraints} + {@code .ofType(...)} +
+     * {@code .asArray()}/{@code .asSingle()}), with {@code withRegistry(this)} set so
+     * the {@code .asArray()} cardinality constraint is registered (the manifest reads
+     * it to mark {@code isArray}).</p>
+     *
+     * <p>A duplicate attr on a subtype trips the {@link TypeDefinitionBuilder}'s
+     * already-exists guard — the intended backstop ensuring an attr is registered by
+     * exactly ONE provider (no double-registration with core).</p>
+     *
+     * @param reader           the parsed spec reader (source of the extends directives)
+     * @param providerName     the concern provider name (e.g. {@code "metaobjects-ui"})
+     * @param subtypeExpansion explicit {@code "*"}-expansion per type, or empty to fall
+     *                         back to the currently-registered subtypes of the type
+     */
+    public synchronized void applyProviderExtends(
+            com.metaobjects.registry.spec.SpecMetamodelReader reader,
+            String providerName,
+            Map<String, List<String>> subtypeExpansion) {
+        Objects.requireNonNull(reader, "reader must not be null");
+        Objects.requireNonNull(providerName, "providerName must not be null");
+        checkNotSealed("applyProviderExtends");
+
+        for (com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsDirective d
+                : reader.extendsDirectives(providerName)) {
+            List<String> targets;
+            if (d.wildcardSubType()) {
+                List<String> explicit = subtypeExpansion != null ? subtypeExpansion.get(d.type()) : null;
+                if (explicit != null) {
+                    targets = explicit;
+                } else {
+                    // Fall back to the currently-registered subtypes of the type
+                    // (matches the historical @xmlText loop over registered fields).
+                    targets = new ArrayList<>();
+                    for (MetaDataTypeId id : getRegisteredTypes()) {
+                        if (id.type().equals(d.type())) {
+                            targets.add(id.subType());
+                        }
+                    }
+                }
+            } else {
+                targets = d.subTypes();
+            }
+            for (String subType : targets) {
+                applyExtendsAttrs(d.type(), subType, d.attrs());
+            }
+        }
+    }
+
+    /**
+     * FR-033 helper — add a directive's attrs to one registered {@code (type, subType)}
+     * via the builder DSL, then re-register the rebuilt definition.
+     */
+    private void applyExtendsAttrs(String type, String subType,
+            List<com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr> attrs) {
+        MetaDataTypeId typeId = new MetaDataTypeId(type, subType);
+        TypeDefinition existing = typeDefinitions.get(typeId);
+        if (existing == null) {
+            throw new MetaDataException(
+                "FR-033 applyProviderExtends: target type must be registered before extension: "
+                        + typeId.toQualifiedName());
+        }
+
+        TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing);
+        builder.withRegistry(this); // so .asArray() cardinality constraints are registered
+        for (com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr a : attrs) {
+            com.metaobjects.registry.AttributeConstraintBuilder acb = a.required()
+                    ? builder.requiredAttributeWithConstraints(a.name())
+                    : builder.optionalAttributeWithConstraints(a.name());
+            com.metaobjects.registry.AttributeConstraintBuilder.AttributeTypeBuilder atb =
+                    acb.ofType(extendsValueTypeToAttrSubtype(a.valueType()));
+            if (a.isArray()) {
+                atb.asArray();
+            } else {
+                atb.asSingle();
+            }
+        }
+        register(builder.build());
+    }
+
+    /** Map a spec {@code valueType} string to the Java attr subtype constant. */
+    private static String extendsValueTypeToAttrSubtype(String valueType) {
+        if (valueType == null) {
+            throw new MetaDataException("FR-033 applyProviderExtends: attr valueType must not be null");
+        }
+        switch (valueType) {
+            case "string":     return com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
+            case "boolean":    return com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN;
+            case "int":        return com.metaobjects.attr.IntAttribute.SUBTYPE_INT;
+            case "properties": return com.metaobjects.attr.PropertiesAttribute.SUBTYPE_PROPERTIES;
+            case "filter":     return com.metaobjects.attr.FilterAttribute.SUBTYPE_FILTER;
+            default:
+                throw new MetaDataException(
+                        "FR-033 applyProviderExtends: unsupported attr valueType '" + valueType + "'");
+        }
+    }
+
 
     /**
      * Register a type definition with inheritance resolution
@@ -710,6 +821,321 @@ public class MetaDataRegistry {
      */
     public Collection<CommonAttributeDef> getCommonAttributes() {
         return List.copyOf(commonAttributes.values());
+    }
+
+    /**
+     * FR-033 (sub-step B1) — source every type / attr / common-attr <em>description</em>
+     * (+ optional {@code rules}/{@code example}/{@code whenToUse}) from the shared
+     * {@code spec/metamodel/*.json} (the cross-port single source of truth, read by
+     * {@link com.metaobjects.registry.spec.SpecMetamodelReader}) onto this registry.
+     *
+     * <p>Applied DURING composition, BEFORE {@link #seal()} (the type definitions are
+     * immutable, so each {@link TypeDefinition} carrying a JSON description is rebuilt
+     * and re-put; each attr {@link ChildRequirement} that the JSON describes is copied
+     * with its {@code docDescription}; each {@link CommonAttributeDef} is replaced by a
+     * copy carrying the universal {@code *.*} description). Descriptions come from the
+     * JSON ONLY — never hand-copied — so they are byte-identical to the TS reference.</p>
+     *
+     * <p>Where Java registers an attr the JSON does NOT describe for that subtype (or
+     * vice-versa) this is left untouched — that scoping mismatch is reconciled in
+     * sub-step B2; B1 applies descriptions only where they match.</p>
+     *
+     * @param reader the parsed embedded spec/metamodel reader
+     */
+    public synchronized void applySpecDescriptions(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        Objects.requireNonNull(reader, "reader must not be null");
+        checkNotSealed("applySpecDescriptions");
+
+        // Pass 1 — rebuild every TypeDefinition with the JSON type docs + per-attr
+        // doc descriptions on its DIRECT (+ wildcard) child requirements.
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            com.metaobjects.registry.spec.SpecMetamodelReader.DocFacet typeDoc =
+                    reader.typeDoc(id.type(), id.subType());
+            String description = (typeDoc != null && typeDoc.description() != null)
+                    ? typeDoc.description() : def.getDescription();
+            String rules = typeDoc != null ? typeDoc.rules() : def.getRules();
+            String example = typeDoc != null ? typeDoc.example() : def.getExample();
+            String whenToUse = typeDoc != null ? typeDoc.whenToUse() : def.getWhenToUse();
+
+            // Rebuild the DIRECT child requirements, threading attr doc descriptions.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                ChildRequirement rebuilt = req;
+                if (MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                        && req.getName() != null && !"*".equals(req.getName())) {
+                    com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry attrDoc =
+                            reader.attrDoc(id.type(), id.subType(), req.getName());
+                    if (attrDoc != null && attrDoc.description() != null) {
+                        rebuilt = req.withDocDescription(attrDoc.description());
+                    }
+                }
+                String key = rebuilt.getName();
+                if (key == null || "*".equals(key)) {
+                    key = "*:" + rebuilt.getExpectedType() + ":" + rebuilt.getExpectedSubType();
+                }
+                directReqs.put(key, rebuilt);
+            }
+
+            TypeDefinition rebuiltDef = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), description,
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    rules, example, whenToUse, def.getParents());
+            typeDefinitions.put(id, rebuiltDef);
+        }
+
+        // Pass 2 — re-resolve inheritance so each child re-inherits the REBUILT parent
+        // requirements (carrying descriptions). Crucially, an inherited attr req is
+        // re-described against the CHILD's own (type, subType): the JSON sometimes
+        // scopes an attr to a concrete subtype (e.g. @discriminator on object.entity)
+        // while Java declares it on the base (object.base) and inherits it. Describing
+        // the inherited copy by the child subtype lands the JSON description on the
+        // child where the cross-port golden carries it, and correctly leaves it empty
+        // on a sibling the JSON does NOT scope it to. Where Java's inheritance direction
+        // disagrees with the JSON scope, that is the B2 scoping reconciliation — B1 only
+        // applies the description where the JSON declares it for that subtype.
+        for (TypeDefinition def : new ArrayList<>(typeDefinitions.values())) {
+            if (def.hasParent()) {
+                TypeDefinition parent = typeDefinitions.get(
+                        new MetaDataTypeId(def.getParentType(), def.getParentSubType()));
+                if (parent != null) {
+                    resolveInheritanceForDefinition(def, parent);
+                    describeInheritedAttrs(def, reader);
+                }
+            }
+        }
+
+        // Pass 3 — common-attr descriptions from the universal *.* documentation entry.
+        for (Map.Entry<String, CommonAttributeDef> e : new ArrayList<>(commonAttributes.entrySet())) {
+            com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry doc =
+                    reader.commonAttrDoc(e.getKey());
+            if (doc != null && doc.description() != null) {
+                commonAttributes.put(e.getKey(), e.getValue().withDescription(doc.description()));
+            }
+        }
+
+        // Pass 4 (FR-033 B2a) — REPLACE each declared type's STRUCTURAL child
+        // requirements with the strict cross-port graph from spec/metamodel/*.json
+        // (extendsBase-composed), carrying cardinality (min/max/named). Java
+        // registers broad/inherited structural wildcards (e.g. object.base accepts
+        // field/object/identity/attr/validator/view/layout/relationship/source/
+        // template; every field subtype inherits attr/validator/view/origin); the
+        // strict graph is the INTERSECTION the cross-port golden carries. The attr
+        // child requirements + the any-attr wildcard + placement/validation
+        // constraints + factories/bindings are left UNTOUCHED (attr scoping is B2b).
+        // Types NOT declared in the JSON (metadata.root, attr.*, object.managed,
+        // the generic view.* controls) keep their existing structural children.
+        applyStrictStructuralChildren(reader);
+
+        // Pass 5 (FR-033 B2b) — PRUNE each declared type's LOGICAL (INCLUDED) attr
+        // requirements down to the strict per-subtype allow-list the cross-port
+        // golden carries (sourced from spec/metamodel/*.json, extendsBase- and
+        // extends-composed). Java registers some attrs broadly (e.g. @maxLength /
+        // @storage / @objectRef / @autoSet / @precision / @scale on field.base +
+        // every field subtype, or @discriminator/@discriminatorValue on object.base
+        // inherited by value/projection); the strict graph scopes each to exactly
+        // the subtypes the JSON declares (e.g. @maxLength → field.string only,
+        // @precision/@scale → field.decimal, @storage/@objectRef → field.object,
+        // @autoSet → field.date/time/timestamp, @discriminator* → object.entity).
+        // CARVED-OUT attrs (the classifyPerTypeAttr exclusions — isArray/isAbstract/
+        // extends/implements/isInterface/object/objectAdapter/description) are LEFT
+        // REGISTERED: the emitter drops them from the manifest anyway and the loader
+        // needs them (e.g. an authored `extends:`). Only the INCLUDED logical attrs
+        // are pruned, which also TIGHTENS the loader — a misplaced attr (e.g.
+        // @maxLength on field.boolean) now → ERR_UNKNOWN_ATTR. Types NOT declared in
+        // the JSON keep their attrs untouched (no JSON-sourced strict set exists).
+        applyStrictAttrScoping(reader);
+    }
+
+    /**
+     * FR-033 (sub-step B2b) — Pass 5 of {@link #applySpecDescriptions}. For every
+     * registered {@code (type, subType)} the spec declares, drop every LOGICAL
+     * ({@link RegistryManifest.ExclusionReason#INCLUDED}) attr requirement whose name
+     * is NOT in the strict per-subtype allow-list
+     * ({@link com.metaobjects.registry.spec.SpecMetamodelReader#strictAttrNames}).
+     * Carved-out attrs (structural keywords / native bindings / the per-type
+     * {@code description} dup) are preserved — they are excluded from the manifest by
+     * the emitter and the loader still needs them. Pruning is applied to BOTH the
+     * direct and the inherited attr requirements (the strict set is per-subtype, so a
+     * subtype no longer keeps a broadly-inherited attr the JSON does not scope to it).
+     */
+    private void applyStrictAttrScoping(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            if (!reader.isDeclared(id.type(), id.subType())) {
+                continue; // not in the spec → keep Java's existing attr scoping
+            }
+
+            Set<String> allow = reader.strictAttrNames(id.type(), id.subType());
+
+            // Rebuild DIRECT requirements, dropping disallowed INCLUDED attrs.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                directReqs.put(directKey(req), req);
+            }
+
+            TypeDefinition rebuilt = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), def.getDescription(),
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    def.getRules(), def.getExample(), def.getWhenToUse(), def.getParents());
+
+            // Re-populate inherited requirements, dropping disallowed INCLUDED attrs.
+            Map<String, ChildRequirement> inherited = new LinkedHashMap<>();
+            for (Map.Entry<String, ChildRequirement> e : def.getInheritedChildRequirements().entrySet()) {
+                ChildRequirement req = e.getValue();
+                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                inherited.put(e.getKey(), req);
+            }
+            rebuilt.populateInheritedRequirements(inherited);
+
+            typeDefinitions.put(id, rebuilt);
+        }
+    }
+
+    /**
+     * FR-033 (sub-step B2b) — true when a requirement is a NAMED, LOGICAL attr the
+     * strict per-subtype scoping may prune: an {@code attr}-typed requirement with a
+     * concrete (non-wildcard) name that the manifest classifies as
+     * {@link RegistryManifest.ExclusionReason#INCLUDED}. Returns false for the
+     * any-attr wildcard, structural placement rules, and the carved-out attrs
+     * (structural keywords / native bindings / the {@code description} common-attr
+     * dup) — those are left registered.
+     */
+    private static boolean isPrunableAttr(ChildRequirement req) {
+        if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) {
+            return false; // structural placement rule
+        }
+        String name = req.getName();
+        if (name == null || "*".equals(name)) {
+            return false; // the any-attr wildcard
+        }
+        return RegistryManifest.classifyPerTypeAttr(name)
+                == RegistryManifest.ExclusionReason.INCLUDED;
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — Pass 4 of {@link #applySpecDescriptions}. For every
+     * registered {@code (type, subType)} the spec declares, rebuild its
+     * {@link TypeDefinition} so its STRUCTURAL (non-attr) child requirements are
+     * EXACTLY the strict {@code spec/metamodel/*.json} graph (extendsBase-composed,
+     * carrying {@code min}/{@code max}/{@code named}). The attr child requirements
+     * (direct + inherited) and the placement/validation constraints are preserved
+     * verbatim; only the structural requirements are swapped. Inherited structural
+     * requirements are stripped (the strict graph is computed per-subtype, so a
+     * subtype no longer inherits the parent's broad structural wildcards).
+     */
+    private void applyStrictStructuralChildren(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
+            MetaDataTypeId id = entry.getKey();
+            TypeDefinition def = entry.getValue();
+
+            if (!reader.isDeclared(id.type(), id.subType())) {
+                continue; // not in the spec → keep Java's existing structural children
+            }
+
+            // Rebuild DIRECT requirements: keep non-structural (attrs + constraints),
+            // drop the broad structural wildcards, add the strict structural graph.
+            Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
+            for (ChildRequirement req : def.getDirectChildRequirements()) {
+                if (isStructuralPlacement(req)) {
+                    continue; // dropped — replaced by the strict graph below
+                }
+                directReqs.put(directKey(req), req);
+            }
+            for (com.metaobjects.registry.spec.SpecMetamodelReader.StructChild sc
+                    : reader.structuralChildren(id.type(), id.subType())) {
+                ChildRequirement req = ChildRequirement.structural(
+                        sc.childName(), sc.childType(), sc.childSubType(),
+                        sc.min(), sc.max(), sc.maxIsNull(), sc.named());
+                directReqs.put(directKey(req), req);
+            }
+
+            TypeDefinition rebuilt = new TypeDefinition(
+                    def.getImplementationClass(), id.type(), id.subType(), def.getDescription(),
+                    directReqs, def.getParentType(), def.getParentSubType(),
+                    def.getRules(), def.getExample(), def.getWhenToUse(), def.getParents());
+
+            // Re-populate inherited requirements minus the parent's structural
+            // wildcards (the strict graph is per-subtype, NOT inherited). The
+            // inherited ATTR requirements (carrying their descriptions) are kept.
+            Map<String, ChildRequirement> inheritedNonStructural = new LinkedHashMap<>();
+            for (Map.Entry<String, ChildRequirement> e : def.getInheritedChildRequirements().entrySet()) {
+                if (!isStructuralPlacement(e.getValue())) {
+                    inheritedNonStructural.put(e.getKey(), e.getValue());
+                }
+            }
+            rebuilt.populateInheritedRequirements(inheritedNonStructural);
+
+            typeDefinitions.put(id, rebuilt);
+        }
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — true when a requirement is a STRUCTURAL placement rule
+     * (a non-attr, concrete child type — {@code field}/{@code validator}/{@code view}/
+     * {@code origin}/{@code identity}/{@code source}/{@code relationship}/
+     * {@code template}/{@code layout}/{@code object}/…), as opposed to an attr
+     * requirement, the any-{@code *} wildcard, or a placement/validation constraint.
+     * These are the requirements Pass 4 replaces with the strict graph.
+     */
+    private static boolean isStructuralPlacement(ChildRequirement req) {
+        if (req.isPlacementConstraint() || req.isValidationConstraint()) {
+            return false;
+        }
+        String type = req.getExpectedType();
+        return type != null && !"*".equals(type) && !MetaAttribute.TYPE_ATTR.equals(type);
+    }
+
+    /** The TypeDefinition direct-requirement map key (name, or a wildcard tuple key). */
+    private static String directKey(ChildRequirement req) {
+        String key = req.getName();
+        if (key == null || "*".equals(key)) {
+            key = "*:" + req.getExpectedType() + ":" + req.getExpectedSubType();
+        }
+        return key;
+    }
+
+    /**
+     * FR-033 (sub-step B1) — re-describe a definition's INHERITED attr requirements
+     * against the definition's OWN {@code (type, subType)}, so a JSON description that
+     * the spec scopes to a concrete subtype lands on the inherited copy where the
+     * cross-port golden carries it. Replaces each inherited attr requirement with a
+     * doc-described copy when the spec describes that attr for this subtype.
+     */
+    private void describeInheritedAttrs(TypeDefinition def,
+                                        com.metaobjects.registry.spec.SpecMetamodelReader reader) {
+        Map<String, ChildRequirement> inherited = def.getInheritedChildRequirements();
+        if (inherited.isEmpty()) {
+            return;
+        }
+        Map<String, ChildRequirement> redescribed = new LinkedHashMap<>(inherited);
+        boolean changed = false;
+        for (Map.Entry<String, ChildRequirement> e : inherited.entrySet()) {
+            ChildRequirement req = e.getValue();
+            if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                    || req.getName() == null || "*".equals(req.getName())) {
+                continue;
+            }
+            com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry doc =
+                    reader.attrDoc(def.getType(), def.getSubType(), req.getName());
+            if (doc != null && doc.description() != null
+                    && !doc.description().equals(req.getDocDescription())) {
+                redescribed.put(e.getKey(), req.withDocDescription(doc.description()));
+                changed = true;
+            }
+        }
+        if (changed) {
+            def.populateInheritedRequirements(redescribed);
+        }
     }
 
     /**

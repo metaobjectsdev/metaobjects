@@ -17,7 +17,7 @@
               }
             },
             {
-              "field.string": {
+              "field.timestamp": {
                 "name": "createdAt",
                 "@autoSet": "onCreate"
               }

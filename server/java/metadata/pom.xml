@@ -28,6 +28,38 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- FR-033: bundle the repo-root spec/metamodel/*.json (the 15 shared
+                 provider-definition files; byte-identical cross-port by design) into
+                 the metadata jar at spec/metamodel/, so the SpecMetamodelReader can
+                 read them off the classpath at registration time (AOT-safe, ADR-0001
+                 — embed, never runtime-scan an arbitrary filesystem path). The
+                 byte-identity gate (SpecMetamodelEmbedTest) asserts the embedded copy
+                 equals the repo-root source. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>bundle-spec-metamodel</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/spec/metamodel</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${maven.multiModuleProjectDirectory}/../../spec/metamodel</directory>
+                                    <includes>
+                                        <include>*.json</include>
+                                    </includes>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

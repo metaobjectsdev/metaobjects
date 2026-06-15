@@ -73,9 +73,12 @@ public class MetaDataLoader
             // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
             // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
             MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-            // Template/output domain: the @xmlText field marker (XML text-content extraction).
-            // Mirrors Java's TemplateTypesMetaDataProvider field extension.
-            MetaObjects.Template.TemplateTypesProvider.Instance,
+            // FR-033 concern providers — re-home the UI / prompt attrs out of the core type
+            // classes (read spec/metamodel/ui.json + prompt.json). The prompt provider absorbs
+            // the @xmlText marker the former TemplateTypesProvider registered. Mirrors the TS
+            // ui/prompt provider split (and Java/Python).
+            MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+            MetaObjects.Template.PromptMetaDataProvider.Instance,
         ]);
 
     // -------------------------------------------------------------------------

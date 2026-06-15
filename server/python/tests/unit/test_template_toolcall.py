@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_provider, core_providers
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.provider import compose_registry
@@ -20,7 +20,9 @@ from metaobjects.shared.base_types import SUBTYPE_BASE, TYPE_TEMPLATE
 
 
 # ---------------------------------------------------------------------------
-# Registry — toolcall is a core subtype, shipped by core_provider.
+# Registry — the toolcall SUBTYPE is shipped by core_provider; FR-033 re-homed its
+# ATTRS to the prompt domain provider (metaobjects-prompt), so attr assertions
+# compose the full core bundle.
 # ---------------------------------------------------------------------------
 
 
@@ -41,7 +43,7 @@ def test_template_toolcall_attr_schema_does_not_inherit_generic_attrs() -> None:
     """Per ADR-0011 the toolcall subtype does NOT inherit the prompt/output
     generic attrs. It declares its own minimal set (toolName + payloadRef +
     owner + since). @textRef and @format are intentionally absent."""
-    registry = compose_registry([core_provider])
+    registry = compose_registry(list(core_providers))
     attrs = {a.name: a for a in registry.attrs_of(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_TOOLCALL)}
 
     assert set(attrs.keys()) == {

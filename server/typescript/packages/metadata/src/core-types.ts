@@ -3,7 +3,8 @@ import { TypeId, type AttrSchema, type ChildRule, type TypeDefinition, TypeRegis
 import type { MetaDataTypeProvider } from "./provider.js";
 import { dbProvider } from "./persistence/db/db-provider.js";
 import { docProvider } from "./core/documentation/doc-provider.js";
-import { templateProvider } from "./template/template-provider.js";
+import { promptProvider } from "./template/prompt-provider.js";
+import { uiProvider } from "./presentation/ui/ui-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -36,16 +37,19 @@ import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
 import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
-import { commonFieldAttrs, currencyFieldAttr, enumFieldAttr, providedFieldAttr, enumAliasAttr, enumDocAttr, coerceDefaultAttr, normalizeAttr } from "./core/field/field-schema.js";
-import { objectAttrs } from "./core/object/object-schema.js";
-import { relationshipAttrs } from "./core/relationship/relationship-schema.js";
-import { identityFieldsAttr, IDENTITY_ATTRS_MAP } from "./core/identity/identity-schema.js";
-import { VALIDATOR_ATTRS_MAP } from "./core/validator/validator-schema.js";
-import { currencyViewAttrs } from "./presentation/view/view-schema.js";
-import { dataGridLayoutAttrs } from "./presentation/layout/layout-schema.js";
-import { ORIGIN_ATTRS_MAP } from "./persistence/origin/origin-schema.js";
+import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
+import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
+import { OBJECT_DEFINITION } from "./core/object/object-definition.embedded.js";
+import { ATTR_DEFINITION } from "./core/attr/attr-definition.embedded.js";
+import { VALIDATOR_DEFINITION } from "./core/validator/validator-definition.embedded.js";
+import { IDENTITY_DEFINITION } from "./core/identity/identity-definition.embedded.js";
+import { RELATIONSHIP_DEFINITION } from "./core/relationship/relationship-definition.embedded.js";
+import { ORIGIN_DEFINITION } from "./persistence/origin/origin-definition.embedded.js";
+import { SOURCE_DEFINITION } from "./persistence/source/source-definition.embedded.js";
+import { VIEW_DEFINITION } from "./presentation/view/view-definition.embedded.js";
+import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embedded.js";
 import { MetaTemplate } from "./template/meta-template.js";
-import { TEMPLATE_ATTRS_MAP } from "./template/template-schema.js";
+import { TEMPLATE_DEFINITION } from "./template/template-definition.embedded.js";
 import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import {
   TYPE_METADATA,
@@ -63,8 +67,8 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE, OBJECT_SUBTYPE_PROJECTION } from "./core/object/object-constants.js";
-import { FIELD_SUBTYPES, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "./core/field/field-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
+import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
   VALIDATOR_SUBTYPES,
@@ -74,10 +78,7 @@ import {
   VALIDATOR_SUBTYPE_NUMERIC,
   VALIDATOR_SUBTYPE_ARRAY,
 } from "./core/validator/validator-constants.js";
-import {
-  VIEW_SUBTYPES,
-  VIEW_SUBTYPE_CURRENCY,
-} from "./presentation/view/view-constants.js";
+import { VIEW_SUBTYPES } from "./presentation/view/view-constants.js";
 import {
   IDENTITY_SUBTYPES,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -85,7 +86,7 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
 } from "./core/identity/identity-constants.js";
 import { RELATIONSHIP_SUBTYPES } from "./core/relationship/relationship-constants.js";
-import { LAYOUT_SUBTYPES, LAYOUT_SUBTYPE_DATA_GRID } from "./presentation/layout/layout-constants.js";
+import { LAYOUT_SUBTYPES } from "./presentation/layout/layout-constants.js";
 import { SOURCE_SUBTYPES } from "./persistence/source/source-constants.js";
 import {
   ORIGIN_SUBTYPES,
@@ -96,7 +97,8 @@ import {
 
 // ---------------------------------------------------------------------------
 // The per-(type, subType) attribute schemas live in per-concern *-schema.ts
-// modules (e.g. core/field/field-schema.ts, persistence/origin/origin-schema.ts).
+// modules (e.g. presentation/view/view-schema.ts) or, increasingly under
+// FR-033, in the externalized spec/metamodel/*.json provider definitions.
 // This file keeps only the registration logic: the def() helper, the
 // subtype→class dispatch maps, and registerCoreTypes() itself.
 // ---------------------------------------------------------------------------
@@ -162,196 +164,302 @@ const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
 // re-exported from the package index for the same public surface.
 
 function registerCoreTypeDefs(registry: TypeRegistry): void {
-  // metadata — 1 subtype (the document root: metadata.root)
+  // metadata — 1 subtype (the document root: metadata.root). FR-033 S1-simple:
+  // the any-attr wildcard child rule is DROPPED (strict/fail-closed — a document
+  // root holds structural nodes, never bare attrs); the genuinely-open structural
+  // wildcards (object/field/validator/template) are KEPT — a root legitimately
+  // holds arbitrary nodes of those types.
   registry.register(
     def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document", [
       wildcard(TYPE_OBJECT),
       wildcard(TYPE_FIELD),
-      wildcard(TYPE_ATTR),
       wildcard(TYPE_VALIDATOR),
       wildcard(TYPE_TEMPLATE),
     ], MetaRoot),
   );
 
-  // object — 5 subtypes
-  const objectRules = [
-    wildcard(TYPE_FIELD),
-    wildcard(TYPE_IDENTITY),
-    wildcard(TYPE_RELATIONSHIP),
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_LAYOUT),
-    wildcard(TYPE_SOURCE),
-    wildcard(TYPE_ATTR),
-  ];
-  // FR-024: object.projection is a derived read-only representation of
-  // entities — it carries fields/identities/sources but never declares
-  // relationships (derivation is expressed via @via, Task B5) and never
-  // co-locates templates.
-  const projectionRules = [
-    wildcard(TYPE_FIELD),
-    wildcard(TYPE_IDENTITY),
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_LAYOUT),
-    wildcard(TYPE_SOURCE),
-    wildcard(TYPE_ATTR),
-  ];
-  for (const subType of OBJECT_SUBTYPES) {
-    // FR-011: object.value additionally carries @normalize — the object-level
-    // default normalization mode for its enum fields' tolerant extract.
-    const subTypeObjectAttrs =
-      subType === OBJECT_SUBTYPE_VALUE
-        ? [...objectAttrs, { ...normalizeAttr }]
-        : [...objectAttrs];
-    // template.prompt (and other template subtypes) may be nested inside
-    // object.entity so a prompt can be co-located with its owning entity.
-    const rules =
-      subType === OBJECT_SUBTYPE_ENTITY
-        ? [...objectRules, wildcard(TYPE_TEMPLATE)]
-        : subType === OBJECT_SUBTYPE_PROJECTION
-          ? projectionRules
-          : objectRules;
-    registry.register(
-      def(TYPE_OBJECT, subType, `Object/entity (${subType})`, rules, MetaObject, subTypeObjectAttrs),
-    );
+  // object — 4 subtypes. FR-033 S1-object: the object provider's declarative
+  // definition (vocabulary + per-subtype attr constraints + the structural child
+  // rules + real descriptions + the ADR-0028 taxonomy rule prose) is externalized
+  // to spec/metamodel/object.json, embedded at build into OBJECT_DEFINITION. The
+  // strict per-subtype model lives entirely in the JSON now: object.base carries
+  // the INTERSECTION of every subtype's structural children (field/identity/
+  // validator/layout/source); each concrete subtype sets extendsBase:true
+  // (composeWithBase folds the base childRules in at registration) and adds ONLY
+  // its subtype-specific children — value adds relationship; entity adds
+  // relationship + template (templates may be co-located) + the FR-014 TPH attrs
+  // @discriminator/@discriminatorValue (an entity-inheritance concept — a value
+  // object / derived projection carries no discriminator); projection inherits the
+  // base intersection ONLY (NO relationship — derivation is via @via, not a
+  // relationship child — and NO template). The "any attr" wildcard child rule is
+  // DROPPED (strict/fail-closed) and childRules are NO LONGER post-assigned in
+  // code. defineProviderFromData lowers it to TypeDefinitions; the factory
+  // (behavior) stays code via OBJECT_FACTORIES, mapping every subType → MetaObject.
+  const OBJECT_FACTORIES: FactoryMap = Object.fromEntries(
+    OBJECT_SUBTYPES.map((subType) => [
+      `${TYPE_OBJECT}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaObject(typeId, name),
+    ]),
+  );
+  for (const objectDef of defineProviderFromData(OBJECT_DEFINITION, OBJECT_FACTORIES)) {
+    registry.register(objectDef);
   }
 
-  // field — 13 subtypes
-  const fieldRules = [
-    wildcard(TYPE_VALIDATOR),
-    wildcard(TYPE_VIEW),
-    wildcard(TYPE_ATTR),
-    wildcard(TYPE_ORIGIN),
-  ];
-  for (const subType of FIELD_SUBTYPES) {
-    // field.currency additionally carries @currency; field.enum additionally
-    // carries @values; all other field subtypes share the common attrs only.
-    const fieldAttrs =
-      subType === FIELD_SUBTYPE_CURRENCY
-        ? [...commonFieldAttrs, { ...currencyFieldAttr }]
-        : subType === FIELD_SUBTYPE_ENUM
-          ? [
-              ...commonFieldAttrs,
-              { ...enumFieldAttr },
-              { ...providedFieldAttr },
-              { ...enumAliasAttr },
-              { ...enumDocAttr },
-              { ...coerceDefaultAttr },
-              { ...normalizeAttr },
-            ]
-          : [...commonFieldAttrs];
-    registry.register(
-      def(TYPE_FIELD, subType, `Field of type ${subType}`, fieldRules, MetaField, fieldAttrs,
-        new MetaField(new TypeId(TYPE_FIELD, subType), "").dataType),
-    );
+  // field — 15 subtypes. FR-033 S1-field-B: the field provider's declarative
+  // definition (vocabulary + per-subtype attr constraints + the structural child
+  // rules + descriptions + rule prose) is externalized to spec/metamodel/field.json,
+  // embedded at build into FIELD_DEFINITION. The strict per-subtype model lives
+  // entirely in the JSON now: field.base carries the universal core attrs
+  // (@required/@readOnly/@default/@unique) + the open validator/view/origin child
+  // rules; each concrete subtype sets extendsBase:true (composeWithBase folds the
+  // base attrs+childRules in at registration) and adds ONLY its subtype-specific
+  // attrs (@maxLength→string, @precision/@scale→decimal, @currency→currency,
+  // @objectRef→object, @values/@provided→enum). The "any attr" wildcard child rule
+  // is DROPPED (strict/fail-closed) and childRules are NO LONGER post-assigned in
+  // code. defineProviderFromData lowers it to TypeDefinitions; the factory
+  // (behavior) stays code via FIELD_FACTORIES.
+  //
+  // (id, name) → MetaField for every field subtype. MetaField computes its own
+  // dataType from subType (FIELD_DATA_TYPE getter), so no setDataType is needed;
+  // FIELD_DEFINITION.dataType carries the same per-subtype value onto the def.
+  const FIELD_FACTORIES: FactoryMap = Object.fromEntries(
+    FIELD_SUBTYPES.map((subType) => [
+      `${TYPE_FIELD}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaField(typeId, name),
+    ]),
+  );
+  for (const fieldDef of defineProviderFromData(FIELD_DEFINITION, FIELD_FACTORIES)) {
+    registry.register(fieldDef);
   }
 
-  // attr — 9 subtypes, no children allowed. Each subtype's class owns its
-  // dataType (resolved by this.subType); we read it off a probe instance so the
-  // TypeDefinition.dataType contract (registry.find(...).dataType) still holds.
-  for (const subType of ATTR_SUBTYPES) {
-    const AttrClass = attrClassFor(subType);
-    const probeDataType = new AttrClass(new TypeId(TYPE_ATTR, subType), "").dataType;
-    registry.register(
-      def(TYPE_ATTR, subType, `Attribute of type ${subType}`, [], AttrClass, [], probeDataType),
-    );
+  // attr — 9 subtypes, no children allowed, no per-type attrs. FR-033: the attr
+  // provider's declarative definition (vocabulary + descriptions + per-subtype
+  // dataType) is externalized to spec/metamodel/attr.json, embedded at build into
+  // ATTR_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via ATTR_FACTORIES. attrs are leaf value-type
+  // vocabulary: no childRules and no attributes, so (unlike field) NO post-assign
+  // is needed. Each subtype's class owns its dataType internally (resolved by
+  // this.subType); ATTR_DEFINITION.dataType carries the same per-subtype value.
+  const ATTR_FACTORIES: FactoryMap = Object.fromEntries(
+    ATTR_SUBTYPES.map((subType) => [
+      `${TYPE_ATTR}.${subType}`,
+      (typeId: TypeId, name: string) => new (attrClassFor(subType))(typeId, name),
+    ]),
+  );
+  for (const attrDef of defineProviderFromData(ATTR_DEFINITION, ATTR_FACTORIES)) {
+    registry.register(attrDef);
   }
 
   // validator — 6 subtypes (base + 5 named); dispatch to subtype-specific class.
-  // Subtype→class dispatch for TYPE_VALIDATOR (formerly handled by metaOf()):
+  // FR-033: the validator provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + descriptions + rule prose) is externalized to
+  // spec/metamodel/validator.json, embedded at build into VALIDATOR_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via VALIDATOR_FACTORIES, dispatching subType→class:
   //   required → MetaRequiredValidator, length → MetaLengthValidator,
   //   regex → MetaRegexValidator, numeric → MetaNumericValidator,
   //   array → MetaArrayValidator, default (base) → MetaValidator.
-  // Attr schemas: MetaValidator (base) + length/numeric/array read @min/@max via
-  //   this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern via this.ownAttr().
-  //   required has no extra attrs.
-  const validatorRules = [wildcard(TYPE_ATTR)];
-  for (const subType of VALIDATOR_SUBTYPES) {
-    const NodeClass = VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator;
-    const validatorAttrs = VALIDATOR_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_VALIDATOR, subType, `Validator (${subType})`, validatorRules, NodeClass, validatorAttrs),
-    );
+  // FR-033 S1-simple: validator is an ATTR-ONLY type — its only children are its
+  // declared named attrs (no structural children, ever). The "any attr" wildcard
+  // child rule is DROPPED (strict/fail-closed); defineProviderFromData leaves
+  // childRules EMPTY. The named attrs still enforce strictly via attr-schema-
+  // validate (ERR_UNKNOWN_ATTR); a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: base + length/numeric/array read @min/@max
+  // via this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern; required
+  // has no extra attrs.
+  const VALIDATOR_FACTORIES: FactoryMap = Object.fromEntries(
+    VALIDATOR_SUBTYPES.map((subType) => [
+      `${TYPE_VALIDATOR}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (VALIDATOR_CLASS_MAP.get(subType) ?? MetaValidator)(typeId, name),
+    ]),
+  );
+  for (const validatorDef of defineProviderFromData(VALIDATOR_DEFINITION, VALIDATOR_FACTORIES)) {
+    registry.register(validatorDef);
   }
 
-  // view — N subtypes. Each view permits only attr children (Java parity:
-  // MetaView only attaches to fields, never aggregates child views).
-  // Only view.currency carries a documented attr (@locale); others have none.
-  for (const subType of VIEW_SUBTYPES) {
-    const viewAttrs = subType === VIEW_SUBTYPE_CURRENCY ? [...currencyViewAttrs] : [];
-    registry.register(
-      def(TYPE_VIEW, subType, `View (${subType})`, [wildcard(TYPE_ATTR)], MetaView, viewAttrs),
-    );
+  // view — 13 subtypes (base + 12 field-level UI/render hints). Each view permits
+  // only attr children (Java parity: MetaView only attaches to fields, never
+  // aggregates child views).
+  // FR-033: the view provider's declarative definition (vocabulary + real
+  // per-subtype descriptions + the single @locale attr on view.currency) is
+  // externalized to spec/metamodel/view.json, embedded at build into
+  // VIEW_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via VIEW_FACTORIES — every subtype maps to the
+  // single MetaView class (views carry no per-subtype behavior). Only
+  // view.currency carries a documented attr (@locale, default "en-US"); the
+  // other 12 subtypes have none. FR-033 S1-simple: view is an ATTR-ONLY type —
+  // the "any attr" wildcard child rule is DROPPED (strict/fail-closed) and
+  // childRules are left EMPTY; the declared named attrs still enforce strictly,
+  // a misplaced STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
+  const VIEW_FACTORIES: FactoryMap = Object.fromEntries(
+    VIEW_SUBTYPES.map((subType) => [
+      `${TYPE_VIEW}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaView(typeId, name),
+    ]),
+  );
+  for (const viewDef of defineProviderFromData(VIEW_DEFINITION, VIEW_FACTORIES)) {
+    registry.register(viewDef);
   }
 
   // layout — object-level UI surfaces (data grids, forms, tabs, cards).
-  // Each subtype permits only attr children — like views, layouts are config carriers.
-  for (const subType of LAYOUT_SUBTYPES) {
-    const layoutAttrs = subType === LAYOUT_SUBTYPE_DATA_GRID ? [...dataGridLayoutAttrs] : [];
-    registry.register(
-      def(TYPE_LAYOUT, subType, `Layout (${subType})`, [wildcard(TYPE_ATTR)], MetaLayout, layoutAttrs),
-    );
+  // FR-033: the layout provider's declarative definition (2 subtypes — base +
+  // dataGrid — vocabulary + the 6 dataGrid attr constraints + descriptions) is
+  // externalized to spec/metamodel/layout.json, embedded at build into
+  // LAYOUT_DEFINITION. defineProviderFromData lowers it to TypeDefinitions; the
+  // factory (behavior) stays code via LAYOUT_FACTORIES — every subtype maps to
+  // the single MetaLayout class (layouts are config carriers, no per-subtype
+  // behavior). FR-033 S1-simple: layout is an ATTR-ONLY type — like views,
+  // layouts are config carriers — the "any attr" wildcard child rule is DROPPED
+  // (strict/fail-closed) and childRules are left EMPTY; the declared named attrs
+  // still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED.
+  const LAYOUT_FACTORIES: FactoryMap = Object.fromEntries(
+    LAYOUT_SUBTYPES.map((subType) => [
+      `${TYPE_LAYOUT}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaLayout(typeId, name),
+    ]),
+  );
+  for (const layoutDef of defineProviderFromData(LAYOUT_DEFINITION, LAYOUT_FACTORIES)) {
+    registry.register(layoutDef);
   }
 
-  // source — declares where an object's data lives (rdb, ... per ADR-0007).
-  // Only attr children; sources carry only configuration, never nested structure.
-  // Per-subtype attrs (@table/@kind/@role/@schema for rdb) are added by
-  // dbProvider via TypeRegistry.extend.
-  for (const subType of SOURCE_SUBTYPES) {
-    registry.register(
-      def(TYPE_SOURCE, subType, `Source (${subType})`, [wildcard(TYPE_ATTR)], MetaSource, []),
-    );
+  // source — declares where an object's data lives (2 subtypes: base/rdb, per
+  // ADR-0007). Only attr children; sources carry only configuration, never
+  // nested structure.
+  // FR-033: the CORE source registration (the bare source shells + real
+  // descriptions + ADR-0007 rules prose) is externalized to
+  // spec/metamodel/source.json, embedded at build into SOURCE_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via SOURCE_FACTORIES — a single MetaSource class backs all
+  // subtypes. The CORE registration carries NO own attrs (children == []); the
+  // per-subtype @table/@kind/@role/@schema/@parameterRef attrs on source.rdb are
+  // contributed by a SEPARATE provider (dbProvider, persistence/db) via
+  // registry.extend(TYPE_SOURCE, "rdb", ...) — untouched by this conversion.
+  // FR-033 S1-simple: source is an ATTR-ONLY type (configuration carrier, never
+  // nested structure) — the "any attr" wildcard child rule is DROPPED (strict/
+  // fail-closed) and childRules are left EMPTY; the per-subtype @table/@kind/
+  // @role/@schema attrs (from dbProvider) still enforce strictly, a misplaced
+  // STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
+  const SOURCE_FACTORIES: FactoryMap = Object.fromEntries(
+    SOURCE_SUBTYPES.map((subType) => [
+      `${TYPE_SOURCE}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaSource(typeId, name),
+    ]),
+  );
+  for (const sourceDef of defineProviderFromData(SOURCE_DEFINITION, SOURCE_FACTORIES)) {
+    registry.register(sourceDef);
   }
 
-  // origin — field-level provenance. Only attr children.
-  // Subtype→class dispatch (mirrors validator / identity patterns):
+  // origin — field-level provenance (4 subtypes: base/passthrough/aggregate/
+  // collection; only attr children).
+  // FR-033: the origin provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + real descriptions) is externalized to
+  // spec/metamodel/origin.json, embedded at build into ORIGIN_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via ORIGIN_FACTORIES, dispatching subType→class:
   //   passthrough → MetaPassthroughOrigin, aggregate → MetaAggregateOrigin,
-  //   base (and any unmapped subtype) → MetaOrigin.
-  for (const subType of ORIGIN_SUBTYPES) {
-    const NodeClass = ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin;
-    const originAttrs = ORIGIN_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_ORIGIN, subType, `Origin (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, originAttrs),
-    );
+  //   collection → MetaCollectionOrigin, base (and any unmapped subtype) →
+  //   MetaOrigin (fallback).
+  // FR-033 S1-simple: origin is an ATTR-ONLY type — the "any attr" wildcard child
+  // rule is DROPPED (strict/fail-closed) and childRules are left EMPTY; the named
+  // attrs still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: base has none; passthrough adds @from
+  // (required) + @via; aggregate adds @agg (required) + @of (required) + @via;
+  // collection adds @via (required).
+  const ORIGIN_FACTORIES: FactoryMap = Object.fromEntries(
+    ORIGIN_SUBTYPES.map((subType) => [
+      `${TYPE_ORIGIN}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (ORIGIN_CLASS_MAP.get(subType) ?? MetaOrigin)(typeId, name),
+    ]),
+  );
+  for (const originDef of defineProviderFromData(ORIGIN_DEFINITION, ORIGIN_FACTORIES)) {
+    registry.register(originDef);
   }
 
   // template — renderable text artifacts (FR-004) + tool-call envelopes
-  // (ADR-0011). Three subtypes: prompt + output + toolcall; attr-only children.
-  // A single MetaTemplate class backs all three subtypes (mirrors source);
+  // (ADR-0011). Four subtypes: base + prompt + output + toolcall; attr-only
+  // children. A single MetaTemplate class backs every subtype (mirrors source);
   // per-subtype attr schemas drive validation (prompt + output require
   // @payloadRef + @textRef + @format closed enum; prompt adds the LLM overlay;
-  // toolcall has its own set — @toolName + @payloadRef + @description, no
-  // @textRef requirement since toolcalls have no renderable body).
-  for (const subType of TEMPLATE_SUBTYPES) {
-    const templateAttrs = TEMPLATE_ATTRS_MAP.get(subType) ?? [];
-    registry.register(
-      def(TYPE_TEMPLATE, subType, `Template (${subType})`, [wildcard(TYPE_ATTR)], MetaTemplate, templateAttrs),
-    );
+  // output adds @promptStyle + @kind/email part-refs; toolcall has its own set —
+  // @toolName + @payloadRef, no @textRef requirement since toolcalls have no
+  // renderable body).
+  // FR-033: the template provider's declarative definition (the 4-subtype
+  // vocabulary + the full per-subtype attr constraints — incl. @format/@promptStyle/
+  // @kind closed-enum allowedValues + defaults + required @payloadRef/@toolName —
+  // + real descriptions + the FR-004/ADR-0011 rules prose) is externalized to
+  // spec/metamodel/template.json, embedded at build into TEMPLATE_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via TEMPLATE_FACTORIES, mapping every subType → MetaTemplate.
+  // FR-033 S2: template's CORE registration carries NO own attrs (children == []);
+  // the per-subtype type attrs (@payloadRef/@textRef/@format/@kind/…) on prompt/
+  // output/toolcall are contributed by a SEPARATE provider (promptProvider,
+  // template/prompt-provider) via registry.extend(TYPE_TEMPLATE, sub, ...). With
+  // those attrs re-homed, template is now an ATTR-ONLY type and the "any attr"
+  // wildcard child rule is DROPPED (strict completion — like view/layout/source);
+  // childRules are left EMPTY, so a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED and a non-declared attr is ERR_UNKNOWN_ATTR. Vendor
+  // toolcall attrs stay extensible via consumer registry.extend (ADR-0011).
+  const TEMPLATE_FACTORIES: FactoryMap = Object.fromEntries(
+    TEMPLATE_SUBTYPES.map((subType) => [
+      `${TYPE_TEMPLATE}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaTemplate(typeId, name),
+    ]),
+  );
+  for (const templateDef of defineProviderFromData(TEMPLATE_DEFINITION, TEMPLATE_FACTORIES)) {
+    registry.register(templateDef);
   }
 
-  // identity — 2 subtypes (no base; Java doesn't register one).
-  // Subtype→class dispatch for TYPE_IDENTITY (formerly handled by metaOf()):
+  // identity — 3 subtypes (primary/secondary/reference; no base — Java doesn't
+  // register one).
+  // FR-033: the identity provider's declarative definition (vocabulary +
+  // per-subtype attr constraints + descriptions) is externalized to
+  // spec/metamodel/identity.json, embedded at build into IDENTITY_DEFINITION.
+  // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
+  // stays code via IDENTITY_FACTORIES, dispatching subType→class:
   //   primary → MetaPrimaryIdentity, secondary → MetaSecondaryIdentity,
-  //   default → MetaIdentity (fallback, not currently registered).
-  for (const subType of IDENTITY_SUBTYPES) {
-    const NodeClass = IDENTITY_CLASS_MAP.get(subType) ?? MetaIdentity;
-    const idAttrs = IDENTITY_ATTRS_MAP.get(subType) ?? [{ ...identityFieldsAttr }];
-    registry.register(
-      def(TYPE_IDENTITY, subType, `Identity (${subType})`, [wildcard(TYPE_ATTR)], NodeClass, idAttrs),
-    );
+  //   reference → MetaReferenceIdentity, default → MetaIdentity (fallback).
+  // FR-033 S1-simple: identity is an ATTR-ONLY type — the "any attr" wildcard
+  // child rule is DROPPED (strict/fail-closed) and childRules are left EMPTY; the
+  // named attrs still enforce strictly, a misplaced STRUCTURAL child is now
+  // ERR_CHILD_NOT_ALLOWED. Attr schemas: all three carry the required @fields;
+  // primary adds @generation, secondary @unique, reference @references (required)
+  // + @enforce.
+  const IDENTITY_FACTORIES: FactoryMap = Object.fromEntries(
+    IDENTITY_SUBTYPES.map((subType) => [
+      `${TYPE_IDENTITY}.${subType}`,
+      (typeId: TypeId, name: string) =>
+        new (IDENTITY_CLASS_MAP.get(subType) ?? MetaIdentity)(typeId, name),
+    ]),
+  );
+  for (const identityDef of defineProviderFromData(IDENTITY_DEFINITION, IDENTITY_FACTORIES)) {
+    registry.register(identityDef);
   }
 
-  // relationship — 4 subtypes
-  for (const subType of RELATIONSHIP_SUBTYPES) {
-    registry.register(
-      def(
-        TYPE_RELATIONSHIP,
-        subType,
-        `Relationship (${subType})`,
-        [wildcard(TYPE_ATTR)],
-        MetaRelationship,
-        [...relationshipAttrs],
-      ),
-    );
+  // relationship — 4 subtypes (base/association/aggregation/composition), all
+  // backed by the single MetaRelationship node class (no subType→class dispatch).
+  // FR-033: the relationship provider's declarative definition (vocabulary +
+  // the 7 shared attr constraints + real descriptions + the complex M:N rules
+  // prose) is externalized to spec/metamodel/relationship.json, embedded at build
+  // into RELATIONSHIP_DEFINITION. defineProviderFromData lowers it to
+  // TypeDefinitions; the factory (behavior) stays code via RELATIONSHIP_FACTORIES,
+  // mapping every subType → MetaRelationship. FR-033 S1-simple: relationship is an
+  // ATTR-ONLY type — the "any attr" wildcard child rule is DROPPED (strict/fail-
+  // closed) and childRules are left EMPTY; the named attrs still enforce strictly,
+  // a misplaced STRUCTURAL child is now ERR_CHILD_NOT_ALLOWED.
+  const RELATIONSHIP_FACTORIES: FactoryMap = Object.fromEntries(
+    RELATIONSHIP_SUBTYPES.map((subType) => [
+      `${TYPE_RELATIONSHIP}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaRelationship(typeId, name),
+    ]),
+  );
+  for (const relationshipDef of defineProviderFromData(
+    RELATIONSHIP_DEFINITION,
+    RELATIONSHIP_FACTORIES,
+  )) {
+    registry.register(relationshipDef);
   }
 
   // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`
@@ -376,9 +484,18 @@ export const coreTypesProvider: MetaDataTypeProvider = {
   },
 };
 
-/** The default provider bundle — core metamodel types plus DB-domain attrs.
- *  Spread it to add more: `[...coreProviders, mine]`. */
-export const coreProviders: readonly MetaDataTypeProvider[] = [coreTypesProvider, dbProvider, docProvider, templateProvider];
+/** The default provider bundle — core metamodel types plus the four concern
+ *  providers (DB-domain attrs, documentation common-attrs, prompt/AI + the
+ *  UI/query-surface markers). FR-033 S1-field-A re-homed the field's
+ *  filter/sort/teaching/extract/storage attrs out of core into db/ui/prompt;
+ *  the composed set is unchanged. Spread it to add more: `[...coreProviders, mine]`. */
+export const coreProviders: readonly MetaDataTypeProvider[] = [
+  coreTypesProvider,
+  dbProvider,
+  docProvider,
+  promptProvider,
+  uiProvider,
+];
 
 /**
  * Register the core metamodel into an existing registry. Thin convenience

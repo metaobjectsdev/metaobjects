@@ -53,6 +53,18 @@
 // in. The classification's job is therefore to carve the small, declared set of
 // agreed-but-port-private facets OUT of that agreed vocabulary, with a reason and
 // a liveness tripwire. See fixtures/registry-conformance/README.md.
+//
+// FR-033 NOTE — the manifest now emits per-type and per-attr `description`
+// (required, non-empty), optional `rules`/`example`/`whenToUse`, AND the full
+// structural constraint graph (`children` from childRules, with optional
+// cardinality, and optional `parents`) as FIRST-CLASS PROPERTIES of each type/
+// attr entry. The v1 boundary note that listed `childRules` / type-level
+// `description` as EXCLUDED is SUPERSEDED for those facets. This does NOT change
+// the COMMON_ATTR_DUP carve-out below: that entry removes a per-type ATTR whose
+// NAME is "description" (the commonAttr re-registered as a per-type attr) from
+// the `attrs` ARRAY — a different mechanism from the type/attr-level
+// `description` PROPERTY now emitted as a sibling of `attrs`. The carve-out (and
+// the test asserting no `attrs[]` entry is named "description") stays unchanged.
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";

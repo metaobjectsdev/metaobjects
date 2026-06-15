@@ -23,8 +23,25 @@ public sealed record TypeId(string Type, string SubType)
 /// Declares which child (type, subType, name) combinations are legal under a
 /// parent node. Any field set to <see cref="MetaObjects.Shared.Structural.CHILD_RULE_WILDCARD"/>
 /// ("*") matches any value.
+/// <para>
+/// FR-033 — the strict structural constraint graph. Cardinality
+/// (<paramref name="Min"/>/<paramref name="Max"/>) is emitted only when set;
+/// <paramref name="MaxIsNull"/> distinguishes a declared <c>max: null</c>
+/// (unbounded) from an absent <c>max</c> (mirrors Java's <c>maxIsNull</c>).
+/// <paramref name="Named"/> records whether the child must carry an explicit
+/// name. All additive — existing <c>new ChildRule(t, s, n)</c> calls keep
+/// working via the defaults. (<paramref name="ChildSubType"/> stays a single
+/// string for now; a list-of-admitted-subtypes form arrives in S-B2a.)
+/// </para>
 /// </summary>
-public sealed record ChildRule(string ChildType, string ChildSubType, string ChildName);
+public sealed record ChildRule(
+    string ChildType,
+    string ChildSubType,
+    string ChildName,
+    int? Min = null,
+    int? Max = null,
+    bool MaxIsNull = false,
+    bool? Named = null);
 
 // ---------------------------------------------------------------------------
 // AttrSchema
@@ -52,7 +69,10 @@ public sealed record AttrSchema(
     object? Default = null,
     IReadOnlyList<object>? AllowedValues = null,
     string Description = "",
-    bool IsArray = false);
+    bool IsArray = false,
+    string? Rules = null,
+    string? Example = null,
+    string? WhenToUse = null);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition
@@ -75,13 +95,28 @@ public sealed class TypeDefinition
     public IReadOnlyList<AttrSchema> Attributes => _attributes;
     public DataType? DataType { get; }
 
+    // FR-033 — the documentation surface + child-side placement claim (sourced
+    // from the embedded spec/metamodel/*.json in sub-step B1). <c>Description</c>
+    // is required + non-empty in the canonical; <c>Rules</c>/<c>Example</c>/
+    // <c>WhenToUse</c> are optional (emitted only when present); <c>Parents</c> is
+    // the child-side placement claim (emitted only when non-empty, sorted ASCII).
+    // All additive with empty/null defaults so existing constructions keep working.
+    public string? Rules { get; }
+    public string? Example { get; }
+    public string? WhenToUse { get; }
+    public IReadOnlyList<string> Parents { get; }
+
     public TypeDefinition(
         TypeId typeId,
         string description,
         List<ChildRule> childRules,
         Func<TypeId, string, MetaData> factory,
         List<AttrSchema> attributes,
-        DataType? dataType = null)
+        DataType? dataType = null,
+        string? rules = null,
+        string? example = null,
+        string? whenToUse = null,
+        IReadOnlyList<string>? parents = null)
     {
         TypeId = typeId;
         Description = description;
@@ -89,6 +124,10 @@ public sealed class TypeDefinition
         Factory = factory;
         _attributes = new List<AttrSchema>(attributes);
         DataType = dataType;
+        Rules = rules;
+        Example = example;
+        WhenToUse = whenToUse;
+        Parents = parents is null ? [] : new List<string>(parents);
     }
 
     internal void AppendAttr(AttrSchema attr) => _attributes.Add(attr);
@@ -349,6 +388,263 @@ public sealed class TypeRegistry
         foreach (ChildRule rule in childRules ?? [])
         {
             def.AppendChildRule(rule);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // FR-033 (provider re-home) — apply a concern provider's extends directives
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-033 — apply a concern provider's <c>extends</c> directives (read from the
+    /// embedded <c>spec/metamodel/&lt;provider&gt;.json</c> by
+    /// <see cref="MetaObjects.Registry.Spec.SpecMetamodelReader"/>) onto the
+    /// already-registered types, re-homing the provider's attrs OUT of the core type
+    /// classes and INTO the concern provider. This is the data-driven mechanism the
+    /// <c>metaobjects-ui</c> / <c>metaobjects-prompt</c> providers use — the C#
+    /// analogue of TS/Java/Python reading the same <c>extends</c> blocks.
+    /// <para>
+    /// For each directive the target subtypes are resolved: an exact subtype, a list,
+    /// or the <c>"*"</c> wildcard expanded via <paramref name="fieldSubtypeExpansion"/>
+    /// (when no explicit expansion is supplied for a wildcarded type, the wildcard
+    /// expands to every CURRENTLY-REGISTERED subtype of that type — matching the
+    /// historical per-subtype loops). Each attr is added via <see cref="Extend"/>,
+    /// whose already-exists guard is the backstop ensuring an attr is registered by
+    /// exactly ONE provider (no double-registration with core).
+    /// </para>
+    /// </summary>
+    public void ApplyProviderExtends(
+        MetaObjects.Registry.Spec.SpecMetamodelReader reader,
+        string providerName,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? fieldSubtypeExpansion = null)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(providerName);
+        CheckNotSealed($"ApplyProviderExtends(\"{providerName}\")");
+
+        foreach (MetaObjects.Registry.Spec.SpecExtendsDirective d in reader.ExtendsDirectives(providerName))
+        {
+            IReadOnlyList<string> targets;
+            if (d.WildcardSubType)
+            {
+                if (fieldSubtypeExpansion is not null
+                    && fieldSubtypeExpansion.TryGetValue(d.Type, out IReadOnlyList<string>? explicitExpansion))
+                {
+                    targets = explicitExpansion;
+                }
+                else
+                {
+                    // Fall back to every currently-registered subtype of the type.
+                    targets = AllTypes()
+                        .Where(id => id.Type == d.Type)
+                        .Select(id => id.SubType)
+                        .ToList();
+                }
+            }
+            else
+            {
+                targets = d.SubTypes;
+            }
+
+            List<AttrSchema> schemas = d.Attrs.Select(ToAttrSchema).ToList();
+            foreach (string subType in targets)
+            {
+                Extend(d.Type, subType, attributes: schemas);
+            }
+        }
+    }
+
+    /// <summary>FR-033 — build a fully-specified <see cref="AttrSchema"/> from a JSON extends attr entry (single-sourced, never hand-copied).</summary>
+    private static AttrSchema ToAttrSchema(MetaObjects.Registry.Spec.SpecExtendsAttr a) =>
+        new(
+            Name: a.Name,
+            ValueType: a.ValueType,
+            Required: a.Required,
+            Default: a.Default,
+            AllowedValues: a.AllowedValues,
+            IsArray: a.IsArray);
+
+    // ------------------------------------------------------------------
+    // FR-033 (sub-step B1) — apply spec/metamodel descriptions (pre-seal)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// FR-033 (sub-step B1) — source every type / attr / common-attr DESCRIPTION
+    /// (+ optional <c>rules</c>/<c>example</c>/<c>whenToUse</c>) from the shared
+    /// <c>spec/metamodel/*.json</c> (read by
+    /// <see cref="MetaObjects.Registry.Spec.SpecMetamodelReader"/>) onto this registry.
+    /// <para>
+    /// Applied DURING composition, BEFORE <see cref="Seal"/>: <see cref="TypeDefinition"/>
+    /// has get-only doc props, so each definition the JSON describes is REBUILT (preserving
+    /// factory / dataType / child rules / the S-A doc slots) carrying the JSON type docs
+    /// + per-attr doc descriptions; <see cref="AttrSchema"/> is a record, rebuilt via
+    /// <c>with</c> matched by <c>(type.subType, attrName)</c>; each common attr is rebuilt
+    /// with its description from the universal <c>*.*</c> documentation entry. Descriptions
+    /// come from the JSON ONLY — never hand-copied — so they are byte-identical to TS.
+    /// </para>
+    /// <para>
+    /// Where C# registers an attr the JSON does NOT describe for that subtype (or
+    /// vice-versa) the attr keeps its existing description — that scoping mismatch is the
+    /// S-B2 per-subtype attr-scoping residual; B1 applies descriptions only where they match.
+    /// </para>
+    /// </summary>
+    internal void ApplySpecDescriptions(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        CheckNotSealed("ApplySpecDescriptions");
+
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+
+            MetaObjects.Registry.Spec.SpecDocFacet? typeDoc = reader.TypeDoc(id.Type, id.SubType);
+            string description = typeDoc?.Description ?? def.Description;
+            string? rules = typeDoc is not null ? typeDoc.Rules : def.Rules;
+            string? example = typeDoc is not null ? typeDoc.Example : def.Example;
+            string? whenToUse = typeDoc is not null ? typeDoc.WhenToUse : def.WhenToUse;
+
+            // Rebuild each attr with its JSON doc fields (matched by (type.subType, name),
+            // honouring extends blocks + the <type>.base fallback). Unmatched attrs keep
+            // their existing description (the S-B2 scoping residual).
+            List<AttrSchema> attrs = def.Attributes.Select(attr =>
+            {
+                MetaObjects.Registry.Spec.SpecAttrEntry? a = reader.AttrDoc(id.Type, id.SubType, attr.Name);
+                return a is null
+                    ? attr
+                    : attr with
+                    {
+                        Description = a.Description ?? "",
+                        Rules = a.Rules,
+                        Example = a.Example,
+                        WhenToUse = a.WhenToUse,
+                    };
+            }).ToList();
+
+            _defs[key] = new TypeDefinition(
+                id,
+                description,
+                new List<ChildRule>(def.ChildRules),
+                def.Factory,
+                attrs,
+                def.DataType,
+                rules,
+                example,
+                whenToUse,
+                def.Parents);
+        }
+
+        // Common-attr descriptions from the universal *.* documentation entry.
+        for (int i = 0; i < _commonAttrs.Count; i++)
+        {
+            AttrSchema attr = _commonAttrs[i];
+            MetaObjects.Registry.Spec.SpecAttrEntry? a = reader.CommonAttrDoc(attr.Name);
+            if (a is not null)
+            {
+                _commonAttrs[i] = attr with
+                {
+                    Description = a.Description ?? "",
+                    Rules = a.Rules,
+                    Example = a.Example,
+                    WhenToUse = a.WhenToUse,
+                };
+            }
+        }
+
+        // FR-033 (sub-step B2a) — replace each declared type's STRUCTURAL child
+        // rules with the strict cross-port graph + cardinality from the JSON.
+        ApplyStrictStructuralChildren(reader);
+
+        // FR-033 (sub-step B2b) — prune each declared type's LOGICAL attrs to the
+        // strict per-subtype allow-list from the JSON (the loader now rejects a
+        // misplaced attr → ERR_UNKNOWN_ATTR).
+        ApplyStrictAttrScoping(reader);
+    }
+
+    /// <summary>
+    /// FR-033 (sub-step B2a) — for every registered <c>(type, subType)</c> the spec
+    /// declares, REBUILD its <see cref="TypeDefinition"/> so its STRUCTURAL (non-attr)
+    /// child rules are EXACTLY the strict <c>spec/metamodel/*.json</c> graph
+    /// (extendsBase-composed, carrying <c>min</c>/<c>max</c>/<c>maxIsNull</c>/<c>named</c>).
+    /// The attr child rules and any attr requirements are preserved verbatim; only the
+    /// structural rules are swapped — C#'s broad/cardinality-less structural wildcards
+    /// (e.g. <see cref="ChildRuleHelper"/> <c>Wildcard(...)</c>) are dropped. Types NOT
+    /// in the JSON (e.g. <c>metadata.root</c>, <c>attr.*</c>) keep their hand-coded
+    /// structural children. Mirrors the Java/Python reader's pass 4.
+    /// </summary>
+    private void ApplyStrictStructuralChildren(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+            if (!reader.IsDeclared(id.Type, id.SubType))
+            {
+                continue; // not in the spec → keep C#'s existing structural children
+            }
+
+            // Keep every attr child rule (the strict model expresses attrs via the
+            // attrs block, but C# carries an attr-type wildcard the manifest already
+            // drops in SortedChildren); drop the broad structural wildcards.
+            var rules = new List<ChildRule>();
+            foreach (ChildRule rule in def.ChildRules)
+            {
+                if (rule.ChildType == TYPE_ATTR)
+                {
+                    rules.Add(rule); // attr placement — preserved (manifest drops it anyway)
+                }
+            }
+            foreach (MetaObjects.Registry.Spec.SpecStructChild sc in reader.StructuralChildren(id.Type, id.SubType))
+            {
+                rules.Add(new ChildRule(
+                    sc.ChildType, sc.ChildSubType, sc.ChildName,
+                    sc.Min, sc.Max, sc.MaxIsNull, sc.Named));
+            }
+
+            _defs[key] = new TypeDefinition(
+                id, def.Description, rules, def.Factory, def.Attributes.ToList(),
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
+        }
+    }
+
+    /// <summary>
+    /// FR-033 (sub-step B2b) — for every registered <c>(type, subType)</c> the spec
+    /// declares, DROP every LOGICAL (INCLUDED) attr whose name is NOT in the strict
+    /// per-subtype allow-list (<see cref="MetaObjects.Registry.Spec.SpecMetamodelReader.StrictAttrNames"/>).
+    /// The carved-out attrs (the <see cref="RegistryManifest.ClassifyPerTypeAttr"/>
+    /// exclusions — structural keywords / native bindings / the per-type
+    /// <c>description</c> dup) are LEFT REGISTERED: the emitter drops them from the
+    /// manifest anyway and the loader needs them. Only the INCLUDED logical attrs are
+    /// pruned, which TIGHTENS the loader — a misplaced attr → its unknown-attr error.
+    /// Types NOT in the JSON keep their attrs untouched. Mirrors Java/Python's pass 5.
+    /// </summary>
+    private void ApplyStrictAttrScoping(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
+    {
+        foreach (string key in _defs.Keys.ToList())
+        {
+            TypeDefinition def = _defs[key];
+            TypeId id = def.TypeId;
+            if (!reader.IsDeclared(id.Type, id.SubType))
+            {
+                continue; // not in the spec → keep C#'s existing attr scoping
+            }
+
+            ISet<string> allow = reader.StrictAttrNames(id.Type, id.SubType);
+
+            var attrs = new List<AttrSchema>();
+            foreach (AttrSchema attr in def.Attributes)
+            {
+                bool prunable =
+                    RegistryManifest.ClassifyPerTypeAttr(attr.Name) == RegistryManifest.ExclusionReason.Included;
+                if (prunable && !allow.Contains(attr.Name))
+                {
+                    continue; // logical attr not scoped to this subtype → prune
+                }
+                attrs.Add(attr);
+            }
+
+            _defs[key] = new TypeDefinition(
+                id, def.Description, def.ChildRules.ToList(), def.Factory, attrs,
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
         }
     }
 }
