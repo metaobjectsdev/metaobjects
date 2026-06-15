@@ -1,0 +1,44 @@
+Fill in each field as described below:
+- requestId (required): client request id
+    e.g. req-42
+- payload (required)
+- payload.title (required): document title
+    e.g. Spring Sale
+- payload.author (required)
+- payload.author.name (required): author name
+    e.g. Ada
+- payload.author.contact (required)
+- payload.author.contact.email (required): reply address
+    e.g. ada@example.com
+- payload.author.contact.verified (required): is the address verified
+    e.g. true
+- payload.sections (required)
+- payload.sections[].heading (required): section heading
+    e.g. Intro
+- payload.sections[].priority (required): render priority
+    one of LOW, HIGH
+    e.g. LOW
+- payload.summary (optional): optional one-line summary
+    e.g. All good
+
+Respond exactly like this:
+{
+  "requestId": "req-42",
+  "payload": {
+    "title": "Spring Sale",
+    "author": {
+      "name": "Ada",
+      "contact": {
+        "email": "ada@example.com",
+        "verified": true
+      }
+    },
+    "sections": [
+      {
+        "heading": "Intro",
+        "priority": "LOW"
+      }
+    ],
+    "summary": "All good"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "format": "json", "rootName": "Request", "roundTrip": true,
+  "fields": [
+    { "name": "requestId", "kind": "STRING", "required": true, "example": "req-42", "instruction": "client request id" },
+    { "name": "payload", "kind": "OBJECT", "required": true, "nested": {
+      "format": "json", "rootName": "Payload",
+      "fields": [
+        { "name": "title", "kind": "STRING", "required": true, "example": "Spring Sale", "instruction": "document title" },
+        { "name": "author", "kind": "OBJECT", "required": true, "nested": {
+          "format": "json", "rootName": "Author",
+          "fields": [
+            { "name": "name", "kind": "STRING", "required": true, "example": "Ada", "instruction": "author name" },
+            { "name": "contact", "kind": "OBJECT", "required": true, "nested": {
+              "format": "json", "rootName": "Contact",
+              "fields": [
+                { "name": "email", "kind": "STRING", "required": true, "example": "ada@example.com", "instruction": "reply address" },
+                { "name": "verified", "kind": "BOOLEAN", "required": true, "example": "true", "instruction": "is the address verified" }
+              ] } } ] } },
+        { "name": "sections", "kind": "OBJECT", "required": true, "array": true, "nested": {
+          "format": "json", "rootName": "Section",
+          "fields": [
+            { "name": "heading", "kind": "STRING", "required": true, "example": "Intro", "instruction": "section heading" },
+            { "name": "priority", "kind": "ENUM", "required": true, "enumValues": ["LOW", "HIGH"], "example": "LOW", "instruction": "render priority" }
+          ] } },
+        { "name": "summary", "kind": "STRING", "required": false, "example": "All good", "instruction": "optional one-line summary" }
+      ] } } ]
+}

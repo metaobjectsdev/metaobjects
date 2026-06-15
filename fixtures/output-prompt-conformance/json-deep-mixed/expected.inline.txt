@@ -1,0 +1,20 @@
+{
+  "requestId": "{client request id}",
+  "payload": {
+    "title": "{document title}",
+    "author": {
+      "name": "{author name}",
+      "contact": {
+        "email": "{reply address}",
+        "verified": "true | false"
+      }
+    },
+    "sections": [
+      {
+        "heading": "{section heading}",
+        "priority": "LOW | HIGH"
+      }
+    ],
+    "summary": "{optional one-line summary}"
+  }
+}

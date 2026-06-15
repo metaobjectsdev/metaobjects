@@ -1,0 +1,32 @@
+{
+  "format": "json", "rootName": "Root", "roundTrip": false,
+  "fields": [
+    { "name": "n1", "kind": "OBJECT", "required": true, "nested": {
+      "format": "json", "rootName": "N1", "fields": [
+        { "name": "n2", "kind": "OBJECT", "required": true, "nested": {
+          "format": "json", "rootName": "N2", "fields": [
+            { "name": "n3", "kind": "OBJECT", "required": true, "nested": {
+              "format": "json", "rootName": "N3", "fields": [
+                { "name": "n4", "kind": "OBJECT", "required": true, "nested": {
+                  "format": "json", "rootName": "N4", "fields": [
+                    { "name": "n5", "kind": "OBJECT", "required": true, "nested": {
+                      "format": "json", "rootName": "N5", "fields": [
+                        { "name": "n6", "kind": "OBJECT", "required": true, "nested": {
+                          "format": "json", "rootName": "N6", "fields": [
+                            { "name": "n7", "kind": "OBJECT", "required": true, "nested": {
+                              "format": "json", "rootName": "N7", "fields": [
+                                { "name": "n8", "kind": "OBJECT", "required": true, "nested": {
+                                  "format": "json", "rootName": "N8", "fields": [
+                                    { "name": "n9", "kind": "OBJECT", "required": true, "nested": {
+                                      "format": "json", "rootName": "N9", "fields": [
+                                        { "name": "leaf", "kind": "STRING", "required": true, "example": "x", "instruction": "the deepest leaf" }
+                                      ] } }
+                                  ] } }
+                              ] } }
+                          ] } }
+                      ] } }
+                  ] } }
+              ] } }
+          ] } }
+      ] } } ]
+}

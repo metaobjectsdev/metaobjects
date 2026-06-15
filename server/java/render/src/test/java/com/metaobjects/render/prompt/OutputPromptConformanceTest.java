@@ -47,7 +47,7 @@ public class OutputPromptConformanceTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /** Count guard: a port silently skipping cases must fail. Bump when adding cases. */
-    private static final int EXPECTED_CASE_COUNT = 12;
+    private static final int EXPECTED_CASE_COUNT = 14;
 
     private static final Path CORPUS;
     static {
