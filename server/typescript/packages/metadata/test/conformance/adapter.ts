@@ -18,7 +18,8 @@ import { composeRegistry } from "../../src/provider.js";
 import { coreTypesProvider } from "../../src/core-types.js";
 import { dbProvider } from "../../src/persistence/db/db-provider.js";
 import { docProvider } from "../../src/core/documentation/doc-provider.js";
-import { templateProvider } from "../../src/template/template-provider.js";
+import { promptProvider } from "../../src/template/prompt-provider.js";
+import { uiProvider } from "../../src/presentation/ui/ui-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -117,7 +118,12 @@ const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [coreTypesProvider.id]: coreTypesProvider, // "metaobjects-core-types"
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"
-  [templateProvider.id]: templateProvider,   // "metaobjects-template" (template.* / @responseRef / @xmlText — TS-pilot AI vocab)
+  [promptProvider.id]: promptProvider,       // "metaobjects-prompt" (template.* / @responseRef / @xmlText / field teaching+extract — TS-pilot AI vocab)
+  // Cross-port conformance fixtures (ai-trace-*) pin the pre-FR-033-S1 provider
+  // id "metaobjects-template"; the non-TS ports still register under that id, so
+  // the TS adapter keeps an alias to the renamed promptProvider for those fixtures.
+  "metaobjects-template": promptProvider,
+  [uiProvider.id]: uiProvider,               // "metaobjects-ui" (filter/sort field markers)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "cycle-a": cycleAProvider,

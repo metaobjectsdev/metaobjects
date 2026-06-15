@@ -33,7 +33,31 @@ public class ChildRequirement {
     private final BiPredicate<MetaData, Object> valueValidator; // Value validation logic
     private final String constraintId;                  // Unique constraint identifier
     private final String validationDescription;         // Human-readable validation description
-    
+
+    /**
+     * FR-033 — the per-attr/-child human/AI-facing documentation description
+     * (distinct from {@link #validationDescription}, which drives constraint
+     * error messages, and from {@link #getDescription()}, which composes an
+     * error-message string). Optional (null when not sourced); sub-step B
+     * populates it from the embedded {@code spec/metamodel/*.json}.
+     */
+    private final String docDescription;
+
+    /**
+     * FR-033 (sub-step B2a) — the strict cross-port structural cardinality for a
+     * STRUCTURAL child rule (a non-attr {@code expectedType}). Sourced from the
+     * shared {@code spec/metamodel/*.json} via the pre-seal apply hook. All four
+     * are absent (null / false) on a requirement that did NOT come from the strict
+     * graph (attr requirements, constraints, legacy structural reqs) — additive,
+     * back-compat. {@link #maxIsNull} distinguishes a declared {@code max:null}
+     * (unbounded) from an absent {@code max}; {@link #named} is the optional
+     * named-placement flag.
+     */
+    private final Integer min;
+    private final Integer max;
+    private final boolean maxIsNull;
+    private final Boolean named;
+
     /**
      * Create a basic child requirement with pattern matching only
      *
@@ -62,6 +86,59 @@ public class ChildRequirement {
     public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
                           Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
                           BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription) {
+        this(name, expectedType, expectedSubType, required, parentMatcher, childMatcher,
+             valueValidator, constraintId, validationDescription, null);
+    }
+
+    /**
+     * Create an enhanced child requirement with constraint validation support AND
+     * a doc description (FR-033).
+     *
+     * @param name Expected child name or "*" for any name
+     * @param expectedType Expected child type or "*" for any type
+     * @param expectedSubType Expected child subType or "*" for any subType
+     * @param required Whether this child is required (true) or optional (false)
+     * @param parentMatcher Custom predicate for parent validation (null for none)
+     * @param childMatcher Custom predicate for child validation (null for none)
+     * @param valueValidator Custom value validation logic (null for none)
+     * @param constraintId Unique constraint identifier (null for none)
+     * @param validationDescription Human-readable validation description (null for none)
+     * @param docDescription FR-033 human/AI-facing documentation description (null for none)
+     */
+    public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
+                          Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
+                          BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription,
+                          String docDescription) {
+        this(name, expectedType, expectedSubType, required, parentMatcher, childMatcher,
+             valueValidator, constraintId, validationDescription, docDescription,
+             null, null, false, null);
+    }
+
+    /**
+     * Create an enhanced child requirement carrying the FR-033 structural
+     * cardinality ({@code min}/{@code max}/{@code maxIsNull}/{@code named}).
+     * All other constructors delegate here with the cardinality absent.
+     *
+     * @param name Expected child name or "*" for any name
+     * @param expectedType Expected child type or "*" for any type
+     * @param expectedSubType Expected child subType or "*" for any subType
+     * @param required Whether this child is required (true) or optional (false)
+     * @param parentMatcher Custom predicate for parent validation (null for none)
+     * @param childMatcher Custom predicate for child validation (null for none)
+     * @param valueValidator Custom value validation logic (null for none)
+     * @param constraintId Unique constraint identifier (null for none)
+     * @param validationDescription Human-readable validation description (null for none)
+     * @param docDescription FR-033 human/AI-facing documentation description (null for none)
+     * @param min FR-033 strict minimum cardinality (null when absent)
+     * @param max FR-033 strict maximum cardinality (null when absent or unbounded)
+     * @param maxIsNull FR-033 true when {@code max} was declared {@code null} (unbounded)
+     * @param named FR-033 named-placement flag (null when absent)
+     */
+    public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
+                          Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
+                          BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription,
+                          String docDescription,
+                          Integer min, Integer max, boolean maxIsNull, Boolean named) {
         this.name = name != null ? name : "*";
         // Types are stored verbatim; matching is case-sensitive against the canonical vocabulary
         this.expectedType = expectedType != null ? expectedType : "*";
@@ -72,6 +149,33 @@ public class ChildRequirement {
         this.valueValidator = valueValidator;
         this.constraintId = constraintId;
         this.validationDescription = validationDescription;
+        this.docDescription = docDescription;
+        this.min = min;
+        this.max = max;
+        this.maxIsNull = maxIsNull;
+        this.named = named;
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — a STRUCTURAL child requirement carrying the strict
+     * cross-port cardinality, sourced from {@code spec/metamodel/*.json}. The
+     * placement/validation matchers are absent (a pure structural placement rule);
+     * the cardinality slots drive the manifest {@code children} block.
+     *
+     * @param name Expected child name or "*" for any name
+     * @param expectedType Expected child type (a non-attr structural type)
+     * @param expectedSubType Expected child subType or "*" for any subType
+     * @param min strict minimum cardinality (null when absent)
+     * @param max strict maximum cardinality (null when absent or unbounded)
+     * @param maxIsNull true when {@code max} was declared {@code null} (unbounded)
+     * @param named named-placement flag (null when absent)
+     * @return a structural ChildRequirement carrying the cardinality
+     */
+    public static ChildRequirement structural(String name, String expectedType, String expectedSubType,
+                                              Integer min, Integer max, boolean maxIsNull, Boolean named) {
+        boolean required = min != null && min > 0;
+        return new ChildRequirement(name, expectedType, expectedSubType, required,
+                null, null, null, null, null, null, min, max, maxIsNull, named);
     }
     
     /**
@@ -275,7 +379,77 @@ public class ChildRequirement {
     public String getValidationDescription() {
         return validationDescription;
     }
-    
+
+    /**
+     * Get the FR-033 doc description — the per-attr/-child human/AI-facing
+     * documentation prose, distinct from the constraint {@link #getValidationDescription()
+     * validation description} and the error-message {@link #getDescription()}.
+     *
+     * @return The doc description, or null if not provided
+     */
+    public String getDocDescription() {
+        return docDescription;
+    }
+
+    /**
+     * FR-033 — a copy of this requirement carrying the given doc description, with
+     * all other facets (name/type/subType/required + the constraint matchers /
+     * constraintId / validationDescription) preserved. Used by
+     * {@link MetaDataRegistry#applySpecDescriptions} to thread the
+     * {@code spec/metamodel/*.json} attr description onto an already-registered
+     * requirement without disturbing its placement/validation behavior.
+     *
+     * @param docDescription the FR-033 doc description to carry
+     * @return a new ChildRequirement identical apart from the doc description
+     */
+    public ChildRequirement withDocDescription(String docDescription) {
+        return new ChildRequirement(name, expectedType, expectedSubType, required,
+                parentMatcher, childMatcher, valueValidator, constraintId, validationDescription,
+                docDescription, min, max, maxIsNull, named);
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — the strict minimum cardinality, or {@code null}
+     * when this requirement carries no cardinality (not from the strict graph).
+     *
+     * @return the minimum cardinality, or null
+     */
+    public Integer getMin() {
+        return min;
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — the strict maximum cardinality, or {@code null}
+     * when absent OR when declared unbounded ({@code max:null} — see
+     * {@link #isMaxNull()}).
+     *
+     * @return the maximum cardinality, or null
+     */
+    public Integer getMax() {
+        return max;
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — true when {@code max} was declared as the JSON
+     * {@code null} literal (unbounded), distinguishing it from an absent
+     * {@code max}. Mirrors the emitter's {@code ManifestChild.maxIsNull}.
+     *
+     * @return true when max is declared-null (unbounded)
+     */
+    public boolean isMaxNull() {
+        return maxIsNull;
+    }
+
+    /**
+     * FR-033 (sub-step B2a) — the optional named-placement flag, or {@code null}
+     * when absent.
+     *
+     * @return the named flag, or null
+     */
+    public Boolean getNamed() {
+        return named;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;

@@ -399,13 +399,20 @@ describe("registerCoreTypes", () => {
   });
 
   // 5. Child rules spot-checks per base type
-  it("object.base has the correct 7 child-type wildcards", () => {
+  it("object.base has the 5 intersection child-type wildcards (no attr, no relationship — strict model)", () => {
+    // FR-033 S1-object: object.base is the INTERSECTION of every object subtype's
+    // structural children (field / identity / validator / layout / source). The
+    // "any attr" wildcard is dropped (strict/fail-closed); relationship rides
+    // value + entity only (NOT base — extendsBase is additive, and projection,
+    // which forbids relationship, inherits base).
     const def = registry.find(TYPE_OBJECT, SUBTYPE_BASE);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
     expect(childTypes).toEqual(
-      [TYPE_ATTR, TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_RELATIONSHIP, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
+      [TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
     );
+    expect(childTypes).not.toContain(TYPE_ATTR);
+    expect(childTypes).not.toContain(TYPE_RELATIONSHIP);
     // All rules are wildcards on subType and name
     for (const rule of def!.childRules) {
       expect(rule.childSubType).toBe(CHILD_RULE_WILDCARD);
@@ -413,33 +420,38 @@ describe("registerCoreTypes", () => {
     }
   });
 
-  it("field.string has validator, view, attr, and origin child-type wildcards", () => {
+  it("field.string has validator, view, and origin child-type wildcards (no attr wildcard under the strict model)", () => {
+    // FR-033 S1-field-B: the strict per-subtype model drops the "any attr"
+    // wildcard child rule — concrete attrs are named attr schemas, not childRules.
+    // The remaining structural rules are the genuinely-open sets validator / view /
+    // origin (subType + name still "*", now with explicit open cardinality).
     const def = registry.find(TYPE_FIELD, FIELD_SUBTYPE_STRING);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_ATTR, TYPE_VALIDATOR, TYPE_VIEW, TYPE_ORIGIN].sort());
+    expect(childTypes).toEqual([TYPE_VALIDATOR, TYPE_VIEW, TYPE_ORIGIN].sort());
+    expect(childTypes).not.toContain(TYPE_ATTR);
     for (const rule of def!.childRules) {
       expect(rule.childSubType).toBe(CHILD_RULE_WILDCARD);
       expect(rule.childName).toBe(CHILD_RULE_WILDCARD);
     }
   });
 
-  it("identity.primary has only attr child-type wildcard", () => {
+  it("identity.primary has EMPTY child rules (no any-attr wildcard — strict model)", () => {
+    // FR-033 S1-simple: identity is an attr-only type; the "any attr" wildcard
+    // child rule is dropped. Its named attrs (@fields/@generation) enforce via
+    // attr-schema-validate; a misplaced structural child is ERR_CHILD_NOT_ALLOWED.
     const def = registry.find(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY);
     expect(def).toBeDefined();
-    expect(def!.childRules).toHaveLength(1);
-    expect(def!.childRules[0]).toEqual({
-      childType: TYPE_ATTR,
-      childSubType: CHILD_RULE_WILDCARD,
-      childName: CHILD_RULE_WILDCARD,
-    });
+    expect(def!.childRules).toHaveLength(0);
   });
 
-  it("metadata.root allows object, field, attr, validator, and template children", () => {
+  it("metadata.root allows object, field, validator, and template children (NOT a bare attr — strict model)", () => {
+    // FR-033 S1-simple: the attr wildcard is dropped from the document root; the
+    // genuinely-open structural wildcards (object/field/validator/template) stay.
     const def = registry.find(TYPE_METADATA, SUBTYPE_ROOT);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
-    expect(childTypes).toEqual([TYPE_ATTR, TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE].sort());
+    expect(childTypes).toEqual([TYPE_FIELD, TYPE_OBJECT, TYPE_VALIDATOR, TYPE_TEMPLATE].sort());
   });
 
   // 6. attr.* has empty child rules

@@ -32,6 +32,7 @@ import type {
   DocsSurface,
 } from "@metaobjectsdev/codegen-ts";
 import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
+import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
 
 type DocsLayout = "flat" | "package";
 
@@ -58,6 +59,9 @@ interface DocsFlags {
   outProvided: boolean;
   /** Whether `--layout` was explicitly passed (same override semantics). */
   layoutProvided: boolean;
+  /** FR-033 S3 — document the METAMODEL ITSELF (the built-in type/subtype/attr
+   *  vocabulary) instead of a user's entities. Needs NO metadata + NO config. */
+  metamodel: boolean;
 }
 
 function parseLayout(v: string | undefined, flag: string): DocsLayout {
@@ -76,6 +80,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let baseUrl: string | undefined;
   let wantModel = false;
   let wantApi = false;
+  let wantMetamodel = false;
   let outProvided = false;
   let layoutProvided = false;
   for (let i = 0; i < argv.length; i++) {
@@ -98,6 +103,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       wantModel = true;
     } else if (a === "--api") {
       wantApi = true;
+    } else if (a === "--metamodel") {
+      wantMetamodel = true;
     } else if (a === "--base-url") {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${a} requires a URL argument`);
@@ -127,10 +134,12 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     // `<metadata>` is the project root that contains metaobjects/; default cwd
     // (mirrors how migrate/gen treat the working directory as the root).
     metadata: metadata ?? cwd,
-    // Default out dir, resolved against the metadata root below.
-    out: out ?? "./docs",
+    // Default out dir, resolved against the metadata root below. In --metamodel
+    // mode the renderer writes under <out>/metamodel/, default ./docs/metamodel.
+    out: out ?? (wantMetamodel ? "./docs/metamodel" : "./docs"),
     // Default flat preserves today's single-package output (+ existing goldens).
     layout: layout ?? "flat",
+    metamodel: wantMetamodel,
     outProvided,
     layoutProvided,
     ...(surfaces.length > 0 ? { surfaces } : {}),
@@ -146,6 +155,14 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   } catch (err) {
     log.error(`docs: ${(err as Error).message}`);
     return 2;
+  }
+
+  // FR-033 S3 — `--metamodel`: document the BUILT-IN metamodel (type/subtype/
+  // attr vocabulary) from the strict registry. Unlike --model/--api this needs
+  // NEITHER a user's metadata NOR a config — there is nothing to load. It writes
+  // the renderer's files under <out>/metamodel/ (default ./docs/metamodel).
+  if (flags.metamodel) {
+    return metamodelDocsCommand(cwd, flags.out);
   }
 
   const metaRoot = resolvePath(cwd, flags.metadata);
@@ -386,5 +403,36 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     ? `${apiFiles.length} api page(s)`
     : "no api pages";
   log.info(`meta docs — wrote ${modelSummary}; ${apiSummary} → ${outDir}`);
+  return 0;
+}
+
+/**
+ * FR-033 S3 — emit the metamodel reference docs (INDEX.md + per-type pages +
+ * providers.md) from the BUILT-IN strict registry. No metadata, no config:
+ * `composeRegistry(coreProviders)` IS the source. Files land under
+ * `<out>` (which defaults to `./docs/metamodel`), preserving the renderer's
+ * `types/<family>.md` subtree.
+ */
+async function metamodelDocsCommand(cwd: string, out: string): Promise<number> {
+  const outDir = resolvePath(cwd, out);
+  let docs: Map<string, string>;
+  try {
+    docs = renderCoreMetamodelDocs(composeRegistry(coreProviders));
+  } catch (err) {
+    log.error(`docs: failed to render metamodel docs: ${(err as Error).message}`);
+    return 1;
+  }
+  try {
+    await mkdir(outDir, { recursive: true });
+    for (const [rel, content] of docs) {
+      const path = resolvePath(outDir, rel);
+      await mkdir(resolvePath(path, ".."), { recursive: true });
+      await writeFile(path, content, "utf8");
+    }
+  } catch (err) {
+    log.error(`docs: failed to write metamodel pages: ${(err as Error).message}`);
+    return 1;
+  }
+  log.info(`meta docs --metamodel — wrote ${docs.size} page(s) → ${outDir}`);
   return 0;
 }

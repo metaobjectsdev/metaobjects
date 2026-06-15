@@ -106,7 +106,20 @@ public final class RegistryManifest {
      * @return a new registry composed from the metamodel provider set
      */
     public static MetaDataRegistry composeMetamodelRegistry() {
-        return MetaDataRegistry.compose(metamodelProviders());
+        MetaDataRegistry registry = MetaDataRegistry.compose(metamodelProviders());
+        // Force the lazy core-constraint init NOW: it expands the named inherited
+        // attr child-requirements (e.g. field.base's `required`/`default`/`unique`
+        // onto each concrete field subtype). Those named requirements must exist
+        // BEFORE applySpecDescriptions rebuilds the type definitions, otherwise the
+        // rebuild would not see them and their descriptions would never land.
+        registry.getAllValidationConstraints();
+        // FR-033 (sub-step B1): source every type / attr / common-attr description
+        // (+ rules/example/whenToUse) from the embedded spec/metamodel/*.json — the
+        // cross-port single source of truth — onto the freshly-composed registry,
+        // BEFORE any seal. Single-sourced, byte-identical to TS; never hand-copied.
+        registry.applySpecDescriptions(
+                com.metaobjects.registry.spec.SpecMetamodelReader.load());
+        return registry;
     }
 
     /**
@@ -176,6 +189,12 @@ public final class RegistryManifest {
                 new com.metaobjects.view.ViewTypesMetaDataProvider(),
                 new com.metaobjects.layout.LayoutTypesMetaDataProvider(),
                 new com.metaobjects.template.TemplateTypesMetaDataProvider(),
+                // FR-033 concern providers — re-home UI / prompt attrs out of the
+                // core type classes (read spec/metamodel/ui.json + prompt.json).
+                // Placed after their type deps (field/view/layout/template/object);
+                // compose() re-resolves order via getDependencies() regardless.
+                new com.metaobjects.presentation.ui.UiTypesMetaDataProvider(),
+                new com.metaobjects.template.PromptTypesMetaDataProvider(),
                 new com.metaobjects.object.CoreObjectsMetaDataProvider());
     }
 
@@ -310,11 +329,34 @@ public final class RegistryManifest {
      */
     private static final String ARRAY_CONSTRAINT_SUFFIX = ".array";
 
-    /** One attribute in the manifest — the logical, cross-port-identical facet. */
-    private record ManifestAttr(String name, String valueType, boolean isArray, boolean required) {}
+    /**
+     * One attribute in the manifest — the logical, cross-port-identical facet.
+     * FR-033: carries a required {@code description} plus the optional
+     * {@code rules}/{@code example}/{@code whenToUse} doc facets (null = omitted).
+     */
+    private record ManifestAttr(String name, String valueType, boolean isArray, boolean required,
+                                String description, String rules, String example, String whenToUse) {}
 
-    /** One registered (type, subType) with its declared attrs. */
-    private record ManifestType(String type, String subType, List<ManifestAttr> attrs) {}
+    /**
+     * One structural child rule of a type (FR-033 constraint graph). Mirrors the
+     * TS {@code ManifestChild}: {@code childSubType} is a single subtype string,
+     * {@code "*"}, or a comma-list lowered to a {@code List<String>} for emission.
+     * Cardinality ({@code min}/{@code max}/{@code named}) is emitted ONLY when
+     * present — Java's {@link ChildRequirement} carries none today, so all three
+     * are null (sub-step B may add cardinality).
+     */
+    private record ManifestChild(String childType, Object childSubType, String childName,
+                                 Integer min, Integer max, Boolean named, boolean maxIsNull) {}
+
+    /**
+     * One registered (type, subType) with its docs + declared attrs + the
+     * structural constraint graph (FR-033). {@code rules}/{@code example}/
+     * {@code whenToUse} are null when absent; {@code parents} is empty when absent.
+     */
+    private record ManifestType(String type, String subType, String description,
+                                String rules, String example, String whenToUse,
+                                List<ManifestAttr> attrs, List<ManifestChild> children,
+                                List<String> parents) {}
 
     // ------------------------------------------------------------------
     // Build
@@ -359,12 +401,94 @@ public final class RegistryManifest {
             boolean isArray = arrayAttrNames.contains(name);
             ManifestAttr existing = byName.get(name);
             boolean required = req.isRequired() || (existing != null && existing.required());
-            byName.put(name, new ManifestAttr(name, valueType, isArray, required));
+            // FR-033: the per-attr doc description (empty string when not yet
+            // sourced — sub-step B reads it from the embedded spec/metamodel JSON).
+            // A non-null description on EITHER the direct or a prior requirement
+            // wins (first-non-empty), keeping the de-dupe collapse deterministic.
+            String docDescription = req.getDocDescription();
+            String description = (docDescription != null && !docDescription.isEmpty())
+                    ? docDescription
+                    : (existing != null ? existing.description() : "");
+            // rules/example/whenToUse have no Java attr-level source today → null
+            // (omitted by the serializer). Sub-step B may source them.
+            byName.put(name, new ManifestAttr(name, valueType, isArray, required, description,
+                    null, null, null));
         }
 
         List<ManifestAttr> attrs = new ArrayList<>(byName.values());
         attrs.sort(Comparator.comparing(ManifestAttr::name));
         return attrs;
+    }
+
+    /**
+     * Build the FR-033 constraint graph ({@code children}) for one (type, subType)
+     * from its STRUCTURAL child requirements — every {@link ChildRequirement}
+     * whose {@code expectedType != "attr"} (the attr requirements are the
+     * {@code attrs} block; the any-attr {@code name=="*" && expectedType=="attr"}
+     * wildcard is dropped — the strict model has no attr wildcard). Each maps to a
+     * {@link ManifestChild} {@code {childType, childSubType, childName}}; Java's
+     * {@link ChildRequirement} carries no cardinality, so {@code min}/{@code max}/
+     * {@code named} are absent (omitted) for now (sub-step B may add them).
+     *
+     * <p>Sorted by {@code (childType, childSubTypeKey, childName)} — ASCII
+     * codepoint compare — matching the TS reference's {@code sortedChildren}.
+     * De-duped by the same tuple so an inherited rule duplicating a direct one
+     * collapses to a single entry.</p>
+     */
+    private static List<ManifestChild> childrenOf(MetaDataRegistry registry, String type, String subType) {
+        TypeDefinition def = registry.getTypeDefinition(type, subType);
+        if (def == null) {
+            return List.of();
+        }
+
+        Map<String, ManifestChild> byKey = new LinkedHashMap<>();
+        for (ChildRequirement req : def.getChildRequirements()) {
+            String expectedType = req.getExpectedType();
+            if (MetaAttribute.TYPE_ATTR.equals(expectedType)) {
+                continue; // attr requirement (the attrs block) — incl. the any-attr wildcard
+            }
+            // Skip placement/validation constraint requirements (they carry no
+            // structural child shape — name/type/subType are all "*").
+            if (req.isPlacementConstraint() || req.isValidationConstraint()) {
+                continue;
+            }
+            String childType = expectedType;
+            String childSubType = req.getExpectedSubType();
+            String childName = req.getName();
+            // FR-033 B2a — cardinality (min/max/named) is now sourced from the strict
+            // spec/metamodel graph onto the ChildRequirement (Pass 4 of
+            // applySpecDescriptions); emit it (max:null literal when declared-unbounded).
+            ManifestChild child = new ManifestChild(childType, childSubType, childName,
+                    req.getMin(), req.getMax(), req.getNamed(), req.isMaxNull());
+            String key = childType + " " + childSubTypeKey(childSubType) + " " + childName;
+            byKey.putIfAbsent(key, child);
+        }
+
+        List<ManifestChild> children = new ArrayList<>(byKey.values());
+        children.sort(
+            Comparator.<ManifestChild, String>comparing(ManifestChild::childType)
+                .thenComparing(c -> childSubTypeKey(c.childSubType()))
+                .thenComparing(ManifestChild::childName));
+        return children;
+    }
+
+    /**
+     * The canonical sort/dedupe key for a child rule's subType: the string itself,
+     * or a comma-joined list (matches the TS {@code childSubTypeKey}). Java stores
+     * only a single subType string today, so this is the string (or {@code "*"}).
+     */
+    private static String childSubTypeKey(Object childSubType) {
+        if (childSubType instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                sb.append(list.get(i));
+            }
+            return sb.toString();
+        }
+        return childSubType == null ? "" : childSubType.toString();
     }
 
     /**
@@ -449,17 +573,33 @@ public final class RegistryManifest {
             if (isExcludedTypeSubType(id.type(), id.subType())) {
                 continue; // metadata.base anchor (C-5) / generic view.* controls (B-2)
             }
-            types.add(new ManifestType(id.type(), id.subType(),
-                attrsOf(registry, id.type(), id.subType(), arrayAttrNames)));
+            TypeDefinition def = registry.getTypeDefinition(id.type(), id.subType());
+            // FR-033: per-type docs. description is the existing TypeDefinition
+            // slot (empty when not yet sourced); rules/example/whenToUse are the
+            // new optional slots (null → omitted); parents the child-side claim.
+            String description = def != null ? def.getDescription() : "";
+            String rules = def != null ? def.getRules() : null;
+            String example = def != null ? def.getExample() : null;
+            String whenToUse = def != null ? def.getWhenToUse() : null;
+            List<String> parents = def != null ? def.getParents() : List.of();
+            types.add(new ManifestType(id.type(), id.subType(), description,
+                rules, example, whenToUse,
+                attrsOf(registry, id.type(), id.subType(), arrayAttrNames),
+                childrenOf(registry, id.type(), id.subType()),
+                parents));
         }
         types.sort(Comparator.comparing(t -> t.type() + "." + t.subType()));
 
         // commonAttrs: sorted by name. An array-shaped common attr is the scalar
         // value-type plus the orthogonal isArray flag (the retired stringarray
-        // subtype) — matching the cross-port {valueType, isArray} contract.
+        // subtype) — matching the cross-port {valueType, isArray} contract. The
+        // FR-033 (sub-step B): the per-commonAttr description is now sourced from the
+        // universal *.* entry of the embedded spec/metamodel/documentation.json and
+        // applied onto each CommonAttributeDef at composition time (pre-seal).
         List<ManifestAttr> commonAttrs = new ArrayList<>();
         for (CommonAttributeDef def : registry.getCommonAttributes()) {
-            commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false));
+            commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false,
+                def.description() != null ? def.description() : "", null, null, null));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 
@@ -500,8 +640,29 @@ public final class RegistryManifest {
                 sb.append("    {\n");
                 sb.append("      \"type\": ").append(jsonString(t.type())).append(",\n");
                 sb.append("      \"subType\": ").append(jsonString(t.subType())).append(",\n");
+                sb.append("      \"description\": ").append(jsonString(t.description())).append(",\n");
+                // FR-033: optional type-level docs, emitted ONLY when present, in
+                // fixed order between `description` and `attrs`.
+                if (t.rules() != null) {
+                    sb.append("      \"rules\": ").append(jsonString(t.rules())).append(",\n");
+                }
+                if (t.example() != null) {
+                    sb.append("      \"example\": ").append(jsonString(t.example())).append(",\n");
+                }
+                if (t.whenToUse() != null) {
+                    sb.append("      \"whenToUse\": ").append(jsonString(t.whenToUse())).append(",\n");
+                }
                 sb.append("      \"attrs\": ");
                 appendAttrs(sb, t.attrs(), "      ");
+                sb.append(",\n");
+                sb.append("      \"children\": ");
+                appendChildren(sb, t.children(), "      ");
+                // FR-033: optional `parents` (omitted when absent/empty), sorted ASCII.
+                if (t.parents() != null && !t.parents().isEmpty()) {
+                    sb.append(",\n");
+                    sb.append("      \"parents\": ");
+                    appendStringArray(sb, sortedCopy(t.parents()), "      ");
+                }
                 sb.append('\n');
                 sb.append("    }");
                 sb.append(i + 1 < types.size() ? ",\n" : "\n");
@@ -553,11 +714,103 @@ public final class RegistryManifest {
             sb.append(fieldIndent).append("\"valueType\": ")
               .append(a.valueType() == null ? "null" : jsonString(a.valueType())).append(",\n");
             sb.append(fieldIndent).append("\"isArray\": ").append(a.isArray() ? "true" : "false").append(",\n");
-            sb.append(fieldIndent).append("\"required\": ").append(a.required() ? "true" : "false").append('\n');
+            sb.append(fieldIndent).append("\"required\": ").append(a.required() ? "true" : "false").append(",\n");
+            // FR-033: `description` (required) follows `required`; the optional
+            // `rules`/`example`/`whenToUse` follow, emitted ONLY when present.
+            sb.append(fieldIndent).append("\"description\": ").append(jsonString(a.description()));
+            if (a.rules() != null) {
+                sb.append(",\n").append(fieldIndent).append("\"rules\": ").append(jsonString(a.rules()));
+            }
+            if (a.example() != null) {
+                sb.append(",\n").append(fieldIndent).append("\"example\": ").append(jsonString(a.example()));
+            }
+            if (a.whenToUse() != null) {
+                sb.append(",\n").append(fieldIndent).append("\"whenToUse\": ").append(jsonString(a.whenToUse()));
+            }
+            sb.append('\n');
             sb.append(itemIndent).append('}');
             sb.append(i + 1 < attrs.size() ? ",\n" : "\n");
         }
         sb.append(baseIndent).append(']');
+    }
+
+    /**
+     * Append the FR-033 constraint graph ({@code children}) at the given base
+     * indent. Each child: {@code childType}, {@code childSubType} (a string, a
+     * {@code "*"}, or a JSON array for a subtype list), {@code childName}, then the
+     * optional {@code min}/{@code max}/{@code named} (emitted ONLY when present;
+     * {@code max} may be the JSON {@code null} literal when defined-as-unbounded).
+     * Matches {@code JSON.stringify(_, _, 2)} layout.
+     */
+    private static void appendChildren(StringBuilder sb, List<ManifestChild> children, String baseIndent) {
+        if (children.isEmpty()) {
+            sb.append("[]");
+            return;
+        }
+        String itemIndent = baseIndent + "  ";
+        String fieldIndent = itemIndent + "  ";
+        sb.append("[\n");
+        for (int i = 0; i < children.size(); i++) {
+            ManifestChild c = children.get(i);
+            sb.append(itemIndent).append("{\n");
+            sb.append(fieldIndent).append("\"childType\": ").append(jsonString(c.childType())).append(",\n");
+            sb.append(fieldIndent).append("\"childSubType\": ").append(childSubTypeJson(c.childSubType())).append(",\n");
+            sb.append(fieldIndent).append("\"childName\": ").append(jsonString(c.childName()));
+            if (c.min() != null) {
+                sb.append(",\n").append(fieldIndent).append("\"min\": ").append(c.min());
+            }
+            if (c.max() != null || c.maxIsNull()) {
+                sb.append(",\n").append(fieldIndent).append("\"max\": ")
+                  .append(c.max() == null ? "null" : c.max().toString());
+            }
+            if (c.named() != null) {
+                sb.append(",\n").append(fieldIndent).append("\"named\": ").append(c.named() ? "true" : "false");
+            }
+            sb.append('\n');
+            sb.append(itemIndent).append('}');
+            sb.append(i + 1 < children.size() ? ",\n" : "\n");
+        }
+        sb.append(baseIndent).append(']');
+    }
+
+    /**
+     * Render a {@code childSubType} as JSON — a quoted string (the common case,
+     * incl. {@code "*"}) or a JSON array of strings when it is a subtype list.
+     */
+    private static String childSubTypeJson(Object childSubType) {
+        if (childSubType instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(jsonString(String.valueOf(list.get(i))));
+            }
+            return sb.append(']').toString();
+        }
+        return jsonString(childSubType == null ? "" : childSubType.toString());
+    }
+
+    /** Append a JSON string-array at the given base indent (JSON.stringify(_, _, 2) layout). */
+    private static void appendStringArray(StringBuilder sb, List<String> values, String baseIndent) {
+        if (values.isEmpty()) {
+            sb.append("[]");
+            return;
+        }
+        String itemIndent = baseIndent + "  ";
+        sb.append("[\n");
+        for (int i = 0; i < values.size(); i++) {
+            sb.append(itemIndent).append(jsonString(values.get(i)));
+            sb.append(i + 1 < values.size() ? ",\n" : "\n");
+        }
+        sb.append(baseIndent).append(']');
+    }
+
+    /** A new ASCII-sorted copy (the byte-stable order; {@link String#compareTo}). */
+    private static List<String> sortedCopy(List<String> values) {
+        List<String> copy = new ArrayList<>(values);
+        copy.sort(Comparator.naturalOrder());
+        return copy;
     }
 
     /**

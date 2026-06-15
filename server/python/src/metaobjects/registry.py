@@ -25,12 +25,32 @@ class AttrSchema:
     # array-flagged attr through the array string-attr coercion (bare-string →
     # one-element list).
     is_array: bool = False
+    # FR-033 — the documentation surface (sourced from the embedded
+    # spec/metamodel/*.json in sub-step B1). ``description`` is required +
+    # non-empty in the canonical; the optional ``rules``/``example``/
+    # ``when_to_use`` are emitted only when present. Default empty/None keeps
+    # every existing AttrSchema(...) construction working (additive, frozen).
+    description: str = ""
+    rules: str | None = None
+    example: str | None = None
+    when_to_use: str | None = None
 
 
 @dataclass(frozen=True)
 class ChildRule:
     child_type: str
-    child_sub_type: str  # "*" wildcard matches any subtype
+    child_sub_type: str | list[str]  # "*" wildcard, a single subtype, or a list (FR-033)
+    # FR-033 — the strict structural constraint graph. ``child_name`` defaults to
+    # the any-name wildcard. Cardinality (``min``/``max``) is emitted only when
+    # set; ``max_is_null`` distinguishes a declared ``max: null`` (unbounded) from
+    # an absent ``max`` (mirrors Java's ``maxIsNull``). ``named`` records whether
+    # the child must carry an explicit name. All additive — existing
+    # ``ChildRule(child_type, child_sub_type)`` calls keep working via defaults.
+    child_name: str = "*"
+    min: int | None = None
+    max: int | None = None
+    max_is_null: bool = False
+    named: bool | None = None
 
 
 # factory(type, sub_type, name) -> a node instance
@@ -44,6 +64,17 @@ class TypeDefinition:
     factory: NodeFactory
     attrs: list[AttrSchema] = field(default_factory=list)
     child_rules: list[ChildRule] = field(default_factory=list)
+    # FR-033 — the documentation surface + child-side placement claim (sourced
+    # from the embedded spec/metamodel/*.json in sub-step B1). ``description`` is
+    # required + non-empty in the canonical; ``rules``/``example``/
+    # ``when_to_use`` are optional (emitted only when present); ``parents`` is the
+    # child-side placement claim (emitted only when non-empty, sorted ASCII). All
+    # additive with empty/None defaults.
+    description: str = ""
+    rules: str | None = None
+    example: str | None = None
+    when_to_use: str | None = None
+    parents: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> tuple[str, str]:
@@ -101,6 +132,14 @@ class TypeRegistry:
             factory=definition.factory,
             attrs=list(definition.attrs),
             child_rules=list(definition.child_rules),
+            # FR-033 — carry the documentation surface + placement claim onto the
+            # per-registry copy (copy the mutable parents list so a later extend()
+            # cannot mutate the provider's shared list).
+            description=definition.description,
+            rules=definition.rules,
+            example=definition.example,
+            when_to_use=definition.when_to_use,
+            parents=list(definition.parents),
         )
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:

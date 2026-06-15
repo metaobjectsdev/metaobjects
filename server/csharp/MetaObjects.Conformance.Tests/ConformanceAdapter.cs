@@ -123,11 +123,17 @@ public static class ConformanceAdapter
             // (ADR-0023). The @dbColumnType subtype×value pairing validation additionally fires
             // in the always-on loader pass (ValidationPasses.ValidateDbColumnType).
             ["metaobjects-db"]            = MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-            // The "metaobjects-template" provider registers the @xmlText field marker (XML
-            // text-content extraction) on every field subtype. The template.prompt-under-entity
-            // nesting (FR-004 TS pilot) is NOT ported to C#; a fixture exercising that nesting
-            // stays a known-gap in conformance-expected-failures.json.
-            ["metaobjects-template"]      = MetaObjects.Template.TemplateTypesProvider.Instance,
+            // FR-033 concern providers — the UI / query-surface attrs (@filterable / @sortable
+            // / view.currency @locale / layout.dataGrid) and the prompt / extract attrs
+            // (@xmlText / @example / @instruction / enum overlays / object.value @normalize /
+            // template.* attrs) are re-homed out of core into dedicated data-driven providers
+            // (reading spec/metamodel/ui.json + prompt.json), matching the TS provider split.
+            ["metaobjects-ui"]            = MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+            ["metaobjects-prompt"]        = MetaObjects.Template.PromptMetaDataProvider.Instance,
+            // Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
+            // provider "metaobjects-template"; map it to the renamed prompt provider — the same
+            // alias TS / Java / Python keep.
+            ["metaobjects-template"]      = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Test-only — provider-extension-* fixtures.
             ["example-template-briefing"] = new ExampleTemplateBriefingProvider(),
             ["cycle-a"]                   = new NoopTestProvider("cycle-a", "cycle-b"),

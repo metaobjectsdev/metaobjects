@@ -126,6 +126,17 @@ class ErrorCode(str, Enum):
     # emit this yet (the T6 guard is deferred — like TS, it belongs in the parser);
     # the enum tracks the shared corpus code so resolution/desugar stay aligned.
     ERR_RELATIVE_REF_IN_CANONICAL = "ERR_RELATIVE_REF_IN_CANONICAL"
+    # FR-033 — strict structural-placement vocabulary. ERR_CHILD_NOT_ALLOWED: a
+    # structural child (field/identity/source/validator/… — not an attr) is placed
+    # under a parent whose registered childRules do not admit it (the structural
+    # analogue of ERR_UNKNOWN_ATTR; strict-load only). ERR_INVALID_METAMODEL_
+    # CONSTRAINT: a provider set's merged constraint graph contains a contradiction
+    # (dangling/unsatisfiable/bad-cardinality/closed-set-clash/cycle/attr conflict).
+    # Cross-language vocabulary; the Python loader does not emit these yet, but the
+    # enum tracks the shared corpus codes (S-B2 manifest scoping tightens placement;
+    # the validate()-time structural enforcement is the next sub-step).
+    ERR_CHILD_NOT_ALLOWED = "ERR_CHILD_NOT_ALLOWED"
+    ERR_INVALID_METAMODEL_CONSTRAINT = "ERR_INVALID_METAMODEL_CONSTRAINT"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

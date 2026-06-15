@@ -23,10 +23,25 @@ export class TypeId {
 export interface ChildRule {
   /** `"*"` matches any type. */
   childType: string;
-  /** `"*"` matches any subtype. */
-  childSubType: string;
+  /**
+   * `"*"` matches any subtype. A list (FR-033) admits any one of several
+   * subtypes (e.g. a `source` child may be `["rdb", "view"]`).
+   */
+  childSubType: string | readonly string[];
   /** `"*"` matches any name. */
   childName: string;
+  /**
+   * FR-033 — cardinality lower bound. A required child has `min >= 1`. Optional
+   * on the interface for back-compat with rules authored before FR-033.
+   */
+  min?: number;
+  /**
+   * FR-033 — cardinality upper bound; `null` means unbounded (0..∞). Optional
+   * for back-compat.
+   */
+  max?: number | null;
+  /** FR-033 — whether the child must carry an explicit name. */
+  named?: boolean;
 }
 
 export interface AttrSchema {
@@ -63,6 +78,12 @@ export interface AttrSchema {
   allowedValues?: readonly AttrValue[];
   /** Human/AI-facing description of what the attribute means. */
   description: string;
+  /** FR-033 — prose documenting the complex rules enforced in code. Optional. */
+  rules?: string;
+  /** FR-033 — an example value, shown only in the provider detail page. Optional. */
+  example?: string;
+  /** FR-033 — guidance on when to reach for this attribute. Optional. */
+  whenToUse?: string;
 }
 
 export interface TypeDefinition {
@@ -74,6 +95,18 @@ export interface TypeDefinition {
   /** The coarse value-type classification, for (type, subType)s whose nodes
    *  carry a typed value (field, attr). Absent for non-value-bearing types. */
   dataType?: DataType;
+  /**
+   * FR-033 — the child-side placement claim: the `type.subType`s under which a
+   * node of this type is allowed. Additive (an extension provider names a parent
+   * without editing the parent's definition). Optional.
+   */
+  parents?: readonly string[];
+  /** FR-033 — prose documenting the complex rules enforced in code. Optional. */
+  rules?: string;
+  /** FR-033 — an example, shown only in the provider detail page. Optional. */
+  example?: string;
+  /** FR-033 — guidance on when to reach for this type/subType. Optional. */
+  whenToUse?: string;
 }
 
 export class TypeRegistry {
@@ -260,9 +293,16 @@ export function childRuleMatches(
   rule: ChildRule,
   child: { type: string; subType: string; name: string },
 ): boolean {
+  // FR-033 — childSubType may be a wildcard, a single subtype, or a list of
+  // admitted subtypes.
+  const subTypeMatches =
+    rule.childSubType === CHILD_RULE_WILDCARD ||
+    (Array.isArray(rule.childSubType)
+      ? rule.childSubType.includes(child.subType)
+      : rule.childSubType === child.subType);
   return (
     (rule.childType === CHILD_RULE_WILDCARD || rule.childType === child.type) &&
-    (rule.childSubType === CHILD_RULE_WILDCARD || rule.childSubType === child.subType) &&
+    subTypeMatches &&
     (rule.childName === CHILD_RULE_WILDCARD || rule.childName === child.name)
   );
 }

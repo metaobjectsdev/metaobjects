@@ -1,7 +1,5 @@
 package com.metaobjects.template;
 
-import com.metaobjects.attr.IntAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import java.util.ArrayList;
@@ -27,20 +25,13 @@ public final class PromptTemplate extends MetaTemplate {
                .description("Template (LLM prompt) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
-            // SP-G Unit 6a: shared template attrs are declared here (not on the
-            // attr-free template.base). @payloadRef is REQUIRED on template.prompt
-            // (matches TS / C# / Python).
-            registerSharedAttrs(def, true);
-
-            // Prompt-overlay attributes (template.prompt only)
-            def.optionalAttributeWithConstraints(ATTR_MAX_TOKENS)
-               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_REQUIRED_SLOTS)
-               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_MODEL)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_RESPONSE_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // FR-033: the shared template attrs (@payloadRef [REQUIRED] / @textRef /
+            // @format / @maxChars / @owner / @since / @requiredTags) and the prompt
+            // overlay (@maxTokens / @requiredSlots / @model / @responseRef) are
+            // re-homed to the metaobjects-prompt concern provider (reads
+            // spec/metamodel/prompt.json's template.prompt extends). The any-attr
+            // wildcard is inherited from template.base. Accessors below read the
+            // attr values at runtime, independent of where the schema is registered.
         });
     }
 

@@ -12,4 +12,6 @@ com.metaobjects.documentation.DocumentationMetaDataProvider
 com.metaobjects.view.ViewTypesMetaDataProvider
 com.metaobjects.layout.LayoutTypesMetaDataProvider
 com.metaobjects.template.TemplateTypesMetaDataProvider
+com.metaobjects.presentation.ui.UiTypesMetaDataProvider
+com.metaobjects.template.PromptTypesMetaDataProvider
 com.metaobjects.object.CoreObjectsMetaDataProvider

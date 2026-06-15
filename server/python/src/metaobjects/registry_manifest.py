@@ -30,8 +30,8 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRINGARRAY,
 )
 from .meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
-from .registry import AttrSchema, TypeRegistry
-from .shared.base_types import SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW
+from .registry import AttrSchema, ChildRule, TypeDefinition, TypeRegistry
+from .shared.base_types import SUBTYPE_BASE, TYPE_ATTR, TYPE_METADATA, TYPE_VIEW
 from .shared.structural import KEY_IS_ARRAY
 
 # Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason category
@@ -130,13 +130,23 @@ def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     is_legacy_string_array = attr.value_type == ATTR_SUBTYPE_STRINGARRAY
     is_array = attr.is_array or is_legacy_string_array
     value_type = ATTR_SUBTYPE_STRING if is_legacy_string_array else attr.value_type
-    # Fixed key order: name, valueType, isArray, required.
-    return {
+    # Fixed key order: name, valueType, isArray, required, description, then the
+    # optional rules/example/whenToUse (FR-033) — emitted ONLY when present so
+    # absent keys stay absent (dict insertion order → byte-stable).
+    out: dict[str, object] = {
         "name": attr.name,
         "valueType": value_type,
         "isArray": is_array,
         "required": attr.required,
+        "description": attr.description,
     }
+    if attr.rules is not None:
+        out["rules"] = attr.rules
+    if attr.example is not None:
+        out["example"] = attr.example
+    if attr.when_to_use is not None:
+        out["whenToUse"] = attr.when_to_use
+    return out
 
 
 def _sorted_attrs(attrs: list[AttrSchema]) -> list[dict[str, object]]:
@@ -172,6 +182,66 @@ def _sorted_per_type_attrs(
     return rows
 
 
+def _child_sub_type_key(child_sub_type: str | list[str]) -> str:
+    """Canonical sort/dedupe key for a child rule's subType: the string itself,
+    or a comma-joined list (matches the TS ``childSubTypeKey``)."""
+    if isinstance(child_sub_type, list):
+        return ",".join(child_sub_type)
+    return child_sub_type
+
+
+def _to_manifest_child(rule: ChildRule) -> dict[str, object]:
+    """Normalize one structural ``ChildRule`` to the manifest's child shape (FR-033).
+
+    Fixed key order: ``childType``, ``childSubType`` (a string, ``"*"``, or a
+    list of admitted subtypes), ``childName``, then the optional cardinality
+    ``min``/``max``/``named`` — emitted ONLY when set on the rule. ``max`` may be
+    the explicit JSON ``null`` literal when declared-unbounded (``max_is_null``);
+    an absent ``max`` is omitted entirely. Mirrors the Java ``ManifestChild``.
+    """
+    out: dict[str, object] = {
+        "childType": rule.child_type,
+        "childSubType": rule.child_sub_type,
+        "childName": rule.child_name,
+    }
+    if rule.min is not None:
+        out["min"] = rule.min
+    if rule.max is not None or rule.max_is_null:
+        out["max"] = rule.max  # None → JSON null literal (declared-unbounded)
+    if rule.named is not None:
+        out["named"] = rule.named
+    return out
+
+
+def _sorted_children(definition: TypeDefinition) -> list[dict[str, object]]:
+    """Build the FR-033 constraint graph for one (type, subType) from its
+    STRUCTURAL child rules — every ``ChildRule`` whose ``child_type`` is NOT the
+    attr type (the strict model has no any-attr wildcard; an ``attr`` child rule
+    is dropped). Sorted + de-duped by ``(childType, childSubTypeKey, childName)``,
+    matching the TS reference's ``sortedChildren``.
+
+    NOTE: Python's current ``child_rules`` are broad / carry no cardinality, so
+    the emitted content will be wrong until S-B2a sources the strict graph from
+    spec/metamodel/*.json — that is the expected intermediate (VALUE-level) diff.
+    """
+    by_key: dict[str, dict[str, object]] = {}
+    for rule in definition.child_rules:
+        if rule.child_type == TYPE_ATTR:
+            continue  # attr requirement is the attrs block; strict model has no attr wildcard
+        child = _to_manifest_child(rule)
+        key = f"{rule.child_type} {_child_sub_type_key(rule.child_sub_type)} {rule.child_name}"
+        by_key.setdefault(key, child)
+    children = list(by_key.values())
+    children.sort(
+        key=lambda c: (
+            c["childType"],  # type: ignore[index]
+            _child_sub_type_key(c["childSubType"]),  # type: ignore[arg-type]
+            c["childName"],  # type: ignore[index]
+        )
+    )
+    return children
+
+
 def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     """Build the canonical registry-manifest object from an assembled registry.
 
@@ -189,15 +259,28 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     for definition in registry._defs.values():  # noqa: SLF001 (no public iterator)
         if _is_excluded_type_subtype(definition.type, definition.sub_type):
             continue  # metadata.base anchor (C-5) / generic view.* controls (B-2)
-        types.append(
-            {
-                "type": definition.type,
-                "subType": definition.sub_type,
-                "attrs": _sorted_per_type_attrs(
-                    definition.attrs, definition.type, definition.sub_type
-                ),
-            }
+        # Fixed TS key order: type, subType, description, optional
+        # rules/example/whenToUse (only when present), attrs, children, optional
+        # parents (only when non-empty + sorted ASCII). Insertion order on the
+        # dict → byte-stable; absent optional keys are omitted entirely.
+        type_dict: dict[str, object] = {
+            "type": definition.type,
+            "subType": definition.sub_type,
+            "description": definition.description,
+        }
+        if definition.rules is not None:
+            type_dict["rules"] = definition.rules
+        if definition.example is not None:
+            type_dict["example"] = definition.example
+        if definition.when_to_use is not None:
+            type_dict["whenToUse"] = definition.when_to_use
+        type_dict["attrs"] = _sorted_per_type_attrs(
+            definition.attrs, definition.type, definition.sub_type
         )
+        type_dict["children"] = _sorted_children(definition)
+        if definition.parents:
+            type_dict["parents"] = sorted(definition.parents)
+        types.append(type_dict)
     types.sort(key=lambda t: f"{t['type']}.{t['subType']}")
 
     common_attrs = _sorted_attrs(registry.get_common_attrs())

@@ -35,6 +35,11 @@ public enum ErrorCode
     ERR_PROVIDER_MISSING_DEPENDENCY,
     ERR_PROVIDER_ATTR_CONFLICT,
     ERR_SUBTYPE_RULE_VIOLATION,
+    // FR-033 — a STRUCTURAL child (field/identity/source/validator/… — not an attr)
+    // is placed under a parent whose registered childRules do not admit it (the
+    // structural analogue of ERR_UNKNOWN_ATTR). Strict-load only; a no-op under
+    // wildcard childRules. Misplaced attrs keep the ERR_UNKNOWN_ATTR path.
+    ERR_CHILD_NOT_ALLOWED,
     ERR_OVERLAY_NO_TARGET,
     ERR_MALFORMED_YAML,
     ERR_YAML_COERCION,

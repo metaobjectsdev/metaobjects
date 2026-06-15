@@ -150,11 +150,24 @@ public class ConformanceTest {
             // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
             // under this canonical name — template.* / @responseRef / @xmlText, the
             // AI prompt-construction vocab) maps to Java's TemplateTypesMetaDataProvider
-            // (id "template-types"). Java also folds template-types into the
-            // "metaobjects-core-types" alias; the two checks are independent set
-            // memberships, so a fixture listing both still resolves.
+            // (id "template-types"). FR-033 re-homed the template/prompt ATTRS into the
+            // "metaobjects-prompt" concern provider, so the back-compat alias now also
+            // requires it. Java folds template-types into "metaobjects-core-types"; the
+            // checks are independent set memberships, so a fixture listing both resolves.
             "metaobjects-template", List.of(
-                "template-types"
+                "template-types",
+                "metaobjects-prompt"
+            ),
+            // FR-033 — the cross-port "metaobjects-ui" / "metaobjects-prompt" concern
+            // providers. Java registers them under their own (already-canonical) ids
+            // via the ServiceLoader SPI, so these are identity aliases documenting the
+            // backing provider — kept explicit so the availability check is honest if
+            // a provider id is ever renamed.
+            "metaobjects-ui", List.of(
+                com.metaobjects.presentation.ui.UiTypesMetaDataProvider.PROVIDER_ID
+            ),
+            "metaobjects-prompt", List.of(
+                com.metaobjects.template.PromptTypesMetaDataProvider.PROVIDER_ID
             )
         );
 

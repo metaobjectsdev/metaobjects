@@ -3,7 +3,8 @@ import { composeRegistry, type MetaDataTypeProvider } from "../src/provider.js";
 import { coreTypesProvider, coreProviders, registerCoreTypes } from "../src/core-types.js";
 import { dbProvider } from "../src/persistence/db/db-provider.js";
 import { docProvider } from "../src/core/documentation/doc-provider.js";
-import { templateProvider } from "../src/template/template-provider.js";
+import { promptProvider } from "../src/template/prompt-provider.js";
+import { uiProvider } from "../src/presentation/ui/ui-provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import {
@@ -95,16 +96,20 @@ describe("coreTypesProvider", () => {
     expect(registry.defaultSubTypeOf(TYPE_METADATA)).toBe(SUBTYPE_ROOT);
   });
 
-  it("coreProviders is a four-provider bundle: coreTypesProvider + dbProvider + docProvider + templateProvider", () => {
-    // templateProvider (the @xmlText field marker + template.* attrs incl. @responseRef)
-    // is part of the core bundle so the cross-port registry manifest carries the
-    // template/extract vocabulary. @responseRef is a TS-pilot attr carved out of the
-    // emitted manifest (see registry-manifest-exclusions), but still registered here.
-    expect(coreProviders).toHaveLength(4);
+  it("coreProviders is a five-provider bundle: coreTypesProvider + dbProvider + docProvider + promptProvider + uiProvider", () => {
+    // FR-033 S1-field-A re-homed the field's filter/sort/teaching/extract/storage
+    // attrs out of core into the concern providers. promptProvider (renamed from
+    // templateProvider; id metaobjects-prompt) carries @xmlText/@example/@instruction
+    // + the field.enum extract attrs + the object.value @normalize default; uiProvider
+    // (new; id metaobjects-ui) carries @filterable/@sortable/@sortableDefaultOrder.
+    // Both are part of the core bundle so the cross-port registry manifest carries
+    // the same composed vocabulary as before (byte-identical).
+    expect(coreProviders).toHaveLength(5);
     expect(coreProviders[0]).toBe(coreTypesProvider);
     expect(coreProviders[1]).toBe(dbProvider);
     expect(coreProviders[2]).toBe(docProvider);
-    expect(coreProviders[3]).toBe(templateProvider);
+    expect(coreProviders[3]).toBe(promptProvider);
+    expect(coreProviders[4]).toBe(uiProvider);
   });
 
   it("registerCoreTypes registers the structural types but not the DB-domain attrs", () => {

@@ -55,8 +55,25 @@ public static class Provider
         {
             provider.RegisterTypes(registry);
         }
+
+        // FR-033 (sub-step B1) — after every provider has registered and BEFORE the
+        // loader seals the registry, source every type/attr/common-attr description
+        // (+ rules/example/whenToUse) from the shared, embedded spec/metamodel/*.json
+        // (the cross-port single source of truth, byte-identical to TS — never
+        // hand-copied). This OVERRIDES each provider's placeholder descriptions. Both
+        // the default loader registry and the conformance registry flow through this
+        // path, so both carry the canonical descriptions.
+        registry.ApplySpecDescriptions(SpecReader.Value);
+
         return registry;
     }
+
+    /// <summary>
+    /// FR-033 — the embedded spec/metamodel reader, parsed once (the 15 JSON files are
+    /// immutable assembly resources) and reused across every compose.
+    /// </summary>
+    private static readonly Lazy<MetaObjects.Registry.Spec.SpecMetamodelReader> SpecReader =
+        new(MetaObjects.Registry.Spec.SpecMetamodelReader.Load);
 
     // ------------------------------------------------------------------
     // Stable topological sort — O(n²), n is a handful of providers.

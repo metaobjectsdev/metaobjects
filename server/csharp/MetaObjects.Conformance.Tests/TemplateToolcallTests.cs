@@ -18,7 +18,7 @@ public class TemplateToolcallTests
 {
     private static LoadResult LoadJson(string json, string id)
     {
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = FullCoreRegistry.Compose();
         var loader = new MetaDataLoader(registry);
         return loader.Load(new IMetaDataSource[]
         {
@@ -33,7 +33,7 @@ public class TemplateToolcallTests
     [Fact]
     public void Core_provider_registers_template_toolcall_subtype()
     {
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = FullCoreRegistry.Compose();
         Assert.True(registry.Has(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_TOOLCALL));
     }
 
@@ -50,7 +50,7 @@ public class TemplateToolcallTests
         // Per ADR-0011 the toolcall subtype does NOT inherit the prompt/output
         // generic attrs. It declares its own minimal set: toolName + payloadRef
         // + owner + since. @textRef and @format are intentionally absent.
-        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var registry = FullCoreRegistry.Compose();
         var def = registry.Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_TOOLCALL);
         Assert.NotNull(def);
 

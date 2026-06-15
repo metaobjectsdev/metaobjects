@@ -1,6 +1,5 @@
 package com.metaobjects.template;
 
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import static com.metaobjects.template.TemplateConstants.*;
@@ -26,36 +25,14 @@ public final class OutputTemplate extends MetaTemplate {
                .description("Template (non-LLM output) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
-            // SP-G Unit 6a: shared template attrs are declared here (not on the
-            // attr-free template.base). @payloadRef is REQUIRED on template.output
-            // (matches TS / C# / Python).
-            registerSharedAttrs(def, true);
-
-            // @promptStyle — closed enum (guide|inline|exampleOnly), default "guide".
-            // Validation (out-of-set rejection) is enforced in
-            // ValidationPhase#validateTemplates in the same post-load pass that
-            // enforces @format; same pattern, same reason (CustomConstraint
-            // applicability doesn't fire for concrete subtypes at addChild time).
-            def.optionalAttributeWithConstraints(ATTR_PROMPT_STYLE)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-
-            // @kind — closed enum (document|email), default "document". Closed-set
-            // membership is enforced in ValidationPhase#validateTemplates (same
-            // pattern/reason as @format / @promptStyle). The conditional ref
-            // requirements (email → @subjectRef + @htmlBodyRef; document → @textRef)
-            // are likewise enforced there.
-            def.optionalAttributeWithConstraints(ATTR_KIND)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-
-            // Email part-refs (template.output @kind="email"). Optional 2-layer
-            // logical (group/source) textRefs; conditional presence enforced in
-            // ValidationPhase#validateTemplates.
-            def.optionalAttributeWithConstraints(ATTR_SUBJECT_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_HTML_BODY_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_TEXT_BODY_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // FR-033: the shared template attrs (@payloadRef [REQUIRED] / @textRef /
+            // @format / @maxChars / @owner / @since / @requiredTags) and the output
+            // overlay (@promptStyle / @kind / @subjectRef / @htmlBodyRef /
+            // @textBodyRef) are re-homed to the metaobjects-prompt concern provider
+            // (reads spec/metamodel/prompt.json's template.output extends). The
+            // closed-set + conditional-ref checks (@format / @promptStyle / @kind,
+            // email refs) remain enforced post-load in ValidationPhase. The any-attr
+            // wildcard is inherited from template.base.
         });
     }
 

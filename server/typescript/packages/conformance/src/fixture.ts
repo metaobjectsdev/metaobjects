@@ -43,7 +43,20 @@ export function isContractOnlyFixture(fix: Fixture): boolean {
 	);
 }
 
-const DEFAULT_PROVIDERS = ["metaobjects-core-types"];
+// FR-033 S1-field-A: the default provider set for a fixture with no providers.json
+// is the FULL core bundle (core types + the four concern providers), NOT
+// core-types alone. The field's filter/sort/teaching/extract/storage attrs were
+// re-homed out of core-types into the db/ui/prompt concern providers, so a fixture
+// exercising @filterable/@storage/@example/@normalize/... needs those providers
+// composed, which keeps the cross-port corpus's no-providers.json fixtures green.
+// (The non-TS ports reconcile their fixture-default provider sets in S5.)
+const DEFAULT_PROVIDERS = [
+	"metaobjects-core-types",
+	"metaobjects-db",
+	"metaobjects-documentation",
+	"metaobjects-prompt",
+	"metaobjects-ui",
+];
 
 export interface Fixture {
 	/** Scenario directory name. */

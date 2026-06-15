@@ -55,13 +55,15 @@ describe("layout registration in core types", () => {
     expect(registry.has(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID)).toBe(true);
   });
 
-  test("layout subtypes only accept attr children", () => {
+  test("layout subtypes have EMPTY childRules (attr-only type, no any-attr wildcard)", () => {
+    // FR-033 S1-simple: layout is attr-only; the "any attr" wildcard child rule
+    // is dropped. dataGrid's named attrs enforce strictly; a structural child
+    // would be ERR_CHILD_NOT_ALLOWED.
     const registry = new TypeRegistry();
     registerCoreTypes(registry);
     const def = registry.find(TYPE_LAYOUT, LAYOUT_SUBTYPE_DATA_GRID);
     expect(def).toBeDefined();
-    expect(def!.childRules.length).toBe(1);
-    expect(def!.childRules[0]!.childType).toBe("attr");
+    expect(def!.childRules.length).toBe(0);
   });
 });
 

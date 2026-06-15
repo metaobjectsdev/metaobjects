@@ -17,13 +17,13 @@
               }
             },
             {
-              "field.string": {
+              "field.timestamp": {
                 "name": "createdAt",
                 "@autoSet": "onCreate"
               }
             },
             {
-              "field.string": {
+              "field.timestamp": {
                 "name": "updatedAt",
                 "@autoSet": "onUpdate"
               }

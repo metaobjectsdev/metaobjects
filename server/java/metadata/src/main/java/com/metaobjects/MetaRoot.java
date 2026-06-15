@@ -15,12 +15,10 @@
  */
 package com.metaobjects;
 
-import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.validator.MetaValidator;
-import com.metaobjects.view.MetaView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,18 +95,35 @@ public class MetaRoot extends MetaData {
             if (registry.isRegistered(TYPE_METADATA, SUBTYPE_ROOT)) {
                 return;
             }
+            // FR-033 (sub-step B2b) — metadata.root is the document-root WRAPPER, not
+            // declared in any spec/metamodel/*.json provider file (both this port and
+            // the TS reference HAND-CODE the root; it is the single documented
+            // hand-coded exception to the JSON-sourced model). The manifest's
+            // STRUCTURAL children block must byte-match the cross-port golden:
+            // description "Root metadata document" and EXACTLY the four genuinely-open
+            // structural wildcards a document root legitimately holds — object / field
+            // / validator / template (mirrors the TS reference core-types.ts
+            // `def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document",
+            // [wildcard(TYPE_OBJECT), wildcard(TYPE_FIELD), wildcard(TYPE_VALIDATOR),
+            // wildcard(TYPE_TEMPLATE)])`). The previously-registered
+            // view/identity/relationship/layout STRUCTURAL root wildcards are removed
+            // to match the strict contract.
+            //
+            // The any-attr wildcard (attr/"*"/"*") is RETAINED: it is NOT a structural
+            // child (the emitter classifies attr-typed wildcards into the attrs facet,
+            // not the children graph, so root still emits attrs:[] and the four
+            // children — byte-identical to the golden), and the Java loader runtime
+            // legitimately attaches metadata attributes directly to the loader root
+            // node (e.g. document-level attrs via MetaRoot.addMetaAttr). Dropping it
+            // would break that runtime capability without changing the manifest.
             registry.registerType(MetaRoot.class, def -> def
                 .type(TYPE_METADATA).subType(SUBTYPE_ROOT)
-                .description("Root metadata node — tree root produced by MetaDataLoader")
+                .description("Root metadata document")
                 .optionalChild(MetaObject.TYPE_OBJECT, "*", "*")
                 .optionalChild(MetaField.TYPE_FIELD, "*", "*")
-                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*")
                 .optionalChild(MetaValidator.TYPE_VALIDATOR, "*", "*")
-                .optionalChild(MetaView.TYPE_VIEW, "*", "*")
-                .optionalChild(com.metaobjects.identity.MetaIdentity.TYPE_IDENTITY, "*", "*")
-                .optionalChild(com.metaobjects.relationship.MetaRelationship.TYPE_RELATIONSHIP, "*", "*")
-                .optionalChild(com.metaobjects.layout.MetaLayout.TYPE_LAYOUT, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
+                .optionalChild(com.metaobjects.attr.MetaAttribute.TYPE_ATTR, "*", "*")
             );
             log.debug("Registered MetaRoot type (metadata.root) with unified registry");
         } catch (Exception e) {

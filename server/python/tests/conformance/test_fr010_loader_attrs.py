@@ -12,7 +12,7 @@ Python loader, matching the Java pilot / C# port:
 from __future__ import annotations
 
 from metaobjects import MetaDataLoader
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_PROPERTIES,
@@ -32,7 +32,10 @@ from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_TEMPLATE
 
 
 def _registry():
-    return compose_registry([core_provider])
+    # FR-033 — the FR-010 field-teaching + template attrs are re-homed to the
+    # prompt domain provider (metaobjects-prompt); compose the full core bundle so
+    # they are present (mirrors the conformance default provider set).
+    return compose_registry(list(core_providers))
 
 
 def _load_json(json_text: str):

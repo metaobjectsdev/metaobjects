@@ -4,7 +4,6 @@
 // Colocated per ADR-0003. Mirrors typescript/packages/metadata/src/core/field/field-schema.ts.
 
 using MetaObjects.Core.Attr;
-using MetaObjects.Core.Query;
 
 namespace MetaObjects.Core.Field;
 
@@ -95,24 +94,11 @@ public static class FieldSchema
             Required: false,
             Description: "Number of digits to the right of the decimal point for decimal-typed fields."),
 
-        new AttrSchema(
-            Name: FieldConstants.FIELD_ATTR_FILTERABLE,
-            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
-            Required: false,
-            Description: "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."),
-
-        new AttrSchema(
-            Name: FieldConstants.FIELD_ATTR_SORTABLE,
-            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
-            Required: false,
-            Description: "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."),
-
-        new AttrSchema(
-            Name: FieldConstants.FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            AllowedValues: [.. QueryConstants.SORT_ORDER_VALUES],
-            Description: "Default sort direction applied when this field is the default sort field."),
+        // FR-033 — the UI / query-surface markers (@filterable / @sortable /
+        // @sortableDefaultOrder) are NO LONGER declared here. They are re-homed to the
+        // metaobjects-ui concern provider (UiMetaDataProvider, reads ui.json's field.*
+        // extends), matching the TS uiProvider split. Core keeps only the attrs it
+        // legitimately owns.
 
         new AttrSchema(
             Name: FieldConstants.FIELD_ATTR_AUTO_SET,
@@ -128,19 +114,10 @@ public static class FieldSchema
         // string-typed @column still fires because the DB provider is composed into the default
         // registry.)
 
-        // FR-010 field-teaching attrs (any field): free-text shown in the generated
-        // output-format prompt fragment. Never carried in comments.
-        new AttrSchema(
-            Name: FieldConstants.FIELD_ATTR_EXAMPLE,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description: "FR-010: an example value for this field, shown in the generated output-format prompt fragment."),
-
-        new AttrSchema(
-            Name: FieldConstants.FIELD_ATTR_INSTRUCTION,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: false,
-            Description: "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."),
+        // FR-033 — the FR-010 field-teaching prompt markers (@example / @instruction)
+        // are NO LONGER declared here. They are re-homed to the metaobjects-prompt
+        // concern provider (PromptMetaDataProvider, reads prompt.json's field.* extends),
+        // alongside @xmlText and the field.enum tolerant-extract overlays.
     ];
 
     /// <summary>The @currency attr — only on field.currency.</summary>
@@ -174,48 +151,10 @@ public static class FieldSchema
             "codegen references the type (resolved via per-port codegen config) instead of " +
             "materializing it. Default false. Not a field attr — it lives on the type declaration.");
 
-    /// <summary>
-    /// The @enumAlias attr — only on field.enum. Map of off-vocabulary token → canonical
-    /// member, feeding the FR-010 tolerant extract alias-fold (runtime aliases win on conflict).
-    /// </summary>
-    public static readonly AttrSchema EnumAliasAttr = new AttrSchema(
-        Name: FieldConstants.FIELD_ATTR_ENUM_ALIAS,
-        ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
-        Required: false,
-        Description: "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold.");
-
-    /// <summary>
-    /// The @enumDoc attr — only on field.enum. Map of member → human-readable description,
-    /// shown per-member in the FR-010 'guide'-style output-format prompt fragment.
-    /// </summary>
-    public static readonly AttrSchema EnumDocAttr = new AttrSchema(
-        Name: FieldConstants.FIELD_ATTR_ENUM_DOC,
-        ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
-        Required: false,
-        Description: "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment.");
-
-    /// <summary>
-    /// FR-011: the @coerceDefault attr — only on field.enum. String member symbol used as the
-    /// extract fallback when an LLM sends a present-but-uncoercible value. Loader-validated to be
-    /// one of the field's @values (ERR_BAD_ATTR_VALUE otherwise).
-    /// </summary>
-    public static readonly AttrSchema CoerceDefaultAttr = new AttrSchema(
-        Name: FieldConstants.FIELD_ATTR_COERCE_DEFAULT,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-        Required: false,
-        Description: "Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values.");
-
-    /// <summary>
-    /// FR-011: the @normalize attr — on field.enum (per-field) and object.value (object default).
-    /// Closed enum (none|collapse|strip); controls the ASCII normalization applied during tolerant
-    /// enum extract. Resolved field → owning object.value → global default (strip).
-    /// </summary>
-    public static readonly AttrSchema NormalizeAttr = new AttrSchema(
-        Name: FieldConstants.FIELD_ATTR_NORMALIZE,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-        Required: false,
-        Default: FieldConstants.NORMALIZE_DEFAULT,
-        AllowedValues: new object[] { "none", "collapse", "strip" },
-        Description: "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). " +
-                     "On field.enum it is per-field; on object.value it is the default for the object's enum fields.");
+    // FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
+    // @coerceDefault / @normalize) and object.value's @normalize default are NO LONGER
+    // declared here. They are re-homed to the metaobjects-prompt concern provider
+    // (PromptMetaDataProvider, reads prompt.json's field.enum + object.value extends),
+    // matching the TS promptProvider split. Core keeps @values / @provided (the
+    // structural enum vocabulary it legitimately owns).
 }

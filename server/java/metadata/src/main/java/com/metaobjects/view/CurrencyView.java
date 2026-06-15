@@ -1,6 +1,5 @@
 package com.metaobjects.view;
 
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,9 +33,8 @@ public class CurrencyView extends MetaView {
                    .description("Currency view — optional @locale for downstream formatting")
                    .inheritsFrom(TYPE_VIEW, SUBTYPE_BASE);
 
-                def.optionalAttributeWithConstraints(ATTR_LOCALE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
+                // FR-033: @locale is re-homed to the metaobjects-ui concern provider
+                // (reads spec/metamodel/ui.json's view.currency extends).
             });
             log.debug("Registered CurrencyView type with unified registry");
         } catch (Exception e) {

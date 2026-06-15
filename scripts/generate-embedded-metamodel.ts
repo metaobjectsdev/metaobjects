@@ -1,0 +1,151 @@
+#!/usr/bin/env bun
+//
+// generate-embedded-metamodel.ts
+//
+// Reads the canonical declarative metamodel definitions spec/metamodel/*.json
+// (FR-033 ProviderDefinition data) and emits, per file, a typed TS module that
+// embeds the parsed definition as a `ProviderDefinition` object literal so the
+// provider can register itself wherever the on-disk spec/ tree is unavailable
+// (bundled / published builds). The byte-stable embed is the JSON re-serialized
+// with 2-space indent; the embed module exports it as a typed const.
+//
+// One module per spec/metamodel/<name>.json →
+//   server/typescript/packages/metadata/src/core/<name>/<name>-definition.embedded.ts
+// exporting `<NAME>_DEFINITION` (e.g. field.json → FIELD_DEFINITION in
+// core/field/field-definition.embedded.ts).
+//
+// Mirrors scripts/generate-embedded-library.ts. Run:
+//   bun run scripts/generate-embedded-metamodel.ts
+//
+// A deep-equal drift test gates each output (e.g.
+//   server/typescript/packages/metadata/test/field-definition-embed.test.ts).
+
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { dirname, join, posix, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve the repo root relative to THIS script (walk up to the dir containing
+// both spec/ and server/). No hardcoded absolute paths.
+function findRepoRoot(start: string): string {
+  let dir = start;
+  while (true) {
+    if (existsSync(join(dir, "spec")) && existsSync(join(dir, "server"))) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error("Could not locate repo root (dir containing spec/ and server/)");
+    }
+    dir = parent;
+  }
+}
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = findRepoRoot(scriptDir);
+
+const specDir = join(repoRoot, "spec", "metamodel");
+const metadataSrc = join(repoRoot, "server", "typescript", "packages", "metadata", "src");
+
+if (!existsSync(specDir)) {
+  console.error(`error: spec/metamodel not found at ${specDir}`);
+  process.exit(1);
+}
+
+const jsonFiles = readdirSync(specDir)
+  .filter((n) => n.endsWith(".json"))
+  .sort();
+
+if (jsonFiles.length === 0) {
+  console.error(`error: no *.json files found under ${specDir}`);
+  process.exit(1);
+}
+
+// Concept → source-dir (relative to the metadata `src/`) map. Covers EVERY
+// metamodel concept so a later provider conversion never has to re-touch this
+// file. A concept with no entry errors loudly (NOT a silent `core/<name>`
+// default) — an unmapped future spec/metamodel/<x>.json must fail the run.
+const CONCEPT_DIRS: Record<string, string> = {
+  // core/
+  field: "core/field",
+  attr: "core/attr",
+  validator: "core/validator",
+  identity: "core/identity",
+  relationship: "core/relationship",
+  object: "core/object",
+  documentation: "core/documentation",
+  // persistence/
+  origin: "persistence/origin",
+  source: "persistence/source",
+  db: "persistence/db",
+  // presentation/
+  layout: "presentation/layout",
+  view: "presentation/view",
+  ui: "presentation/ui",
+  // depth-1
+  template: "template",
+  // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider
+  // → promptProvider, S1-A). Its data file is spec/metamodel/prompt.json.
+  prompt: "template",
+};
+
+/**
+ * Resolve the output file + export const + the relative import to provider-data.js.
+ * field → core/field/field-definition.embedded.ts, exporting FIELD_DEFINITION.
+ */
+function targetFor(name: string): {
+  outFile: string;
+  constName: string;
+  providerDataImport: string;
+} {
+  const dir = CONCEPT_DIRS[name];
+  if (dir === undefined) {
+    throw new Error(
+      `no source-dir mapping for metamodel concept "${name}" — add it to CONCEPT_DIRS in scripts/generate-embedded-metamodel.ts`,
+    );
+  }
+  const constName = `${name.toUpperCase()}_DEFINITION`;
+  const outFile = join(metadataSrc, ...dir.split("/"), `${name}-definition.embedded.ts`);
+  // Compute the import to provider-data.js RELATIVELY from the embed file's dir,
+  // as a POSIX path with a guaranteed leading "./". core/field/ → ../../provider-data.js;
+  // template/ → ../provider-data.js.
+  const rel = posix.relative(
+    posix.dirname(toPosix(outFile)),
+    toPosix(join(metadataSrc, "provider-data.js")),
+  );
+  const providerDataImport = rel.startsWith(".") ? rel : `./${rel}`;
+  return { outFile, constName, providerDataImport };
+}
+
+/** Normalize an OS path to POSIX separators (no-op on POSIX, fixes Windows). */
+function toPosix(p: string): string {
+  return p.split(/[\\/]/).join("/");
+}
+
+for (const file of jsonFiles) {
+  const name = file.replace(/\.json$/, "");
+  const { outFile, constName, providerDataImport } = targetFor(name);
+  if (!existsSync(dirname(outFile))) {
+    console.error(`error: target dir for "${name}" does not exist: ${dirname(outFile)}`);
+    process.exit(1);
+  }
+
+  const raw = readFileSync(join(specDir, file), "utf-8");
+  // Round-trip through parse so the embedded literal is canonical 2-space JSON
+  // (matches the gate test, which parses the same on-disk file).
+  const parsed = JSON.parse(raw);
+  const literal = JSON.stringify(parsed, null, 2);
+
+  const source = `// AUTO-GENERATED by scripts/generate-embedded-metamodel.ts — DO NOT EDIT.
+// Canonical source: repo-root spec/metamodel/${file}
+// Regenerate: bun run scripts/generate-embedded-metamodel.ts
+//
+// Embeds the canonical FR-033 ProviderDefinition so the provider can register
+// itself wherever the on-disk spec/ tree is unavailable (bundled builds).
+import type { ProviderDefinition } from "${providerDataImport}";
+
+export const ${constName}: ProviderDefinition = ${literal};
+`;
+
+  writeFileSync(outFile, source, "utf-8");
+  console.log(`wrote ${constName} to ${relative(repoRoot, outFile)}`);
+}
