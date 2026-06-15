@@ -67,6 +67,23 @@ describe("renderValueObjectFile", () => {
     expect(out).not.toContain("UpdateSchema");
   });
 
+  test("field.object with a FULLY-QUALIFIED @objectRef strips to the bare type + sibling module", () => {
+    // Regression: a cross-package @objectRef (acme::ai::SourceLens) must resolve to
+    // the BARE short name in BOTH the emitted interface field type and the
+    // <Ref>InsertSchema reference — the raw FQN produces an invalid TS identifier
+    // (`acme::ai::SourceLens`) and a colon-laden import path.
+    const wo = metaObject(OBJECT_SUBTYPE_VALUE, "Brief");
+    const citations = metaField(FIELD_SUBTYPE_OBJECT, "citations");
+    citations.setAttr("objectRef", "acme::ai::SourceLens");
+    citations.isArray = true;
+    wo.addChild(citations);
+
+    const out = renderValueObjectFile(wo);
+    expect(out).toMatch(/citations\?:\s*SourceLens\[\];/);
+    expect(out).toContain("SourceLensInsertSchema");
+    expect(out).not.toContain("acme::ai::");
+  });
+
   test("required-field-only value object emits no question marks", () => {
     const sl = metaObject(OBJECT_SUBTYPE_VALUE, "SourceLens");
     for (const name of ["title", "url", "snippet"]) {

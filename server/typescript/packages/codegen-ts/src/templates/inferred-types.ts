@@ -207,7 +207,10 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refImp = imp(`${ref}@./${ref}.js`);
+      // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
+      // referenced interface + its sibling module are named by the BARE short name.
+      const base = stripPackage(ref);
+      const refImp = imp(`${base}@./${base}.js`);
       return field.isArray ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.isArray ? code`unknown[]` : code`unknown`;

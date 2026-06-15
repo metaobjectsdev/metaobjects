@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
-         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM,
+         FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX,
          MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -49,6 +49,26 @@ describe("renderZodValidators", () => {
     const out = renderZodValidators(order).toString();
     expect(out).toContain('z.enum(["DRAFT", "PUBLISHED"])');
     expect(out).not.toContain("z.string()"); // no fallback string type for enum field
+  });
+
+  test("field.object with a FULLY-QUALIFIED @objectRef references <Bare>InsertSchema, not the FQN", () => {
+    // Regression: a cross-package @objectRef (acme::ai::SourceLens) must resolve to
+    // the BARE short name for the <Ref>InsertSchema symbol + its sibling module —
+    // the raw FQN emits an invalid `acme::ai::SourceLensInsertSchema` identifier.
+    const brief = metaObject(OBJECT_SUBTYPE_ENTITY, "Brief");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    brief.addChild(id);
+    const lens = metaField(FIELD_SUBTYPE_OBJECT, "lens");
+    lens.setAttr("objectRef", "acme::ai::SourceLens");
+    brief.addChild(lens);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    brief.addChild(primary);
+
+    const out = renderZodValidators(brief).toString();
+    expect(out).toContain("SourceLensInsertSchema");
+    expect(out).not.toContain("acme::ai::");
   });
 
   test("validator.regex emits .regex(new RegExp(pattern)) — Zod expects a RegExp object, not a string", () => {
