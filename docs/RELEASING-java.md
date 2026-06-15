@@ -10,6 +10,10 @@ and gotchas. Each language ecosystem gets its own guide per the policy
 documented there. Java tags are independent from TS (`v7.0.0` for Java; TS
 is on a separate `0.x` track).
 
+**After any release, walk [`RELEASING-docs-checklist.md`](RELEASING-docs-checklist.md)** —
+it lists every doc + website (this repo, metaobjects.dev, metaobjects.com) whose version
+references must be refreshed.
+
 ## What gets published
 
 The reactor (`server/java/pom.xml`) lists 13 publishable modules. As of

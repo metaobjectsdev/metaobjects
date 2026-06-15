@@ -3,6 +3,10 @@
 How to publish the `@metaobjectsdev/*` TypeScript packages. Read the **Golden rules** first —
 each one cost a broken/burned release to learn.
 
+> **After any release, walk [`RELEASING-docs-checklist.md`](RELEASING-docs-checklist.md)** —
+> it lists every doc + website (this repo, metaobjects.dev, metaobjects.com) whose version
+> references must be refreshed. A version bump is not done until that list is walked.
+
 ## What gets published
 
 The 12 publish-candidate packages (versioned in lockstep unless a package gets an isolated patch):
