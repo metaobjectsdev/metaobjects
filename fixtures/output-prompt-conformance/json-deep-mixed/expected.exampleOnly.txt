@@ -1,0 +1,20 @@
+{
+  "requestId": "req-42",
+  "payload": {
+    "title": "Spring Sale",
+    "author": {
+      "name": "Ada",
+      "contact": {
+        "email": "ada@example.com",
+        "verified": true
+      }
+    },
+    "sections": [
+      {
+        "heading": "Intro",
+        "priority": "LOW"
+      }
+    ],
+    "summary": "All good"
+  }
+}

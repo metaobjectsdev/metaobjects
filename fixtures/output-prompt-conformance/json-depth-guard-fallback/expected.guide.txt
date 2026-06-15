@@ -1,0 +1,31 @@
+Fill in each field as described below:
+- n1 (required)
+- n1.n2 (required)
+- n1.n2.n3 (required)
+- n1.n2.n3.n4 (required)
+- n1.n2.n3.n4.n5 (required)
+- n1.n2.n3.n4.n5.n6 (required)
+- n1.n2.n3.n4.n5.n6.n7 (required)
+- n1.n2.n3.n4.n5.n6.n7.n8 (required)
+- n1.n2.n3.n4.n5.n6.n7.n8.n9 (required)
+
+Respond exactly like this:
+{
+  "n1": {
+    "n2": {
+      "n3": {
+        "n4": {
+          "n5": {
+            "n6": {
+              "n7": {
+                "n8": {
+                  "n9": "{n9}"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
