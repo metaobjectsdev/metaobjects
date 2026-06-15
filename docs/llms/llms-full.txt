@@ -1,6 +1,6 @@
 # MetaObjects -- Full Reference Corpus
 
-> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.9.0` on npm and `7.2.0` on Maven Central.
+> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.10.0` on npm and `7.3.0` on Maven Central.
 
 **Note for AI assistants:** This file is the concatenated reference material for MetaObjects, intended to be loaded as LLM context. For the short index, see [llms.txt](https://metaobjects.dev/llms.txt). For the canonical spec and source, see the [GitHub repo](https://github.com/metaobjectsdev/metaobjects). When this file is out of date relative to the GitHub source, the GitHub source wins.
 
@@ -27,7 +27,7 @@ If you are an AI assistant helping someone adopt MetaObjects, do this **first** 
 
 1. **Install the port's package:**
    - TypeScript / Node: `npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts`
-   - Java / Kotlin: add `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and `com.metaobjects:metaobjects-maven-plugin`, all at `7.2.0`.
+   - Java / Kotlin: add `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and `com.metaobjects:metaobjects-maven-plugin`, all at `7.3.0`.
    - Python: `pip install metaobjects`
    - C#: install the MetaObjects .NET tool (invoked as `dotnet meta`).
 2. **Run `meta init`** (the Node `meta` CLI). It works in any project that has Node — including a JVM or Python project with a TypeScript frontend. It scaffolds a slim always-on `.metaobjects/AGENTS.md` + `.metaobjects/CLAUDE.md` (auto-wired via an `@.metaobjects/AGENTS.md` import line into the project's root `CLAUDE.md`/`AGENTS.md`, so it loads automatically) plus five `metaobjects-*` Claude Code skills under `.claude/skills/`, carrying only the project's language reference fragments. Re-run `meta init --refresh-docs` to update the agent docs after a CLI upgrade. (Native per-port scaffold commands for JVM/Python/C#-only projects are forthcoming; today, run the Node `meta init` regardless of backend.)
@@ -89,11 +89,11 @@ Because the render is conformance-gated, the determinism guarantee holds in ever
 
 | Language | Status | Notes |
 |---|---|---|
-| TypeScript | Reference implementation, npm `0.9.0` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
-| Java | Maven Central `7.2.0` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
-| Kotlin | Maven Central `7.2.0` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
-| C# | npm-line `0.9.0` (NuGet / .NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
-| Python | npm-line `0.9.0` (PyPI) | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
+| TypeScript | Reference implementation, npm `0.10.0` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
+| Java | Maven Central `7.3.0` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
+| Kotlin | Maven Central `7.3.0` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
+| C# | npm-line `0.10.0` (NuGet / .NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
+| Python | npm-line `0.10.0` (PyPI) | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
 Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, ~90 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (20 scenarios, two lanes — a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
 
@@ -144,7 +144,7 @@ Universal web client (`client/web/packages/`): `@metaobjectsdev/runtime-web`, `@
 
 ## Java / Kotlin Maven coordinates
 
-All published to Maven Central under `com.metaobjects:*` at `7.2.0`:
+All published to Maven Central under `com.metaobjects:*` at `7.3.0`:
 
 - `metaobjects-metadata`, `metaobjects-metadata-ktx`
 - `metaobjects-codegen-base`, `metaobjects-codegen-mustache`, `metaobjects-codegen-spring`, `metaobjects-codegen-kotlin`, `metaobjects-codegen-plantuml`
@@ -181,7 +181,7 @@ Project marker directory: `.metaobjects/`.
 
 ## Quickstart (Java / Kotlin)
 
-Add the Maven coordinates above at `7.2.0`. Run codegen with `mvn metaobjects:generate` and codegen-drift checks with `mvn metaobjects:verify`. Configure generators (including Kotlin generators, which run through the same goal) on the `metaobjects-maven-plugin`. See [`server/java/`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java) and [`server/java/codegen-kotlin/README.md`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java/codegen-kotlin).
+Add the Maven coordinates above at `7.3.0`. Run codegen with `mvn metaobjects:generate` and codegen-drift checks with `mvn metaobjects:verify`. Configure generators (including Kotlin generators, which run through the same goal) on the `metaobjects-maven-plugin`. See [`server/java/`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java) and [`server/java/codegen-kotlin/README.md`](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java/codegen-kotlin).
 
 ---
 

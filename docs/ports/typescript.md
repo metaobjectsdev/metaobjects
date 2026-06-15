@@ -1,6 +1,6 @@
 # TypeScript port
 
-The reference implementation. Published to npm at `0.7.0-rc.1` as 12
+The reference implementation. Published to npm at `0.10.0` as 12
 `@metaobjectsdev/*` packages on the `latest` tag. Targets Node-compatible
 runtimes; Bun-first dev workflow.
 

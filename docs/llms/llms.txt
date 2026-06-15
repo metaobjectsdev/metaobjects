@@ -1,6 +1,6 @@
 # MetaObjects
 
-> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.9.0` on npm and `7.2.0` on Maven Central.
+> A cross-language metadata standard for declaring typed entity models that drive code generation, runtime metadata access, drift detection, and prompt construction across TypeScript, Java, Kotlin, C#, and Python. Apache 2.0. Shipping at `0.10.0` on npm and `7.3.0` on Maven Central.
 
 The metamodel is the durable spine; generated code is the disposable artifact. Substrate is local-first: typed metadata lives in your repo, generated code is idiomatic per-language output that runs without any MetaObjects dependency at runtime. If `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) disappears tomorrow, you keep working code in every language.
 
@@ -10,7 +10,7 @@ If you are an AI assistant helping someone adopt MetaObjects in their project, d
 
 1. **Install the port's package** for the project's stack:
    - **TypeScript / Node**: `npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts`
-   - **Java / Kotlin**: add the Maven dependencies `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and the `com.metaobjects:metaobjects-maven-plugin`, all at `7.2.0`.
+   - **Java / Kotlin**: add the Maven dependencies `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and the `com.metaobjects:metaobjects-maven-plugin`, all at `7.3.0`.
    - **Python**: `pip install metaobjects`
    - **C#**: install the MetaObjects .NET tool (`dotnet tool install` the MetaObjects CLI tool; invoked as `dotnet meta`).
 
@@ -39,10 +39,10 @@ MetaObjects pillars are capabilities of equal weight per implementation, not sep
 - **Drift detection** — catch divergence between generated code and metadata before it ships. `verify` is one verb with explicit subverbs (ADR-0021): `verify --codegen` (regen-and-diff against committed output), `verify --templates` (prompt `{{field}}` ↔ payload-VO drift), and `verify --db` (live-DB schema drift, Node `meta` only). Surfaces drift as build-time breakage rather than a production incident.
 - **Prompt construction** — treat LLM prompts as governed metadata instead of strings scattered across services. A typed payload declared as a projection (so payload bloat and token cost are a diff, not a mystery), external provider-resolved prompt text, and a logic-less Mustache engine that renders deterministically: snapshot-testable in CI, byte-stable so an exact-prefix prompt-cache hit doesn't break on a stray whitespace, and drift-checked at build time so a renamed field can't silently degrade a prompt. Conformance-gated, so the guarantee holds in every language port. Render + payload-VO codegen + `verify` + `template.output` parser-on-receipt (FR-006) + the output-format prompt fragment & tolerant `extract` parser (FR-010/FR-011) ship in all five ports today.
 
-## Implementations (npm `0.9.0` / Maven Central `7.2.0`)
+## Implementations (npm `0.10.0` / Maven Central `7.3.0`)
 
-- [TypeScript](https://github.com/metaobjectsdev/metaobjects/tree/main/server/typescript): the reference implementation. Published to npm at `0.9.0` across 12 `@metaobjectsdev/*` packages on the `latest` tag. 2500+ tests passing across the workspace. Bun-first dev workflow. Owns the canonical schema-migration toolchain used by every port (ADR-0015).
-- [Java](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java): 13 publishable Maven modules under `com.metaobjects:*` at `7.2.0` on Maven Central. Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx, full FR-003 + FR-006 + FR-010/011 + FR-018 + FR5 family. Fully green across all conformance corpora.
+- [TypeScript](https://github.com/metaobjectsdev/metaobjects/tree/main/server/typescript): the reference implementation. Published to npm at `0.10.0` across 12 `@metaobjectsdev/*` packages on the `latest` tag. 2500+ tests passing across the workspace. Bun-first dev workflow. Owns the canonical schema-migration toolchain used by every port (ADR-0015).
+- [Java](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java): 13 publishable Maven modules under `com.metaobjects:*` at `7.3.0` on Maven Central. Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx, full FR-003 + FR-006 + FR-010/011 + FR-018 + FR5 family. Fully green across all conformance corpora.
 - [Kotlin](https://github.com/metaobjectsdev/metaobjects/tree/main/server/java/codegen-kotlin): a Kotlin codegen pipeline on KotlinPoet plus `metadata-ktx` — a Kotlin facade over the Java MetaObjects core. Ships via the Java reactor (`metaobjects-metadata-ktx`, `metaobjects-codegen-kotlin`). Persistence-conformance runs against Testcontainers Postgres through Exposed.
 - [C#](https://github.com/metaobjectsdev/metaobjects/tree/main/server/csharp): loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. The `dotnet meta` tool ships `gen` and the codegen-side `verify` subverbs (`--codegen`, `--templates`); schema migration is Node `meta` only (ADR-0015).
 - [Python](https://github.com/metaobjectsdev/metaobjects/tree/main/server/python): loader + canonical serializer + conformance + render + verify + codegen + an `ObjectManager` runtime layer. The `metaobjects` console-script ships `gen` and codegen-side `verify`. Fully green across all conformance corpora.
@@ -55,7 +55,7 @@ MetaObjects deliberately does **not** ship one universal binary. Schema operatio
 - Project config file: `metaobjects.config.ts` (configures `outDir`, `targets`, `dialect`, `dbImport`, `apiPrefix`, `columnNamingStrategy`, and the `generators` array)
 - Project marker directory: `.metaobjects/`
 - Install (TypeScript reference): `npm install -D @metaobjectsdev/cli` (or `bun add @metaobjectsdev/cli`)
-- Install (Java): `<dependency><groupId>com.metaobjects</groupId><artifactId>metaobjects-metadata</artifactId><version>7.2.0</version></dependency>` plus per-concern artifacts (`metaobjects-codegen-spring`, `metaobjects-omdb`, `metaobjects-maven-plugin`, etc.)
+- Install (Java): `<dependency><groupId>com.metaobjects</groupId><artifactId>metaobjects-metadata</artifactId><version>7.3.0</version></dependency>` plus per-concern artifacts (`metaobjects-codegen-spring`, `metaobjects-omdb`, `metaobjects-maven-plugin`, etc.)
 - Install (Kotlin): same Maven coordinates — add `metaobjects-metadata-ktx` and `metaobjects-codegen-kotlin` to a JVM/Kotlin project.
 - Install (Python): `pip install metaobjects`
 - Install (C#): the MetaObjects .NET tool, invoked as `dotnet meta`.
@@ -99,7 +99,7 @@ Universal web-client under `client/web/packages/`:
 
 ## Java / Kotlin Maven coordinates
 
-All published to Maven Central under `com.metaobjects:*` at `7.2.0`:
+All published to Maven Central under `com.metaobjects:*` at `7.3.0`:
 
 - `metaobjects-metadata`, `metaobjects-metadata-ktx`
 - `metaobjects-codegen-base`, `metaobjects-codegen-mustache`, `metaobjects-codegen-spring`, `metaobjects-codegen-kotlin`, `metaobjects-codegen-plantuml`
