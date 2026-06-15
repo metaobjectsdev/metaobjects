@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "overlay": true,
+          "children": [
+            { "field.string": { "name": "notes" } }
+          ]
+        }
+      }
+    ]
+  }
+}

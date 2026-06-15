@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme::sales",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "extends": "acme::common::BaseEntity",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      }
+    ]
+  }
+}
