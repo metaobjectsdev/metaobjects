@@ -1,0 +1,81 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "extends": "acme::common::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "customerId"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "total",
+                "@currency": "USD"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkCustomer",
+                "@fields": [
+                  "customerId"
+                ],
+                "@references": "acme::sales::Customer"
+              }
+            },
+            {
+              "field.string": {
+                "name": "notes"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "extends": "acme::common::BaseEntity",
+          "children": [
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "extends": "acme::common::BaseEntity",
+          "children": [
+            { "field.uuid": { "name": "customerId" } },
+            { "field.currency": { "name": "total", "@currency": "USD" } },
+            { "identity.reference": { "name": "fkCustomer", "@fields": "customerId", "@references": "acme::sales::Customer" } }
+          ]
+        }
+      }
+    ]
+  }
+}
