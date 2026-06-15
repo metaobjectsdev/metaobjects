@@ -46,7 +46,7 @@ public class ExtractConformanceTests
     {
         // FR-011: lock the corpus size so a deleted fixture fails CI rather than
         // silently reducing coverage. Mirrors the TS / Java / Python count guards.
-        Assert.Equal(31, Cases().Count());
+        Assert.Equal(33, Cases().Count());
     }
 
     [Theory]

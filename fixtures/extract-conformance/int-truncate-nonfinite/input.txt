@@ -1,0 +1,1 @@
+{"score":"42.9","delta":"-3.9","over":"Infinity"}
