@@ -20,6 +20,13 @@
 //                                      NOT an error, NOT a warning. Own-only,
 //                                      so an inherited/overlaid declared attr
 //                                      (validated on its declaring node) is fine.
+//   5. Structural-child placement    — FR-033: under strict load a STRUCTURAL
+//      (Check 0b)                       child (field/identity/source/… — not an
+//                                      attr) not admitted by the parent's
+//                                      registered childRules is ERR_CHILD_NOT_
+//                                      ALLOWED (the structural analogue of #4). A
+//                                      no-op under today's wildcard childRules —
+//                                      the rail strict per-subtype rules use in S1.
 //
 // `default` values are NOT auto-applied — A3 is pure validation, not mutation.
 //
@@ -37,6 +44,7 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
+import { childRuleMatches } from "./registry.js";
 import { TYPE_FIELD } from "./shared/base-types.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 import {
@@ -159,6 +167,45 @@ function validateNode(
             { code: "ERR_UNKNOWN_ATTR", source: node.source },
           ),
         );
+      }
+    }
+  }
+
+  // --- Check 0b (FR-033): strict-load structural-child placement ---
+  //
+  // The structural analogue of Check 0. A STRUCTURAL child (field/identity/
+  // source/validator/… — attrs never appear in ownChildren()) must be admitted
+  // by the parent's registered childRules under the same wildcard match
+  // semantics used everywhere (childType/childSubType/childName may be "*", and
+  // childSubType may be a list). A child the rules do not admit → ERR_CHILD_NOT_
+  // ALLOWED. A NO-OP today: every parent carries wildcard structural childRules
+  // (e.g. field.* / validator.*) that admit everything — the rail strict
+  // per-subtype rules will use in S1. Lax mode keeps the legacy open policy.
+  //
+  // An UNREGISTERED parent (no def) cannot be judged here (ERR_UNKNOWN_TYPE /
+  // ERR_UNKNOWN_SUBTYPE is reported elsewhere); skip so we never double-report.
+  if (strict) {
+    const parentDef = registry.find(node.type, node.subType);
+    if (parentDef !== undefined) {
+      const rules = parentDef.childRules;
+      for (const child of node.ownChildren()) {
+        const admitted = rules.some((r) =>
+          childRuleMatches(r, {
+            type: child.type,
+            subType: child.subType,
+            name: child.name,
+          }),
+        );
+        if (!admitted) {
+          errors.push(
+            new ParseError(
+              `Child ${nodeLabel(child)} is not allowed under ${nodeLabel(node)} — ` +
+                `no registered child rule for ${typeKey} admits ` +
+                `(type='${child.type}', subType='${child.subType}', name='${child.name}')`,
+              { code: "ERR_CHILD_NOT_ALLOWED", source: node.source },
+            ),
+          );
+        }
       }
     }
   }

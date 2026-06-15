@@ -230,11 +230,10 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                    .asSingle();
 
-                // FR-010 teaching attrs — optional on any field subtype (inherited via field.base)
-                def.optionalAttributeWithConstraints(ATTR_EXAMPLE)
-                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-                def.optionalAttributeWithConstraints(ATTR_INSTRUCTION)
-                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                // FR-033: @example / @instruction (FR-010 teaching attrs) are
+                // re-homed to the metaobjects-prompt concern provider (reads
+                // spec/metamodel/prompt.json's field.* extends). No longer
+                // registered on field.base here.
 
                 // Phase B: generalized @default absent-fill string — optional on ANY field
                 // subtype (inherited via field.base). Per-type value validation (numeric parse,
@@ -256,12 +255,10 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_AUTO_SET)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-                def.optionalAttributeWithConstraints(ATTR_FILTERABLE)
-                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-                def.optionalAttributeWithConstraints(ATTR_SORTABLE)
-                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-                def.optionalAttributeWithConstraints(ATTR_SORTABLE_DEFAULT_ORDER)
-                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                // FR-033: @filterable / @sortable / @sortableDefaultOrder are
+                // re-homed to the metaobjects-ui concern provider (reads
+                // spec/metamodel/ui.json's field.* extends). No longer registered
+                // on field.base here.
                 def.optionalAttributeWithConstraints(ATTR_DB_INDEXED)
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)

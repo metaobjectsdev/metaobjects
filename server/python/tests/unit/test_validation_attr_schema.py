@@ -1,7 +1,7 @@
 """Unit tests for the attr-schema validation pass (Task P4.1)."""
 from __future__ import annotations
 
-from metaobjects.core_types import core_provider
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode, MetaError
 from metaobjects.loader.validation_passes import run_validations
 from metaobjects.meta.core.attr.attr_constants import (
@@ -24,7 +24,10 @@ from metaobjects.shared.base_types import (
 
 
 def _make_registry() -> TypeRegistry:
-    return compose_registry([core_provider])
+    # FR-033 — layout.dataGrid + view/field UI attrs (@pageSize / @filter / …) are
+    # re-homed to the UI domain provider (metaobjects-ui); compose the full core
+    # bundle so the validation pass sees their declared schemas.
+    return compose_registry(list(core_providers))
 
 
 def _errors_and_warnings(root: MetaData) -> tuple[list[MetaError], list[str]]:

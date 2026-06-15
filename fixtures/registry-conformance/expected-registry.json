@@ -3,2698 +3,3121 @@
     {
       "type": "attr",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype).",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "boolean",
-      "attrs": []
+      "description": "A boolean-valued metadata attribute. Coerces to and validates as true/false.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "class",
-      "attrs": []
+      "description": "A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "double",
-      "attrs": []
+      "description": "A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "filter",
-      "attrs": []
+      "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "int",
-      "attrs": []
+      "description": "A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "long",
-      "attrs": []
+      "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "properties",
-      "attrs": []
+      "description": "A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023).",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "attr",
       "subType": "string",
-      "attrs": []
+      "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "field",
       "subType": "base",
+      "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string).",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "boolean",
+      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "currency",
+      "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
+      "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "currency",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to 'USD' when omitted."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "date",
+      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
       "attrs": [
         {
           "name": "autoSet",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "decimal",
+      "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
+      "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "precision",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Total number of significant digits for decimal-typed fields."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "scale",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Number of digits to the right of the decimal point for decimal-typed fields."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "double",
+      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "enum",
+      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
+      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "coerceDefault",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values."
         },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "enumAlias",
           "valueType": "properties",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Map of alternate/off-vocabulary tokens to canonical enum members; feeds the FR-010 tolerant extract alias-fold."
         },
         {
           "name": "enumDoc",
           "valueType": "properties",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Map of enum member to a human-readable description; shown per-member in the FR-010 'guide'-style prompt fragment."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "normalize",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
         },
         {
           "name": "provided",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-019: marks an abstract package-level field.enum as externally provided — codegen references the type (resolved via per-port codegen config) instead of materializing it. Default false. Not a field attr — it lives on the type declaration."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "values",
           "valueType": "string",
           "isArray": true,
-          "required": true
+          "required": true,
+          "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "float",
+      "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "int",
+      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "long",
+      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "object",
+      "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
+      "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Name (or FQN) of the target object an object-typed field nests — drives nested-object (de)serialization."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "storage",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "string",
+      "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "maxLength",
           "valueType": "int",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum character length for string-typed fields (drives VARCHAR(n))."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "time",
+      "description": "Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME.",
       "attrs": [
         {
           "name": "autoSet",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "timestamp",
+      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
       "attrs": [
         {
           "name": "autoSet",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "field",
       "subType": "uuid",
+      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
       "attrs": [
-        {
-          "name": "autoSet",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "column",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
         },
         {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
         },
         {
           "name": "dbColumnType",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
         },
         {
           "name": "default",
           "valueType": null,
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
         },
         {
           "name": "example",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "maxLength",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "objectRef",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "precision",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
         },
         {
           "name": "required",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "scale",
-          "valueType": "int",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
         },
         {
           "name": "sortable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
         },
         {
           "name": "sortableDefaultOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
-        },
-        {
-          "name": "storage",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Default sort direction applied when this field is the default sort field."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
         },
         {
           "name": "xmlText",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "identity",
       "subType": "primary",
+      "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
       "attrs": [
         {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": true
+          "required": true,
+          "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite."
         },
         {
           "name": "generation",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "identity",
       "subType": "reference",
+      "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
       "attrs": [
         {
           "name": "enforce",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true (default), the backend physically enforces the reference (SQL FK constraint, document validation rule, graph edge guarantee). Set false to declare a logical reference for navigation/typing/codegen only — the value may dangle at the backend level."
         },
         {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": true
+          "required": true,
+          "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite."
         },
         {
           "name": "references",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Target of the reference. Bare entity name (e.g. 'Program') resolves to that entity's primary identity. Dotted forms ('Program.id' or 'Program.fieldA,fieldB') target an explicit field set on the entity."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "identity",
       "subType": "secondary",
+      "description": "A secondary index (unique by default via @unique).",
       "attrs": [
         {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": true
+          "required": true,
+          "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite."
         },
         {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "layout",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "layout",
       "subType": "dataGrid",
+      "description": "A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders.",
       "attrs": [
         {
           "name": "columns",
           "valueType": "string",
           "isArray": true,
-          "required": false
+          "required": false,
+          "description": "Flat ordered list of field names to display as grid columns."
         },
         {
           "name": "defaultSortField",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Field name the grid is sorted by on initial render. Must reference an actual field on the entity."
         },
         {
           "name": "defaultSortOrder",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Initial sort direction for the default sort field: 'asc' or 'desc'."
         },
         {
           "name": "filter",
           "valueType": "filter",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time."
         },
         {
           "name": "filterable",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "When true, the generated grid exposes column filtering UI."
         },
         {
           "name": "pageSize",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Number of rows per page in the generated data grid."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "metadata",
       "subType": "root",
-      "attrs": []
+      "description": "Root metadata document",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*"
+        },
+        {
+          "childType": "object",
+          "childSubType": "*",
+          "childName": "*"
+        },
+        {
+          "childType": "template",
+          "childSubType": "*",
+          "childName": "*"
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*"
+        }
+      ]
     },
     {
       "type": "object",
       "subType": "base",
-      "attrs": [
+      "description": "Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly.",
+      "attrs": [],
+      "children": [
         {
-          "name": "discriminator",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
-          "name": "discriminatorValue",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "childType": "identity",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "layout",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "source",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "object",
       "subType": "entity",
+      "description": "An object that owns its data: own identity, writable sources, and lifecycle. The default object subtype — a bare `object:` key resolves to entity. May co-locate templates (template.prompt and friends) with the owning entity.",
+      "rules": "object.entity owns data — it declares its own identity, its primary source must be a writable @kind (read-only kinds may appear only in a read role), and it carries lifecycle. A field carrying origin.* is derived ⇒ read-only wherever it lives, including on an entity. Templates (template.*) may be nested so a prompt can be co-located with its owning entity. See ADR-0028 (object taxonomy).",
       "attrs": [
         {
           "name": "discriminator",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-014: names the field on this entity (resolvable via extends:) that holds the subtype-discriminator value. Subtypes of this entity declare @discriminatorValue to bind their rows to a discriminator value. The discriminator field itself is an ordinary field declaration (typically field.enum or field.int / field.string)."
         },
         {
           "name": "discriminatorValue",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity."
+        }
+      ],
+      "children": [
+        {
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "identity",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "layout",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "relationship",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "source",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "template",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "object",
       "subType": "projection",
-      "attrs": [
+      "description": "A derived read-only representation of entities. Its fields are extends-bound / origin-derived / self-declared-under-external-assembly, all read-only at the subtype level. Identity is optional and MUST extend an entity identity; sources are restricted to read-only @kinds. The declared field set IS the exposure (inclusive, fail-closed).",
+      "rules": "object.projection is a derived read-only representation: every field is extends-bound, origin-derived, or self-declared-under-external-assembly, and all are read-only at the subtype level. Identity is optional and, when present, MUST extend an entity identity. Sources are restricted to read-only @kinds. The declared field set IS the exposure — an inclusive list, fail-closed. A projection NEVER declares relationships (derivation is expressed via @via, not a relationship child) and NEVER co-locates templates — hence its child set omits both relationship and template. See ADR-0028 (object taxonomy, projection).",
+      "attrs": [],
+      "children": [
         {
-          "name": "discriminator",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         },
         {
-          "name": "discriminatorValue",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
+          "childType": "identity",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "layout",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "source",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "object",
       "subType": "value",
+      "description": "A value object — pure shape with NO identity and NO source, ever. Constructed (by caller / assembly / embedding), never populated from a store. May `extends` an entity's fields to reuse shape. Equality is by content.",
+      "rules": "object.value is pure shape: it NEVER declares an identity and NEVER declares a source, in any role. It is constructed — by a caller, by assembly, or by embedding — and is never populated from a backing store. It may `extends` an entity's fields to reuse their shape. @normalize is the object-level default ASCII normalization mode applied to this value's enum fields' tolerant extract (each field may still override per-field). See ADR-0028 (object taxonomy, value purity).",
       "attrs": [
-        {
-          "name": "discriminator",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
-        {
-          "name": "discriminatorValue",
-          "valueType": "string",
-          "isArray": false,
-          "required": false
-        },
         {
           "name": "normalize",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
+        }
+      ],
+      "children": [
+        {
+          "childType": "field",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "identity",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "layout",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "relationship",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "source",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },
     {
       "type": "origin",
       "subType": "aggregate",
+      "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
       "attrs": [
         {
           "name": "agg",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max."
         },
         {
           "name": "of",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes')."
         },
         {
           "name": "via",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "origin",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "origin",
       "subType": "collection",
+      "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
       "attrs": [
         {
           "name": "via",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "origin",
       "subType": "passthrough",
+      "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
       "attrs": [
         {
           "name": "from",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Dotted Entity.field reference identifying the source value this projection field passes through (e.g. 'Program.title')."
         },
         {
           "name": "via",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks')."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "relationship",
       "subType": "aggregation",
+      "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).",
       "attrs": [
         {
           "name": "cardinality",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')."
         },
         {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."
         },
         {
           "name": "onDelete",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
           "name": "onUpdate",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on key update. Default cascade."
         },
         {
           "name": "sourceRefField",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
         },
         {
           "name": "symmetric",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."
         },
         {
           "name": "through",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "relationship",
       "subType": "association",
+      "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).",
       "attrs": [
         {
           "name": "cardinality",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')."
         },
         {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."
         },
         {
           "name": "onDelete",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
           "name": "onUpdate",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on key update. Default cascade."
         },
         {
           "name": "sourceRefField",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
         },
         {
           "name": "symmetric",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."
         },
         {
           "name": "through",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "relationship",
       "subType": "base",
+      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly.",
+      "rules": "@cardinality is an open string at the metamodel level ('one'/'many', and Java-canonical composite forms such as 'many-to-one'); @objectRef names the target entity. M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. @onDelete/@onUpdate carry referential actions (cascade/set-null/restrict/no-action).",
       "attrs": [
         {
           "name": "cardinality",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')."
         },
         {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."
         },
         {
           "name": "onDelete",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
           "name": "onUpdate",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on key update. Default cascade."
         },
         {
           "name": "sourceRefField",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
         },
         {
           "name": "symmetric",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."
         },
         {
           "name": "through",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "relationship",
       "subType": "composition",
+      "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
+      "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).",
       "attrs": [
         {
           "name": "cardinality",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Cardinality of the relationship target (e.g. 'one', 'many', 'many-to-one')."
         },
         {
           "name": "objectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Name or fully-qualified name of the target object the relationship points to (e.g. 'Week' or 'acme::vehicle::Car')."
         },
         {
           "name": "onDelete",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
           "name": "onUpdate",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Referential action on key update. Default cascade."
         },
         {
           "name": "sourceRefField",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Directed self-join disambiguator: names the source-side FK field on the junction (the other reference is the target side). Required only for directed/ambiguous self-join M:N. Mutually exclusive with @symmetric."
         },
         {
           "name": "symmetric",
           "valueType": "boolean",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Undirected self-join flag (union-on-read). Valid only when @objectRef == the declaring entity. Mutually exclusive with @sourceRefField."
         },
         {
           "name": "through",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Junction (through) entity name for M:N relationships — a third entity declaring two identity.reference children, one per FK side. The relationship's FK fields are derived from those references."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "source",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "source",
       "subType": "rdb",
+      "description": "The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural `name`), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.",
+      "rules": "ADR-0007: source declares where an object's data lives; rdb is the relational paradigm subtype. An object may declare multiple sources, distinguished by @role, with exactly ONE @role: \"primary\" per object (write-through CQRS: a writable table for writes plus a read-only view for reads). The physical name is the @table attr (or the @kind-matching alias), never the structural `name`. Read-only-ness is derived from @kind (table → writable; view / materializedView / storedProc / tableFunction → read-only). The pre-v2 dbTable / dbView subtypes are retired.",
       "attrs": [
         {
           "name": "function",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical SQL table-function name for source.rdb @kind: \"tableFunction\". Same internal slot as @table."
         },
         {
           "name": "kind",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "The kind of database object this source represents: table (default, writable), view, materializedView, storedProc, or tableFunction. Non-table kinds are read-only."
         },
         {
           "name": "materializedView",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical SQL materialized-view name for source.rdb @kind: \"materializedView\". Same internal slot as @table."
         },
         {
           "name": "parameterRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-015: name or FQN of an object.value describing the input shape of this source's callable interface. Permitted on @kind: \"storedProc\" / \"tableFunction\"; rejected on non-callable kinds (table / view / materializedView). Field children of the referenced object.value become the call-site parameter list in declaration order. Symmetric with template.@payloadRef in FR-004 — the typed-input pattern reuses object.value rather than minting a new parameter.* node type."
         },
         {
           "name": "proc",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical SQL stored-procedure name for source.rdb @kind: \"storedProc\". Same internal slot as @table."
         },
         {
           "name": "role",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Role this source plays when an object has multiple sources: primary (default, system of record), replica, index, cache, publish, or mirror."
         },
         {
           "name": "schema",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Optional database schema name (e.g. 'catalog', 'public'). Postgres defaults to 'public'; SQLite rejects any non-default value."
         },
         {
           "name": "table",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: Defaults from the source's bare structural `name` via the project's columnNamingStrategy when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias."
         },
         {
           "name": "view",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Physical SQL view name for source.rdb @kind: \"view\". Same internal slot as @table."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "template",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs.",
+      "rules": "A single MetaTemplate node class backs every template subtype (no subType→class dispatch); the subtype selects which reserved-attr set applies. @format (a closed-enum ATTRIBUTE, never a subtype) drives the render engine's escaper/whitespace behavior, so a new format costs one escaper + one enum value rather than a new subtype + cross-language port.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "template",
       "subType": "output",
+      "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs, the FR-010 @promptStyle, and the @kind + email part-refs.",
+      "rules": "output is either a document (@kind=\"document\" or absent → renders @textRef in @format to one string) or an email (@kind=\"email\" → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments.",
       "attrs": [
         {
           "name": "format",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Output format; drives the render engine's escaping/whitespace behavior."
         },
         {
           "name": "htmlBodyRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind=\"email\"."
         },
         {
           "name": "kind",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument)."
         },
         {
           "name": "maxChars",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Size budget for the rendered output, in characters."
         },
         {
           "name": "owner",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the owner of this template."
         },
         {
           "name": "payloadRef",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Reference to the payload (a view-object / projection) this template renders against."
         },
         {
           "name": "promptStyle",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments."
         },
         {
           "name": "requiredTags",
           "valueType": "string",
           "isArray": true,
-          "required": false
+          "required": false,
+          "description": "Output tags the rendered text must contain (drives the verify output-tag check)."
         },
         {
           "name": "since",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the version this template was introduced in."
         },
         {
           "name": "subjectRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind=\"email\"."
         },
         {
           "name": "textBodyRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body."
         },
         {
           "name": "textRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "template",
       "subType": "prompt",
+      "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef.",
+      "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation.",
       "attrs": [
         {
           "name": "format",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Output format; drives the render engine's escaping/whitespace behavior."
         },
         {
           "name": "maxChars",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Size budget for the rendered output, in characters."
         },
         {
           "name": "maxTokens",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Token budget for the rendered prompt (LLM-specific)."
         },
         {
           "name": "model",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Target model id (LLM-specific)."
         },
         {
           "name": "owner",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the owner of this template."
         },
         {
           "name": "payloadRef",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Reference to the payload (a view-object / projection) this template renders against."
         },
         {
           "name": "requiredSlots",
           "valueType": "string",
           "isArray": true,
-          "required": false
+          "required": false,
+          "description": "Slots that must resolve at render time (drives the verify check)."
         },
         {
           "name": "requiredTags",
           "valueType": "string",
           "isArray": true,
-          "required": false
+          "required": false,
+          "description": "Output tags the rendered text must contain (drives the verify output-tag check)."
         },
         {
           "name": "responseRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation)."
         },
         {
           "name": "since",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the version this template was introduced in."
         },
         {
           "name": "textRef",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "template",
       "subType": "toolcall",
+      "description": "A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs.",
+      "rules": "toolcall requires @toolName (the wire tool name surfaced to the LLM) AND @payloadRef (the output value-object the tool produces). @textRef is intentionally absent — a tool-call has no renderable text. Core keeps toolcall vendor-agnostic; vendor wire details (retry semantics, fallback shapes, parallel invocation, cache hints) are added by consumer providers via registry.extend(TYPE_TEMPLATE, \"toolcall\", { attributes: [...] }). The LLM-facing tool description reuses the @description documentation common attr (added to every type by docProvider), so it is not redeclared here.",
       "attrs": [
         {
           "name": "owner",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the owner of this toolcall."
         },
         {
           "name": "payloadRef",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Output value-object the tool produces (resolved against the metamodel)."
         },
         {
           "name": "since",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Governance: the version this toolcall was introduced in."
         },
         {
           "name": "toolName",
           "valueType": "string",
           "isArray": false,
-          "required": true
+          "required": true,
+          "description": "Wire tool name surfaced to the LLM (vendor-specific format)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "array",
+      "description": "Bounds the element count of an array-valued field via @min/@max.",
       "attrs": [
         {
           "name": "max",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "min",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "base",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
       "attrs": [
         {
           "name": "max",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "min",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "length",
+      "description": "Bounds string length / collection size via @min/@max.",
       "attrs": [
         {
           "name": "max",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "min",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "numeric",
+      "description": "Bounds a numeric value's magnitude via @min/@max.",
       "attrs": [
         {
           "name": "max",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "min",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "regex",
+      "description": "Requires the value match a regular expression (@pattern).",
       "attrs": [
         {
           "name": "max",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "min",
           "valueType": "int",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
         },
         {
           "name": "pattern",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "Regular expression the value must match."
         }
-      ]
+      ],
+      "children": []
     },
     {
       "type": "validator",
       "subType": "required",
-      "attrs": []
+      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "view",
       "subType": "base",
-      "attrs": []
+      "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own.",
+      "attrs": [],
+      "children": []
     },
     {
       "type": "view",
       "subType": "currency",
+      "description": "Currency display formatting (locale-aware via @locale).",
       "attrs": [
         {
           "name": "locale",
           "valueType": "string",
           "isArray": false,
-          "required": false
+          "required": false,
+          "description": "BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted."
         }
-      ]
+      ],
+      "children": []
     }
   ],
   "commonAttrs": [
@@ -2702,49 +3125,57 @@
       "name": "aliases",
       "valueType": "string",
       "isArray": true,
-      "required": false
+      "required": false,
+      "description": "Alternate names for this element. Aids AI authoring disambiguation, search, migration."
     },
     {
       "name": "deprecated",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "Text reason for deprecation. Presence ⇒ deprecated. Codegen emits @deprecated / [Obsolete] with this reason."
     },
     {
       "name": "description",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose)."
     },
     {
       "name": "notes",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "Internal-only rationale. Stays in metadata; never emitted to user-facing docs."
     },
     {
       "name": "replacedBy",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "FQN reference to the replacement element. Only meaningful with `deprecated`. Codegen appends 'Replaced by <ref>' to deprecation messages."
     },
     {
       "name": "seeAlso",
       "valueType": "string",
       "isArray": true,
-      "required": false
+      "required": false,
+      "description": "External documentation URLs. Codegen emits @see / <seealso href=...>."
     },
     {
       "name": "summary",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Optional supplement to @description; when @summary is unset, doc surfaces typically fall back to the first sentence of @description."
     },
     {
       "name": "title",
       "valueType": "string",
       "isArray": false,
-      "required": false
+      "required": false,
+      "description": "Short single-line human label (e.g. 'Email' for a `field.string email`). Optional supplement to description."
     }
   ],
   "defaultSubTypes": {

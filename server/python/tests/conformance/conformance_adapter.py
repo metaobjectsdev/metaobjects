@@ -9,7 +9,8 @@ from metaobjects import LoadResult, MetaDataLoader
 from metaobjects.core_types import core_provider, core_providers
 from metaobjects.documentation import doc_provider
 from metaobjects.meta.persistence.db.db_provider import db_provider
-from metaobjects.meta.template.template_provider import template_provider
+from metaobjects.meta.presentation.ui.ui_provider import ui_provider
+from metaobjects.meta.template.prompt_provider import prompt_provider
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template.meta_template import MetaTemplate
@@ -78,8 +79,18 @@ _PROVIDER_MAP: dict[str, Provider] = {
     # @dbColumnType) by extending the core field types (mirrors the TS adapter,
     # which maps "metaobjects-db" to the real dbProvider).
     db_provider.id: db_provider,                    # "metaobjects-db"
-    # The template/output domain provider — registers the @xmlText field marker.
-    template_provider.id: template_provider,        # "metaobjects-template"
+    # The prompt / AI + serialization domain provider — registers @xmlText / @example
+    # / @instruction (field), the field.enum tolerant-extract overlays, object.value
+    # @normalize, and the template.* per-subtype attrs (FR-033 re-home; mirrors the TS
+    # promptProvider, renamed from templateProvider).
+    prompt_provider.id: prompt_provider,            # "metaobjects-prompt"
+    # The UI / query-surface domain provider — registers @filterable / @sortable /
+    # @sortableDefaultOrder (field), view.currency @locale, layout.dataGrid attrs.
+    ui_provider.id: ui_provider,                    # "metaobjects-ui"
+    # Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
+    # provider "metaobjects-template"; map it to the renamed prompt provider — the same
+    # alias the TS adapter keeps (adapter.ts: "metaobjects-template": promptProvider).
+    "metaobjects-template": prompt_provider,
     # Test-only — provider-extension-* fixtures.
     "example-template-briefing": _example_template_briefing_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),

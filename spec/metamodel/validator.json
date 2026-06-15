@@ -1,0 +1,56 @@
+{
+  "provider": "metaobjects-core-types",
+  "types": [
+    {
+      "type": "validator",
+      "subType": "base",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "min", "min": 0, "max": 1, "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "int", "name": "max", "min": 0, "max": 1, "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)." }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "required",
+      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field."
+    },
+    {
+      "type": "validator",
+      "subType": "length",
+      "description": "Bounds string length / collection size via @min/@max.",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "min", "min": 0, "max": 1, "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "int", "name": "max", "min": 0, "max": 1, "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)." }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "regex",
+      "description": "Requires the value match a regular expression (@pattern).",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "min", "min": 0, "max": 1, "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "int", "name": "max", "min": 0, "max": 1, "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "string", "name": "pattern", "min": 0, "max": 1, "description": "Regular expression the value must match." }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "numeric",
+      "description": "Bounds a numeric value's magnitude via @min/@max.",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "min", "min": 0, "max": 1, "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "int", "name": "max", "min": 0, "max": 1, "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)." }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "array",
+      "description": "Bounds the element count of an array-valued field via @min/@max.",
+      "children": [
+        { "type": "attr", "subType": "int", "name": "min", "min": 0, "max": 1, "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)." },
+        { "type": "attr", "subType": "int", "name": "max", "min": 0, "max": 1, "description": "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)." }
+      ]
+    }
+  ]
+}

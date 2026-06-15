@@ -6,11 +6,8 @@ from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
-    ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
-    ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRING,
-    ATTR_SUBTYPE_STRINGARRAY,
     ATTR_SUBTYPES,
 )
 from .meta.core.field import field_constants as fc
@@ -18,32 +15,19 @@ from .meta.core.validator import validator_constants as vc
 from .meta.core.field.field_constants import (
     AUTO_SET_VALUES,
     FIELD_ATTR_AUTO_SET,
-    FIELD_ATTR_COERCE_DEFAULT,
-    FIELD_ATTR_COLUMN,
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
-    FIELD_ATTR_ENUM_ALIAS,
     FIELD_ATTR_PROVIDED,
-    FIELD_ATTR_ENUM_DOC,
-    FIELD_ATTR_EXAMPLE,
-    FIELD_ATTR_FILTERABLE,
-    FIELD_ATTR_INSTRUCTION,
     FIELD_ATTR_MAX_LENGTH,
-    FIELD_ATTR_NORMALIZE,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_PRECISION,
     FIELD_ATTR_READ_ONLY,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SCALE,
-    FIELD_ATTR_SORTABLE,
-    FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_UNIQUE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
-    NORMALIZE_DEFAULT,
-    NORMALIZE_MODES,
-    SORT_ORDER_VALUES,
     STORAGE_VALUES,
 )
 from .meta.core.field.meta_field import MetaField
@@ -114,20 +98,11 @@ from .meta.persistence.source.source_constants import (
     SOURCE_SUBTYPE_RDB,
 )
 from .meta.presentation.layout.layout_constants import (
-    LAYOUT_ATTR_COLUMNS,
-    LAYOUT_ATTR_DEFAULT_SORT_FIELD,
-    LAYOUT_ATTR_DEFAULT_SORT_ORDER,
-    LAYOUT_ATTR_FILTER,
-    LAYOUT_ATTR_FILTERABLE,
-    LAYOUT_ATTR_PAGE_SIZE,
     LAYOUT_SUBTYPES,
-    LAYOUT_SUBTYPE_DATA_GRID,
 )
 from .meta.presentation.layout.meta_layout import MetaLayout
 from .meta.presentation.view.meta_view import MetaView
 from .meta.presentation.view.view_constants import (
-    VIEW_ATTR_LOCALE,
-    VIEW_SUBTYPE_CURRENCY,
     VIEW_SUBTYPES,
 )
 from .provider import Provider
@@ -189,17 +164,27 @@ def _register_subtypes(
         )
 
 
-# metadata.root — accepts top-level objects, root-level fields (shared abstracts),
-# and template.* (FR-004).
+# metadata.root — the document-root WRAPPER. FR-033 (sub-step B2): metadata.root is
+# NOT declared in any spec/metamodel/*.json provider file; both this port and the TS
+# reference HAND-CODE the root (the single documented hand-coded exception to the
+# JSON-sourced model). Its STRUCTURAL children must byte-match the cross-port golden:
+# description "Root metadata document" and EXACTLY the four genuinely-open structural
+# wildcards a document root legitimately holds — field / object / template / validator
+# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). Because
+# it is undeclared in the JSON, the strict-children pass leaves it untouched, so the
+# children registered HERE are emitted verbatim. The any-attr wildcard is intentionally
+# omitted — the golden carries attrs:[] for the root (no metadata-attr vocabulary).
 core_provider.add(
     TypeDefinition(
         type=TYPE_METADATA,
         sub_type=SUBTYPE_ROOT,
         factory=MetaRoot,
+        description="Root metadata document",
         child_rules=[
-            ChildRule(TYPE_OBJECT, "*"),
             ChildRule(TYPE_FIELD, "*"),
+            ChildRule(TYPE_OBJECT, "*"),
             ChildRule(TYPE_TEMPLATE, "*"),
+            ChildRule(TYPE_VALIDATOR, "*"),
         ],
     )
 )
@@ -238,18 +223,10 @@ _OBJECT_COMMON_ATTRS = [
     ),
 ]
 # FR-011: @normalize is an object-level default for the enum fields of a payload
-# value-object — registered on object.value ONLY (not entity/base). Closed enum
-# (none|collapse|strip, default strip); resolved at codegen time when a field
-# omits its own @normalize.
-_OBJECT_VALUE_ATTRS = list(_OBJECT_COMMON_ATTRS) + [
-    AttrSchema(
-        name=FIELD_ATTR_NORMALIZE,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        allowed_values=NORMALIZE_MODES,
-        default=NORMALIZE_DEFAULT,
-    ),
-]
+# value-object — registered on object.value ONLY (not entity/base). FR-033 re-homes
+# it to the prompt domain provider (`prompt_provider`, metaobjects-prompt) via
+# TypeRegistry.extend (prompt.json declares it on object.value), matching the TS
+# promptProvider split. object.value carries only the shared object attrs in core.
 for _obj_sub in OBJECT_SUBTYPES:
     core_provider.add(
         TypeDefinition(
@@ -261,11 +238,7 @@ for _obj_sub in OBJECT_SUBTYPES:
                 if _obj_sub == OBJECT_SUBTYPE_PROJECTION
                 else _OBJECT_CHILD_RULES
             ),
-            attrs=(
-                list(_OBJECT_VALUE_ATTRS)
-                if _obj_sub == OBJECT_SUBTYPE_VALUE
-                else list(_OBJECT_COMMON_ATTRS)
-            ),
+            attrs=list(_OBJECT_COMMON_ATTRS),
         )
     )
 
@@ -319,14 +292,6 @@ _FIELD_COMMON_ATTRS = [
     AttrSchema(name=FIELD_ATTR_MAX_LENGTH, value_type=ATTR_SUBTYPE_INT, required=False),
     AttrSchema(name=FIELD_ATTR_PRECISION, value_type=ATTR_SUBTYPE_INT, required=False),
     AttrSchema(name=FIELD_ATTR_SCALE, value_type=ATTR_SUBTYPE_INT, required=False),
-    AttrSchema(name=FIELD_ATTR_FILTERABLE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-    AttrSchema(name=FIELD_ATTR_SORTABLE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-    AttrSchema(
-        name=FIELD_ATTR_SORTABLE_DEFAULT_ORDER,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        allowed_values=SORT_ORDER_VALUES,
-    ),
     AttrSchema(
         name=FIELD_ATTR_AUTO_SET,
         value_type=ATTR_SUBTYPE_STRING,
@@ -339,10 +304,13 @@ _FIELD_COMMON_ATTRS = [
     # cross-port end-state (Java CoreDBMetaDataProvider / TS dbProvider / C#
     # DbMetaDataProvider). The @dbColumnType (subtype × value) pairing legality is
     # still enforced by the loader's _validate_db_column_type pass (unconditional).
-    # FR-010 field-teaching attrs (any field): free-text shown in the generated
-    # output-format prompt fragment. Never carried in comments.
-    AttrSchema(name=FIELD_ATTR_EXAMPLE, value_type=ATTR_SUBTYPE_STRING, required=False),
-    AttrSchema(name=FIELD_ATTR_INSTRUCTION, value_type=ATTR_SUBTYPE_STRING, required=False),
+    #
+    # FR-033 — the UI / query-surface markers (@filterable / @sortable /
+    # @sortableDefaultOrder) and the prompt / field-teaching markers (@example /
+    # @instruction) are NO LONGER declared here. They are re-homed to the dedicated
+    # `ui_provider` (metaobjects-ui) and `prompt_provider` (metaobjects-prompt) via
+    # TypeRegistry.extend, matching the TS provider split (uiProvider / promptProvider).
+    # The composed registry is unchanged (the manifest is provider-agnostic).
 ]
 _register_subtypes(
     core_provider,
@@ -380,14 +348,6 @@ core_provider.add(
                 required=True,
                 is_array=True,
             ),
-            # FR-010: properties-shaped maps, field.enum only.
-            # @enumAlias: off-vocabulary token -> canonical member (extract alias-fold).
-            # @enumDoc:   member -> human-readable description (guide prompt fragment).
-            AttrSchema(
-                name=FIELD_ATTR_ENUM_ALIAS,
-                value_type=ATTR_SUBTYPE_PROPERTIES,
-                required=False,
-            ),
             # FR-019 (ADR-0026): @provided boolean — marks an abstract package-level enum
             # as externally provided (codegen references it instead of materializing). The
             # boolean AttrSchema rejects a non-boolean value (ERR_BAD_ATTR_VALUE).
@@ -396,30 +356,11 @@ core_provider.add(
                 value_type=ATTR_SUBTYPE_BOOLEAN,
                 required=False,
             ),
-            AttrSchema(
-                name=FIELD_ATTR_ENUM_DOC,
-                value_type=ATTR_SUBTYPE_PROPERTIES,
-                required=False,
-            ),
-            # FR-011: present-but-uncoercible extract fallback member. Membership
-            # against the effective @values is validated post-load in
-            # validation_passes (ERR_BAD_ATTR_VALUE), mirroring the @values pass.
-            AttrSchema(
-                name=FIELD_ATTR_COERCE_DEFAULT,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=False,
-            ),
-            # FR-011: per-field ASCII normalization mode for tolerant enum extract.
-            # Closed enum (none|collapse|strip); allowed_values gates it →
-            # ERR_BAD_ATTR_VALUE. The default ("strip") is resolved at codegen time
-            # (field → owning object.value → "strip").
-            AttrSchema(
-                name=FIELD_ATTR_NORMALIZE,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=False,
-                allowed_values=NORMALIZE_MODES,
-                default=NORMALIZE_DEFAULT,
-            ),
+            # FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
+            # @coerceDefault / @normalize) are NO LONGER declared here; they are re-homed
+            # to the prompt domain provider (`prompt_provider`, metaobjects-prompt) via
+            # TypeRegistry.extend, matching the TS promptProvider split. @values + @provided
+            # stay in core (they are core field.enum properties, declared in field.json).
         ],
         child_rules=_FIELD_CHILD_RULES,
     )
@@ -638,47 +579,33 @@ core_provider.add(
     )
 )
 
-# view.* (base + 13 control kinds). Only view.currency carries a documented attr
-# (@locale); all other subtypes have none. Mirrors TS core-types view registration.
+# view.* (base + 13 control kinds). FR-033 — view.currency's @locale is re-homed to
+# the UI domain provider (`ui_provider`, metaobjects-ui) via TypeRegistry.extend
+# (ui.json declares @locale on view.currency), matching the TS uiProvider split. Core
+# registers every view subtype with NO own attrs.
 for _view_sub in VIEW_SUBTYPES:
-    _view_attrs = (
-        [AttrSchema(name=VIEW_ATTR_LOCALE, value_type=ATTR_SUBTYPE_STRING, required=False)]
-        if _view_sub == VIEW_SUBTYPE_CURRENCY
-        else []
-    )
     core_provider.add(
         TypeDefinition(
             type=TYPE_VIEW,
             sub_type=_view_sub,
             factory=MetaView,
-            attrs=_view_attrs,
+            attrs=[],
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
 
-# layout.* (base, dataGrid); @columns is a stringArray — scalar desugars to array;
-# @filter is a FilterAttr — shorthand values desugar to op-objects
-_layout_datagrid_attrs = [
-    AttrSchema(name=LAYOUT_ATTR_COLUMNS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
-    AttrSchema(name=LAYOUT_ATTR_DEFAULT_SORT_FIELD, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(
-        name=LAYOUT_ATTR_DEFAULT_SORT_ORDER,
-        value_type=ATTR_SUBTYPE_STRING,
-        allowed_values=("asc", "desc"),
-    ),
-    AttrSchema(name=LAYOUT_ATTR_PAGE_SIZE, value_type=ATTR_SUBTYPE_INT),
-    # @filterable — boolean; the generated grid exposes column-filtering UI. Cross-port.
-    AttrSchema(name=LAYOUT_ATTR_FILTERABLE, value_type=ATTR_SUBTYPE_BOOLEAN),
-    AttrSchema(name=LAYOUT_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER),
-]
+# layout.* (base, dataGrid). FR-033 — every layout.dataGrid attr (@columns /
+# @defaultSortField / @defaultSortOrder / @pageSize / @filterable / @filter) is
+# re-homed to the UI domain provider (`ui_provider`, metaobjects-ui) via
+# TypeRegistry.extend (ui.json declares them on layout.dataGrid), matching the TS
+# uiProvider split. Core registers every layout subtype with NO own attrs.
 for _sub in LAYOUT_SUBTYPES:
-    _attrs = list(_layout_datagrid_attrs) if _sub == LAYOUT_SUBTYPE_DATA_GRID else []
     core_provider.add(
         TypeDefinition(
             type=TYPE_LAYOUT,
             sub_type=_sub,
             factory=MetaLayout,
-            attrs=_attrs,
+            attrs=[],
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
@@ -713,126 +640,52 @@ for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():
         )
     )
 
-# template.* (FR-004) — base + prompt + output + toolcall. @payloadRef / @textRef
-# / @format / @maxChars / @owner / @since / @requiredTags are shared across prompt
-# + output; prompt also carries @maxTokens / @requiredSlots / @model. toolcall
-# (ADR-0011) does NOT inherit the shared attrs — it declares its own
-# (@toolName required + @payloadRef required + @owner + @since). No @textRef
-# requirement: a tool-call has no renderable text body.
-# Validation in validation_passes.py.
-_TEMPLATE_SHARED_ATTRS = [
-    # @payloadRef is required on the concrete subtypes (output/prompt). The generic
-    # required-attr schema check (validation_passes Check 1) enforces it — there is
-    # no separate manual pass (matches TS). template.base gets NO shared attrs.
-    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
-    AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(
-        name=tc.TEMPLATE_ATTR_FORMAT,
-        value_type=ATTR_SUBTYPE_STRING,
-        allowed_values=tc.ALLOWED_FORMATS,
-    ),
-    AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
-    AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
-]
-# template.output also carries the FR-010 @promptStyle presentation attr — a
-# closed enum (allowed_values), default "guide". NOT on prompt/toolcall.
-#
-# It also carries @kind (closed enum document|email, default "document") + the
-# email part-refs (@subjectRef / @htmlBodyRef / @textBodyRef). @kind closed-enum
-# membership is enforced via allowed_values (ERR_BAD_ATTR_VALUE), exactly like
-# @format / @promptStyle; the conditional ref requirements live in
-# validation_passes._validate_templates. @textRef is left non-required here (it is
-# conditionally required by kind), matching TS/Java. NOT on prompt/toolcall.
-_TEMPLATE_OUTPUT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
-    AttrSchema(
-        name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
-        value_type=ATTR_SUBTYPE_STRING,
-        allowed_values=tc.PROMPT_STYLES,
-        default=tc.PROMPT_STYLE_DEFAULT,
-    ),
-    AttrSchema(
-        name=tc.TEMPLATE_ATTR_KIND,
-        value_type=ATTR_SUBTYPE_STRING,
-        allowed_values=tc.ALLOWED_KINDS,
-        default=tc.TEMPLATE_KIND_DEFAULT,
-    ),
-    AttrSchema(name=tc.TEMPLATE_ATTR_SUBJECT_REF, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_HTML_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
-]
-_TEMPLATE_PROMPT_ATTRS = list(_TEMPLATE_SHARED_ATTRS) + [
-    AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
-    AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
-    AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
-    # @responseRef — template.prompt ONLY (AI trace; peer of @payloadRef).
-    # Cross-port vocabulary (registered in all five ports).
-    AttrSchema(name=tc.TEMPLATE_ATTR_RESPONSE_REF, value_type=ATTR_SUBTYPE_STRING, required=False),
-]
-_TEMPLATE_TOOLCALL_ATTRS = [
-    AttrSchema(name=tc.TEMPLATE_ATTR_TOOL_NAME, value_type=ATTR_SUBTYPE_STRING, required=True),
-    AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
-    AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
-    AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
-]
-# template.base — abstract anchor; carries NO attrs (the shared attrs live only on
-# the concrete subtypes prompt/output, matching TS TEMPLATE_ATTRS_MAP[base] = []).
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TEMPLATE,
-        sub_type=SUBTYPE_BASE,
-        factory=MetaTemplate,
-        attrs=[],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
+# template.* (FR-004) — base + prompt + output + toolcall. FR-033 — core registers
+# the four template TYPES (a single MetaTemplate backs every subtype; validation in
+# validation_passes.py) but carries NO own per-subtype attrs. The full per-subtype
+# template attr vocabulary (@payloadRef / @textRef / @format / @maxChars / @kind /
+# @promptStyle / @toolName / @responseRef / …) is re-homed to the prompt domain
+# provider (`prompt_provider`, metaobjects-prompt) via TypeRegistry.extend
+# (prompt.json declares them on template.prompt / output / toolcall), matching the TS
+# core-types→promptProvider split (where the template type is also attr-free in core).
+for _tmpl_sub in (
+    SUBTYPE_BASE,
+    tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_SUBTYPE_TOOLCALL,
+):
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_TEMPLATE,
+            sub_type=_tmpl_sub,
+            factory=MetaTemplate,
+            attrs=[],
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
     )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TEMPLATE,
-        sub_type=tc.TEMPLATE_SUBTYPE_OUTPUT,
-        factory=MetaTemplate,
-        attrs=list(_TEMPLATE_OUTPUT_ATTRS),
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TEMPLATE,
-        sub_type=tc.TEMPLATE_SUBTYPE_PROMPT,
-        factory=MetaTemplate,
-        attrs=list(_TEMPLATE_PROMPT_ATTRS),
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_TEMPLATE,
-        sub_type=tc.TEMPLATE_SUBTYPE_TOOLCALL,
-        factory=MetaTemplate,
-        attrs=list(_TEMPLATE_TOOLCALL_ATTRS),
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
 
 
 # ---------------------------------------------------------------------------
 # The canonical default provider set (cross-port `coreProviders`).
 #
 # Mirrors TS's `coreProviders = [coreTypesProvider, dbProvider, docProvider,
-# templateProvider]` and C#'s DefaultRegistry composition. The core types are
-# registered first; the DB-domain (`db_provider`) and template/output domain
-# (`template_provider`) then EXTEND the core field types via TypeRegistry.extend,
-# and the documentation provider adds the common doc attrs. Spread to add more:
-# `[*core_providers, my_provider]`.
+# promptProvider, uiProvider]` and C#'s DefaultRegistry composition. The core types
+# are registered first; the DB-domain (`db_provider`), prompt / AI + serialization
+# domain (`prompt_provider`) and UI / query-surface domain (`ui_provider`) then
+# EXTEND the core types via TypeRegistry.extend, and the documentation provider adds
+# the common doc attrs. FR-033 re-homed the field's filter/sort/teaching/extract +
+# view/layout + template attrs out of core into ui/prompt; the composed set is
+# unchanged. Spread to add more: `[*core_providers, my_provider]`.
 # ---------------------------------------------------------------------------
 from .meta.persistence.db.db_provider import db_provider  # noqa: E402
-from .meta.template.template_provider import template_provider  # noqa: E402
+from .meta.template.prompt_provider import prompt_provider  # noqa: E402
+from .meta.presentation.ui.ui_provider import ui_provider  # noqa: E402
 from .documentation.doc_provider import doc_provider  # noqa: E402
 
 core_providers: list[Provider] = [
     core_provider,
     db_provider,
     doc_provider,
-    template_provider,
+    prompt_provider,
+    ui_provider,
 ]

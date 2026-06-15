@@ -182,14 +182,9 @@ public abstract class MetaObject extends MetaData {
                .description("Value object (no identity) — value access via the reflection/map hybrid")
                .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
 
-            // FR-011: object.value carries an object-level @normalize default — the
-            // normalization mode inherited by its enum fields' tolerant extract when the
-            // field does not declare its own @normalize. Closed enum (none|collapse|strip).
-            def.optionalAttributeWithConstraints(com.metaobjects.field.EnumField.ATTR_NORMALIZE)
-               .ofType(com.metaobjects.attr.StringAttribute.SUBTYPE_STRING)
-               .withEnum(com.metaobjects.field.EnumField.NORMALIZE_NONE,
-                         com.metaobjects.field.EnumField.NORMALIZE_COLLAPSE,
-                         com.metaobjects.field.EnumField.NORMALIZE_STRIP);
+            // FR-033: object.value's object-level @normalize default is re-homed to
+            // the metaobjects-prompt concern provider (reads spec/metamodel/prompt.json's
+            // object.value extends). Closed-set value check still runs post-load.
         });
 
         // FR-024 (ADR-0028) — object.projection: derived read-only representation of

@@ -109,3 +109,50 @@ test("every carved-out per-type attr name carries a declared ExclusionReason", (
   expect(classifyPerTypeAttr("column")).toBe("included");
   expect(classifyPerTypeAttr("maxLength")).toBe("included");
 });
+
+// FR-033 Task 5 — the manifest now carries the documentation surface
+// (type/attr `description` + optional `rules`/`example`/`whenToUse`) AND the
+// structural constraint graph (`children` / `parents` / cardinality). These
+// assert the additive shape is present.
+test("manifest carries a description on every type, attr, and commonAttr (coverage gate)", () => {
+  const manifest = buildRegistryManifest(composeRegistry(coreProviders));
+  // A future entry with no description must fail CI (mirrors ADR-0023 strict
+  // provenance — descriptions are not optional on the documentation surface).
+  for (const t of manifest.types) {
+    expect(typeof t.description).toBe("string");
+    expect(t.description.length).toBeGreaterThan(0);
+    for (const a of t.attrs) {
+      expect(typeof a.description).toBe("string");
+      expect(a.description.length).toBeGreaterThan(0);
+    }
+  }
+  for (const c of manifest.commonAttrs) {
+    expect(typeof c.description).toBe("string");
+    expect(c.description.length).toBeGreaterThan(0);
+  }
+});
+
+test("manifest emits the structural constraint graph (children) per type", () => {
+  const manifest = buildRegistryManifest(composeRegistry(coreProviders));
+  // Every type carries a `children` array (possibly empty for leaf types).
+  for (const t of manifest.types) {
+    expect(Array.isArray(t.children)).toBe(true);
+  }
+  // object.entity is a stable example: it admits field/identity/relationship/
+  // validator/layout/source/attr/template children (8 wildcard structural rules).
+  const objectEntity = manifest.types.find(
+    (t) => t.type === "object" && t.subType === "entity",
+  );
+  expect(objectEntity).toBeDefined();
+  expect(objectEntity!.children.length).toBeGreaterThan(0);
+  const childTypes = objectEntity!.children.map((c) => c.childType);
+  expect(childTypes).toContain("field");
+  expect(childTypes).toContain("identity");
+  expect(childTypes).toContain("source");
+  // children are canonically sorted by (childType, childSubTypeKey, childName).
+  const keys = objectEntity!.children.map(
+    (c) =>
+      `${c.childType}.${Array.isArray(c.childSubType) ? c.childSubType.join(",") : c.childSubType}.${c.childName}`,
+  );
+  expect(keys).toEqual([...keys].sort());
+});

@@ -63,11 +63,22 @@ class Provider:
 
 
 def compose_registry(providers: list[Provider]) -> TypeRegistry:
-    """Topologically sort providers by dependency, then register each into a fresh registry."""
+    """Topologically sort providers by dependency, then register each into a fresh registry.
+
+    FR-033 S-B1 — after every provider has run (and BEFORE any caller seals the
+    registry), source every type / attr / common-attr description from the embedded
+    shared ``spec/metamodel/*.json`` onto the registry. Single-sourced, byte-identical
+    to TS — never hand-copied. A ``(type, subType)`` (or attr) the spec does not
+    declare keeps its empty description (the residual S-B2 scoping work).
+    """
+    # Deferred import avoids a provider -> spec_metamodel -> registry import cycle.
+    from .spec_metamodel import apply_spec_descriptions
+
     ordered = _topo_sort(providers)
     registry = TypeRegistry()
     for provider in ordered:
         provider.register_types(registry)
+    apply_spec_descriptions(registry)
     return registry
 
 

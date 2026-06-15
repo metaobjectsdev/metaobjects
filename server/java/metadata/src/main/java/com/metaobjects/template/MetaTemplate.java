@@ -1,9 +1,7 @@
 package com.metaobjects.template;
 
 import com.metaobjects.MetaData;
-import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.MetaAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import java.util.ArrayList;
@@ -55,39 +53,12 @@ public abstract class MetaTemplate extends MetaData {
         });
     }
 
-    /**
-     * Register the shared template attrs (@payloadRef / @textRef / @format / @maxChars /
-     * @owner / @since / @requiredTags) on a concrete subtype's def. SP-G Unit 6a moved
-     * these off template.base onto the concrete subtypes so the base row is attr-free
-     * (cross-port canonical). {@code payloadRefRequired} promotes @payloadRef to required
-     * (true for both prompt and output per the canonical).
-     */
-    protected static void registerSharedAttrs(
-            com.metaobjects.registry.TypeDefinitionBuilder def, boolean payloadRefRequired) {
-        if (payloadRefRequired) {
-            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        } else {
-            def.optionalAttributeWithConstraints(ATTR_PAYLOAD_REF)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        }
-        def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
-           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        // @format — closed-set enum (Tier-1 invariant; see TemplateConstants.FORMAT_*).
-        // Enum-membership is enforced on the concrete subtype in
-        // ValidationPhase#validateTemplates (a withEnum constraint on the abstract base
-        // does not fire for concrete subtypes — see CustomConstraint.applicabilityTest).
-        def.optionalAttributeWithConstraints(ATTR_FORMAT)
-           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
-           .ofType(IntAttribute.SUBTYPE_INT).asSingle();
-        def.optionalAttributeWithConstraints(ATTR_OWNER)
-           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        def.optionalAttributeWithConstraints(ATTR_SINCE)
-           .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
-           .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-    }
+    // FR-033: the shared template attrs (@payloadRef / @textRef / @format / @maxChars /
+    // @owner / @since / @requiredTags) — along with the prompt/output/toolcall overlay
+    // attrs — are re-homed to the metaobjects-prompt concern provider (reads
+    // spec/metamodel/prompt.json's template.* extends). The template TYPE definitions
+    // (template.base/prompt/output/toolcall) are still registered here; only the ATTRS
+    // moved. The former registerSharedAttrs(...) helper is therefore removed.
 
     // -----------------------------------------------------------------------
     // Accessors — own-only attr reads (mirrors MetaOrigin's getFrom/getVia)

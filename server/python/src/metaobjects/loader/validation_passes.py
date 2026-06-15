@@ -50,7 +50,7 @@ from ..meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRINGARRAY,
 )
-from ..registry import AttrSchema, TypeRegistry
+from ..registry import AttrSchema, ChildRule, TypeRegistry
 from ..shared.base_types import (
     TYPE_FIELD,
     TYPE_IDENTITY,
@@ -212,6 +212,33 @@ def _node_label(node: MetaData) -> str:
     return f"{head} '{node.name}'" if node.name else head
 
 
+# The any-name / any-subtype wildcard a ChildRule field may carry. Mirrors TS's
+# CHILD_RULE_WILDCARD in shared/structural.ts.
+_CHILD_RULE_WILDCARD = "*"
+
+
+def _child_rule_admits(rule: "ChildRule", child: MetaData) -> bool:
+    """Whether *rule* admits *child* under the shared wildcard match semantics.
+
+    childType / childName may be ``"*"``; childSubType may be ``"*"``, a single
+    subtype, or a LIST of subtypes (FR-033). Mirrors the TS ``childRuleMatches``
+    in registry.ts used by Check 0b in attr-schema-validate.ts.
+    """
+    if rule.child_type != _CHILD_RULE_WILDCARD and rule.child_type != child.type:
+        return False
+
+    sub = rule.child_sub_type
+    if isinstance(sub, list):
+        if child.sub_type not in sub:
+            return False
+    elif sub != _CHILD_RULE_WILDCARD and sub != child.sub_type:
+        return False
+
+    if rule.child_name != _CHILD_RULE_WILDCARD and rule.child_name != child.name:
+        return False
+    return True
+
+
 def _effective_schemas(
     type_: str,
     sub_type: str,
@@ -297,6 +324,37 @@ def _validate_attr_schema(
                             envelope=node.source,
                         )
                     )
+
+        # --- Check 0b (FR-033): strict-load structural-child placement ---
+        #
+        # The structural analogue of Check 0. A STRUCTURAL child (field/identity/
+        # source/validator/… — attrs never appear in own_children(); they live in
+        # own_meta_attrs()) must be admitted by the parent's registered child_rules
+        # under the same wildcard match semantics used everywhere (childType /
+        # childSubType / childName may be "*", and childSubType may be a list). A
+        # child the rules do not admit → ERR_CHILD_NOT_ALLOWED (the structural
+        # analogue of Check 0's ERR_UNKNOWN_ATTR). Strict-load only; lax keeps the
+        # legacy open policy. An UNREGISTERED parent cannot be judged here
+        # (ERR_UNKNOWN_TYPE / ERR_UNKNOWN_SUBTYPE is reported elsewhere) — skip so
+        # we never double-report. Mirrors the TS reference Check 0b in
+        # attr-schema-validate.ts.
+        if strict:
+            parent_def = registry.find(node.type, node.sub_type)
+            if parent_def is not None:
+                rules = parent_def.child_rules
+                for child in node.own_children():
+                    if not any(_child_rule_admits(r, child) for r in rules):
+                        errors.append(
+                            MetaError(
+                                f"Child {_node_label(child)} is not allowed under "
+                                f"{_node_label(node)} — no registered child rule for "
+                                f"{node.type}.{node.sub_type} admits "
+                                f"(type='{child.type}', subType='{child.sub_type}', "
+                                f"name='{child.name}')",
+                                ErrorCode.ERR_CHILD_NOT_ALLOWED,
+                                envelope=node.source,
+                            )
+                        )
 
         if not schemas:
             continue

@@ -1,9 +1,5 @@
 package com.metaobjects.layout;
 
-import com.metaobjects.attr.BooleanAttribute;
-import com.metaobjects.attr.FilterAttribute;
-import com.metaobjects.attr.IntAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,23 +45,11 @@ public class DataGridLayout extends MetaLayout {
                    .description("Tabular display layout for an entity")
                    .inheritsFrom(TYPE_LAYOUT, SUBTYPE_BASE);
 
-                def.optionalAttributeWithConstraints(ATTR_COLUMNS)
-                   .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-
-                def.optionalAttributeWithConstraints(ATTR_DEFAULT_SORT_FIELD)
-                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_DEFAULT_SORT_ORDER)
-                   .ofType(StringAttribute.SUBTYPE_STRING).withEnum("asc", "desc");
-
-                def.optionalAttributeWithConstraints(ATTR_PAGE_SIZE)
-                   .ofType(IntAttribute.SUBTYPE_INT).asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_FILTERABLE)
-                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-
-                def.optionalAttributeWithConstraints(ATTR_FILTER)
-                   .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+                // FR-033: @columns / @defaultSortField / @defaultSortOrder /
+                // @pageSize / @filterable / @filter are re-homed to the
+                // metaobjects-ui concern provider (reads spec/metamodel/ui.json's
+                // layout.dataGrid extends). The @defaultSortOrder closed-set check
+                // (asc|desc) remains enforced post-load where applicable.
             });
             log.debug("Registered DataGridLayout type with unified registry");
         } catch (Exception e) {

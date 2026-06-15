@@ -1,1 +1,1 @@
-["metaobjects-core-types", "metaobjects-db", "metaobjects-documentation"]
+["metaobjects-core-types", "metaobjects-db", "metaobjects-documentation", "metaobjects-ui", "metaobjects-prompt"]

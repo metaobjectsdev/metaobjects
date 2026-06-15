@@ -17,7 +17,6 @@ package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
 import com.metaobjects.attr.BooleanAttribute;
-import com.metaobjects.attr.PropertiesAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
@@ -188,11 +187,8 @@ public class EnumField extends PrimitiveField<String> {
                    .ofType(StringAttribute.SUBTYPE_STRING)
                    .asArray();
 
-                // Optional @enumAlias properties attribute — off-vocabulary → canonical-member map.
-                // Consumed by FR-010 extract; not validated at load time.
-                def.optionalAttributeWithConstraints(ATTR_ENUM_ALIAS)
-                   .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
-                   .asSingle();
+                // FR-033: @enumAlias is re-homed to the metaobjects-prompt concern
+                // provider (reads spec/metamodel/prompt.json's field.enum extends).
 
                 // FR-019: optional @provided boolean — marks an abstract package-level enum as
                 // externally provided (codegen references it instead of materializing). The
@@ -202,30 +198,19 @@ public class EnumField extends PrimitiveField<String> {
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                    .asSingle();
 
-                // Optional @enumDoc properties attribute — per-member description map.
-                // Consumed by FR-010 output-format prompt fragment; not validated at load time.
-                def.optionalAttributeWithConstraints(ATTR_ENUM_DOC)
-                   .ofType(PropertiesAttribute.SUBTYPE_PROPERTIES)
-                   .asSingle();
-
-                // FR-011: optional @coerceDefault string — present-but-uncoercible extract
-                // fallback member. Membership against @values is validated post-load in
-                // ValidationPhase (ERR_BAD_ATTR_VALUE), mirroring the @values content pass.
-                def.optionalAttributeWithConstraints(ATTR_COERCE_DEFAULT)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .asSingle();
+                // FR-033: @enumDoc and @coerceDefault are re-homed to the
+                // metaobjects-prompt concern provider (reads
+                // spec/metamodel/prompt.json's field.enum extends).
 
                 // Phase B: @default (absent-fill member) is registered on the field base
                 // (MetaField.ATTR_DEFAULT) and inherited via field.base — no enum-specific
                 // registration. Enum-membership of its value is still validated post-load in
                 // ValidationPhase.
 
-                // FR-011: optional @normalize closed-enum string (none|collapse|strip, default
-                // strip). The withEnum constraint records the vocabulary; ValidationPhase also
-                // re-checks it post-load (belt-and-braces, matching source @kind/@role).
-                def.optionalAttributeWithConstraints(ATTR_NORMALIZE)
-                   .ofType(StringAttribute.SUBTYPE_STRING)
-                   .withEnum(NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP);
+                // FR-033: @normalize (closed-enum none|collapse|strip) is re-homed to
+                // the metaobjects-prompt concern provider (reads
+                // spec/metamodel/prompt.json's field.enum extends). The closed-set
+                // value check still runs post-load in ValidationPhase.
             });
 
             log.debug("Registered EnumField type with required @values attribute and member validation");

@@ -26,8 +26,11 @@ public class RegistryManifestConformanceTests
             CoreTypes.CoreTypesProvider,
             // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core.
             MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-            // Template/output-domain field attr (@xmlText) — Extend over core.
-            MetaObjects.Template.TemplateTypesProvider.Instance,
+            // FR-033 concern providers — UI / prompt attrs re-homed out of core
+            // (read spec/metamodel/ui.json + prompt.json). The prompt provider
+            // absorbs the @xmlText marker the former TemplateTypesProvider registered.
+            MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+            MetaObjects.Template.PromptMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 
@@ -58,8 +61,11 @@ public class RegistryManifestConformanceTests
             CoreTypes.CoreTypesProvider,
             // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core.
             MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-            // Template/output-domain field attr (@xmlText) — Extend over core.
-            MetaObjects.Template.TemplateTypesProvider.Instance,
+            // FR-033 concern providers — UI / prompt attrs re-homed out of core
+            // (read spec/metamodel/ui.json + prompt.json). The prompt provider
+            // absorbs the @xmlText marker the former TemplateTypesProvider registered.
+            MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+            MetaObjects.Template.PromptMetaDataProvider.Instance,
             DocumentationTypes.DocTypesProvider,
         });
 
