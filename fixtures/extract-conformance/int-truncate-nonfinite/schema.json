@@ -1,0 +1,4 @@
+{ "format": "JSON", "rootName": "nums", "fields": [
+  { "name": "score", "kind": "INT", "required": true },
+  { "name": "delta", "kind": "INT", "required": true },
+  { "name": "over",  "kind": "INT", "required": true } ] }
