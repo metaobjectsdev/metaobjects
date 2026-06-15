@@ -88,6 +88,17 @@ describe("mapColumnType — SQLite", () => {
     expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", module: "./SourceLens.js" });
   });
 
+  test("@isArray field.object with a FULLY-QUALIFIED @objectRef strips to the bare name", () => {
+    // Regression: a cross-package @objectRef (acme::ai::SourceLens) must resolve to
+    // the BARE short name for both the $type<E[]>() target and its sibling module —
+    // emitting the raw FQN produces an invalid identifier + a colon-laden import path.
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "citations");
+    f.setAttr("objectRef", "acme::ai::SourceLens");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "sqlite");
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", module: "./SourceLens.js" });
+  });
+
   test("@isArray on field.object without objectRef leaves dollarTypeRef unset", () => {
     const f = metaField(FIELD_SUBTYPE_OBJECT, "stuff");
     f.setIsArray(true);

@@ -10,7 +10,7 @@
 // downstream (e.g. to LLM tool_use input_schema) lost the nested object shape.
 
 import { code, joinCode, imp, type Code } from "ts-poet";
-import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
@@ -328,7 +328,10 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refImp = imp(`${ref}InsertSchema@./${ref}.js`);
+      // @objectRef may be authored fully-qualified or bare — the referenced
+      // <Ref>InsertSchema + its sibling module use the BARE short name.
+      const refBase = stripPackage(ref);
+      const refImp = imp(`${refBase}InsertSchema@./${refBase}.js`);
       let base: Code = code`${refImp}`;
       if (field.isArray) base = code`z.array(${base})`;
       return appendValidatorChain(base, field);

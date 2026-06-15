@@ -52,8 +52,11 @@ public static class PayloadCodegen
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
         {
             var refAttr = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
-            string refName = refAttr is string s ? s : "object";
-            string? refVo = refAttr is string r ? r : null;
+            // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare;
+            // the generated record type + the nested-record lookup key are the BARE
+            // short name (FindObject matches bare names — every other caller strips too).
+            string refName = refAttr is string s ? CSharpNaming.StripPkg(s) : "object";
+            string? refVo = refAttr is string r ? CSharpNaming.StripPkg(r) : null;
             return (IsArrayField(field) ? $"IReadOnlyList<{refName}>" : refName, refVo);
         }
         // Enum payload field -> the generated nested C# enum type (same scheme entity codegen uses
@@ -155,7 +158,7 @@ public static class PayloadCodegen
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
             if (f.SubType == FIELD_SUBTYPE_OBJECT && f.OwnAttr(FIELD_ATTR_OBJECT_REF) is string refName)
-                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, visiting)));
+                fields.Add(new PayloadField(f.Name, BuildTree(root, CSharpNaming.StripPkg(refName), visiting)));
             else
                 fields.Add(new PayloadField(f.Name));
         }

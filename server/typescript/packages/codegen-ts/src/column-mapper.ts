@@ -36,7 +36,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
-import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
+import { DEFAULT_COLUMN_NAMING_STRATEGY, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
 export type { Dialect };
@@ -428,7 +428,10 @@ export function mapColumnType(
     if (subType === FIELD_SUBTYPE_OBJECT) {
       const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string" && ref.length > 0) {
-        dollarTypeRef = { kind: "objectRef", name: ref, module: `./${ref}.js` };
+        // @objectRef may be authored fully-qualified or bare — the $type<E[]>()
+        // target interface + its sibling module use the BARE short name.
+        const base = stripPackage(ref);
+        dollarTypeRef = { kind: "objectRef", name: base, module: `./${base}.js` };
       }
     } else {
       const scalar = sqliteJsonArrayElementTsType(subType);

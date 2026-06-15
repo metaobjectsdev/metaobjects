@@ -55,6 +55,38 @@ public class PayloadCodegenTests
         Assert.Contains("public required string title { get; init; }", src);
     }
 
+    // Same shape as Model, but the nested @objectRef is authored FULLY-QUALIFIED
+    // (acme::ai::PostBrief) — the form a cross-package reference takes. The payload
+    // record type + the nested-record lookup must resolve to the BARE short name.
+    private const string FqnRefModel = """
+    {
+      "metadata.root": {
+        "package": "acme::ai",
+        "children": [
+          { "object.value": { "name": "PostBrief", "children": [
+            { "field.string": { "name": "title" } }
+          ]}},
+          { "object.value": { "name": "AuthorBrief", "children": [
+            { "field.string": { "name": "displayName" } },
+            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "acme::ai::PostBrief",
+              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+          ]}}
+        ]
+      }
+    }
+    """;
+
+    [Fact]
+    public void Fully_qualified_objectRef_strips_to_bare_record_type_and_resolves_nested()
+    {
+        var root = new MetaDataLoader().Load([new InMemoryStringSource(FqnRefModel, id: "fqn.json")]).Root;
+        var src = PayloadCodegen.GeneratePayloadRecords(root, "AuthorBrief");
+        // Regression: the FQN must NOT leak into the generated C# type or record name.
+        Assert.Contains("public required IReadOnlyList<PostBrief> posts { get; init; }", src);
+        Assert.Contains("public sealed record PostBrief", src);   // nested record DID resolve (FindObject matched the bare name)
+        Assert.DoesNotContain("acme::ai::", src);
+    }
+
     [Fact]
     public void Emits_render_handle_binding_textRef_and_format()
     {
