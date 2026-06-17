@@ -141,10 +141,17 @@ public class EntityGenerator : IGenerator
         var enumDecls = CollectEnumDecls(entity);
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
+        // When this entity extends an emitted base class (DirectMappedParent), the base carries
+        // the inherited fields — emit ONLY this entity's own fields and let C# inheritance supply
+        // the rest (mirrors the metadata `extends` chain; the PK lives on the declaring base).
+        var inheritedNames = DirectMappedParent(entity, ctx.Config) is { } mp
+            ? new HashSet<string>(mp.Fields().Select(f => f.Name), StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
         var members = new List<string>();
         var strategy = ctx.Config.ColumnNamingStrategy;
         foreach (var field in entity.Fields())
         {
+            if (inheritedNames.Contains(field.Name)) continue; // inherited via the C# base chain
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
@@ -417,6 +424,20 @@ public class EntityGenerator : IGenerator
     protected static MetaObject DirectTphParent(MetaObject subtype) =>
         subtype.SuperData as MetaObject ?? TphBaseOf(subtype);
 
+    // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
+    // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
+    // chain: `class Physician : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
+    // BaseEntity`. Returns the immediate `extends` target when it is an emitted entity — an
+    // abstract base (only when EmitAbstractShapes is on, since the base must exist as a type)
+    // or a concrete parent. Null when there is no such parent: the entity then flattens its
+    // (un-emitted) abstract ancestors' fields as before. TPH members use DirectTphParent.
+    protected static MetaObject? DirectMappedParent(MetaObject entity, GenConfig config)
+    {
+        if (entity.SuperData is not MetaObject sup || !sup.IsEntity()) return null;
+        if (InstanceArtifacts.IsAbstract(sup)) return config.EmitAbstractShapes ? sup : null;
+        return sup;
+    }
+
     // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).
     protected static MetaObject TphBaseOf(MetaObject subtype)
     {
@@ -463,10 +484,16 @@ public class EntityGenerator : IGenerator
         var enumDecls = CollectEnumDecls(entity);
 
         // Body: scalar + enum + object-nav members, all WITHOUT EF mapping attributes
-        // (a shape, not a table).
+        // (a shape, not a table). When this abstract base extends another emitted base
+        // (e.g. BaseAuditableEntity : BaseEntity), emit only its OWN fields — the rest come
+        // through the C# base chain (mirrors the metadata `extends` chain).
+        var inheritedNames = DirectMappedParent(entity, ctx.Config) is { } amp
+            ? new HashSet<string>(amp.Fields().Select(f => f.Name), StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
         var members = new List<string>();
         foreach (var field in entity.Fields())
         {
+            if (inheritedNames.Contains(field.Name)) continue; // inherited via the C# base chain
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 member = ScalarProperty(entity, field, [], withAttributes: false);
