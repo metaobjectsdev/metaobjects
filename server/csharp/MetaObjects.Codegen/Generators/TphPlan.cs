@@ -80,6 +80,17 @@ public static class TphPlanBuilder
     }
 
     /// <summary>
+    /// True when this entity participates in a TPH hierarchy as a NON-root member — it
+    /// (transitively) extends a <c>@discriminator</c> base. Unlike <see cref="IsTphSubtype"/>
+    /// this includes ABSTRACT intermediates (which carry no <c>@discriminatorValue</c>) as well
+    /// as concrete leaves. Used to emit the inheritance chain `Sub : DirectParent` for every
+    /// link, so abstract intermediates are real base classes (not baseless shapes). The
+    /// discriminator root itself returns false.
+    /// </summary>
+    public static bool IsTphMember(MetaObject obj, MetaRoot root) =>
+        DiscriminatorRoot(obj) is { } discRoot && !ReferenceEquals(discRoot, obj);
+
+    /// <summary>
     /// The subtype-only fields folded into the base's single TPH table. For each concrete
     /// subtype, every effective field NOT already on the base is collected (effective, so a
     /// multi-level hierarchy's intermediate fields are captured too), deduplicated by name

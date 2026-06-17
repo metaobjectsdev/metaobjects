@@ -71,13 +71,24 @@ public class EntityGenerator : IGenerator
             // standalone `public abstract class` shape (no EF mapping attributes).
             if (InstanceArtifacts.IsAbstract(e))
             {
-                if (ctx.Config.EmitAbstractShapes)
+                if (!ctx.Config.EmitAbstractShapes)
+                    continue;
+                // An abstract entity INSIDE a TPH hierarchy is a real link in the
+                // inheritance chain (`abstract class X : DirectParent`) carrying its own
+                // fields, so its concrete subtypes inherit the chain's members (navs,
+                // interfaces). IsTphMember (not IsTphSubtype) so abstract intermediates —
+                // which carry no @discriminatorValue — are included. A standalone abstract
+                // (not in a TPH) stays a baseless shape.
+                if (TphPlanBuilder.IsTphMember(e, ctx.Root))
+                    files.Add(EmitTphSubtypeClass(e, ctx));
+                else
                     files.Add(EmitAbstractShapeClass(e, ctx));
                 continue;
             }
-            // FR-017 TPH: a concrete subtype of a @discriminator base is NOT a standalone
-            // table — it is `class Sub : Base` whose only members are its own (subtype-only)
-            // fields, folded into the base's single physical table by EF as nullable columns.
+            // FR-017 TPH: a subtype of a @discriminator base is NOT a standalone table — it
+            // is `class Sub : DirectParent` carrying only its own fields, folded into the
+            // base's single physical table by EF as nullable columns. The C# inheritance
+            // chain mirrors the metadata `extends` chain (abstract intermediates preserved).
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root))
             {
                 files.Add(EmitTphSubtypeClass(e, ctx));
@@ -114,7 +125,7 @@ public class EntityGenerator : IGenerator
         // host project's ImplicitUsings.
         if (pkFields.Count > 1)
             sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        // Package-binding — usings for OTHER packages this entity references (object navs + TPH base).
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
@@ -243,8 +254,12 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine($"public {classKeyword} {className}");
                 break;
             case ClassDeclarationKind.TphSubtype:
-                var baseClass = CSharpNaming.Pascal(TphBaseOf(entity).Name);
-                sb.AppendLine($"public class {className} : {baseClass}");
+                // Extend the DIRECT metadata parent (abstract intermediate or root), not the
+                // discriminator root — preserves the inheritance chain. Abstract intermediates
+                // are emitted `abstract class`.
+                var baseClass = CSharpNaming.Pascal(DirectTphParent(entity).Name);
+                var tphKeyword = InstanceArtifacts.IsAbstract(entity) ? "abstract class" : "class";
+                sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
                 sb.AppendLine($"public abstract class {className}");
@@ -282,8 +297,10 @@ public class EntityGenerator : IGenerator
     protected virtual EmittedFile EmitTphSubtypeClass(MetaObject entity, GenContext ctx)
     {
         var className = CSharpNaming.Pascal(entity.Name);
+        // Own fields only — the rest are inherited through the C# base chain (which mirrors
+        // the metadata `extends` chain), so exclude everything the DIRECT parent already carries.
         var baseFieldNames = new HashSet<string>(
-            TphBaseOf(entity).Fields().Select(f => f.Name), StringComparer.Ordinal);
+            DirectTphParent(entity).Fields().Select(f => f.Name), StringComparer.Ordinal);
         var strategy = ctx.Config.ColumnNamingStrategy;
 
         var sb = new StringBuilder();
@@ -294,7 +311,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
-        // Package-binding — usings for OTHER packages this entity references (object navs + TPH base).
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
@@ -327,7 +344,7 @@ public class EntityGenerator : IGenerator
             if (baseFieldNames.Contains(field.Name)) continue; // inherited from the base
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
-                member = TphSubtypeScalarProperty(field, strategy);
+                member = TphSubtypeScalarProperty(entity, field, strategy);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
                 member = TphSubtypeEnumProperty(entity, field, ctx.Config, strategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
@@ -349,10 +366,14 @@ public class EntityGenerator : IGenerator
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
 
-    // A subtype-only scalar property: NULLABLE, [Column]-mapped, with the field's
-    // validator attributes (length/numeric/regex) but NEVER [Key]/[Required] (the
-    // column is nullable in the shared TPH table). Arrays keep the List<T> shape.
-    protected virtual string TphSubtypeScalarProperty(MetaField field, ColumnNamingStrategy strategy)
+    // A subtype-only scalar property: [Column]-mapped, with the field's validator
+    // attributes (length/numeric/regex) but NEVER [Key]/[Required]. CLR nullability
+    // follows @required (a logically-required subtype field is non-null in CLR);
+    // EF Core auto-nullables the underlying COLUMN for TPH-derived properties regardless
+    // of CLR nullability (a row of another subtype stores NULL there), so a non-null CLR
+    // type maps to a nullable column correctly — and matches adopters whose marker
+    // interfaces declare these members non-null. Arrays keep the List<T> shape.
+    protected virtual string TphSubtypeScalarProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
     {
         var baseType = CSharpNaming.ScalarFor(field.SubType)!;
         var propName = PropertyName(field);
@@ -372,12 +393,13 @@ public class EntityGenerator : IGenerator
             AppendStringValidatorAttributes(sb, field);
         else
             AppendNumericValidatorAttributes(sb, field);
-        // Always nullable — subtype-only columns are NULL for rows of other subtypes.
-        sb.Append($"    public {baseType}? {propName} {{ get; set; }}");
+        var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
+        sb.Append($"    public {baseType}{nullable} {propName} {{ get; set; }}");
         return sb.ToString();
     }
 
-    // A subtype-only enum property: NULLABLE, [Column]-mapped (no [Required]).
+    // A subtype-only enum property: [Column]-mapped (no [Required]). CLR nullability
+    // follows @required (see TphSubtypeScalarProperty); the column is auto-nullable.
     protected virtual string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
     {
         var typeName = EnumPropertyTypeName(entity, field, config);
@@ -385,8 +407,15 @@ public class EntityGenerator : IGenerator
         var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
         if (field.IsArray)
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
-        return $"{colAttr}    public {typeName}? {propName} {{ get; set; }}";
+        var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
+        return $"{colAttr}    public {typeName}{nullable} {propName} {{ get; set; }}";
     }
+
+    // The directly-extended entity (the metadata `extends` target) of a TPH subtype — the
+    // immediate parent in the inheritance chain (abstract intermediate or the root). Falls
+    // back to the discriminator root if no super is resolved (shouldn't happen for a subtype).
+    protected static MetaObject DirectTphParent(MetaObject subtype) =>
+        subtype.SuperData as MetaObject ?? TphBaseOf(subtype);
 
     // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).
     protected static MetaObject TphBaseOf(MetaObject subtype)
@@ -419,7 +448,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
-        // Package-binding — usings for OTHER packages this entity references (object navs + TPH base).
+        // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, entity, ctx);
@@ -474,7 +503,10 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
-        // Package-binding — usings for OTHER packages this value-object references (object navs + super).
+        // A value-object field with an explicit @column emits [Column(...)] — same as the entity
+        // paths, so it needs the Schema namespace too (was omitted here → CS0246 on Column).
+        sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // FR-021 — usings for OTHER packages this value-object references (object navs + super).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(vo, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
         EmitFileUsings(sb, vo, ctx);

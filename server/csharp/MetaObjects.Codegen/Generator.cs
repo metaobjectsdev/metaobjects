@@ -36,6 +36,14 @@ public sealed record GenConfig
     public bool EmitAbstractShapes { get; init; } = false;
 
     /// <summary>
+    /// The C# type name of the EF Core DbContext that callable (stored-proc / table-function)
+    /// wrappers take as their first parameter. Defaults to <c>AppDbContext</c> (the name the
+    /// upstream DbContextGenerator emits). A downstream consumer that renames its context
+    /// sets this so callable signatures reference the real type.
+    /// </summary>
+    public string ContextTypeName { get; init; } = "AppDbContext";
+
+    /// <summary>
     /// FR-019 — the C# namespace an externally-<c>@provided</c> shared enum is referenced
     /// from (ADR-0026: the namespace is per-port codegen config, never a metadata attr —
     /// ADR-0001). A consuming field of a <c>@provided</c> abstract <c>field.enum</c> emits
