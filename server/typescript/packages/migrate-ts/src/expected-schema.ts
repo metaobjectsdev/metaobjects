@@ -9,6 +9,9 @@ import {
   MetaSource,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
+  IDENTITY_ATTR_ORDERS,
+  IDENTITY_ATTR_WHERE,
+  IDENTITY_ATTR_CONSTRAINT_NAME,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_PRECISION,
@@ -326,11 +329,27 @@ function buildSecondaryIndexes(
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
     const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
-    indexes.push({
+    const index: IndexDescriptor = {
       name: identity.name,
       columns: cols,
       unique: uniqueAttr !== false,
-    });
+    };
+    // @orders — per-field sort direction (positional to @fields). Only attach when
+    // at least one field is descending (an all-ascending array is the default and
+    // must serialize identically to "no orders" for diff stability).
+    const ordersRaw = identity.ownAttr(IDENTITY_ATTR_ORDERS);
+    if (Array.isArray(ordersRaw)) {
+      const orders = cols.map((_, i) => (ordersRaw[i] === "desc" ? "desc" : "asc")) as (
+        "asc" | "desc"
+      )[];
+      if (orders.some((o) => o === "desc")) index.orders = orders;
+    }
+    // @where — partial-index predicate.
+    const whereRaw = identity.ownAttr(IDENTITY_ATTR_WHERE);
+    if (typeof whereRaw === "string" && whereRaw.trim().length > 0) {
+      index.where = whereRaw.trim();
+    }
+    indexes.push(index);
   }
   return indexes;
 }
@@ -456,7 +475,13 @@ function buildForeignKeys(
       : [applyColumnNamingStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
-    const constraintName = `${tableName}_${fkCols[0]}_fk`;
+    // An explicit @constraintName adopts an existing FK name (e.g. a database
+    // created by another toolchain); absent → the auto-derived default.
+    const constraintNameOverride = refChild.ownAttr(IDENTITY_ATTR_CONSTRAINT_NAME);
+    const constraintName =
+      typeof constraintNameOverride === "string" && constraintNameOverride.length > 0
+        ? constraintNameOverride
+        : `${tableName}_${fkCols[0]}_fk`;
 
     // Guard: ON DELETE SET NULL requires nullable FK columns.
     validateSetNullNullability(entity, refChild, onDelete, constraintName);

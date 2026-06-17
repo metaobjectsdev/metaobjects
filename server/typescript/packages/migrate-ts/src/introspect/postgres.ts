@@ -151,25 +151,36 @@ export function pgTypeToSqlType(dataType: string, maxLength?: number | null): Sq
  * Returns undefined if the default is absent or empty.
  *
  * Classification rules:
- *   - Expressions: now(), CURRENT_TIMESTAMP, CURRENT_DATE, CURRENT_TIME,
- *     nextval(...), and any value that starts with a non-quote character and
- *     contains a `::` cast (i.e. bare identifier with cast, like `NULL::text`).
+ *   - Expressions: now(), CURRENT_TIMESTAMP, CURRENT_DATE, CURRENT_TIME, and any
+ *     bare function-call (e.g. nextval(...), gen_random_uuid(), uuid_generate_v4()),
+ *     plus any value that starts with a non-quote character and contains a `::` cast
+ *     (i.e. bare identifier with cast, like `NULL::text`).
  *   - Literals: `'value'` (optionally followed by `::type` cast, which PG
  *     commonly appends for clarity). The cast is stripped; the value is unquoted.
  *
  * PG stores literal booleans as `'true'::boolean`, integers as `'42'::integer`,
  * strings as `'hello'::text` — all are literals after stripping the cast.
+ *
+ * The bare function-call rule keeps this in lockstep with the metadata-side
+ * default classifier (expected-schema's EXPR_DEFAULT_PATTERNS, which treats any
+ * `()` default as an expression): without it, a `gen_random_uuid()` column default
+ * round-trips as a literal here but an expression there, producing a spurious
+ * column diff on every uuid-PK table.
  */
 export function parsePgDefault(raw: string | null | undefined): ColumnDefault | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
 
-  // Function-call or keyword expressions
+  // Function-call or keyword expressions. The leading-identifier-then-"(" rule
+  // matches any bare function call (gen_random_uuid(), uuid_generate_v4(), …)
+  // while never matching a quoted literal (those start with a single quote and are
+  // handled below).
   if (
     /^now\(\)$/i.test(raw) ||
     /^current_timestamp\b/i.test(raw) ||
     /^current_date\b/i.test(raw) ||
     /^current_time\b/i.test(raw) ||
-    /^nextval\(/i.test(raw)
+    /^nextval\(/i.test(raw) ||
+    /^[a-zA-Z_][\w.]*\s*\(/.test(raw)
   ) {
     return { kind: "expr", value: raw };
   }
@@ -317,46 +328,97 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
   // pg-mem gap: array_position() is not implemented, so this query throws on
   // pg-mem. We catch and return [] so non-index tests still pass against pg-mem.
   // Real PG (Postgres 16) handles this correctly.
-  let rows: { rows: Array<{ index_name: string; is_unique: boolean; is_primary: boolean; column_name: string; ordinal: number }> };
+  // One row per index KEY, in key order, carrying: the column name (NULL for an
+  // expression key — attnum 0), the DESC bit from `indoption`, and the partial-index
+  // predicate (`indpred`, constant per index). unnest WITH ORDINALITY over indkey +
+  // indoption keeps the key order and pairs each key with its option flags.
+  let rows: {
+    rows: Array<{
+      index_name: string;
+      is_unique: boolean;
+      is_primary: boolean;
+      column_name: string | null;
+      ordinal: number;
+      is_desc: boolean;
+      predicate: string | null;
+    }>;
+  };
   try {
     rows = await sql<{
       index_name: string;
       is_unique: boolean;
       is_primary: boolean;
-      column_name: string;
+      column_name: string | null;
       ordinal: number;
+      is_desc: boolean;
+      predicate: string | null;
     }>`
       SELECT i.relname AS index_name,
              ix.indisunique AS is_unique,
              ix.indisprimary AS is_primary,
              a.attname AS column_name,
-             array_position(ix.indkey, a.attnum) AS ordinal
+             k.ord AS ordinal,
+             (COALESCE(opt.option, 0) & 1) = 1 AS is_desc,
+             pg_get_expr(ix.indpred, ix.indrelid) AS predicate
       FROM pg_index ix
       JOIN pg_class i ON i.oid = ix.indexrelid
       JOIN pg_class t ON t.oid = ix.indrelid
       JOIN pg_namespace n ON n.oid = t.relnamespace
-      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+      CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord)
+      LEFT JOIN LATERAL unnest(ix.indoption) WITH ORDINALITY AS opt(option, oord)
+        ON opt.oord = k.ord
+      LEFT JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = k.attnum
       WHERE n.nspname = ${schema}
         AND t.relname = ${table}
-      ORDER BY i.relname, ordinal
+      ORDER BY i.relname, k.ord
     `.execute(k);
   } catch {
-    // pg-mem: array_position() not implemented — return empty index list.
+    // pg-mem: unnest WITH ORDINALITY / pg_get_expr unsupported — return empty list.
     return [];
   }
 
-  const byName = new Map<string, { isUnique: boolean; isPrimary: boolean; cols: string[] }>();
+  const byName = new Map<
+    string,
+    {
+      isUnique: boolean;
+      isPrimary: boolean;
+      cols: string[];
+      orders: ("asc" | "desc")[];
+      predicate: string | null;
+      hasExpressionKey: boolean;
+    }
+  >();
   for (const r of rows.rows) {
     let entry = byName.get(r.index_name);
     if (!entry) {
-      entry = { isUnique: r.is_unique, isPrimary: r.is_primary, cols: [] };
+      entry = {
+        isUnique: r.is_unique,
+        isPrimary: r.is_primary,
+        cols: [],
+        orders: [],
+        predicate: r.predicate,
+        hasExpressionKey: false,
+      };
       byName.set(r.index_name, entry);
     }
-    entry.cols.push(r.column_name);
+    if (r.column_name === null) {
+      // Expression key (attnum 0) — not yet modelable; mark the index so it is
+      // skipped below (consistent with the prior behavior of not surfacing it).
+      entry.hasExpressionKey = true;
+    } else {
+      entry.cols.push(r.column_name);
+      entry.orders.push(r.is_desc ? "desc" : "asc");
+    }
   }
   return Array.from(byName.entries())
-    .filter(([, v]) => !v.isPrimary)        // PK index excluded — PK lives in TableDescriptor.primaryKey
-    .map(([name, v]) => ({ name, columns: v.cols, unique: v.isUnique }));
+    .filter(([, v]) => !v.isPrimary) // PK index excluded — PK lives in TableDescriptor.primaryKey
+    .filter(([, v]) => !v.hasExpressionKey) // expression indexes deferred (no metamodel form yet)
+    .map(([name, v]) => {
+      const ix: IndexDescriptor = { name, columns: v.cols, unique: v.isUnique };
+      if (v.orders.some((o) => o === "desc")) ix.orders = v.orders;
+      if (v.predicate !== null) ix.where = v.predicate;
+      return ix;
+    });
 }
 
 async function readPgForeignKeys(k: RawKysely, schema: string, table: string): Promise<FkDescriptor[]> {

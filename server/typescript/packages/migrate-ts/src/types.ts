@@ -66,6 +66,19 @@ export interface IndexDescriptor {
   name: string;
   columns: string[];
   unique: boolean;
+  /**
+   * Per-column sort direction, positional to `columns`. Omitted (or "asc") = the
+   * default ascending order, which Postgres does not render in an index def. A
+   * "desc" entry emits `<col> DESC` and is compared against the introspected
+   * `pg_index.indoption` DESC bit. Absent ⇒ all-ascending.
+   */
+  orders?: ("asc" | "desc")[];
+  /**
+   * Partial-index predicate (raw SQL, e.g. `delivered_at IS NULL`). Emitted as a
+   * trailing `WHERE (<predicate>)`; compared against the introspected
+   * `pg_get_expr(indpred, …)` after expression normalization. Absent ⇒ full index.
+   */
+  where?: string;
 }
 
 export interface CheckDescriptor {

@@ -251,14 +251,22 @@ function validateNode(
       }
     }
 
-    // Check 3: allowedValues membership (unchanged).
+    // Check 3: allowedValues membership. For an isArray attr the value is an array,
+    // so each ELEMENT must be a member (not the array as a whole); a scalar attr
+    // checks the value directly.
     if (spec.allowedValues !== undefined && spec.allowedValues.length > 0) {
-      if (!spec.allowedValues.includes(value)) {
+      const allowed = spec.allowedValues;
+      const offenders = Array.isArray(value)
+        ? value.filter((v) => !allowed.includes(v))
+        : allowed.includes(value)
+          ? []
+          : [value];
+      for (const bad of offenders) {
         errors.push(
           new ParseError(
             `${nodeLabel(node)} attribute '@${inst.name}' has value ` +
-              `'${String(value)}' which is not one of the allowed values: ` +
-              `${spec.allowedValues.map((v) => String(v)).join(", ")}`,
+              `'${String(bad)}' which is not one of the allowed values: ` +
+              `${allowed.map((v) => String(v)).join(", ")}`,
             { code: "ERR_BAD_ATTR_VALUE", source: node.source },
           ),
         );

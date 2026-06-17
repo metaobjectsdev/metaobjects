@@ -61,6 +61,8 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
+- `identity.reference`: `@constraintName`
+- `identity.secondary`: `@orders`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@table`, `@view`
 
 ## metaobjects-documentation
