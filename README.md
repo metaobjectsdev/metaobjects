@@ -10,6 +10,13 @@ generated code is idiomatic per-language output that runs without any MetaObject
 runtime dependency. If the package ecosystem disappears tomorrow, you keep
 working code.
 
+> **Maintainer note.** MetaObjects is primarily a one-person, part-time project.
+> Issues and PRs are very welcome — expect responses on the order of days, not
+> hours. The metadata-driven *approach* has run in production for 20+ years; the
+> unified five-language *standard* in this repo is new and launching now. And by
+> design you are never blocked on the maintainer: the generated code runs with no
+> MetaObjects runtime dependency (see above), so you are never locked in.
+
 ## Quick links
 
 - New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python).

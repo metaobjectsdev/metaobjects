@@ -6,6 +6,11 @@ conformance corpora. This guide covers how to propose changes.
 
 ## Before you start
 
+- New here and looking for a place to jump in? Browse the
+  [`good first issue`](https://github.com/metaobjectsdev/metaobjects/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+  label for low-barrier, well-scoped starting points.
+- This is a primarily one-person, part-time project — issues and PRs are welcome, but
+  expect reviews on the order of days, not hours.
 - For anything non-trivial (new metamodel behavior, a new generator, a cross-language
   change), **open an issue first** to discuss the approach. Small, obvious fixes can go
   straight to a PR.
