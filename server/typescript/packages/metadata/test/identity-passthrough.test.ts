@@ -74,7 +74,7 @@ describe("FR-024 B3 — error-code registration", () => {
 });
 
 describe("FR-024 B3 (a) — identity names required", () => {
-  test("a nameless identity.primary errors with ERR_IDENTITY_NAME_REQUIRED", async () => {
+  test("a nameless identity.primary DEFAULTS to 'primary' (singleton, maxOccurs:1)", async () => {
     const { errors } = await load({
       "metadata.root": {
         package: "demo",
@@ -91,7 +91,9 @@ describe("FR-024 B3 (a) — identity names required", () => {
         ],
       },
     });
-    expect(codes(errors)).toContain("ERR_IDENTITY_NAME_REQUIRED");
+    // identity.primary carries a config-driven defaultName, so omitting the name
+    // no longer errors (the node is named "primary"). See default-name-singleton.test.ts.
+    expect(codes(errors)).not.toContain("ERR_IDENTITY_NAME_REQUIRED");
   });
 
   test("a nameless identity.secondary errors too (all identity subtypes)", async () => {

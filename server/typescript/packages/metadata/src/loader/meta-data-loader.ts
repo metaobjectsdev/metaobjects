@@ -25,6 +25,7 @@ import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js"
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
+import { validateMaxOccurs } from "../validate-max-occurs.js";
 import { validateIdentityPassthrough } from "../core/identity/validate-identity-passthrough.js";
 import { validateAttrSchema } from "../attr-schema-validate.js";
 import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
@@ -451,6 +452,10 @@ export class MetaDataLoader {
       const ruleResult = validateSubtypeRules(root);
       errors.push(...ruleResult.errors);
       warnings.push(...ruleResult.warnings);
+
+      // maxOccurs enforcement (config-driven singleton constraint, e.g. one
+      // identity.primary per entity) — the safety complement to defaultName.
+      errors.push(...validateMaxOccurs(root, this._registry));
 
       // FR-024 B3 — projection identity pass-through + key correspondence
       // (ERR_PROJECTION_IDENTITY_NOT_EXTENDED / ERR_IDENTITY_KEY_MISMATCH).

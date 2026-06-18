@@ -7,7 +7,9 @@
           "name": "Customer",
           "children": [
             { "field.uuid": { "name": "id" } },
-            { "identity.primary": { "@fields": ["id"] } }
+            { "field.string": { "name": "email" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.secondary": { "@fields": ["email"], "@unique": true } }
           ]
         }
       }

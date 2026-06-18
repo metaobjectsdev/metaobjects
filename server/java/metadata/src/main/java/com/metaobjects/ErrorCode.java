@@ -70,6 +70,14 @@ public enum ErrorCode {
     ERR_IDENTITY_NAME_REQUIRED,
 
     /**
+     * A {@code type.subType} declared with {@code maxOccurs} (e.g.
+     * identity.primary, maxOccurs:1) appears more times than allowed under one
+     * parent. The TS reference loader enforces it; other ports track the
+     * vocabulary until they apply the singleton constraint.
+     */
+    ERR_TOO_MANY_OCCURRENCES,
+
+    /**
      * FR-024: an identity.* on an object.projection lacks extends — a
      * projection identity is a pass-through of an entity identity.
      * Vocabulary-only here until FR-024 Phase E.
