@@ -55,6 +55,9 @@ public abstract class MetaIdentity extends MetaData {
     /** Reference identity: physical-enforcement flag. Default true (hard FK constraint). */
     public final static String ATTR_ENFORCE = "enforce";
 
+    /** Reference identity: physical FK constraint-name override — db-provider attr (RDB-physical). */
+    public final static String ATTR_CONSTRAINT_NAME = "constraintName";
+
     // === GENERATION STRATEGY CONSTANTS ===
     /** Auto-incrementing integer (database chooses implementation) */
     public static final String GENERATION_INCREMENT = "increment";

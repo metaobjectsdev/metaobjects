@@ -213,9 +213,16 @@ function renderDefault(d: ColumnDefault): string {
 
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
   const u = ix.unique ? "UNIQUE " : "";
+  // Per-column key list, appending `DESC` where @orders marks a descending key (ASC
+  // is the default and intentionally not rendered, matching PG's canonical def).
+  const keys = ix.columns
+    .map((c, i) => (ix.orders?.[i] === "desc" ? `${quote(c)} DESC` : quote(c)))
+    .join(", ");
+  // Partial-index predicate, when present.
+  const where = ix.where ? ` WHERE (${ix.where})` : "";
   // Index name itself is unqualified in CREATE INDEX (Postgres places the index
   // in the same schema as the table being indexed). Only the ON clause needs qualification.
-  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quoteQualified(table, schema)} (${ix.columns.map(quote).join(", ")});`;
+  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quoteQualified(table, schema)} (${keys})${where};`;
 }
 
 function renderAddFk(table: string, schema: string | undefined, fk: FkDescriptor): string {
