@@ -106,7 +106,14 @@ export function buildExpectedSchema(
     entities.push({ entity: child as MetaObject, tableName: resolveTableName(child) });
   }
   const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));
-  const resolveTargetTable = (entityName: string) => entityToTable.get(entityName);
+  // A reference's targetEntity is package-qualified by the loader (e.g.
+  // "acme::a::Foo"), but entityToTable is keyed by the bare entity name ("Foo").
+  // Fall back to the bare suffix so cross-package FK targets resolve.
+  const resolveTargetTable = (entityName: string) =>
+    entityToTable.get(entityName) ??
+    (entityName.includes("::")
+      ? entityToTable.get(entityName.slice(entityName.lastIndexOf("::") + 2))
+      : undefined);
 
   // Pass 2: build full descriptors with FK resolution.
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
