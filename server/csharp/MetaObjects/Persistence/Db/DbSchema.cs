@@ -42,4 +42,29 @@ public static class DbSchema
             string.Join(" | ", DbConstants.VALID_DB_COLUMN_TYPES) + ", each legal only on a specific " +
             "logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
             "The logical field type and its native binding are unchanged.");
+
+    // --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
+
+    /// <summary><c>@orders</c> — per-key index sort direction (asc|desc), positional to @fields; on identity.secondary.</summary>
+    public static readonly AttrSchema OrdersSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_ORDERS,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        AllowedValues: ["asc", "desc"],
+        Description: "Physical index-key sort direction, positional to @fields ('asc' | 'desc'). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider, not core identity.",
+        IsArray: true);
+
+    /// <summary><c>@where</c> — partial-index predicate (raw SQL); on identity.secondary.</summary>
+    public static readonly AttrSchema WhereSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_WHERE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@constraintName</c> — physical FK constraint-name override; on identity.reference.</summary>
+    public static readonly AttrSchema ConstraintNameSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider.");
 }

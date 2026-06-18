@@ -39,3 +39,17 @@ VALID_DB_COLUMN_TYPES = (
     DB_COLUMN_TYPE_JSONB,
     DB_COLUMN_TYPE_TIMESTAMP_TZ,
 )
+
+# ---------------------------------------------------------------------------
+# DB-domain physical attrs on identity subtypes (RDB index / FK-constraint
+# concerns — NOT core identity). The db provider EXTENDS identity.secondary
+# and identity.reference with these, mirroring spec/metamodel/db.json and the
+# TS/Java/C# db providers.
+# ---------------------------------------------------------------------------
+
+# identity.secondary: per-key sort direction array ('asc' | 'desc'), positional to @fields.
+IDENTITY_SECONDARY_ATTR_ORDERS = "orders"
+# identity.secondary: partial-index predicate (raw SQL).
+IDENTITY_SECONDARY_ATTR_WHERE = "where"
+# identity.reference: physical FK constraint-name override.
+IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME = "constraintName"

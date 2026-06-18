@@ -21,6 +21,19 @@ public static class DbConstants
     public const string FIELD_ATTR_DB_INDEXED = "db.indexed";
 
     // -----------------------------------------------------------------------
+    // Physical RDB index/constraint attrs the db provider adds to identity.*
+    // (TypeRegistry.Extend on identity subtypes) — pure physical-storage
+    // concerns, NOT core identity. Mirror the TS db.json identity extends.
+    // -----------------------------------------------------------------------
+
+    /// <summary>identity.secondary: per-field index-key sort direction array ('asc' | 'desc'), positional to @fields.</summary>
+    public const string IDENTITY_ATTR_ORDERS           = "orders";
+    /// <summary>identity.secondary: partial-index predicate (raw SQL). When set, the index covers only matching rows.</summary>
+    public const string IDENTITY_ATTR_WHERE            = "where";
+    /// <summary>identity.reference: physical FK constraint-name override. Absent =&gt; the auto-derived default.</summary>
+    public const string IDENTITY_ATTR_CONSTRAINT_NAME  = "constraintName";
+
+    // -----------------------------------------------------------------------
     // R6 Plan 2b — @dbColumnType physical column-type attribute (ADR-0013).
     //
     // The canonical *physical* escape hatch: selects the DB column type while
