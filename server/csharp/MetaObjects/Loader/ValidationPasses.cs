@@ -536,6 +536,52 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 6b: ValidateMaxOccurs
+    //   Generic singleton-cardinality enforcement. Per parent, tallies own children
+    //   by (type, subType); the moment a group exceeds its registered MaxOccurs the
+    //   OFFENDING child is reported with ERR_TOO_MANY_OCCURRENCES (envelope = that
+    //   child's source, so the cross-port jsonPath points at it).
+    //
+    //   MaxOccurs == 0 means unbounded (the default) — skipped. This is the generic
+    //   enforcement backing the config-driven default-name rule: identity.primary
+    //   (MaxOccurs == 1, DefaultName == "primary") is the first consumer.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateMaxOccurs(MetaData root, TypeRegistry registry)
+    {
+        var errors = new List<MetaError>();
+        WalkMaxOccurs(root, registry, errors);
+        return errors;
+    }
+
+    private static void WalkMaxOccurs(MetaData node, TypeRegistry registry, List<MetaError> errors)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var child in node.OwnChildren())
+        {
+            TypeDefinition? def = registry.Find(child.Type, child.SubType);
+            if (def is null || def.MaxOccurs < 1) continue; // 0 = unbounded
+            string key = $"{child.Type}.{child.SubType}";
+            counts.TryGetValue(key, out int seen);
+            seen++;
+            counts[key] = seen;
+            if (seen > def.MaxOccurs)
+            {
+                string head = node.Name != "" ? $"'{node.Name}' " : "";
+                errors.Add(new MetaError(
+                    $"{head}declares more than {def.MaxOccurs} {key} " +
+                    $"child{(def.MaxOccurs == 1 ? "" : "ren")}; at most {def.MaxOccurs} is allowed",
+                    ErrorCode.ERR_TOO_MANY_OCCURRENCES,
+                    Envelope: child.Source));
+            }
+        }
+        foreach (var child in node.OwnChildren())
+        {
+            WalkMaxOccurs(child, registry, errors);
+        }
+    }
+
+    // =========================================================================
     // Pass 7: ValidateDataGridFilterValues
     //   - @filter over a non-@filterable field → ERR_BAD_ATTR_FILTER
     //   - @filter uses a disallowed op for the field subtype → ERR_BAD_ATTR_FILTER

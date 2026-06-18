@@ -97,6 +97,14 @@ public final class ErrorMessageConstants {
     public static final String ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY";
 
     /**
+     * Error code emitted when a parent declares more than the registered
+     * {@code maxOccurs} children of a singleton {@code type.subType}
+     * (e.g. two {@code identity.primary} under one object).
+     * Cross-language contract: {@code ERR_TOO_MANY_OCCURRENCES}.
+     */
+    public static final String ERR_TOO_MANY_OCCURRENCES = "ERR_TOO_MANY_OCCURRENCES";
+
+    /**
      * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
      * alias ({@code @view} / {@code @materializedView} / {@code @proc} /
      * {@code @function}) that does not match its {@code @kind}. The legacy

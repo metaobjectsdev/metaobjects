@@ -883,6 +883,10 @@ public class MetaDataRegistry {
                     def.getImplementationClass(), id.type(), id.subType(), description,
                     directReqs, def.getParentType(), def.getParentSubType(),
                     rules, example, whenToUse, def.getParents());
+            // Preserve singleton-cardinality + config-driven default name across the
+            // doc-slot rebuild (constructor does not carry them).
+            rebuiltDef.setMaxOccurs(def.getMaxOccurs());
+            rebuiltDef.setDefaultName(def.getDefaultName());
             typeDefinitions.put(id, rebuiltDef);
         }
 
@@ -996,6 +1000,10 @@ public class MetaDataRegistry {
                 inherited.put(e.getKey(), req);
             }
             rebuilt.populateInheritedRequirements(inherited);
+            // Preserve singleton-cardinality + config-driven default name across the
+            // strict-attr-pruning rebuild (constructor does not carry them).
+            rebuilt.setMaxOccurs(def.getMaxOccurs());
+            rebuilt.setDefaultName(def.getDefaultName());
 
             typeDefinitions.put(id, rebuilt);
         }
@@ -1074,6 +1082,10 @@ public class MetaDataRegistry {
                 }
             }
             rebuilt.populateInheritedRequirements(inheritedNonStructural);
+            // Preserve singleton-cardinality + config-driven default name across the
+            // structural-graph rebuild (constructor does not carry them).
+            rebuilt.setMaxOccurs(def.getMaxOccurs());
+            rebuilt.setDefaultName(def.getDefaultName());
 
             typeDefinitions.put(id, rebuilt);
         }

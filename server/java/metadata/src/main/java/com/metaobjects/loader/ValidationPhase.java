@@ -121,6 +121,10 @@ public final class ValidationPhase {
         // per-subtype "missing @X" blocks (previously R1 for template.prompt,
         // R1b for template.toolcall) into a single cross-port-aligned pass.
         validateRequiredAttrs(root, loader);
+        // Generic singleton-cardinality pass: any parent declaring more children
+        // of a registered maxOccurs==1 type.subType than allowed fires
+        // ERR_TOO_MANY_OCCURRENCES (e.g. two identity.primary on one object).
+        validateMaxOccurs(root, loader);
         validateEnumValues(root);
         validateFieldDefaults(root);
         validateDbColumnType(root);
@@ -243,6 +247,67 @@ public final class ValidationPhase {
                             ? " '" + node.getName() + "'" : "")
                         + " is missing required attribute '@" + req.getName() + "'",
                     ErrorCode.ERR_MISSING_REQUIRED_ATTR, node.getSource());
+            }
+        }
+    }
+
+    // =========================================================================
+    // Generic singleton-cardinality validation (maxOccurs)
+    //
+    // Walks every node and, per parent, groups its OWN children by (type, subType).
+    // For each group whose registered TypeDefinition declares maxOccurs >= 1, a
+    // count exceeding maxOccurs fires ERR_TOO_MANY_OCCURRENCES. This is the generic
+    // enforcement backing the config-driven default-name rule: identity.primary
+    // (maxOccurs==1, defaultName=="primary") is the first consumer — two name-less
+    // primaries would both default to "primary" and collide, so the cardinality
+    // cap catches it deterministically before the collision becomes silent.
+    //
+    // maxOccurs==0 means unbounded (the default) — skipped. Own-children only
+    // (includeParentData=false), matching every other pass here. Loader nullness:
+    // when the loader handle is absent (legacy two-arg entry), the registry is
+    // unreachable, so this pass is a no-op (like validateRequiredAttrs).
+    // =========================================================================
+
+    static void validateMaxOccurs(MetaRoot root, MetaDataLoader loader) {
+        if (loader == null) return;
+        MetaDataRegistry registry = loader.getTypeRegistry();
+        if (registry == null) return;
+        walkMaxOccurs(root, registry);
+    }
+
+    private static void walkMaxOccurs(MetaData node, MetaDataRegistry registry) {
+        validateMaxOccursNode(node, registry);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkMaxOccurs(child, registry);
+        }
+    }
+
+    private static void validateMaxOccursNode(MetaData parent, MetaDataRegistry registry) {
+        // Tally own children per (type.subType) in declaration order; the moment a
+        // group exceeds its registered maxOccurs, throw against the OFFENDING child's
+        // source so the cross-port envelope jsonPath points at that node (matching
+        // the shared error fixture, which targets the second identity.primary).
+        Map<String, Integer> counts = new java.util.HashMap<>();
+        for (MetaData child : parent.getChildren(MetaData.class, false)) {
+            String type = child.getType();
+            String subType = child.getSubType();
+            if (type == null || subType == null) continue;
+            TypeDefinition def = registry.getTypeDefinition(type, subType);
+            if (def == null) continue;
+            int maxOccurs = def.getMaxOccurs();
+            if (maxOccurs < 1) continue; // 0 = unbounded
+            String key = type + "." + subType;
+            int seen = counts.merge(key, 1, Integer::sum);
+            if (seen > maxOccurs) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_TOO_MANY_OCCURRENCES
+                        + ": "
+                        + (parent.getName() != null && !parent.getName().isEmpty()
+                            ? "'" + parent.getName() + "' " : "")
+                        + "declares more than " + maxOccurs + " " + key
+                        + " child" + (maxOccurs == 1 ? "" : "ren")
+                        + "; at most " + maxOccurs + " is allowed",
+                    ErrorCode.ERR_TOO_MANY_OCCURRENCES, child.getSource());
             }
         }
     }

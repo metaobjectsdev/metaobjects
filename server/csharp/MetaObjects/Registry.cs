@@ -106,6 +106,20 @@ public sealed class TypeDefinition
     public string? WhenToUse { get; }
     public IReadOnlyList<string> Parents { get; }
 
+    /// <summary>
+    /// Max children of this (type, subType) per parent. 0 = unbounded (the default);
+    /// 1 = singleton. Loader-enforced (ERR_TOO_MANY_OCCURRENCES). Config-driven —
+    /// declared on the type, not special-cased in the loader.
+    /// </summary>
+    public int MaxOccurs { get; }
+
+    /// <summary>
+    /// Default name for a singleton (<see cref="MaxOccurs"/> == 1) child declared with
+    /// no name. The parser names the node from this (e.g. identity.primary → "primary")
+    /// and serializes it with that name. Null when none.
+    /// </summary>
+    public string? DefaultName { get; }
+
     public TypeDefinition(
         TypeId typeId,
         string description,
@@ -116,7 +130,9 @@ public sealed class TypeDefinition
         string? rules = null,
         string? example = null,
         string? whenToUse = null,
-        IReadOnlyList<string>? parents = null)
+        IReadOnlyList<string>? parents = null,
+        int maxOccurs = 0,
+        string? defaultName = null)
     {
         TypeId = typeId;
         Description = description;
@@ -128,6 +144,8 @@ public sealed class TypeDefinition
         Example = example;
         WhenToUse = whenToUse;
         Parents = parents is null ? [] : new List<string>(parents);
+        MaxOccurs = maxOccurs;
+        DefaultName = defaultName;
     }
 
     internal void AppendAttr(AttrSchema attr) => _attributes.Add(attr);
@@ -530,7 +548,9 @@ public sealed class TypeRegistry
                 rules,
                 example,
                 whenToUse,
-                def.Parents);
+                def.Parents,
+                def.MaxOccurs,
+                def.DefaultName);
         }
 
         // Common-attr descriptions from the universal *.* documentation entry.
@@ -602,7 +622,8 @@ public sealed class TypeRegistry
 
             _defs[key] = new TypeDefinition(
                 id, def.Description, rules, def.Factory, def.Attributes.ToList(),
-                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents,
+                def.MaxOccurs, def.DefaultName);
         }
     }
 
@@ -644,7 +665,8 @@ public sealed class TypeRegistry
 
             _defs[key] = new TypeDefinition(
                 id, def.Description, def.ChildRules.ToList(), def.Factory, attrs,
-                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents);
+                def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents,
+                def.MaxOccurs, def.DefaultName);
         }
     }
 }

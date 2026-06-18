@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "altId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.primary": { "name": "pk2", "@fields": ["altId"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

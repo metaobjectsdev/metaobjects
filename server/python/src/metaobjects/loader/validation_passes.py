@@ -148,6 +148,7 @@ def run_validations(
     _validate_field_object_storage(root, errors)
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
+    _validate_max_occurs(root, registry, errors)
     _validate_filterable_has_index(root, warnings)
     # SP-H Unit9 — @filterable on a subtype with no operator band → error.
     _validate_filterable_has_supported_ops(root, errors)
@@ -1320,6 +1321,34 @@ def _validate_one_primary_source(
 # ---------------------------------------------------------------------------
 # object.entity with no effective primary identity and not abstract → warning.
 # object.value with a primary identity → ERR_SUBTYPE_RULE_VIOLATION (error).
+
+
+def _validate_max_occurs(
+    root: MetaData,
+    registry: TypeRegistry,
+    errors: list[MetaError],
+) -> None:
+    """Enforce a type definition's ``max_occurs`` (e.g. identity.primary, 1 per
+    entity). The safety complement to config-driven ``default_name`` — a
+    singleton's static default name is collision-free only if the singleton
+    constraint holds."""
+    for node in _walk(root):
+        counts: dict[tuple[str, str], list[MetaData]] = {}
+        for child in node.own_children():
+            counts.setdefault((child.type, child.sub_type), []).append(child)
+        for (type_, sub_type), group in counts.items():
+            definition = registry.find(type_, sub_type)
+            max_occurs = definition.max_occurs if definition is not None else None
+            if max_occurs is not None and len(group) > max_occurs:
+                offender = group[max_occurs]
+                errors.append(
+                    MetaError(
+                        f"{type_}.{sub_type} appears {len(group)} times under "
+                        f"'{node.name}' but at most {max_occurs} is allowed",
+                        ErrorCode.ERR_TOO_MANY_OCCURRENCES,
+                        envelope=offender.source,
+                    )
+                )
 
 
 def _validate_subtype_rules(

@@ -481,6 +481,17 @@ public static class Parser
 
         // --- Create the model ---
         TypeDefinition def = st.Registry.Find(type, subType)!;
+
+        // Config-driven default name for a singleton type: when the type definition
+        // declares MaxOccurs == 1 with a DefaultName, a name-less node is named from
+        // config and SERIALIZED with that name (e.g. identity.primary → "primary").
+        // Generic registry rule — not a per-type loader special-case. Two such
+        // singletons trip the MaxOccurs enforcement pass (ERR_TOO_MANY_OCCURRENCES).
+        if (name == "" && def.MaxOccurs == 1 && def.DefaultName is not null)
+        {
+            name = def.DefaultName;
+        }
+
         MetaData model = def.Factory(def.TypeId, name);
         // FR5a / ADR-0009: attach the JSON-source envelope at construction time.
         model.SetSource(st.CurrentSource());

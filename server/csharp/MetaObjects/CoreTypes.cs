@@ -60,7 +60,9 @@ public static class CoreTypes
         List<ChildRule> childRules,
         Func<TypeId, string, MetaData> factory,
         List<AttrSchema> attributes,
-        DataType? dataType = null)
+        DataType? dataType = null,
+        int maxOccurs = 0,
+        string? defaultName = null)
     {
         Func<TypeId, string, MetaData> wrappedFactory = (typeId, name) =>
         {
@@ -78,7 +80,9 @@ public static class CoreTypes
             childRules: childRules,
             factory: wrappedFactory,
             attributes: attributes,
-            dataType: dataType);
+            dataType: dataType,
+            maxOccurs: maxOccurs,
+            defaultName: defaultName);
     }
 
     // -------------------------------------------------------------------------
@@ -409,6 +413,12 @@ public static class CoreTypes
                     ? ia
                     : [IdentitySchema.IdentityFieldsAttr];
 
+            // identity.primary is a singleton (exactly one per object): a name-less
+            // primary is named from config ("primary") and two primaries trip the
+            // maxOccurs enforcement pass (ERR_TOO_MANY_OCCURRENCES). Config-driven —
+            // declared on the type, not special-cased in the loader.
+            bool isPrimary = subType == IDENTITY_SUBTYPE_PRIMARY;
+
             registry.Register(
                 Def(
                     TYPE_IDENTITY,
@@ -416,7 +426,9 @@ public static class CoreTypes
                     $"Identity ({subType})",
                     [Wildcard(TYPE_ATTR)],
                     nodeFactory,
-                    idAttrs.ToList()));
+                    idAttrs.ToList(),
+                    maxOccurs: isPrimary ? 1 : 0,
+                    defaultName: isPrimary ? subType : null));
         }
 
         // relationship — 4 subtypes (base + association + aggregation + composition)
