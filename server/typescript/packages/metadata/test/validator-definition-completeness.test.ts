@@ -36,10 +36,29 @@ const EXPECTED: Record<string, Record<string, { valueType: string; required: boo
   regex: { ...MIN_MAX, pattern: { valueType: "string", required: false } },
   numeric: { ...MIN_MAX },
   array: { ...MIN_MAX },
+  // Cross-field validators — entity-scoped, reference sibling fields by name.
+  comparison: {
+    left: { valueType: "string", required: true },
+    op: { valueType: "string", required: true },
+    right: { valueType: "string", required: true },
+  },
+  requiredWhen: {
+    field: { valueType: "string", required: true },
+    when: { valueType: "string", required: true },
+    equals: { valueType: "string", required: true },
+  },
+  presentIff: {
+    field: { valueType: "string", required: true },
+    when: { valueType: "string", required: true },
+    equals: { valueType: "string", required: true },
+  },
+  atLeastOne: {
+    fields: { valueType: "string", required: true },
+  },
 };
 
 describe("validator provider externalization — completeness", () => {
-  test("registers all 6 validator subtypes", () => {
+  test("registers all validator subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_VALIDATOR).sort();
     expect(registered).toEqual([...VALIDATOR_SUBTYPES].sort());
   });
