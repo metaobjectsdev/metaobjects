@@ -431,6 +431,9 @@ public class MetaDataLoader
             // junction-two-references / sourceRefField-match / M:N-attr-on-1:N
             // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
             errors.AddRange(ValidationPasses.ValidateRelationships(root));
+
+            // identity.reference @references must resolve to a real object (FK target).
+            errors.AddRange(ValidationPasses.ValidateIdentityReferences(root));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIdentityReferences } from "./validation-passes.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -489,6 +489,9 @@ export class MetaDataLoader {
       // @symmetric is self-join-only + mutually exclusive with @sourceRefField; M:N attrs
       // are invalid on a 1:N relationship.
       errors.push(...validateRelationships(root));
+
+      // identity.reference @references must resolve to a real object (FK target).
+      errors.push(...validateIdentityReferences(root));
 
       // template.* validation — @payloadRef resolves to a known object;
       // @requiredSlots are real fields on it (FR-004 Plan #3, T2).

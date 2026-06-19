@@ -66,7 +66,11 @@ import {
   FIELD_SUBTYPE_OBJECT,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
-import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
+import {
+  IDENTITY_ATTR_FIELDS,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+} from "../core/identity/identity-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -1199,6 +1203,20 @@ export function validateRelationships(root: MetaData): ParseError[] {
       const isMany = cardinality === CARDINALITY_MANY;
       const isM2M = hasThrough && isMany;
 
+      // Rule (0): @objectRef must resolve to a real object. A dangling target is
+      // drift between two pieces of metadata — rename/remove the target entity and
+      // the model fails to load. (Bare name, FQN, or package-folded resolutionKey
+      // all match via refMatchesObject, like origin @from/@of.)
+      if (typeof objectRef === "string" && objectRef !== "" && !_findObject(root, objectRef)) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_OBJECT_REF} "${objectRef}" does not resolve to an object.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+        continue;
+      }
+
       // Rule (d): M:N-only attrs on a non-M:N relationship.
       if (!isM2M) {
         if (hasThrough) {
@@ -1286,6 +1304,37 @@ export function validateRelationships(root: MetaData): ParseError[] {
             ),
           );
         }
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * Every `identity.reference`'s `references:` must resolve to a real object — a
+ * dangling FK target is drift between two pieces of metadata. The target entity is
+ * the segment before the first dotted field path (packages use "::", never ".", so
+ * the first "." separates the entity from its field set: "Program", "Program.id",
+ * "acme::sales::Program.a,b" all resolve to the object before the first "."). Own
+ * identity children only — an inherited reference is validated on its declaring node.
+ */
+export function validateIdentityReferences(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const idn of obj
+      .ownChildren()
+      .filter((c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE)) {
+      const references = idn.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
+      // Absence is the required-attr pass's job, not ours.
+      if (typeof references !== "string" || references === "") continue;
+      const entityRef = references.split(".")[0];
+      if (!_findObject(root, entityRef)) {
+        errors.push(
+          new ParseError(
+            `identity.reference "${obj.name}.${idn.name}" @${IDENTITY_REFERENCE_ATTR_REFERENCES} "${references}" does not resolve to an object.`,
+            { code: "ERR_INVALID_REFERENCE", source: idn.source },
+          ),
+        );
       }
     }
   }

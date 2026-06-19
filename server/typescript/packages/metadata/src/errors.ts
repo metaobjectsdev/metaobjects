@@ -98,6 +98,9 @@ export const ERROR_CODES = [
   // junction declaring two identity.reference children; @sourceRefField must match
   // one of them; M:N attrs are invalid on a 1:N (@cardinality:one / no @through).
   "ERR_INVALID_RELATIONSHIP",
+  // identity.reference @references names an FK target that does not resolve to any
+  // object in the loaded tree (a dangling cross-reference between metadata).
+  "ERR_INVALID_REFERENCE",
   "ERR_VAR_NOT_ON_PAYLOAD",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",

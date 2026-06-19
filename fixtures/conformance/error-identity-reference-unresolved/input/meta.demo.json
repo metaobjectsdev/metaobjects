@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Task",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "projectId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.reference": { "name": "fkProject", "@fields": ["projectId"], "@references": "Nope" } }
+          ]
+        }
+      }
+    ]
+  }
+}

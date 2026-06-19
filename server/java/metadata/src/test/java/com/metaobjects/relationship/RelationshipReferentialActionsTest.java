@@ -45,15 +45,26 @@ public class RelationshipReferentialActionsTest extends SharedRegistryTestBase {
         return loader;
     }
 
-    /** Minimal entity with one relationship child. */
+    /** Minimal entity with one relationship child, plus stub target entities so the
+     *  relationship @objectRef resolves (a dangling target now fails to load). */
     private String entityWithRelationship(String relJson) {
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
              + "  { \"object.entity\": { \"name\": \"Order\", \"children\": ["
              + "    { \"field.long\": { \"name\": \"id\" } },"
              + relJson + ","
              + "    { \"identity.primary\": { \"@fields\": \"id\" } }"
-             + "  ] } }"
+             + "  ] } },"
+             + stubEntity("Item") + "," + stubEntity("Member") + ","
+             + stubEntity("Section") + "," + stubEntity("Customer")
              + "] } }";
+    }
+
+    /** A minimal valid entity used only as a relationship @objectRef target. */
+    private String stubEntity(String name) {
+        return "  { \"object.entity\": { \"name\": \"" + name + "\", \"children\": ["
+             + "    { \"field.long\": { \"name\": \"id\" } },"
+             + "    { \"identity.primary\": { \"@fields\": \"id\" } }"
+             + "  ] } }";
     }
 
     // -----------------------------------------------------------------------

@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Project",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "relationship.composition": { "name": "tasks", "@objectRef": "Nope", "@cardinality": "many" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

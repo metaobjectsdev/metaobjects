@@ -4,7 +4,8 @@ import com.metaobjects.relationship.MetaRelationship
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertFails
+import kotlin.test.assertTrue
 
 class RelationshipsTest {
 
@@ -42,7 +43,10 @@ class RelationshipsTest {
         assertEquals("Author", target.shortName)
     }
 
-    @Test fun `targetObjectOrNull is null when objectRef is unresolved`() {
+    @Test fun `an unresolved objectRef now fails to load`() {
+        // A relationship whose @objectRef names no real object is drift between two
+        // pieces of metadata — the loader rejects it (ERR_INVALID_RELATIONSHIP) rather
+        // than loading a relationship with a silently-null target.
         val badFixture = """{
           "metadata.root": { "package": "acme", "children": [
             { "object.entity": { "name": "Post", "children": [
@@ -54,9 +58,12 @@ class RelationshipsTest {
             ] } }
           ] }
         }"""
-        val rel = loadString("t2", badFixture).metaObjectOrNull("acme::Post")!!
-            .children.filterIsInstance<MetaRelationship>().first()
-        assertNull(rel.targetObjectOrNull)
+        val ex = assertFails { loadString("t2", badFixture) }
+        val msg = (ex.message ?: "") + (ex.cause?.message ?: "")
+        assertTrue(
+            msg.contains("does not resolve") || msg.contains("ERR_INVALID_RELATIONSHIP"),
+            "expected a dangling-objectRef load error, got: $msg",
+        )
     }
 
     @Test fun `cardinalityType defaults to ONE when attr absent`() {

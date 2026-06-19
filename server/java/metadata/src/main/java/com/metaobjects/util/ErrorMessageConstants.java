@@ -83,6 +83,13 @@ public final class ErrorMessageConstants {
     public static final String ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP";
 
     /**
+     * Error code emitted when an {@code identity.reference} {@code @references} names an
+     * FK target object that does not resolve to any object in the loaded tree.
+     * Cross-language contract: {@code ERR_INVALID_REFERENCE}.
+     */
+    public static final String ERR_INVALID_REFERENCE = "ERR_INVALID_REFERENCE";
+
+    /**
      * Error code emitted when an object declares one or more sources but none has
      * role {@code "primary"}.
      * Cross-language contract: {@code ERR_SOURCE_NO_PRIMARY}.

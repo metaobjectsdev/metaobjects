@@ -202,9 +202,16 @@ public enum ErrorCode {
     /**
      * FR-017: a M:N relationship's slim vocabulary is invalid — {@code @through} does not
      * name a junction declaring two {@code identity.reference} children, {@code @sourceRefField}
-     * does not match one of them, or a M:N-only attr is set on a non-M:N relationship.
+     * does not match one of them, or a M:N-only attr is set on a non-M:N relationship;
+     * OR a relationship's {@code @objectRef} does not resolve to any object in the tree.
      */
     ERR_INVALID_RELATIONSHIP,
+
+    /**
+     * An {@code identity.reference} {@code @references} names an FK target object that
+     * does not resolve to any object in the loaded tree (a dangling cross-reference).
+     */
+    ERR_INVALID_REFERENCE,
 
     /** A template declares a @payloadRef that does not resolve, or @requiredSlots that are not fields. */
     ERR_INVALID_TEMPLATE,
