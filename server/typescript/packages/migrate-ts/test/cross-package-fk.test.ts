@@ -38,3 +38,37 @@ describe("buildExpectedSchema — cross-package FK resolution", () => {
     expect(aaas?.foreignKeys[0]).toMatchObject({ columns: ["bbb_id"], refTable: "bbbs", refColumns: ["id"] });
   });
 });
+
+// Regression: a cross-package FK whose TARGET's single-column PK is NOT named
+// "id" must reference that actual PK column. resolvedTargetPkField looks the
+// (FQN) targetEntity up in findObject (bare-keyed) to read the target's primary
+// identity — pre-fix the FQN missed, so the FK column silently defaulted to "id".
+describe("buildExpectedSchema — cross-package FK to a non-id PK target", () => {
+  let root: MetaData;
+  beforeAll(async () => {
+    const child = JSON.stringify({ "metadata.root": { package: "p1", children: [
+      { "object.entity": { name: "Child", children: [
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "parentCode" } },
+        { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+        { "identity.reference": { name: "ref_parent", "@fields": "parentCode", "@references": "p2::Parent" } },
+        { "source.rdb": { name: "src", "@table": "children" } },
+      ] } },
+    ] } });
+    const parent = JSON.stringify({ "metadata.root": { package: "p2", children: [
+      { "object.entity": { name: "Parent", children: [
+        { "field.string": { name: "code" } },
+        { "identity.primary": { name: "pk", "@fields": ["code"], "@generation": "assigned" } },
+        { "source.rdb": { name: "src", "@table": "parents" } },
+      ] } },
+    ] } });
+    root = (await new MetaDataLoader().load([new InMemoryStringSource(child), new InMemoryStringSource(parent)])).root;
+  });
+
+  test("FK references the target's actual PK column (code), not a defaulted id", () => {
+    const snap = buildExpectedSchema(root, { dialect: "postgres" });
+    const children = snap.tables.find((t) => t.name === "children");
+    expect(children?.foreignKeys.length).toBe(1);
+    expect(children?.foreignKeys[0]).toMatchObject({ columns: ["parent_code"], refTable: "parents", refColumns: ["code"] });
+  });
+});

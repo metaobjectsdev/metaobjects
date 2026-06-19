@@ -136,7 +136,14 @@ export class MetaReferenceIdentity extends MetaIdentity {
 
     const targetName = this.targetEntity;
     if (targetName === undefined) return undefined;
-    const targetObj = root.findObject(targetName);
+    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
+    // name, so fall back to the bare suffix after the last "::". Mirrors the
+    // resolveTargetTable fix; without it a cross-package reference resolves no
+    // target and the PK column wrongly defaults to "id".
+    const targetObj = root.findObject(targetName)
+      ?? (targetName.includes("::")
+        ? root.findObject(targetName.slice(targetName.lastIndexOf("::") + 2))
+        : undefined);
     if (!targetObj) return undefined;
 
     const primary = targetObj.primaryIdentity();
