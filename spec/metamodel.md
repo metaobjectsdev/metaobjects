@@ -42,5 +42,14 @@ Inside each node body, the **reserved structural keys** are exactly:
 Everything else inside a body is an `@`-prefixed attribute (e.g. `@column`, `@currency`,
 `@fields`). `@`-attrs appear in alphabetical order in the canonical form.
 
+**Singleton default-naming.** A type may declare itself a singleton (`maxOccurs: 1`)
+with a `defaultName`. A name-less node of such a type is named from `defaultName` by
+the loader and serialized with that name; a second occurrence under the same parent is
+an `ERR_TOO_MANY_OCCURRENCES` error. `identity.primary` is the canonical case
+(`defaultName: "primary"`), so `{ "identity.primary": { "@fields": "id" } }` is a
+complete, loadable node — the name is optional. This is a generic registry rule, not a
+per-type loader special-case, and is gated cross-port by the
+`identity-primary-default-name` / `error-too-many-primary` conformance fixtures.
+
 See `typescript/packages/metadata/src/constants.ts` for the canonical vocabulary
 (type names, subtype names, structural keys, separators).
