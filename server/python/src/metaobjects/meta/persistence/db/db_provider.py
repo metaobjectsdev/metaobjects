@@ -30,6 +30,8 @@ from .db_constants import (
     IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME,
     IDENTITY_SECONDARY_ATTR_ORDERS,
     IDENTITY_SECONDARY_ATTR_WHERE,
+    IDENTITY_SECONDARY_ATTR_EXPR,
+    IDENTITY_SECONDARY_ATTR_USING,
 )
 
 # Every field subtype the DB-domain attrs apply to: the shared FIELD_SUBTYPES tuple
@@ -77,6 +79,26 @@ _WHERE_SCHEMA = AttrSchema(
         "RDB-physical — contributed by the db provider."
     ),
 )
+_EXPR_SCHEMA = AttrSchema(
+    name=IDENTITY_SECONDARY_ATTR_EXPR,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    description=(
+        'Raw key EXPRESSION for a functional/expression index (e.g. "lower(email)"). '
+        "Used INSTEAD of @fields — the index key is the expression rather than plain "
+        "columns. RDB-physical — contributed by the db provider."
+    ),
+)
+_USING_SCHEMA = AttrSchema(
+    name=IDENTITY_SECONDARY_ATTR_USING,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    description=(
+        'Index access method (e.g. "gin", "gist", "hash"); default "btree" (not '
+        "rendered). Pair with @expr for e.g. a GIN index over an array/jsonb "
+        "expression. RDB-physical — contributed by the db provider."
+    ),
+)
 _CONSTRAINT_NAME_SCHEMA = AttrSchema(
     name=IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME,
     value_type=ATTR_SUBTYPE_STRING,
@@ -101,7 +123,7 @@ def _register(registry: TypeRegistry) -> None:
     registry.extend(
         TYPE_IDENTITY,
         IDENTITY_SUBTYPE_SECONDARY,
-        attributes=[_ORDERS_SCHEMA, _WHERE_SCHEMA],
+        attributes=[_ORDERS_SCHEMA, _WHERE_SCHEMA, _EXPR_SCHEMA, _USING_SCHEMA],
     )
     registry.extend(
         TYPE_IDENTITY,

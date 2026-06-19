@@ -19,6 +19,10 @@ export const FIELD_ATTR_DB_INDEXED = "db.indexed";
 export const IDENTITY_ATTR_ORDERS = "orders";
 /** identity.secondary: a partial-index predicate (raw SQL). When set, the index covers only matching rows. */
 export const IDENTITY_ATTR_WHERE = "where";
+/** identity.secondary: a raw key EXPRESSION for a functional/expression index (e.g. "lower(email)"); used instead of @fields. */
+export const IDENTITY_ATTR_EXPR = "expr";
+/** identity.secondary: index access method (e.g. "gin", "gist"); default "btree", which is not rendered. */
+export const IDENTITY_ATTR_USING = "using";
 /** identity.reference: physical FK constraint-name override. Absent → the auto-derived `<table>_<firstFkColumn>_fk`. */
 export const IDENTITY_ATTR_CONSTRAINT_NAME = "constraintName";
 

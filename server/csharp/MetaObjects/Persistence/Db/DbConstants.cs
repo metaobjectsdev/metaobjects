@@ -30,6 +30,10 @@ public static class DbConstants
     public const string IDENTITY_ATTR_ORDERS           = "orders";
     /// <summary>identity.secondary: partial-index predicate (raw SQL). When set, the index covers only matching rows.</summary>
     public const string IDENTITY_ATTR_WHERE            = "where";
+    /// <summary>identity.secondary: raw key EXPRESSION for a functional/expression index (used instead of @fields).</summary>
+    public const string IDENTITY_ATTR_EXPR             = "expr";
+    /// <summary>identity.secondary: index access method (e.g. "gin"); default "btree".</summary>
+    public const string IDENTITY_ATTR_USING            = "using";
     /// <summary>identity.reference: physical FK constraint-name override. Absent =&gt; the auto-derived default.</summary>
     public const string IDENTITY_ATTR_CONSTRAINT_NAME  = "constraintName";
 

@@ -51,5 +51,9 @@ VALID_DB_COLUMN_TYPES = (
 IDENTITY_SECONDARY_ATTR_ORDERS = "orders"
 # identity.secondary: partial-index predicate (raw SQL).
 IDENTITY_SECONDARY_ATTR_WHERE = "where"
+# identity.secondary: raw key EXPRESSION for a functional/expression index (used instead of @fields).
+IDENTITY_SECONDARY_ATTR_EXPR = "expr"
+# identity.secondary: index access method (e.g. "gin"); default "btree".
+IDENTITY_SECONDARY_ATTR_USING = "using"
 # identity.reference: physical FK constraint-name override.
 IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME = "constraintName"

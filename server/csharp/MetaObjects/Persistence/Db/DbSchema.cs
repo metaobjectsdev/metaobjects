@@ -61,6 +61,20 @@ public static class DbSchema
         Required: false,
         Description: "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider.");
 
+    /// <summary><c>@expr</c> — raw key expression for a functional/expression index; on identity.secondary.</summary>
+    public static readonly AttrSchema ExprSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_EXPR,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@using</c> — index access method (e.g. "gin"); default "btree"; on identity.secondary.</summary>
+    public static readonly AttrSchema UsingSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_USING,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider.");
+
     /// <summary><c>@constraintName</c> — physical FK constraint-name override; on identity.reference.</summary>
     public static readonly AttrSchema ConstraintNameSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME,
