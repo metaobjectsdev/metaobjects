@@ -6,8 +6,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import {
-  variableNameFromEntity,
-  pluralize,
   findByIdFnName,
   listFnName,
   createFnName,
@@ -34,7 +32,7 @@ export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: 
 }
 
 export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
-  const varName = variableNameFromEntity(entity.name);
+  const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
@@ -49,8 +47,8 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<${entity
 `;
 }
 
-export function renderListFn(entity: MetaObject, _ctx: RenderContext): Code {
-  const varName = variableNameFromEntity(entity.name);
+export function renderListFn(entity: MetaObject, ctx: RenderContext): Code {
+  const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
   // (e.g., "Category" -> "Categories", not "Categorys").
@@ -66,8 +64,8 @@ export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number
 `;
 }
 
-export function renderCreateFn(entity: MetaObject, _ctx: RenderContext): Code {
-  const varName = variableNameFromEntity(entity.name);
+export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
+  const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const fnName = createFnName(entityName);
@@ -83,7 +81,7 @@ export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
 }
 
 export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
-  const varName = variableNameFromEntity(entity.name);
+  const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
@@ -101,7 +99,7 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}, data: unknown): P
 }
 
 export function renderDeleteByIdFn(entity: MetaObject, ctx: RenderContext): Code {
-  const varName = variableNameFromEntity(entity.name);
+  const varName = ctx.collectionName(entity.name);
   const entityName = entity.name;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
   const fnName = deleteByIdFnName(entityName);

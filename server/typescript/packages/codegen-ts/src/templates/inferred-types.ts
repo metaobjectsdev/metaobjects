@@ -28,6 +28,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
+import { valueObjectModuleSpecifier } from "../import-path.js";
 import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
@@ -44,8 +45,12 @@ import type { RenderContext } from "../render-context.js";
  * to avoid a duplicate `export type <Base>`. Insert/Update keep their names
  * (no collision); they describe the physical TPH table row shape.
  */
-export function renderInferredTypes(entity: MetaObject, tphBase = false): Code {
-  const varName = variableNameFromEntity(entity.name);
+export function renderInferredTypes(entity: MetaObject, tphBase = false, ctx?: RenderContext): Code {
+  // The inferred Row/Insert types reference the Drizzle table var, so they must
+  // resolve to the SAME (possibly overridden) collection name the schema emits.
+  // ctx is optional for bare unit-test calls — those fall back to the default
+  // always-pluralize spelling.
+  const varName = ctx ? ctx.collectionName(entity.name) : variableNameFromEntity(entity.name);
   const selectSym = imp("InferSelectModel@drizzle-orm");
   const insertSym = imp("InferInsertModel@drizzle-orm");
   const docs = renderDocsFor(entity);
@@ -208,9 +213,15 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
-      // referenced interface + its sibling module are named by the BARE short name.
+      // referenced interface is named by the BARE short name. The import MODULE is
+      // resolved through the shared layout/package/extStyle-aware helper (the SAME
+      // one the Zod schema + Drizzle .$type<> use) so all three agree. Without a
+      // ctx (bare unit-test calls) fall back to the flat same-dir specifier.
       const base = stripPackage(ref);
-      const refImp = imp(`${base}@./${base}.js`);
+      const moduleSpec = ctx
+        ? valueObjectModuleSpecifier(base, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        : `./${base}.js`;
+      const refImp = imp(`${base}@${moduleSpec}`);
       return field.isArray ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.isArray ? code`unknown[]` : code`unknown`;

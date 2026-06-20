@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "SemanticTrace",
+          "package": "acme::ai",
+          "children": [
+            { "source.rdb": { "@table": "semantic_traces" } },
+            { "field.long": { "name": "id" } },
+            { "field.object": { "name": "triples", "@objectRef": "acme::common::Triple", "@storage": "jsonb", "isArray": true } },
+            { "field.object": { "name": "primaryTriple", "@objectRef": "acme::common::Triple", "@storage": "jsonb" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Triple",
+          "package": "acme::common",
+          "children": [
+            { "field.string": { "name": "subject", "@required": true } },
+            { "field.string": { "name": "predicate", "@required": true } },
+            { "field.string": { "name": "object", "@required": true } }
+          ]
+        }
+      }
+    ]
+  }
+}

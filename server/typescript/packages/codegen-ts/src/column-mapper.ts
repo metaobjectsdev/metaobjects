@@ -134,15 +134,20 @@ export interface ColumnSpec {
   checkConstraint?: string;
   /**
    * Optional `.$type<...>()` chain target. Renderer (drizzle-schema.ts) emits
-   * `.$type<TS[]>()` ahead of the modifiers chain, using ts-poet `imp()` for
-   * objectRef variants so the cross-module type import auto-hoists.
+   * it ahead of the modifiers chain, using ts-poet `imp()` for objectRef
+   * variants so the cross-module type import auto-hoists. `array` controls the
+   * `[]` suffix: a single value (`VO`) vs a collection (`VO[]`).
    * `kind: "scalar"` covers string[]/number[]/boolean[] — no import needed.
-   * `kind: "objectRef"` covers SourceLens[]/Dissent[]/etc. — `module` is the
-   * relative import path to that entity's emitted module.
+   * `kind: "objectRef"` covers SourceLens/Dissent/etc. — only the bare VO `name`
+   * is carried; the renderer resolves the import MODULE via the shared
+   * `valueObjectModuleSpecifier` (layout/package/extStyle-aware, identical to the
+   * field's TS type + Zod schema). A single Postgres jsonb object column
+   * (`array: false`) gets `.$type<VO>()`; an array of VOs held in one jsonb
+   * column gets `.$type<VO[]>()`.
    */
   dollarTypeRef?:
-    | { kind: "scalar"; tsType: "string" | "number" | "boolean" }
-    | { kind: "objectRef"; name: string; module: string };
+    | { kind: "scalar"; tsType: "string" | "number" | "boolean"; array: boolean }
+    | { kind: "objectRef"; name: string; array: boolean };
 }
 
 /**
@@ -163,6 +168,7 @@ export interface ColumnSpec {
  */
 function pgColumnTypeOverride(
   field: MetaField,
+  timestampMode: "date" | "string" = "string",
 ): { fnName: string; fnOptions?: Record<string, unknown> } | undefined {
   const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType !== "string") return undefined;
@@ -173,9 +179,10 @@ function pgColumnTypeOverride(
       return { fnName: "jsonb" };
     case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ:
       // Drizzle pg-core: timestamp(col, { withTimezone: true }) → timestamptz.
-      // mode:"string" for the same reason as the plain-timestamp branch — the
-      // schema + wire contract carry timestamps as strings.
-      return { fnName: "timestamp", fnOptions: { mode: "string", withTimezone: true } };
+      // mode defaults to "string" (ISO-8601 wire contract, matching the generated
+      // Zod); a consumer can opt into "date" (drizzle's native mode) via
+      // codegen.timestampMode when its hand-written code works with JS Dates.
+      return { fnName: "timestamp", fnOptions: { mode: timestampMode, withTimezone: true } };
     default:
       return undefined;
   }
@@ -202,10 +209,20 @@ function isRequired(field: MetaField): boolean {
   return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
+/** The bare (package-stripped) @objectRef name on a field.object, or undefined
+ *  when unset. Used as the `.$type<VO>()` target + its sibling-module import.
+ *  A fully-qualified ref (acme::ai::SourceLens) strips to the short name. */
+function objectRefBaseName(field: MetaField): string | undefined {
+  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  if (typeof ref === "string" && ref.length > 0) return stripPackage(ref);
+  return undefined;
+}
+
 export function mapColumnType(
   field: MetaField,
   dialect: Dialect,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  timestampMode: "date" | "string" = "string",
 ): ColumnSpec {
   const dbName = field.column ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
@@ -271,7 +288,7 @@ export function mapColumnType(
     // A physical @dbColumnType override wins over the subtype default (Postgres
     // only; SQLite has no native analogue and falls through above). Resolved
     // first so the override-precedence matches migrate-ts's expected-schema.
-    const override = pgColumnTypeOverride(field);
+    const override = pgColumnTypeOverride(field, timestampMode);
     if (override !== undefined) {
       // Override fully determines the physical type; skip the subtype switch.
       fnName = override.fnName;
@@ -310,7 +327,7 @@ export function mapColumnType(
           // inconsistent with the string-typed schema + wire contract and
           // throws on a string write. See SP-B api-contract-generated lane.
           fnName = "timestamp";
-          fnOptions = { mode: "string" };
+          fnOptions = { mode: timestampMode };
           break;
         case FIELD_SUBTYPE_UUID:
           // Postgres native uuid column; native TS binding stays `string`.
@@ -374,7 +391,11 @@ export function mapColumnType(
 
   const modifiers: string[] = [];
 
-  if (dialect === "postgres" && isArray) {
+  // Postgres native arrays (text[]/integer[]/…) apply to SCALAR array fields
+  // only. An object-typed field is stored as a single jsonb column holding the
+  // JSON array (storage jsonb/subdocument), so it gets NO native .array() — the
+  // array-ness is carried by the .$type<VO[]>() annotation computed below.
+  if (dialect === "postgres" && isArray && subType !== FIELD_SUBTYPE_OBJECT) {
     modifiers.push(".array()");
   }
 
@@ -421,23 +442,32 @@ export function mapColumnType(
     }
   }
 
-  // SQLite isArray columns route through {mode:"json"} above; compute the
-  // $type<E[]>() target so the renderer can hoist any cross-module imports.
+  // jsonb / JSON-in-text columns infer as `unknown` in Drizzle without a
+  // .$type<>() annotation. Carry the logical TS type so the column is typed:
+  //  - SQLite isArray: arrays serialize as JSON-in-text → .$type<E[]>() (scalar
+  //    element type, or the @objectRef VO for object arrays).
+  //  - Postgres field.object: a single jsonb column → .$type<VO>(), or
+  //    .$type<VO[]>() when isArray (the JSON array lives in the one column; no
+  //    native .array() is emitted for object storage — see modifiers above).
+  //    Scalar Postgres arrays use native .array() (already element-typed by
+  //    Drizzle) so they need no $type.
   let dollarTypeRef: ColumnSpec["dollarTypeRef"];
   if (dialect === "sqlite" && isArray) {
     if (subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
-      if (typeof ref === "string" && ref.length > 0) {
-        // @objectRef may be authored fully-qualified or bare — the $type<E[]>()
-        // target interface + its sibling module use the BARE short name.
-        const base = stripPackage(ref);
-        dollarTypeRef = { kind: "objectRef", name: base, module: `./${base}.js` };
+      const base = objectRefBaseName(field);
+      if (base !== undefined) {
+        dollarTypeRef = { kind: "objectRef", name: base, array: true };
       }
     } else {
       const scalar = sqliteJsonArrayElementTsType(subType);
       if (scalar !== undefined) {
-        dollarTypeRef = { kind: "scalar", tsType: scalar as "string" | "number" | "boolean" };
+        dollarTypeRef = { kind: "scalar", tsType: scalar as "string" | "number" | "boolean", array: true };
       }
+    }
+  } else if (dialect === "postgres" && subType === FIELD_SUBTYPE_OBJECT) {
+    const base = objectRefBaseName(field);
+    if (base !== undefined) {
+      dollarTypeRef = { kind: "objectRef", name: base, array: isArray };
     }
   }
 

@@ -17,7 +17,7 @@ import {
   renderDeleteByIdFn,
   getPkInfo,
 } from "./queries.js";
-import { variableNameFromEntity, pluralize } from "../naming.js";
+import { pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 
@@ -40,7 +40,7 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
     entityName,
     ctx.extStyle,
   );
-  const varName = variableNameFromEntity(entityName);
+  const varName = ctx.collectionName(entityName);
 
   // The persistence-context `db` is parameter-passed into every generated CRUD
   // helper (ADR-0008). Emit the dialect-correct Drizzle type alias so the
@@ -97,7 +97,7 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
  */
 function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
   const baseName = base.name;
-  const tableVar = variableNameFromEntity(baseName);
+  const tableVar = ctx.collectionName(baseName);
   const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(base, ctx);
 

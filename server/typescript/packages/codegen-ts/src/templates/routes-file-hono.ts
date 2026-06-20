@@ -29,7 +29,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { variableNameFromEntity } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 
 export function renderRoutesFileHono(entity: MetaObject, ctx: RenderContext): string {
@@ -97,7 +96,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
   }
 
   // --- Vanilla / write-through entity path: full CRUD routes ---
-  const tableVar = variableNameFromEntity(entityName);
+  const tableVar = ctx.collectionName(entityName);
 
   const HonoSym = imp("t:Hono@hono");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/hono");

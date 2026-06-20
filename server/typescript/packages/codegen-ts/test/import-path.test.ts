@@ -9,6 +9,7 @@ import {
   entityModuleSpecifier,
   siblingSpecifier,
   barrelModuleSpecifier,
+  valueObjectModuleSpecifier,
 } from "../src/import-path.js";
 
 const model = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
@@ -137,5 +138,33 @@ describe("relativeModuleSpecifier (dbImport adjustment)", () => {
   });
   it("package, single-segment package, './' specifier", () => {
     expect(relativeModuleSpecifier("package", "acme", "./index")).toBe("../index");
+  });
+});
+
+describe("valueObjectModuleSpecifier", () => {
+  const pkgOf = new Map<string, string | undefined>([
+    ["Triple", "acme::common"],
+    ["SamePkgVo", "acme::ai"],
+  ]);
+
+  it("flat layout → same-dir ./<VO> (extStyle none, no .js)", () => {
+    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "flat", "none")).toBe("./Triple");
+  });
+
+  it("flat layout honors extStyle js", () => {
+    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "flat", "js")).toBe("./Triple.js");
+  });
+
+  it("package layout, SAME package → ./<VO>", () => {
+    expect(valueObjectModuleSpecifier("SamePkgVo", pkgOf, "acme::ai", "package", "none")).toBe("./SamePkgVo");
+  });
+
+  it("package layout, CROSS package → relative path between packages", () => {
+    // The whole point of the fix: NOT a flat ./Triple, but ../common/Triple.
+    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "package", "none")).toBe("../common/Triple");
+  });
+
+  it("unknown VO falls back to fromPkg (same-dir)", () => {
+    expect(valueObjectModuleSpecifier("Ghost", pkgOf, "acme::ai", "package", "none")).toBe("./Ghost");
   });
 });
