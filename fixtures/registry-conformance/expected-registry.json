@@ -2051,6 +2051,13 @@
       "description": "A secondary index (unique by default via @unique).",
       "attrs": [
         {
+          "name": "expr",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider."
+        },
+        {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
@@ -2070,6 +2077,13 @@
           "isArray": false,
           "required": false,
           "description": "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."
+        },
+        {
+          "name": "using",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider."
         },
         {
           "name": "where",

@@ -392,6 +392,14 @@ function columnDefaultsEqual(a: ColumnDescriptor["default"], b: ColumnDescriptor
 
 function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {
   if (a.unique !== b.unique) return false;
+  // Access method: absent = "btree" (the default).
+  if ((a.using ?? "btree") !== (b.using ?? "btree")) return false;
+  // Expression-key index: compare the normalized key expression (same canonicalizer
+  // as predicates). Both-absent = plain index; one-absent = different.
+  if ((a.expr === undefined) !== (b.expr === undefined)) return false;
+  if (a.expr !== undefined && b.expr !== undefined) {
+    if (normalizeCheckExpr(a.expr) !== normalizeCheckExpr(b.expr)) return false;
+  }
   if (a.columns.length !== b.columns.length) return false;
   if (!a.columns.every((c, i) => c === b.columns[i])) return false;
   // Per-column ordering: an absent `orders` means all-ascending, so compare against

@@ -230,7 +230,9 @@
     {
       "key": "identity.secondary",
       "untestedAttrs": [
+        "expr",
         "orders",
+        "using",
         "where"
       ]
     },

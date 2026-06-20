@@ -15,6 +15,8 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_ATTR_ORDERS,
   IDENTITY_ATTR_WHERE,
+  IDENTITY_ATTR_EXPR,
+  IDENTITY_ATTR_USING,
   IDENTITY_ATTR_CONSTRAINT_NAME,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_MAX_LENGTH,
@@ -333,8 +335,11 @@ function buildSecondaryIndexes(
   // Drizzle emits the index using the identity's @name attr directly (no table
   // prefix), so the expected name must match.
   for (const identity of entity.secondaryIdentities()) {
+    const exprRaw = identity.ownAttr(IDENTITY_ATTR_EXPR);
+    const expr = typeof exprRaw === "string" && exprRaw.trim().length > 0 ? exprRaw.trim() : undefined;
     const fieldNames = readIdentityFields(identity);
-    if (fieldNames.length === 0) continue;
+    // An expression index keys off @expr (not @fields); a plain index needs @fields.
+    if (fieldNames.length === 0 && expr === undefined) continue;
     const cols = fieldNames.map((jsName) => {
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
@@ -342,9 +347,14 @@ function buildSecondaryIndexes(
     const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
     const index: IndexDescriptor = {
       name: identity.name,
-      columns: cols,
+      columns: expr ? [] : cols,
       unique: uniqueAttr !== false,
     };
+    if (expr) index.expr = expr;
+    const usingRaw = identity.ownAttr(IDENTITY_ATTR_USING);
+    if (typeof usingRaw === "string" && usingRaw.trim().length > 0 && usingRaw.trim() !== "btree") {
+      index.using = usingRaw.trim();
+    }
     // @orders — per-field sort direction (positional to @fields). Only attach when
     // at least one field is descending (an all-ascending array is the default and
     // must serialize identically to "no orders" for diff stability).

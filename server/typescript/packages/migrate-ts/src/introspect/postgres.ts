@@ -341,6 +341,8 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       ordinal: number;
       is_desc: boolean;
       predicate: string | null;
+      access_method: string;
+      indexdef: string;
     }>;
   };
   try {
@@ -352,6 +354,8 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       ordinal: number;
       is_desc: boolean;
       predicate: string | null;
+      access_method: string;
+      indexdef: string;
     }>`
       SELECT i.relname AS index_name,
              ix.indisunique AS is_unique,
@@ -359,11 +363,14 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
              a.attname AS column_name,
              k.ord AS ordinal,
              (COALESCE(opt.option, 0) & 1) = 1 AS is_desc,
-             pg_get_expr(ix.indpred, ix.indrelid) AS predicate
+             pg_get_expr(ix.indpred, ix.indrelid) AS predicate,
+             am.amname AS access_method,
+             pg_get_indexdef(ix.indexrelid) AS indexdef
       FROM pg_index ix
       JOIN pg_class i ON i.oid = ix.indexrelid
       JOIN pg_class t ON t.oid = ix.indrelid
       JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_am am ON am.oid = i.relam
       CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord)
       LEFT JOIN LATERAL unnest(ix.indoption) WITH ORDINALITY AS opt(option, oord)
         ON opt.oord = k.ord
@@ -386,6 +393,8 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       orders: ("asc" | "desc")[];
       predicate: string | null;
       hasExpressionKey: boolean;
+      accessMethod: string;
+      indexdef: string;
     }
   >();
   for (const r of rows.rows) {
@@ -398,12 +407,13 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
         orders: [],
         predicate: r.predicate,
         hasExpressionKey: false,
+        accessMethod: r.access_method,
+        indexdef: r.indexdef,
       };
       byName.set(r.index_name, entry);
     }
     if (r.column_name === null) {
-      // Expression key (attnum 0) — not yet modelable; mark the index so it is
-      // skipped below (consistent with the prior behavior of not surfacing it).
+      // Expression key (attnum 0) — captured from the index def below.
       entry.hasExpressionKey = true;
     } else {
       entry.cols.push(r.column_name);
@@ -412,13 +422,38 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
   }
   return Array.from(byName.entries())
     .filter(([, v]) => !v.isPrimary) // PK index excluded — PK lives in TableDescriptor.primaryKey
-    .filter(([, v]) => !v.hasExpressionKey) // expression indexes deferred (no metamodel form yet)
     .map(([name, v]) => {
+      const using = v.accessMethod !== "btree" ? v.accessMethod : undefined;
+      if (v.hasExpressionKey) {
+        // Functional/expression index: lift the raw key expression out of the
+        // index def (between `USING <am> (` and its matching `)`, before WHERE).
+        const ix: IndexDescriptor = { name, columns: [], unique: v.isUnique, expr: indexDefKeyExpr(v.indexdef) };
+        if (using) ix.using = using;
+        if (v.predicate !== null) ix.where = v.predicate;
+        return ix;
+      }
       const ix: IndexDescriptor = { name, columns: v.cols, unique: v.isUnique };
+      if (using) ix.using = using;
       if (v.orders.some((o) => o === "desc")) ix.orders = v.orders;
       if (v.predicate !== null) ix.where = v.predicate;
       return ix;
     });
+}
+
+/** Extract the raw key-expression text from a pg index def — the balanced `(...)`
+ *  after `USING <method> `, stripped of a trailing partial-index `WHERE`. */
+function indexDefKeyExpr(indexdef: string): string {
+  const open = indexdef.indexOf("(", indexdef.indexOf(" USING "));
+  if (open === -1) return indexdef;
+  let depth = 0;
+  for (let i = open; i < indexdef.length; i++) {
+    if (indexdef[i] === "(") depth++;
+    else if (indexdef[i] === ")") {
+      depth--;
+      if (depth === 0) return indexdef.slice(open + 1, i).trim();
+    }
+  }
+  return indexdef.slice(open + 1).trim();
 }
 
 async function readPgForeignKeys(k: RawKysely, schema: string, table: string): Promise<FkDescriptor[]> {

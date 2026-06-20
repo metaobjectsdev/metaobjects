@@ -213,16 +213,21 @@ function renderDefault(d: ColumnDefault): string {
 
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
   const u = ix.unique ? "UNIQUE " : "";
-  // Per-column key list, appending `DESC` where @orders marks a descending key (ASC
-  // is the default and intentionally not rendered, matching PG's canonical def).
-  const keys = ix.columns
-    .map((c, i) => (ix.orders?.[i] === "desc" ? `${quote(c)} DESC` : quote(c)))
-    .join(", ");
+  // Key list: a raw expression (functional/expression index) takes precedence over
+  // the per-column list. The expression is emitted verbatim (already valid SQL).
+  const keys = ix.expr
+    ? ix.expr
+    : ix.columns
+        .map((c, i) => (ix.orders?.[i] === "desc" ? `${quote(c)} DESC` : quote(c)))
+        .join(", ");
+  // Access method: btree is the default and intentionally not rendered (matches PG's
+  // canonical def); anything else (gin/gist/hash/…) is emitted as `USING <method>`.
+  const using = ix.using && ix.using !== "btree" ? ` USING ${ix.using}` : "";
   // Partial-index predicate, when present.
   const where = ix.where ? ` WHERE (${ix.where})` : "";
   // Index name itself is unqualified in CREATE INDEX (Postgres places the index
   // in the same schema as the table being indexed). Only the ON clause needs qualification.
-  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quoteQualified(table, schema)} (${keys})${where};`;
+  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quoteQualified(table, schema)}${using} (${keys})${where};`;
 }
 
 function renderAddFk(table: string, schema: string | undefined, fk: FkDescriptor): string {
