@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 56,
+  "registeredSubTypeCount": 60,
   "exercisedSubTypeCount": 39,
   "untestedSubTypes": [
     "attr.base",
@@ -17,7 +17,11 @@
     "relationship.base",
     "source.base",
     "template.base",
+    "validator.atLeastOne",
     "validator.base",
+    "validator.comparison",
+    "validator.presentIff",
+    "validator.requiredWhen",
     "view.base"
   ],
   "untestedAttrsByExercisedSubType": [

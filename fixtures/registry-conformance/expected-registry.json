@@ -3018,6 +3018,22 @@
     },
     {
       "type": "validator",
+      "subType": "atLeastOne",
+      "description": "Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).",
+      "rules": "@fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.",
+      "attrs": [
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Names of the candidate fields; at least one must be present."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "validator",
       "subType": "base",
       "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own.",
       "attrs": [
@@ -3034,6 +3050,36 @@
           "isArray": false,
           "required": false,
           "description": "Minimum allowed value (length, numeric value, or array element count depending on the validator subtype)."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "validator",
+      "subType": "comparison",
+      "description": "Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp <= max_hp or expires_at > created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.",
+      "rules": "@left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend's relational operator is (SQL: a NULL operand yields no violation).",
+      "attrs": [
+        {
+          "name": "left",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the left-hand field of the owning entity."
+        },
+        {
+          "name": "op",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Relational operator: gt (>), gte (>=), lt (<), lte (<=), ne (<>), eq (=)."
+        },
+        {
+          "name": "right",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the right-hand field of the owning entity."
         }
       ],
       "children": []
@@ -3084,6 +3130,36 @@
     },
     {
       "type": "validator",
+      "subType": "presentIff",
+      "description": "Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.",
+      "rules": "@field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.",
+      "attrs": [
+        {
+          "name": "equals",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The gating value; @field is present exactly when @when equals this."
+        },
+        {
+          "name": "field",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the field whose presence is governed by the condition."
+        },
+        {
+          "name": "when",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the gating field."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "validator",
       "subType": "regex",
       "description": "Requires the value match a regular expression (@pattern).",
       "attrs": [
@@ -3116,6 +3192,36 @@
       "subType": "required",
       "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
       "attrs": [],
+      "children": []
+    },
+    {
+      "type": "validator",
+      "subType": "requiredWhen",
+      "description": "One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.",
+      "rules": "@field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).",
+      "attrs": [
+        {
+          "name": "equals",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The gating value; when @when equals this, @field must be present."
+        },
+        {
+          "name": "field",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the field that becomes required when the condition holds."
+        },
+        {
+          "name": "when",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Name of the gating field whose value triggers the requirement."
+        }
+      ],
       "children": []
     },
     {
