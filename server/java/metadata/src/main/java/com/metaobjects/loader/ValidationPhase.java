@@ -146,10 +146,10 @@ public final class ValidationPhase {
         // thrown (first error) to preserve cross-port behavior. Needs the registry, so it is
         // skipped on the legacy null-loader path (like validateRequiredAttrs/MaxOccurs).
         if (loader != null && loader.getTypeRegistry() != null) {
-            java.util.List<com.metaobjects.loader.validation.ValidationError> refErrors =
+            java.util.List<com.metaobjects.validation.ValidationError> refErrors =
                 com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry());
             if (!refErrors.isEmpty()) {
-                com.metaobjects.loader.validation.ValidationError e = refErrors.get(0);
+                com.metaobjects.validation.ValidationError e = refErrors.get(0);
                 throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
             }
         }

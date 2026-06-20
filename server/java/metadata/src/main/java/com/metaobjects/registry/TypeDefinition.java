@@ -48,18 +48,18 @@ public class TypeDefinition {
     // Validation carried by the type's registration (additive, like maxOccurs): the
     // cross-references its attrs declare + its imperative validator. The loader derives
     // validation from these, so a downstream provider's type validates itself.
-    private java.util.List<com.metaobjects.loader.validation.ReferenceDescriptor> references =
+    private java.util.List<com.metaobjects.validation.ReferenceDescriptor> references =
         java.util.Collections.emptyList();
-    private com.metaobjects.loader.validation.NodeValidator validator = null;
+    private com.metaobjects.validation.NodeValidator validator = null;
 
     /** Cross-reference descriptors this type's attrs declare. Never null. */
-    public java.util.List<com.metaobjects.loader.validation.ReferenceDescriptor> getReferences() { return references; }
+    public java.util.List<com.metaobjects.validation.ReferenceDescriptor> getReferences() { return references; }
     /** The type's imperative validator, or null. */
-    public com.metaobjects.loader.validation.NodeValidator getValidator() { return validator; }
-    void setReferences(java.util.List<com.metaobjects.loader.validation.ReferenceDescriptor> references) {
+    public com.metaobjects.validation.NodeValidator getValidator() { return validator; }
+    void setReferences(java.util.List<com.metaobjects.validation.ReferenceDescriptor> references) {
         this.references = references == null ? java.util.Collections.emptyList() : references;
     }
-    void setValidator(com.metaobjects.loader.validation.NodeValidator validator) { this.validator = validator; }
+    void setValidator(com.metaobjects.validation.NodeValidator validator) { this.validator = validator; }
 
     /**
      * Create a type definition with child requirements and optional inheritance

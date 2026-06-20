@@ -1,4 +1,4 @@
-package com.metaobjects.loader.validation;
+package com.metaobjects.validation;
 
 /**
  * Declares that an attribute on a node is a cross-reference to another node — the

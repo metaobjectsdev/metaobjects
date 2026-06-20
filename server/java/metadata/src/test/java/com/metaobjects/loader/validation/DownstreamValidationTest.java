@@ -5,6 +5,7 @@ import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.registry.TypeDefinition;
+import com.metaobjects.validation.ValidationError;
 import org.junit.Test;
 
 import java.util.Collections;

@@ -62,7 +62,7 @@ public class ReferenceIdentity extends MetaIdentity {
             def.requiredAttributeWithConstraints(ATTR_REFERENCES).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // @references is a cross-reference to a real object (FK target) — the loader's
             // registry-derived validation resolves it; "Entity.field" forms resolve the entity.
-            def.reference(new com.metaobjects.loader.validation.ReferenceDescriptor(
+            def.reference(new com.metaobjects.validation.ReferenceDescriptor(
                 ATTR_REFERENCES, com.metaobjects.object.MetaObject.TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE"));
             def.optionalAttributeWithConstraints(ATTR_ENFORCE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();

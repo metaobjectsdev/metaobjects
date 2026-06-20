@@ -5,6 +5,10 @@ import com.metaobjects.MetaRoot;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.TypeDefinition;
+import com.metaobjects.validation.ReferenceDescriptor;
+import com.metaobjects.validation.SymbolTable;
+import com.metaobjects.validation.ValidationContext;
+import com.metaobjects.validation.ValidationError;
 
 import java.util.List;
 

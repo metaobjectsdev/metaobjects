@@ -44,9 +44,9 @@ public class TypeDefinitionBuilder {
     private String description;
     private int maxOccurs = 0;
     private String defaultName = null;
-    private java.util.List<com.metaobjects.loader.validation.ReferenceDescriptor> references =
+    private java.util.List<com.metaobjects.validation.ReferenceDescriptor> references =
         new java.util.ArrayList<>();
-    private com.metaobjects.loader.validation.NodeValidator validator = null;
+    private com.metaobjects.validation.NodeValidator validator = null;
     // FR-033 optional documentation slots (null when not set) + the child-side
     // placement claim (sub-step B sources these from the embedded JSON).
     private String rules;
@@ -167,13 +167,13 @@ public class TypeDefinitionBuilder {
 
     /** Declare a cross-reference this type's attr carries (resolved generically by the
      *  validation walk). Additive — call once per ref-bearing attr. */
-    public TypeDefinitionBuilder reference(com.metaobjects.loader.validation.ReferenceDescriptor desc) {
+    public TypeDefinitionBuilder reference(com.metaobjects.validation.ReferenceDescriptor desc) {
         this.references.add(desc);
         return this;
     }
 
     /** The type's imperative validator (logic config can't express). */
-    public TypeDefinitionBuilder validator(com.metaobjects.loader.validation.NodeValidator validator) {
+    public TypeDefinitionBuilder validator(com.metaobjects.validation.NodeValidator validator) {
         this.validator = validator;
         return this;
     }

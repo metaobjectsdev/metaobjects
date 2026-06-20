@@ -1,4 +1,4 @@
-package com.metaobjects.loader.validation;
+package com.metaobjects.validation;
 
 import com.metaobjects.source.ErrorSource;
 
