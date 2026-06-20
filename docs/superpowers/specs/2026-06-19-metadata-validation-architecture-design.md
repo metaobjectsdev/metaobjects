@@ -145,29 +145,44 @@ behavior conformance-locked. The adopter's extension story is **identical** ever
 
 ## Recommendation & phasing
 
-Adopt the **validator registry + declarative references + recursive `root.validate(ctx)`**
-in all five ports.
+Adopt the **validation-on-the-`TypeDefinition`, derived by the loader** model in all five
+ports: each type's registration carries its `references` (declarative cross-references) +
+`validate` (imperative rule); the loader runs one recursive walk over a built-once symbol
+table, reading each node's TypeDefinition. A downstream provider's type validates itself
+simply by being in the registry.
 
-- **Phase 1 (shipped, PR #44):** `@objectRef` / `@references` enforcement as procedural
-  passes + the two conformance fixtures. Closes the bug now.
-- **Phase 2 (this branch — prototype):** introduce `SymbolTable`, `ValidationContext`,
-  `ReferenceDescriptor`, and a `ValidationRegistry`; route the reference checks through a
-  **generic reference resolver**; prove **downstream extension** with a fake external
-  provider registering a custom type + reference + imperative validator. Built in **TS +
-  Java** as a vertical slice to de-risk the shape.
-- **Phase 3:** migrate the remaining bespoke resolvers (`extends`, `@payloadRef`, origins)
-  onto reference descriptors; wire validator/descriptor registration through the
-  `MetaDataTypeProvider` SPI in every port; normalize the error model (Java → collect);
-  port the slice to C#/Python; add a downstream-extension conformance fixture.
+- **Phase 1 (shipped, PR #44):** `@objectRef` / `@references` enforcement + the two
+  conformance fixtures. Closed the bug.
+- **Phase 2 — DONE on `proto/validation-registry`, all five ports:**
+  - `TypeDefinition` carries `references` + `validate` (TS interface fields; Java/C#
+    additive props preserved across builder + every registry rebuild site; Python dataclass
+    fields). Contract types in a base module (no import cycle — Java's `registry` ↔
+    `validation` cycle was split into `com.metaobjects.validation`).
+  - The loader **derives validation from its registry** (`runRegisteredValidation` /
+    `RegisteredValidation.Run` / `registered_validation.run`); the procedural `@objectRef` /
+    `@references` passes were removed.
+  - Core declares its cross-references **on their types** (relationship `@objectRef`,
+    identity.reference `@references`).
+  - `ParseError.code` widened (TS) so a downstream provider emits its **own** codes.
+  - **Proof:** TS — a fake provider registers a brand-new `widget.gauge` with its
+    `references` + `validate`; composing it is the only wiring; it validates itself
+    (dangling `@feeds` + inverted range, both with the provider's own codes), no core edits.
+    Java/C#/Python — the core references live on the TypeDefinitions and the derived walk
+    enforces them (the new-type path rides in identically via `setTypeRegistry` / a composed
+    registry). Behavior-preserving: **TS 2045, Java metadata 1057 + conformance 388 + ktx
+    33, C# conformance 665, Python 1206 + conformance 391.**
+- **Phase 3 (remaining, scoped):**
+  1. **Migrate the other resolvers** (`@payloadRef` → descriptor with `targetSubType:
+     value`; `extends`; origin `@from`/`@of`/`@via`) so all cross-references are
+     descriptor-driven and the bespoke passes disappear.
+  2. **Declarative in the spec JSON:** carry the `reference` field in the embedded
+     `spec/metamodel/*.json` so cross-references are pure config (touches the four spec
+     readers — guard each to tolerate the field first).
+  3. **Normalize the error model:** Java/C#/Python collect-all (not eager-throw) +
+     downstream-code fidelity (widen `MetaError.Code` / `ErrorCode` like TS's
+     `ParseError.code`). Conformance envelopes gain multi-error cases.
+  4. **Provider-SPI registration** of descriptors/validators (so the fluent
+     `def.reference(...)` / spec field flows through `MetaDataTypeProvider` uniformly) + a
+     **downstream-extension conformance fixture**.
 - **Phase 4 (optional, demand-driven):** formal severities; a thin declarative rule surface
   (SHACL-style) only if enterprise custom-rule authoring demands it.
-
-## Prototype acceptance (Phase 2, this branch)
-
-- A reference attr resolves generically (no bespoke pass) → dangling target = error,
-  target-kind mismatch = error.
-- A **fake downstream provider** registers `widget.gauge` with a `feeds` reference + an
-  imperative range validator; a model with a bad `feeds` ref **and** a bad range produces
-  **both** errors — in **TS and Java**, via the same registry mechanism, with **no core
-  edits** for the custom type.
-- Existing conformance stays green (behavior-preserving for the built-in reference checks).
