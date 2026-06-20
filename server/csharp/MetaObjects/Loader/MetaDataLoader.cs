@@ -432,8 +432,11 @@ public class MetaDataLoader
             // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
             errors.AddRange(ValidationPasses.ValidateRelationships(root));
 
-            // identity.reference @references must resolve to a real object (FK target).
-            errors.AddRange(ValidationPasses.ValidateIdentityReferences(root));
+            // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
+            // carries its reference descriptors (relationship @objectRef, identity.reference
+            // @references for core; a downstream provider's type carries its own) + validator,
+            // run as one recursive walk over a built-once symbol table.
+            errors.AddRange(MetaObjects.Validation.RegisteredValidation.Run(root, _registry));
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

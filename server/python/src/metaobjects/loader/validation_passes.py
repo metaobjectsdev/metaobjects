@@ -139,7 +139,13 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
     _validate_relationships(root, errors)
-    _validate_identity_references(root, errors)
+    # Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
+    # carries its reference descriptors (relationship @objectRef, identity.reference
+    # @references for core; a downstream provider's type carries its own) + validator,
+    # run as one recursive walk over a built-once symbol table.
+    if registry is not None:
+        from .registered_validation import run as _run_registered
+        errors.extend(_run_registered(root, registry))
     _validate_one_primary_source(root, errors)
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
@@ -1180,22 +1186,9 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             is_many = cardinality == CARDINALITY_MANY
             is_m2m = has_through and is_many
 
-            # Rule (0): @objectRef must resolve to a real object. A dangling target is
-            # drift between two pieces of metadata — rename/remove the target entity and
-            # the model fails to load. Mirrors the TS validateRelationships objectRef edge.
-            if (
-                isinstance(object_ref, str)
-                and object_ref != ""
-                and object_index.get(object_ref) is None
-            ):
-                errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" '
-                    f'@{RELATIONSHIP_ATTR_OBJECT_REF} "{object_ref}" '
-                    f"does not resolve to an object.",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP,
-                    envelope=rel.source,
-                ))
-                continue
+            # NOTE: @objectRef existence resolution moved to the validation registry
+            # (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
+            # resolved by registered_validation). The M:N rules below stay here for now.
 
             # Rule (d): M:N-only attrs on a non-M:N relationship.
             if not is_m2m:
@@ -1286,38 +1279,9 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                     ))
 
 
-# ---------------------------------------------------------------------------
-# Pass: identity.reference @references resolution
-#
-# Every identity.reference's @references must name an FK target object that exists
-# in the loaded tree — a dangling target is drift between two pieces of metadata.
-# The target entity is the segment before the first dotted field path (packages use
-# "::", never ".", so the first "." splits entity from fields). Own identity children
-# only. Mirrors the TS validateIdentityReferences pass.
-# ---------------------------------------------------------------------------
-
-
-def _validate_identity_references(root: MetaData, errors: list[MetaError]) -> None:
-    object_index = _build_object_index(root)
-    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
-        for idn in (
-            c
-            for c in obj.own_children()
-            if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE
-        ):
-            references = idn.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
-            # Absence is the required-attr pass's job, not ours.
-            if not isinstance(references, str) or references == "":
-                continue
-            entity_ref = references.split(".", 1)[0]
-            if object_index.get(entity_ref) is None:
-                errors.append(MetaError(
-                    f'identity.reference "{obj.name}.{idn.name}" '
-                    f'@{IDENTITY_REFERENCE_ATTR_REFERENCES} "{references}" '
-                    f"does not resolve to an object.",
-                    ErrorCode.ERR_INVALID_REFERENCE,
-                    envelope=idn.source,
-                ))
+# NOTE: identity.reference @references resolution moved to the validation registry
+# (a declarative ReferenceDescriptor with dotted_field_path on the identity.reference
+# TypeDefinition, resolved by registered_validation).
 
 
 # ---------------------------------------------------------------------------

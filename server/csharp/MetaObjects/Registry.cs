@@ -120,6 +120,16 @@ public sealed class TypeDefinition
     /// </summary>
     public string? DefaultName { get; }
 
+    /// <summary>
+    /// Cross-references this type's attrs declare — resolved generically against the symbol
+    /// table by the registry-derived validation walk. Carried by the type's registration, so
+    /// a downstream provider's references validate with no core changes. Never null.
+    /// </summary>
+    public IReadOnlyList<MetaObjects.Validation.ReferenceDescriptor> References { get; internal set; } = [];
+
+    /// <summary>The type's imperative validator (logic config can't express), or null.</summary>
+    public MetaObjects.Validation.NodeValidator? Validate { get; internal set; }
+
     public TypeDefinition(
         TypeId typeId,
         string description,
@@ -538,7 +548,7 @@ public sealed class TypeRegistry
                     };
             }).ToList();
 
-            _defs[key] = new TypeDefinition(
+            _defs[key] = CopyValidation(def, new TypeDefinition(
                 id,
                 description,
                 new List<ChildRule>(def.ChildRules),
@@ -550,7 +560,7 @@ public sealed class TypeRegistry
                 whenToUse,
                 def.Parents,
                 def.MaxOccurs,
-                def.DefaultName);
+                def.DefaultName));
         }
 
         // Common-attr descriptions from the universal *.* documentation entry.
@@ -591,6 +601,15 @@ public sealed class TypeRegistry
     /// in the JSON (e.g. <c>metadata.root</c>, <c>attr.*</c>) keep their hand-coded
     /// structural children. Mirrors the Java/Python reader's pass 4.
     /// </summary>
+    /// <summary>Carry a type's validation (references + validator) across a rebuild — the
+    /// constructor does not thread them, like the doc-slot/strict-scoping rebuilds.</summary>
+    private static TypeDefinition CopyValidation(TypeDefinition source, TypeDefinition rebuilt)
+    {
+        rebuilt.References = source.References;
+        rebuilt.Validate = source.Validate;
+        return rebuilt;
+    }
+
     private void ApplyStrictStructuralChildren(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
     {
         foreach (string key in _defs.Keys.ToList())
@@ -620,10 +639,10 @@ public sealed class TypeRegistry
                     sc.Min, sc.Max, sc.MaxIsNull, sc.Named));
             }
 
-            _defs[key] = new TypeDefinition(
+            _defs[key] = CopyValidation(def, new TypeDefinition(
                 id, def.Description, rules, def.Factory, def.Attributes.ToList(),
                 def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents,
-                def.MaxOccurs, def.DefaultName);
+                def.MaxOccurs, def.DefaultName));
         }
     }
 
@@ -663,10 +682,10 @@ public sealed class TypeRegistry
                 attrs.Add(attr);
             }
 
-            _defs[key] = new TypeDefinition(
+            _defs[key] = CopyValidation(def, new TypeDefinition(
                 id, def.Description, def.ChildRules.ToList(), def.Factory, attrs,
                 def.DataType, def.Rules, def.Example, def.WhenToUse, def.Parents,
-                def.MaxOccurs, def.DefaultName);
+                def.MaxOccurs, def.DefaultName));
         }
     }
 }

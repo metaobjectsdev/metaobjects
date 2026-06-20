@@ -1503,18 +1503,9 @@ public static class ValidationPasses
                 bool isMany = cardinality is string cs && cs == CARDINALITY_MANY;
                 bool isM2M = hasThrough && isMany;
 
-                // Rule (0): @objectRef must resolve to a real object. A dangling target is
-                // drift between two pieces of metadata — rename/remove the target entity
-                // and the model fails to load. Mirrors the TS validateRelationships edge.
-                if (objectRef is string objRef && objRef.Length > 0 && FindObject(root, objRef) is null)
-                {
-                    errors.Add(new MetaError(
-                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_OBJECT_REF} \"{objRef}\" " +
-                        "does not resolve to an object.",
-                        ErrorCode.ERR_INVALID_RELATIONSHIP,
-                        Envelope: rel.Source));
-                    continue;
-                }
+                // NOTE: @objectRef existence resolution moved to the validation registry
+                // (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
+                // resolved by RegisteredValidation). The M:N rules below stay here for now.
 
                 // Rule (d): M:N-only attrs on a non-M:N relationship.
                 if (!isM2M)
@@ -1604,41 +1595,9 @@ public static class ValidationPasses
         return errors.AsReadOnly();
     }
 
-    // =========================================================================
-    // ValidateIdentityReferences — identity.reference @references resolution.
-    //
-    // Every identity.reference's @references must name an FK target object that exists
-    // in the loaded tree — a dangling target is drift between two pieces of metadata.
-    // The target entity is the segment before the first dotted field path (packages use
-    // "::", never ".", so the first "." splits entity from fields). Own identity children
-    // only. Mirrors the TS validateIdentityReferences pass.
-    // =========================================================================
-
-    public static IReadOnlyList<MetaError> ValidateIdentityReferences(MetaData root)
-    {
-        var errors = new List<MetaError>();
-        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
-        {
-            foreach (var idn in obj.OwnChildren()
-                .Where(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_REFERENCE))
-            {
-                // Absence is the required-attr pass's job, not ours.
-                if (idn.OwnAttr(IDENTITY_REFERENCE_ATTR_REFERENCES) is not string references || references.Length == 0)
-                    continue;
-                int dot = references.IndexOf('.');
-                string entityRef = dot < 0 ? references : references.Substring(0, dot);
-                if (FindObject(root, entityRef) is null)
-                {
-                    errors.Add(new MetaError(
-                        $"identity.reference \"{obj.Name}.{idn.Name}\" @{IDENTITY_REFERENCE_ATTR_REFERENCES} " +
-                        $"\"{references}\" does not resolve to an object.",
-                        ErrorCode.ERR_INVALID_REFERENCE,
-                        Envelope: idn.Source));
-                }
-            }
-        }
-        return errors.AsReadOnly();
-    }
+    // NOTE: identity.reference @references resolution moved to the validation registry
+    // (a declarative ReferenceDescriptor with dottedFieldPath on the identity.reference
+    // TypeDefinition, resolved by RegisteredValidation).
 
     // =========================================================================
     // Pass 9: ValidateTemplatePayloadRefs
