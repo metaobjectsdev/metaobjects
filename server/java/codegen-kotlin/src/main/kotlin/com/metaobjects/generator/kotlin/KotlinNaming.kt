@@ -28,6 +28,30 @@ object KotlinNaming {
     /** [KotlinExposedTableGenerator]: `shortName + "Table"`. */
     fun tableObjectName(shortName: String): String = shortName + "Table"
 
+    /**
+     * Exposed `Table` (via `ColumnSet` / `FieldSet`) declares its own `val` members
+     * (`source`, `columns`, `fields`, `index`, …). A generated column `val` of the same
+     * name fails to compile — "hides member of supertype and needs an 'override' modifier"
+     * — because a column property can't legally override those members. Used as the guard
+     * set for [safeColumnProperty].
+     */
+    val RESERVED_TABLE_MEMBERS: Set<String> = setOf(
+        "source", "fields", "columns", "index", "indices", "primaryKey",
+        "tableName", "ddl", "foreignKeys", "checkConstraints", "sequences",
+        "autoIncColumn", "realFields", "defaultExpression", "generatedSignature",
+        "tableNameWithoutScheme", "tableNameWithoutSchemeSanitized",
+    )
+
+    /**
+     * [KotlinExposedTableGenerator]: the Kotlin property name for a column. Identity for a
+     * normal field; a field whose camelCase name collides with an Exposed `Table`/`ColumnSet`
+     * member ([RESERVED_TABLE_MEMBERS]) gets a `Column` suffix (e.g. `source` → `sourceColumn`).
+     * The PHYSICAL column name is unaffected — only the Kotlin val identifier changes — so the
+     * persisted schema is unchanged.
+     */
+    fun safeColumnProperty(name: String): String =
+        if (name in RESERVED_TABLE_MEMBERS) name + "Column" else name
+
     /** [KotlinSpringControllerGenerator]: `shortName + "Controller"`. */
     fun controllerName(shortName: String): String = shortName + "Controller"
 

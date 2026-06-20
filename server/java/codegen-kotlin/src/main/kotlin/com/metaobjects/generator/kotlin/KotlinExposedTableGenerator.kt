@@ -319,7 +319,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             }
             append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
             append("object $tableObjectName : Table(\"$tableName\") {\n")
-            for (field in entity.metaFields) {
+            // PK column(s) FIRST so a self-referential FK column (e.g.
+            // `parentId = uuid(...).references(SelfTable.id)`) can reference the
+            // PK `val id` — Kotlin object initializers run top-to-bottom, so a
+            // forward reference to a later `val` is a compile error ("must be
+            // initialized"). Inherited PK fields (BaseEntity) otherwise sort last.
+            // Stable sort preserves declaration order within each group.
+            val pkFirstFields = entity.metaFields.sortedBy { if (it.name in primaryFieldSet) 0 else 1 }
+            for (field in pkFirstFields) {
                 // ObjectField columns are produced by buildObjectColumns() so we can emit
                 // @storage flattened (N columns) or jsonb (1 column) uniformly.
                 if (field is ObjectField) continue
@@ -352,9 +359,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // .nullable() so the chain reads naturally.
                 val decoration = refDecorations[field.name]
                 val decorated = if (decoration != null && decoration.emitsReference)
-                    "$withAuto.references(${decoration.targetTable}.id${decoration.refSuffix})" else withAuto
+                    "$withAuto.references(${decoration.targetTable}.${decoration.targetPkProperty}${decoration.refSuffix})" else withAuto
                 val full = if (nullable) "$decorated.nullable()" else decorated
-                append("    val ${field.name} = $full\n")
+                append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $full\n")
             }
             // FR-017 TPH: a discriminator base's single table also carries every subtype-only
             // column, emitted NULLABLE (a row of another subtype stores null there, even when the
@@ -369,16 +376,17 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
-                append("    val ${field.name} = $baseSpec.nullable()\n")
+                append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
             }
             for (oc in objectColumns) {
-                append("    val ${oc.propertyName} = ${oc.columnExpr}\n")
+                append("    val ${KotlinNaming.safeColumnProperty(oc.propertyName)} = ${oc.columnExpr}\n")
             }
             for (fk in fkColumns) {
-                append("    val ${fk.propertyName} = ${fk.columnExpr}\n")
+                append("    val ${KotlinNaming.safeColumnProperty(fk.propertyName)} = ${fk.columnExpr}\n")
             }
             if (primaryFieldNames.isNotEmpty()) {
-                append("\n    override val primaryKey = PrimaryKey(${primaryFieldNames.joinToString(", ")})\n")
+                val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
+                append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
             }
             // Emit `init { uniqueIndex("<name>", col1, col2, ...) }` for every
             // identity.secondary. Single init block holds all calls so the
@@ -389,7 +397,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (emittableSecondaries.isNotEmpty()) {
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
-                    val cols = sec.fields.joinToString(", ")
+                    val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
                     // shortName strips the package prefix the loader adds
                     // (`acme::demo::by_name` → `by_name`) — same pattern used
                     // for relationship.composition's FK property name above.
@@ -720,7 +728,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$colName\").references($targetTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($targetTable.${primaryKeyProperty(target)}$refSuffix)",
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
@@ -748,7 +756,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$colName\").references($ownerTable.id$refSuffix)",
+            columnExpr = "long(\"$colName\").references($ownerTable.${primaryKeyProperty(owner)}$refSuffix)",
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,
@@ -788,6 +796,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     protected data class RefDecoration(
         /** Target table object name (e.g. {@code "ProgramTable"}); null for soft refs. */
         val targetTable: String?,
+        /** Kotlin property name of the target's PK column (e.g. {@code "id"}, {@code "goalId"}). */
+        val targetPkProperty: String,
         /** Suffix portion after the target column — either "" or {@code ", onDelete = ..., onUpdate = ..."}. */
         val refSuffix: String,
         /**
@@ -851,10 +861,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // ReferenceOption emission (see lines ~700/728, which read the relationship).
                 val refSuffix = ""
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
-                    RefDecoration(targetTable, refSuffix, targetFqn)
+                    RefDecoration(targetTable, primaryKeyProperty(target), refSuffix, targetFqn)
             }
         }
         return acc
+    }
+
+    /**
+     * The Kotlin property name of [target]'s single-field primary key — `"id"` for the
+     * BaseEntity pattern, but `"goalId"`, `"code"`, … when the entity's `identity.primary`
+     * names a different field. FK emission must reference the TARGET's real PK column, not a
+     * hardcoded `.id` (which fails to compile when the target PK isn't named `id`). Falls back
+     * to `"id"` when no primary identity resolves (defensive). Safe-renamed for reserved members.
+     */
+    private fun primaryKeyProperty(target: MetaObject): String {
+        val pkField = target.getIdentities(true).firstOrNull { it.isPrimary }?.fields?.firstOrNull()
+        return KotlinNaming.safeColumnProperty(pkField ?: "id")
     }
 
     /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */
