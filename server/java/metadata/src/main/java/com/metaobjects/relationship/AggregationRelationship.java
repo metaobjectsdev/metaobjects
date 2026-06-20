@@ -20,6 +20,11 @@ public class AggregationRelationship extends MetaRelationship {
             .type(TYPE_RELATIONSHIP).subType(SUBTYPE_AGGREGATION)
             .description("Aggregation relationship - parent has shared ownership (shared lifecycle)")
             .inheritsFrom(TYPE_RELATIONSHIP, SUBTYPE_BASE)
+            // @objectRef is a cross-reference to a real object (the relationship target);
+            // the loader's registry-derived validation resolves it (dangling = load error).
+            .reference(new com.metaobjects.loader.validation.ReferenceDescriptor(
+                MetaRelationship.ATTR_OBJECT_REF, com.metaobjects.object.MetaObject.TYPE_OBJECT,
+                null, false, "ERR_INVALID_RELATIONSHIP"))
         );
     }
 

@@ -139,17 +139,19 @@ public final class ValidationPhase {
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateRelationshipsM2M(root);
-        // Phase 2 — the normalized validation registry: declarative reference descriptors
-        // (relationship @objectRef, identity.reference @references) run as one recursive
-        // walk over a built-once symbol table. Collected, then eager-thrown (first error)
-        // to preserve cross-port behavior. A downstream provider extends this by composing
-        // its own ValidationRegistry (see RegisteredValidation).
-        java.util.List<com.metaobjects.loader.validation.ValidationError> refErrors =
-            com.metaobjects.loader.validation.RegisteredValidation.run(
-                root, com.metaobjects.loader.validation.RegisteredValidation.defaultRegistry());
-        if (!refErrors.isEmpty()) {
-            com.metaobjects.loader.validation.ValidationError e = refErrors.get(0);
-            throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
+        // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
+        // carries its reference descriptors + imperative validator (relationship @objectRef,
+        // identity.reference @references for core; a downstream provider's type carries its
+        // own). One recursive walk over a built-once symbol table, collected then eager-
+        // thrown (first error) to preserve cross-port behavior. Needs the registry, so it is
+        // skipped on the legacy null-loader path (like validateRequiredAttrs/MaxOccurs).
+        if (loader != null && loader.getTypeRegistry() != null) {
+            java.util.List<com.metaobjects.loader.validation.ValidationError> refErrors =
+                com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry());
+            if (!refErrors.isEmpty()) {
+                com.metaobjects.loader.validation.ValidationError e = refErrors.get(0);
+                throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
+            }
         }
         validateOrigins(root);
         validateObjectFieldStorage(root);
