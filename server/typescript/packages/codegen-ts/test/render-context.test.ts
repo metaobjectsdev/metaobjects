@@ -27,3 +27,25 @@ describe("makeRenderContext — targets", () => {
     expect(ctx.entityModuleTarget.importBase).toBe("@mf/db/generated");
   });
 });
+
+describe("makeRenderContext — collectionName resolver", () => {
+  it("defaults to always-pluralize when the knobs are omitted", () => {
+    const ctx = makeRenderContext(baseInput);
+    expect(ctx.collectionName("AgentConfig")).toBe("agentConfigs");
+  });
+
+  it("honors pluralizeCollections:false", () => {
+    const ctx = makeRenderContext({ ...baseInput, pluralizeCollections: false });
+    expect(ctx.collectionName("AgentConfig")).toBe("agentConfig");
+  });
+
+  it("applies per-entity overrides over pluralization", () => {
+    const ctx = makeRenderContext({
+      ...baseInput,
+      collectionNameOverrides: { AuditLog: "auditLog", LlmTierConfig: "llmTierConfig" },
+    });
+    expect(ctx.collectionName("AuditLog")).toBe("auditLog");
+    expect(ctx.collectionName("LlmTierConfig")).toBe("llmTierConfig");
+    expect(ctx.collectionName("AgentConfig")).toBe("agentConfigs");
+  });
+});

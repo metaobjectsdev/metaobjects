@@ -59,7 +59,7 @@ describe("mapColumnType — SQLite", () => {
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
     expect(spec.fnOptions).toEqual({ mode: "json" });
-    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "string" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "string", array: true });
   });
 
   test("@isArray on int → text with mode json and $type scalar:number", () => {
@@ -67,7 +67,7 @@ describe("mapColumnType — SQLite", () => {
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
-    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "number" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "number", array: true });
   });
 
   test("@isArray on boolean → text with mode json and $type scalar:boolean", () => {
@@ -75,7 +75,7 @@ describe("mapColumnType — SQLite", () => {
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
-    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "boolean" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "scalar", tsType: "boolean", array: true });
   });
 
   test("@isArray on field.object → text with mode json and $type objectRef", () => {
@@ -85,7 +85,7 @@ describe("mapColumnType — SQLite", () => {
     const spec = mapColumnType(f, "sqlite");
     expect(spec.fnName).toBe("text");
     expect(spec.fnOptions).toEqual({ mode: "json" });
-    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", module: "./SourceLens.js" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", array: true });
   });
 
   test("@isArray field.object with a FULLY-QUALIFIED @objectRef strips to the bare name", () => {
@@ -96,7 +96,7 @@ describe("mapColumnType — SQLite", () => {
     f.setAttr("objectRef", "acme::ai::SourceLens");
     f.setIsArray(true);
     const spec = mapColumnType(f, "sqlite");
-    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", module: "./SourceLens.js" });
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "SourceLens", array: true });
   });
 
   test("@isArray on field.object without objectRef leaves dollarTypeRef unset", () => {
@@ -138,11 +138,13 @@ describe("mapColumnType — Postgres", () => {
     expect(spec.fnName).toBe("boolean");
   });
 
-  test("@isArray adds .array() modifier", () => {
+  test("@isArray on a SCALAR adds native .array() and no $type", () => {
     const f = metaField(FIELD_SUBTYPE_INT, "scores");
     f.setIsArray(true);
     const spec = mapColumnType(f, "postgres");
     expect(spec.modifiers).toContain(".array()");
+    // Drizzle's native .array() is already element-typed — no $type needed.
+    expect(spec.dollarTypeRef).toBeUndefined();
   });
 });
 
@@ -163,6 +165,42 @@ describe("mapColumnType — field.object column parity with migrate-ts (SP-H Uni
     f.setAttr("storage", "jsonb");
     const spec = mapColumnType(f, "postgres");
     expect(spec.fnName).toBe("jsonb");
+  });
+
+  test("Postgres: single field.object → jsonb carries .$type<VO> (array:false), no .array()", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "llmConfig");
+    f.setAttr("objectRef", "LlmConfig");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+    expect(spec.modifiers).not.toContain(".array()");
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "LlmConfig", array: false });
+  });
+
+  test("Postgres: isArray field.object → single jsonb with .$type<VO[]> and NO native .array()", () => {
+    // The JSON array lives inside one jsonb column — native .array() (jsonb[]) is wrong.
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "triples");
+    f.setAttr("objectRef", "Triple");
+    f.setAttr("storage", "jsonb");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+    expect(spec.modifiers).not.toContain(".array()");
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "Triple", array: true });
+  });
+
+  test("Postgres: isArray field.object with a fully-qualified @objectRef strips to the bare name", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "conflictDetails");
+    f.setAttr("objectRef", "acme::ai::ConflictDetail");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.dollarTypeRef).toEqual({ kind: "objectRef", name: "ConflictDetail", array: true });
+  });
+
+  test("Postgres: field.object without @objectRef leaves dollarTypeRef unset", () => {
+    const f = metaField(FIELD_SUBTYPE_OBJECT, "stuff");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("jsonb");
+    expect(spec.dollarTypeRef).toBeUndefined();
   });
 
   test("SQLite: field.object → text with { mode: 'json' } (matches migrate-ts JSON)", () => {

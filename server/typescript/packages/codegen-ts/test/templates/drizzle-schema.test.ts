@@ -390,3 +390,56 @@ describe("renderDrizzleSchema — field.enum CHECK constraints", () => {
     expect(out).toContain("drizzle-orm/pg-core");
   });
 });
+
+describe("renderDrizzleSchema — collection-name control", () => {
+  test("per-entity override renames the table VAR (table name stays from @table)", () => {
+    const root = makeRoot([makePost()]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+      collectionNameOverrides: { Post: "post" },
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    expect(out).toContain("export const post = ");      // overridden var
+    expect(out).toContain('pgTable("posts"');           // physical table name unchanged
+    expect(out).not.toContain("export const posts ");
+  });
+
+  test("pluralizeCollections:false keeps the var singular", () => {
+    const root = makeRoot([makePost()]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+      pluralizeCollections: false,
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    expect(out).toContain("export const post = ");
+  });
+
+  test("an FK reference resolves to the OVERRIDDEN target var (consistency)", () => {
+    const user = makeUser();
+    const post = makePostWithAuthor();
+    const root = makeRoot([user, post]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+      collectionNameOverrides: { User: "userAccount" },
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    // The .references() target must use the overridden var name, not "users".
+    expect(out).toContain("userAccount");
+    expect(out).not.toContain("=> users.");
+  });
+});

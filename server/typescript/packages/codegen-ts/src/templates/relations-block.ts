@@ -6,7 +6,6 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
-import { variableNameFromEntity } from "../naming.js";
 import type { RelationEntry } from "../relation-resolver.js";
 
 /**
@@ -17,7 +16,7 @@ export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Co
   const entries = ctx.relationMap.get(entity.name);
   if (!entries || entries.length === 0) return null;
 
-  const varName = variableNameFromEntity(entity.name);
+  const varName = ctx.collectionName(entity.name);
   const relationsFn = imp("relations@drizzle-orm");
   const relationsVarName = `${varName}Relations`;
 
@@ -59,7 +58,7 @@ function renderRelationEntry(
       entry.junctionEntity,
       ctx.extStyle,
     );
-    const junctionVarSym = imp(`${variableNameFromEntity(entry.junctionEntity)}@${junctionSpec}`);
+    const junctionVarSym = imp(`${ctx.collectionName(entry.junctionEntity)}@${junctionSpec}`);
     return code`  ${entry.name}: many(${junctionVarSym})`;
   }
 
@@ -71,7 +70,7 @@ function renderRelationEntry(
     entry.targetEntity,
     ctx.extStyle,
   );
-  const targetVarSym = imp(`${variableNameFromEntity(entry.targetEntity)}@${targetSpec}`);
+  const targetVarSym = imp(`${ctx.collectionName(entry.targetEntity)}@${targetSpec}`);
 
   if (entry.cardinality === CARDINALITY_ONE) {
     const pkInfo = ctx.pkMap.get(entry.targetEntity);

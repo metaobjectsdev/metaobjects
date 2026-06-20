@@ -11,9 +11,9 @@ import {
   FIELD_ATTR_AUTO_SET,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier } from "../import-path.js";
+import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
-import { tableNameFromEntity, variableNameFromEntity, columnNameFromField } from "../naming.js";
+import { tableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields } from "./tph-discriminator.js";
@@ -33,7 +33,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const tableFnSym = imp(`${tableFn}@${importModule}`);
 
   const tableName = obj.dbTable ?? tableNameFromEntity(obj.name, ctx.columnNamingStrategy);
-  const varName = variableNameFromEntity(obj.name);
+  const varName = ctx.collectionName(obj.name);
 
   const primary = obj.primaryIdentity();
   const rawPkFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS);
@@ -72,7 +72,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const fkInfo = fkMap.get(child.name);
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
-    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
+    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
@@ -91,7 +91,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // stamp onto other-subtype inserts), regardless of the field's @required.
   // Subtype entities emit no table of their own (the value-object path).
   for (const child of collectTphSubtypeFields(obj, ctx.loadedRoot)) {
-    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy);
+    const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
       spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, true,
@@ -188,7 +188,7 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     if (!targetObj) continue;
     const targetPkField = ref.resolvedTargetPkField(ctx.loadedRoot) ?? "id";
     result.set(fkField, {
-      targetVarName: variableNameFromEntity(targetObj.name),
+      targetVarName: ctx.collectionName(targetObj.name),
       targetEntityName: targetObj.name,
       targetPkField,
     });
@@ -346,11 +346,17 @@ function renderColumn(
   let dollarTypeSegment: Code | string = "";
   if (spec.dollarTypeRef !== undefined) {
     const ref = spec.dollarTypeRef;
+    const suffix = ref.array ? "[]" : "";
     if (ref.kind === "scalar") {
-      dollarTypeSegment = `.$type<${ref.tsType}[]>()`;
+      dollarTypeSegment = `.$type<${ref.tsType}${suffix}>()`;
     } else {
-      const refSym = imp(`${ref.name}@${ref.module}`);
-      dollarTypeSegment = code`.$type<${refSym}[]>()`;
+      // Resolve the VO module through the shared layout/package/extStyle-aware
+      // helper so the .$type<VO> import matches the field's TS type + Zod schema.
+      const moduleSpec = valueObjectModuleSpecifier(
+        ref.name, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle,
+      );
+      const refSym = imp(`${ref.name}@${moduleSpec}`);
+      dollarTypeSegment = ref.array ? code`.$type<${refSym}[]>()` : code`.$type<${refSym}>()`;
     }
   }
 

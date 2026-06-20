@@ -29,7 +29,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
   // but declares none of its own). In addition to the insert schema it emits a
   // full read schema `<Sub>Schema` so parse<Base>(row) can dispatch to it.
   const tphSubtype = isTphSubtype(obj);
-  const tphReadSchema = tphSubtype ? renderTphSubtypeReadSchema(obj) : null;
+  const tphReadSchema = tphSubtype ? renderTphSubtypeReadSchema(obj, ctx) : null;
   // FR-017 Tier 3: a TPH subtype also emits its field-metadata constants object
   // (the `<Sub>` const), so the React form generator can render per-field
   // labels / rules / inputs the same way it does for ordinary entities.
@@ -49,7 +49,7 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     renderValueObjectInterface(obj, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
     ...(tphReadSchema !== null ? [tphReadSchema] : []),
-    renderInsertSchemaOnly(obj),
+    renderInsertSchemaOnly(obj, ctx),
     ...(tphConstants !== null ? [tphConstants] : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),

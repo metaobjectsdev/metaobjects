@@ -58,9 +58,31 @@ export function viewNameFromProjection(
   return "v" + sep + applyColumnNamingStrategy(projectionName, strategy);
 }
 
-/** PascalCase entity → camelCase plural for the Drizzle table variable. */
-export function variableNameFromEntity(entityName: string): string {
-  return pluralize(toCamelCase(entityName.charAt(0).toLowerCase() + entityName.slice(1)));
+/** Codegen control over how an entity name lowers to its collection (table)
+ *  variable name. Both knobs are project-level codegen config (ADR-0001 —
+ *  naming is a per-port codegen concern, NOT a metadata attribute), so they
+ *  carry no cross-port conformance cost. */
+export interface CollectionNameOptions {
+  /** Auto-pluralize the camelCase entity name. Default `true` (e.g.
+   *  `AgentConfig` → `agentConfigs`). Set `false` to keep it singular
+   *  (`agentConfig`). */
+  pluralize?: boolean;
+  /** Per-entity exact var-name overrides, keyed by the bare entity name. Wins
+   *  over `pluralize` — the escape hatch for the handful of tables a global
+   *  rule gets wrong (e.g. `{ AuditLog: "auditLog", LlmTierConfig: "llmTierConfig" }`). */
+  overrides?: Record<string, string>;
+}
+
+/** PascalCase entity → camelCase Drizzle table variable. Auto-pluralizes by
+ *  default; `opts` lets a project turn pluralization off globally and/or pin
+ *  exact names per entity. With no `opts` the behavior is the historical
+ *  always-pluralize (callers like the relation-resolver that only need the
+ *  cosmetic query-API member name pass nothing). */
+export function variableNameFromEntity(entityName: string, opts?: CollectionNameOptions): string {
+  const override = opts?.overrides?.[entityName];
+  if (override !== undefined && override.length > 0) return override;
+  const camel = toCamelCase(entityName.charAt(0).toLowerCase() + entityName.slice(1));
+  return opts?.pluralize === false ? camel : pluralize(camel);
 }
 
 // ---------------------------------------------------------------------------

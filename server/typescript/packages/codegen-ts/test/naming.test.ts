@@ -79,10 +79,33 @@ describe("columnNameFromField", () => {
 });
 
 describe("variableNameFromEntity", () => {
-  test("camelCase + plural", () => {
+  test("camelCase + plural (default, no opts)", () => {
     expect(variableNameFromEntity("Post")).toBe("posts");
     expect(variableNameFromEntity("UserAccount")).toBe("userAccounts");
     expect(variableNameFromEntity("Category")).toBe("categories");
+  });
+
+  test("pluralize:false keeps the camelCase name singular", () => {
+    expect(variableNameFromEntity("AgentConfig", { pluralize: false })).toBe("agentConfig");
+    expect(variableNameFromEntity("AuditLog", { pluralize: false })).toBe("auditLog");
+  });
+
+  test("pluralize:true (explicit) matches the default", () => {
+    expect(variableNameFromEntity("AgentConfig", { pluralize: true })).toBe("agentConfigs");
+  });
+
+  test("per-entity override wins over pluralize", () => {
+    const overrides = { AuditLog: "auditLog", LlmTierConfig: "llmTierConfig" };
+    expect(variableNameFromEntity("AuditLog", { overrides })).toBe("auditLog");
+    expect(variableNameFromEntity("LlmTierConfig", { overrides })).toBe("llmTierConfig");
+    // An entity NOT in the override map still auto-pluralizes.
+    expect(variableNameFromEntity("AgentConfig", { overrides })).toBe("agentConfigs");
+    // Override beats an explicit pluralize:true too.
+    expect(variableNameFromEntity("AuditLog", { pluralize: true, overrides })).toBe("auditLog");
+  });
+
+  test("empty-string override is ignored (falls through to pluralization)", () => {
+    expect(variableNameFromEntity("AuditLog", { overrides: { AuditLog: "" } })).toBe("auditLogs");
   });
 });
 
