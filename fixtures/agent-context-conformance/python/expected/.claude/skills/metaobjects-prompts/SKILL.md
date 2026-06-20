@@ -123,6 +123,47 @@ For the `xml`-format example above with payload `{ displayName: "Ada", postCount
 bytes. You render the prompt, call your LLM client (provider-agnostic — codegen
 emits no provider-side schema), then parse the response.
 
+## Conditional content: data and flags, never branched prose
+
+When a prompt's wording varies along some dimension — audience, tier, mode,
+locale, entitlement, a domain variant — do NOT branch the prose in code and
+concatenate strings. Branching prompt text in a service is the anti-pattern this
+pillar exists to remove: it scatters the same distinction across call sites, each
+re-encoded and free to drift, and none of it snapshot-tested. The variation
+belongs in exactly two places, with a third for the rare genuine divergence:
+
+- **Vocabulary as payload data.** The words and values that differ become typed
+  payload fields, pre-computed once from the varying dimension — a noun, a label,
+  a set of verbs (a list), an example. The template stays single and references
+  `{{term}}` / `{{#items}}…{{/items}}`. The prose *structure* is identical across
+  variants; only the data differs, so there is nothing to branch.
+- **Presence as boolean flags.** When a whole block exists-or-not for a variant,
+  gate it with a section flag the payload sets: `{{#showBlock}}…{{/showBlock}}`.
+  Reserve flags for entire blocks — never mid-sentence word swaps, which are
+  vocabulary.
+- **Variant text only when prose truly diverges.** If a section's wording — not
+  just its vocabulary — genuinely differs, select a per-variant text through the
+  provider seam (a `@textRef` variant, or an included partial) so the shared
+  prose still lives in one place. Expect to need this rarely.
+
+A single resolver maps the varying dimension to that payload (the flags + the
+vocabulary), so the distinction is defined ONCE and every template that depends
+on it stays consistent.
+
+```
+// WRONG — prose branched and concatenated in a service:
+if (tier.isPremium()) sb.append("Your plan includes priority support.");
+else                  sb.append("Upgrade any time for priority support.");
+```
+```mustache
+{{! RIGHT — text in the template; the variant is data + a flag }}
+{{supportLine}}
+{{#isPremium}}(Priority queue enabled.){{/isPremium}}
+```
+
+This stays deterministic and golden-testable per variant: render the template
+against each value of the dimension and snapshot every variant.
+
 ## `verify` fails the build on prompt-drift
 
 For every template, the verify step resolves the text, parses each `{{...}}`

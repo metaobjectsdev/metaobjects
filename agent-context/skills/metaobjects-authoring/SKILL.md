@@ -205,6 +205,12 @@ reference for navigation/typing/codegen only. Referential actions
 (`@onDelete`/`@onUpdate`) are NOT on `identity.reference` — they live on the
 `relationship.*` node (see Relationships below).
 
+`@references` resolves cross-package by **fully-qualified name**
+(`@references: "shared::billing::Account"`), the same rule as `extends`; a bare
+name resolves within the current package. The FK target must be an entity with a
+single-column primary key (the FK points at that PK); a target with a composite
+PK needs the explicit dotted form `@references: "pkg::Target.fieldA,fieldB"`.
+
 ```json
 { "identity.primary":   { "name": "id", "@fields": ["id"], "@generation": "increment" } }
 { "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
