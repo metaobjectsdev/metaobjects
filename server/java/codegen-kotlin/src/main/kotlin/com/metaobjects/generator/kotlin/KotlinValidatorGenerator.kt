@@ -43,16 +43,23 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             .filter { !KotlinGenUtil.isAbstractEntity(it) }
             .filter { it.children.any { c -> c is RdbSource } }
             .map { entity ->
-                val shortName = PackageMapping.splitFqn(entity.name).second
-                entity.name to "${shortName}Table"
+                val (tablePkg, shortName) = PackageMapping.splitFqn(entity.name)
+                // (metadata FQN, Table object name, Table's Kotlin package)
+                Triple(entity.name, "${shortName}Table", tablePkg)
             }
 
         emitValidator(pkg, entries, outRoot)
         emitHelper(pkg, outRoot)
     }
 
-    protected open fun emitValidator(pkg: String, entries: List<Pair<String, String>>, outRoot: Path) {
-        val registry = entries.joinToString(",\n        ") { (fqn, table) -> "\"$fqn\" to $table" }
+    protected open fun emitValidator(pkg: String, entries: List<Triple<String, String, String>>, outRoot: Path) {
+        val registry = entries.joinToString(",\n        ") { (fqn, table, _) -> "\"$fqn\" to $table" }
+        // The Table objects live in their entity's own package; import any that
+        // are NOT in this validator's package or the bare reference won't resolve.
+        val tableImports = entries
+            .filter { (_, _, tablePkg) -> tablePkg.isNotEmpty() && tablePkg != pkg }
+            .map { (_, table, tablePkg) -> "$tablePkg.$table" }
+            .toSortedSet()
 
         val source = buildString {
             if (pkg.isNotEmpty()) {
@@ -60,7 +67,9 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             }
             append("import com.metaobjects.loader.MetaDataLoader\n")
             append("import com.metaobjects.metadata.ktx.metaObjectOrNull\n")
-            append("import org.jetbrains.exposed.sql.Table\n\n")
+            append("import org.jetbrains.exposed.sql.Table\n")
+            for (imp in tableImports) append("import $imp\n")
+            append("\n")
             append("/**\n")
             append(" * GENERATED — runtime drift gate. Call [validate] from a Spring `@PostConstruct` or\n")
             append(" * `ApplicationReadyEvent` listener to fail-fast when generated Tables drift from metadata.\n")
