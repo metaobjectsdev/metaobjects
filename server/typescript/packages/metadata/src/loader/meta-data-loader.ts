@@ -17,7 +17,8 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIdentityReferences } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { runRegisteredValidation, defaultValidationRegistry, type ValidationRegistry } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -71,6 +72,9 @@ export interface LoadOptions {
   freeze?: boolean;
   /** Strict parsing mode — passed through to parser. Default false. */
   strict?: boolean;
+  /** Validation registry (reference descriptors + imperative validators). Defaults to the
+   *  core descriptors. A downstream app composes its own to validate custom types. */
+  validationRegistry?: ValidationRegistry;
 }
 
 export interface LoadResult {
@@ -99,6 +103,7 @@ function makeSyntheticRoot(): MetaRoot {
 
 export class MetaDataLoader {
   private readonly _registry: TypeRegistry;
+  private readonly _validationRegistry: ValidationRegistry;
   private readonly _freeze: boolean;
   private readonly _strict: boolean;
 
@@ -107,6 +112,7 @@ export class MetaDataLoader {
 
   constructor(opts?: LoadOptions) {
     this._registry = opts?.registry ?? MetaDataLoader._defaultRegistry();
+    this._validationRegistry = opts?.validationRegistry ?? defaultValidationRegistry();
     this._freeze = opts?.freeze !== false; // default true
     this._strict = opts?.strict === true;  // default false
   }
@@ -490,8 +496,11 @@ export class MetaDataLoader {
       // are invalid on a 1:N relationship.
       errors.push(...validateRelationships(root));
 
-      // identity.reference @references must resolve to a real object (FK target).
-      errors.push(...validateIdentityReferences(root));
+      // Phase 2 — the normalized validation registry: declarative reference descriptors
+      // (relationship @objectRef, identity.reference @references) + any provider-registered
+      // imperative validators, run as one recursive walk over a built-once symbol table.
+      // A downstream provider extends validation by passing its own ValidationRegistry.
+      errors.push(...runRegisteredValidation(root, this._validationRegistry));
 
       // template.* validation — @payloadRef resolves to a known object;
       // @requiredSlots are real fields on it (FR-004 Plan #3, T2).

@@ -139,8 +139,18 @@ public final class ValidationPhase {
         validateOnePrimarySource(root);
         validateRelationshipReferentialActions(root);
         validateRelationshipsM2M(root);
-        // identity.reference @references must resolve to a real object (FK target).
-        validateIdentityReferences(root);
+        // Phase 2 — the normalized validation registry: declarative reference descriptors
+        // (relationship @objectRef, identity.reference @references) run as one recursive
+        // walk over a built-once symbol table. Collected, then eager-thrown (first error)
+        // to preserve cross-port behavior. A downstream provider extends this by composing
+        // its own ValidationRegistry (see RegisteredValidation).
+        java.util.List<com.metaobjects.loader.validation.ValidationError> refErrors =
+            com.metaobjects.loader.validation.RegisteredValidation.run(
+                root, com.metaobjects.loader.validation.RegisteredValidation.defaultRegistry());
+        if (!refErrors.isEmpty()) {
+            com.metaobjects.loader.validation.ValidationError e = refErrors.get(0);
+            throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
+        }
         validateOrigins(root);
         validateObjectFieldStorage(root);
         validateIdentityFieldsAndGeneration(root);
@@ -1054,17 +1064,9 @@ public final class ValidationPhase {
         boolean isMany = MetaRelationship.CARDINALITY_MANY.equals(cardinality);
         boolean isM2M = hasThrough && isMany;
 
-        // Rule (0): @objectRef must resolve to a real object. A dangling target is
-        // drift between two pieces of metadata — rename/remove the target entity and
-        // the model fails to load. Matches the TS validateRelationships objectRef edge.
-        if (objectRef != null && !objectRef.isEmpty() && findRootObject(root, objectRef) == null) {
-            throw new MetaDataException(
-                ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
-                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
-                    + "\" @" + MetaRelationship.ATTR_OBJECT_REF + " \"" + objectRef
-                    + "\" does not resolve to an object.",
-                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
-        }
+        // NOTE: @objectRef existence resolution moved to the validation registry
+        // (RegisteredValidation.defaultRegistry → a declarative reference descriptor).
+        // The M:N slim-vocabulary rules below stay here for now (Phase 3 migrates them).
 
         // Rule (d): M:N-only attrs on a non-M:N relationship.
         if (!isM2M) {
@@ -1200,36 +1202,9 @@ public final class ValidationPhase {
     // validateIdentityReferences pass.
     // =========================================================================
 
-    static void validateIdentityReferences(MetaRoot root) {
-        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
-            walkIdentityReferences(root, rootChild);
-        }
-    }
-
-    private static void walkIdentityReferences(MetaRoot root, MetaData node) {
-        if (node instanceof MetaObject) {
-            for (MetaData child : node.getChildren(MetaData.class, false)) {
-                if (!(child instanceof MetaIdentity)) continue;
-                if (!MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) continue;
-                if (!child.hasMetaAttr(MetaIdentity.ATTR_REFERENCES, false)) continue;
-                String references = child.getMetaAttr(MetaIdentity.ATTR_REFERENCES, false).getValueAsString();
-                if (references == null || references.isEmpty()) continue;
-                int dot = references.indexOf('.');
-                String entityRef = dot == -1 ? references : references.substring(0, dot);
-                if (findRootObject(root, entityRef) == null) {
-                    throw new MetaDataException(
-                        ErrorMessageConstants.ERR_INVALID_REFERENCE
-                            + ": identity.reference \"" + node.getShortName() + "." + child.getShortName()
-                            + "\" @" + MetaIdentity.ATTR_REFERENCES + " \"" + references
-                            + "\" does not resolve to an object.",
-                        ErrorCode.ERR_INVALID_REFERENCE, child.getSource());
-                }
-            }
-        }
-        for (MetaData child : node.getChildren(MetaData.class, false)) {
-            walkIdentityReferences(root, child);
-        }
-    }
+    // NOTE: identity.reference @references resolution moved to the validation registry
+    // (RegisteredValidation.defaultRegistry → a declarative reference descriptor with
+    // dottedFieldPath). See the registry run in run(...).
 
     // =========================================================================
     // field.object + @storage validation
