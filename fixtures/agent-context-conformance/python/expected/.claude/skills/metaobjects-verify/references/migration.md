@@ -66,7 +66,40 @@ A clean run is silent; a failure names the drifted table/column. Bias toward
 trusting the tool — a drift failure almost always means the metadata changed and the
 DB didn't follow.
 
+## Index modeling (Postgres)
+
+Secondary indexes carry physical-shape attributes contributed by the db provider
+(they live on `identity.secondary`, not core):
+
+- `@orders` — per-key sort direction, positional to `@fields` (`["asc", "desc"]`).
+  Omit for all-ascending; drives `DESC`-ordered index keys (e.g. a recency index).
+- `@where` — a partial-index predicate (raw SQL, e.g. `"delivered_at IS NULL"`),
+  emitted as `WHERE (<pred>)`. The index then covers only matching rows.
+
+```json
+{ "identity.secondary": { "@fields": ["userId", "createdAt"],
+    "@orders": ["asc", "desc"], "@where": "archived_at IS NULL" } }
+```
+
+## Adopting an existing database (non-destructive)
+
+`meta verify --db` / `meta migrate` can reach **zero drift** against a hand-built
+schema without a rewrite:
+
+- **`meta migrate --from-db`** reverse-engineers a baseline from the live DB so the
+  first diff is empty.
+- **Auto schema-scope** — the diff manages only the schemas the metadata *declares*
+  (via `source.rdb @schema`); tables in undeclared schemas belong to another owner
+  and are left untouched. This is what lets several apps share one database, each
+  owning its own schema, with a clean per-owner `verify --db` and no manual ignore
+  lists. A downstream app that extends the toolkit's DB declares its own `@schema`,
+  models only its tables, and runs its own migrate/verify against that scope.
+- **`identity.reference @constraintName`** pins a foreign-key constraint name so the
+  metadata can match an existing DB's naming convention without a destructive
+  rename.
+
 ## Not yet shipped
 
-Triggers, generated columns, partial/exclusion/check constraints, MySQL, and data
+Triggers, generated columns, exclusion + CHECK constraints, MySQL, and data
 migrations (column-type changes needing data transformation error out with a hint).
+(Partial + descending **indexes** *are* supported — see Index modeling above.)

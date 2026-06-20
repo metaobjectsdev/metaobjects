@@ -41,12 +41,24 @@ export default defineConfig({
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1" (D1 is TS-only)
   apiPrefix: "/api",                   // flows to routes AND client fetch URLs
   columnNamingStrategy: "snake_case",  // "snake_case" (default) | "literal" | "kebab-case"
+  timestampMode: "string",             // "string" (default, ISO-8601 wire contract) | "date" (Drizzle native Date)
+  pluralizeCollections: true,          // default; table VARS auto-pluralize (AgentConfig → agentConfigs)
+  collectionNameOverrides: {           // per-entity escape hatch for names the rule gets wrong
+    AuditLog: "auditLog", LlmTierConfig: "llmTierConfig",
+  },
   generators: [
     entityFile(), queriesFile(), routesFile(), barrel(),
     formFile(), tanstackQuery(), tanstackGrid(),
   ],
 });
 ```
+
+Naming + timestamp knobs are **codegen config**, not metadata attributes — a
+collection variable name and a Drizzle column mode are per-port rendering choices
+with no meaning to the other language ports, so they carry no cross-port
+conformance cost. `collectionNameOverrides` wins over `pluralizeCollections` and is
+applied consistently to the table declaration, every FK reference, the `relations()`
+block, and the inferred types.
 
 A second file, `.metaobjects/config.json`, holds static project state parseable by
 non-TS tooling; `meta init` scaffolds both plus the `metaobjects/` source dir.
@@ -133,3 +145,21 @@ Deterministic per dialect: `field.string` + `@maxLength` → `varchar(N)`,
 (Postgres) + `gen_random_uuid()`, `field.enum` → `varchar` + `CHECK`. Override a
 field's physical column name with `@column` on the field; the DB schema name lives
 on `source.rdb` via `@schema`.
+
+### Value-object jsonb columns
+
+A `field.object` with `@storage: jsonb` (or the default `subdocument`) becomes a
+single typed jsonb column — the referenced value-object's TS type is carried onto
+the Drizzle column via `.$type<>()`, and its Zod schema is the VO's `InsertSchema`:
+
+```ts
+// field.object @objectRef=LlmConfig @storage=jsonb
+llmConfigJson: jsonb("llm_config_json").$type<LlmConfig>(),
+// field.object @objectRef=Triple @storage=jsonb isArray=true
+triples: jsonb("triples").$type<Triple[]>(),   // one jsonb column, NOT a native jsonb[]
+```
+
+The VO type, its Zod `InsertSchema`, and this `.$type<>()` all import the VO from
+the same module (layout/package/`extStyle`-aware resolution). An opaque jsonb column
+(`field.string @dbColumnType: jsonb`) gets no `.$type<>()` — it stays `unknown`,
+which is the correct shape for freeform payloads with no fixed VO.
