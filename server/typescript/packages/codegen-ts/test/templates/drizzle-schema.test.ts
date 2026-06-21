@@ -443,3 +443,50 @@ describe("renderDrizzleSchema — collection-name control", () => {
     expect(out).not.toContain("=> users.");
   });
 });
+
+describe("renderDrizzleSchema — self-referential FK", () => {
+  // A FK whose target IS the same entity (e.g. createdBy → this table, parentId,
+  // managerId). Drizzle requires referencing the LOCAL table const directly with
+  // an explicit `Any*Column` return type — NOT a self-import (which would be a
+  // circular import + implicit-any error).
+  function makeSelfRef(): MetaObject {
+    const node = metaObject(OBJECT_SUBTYPE_ENTITY, "Node");
+    attachRdbSource(node, "nodes");
+    node.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    node.addChild(metaField(FIELD_SUBTYPE_LONG, "parentId"));
+    const pk = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "pk");
+    pk.setAttr("fields", ["id"]);
+    pk.setAttr("generation", "increment");
+    node.addChild(pk);
+    const ref = meta(new TypeId(TYPE_IDENTITY, "reference"), "fk_parent");
+    ref.setAttr("fields", ["parentId"]);
+    ref.setAttr("references", "Node");
+    node.addChild(ref);
+    return node;
+  }
+
+  test("Postgres: self-FK emits (): AnyPgColumn => <self>.id with no self-import", () => {
+    const root = makeRoot([makeSelfRef()]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Node")!, ctx).toString();
+    expect(out).toContain("AnyPgColumn");
+    expect(out).toContain("references((): AnyPgColumn => nodes.id)");
+    // Must NOT import its own module.
+    expect(out).not.toContain('from "./Node"');
+    expect(out).not.toContain("from './Node'");
+  });
+
+  test("SQLite: self-FK uses AnySQLiteColumn", () => {
+    const root = makeRoot([makeSelfRef()]);
+    const ctx = makeRenderContext({
+      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Node")!, ctx).toString();
+    expect(out).toContain("references((): AnySQLiteColumn => nodes.id)");
+    expect(out).not.toContain('from "./Node"');
+  });
+});

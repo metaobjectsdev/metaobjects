@@ -74,7 +74,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package);
+    const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
@@ -94,7 +94,7 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
-      spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, true,
+      spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, obj.name, true,
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
@@ -236,6 +236,9 @@ function renderColumn(
   isComposite: boolean,
   isUnique: boolean = false,
   entityPackage: string | undefined = undefined,
+  // Name of the entity this column belongs to — used to detect a self-referential
+  // FK (target entity === this entity), which Drizzle emits without a self-import.
+  currentEntityName: string = "",
   // FR-017 Tier 2 — TPH subtype-only column: force nullable (drop .notNull())
   // and suppress any DB default (other-subtype rows must stay NULL here).
   forceNullable: boolean = false,
@@ -319,15 +322,24 @@ function renderColumn(
   // FK .references() uses imp() so ts-poet tracks the cross-entity import.
   let fkRefSegment: Code | null = null;
   if (fkInfo !== undefined && !isPk) {
-    const targetSpec = crossEntitySpecifier(
-      ctx.outputLayout,
-      entityPackage,
-      ctx.packageOf.get(fkInfo.targetEntityName),
-      fkInfo.targetEntityName,
-      ctx.extStyle,
-    );
-    const targetVarSym = imp(`${fkInfo.targetVarName}@${targetSpec}`);
-    fkRefSegment = code`.references(() => ${targetVarSym}.${fkInfo.targetPkField})`;
+    if (fkInfo.targetEntityName === currentEntityName) {
+      // Self-referential FK (e.g. createdBy → this same table). Drizzle requires
+      // referencing the local table const directly — NOT a self-import — with an
+      // explicit `Any*Column` return type to break the circular type inference.
+      const anyColType = ctx.dialect === "sqlite" ? "AnySQLiteColumn" : "AnyPgColumn";
+      const anyColSym = imp(`${anyColType}@${spec.importModule}`);
+      fkRefSegment = code`.references((): ${anyColSym} => ${fkInfo.targetVarName}.${fkInfo.targetPkField})`;
+    } else {
+      const targetSpec = crossEntitySpecifier(
+        ctx.outputLayout,
+        entityPackage,
+        ctx.packageOf.get(fkInfo.targetEntityName),
+        fkInfo.targetEntityName,
+        ctx.extStyle,
+      );
+      const targetVarSym = imp(`${fkInfo.targetVarName}@${targetSpec}`);
+      fkRefSegment = code`.references(() => ${targetVarSym}.${fkInfo.targetPkField})`;
+    }
   }
 
   // @autoSet fields: emit .$defaultFn(() => new Date().toISOString()) so Drizzle
