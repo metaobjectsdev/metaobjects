@@ -92,6 +92,16 @@ matches the JSON.
 
 ## Task 3 — Java collect-all (loader-contract normalization)
 
+> **Status: core shipped** (commit `1e512ea1`). The registry-derived **reference** pass now
+> surfaces *all* dangling references in one load via `MetaDataValidationException` (IS-A
+> `MetaDataException`, first error's code/envelope preserved for back-compat,
+> `getValidationErrors()` for the full set). Single-error loads still throw a plain
+> `MetaDataException` — every single-finding conformance fixture is byte-identical. This is
+> the high-value, zero-blast-radius slice (drift UX: multiple broken refs → all reported).
+> **Deferred:** cross-pass collect-all over the ~20 structural eager-throw passes — those
+> guard a malformed tree, so collecting past the first would risk cascading non-validation
+> exceptions on a half-broken tree. Do that only with per-pass tree-safety review.
+
 **Goal:** a load reports **all** errors, not just the first — matching TS/C#/Python (which
 already collect). The genuine user-visible UX win.
 
