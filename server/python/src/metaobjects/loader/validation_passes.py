@@ -22,18 +22,23 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_STORAGE,
+    FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
+    FIELD_SUBTYPE_DATE,
     FIELD_SUBTYPE_DECIMAL,
     FIELD_SUBTYPE_DOUBLE,
     FIELD_SUBTYPE_ENUM,
     FIELD_SUBTYPE_FLOAT,
     FIELD_SUBTYPE_INT,
     FIELD_SUBTYPE_LONG,
+    FIELD_SUBTYPE_MAP,
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_STRING,
+    FIELD_SUBTYPE_TIME,
     FIELD_SUBTYPE_TIMESTAMP,
+    FIELD_SUBTYPE_UUID,
 )
 from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_JSONB,
@@ -156,6 +161,9 @@ def run_validations(
     # FR-015 — source.rdb @parameterRef typed-input rules.
     validate_source_parameter_ref(root, errors)
     _validate_field_object_storage(root, errors)
+    # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
+    # @valueType (when set) must name a known scalar subtype.
+    _validate_field_map(root, errors)
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     _validate_max_occurs(root, registry, errors)
@@ -1525,6 +1533,72 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
                 ),
                 envelope=node.source,
             ))
+
+
+# ---------------------------------------------------------------------------
+# Pass: field.map value-type validation
+#
+# A field.map is an open-keyed map (dict[str, V] / Record<string,V>) stored in a
+# single jsonb column. Keys are always strings. The value type is set by EXACTLY
+# ONE of @valueType (a scalar value subtype) or @objectRef (a value-object). This
+# pass enforces that exactly-one-of rule and that @valueType (when set) names a
+# known scalar subtype. Cross-port parity: TS validateFieldMap, Java
+# validateFieldMap, C# ValidateFieldMap.
+# ---------------------------------------------------------------------------
+
+# Scalar value subtypes legal as a field.map @valueType (mirrors the TS
+# _MAP_SCALAR_VALUE_SUBTYPES set).
+_MAP_SCALAR_VALUE_SUBTYPES = frozenset({
+    FIELD_SUBTYPE_STRING,
+    FIELD_SUBTYPE_INT,
+    FIELD_SUBTYPE_LONG,
+    FIELD_SUBTYPE_DOUBLE,
+    FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL,
+    FIELD_SUBTYPE_BOOLEAN,
+    FIELD_SUBTYPE_DATE,
+    FIELD_SUBTYPE_TIME,
+    FIELD_SUBTYPE_TIMESTAMP,
+    FIELD_SUBTYPE_UUID,
+})
+
+
+def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
+    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
+        for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+            if field.sub_type != FIELD_SUBTYPE_MAP:
+                continue
+
+            value_type = field.attr(FIELD_ATTR_VALUE_TYPE)
+            has_value_type = isinstance(value_type, str) and bool(value_type)
+            object_ref = field.attr(FIELD_ATTR_OBJECT_REF)
+            has_object_ref = isinstance(object_ref, str) and bool(object_ref)
+
+            if has_value_type == has_object_ref:
+                which = "both are set" if has_value_type else "neither is set"
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=(
+                        f'field.map "{obj.name}.{field.name}" must set exactly one of '
+                        f"@valueType (a scalar value subtype) or @objectRef (a "
+                        f"value-object); {which}"
+                    ),
+                    envelope=field.source,
+                ))
+                continue
+
+            if has_value_type and value_type not in _MAP_SCALAR_VALUE_SUBTYPES:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=(
+                        f'field.map "{obj.name}.{field.name}" has @valueType '
+                        f'"{value_type}" which is not a scalar value subtype '
+                        f"(string/int/long/double/float/decimal/boolean/date/time/"
+                        f"timestamp/uuid). For a value-object-valued map use @objectRef "
+                        f"instead."
+                    ),
+                    envelope=field.source,
+                ))
 
 
 # ---------------------------------------------------------------------------

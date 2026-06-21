@@ -120,6 +120,20 @@ public static class FieldSchema
         // alongside @xmlText and the field.enum tolerant-extract overlays.
     ];
 
+    /// <summary>
+    /// The @valueType attr — only on field.map. Scalar value subtype of an open-keyed map
+    /// (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually
+    /// exclusive with @objectRef; exactly one of the two must be set (loader-enforced).
+    /// </summary>
+    public static readonly AttrSchema MapValueTypeAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_VALUE_TYPE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description:
+            "Scalar value subtype for a scalar-valued map " +
+            "(string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). " +
+            "Mutually exclusive with @objectRef; exactly one of the two must be set.");
+
     /// <summary>The @currency attr — only on field.currency.</summary>
     public static readonly AttrSchema CurrencyFieldAttr = new AttrSchema(
         Name: FieldConstants.FIELD_ATTR_CURRENCY,

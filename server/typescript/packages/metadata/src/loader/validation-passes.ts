@@ -64,6 +64,13 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
+  FIELD_ATTR_VALUE_TYPE,
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import {
@@ -1011,6 +1018,67 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
           new ParseError(
             `field "${obj.name}.${field.name}" sets @storage "flattened" with isArray=true; flattened storage requires a single nested value`,
             { code: "ERR_STORAGE_FLATTENED_ARRAY", source: field.source },
+          ),
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// field.map value-type validation
+//
+// A field.map is an open-keyed map (Record<string,V> / dict[str,V]) stored in a
+// single jsonb column. Keys are always strings. The value type is set by EXACTLY
+// ONE of @valueType (a scalar value subtype) or @objectRef (a value-object). This
+// pass enforces that exactly-one-of rule and that @valueType (when set) names a
+// known scalar subtype. Cross-port parity: Java validateFieldMap, Python
+// _validate_field_map, C# ValidateFieldMap.
+// ---------------------------------------------------------------------------
+
+const _MAP_SCALAR_VALUE_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_STRING,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_UUID,
+]);
+
+export function validateFieldMap(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      if (field.subType !== FIELD_SUBTYPE_MAP) continue;
+
+      const valueType = field.ownAttr(FIELD_ATTR_VALUE_TYPE);
+      const hasValueType = typeof valueType === "string" && valueType.length > 0;
+      const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+      const hasObjectRef = typeof objectRef === "string" && objectRef.length > 0;
+
+      if (hasValueType === hasObjectRef) {
+        errors.push(
+          new ParseError(
+            `field.map "${obj.name}.${field.name}" must set exactly one of @valueType (a scalar value subtype) or @objectRef (a value-object); ${
+              hasValueType ? "both are set" : "neither is set"
+            }`,
+            { code: "ERR_BAD_ATTR_VALUE", source: field.source },
+          ),
+        );
+        continue;
+      }
+
+      if (hasValueType && !_MAP_SCALAR_VALUE_SUBTYPES.has(valueType as string)) {
+        errors.push(
+          new ParseError(
+            `field.map "${obj.name}.${field.name}" has @valueType "${valueType}" which is not a scalar value subtype (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). For a value-object-valued map use @objectRef instead.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: field.source },
           ),
         );
       }

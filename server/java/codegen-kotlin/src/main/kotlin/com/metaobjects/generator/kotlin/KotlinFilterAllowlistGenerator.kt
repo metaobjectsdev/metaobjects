@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -156,7 +157,9 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         fun computeFilterableOps(fields: Iterable<MetaField<*>>): Map<String, Set<String>> {
             val out = linkedMapOf<String, Set<String>>()
             for (field in fields) {
-                if (field is ObjectField) continue
+                // field.object / field.map are jsonb columns with no scalar SQL column —
+                // excluded from the filter allowlist (no filter dispatch).
+                if (field is ObjectField || field is MapField) continue
                 if (!isFilterable(field)) continue
                 val ops = opsForSubtype(field.subType)
                 if (ops.isEmpty()) continue

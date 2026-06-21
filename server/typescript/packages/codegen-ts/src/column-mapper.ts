@@ -15,6 +15,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -26,6 +27,7 @@ import {
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_VALUE_TYPE,
   FIELD_ATTR_STORAGE,
   STORAGE_JSONB,
   VALIDATOR_ATTR_MAX,
@@ -147,7 +149,9 @@ export interface ColumnSpec {
    */
   dollarTypeRef?:
     | { kind: "scalar"; tsType: "string" | "number" | "boolean"; array: boolean }
-    | { kind: "objectRef"; name: string; array: boolean };
+    | { kind: "objectRef"; name: string; array: boolean }
+    // field.map → Record<string, V>: value is a scalar or a (hoisted) value-object.
+    | { kind: "map"; value: { scalar: "string" | "number" | "boolean" } | { objectRef: string } };
 }
 
 /**
@@ -261,12 +265,11 @@ export function mapColumnType(
           leadingComment = "TODO: SQLite has no decimal type; stored as text. Convert at the application boundary or migrate to Postgres for native numeric.";
           break;
         case FIELD_SUBTYPE_OBJECT:
-          // A nested object is stored as a single JSON column (the default
-          // single-jsonb-column storage). SQLite has no native jsonb, so the
-          // idiomatic Drizzle form is text(..., { mode: "json" }) — agreeing with
-          // migrate-ts/expected-schema, which maps field.object → { kind: "json" }
-          // (JSON on SQLite). @storage flattened expansion is a separate codegen
-          // gap; the column TYPE here is the single-column JSON representation.
+        case FIELD_SUBTYPE_MAP:
+          // A nested object OR an open-keyed map is stored as a single JSON column.
+          // SQLite has no native jsonb, so the idiomatic Drizzle form is
+          // text(..., { mode: "json" }) — agreeing with migrate-ts/expected-schema
+          // (field.object / field.map → { kind: "json" } → JSON on SQLite).
           fnName = "text";
           fnOptions = { mode: "json" };
           break;
@@ -361,11 +364,10 @@ export function mapColumnType(
           break;
         }
         case FIELD_SUBTYPE_OBJECT:
-          // A nested object is stored as a single jsonb column (the default
-          // single-jsonb-column storage), matching migrate-ts/expected-schema,
-          // which maps field.object → { kind: "json" } → JSONB on Postgres.
-          // @storage flattened expansion is a separate codegen gap; the column
-          // TYPE here is the single-column jsonb representation.
+        case FIELD_SUBTYPE_MAP:
+          // A nested object OR an open-keyed map is stored as a single jsonb
+          // column (field.object / field.map → JSONB), matching
+          // migrate-ts/expected-schema. A map never gets native .array().
           fnName = "jsonb";
           break;
         case FIELD_SUBTYPE_ENUM:
@@ -395,7 +397,7 @@ export function mapColumnType(
   // only. An object-typed field is stored as a single jsonb column holding the
   // JSON array (storage jsonb/subdocument), so it gets NO native .array() — the
   // array-ness is carried by the .$type<VO[]>() annotation computed below.
-  if (dialect === "postgres" && isArray && subType !== FIELD_SUBTYPE_OBJECT) {
+  if (dialect === "postgres" && isArray && subType !== FIELD_SUBTYPE_OBJECT && subType !== FIELD_SUBTYPE_MAP) {
     modifiers.push(".array()");
   }
 
@@ -452,7 +454,18 @@ export function mapColumnType(
   //    Scalar Postgres arrays use native .array() (already element-typed by
   //    Drizzle) so they need no $type.
   let dollarTypeRef: ColumnSpec["dollarTypeRef"];
-  if (dialect === "sqlite" && isArray) {
+  if (subType === FIELD_SUBTYPE_MAP) {
+    // Open-keyed map → Record<string, V> on both dialects. The value type is a
+    // VO (@objectRef) or a scalar (@valueType, defaulting to string).
+    const vo = objectRefBaseName(field);
+    if (vo !== undefined) {
+      dollarTypeRef = { kind: "map", value: { objectRef: vo } };
+    } else {
+      const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
+      const scalar = typeof vt === "string" ? sqliteJsonArrayElementTsType(vt) : undefined;
+      dollarTypeRef = { kind: "map", value: { scalar: (scalar ?? "string") as "string" | "number" | "boolean" } };
+    }
+  } else if (dialect === "sqlite" && isArray) {
     if (subType === FIELD_SUBTYPE_OBJECT) {
       const base = objectRefBaseName(field);
       if (base !== undefined) {

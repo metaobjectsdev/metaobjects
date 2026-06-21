@@ -5,11 +5,19 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.shared.base_types import TYPE_FIELD
 
 
-def _field(sub_type: str, *, is_array: bool = False, object_ref: str | None = None) -> MetaField:
+def _field(
+    sub_type: str,
+    *,
+    is_array: bool = False,
+    object_ref: str | None = None,
+    value_type: str | None = None,
+) -> MetaField:
     f = MetaField(TYPE_FIELD, sub_type, "x")
     f.is_array = is_array
     if object_ref is not None:
         f.set_attr(fc.FIELD_ATTR_OBJECT_REF, object_ref)
+    if value_type is not None:
+        f.set_attr(fc.FIELD_ATTR_VALUE_TYPE, value_type)
     return f
 
 
@@ -58,6 +66,32 @@ def test_uuid_binds_native_uuid_with_import() -> None:
     t = py_type_for(_field(fc.FIELD_SUBTYPE_UUID))
     assert t.expr == "uuid.UUID"
     assert "import uuid" in t.imports
+
+
+def test_map_with_scalar_value_type() -> None:
+    # field.map → dict[str, V]; V is the scalar Python type for @valueType.
+    assert py_type_for(_field(fc.FIELD_SUBTYPE_MAP, value_type="string")).expr == "dict[str, str]"
+    assert py_type_for(_field(fc.FIELD_SUBTYPE_MAP, value_type="int")).expr == "dict[str, int]"
+    # A scalar value type that carries an import propagates it to the map type.
+    dec = py_type_for(_field(fc.FIELD_SUBTYPE_MAP, value_type="decimal"))
+    assert dec.expr == "dict[str, Decimal]" and "from decimal import Decimal" in dec.imports
+
+
+def test_map_with_object_ref() -> None:
+    # field.map with @objectRef → dict[str, <VO bare name>] (FQN folded to base).
+    assert py_type_for(_field(fc.FIELD_SUBTYPE_MAP, object_ref="SomeVO")).expr == "dict[str, SomeVO]"
+    assert (
+        py_type_for(_field(fc.FIELD_SUBTYPE_MAP, object_ref="acme::pkg::SomeVO")).expr
+        == "dict[str, SomeVO]"
+    )
+
+
+def test_map_is_never_wrapped_in_list() -> None:
+    # isArray does not apply to a map — it is a single jsonb/object column.
+    assert (
+        py_type_for(_field(fc.FIELD_SUBTYPE_MAP, value_type="string", is_array=True)).expr
+        == "dict[str, str]"
+    )
 
 
 def test_dbcolumntype_uuid_string_stays_str() -> None:

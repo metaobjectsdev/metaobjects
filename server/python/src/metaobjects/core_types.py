@@ -26,6 +26,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_SCALE,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_UNIQUE,
+    FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
     STORAGE_VALUES,
@@ -332,6 +333,18 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
     if _def.type == TYPE_FIELD and _def.sub_type == fc.FIELD_SUBTYPE_CURRENCY:
         _def.attrs.append(
             AttrSchema(name=FIELD_ATTR_CURRENCY, value_type=ATTR_SUBTYPE_STRING, required=False)
+        )
+        break
+
+# field.map carries the @valueType attr (scalar value subtype) IN ADDITION to the
+# common field attrs (@objectRef is already common). The bulk loop registered
+# field.map with the common attrs; append @valueType to that definition (mirrors
+# TS, where field.map's attr set = commonFieldAttrs + @valueType + @objectRef).
+# The exactly-one-of @valueType/@objectRef rule is enforced by validation_passes.
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_FIELD and _def.sub_type == fc.FIELD_SUBTYPE_MAP:
+        _def.attrs.append(
+            AttrSchema(name=FIELD_ATTR_VALUE_TYPE, value_type=ATTR_SUBTYPE_STRING, required=False)
         )
         break
 

@@ -2,6 +2,7 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.EnumField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -244,7 +245,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // object sub-fields are walked too — they emit columns of their own.
         val columnFunctionImports = sortedSetOf<String>()
         for (field in entity.metaFields) {
-            if (field is ObjectField) continue
+            // field.object AND field.map columns are produced by buildObjectColumns
+            // (single jsonb column) — their imports are handled via needsJsonbImport, not here.
+            if (field is ObjectField || field is MapField) continue
             // EnumField uses enumerationByName (a Table member) when generated, regardless
             // of what the type-mapper would return for a bare column emission — skip it
             // here so it doesn't accidentally drag in a non-applicable import.
@@ -327,9 +330,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // Stable sort preserves declaration order within each group.
             val pkFirstFields = entity.metaFields.sortedBy { if (it.name in primaryFieldSet) 0 else 1 }
             for (field in pkFirstFields) {
-                // ObjectField columns are produced by buildObjectColumns() so we can emit
-                // @storage flattened (N columns) or jsonb (1 column) uniformly.
-                if (field is ObjectField) continue
+                // ObjectField AND MapField columns are produced by buildObjectColumns() so we
+                // can emit @storage flattened (N columns) or jsonb (1 column) uniformly; a
+                // field.map is always a single jsonb column.
+                if (field is ObjectField || field is MapField) continue
                 val isPk = field.name in primaryFieldSet
                 val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
                 val baseSpec = if (field is EnumField) {
@@ -367,7 +371,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // column, emitted NULLABLE (a row of another subtype stores null there, even when the
             // field is @required on its subtype). collectSubtypeFields is empty for a non-TPH entity.
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
-                if (field is ObjectField) continue
+                if (field is ObjectField || field is MapField) continue
                 val baseSpec = if (field is EnumField) {
                     val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
                         ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
@@ -453,6 +457,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     ): List<ObjectColumnSpec> {
         val result = mutableListOf<ObjectColumnSpec>()
         for (field in entity.metaFields) {
+            // field.map → a single jsonb column (the JSON object). Keys are always strings;
+            // never flattened, never a native array. Same JSONB emission as a jsonb-stored
+            // field.object.
+            if (field is MapField) {
+                val parentName = field.name
+                val parentNullable = parentName !in primaryFieldNames &&
+                    !KotlinGenUtil.isRequiredField(field)
+                val colName = KotlinGenUtil.camelToSnake(parentName)
+                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+                val full = if (parentNullable) "$expr.nullable()" else expr
+                result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
+                continue
+            }
             if (field !is ObjectField) continue
             val parentName = field.name
             val parentNullable = parentName !in primaryFieldNames && !KotlinGenUtil.isRequiredField(field)

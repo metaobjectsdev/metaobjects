@@ -88,4 +88,60 @@ public class ValidationTests
         var result = LoadInline(json);
         Assert.Empty(result.Errors);
     }
+
+    // -------------------------------------------------------------------------
+    // field.map @valueType / @objectRef validation (Pass 8b — ValidateFieldMap).
+    // Exactly one of @valueType (a scalar value subtype) or @objectRef (a
+    // value-object) must be set; @valueType (when set) must name a known scalar.
+    // Cross-port parity with the TS validateFieldMap tests.
+    // -------------------------------------------------------------------------
+
+    private static string MapModel(string mapFieldJson) =>
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+        "  { \"object.value\": { \"name\": \"Address\", \"children\": [" +
+        "    { \"field.string\": { \"name\": \"city\", \"@maxLength\": 80 } }" +
+        "  ]}}," +
+        "  { \"object.entity\": { \"name\": \"Customer\", \"children\": [" +
+        "    { \"field.long\": { \"name\": \"id\" } }," +
+        "    " + mapFieldJson + "," +
+        "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+        "  ]}}" +
+        "]}}";
+
+    [Fact]
+    public void Map_with_value_type_only_loads_clean()
+    {
+        var result = LoadInline(MapModel("{ \"field.map\": { \"name\": \"labels\", \"@valueType\": \"string\" } }"));
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void Map_with_object_ref_only_loads_clean()
+    {
+        var result = LoadInline(MapModel("{ \"field.map\": { \"name\": \"addresses\", \"@objectRef\": \"Address\" } }"));
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public void Map_with_neither_value_type_nor_object_ref_is_bad_attr_value_error()
+    {
+        var result = LoadInline(MapModel("{ \"field.map\": { \"name\": \"bag\" } }"));
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE);
+    }
+
+    [Fact]
+    public void Map_with_both_value_type_and_object_ref_is_bad_attr_value_error()
+    {
+        var result = LoadInline(MapModel(
+            "{ \"field.map\": { \"name\": \"bag\", \"@valueType\": \"string\", \"@objectRef\": \"Address\" } }"));
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE);
+    }
+
+    [Fact]
+    public void Map_with_non_scalar_value_type_is_bad_attr_value_error()
+    {
+        // @valueType "object" is a field subtype but NOT a scalar value subtype.
+        var result = LoadInline(MapModel("{ \"field.map\": { \"name\": \"bag\", \"@valueType\": \"object\" } }"));
+        Assert.Contains(result.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE);
+    }
 }

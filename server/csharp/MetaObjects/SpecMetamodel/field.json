@@ -107,6 +107,18 @@
     },
     {
       "type": "field",
+      "subType": "map",
+      "dataType": "object",
+      "extendsBase": true,
+      "description": "An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).",
+      "rules": "Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "valueType", "min": 0, "max": 1, "description": "Scalar value subtype for a scalar-valued map (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually exclusive with @objectRef; exactly one of the two must be set." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "Name (or FQN) of the value-object for a value-object-valued map. Mutually exclusive with @valueType; exactly one of the two must be set." }
+      ]
+    },
+    {
+      "type": "field",
       "subType": "currency",
       "dataType": "long",
       "extendsBase": true,

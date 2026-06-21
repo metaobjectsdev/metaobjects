@@ -65,6 +65,20 @@ def py_type_for(field: MetaField) -> PyType:
     constrained, Pydantic runtime-validated) rather than bare ``str``; an enum array
     becomes ``list[Literal[...]]``. An enum WITHOUT declared values falls back to
     ``str``."""
+    if field.sub_type == fc.FIELD_SUBTYPE_MAP:
+        # field.map → dict[str, V]. Keys are always strings; V is a value-object
+        # (@objectRef → bare class name) or a scalar (@valueType, defaulting to
+        # str). A map is stored as a single jsonb/object column and is NEVER
+        # wrapped in list[...] (isArray does not apply), so return directly.
+        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
+        if ref:
+            # @objectRef is expanded to a package-qualified FQN at load time; the
+            # emitted VOs live flat in one generated package, so type by the bare
+            # class name (mirrors the field.object branch below).
+            return PyType(f"dict[str, {str(ref).split('::')[-1]}]")
+        value_type = field.attrs().get(fc.FIELD_ATTR_VALUE_TYPE)
+        value = _SCALAR.get(str(value_type), PyType("str")) if value_type else PyType("str")
+        return PyType(f"dict[str, {value.expr}]", value.imports)
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
         ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         # @objectRef is expanded to a package-qualified FQN at load time

@@ -359,20 +359,24 @@ function renderColumn(
   // immediately after the baseCall so the chain reads `.text(...).$type<...>().notNull()...`
   // which Drizzle accepts in any order but is conventional for "type narrowing
   // first."
+  // Resolve a VO name → an imported type symbol (shared layout/package/extStyle-aware
+  // helper, so the .$type<VO> import matches the field's TS type + Zod schema).
+  const voSym = (name: string) =>
+    imp(`${name}@${valueObjectModuleSpecifier(name, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+
   let dollarTypeSegment: Code | string = "";
   if (spec.dollarTypeRef !== undefined) {
     const ref = spec.dollarTypeRef;
-    const suffix = ref.array ? "[]" : "";
     if (ref.kind === "scalar") {
-      dollarTypeSegment = `.$type<${ref.tsType}${suffix}>()`;
-    } else {
-      // Resolve the VO module through the shared layout/package/extStyle-aware
-      // helper so the .$type<VO> import matches the field's TS type + Zod schema.
-      const moduleSpec = valueObjectModuleSpecifier(
-        ref.name, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle,
-      );
-      const refSym = imp(`${ref.name}@${moduleSpec}`);
+      dollarTypeSegment = `.$type<${ref.tsType}${ref.array ? "[]" : ""}>()`;
+    } else if (ref.kind === "objectRef") {
+      const refSym = voSym(ref.name);
       dollarTypeSegment = ref.array ? code`.$type<${refSym}[]>()` : code`.$type<${refSym}>()`;
+    } else {
+      // field.map → Record<string, V>; V is a scalar or a hoisted value-object.
+      dollarTypeSegment = "scalar" in ref.value
+        ? `.$type<Record<string, ${ref.value.scalar}>>()`
+        : code`.$type<Record<string, ${voSym(ref.value.objectRef)}>>()`;
     }
   }
 

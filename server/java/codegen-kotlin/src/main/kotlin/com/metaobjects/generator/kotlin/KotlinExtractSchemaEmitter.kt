@@ -6,6 +6,7 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.`object`.MetaObject
@@ -150,6 +151,7 @@ internal object KotlinExtractSchemaEmitter {
         field is DoubleField         -> "Double?"
         field is BooleanField        -> "Boolean?"
         field is ObjectField         -> "String? /* FR-010: nested extract deferred */"
+        field is MapField            -> "String? /* FR-010: map extract deferred */"
         else                         -> "String?"
     }
 

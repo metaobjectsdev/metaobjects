@@ -12,6 +12,7 @@ import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
@@ -26,6 +27,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_VALUE_TYPE,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
@@ -225,6 +227,22 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       return field.isArray ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.isArray ? code`unknown[]` : code`unknown`;
+  }
+
+  // field.map: Record<string, V> — V is a value-object (@objectRef) or a scalar (@valueType).
+  if (field.subType === FIELD_SUBTYPE_MAP) {
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref === "string" && ref.length > 0) {
+      const base = stripPackage(ref);
+      const moduleSpec = ctx
+        ? valueObjectModuleSpecifier(base, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        : `./${base}.js`;
+      const refImp = imp(`${base}@${moduleSpec}`);
+      return code`Record<string, ${refImp}>`;
+    }
+    const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
+    const scalar = (typeof vt === "string" ? SCALAR_TS_BY_SUBTYPE[vt] : undefined) ?? "string";
+    return code`Record<string, ${scalar}>`;
   }
 
   // field.enum: use the same type-alias name as renderEnumTypeAliases emits.

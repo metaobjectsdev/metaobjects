@@ -1,0 +1,16 @@
+metadata:
+  package: t
+  children:
+  - object.value:
+      name: ToolSpec
+      children:
+      - field.string: { name: name, required: true }
+  - object.entity:
+      name: Widget
+      children:
+      - source.rdb: { table: widgets }
+      - field.long: { name: id }
+      - field.map: { name: labels, valueType: string }    # Record<string,string>
+      - field.map: { name: scores, valueType: double }    # Record<string,number>
+      - field.map: { name: tools, objectRef: ToolSpec }   # Record<string, ToolSpec> (VO value)
+      - identity.primary: { name: pk, fields: [id], generation: increment }

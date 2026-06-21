@@ -109,7 +109,10 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
         pt = py_type_for(field)
         imports.update(pt.imports)
         type_expr = pt.expr
-    if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+    if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+        # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO])
+        # both reference a value-object by name; import it so the annotation
+        # py_type_for emitted resolves.
         ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
             # @objectRef is FQN-expanded at load time; the generated VOs live

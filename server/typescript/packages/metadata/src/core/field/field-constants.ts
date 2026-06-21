@@ -17,6 +17,7 @@ export const FIELD_SUBTYPE_DATE = "date";
 export const FIELD_SUBTYPE_TIME = "time";
 export const FIELD_SUBTYPE_TIMESTAMP = "timestamp";
 export const FIELD_SUBTYPE_OBJECT = "object";
+export const FIELD_SUBTYPE_MAP = "map";
 export const FIELD_SUBTYPE_CURRENCY = "currency";
 export const FIELD_SUBTYPE_ENUM = "enum";
 /** R6 Plan 2a: logical UUID identity scalar. Bare scalar (no required attrs, no
@@ -37,6 +38,7 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
@@ -69,6 +71,10 @@ export const FIELD_ATTR_AUTO_SET = "autoSet";
 /** Name (or FQN) of the target object an object-typed field nests. Same wire
  *  spelling as the relationship `@objectRef` — Java's single ATTR_OBJECT_REF. */
 export const FIELD_ATTR_OBJECT_REF = "objectRef";
+
+/** Scalar value subtype of a `field.map` (open-keyed map). Mutually exclusive
+ *  with @objectRef (which sets a value-object value type). Keys are always strings. */
+export const FIELD_ATTR_VALUE_TYPE = "valueType";
 
 /** Storage strategy for an object-typed field. Meaningful only when @objectRef is set.
  *  Cross-language metamodel attr — every port must accept and round-trip it. */
