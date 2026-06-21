@@ -31,7 +31,7 @@ describe("config-driven default name (singleton child types)", () => {
     );
     expect(errors).toEqual([]);
     const a = loader.findByTypeAndName("object", "A") as MetaObject;
-    const pk = a.identities()[0];
+    const pk = a.identities()[0]!;
     expect(pk.name).toBe("primary");
   });
 
@@ -41,7 +41,7 @@ describe("config-driven default name (singleton child types)", () => {
     );
     expect(errors).toEqual([]);
     const a = loader.findByTypeAndName("object", "A") as MetaObject;
-    expect(a.identities()[0].name).toBe("pk");
+    expect(a.identities()[0]!.name).toBe("pk");
   });
 
   test("two identity.primary under one entity → ERR_TOO_MANY_OCCURRENCES (maxOccurs:1 enforced)", async () => {
