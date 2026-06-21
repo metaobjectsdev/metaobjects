@@ -26,10 +26,6 @@ export interface ReferenceDescriptor {
   /** When true the value is `Entity.field`; resolve the entity segment (before the
    *  first ".", since packages use "::"). */
   readonly dottedFieldPath?: boolean;
-  /** When true, emit a RESOLVED-source envelope (referrer = the node's fqn, target = the
-   *  raw value) instead of the node's plain source. Per ref kind: payloadRef uses resolved
-   *  (FR5d), objectRef/references use plain — matching each kind's existing convention. */
-  readonly resolvedSource?: boolean;
   /** Code emitted on unresolved / kind-mismatch (may be a downstream code). */
   readonly errorCode: LoaderCode;
 }

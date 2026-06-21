@@ -50,7 +50,7 @@ import { VIEW_DEFINITION } from "./presentation/view/view-definition.embedded.js
 import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embedded.js";
 import { MetaTemplate } from "./template/meta-template.js";
 import { TEMPLATE_DEFINITION } from "./template/template-definition.embedded.js";
-import { TEMPLATE_SUBTYPES, TEMPLATE_ATTR_PAYLOAD_REF, TEMPLATE_ATTR_RESPONSE_REF } from "./template/template-constants.js";
+import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -67,7 +67,7 @@ import {
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
-import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE } from "./core/object/object-constants.js";
+import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
 import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
@@ -485,19 +485,6 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         errorCode: "ERR_INVALID_REFERENCE",
       },
     ];
-  }
-  // template.* — @payloadRef / @responseRef must resolve to an object.value (the typed
-  // prompt payload). Same descriptor model, target-subtype enforced; the bespoke existence
-  // check is removed from validateTemplatePayloadRefs (the @kind/@textRef + @requiredSlots
-  // rules stay there). Resolved-source envelope (referrer + target) like FR5d.
-  for (const subType of TEMPLATE_SUBTYPES) {
-    const def = registry.find(TYPE_TEMPLATE, subType);
-    if (def) {
-      def.references = [
-        { attr: TEMPLATE_ATTR_PAYLOAD_REF, targetType: TYPE_OBJECT, targetSubType: OBJECT_SUBTYPE_VALUE, resolvedSource: true, errorCode: "ERR_INVALID_TEMPLATE" },
-        { attr: TEMPLATE_ATTR_RESPONSE_REF, targetType: TYPE_OBJECT, targetSubType: OBJECT_SUBTYPE_VALUE, resolvedSource: true, errorCode: "ERR_INVALID_TEMPLATE" },
-      ];
-    }
   }
 
   // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`

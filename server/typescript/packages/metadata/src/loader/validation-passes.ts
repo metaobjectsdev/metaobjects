@@ -197,14 +197,35 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       }
     }
 
-    // @payloadRef / @responseRef existence + object.value kind are now enforced by the
-    // reference descriptors on the template TypeDefinition (registry-derived walk). Here we
-    // only need the resolved payload to check @requiredSlots; if @payloadRef didn't resolve
-    // to an object.value, the descriptor already reported it, so just skip the slot check.
     const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
     const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
-    if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) continue;
+    if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
+      // FR5d — @payloadRef is a reference; emit format=resolved with
+      // referrer=template FQN, target=the unresolved payloadRef string.
+      errors.push(
+        new ParseError(
+          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to an object.value at root`,
+          {
+            code: "ERR_INVALID_TEMPLATE",
+            source: resolvedSource(tmpl.source, tmpl.fqn(), payloadRef),
+          },
+        ),
+      );
+      continue;
+    }
+    const responseRef = tmpl.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
+    if (typeof responseRef === "string") {
+      const resVo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, responseRef));
+      if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
+        errors.push(
+          new ParseError(
+            `template "${tmpl.name}" @responseRef "${responseRef}" does not resolve to an object.value at root`,
+            { code: "ERR_INVALID_TEMPLATE", source: resolvedSource(tmpl.source, tmpl.fqn(), responseRef) },
+          ),
+        );
+      }
+    }
     const fieldNames = new Set(
       payload.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
