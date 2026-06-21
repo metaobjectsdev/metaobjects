@@ -9,22 +9,23 @@ Python port has no `migrate` command by design; it consumes the canonical
 
 ## Install
 
-> **Note — not yet published to PyPI.** Consume from source: clone the repo and `pip install -e server/python/` (or add a `path` dependency in your `pyproject.toml`):
+Published to PyPI as **`metaobjects`**:
+
+```bash
+pip install metaobjects        # or: uv add metaobjects
+```
 
 ```toml
 # pyproject.toml
 [project]
 dependencies = [
-    "metaobjects @ file:///path/to/metaobjects/server/python",
+    "metaobjects>=0.11",
 ]
-
-[project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
 ```
 
-(Development is `uv`-based — the in-repo dev workflow is `uv run --extra dev
-pytest` from `server/python/`. PyPI coordinates will land once the Python port
-is ready for release.)
+> Contributing to the port itself? Work from source instead: clone the repo and
+> `uv run --extra dev pytest` from `server/python/` (the in-repo dev workflow is
+> `uv`-based, with `pytest` / `mypy` / `ruff` as the `dev` extra).
 
 ## Configure
 

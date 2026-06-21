@@ -214,7 +214,7 @@ The `[]` key-suffix declares an array field: `field.long[]: weekIds` lowers to
 | Subtype | Purpose | Key attrs |
 |---|---|---|
 | `identity.primary` | the PK field(s) | `@fields`, `@generation` |
-| `identity.secondary` | a unique secondary index | `@fields` |
+| `identity.secondary` | a unique secondary index | `@fields` (or `@expr` for a functional index) |
 | `identity.reference` | an inbound FK from this entity to another | `@fields`, `@references`, `@enforce` |
 
 `@generation` on a primary controls value generation (e.g. `increment`).
@@ -231,9 +231,21 @@ name resolves within the current package. The FK target must be an entity with a
 single-column primary key (the FK points at that PK); a target with a composite
 PK needs the explicit dotted form `@references: "pkg::Target.fieldA,fieldB"`.
 
+**A dangling reference fails the load (0.11.0+).** An unresolved
+`identity.reference.@references` raises `ERR_INVALID_REFERENCE` and an unresolved
+`relationship.@objectRef` raises `ERR_INVALID_RELATIONSHIP` — the target entity must
+exist (previously such references loaded silently). So every `@references` /
+`@objectRef` you author must name a real entity.
+
+A `identity.secondary` can index an **expression** instead of plain columns: use
+`@expr` (e.g. `"lower(email)"`) in place of `@fields`, optionally with `@using` (the
+index method — `gin` / `gist` / `hash`; default `btree`) and `@where` (a partial-index
+predicate).
+
 ```json
 { "identity.primary":   { "name": "id", "@fields": ["id"], "@generation": "increment" } }
 { "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
+{ "identity.secondary": { "name": "byEmailCI", "@expr": "lower(email)" } }
 { "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@enforce": true } }
 ```
 
@@ -265,6 +277,28 @@ makes the metadata declare `CASCADE` where the DB has `NO ACTION` — a perpetua
 { "relationship.composition": { "name": "author", "@objectRef": "User",
     "@cardinality": "one", "@onDelete": "no-action", "@onUpdate": "no-action" } }
 ```
+
+## Validators — cross-field rules
+
+Entity-scoped `validator.*` children declare invariants that reference sibling fields
+**by name** (the same name-reference pattern as `identity.*`). The backend derives the
+enforcement (a CHECK constraint / cross-field assertion) — no raw expression is stored.
+
+| Subtype | Rule | Key attrs |
+|---|---|---|
+| `validator.comparison` | two fields stand in a relational order (`@left @op @right`) | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
+| `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
+| `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
+| `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
+
+```json
+{ "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }
+{ "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
+{ "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
+{ "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
+```
+
+These are children of `object.entity`, alongside its fields and identities.
 
 ## Sources — `source.rdb` + `@kind`
 
