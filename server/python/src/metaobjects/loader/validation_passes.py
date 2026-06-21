@@ -791,7 +791,7 @@ def _validate_datagrid_filter_values(
         filterable: dict[str, frozenset[str]] = {
             f.name: ops_for_subtype(f.sub_type)
             for f in node.fields()
-            if f.attr("filterable") is True
+            if f.attrs().get("filterable") is True
         }
 
         for child in node.children():
@@ -1435,11 +1435,11 @@ def _validate_filterable_has_index(
         covered = _identity_field_names(node)
 
         for field in node.fields():
-            if field.attr("filterable") is not True:
+            if field.attrs().get("filterable") is not True:
                 continue
             if field.name in covered:
                 continue
-            if field.attr("db.indexed") is True:
+            if field.attrs().get("db.indexed") is True:
                 continue
             warnings.append(
                 f'[filterable-without-index] field "{node.name}.{field.name}" has @filterable: true '
@@ -1465,7 +1465,7 @@ def _validate_filterable_has_supported_ops(
         if node.type != TYPE_OBJECT or not isinstance(node, MetaObject):
             continue
         for field in node.fields():
-            if field.attr("filterable") is not True:
+            if field.attrs().get("filterable") is not True:
                 continue
             if ops_for_subtype(field.sub_type):
                 continue

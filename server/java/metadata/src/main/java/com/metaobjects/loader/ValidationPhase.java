@@ -1662,8 +1662,8 @@ public final class ValidationPhase {
         java.util.Set<String> filterable = new java.util.HashSet<>();
         for (MetaField f : obj.getChildren(MetaField.class, true)) {
             fieldsByName.put(f.getShortName(), f);
-            if (f.hasMetaAttr(ATTR_FILTERABLE, false)) {
-                Object v = f.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+            if (f.hasMetaAttr(ATTR_FILTERABLE, true)) {
+                Object v = f.getMetaAttr(ATTR_FILTERABLE, true).getValue();
                 boolean isFilterable =
                     (v instanceof Boolean) ? (Boolean) v
                     : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
@@ -1780,14 +1780,17 @@ public final class ValidationPhase {
         for (MetaData child : obj.getChildren(MetaData.class, true)) {
             if (!(child instanceof MetaIdentity)) continue;
             MetaIdentity identity = (MetaIdentity) child;
-            if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)) continue;
-            Object raw = identity.getMetaAttr(MetaIdentity.ATTR_FIELDS, false).getValue();
+            // Effective (#56): a secondary index that inherits @fields via extends must
+            // still contribute its indexed columns, or a filterable field gets a spurious
+            // "without index" warning.
+            if (!identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, true)) continue;
+            Object raw = identity.getMetaAttr(MetaIdentity.ATTR_FIELDS, true).getValue();
             collectIdentityFields(raw, indexed);
         }
 
         for (MetaField field : fields) {
-            if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
-            Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+            if (!field.hasMetaAttr(ATTR_FILTERABLE, true)) continue;
+            Object v = field.getMetaAttr(ATTR_FILTERABLE, true).getValue();
             boolean filterable =
                 (v instanceof Boolean) ? (Boolean) v
                 : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
@@ -1796,8 +1799,8 @@ public final class ValidationPhase {
             // @db.indexed: true is an explicit escape hatch — author asserts a
             // backing index exists (or will, when supported). Mirrors TS
             // validation-passes.ts:155.
-            if (field.hasMetaAttr(ATTR_DB_INDEXED, false)) {
-                Object iv = field.getMetaAttr(ATTR_DB_INDEXED, false).getValue();
+            if (field.hasMetaAttr(ATTR_DB_INDEXED, true)) {
+                Object iv = field.getMetaAttr(ATTR_DB_INDEXED, true).getValue();
                 boolean dbIndexed =
                     (iv instanceof Boolean) ? (Boolean) iv
                     : (iv instanceof String) ? "true".equalsIgnoreCase((String) iv)
@@ -1848,8 +1851,8 @@ public final class ValidationPhase {
             MetaObject obj = (MetaObject) rootChild;
             // Effective fields (includes inherited via extends:/super:).
             for (MetaField field : obj.getChildren(MetaField.class, true)) {
-                if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) continue;
-                Object v = field.getMetaAttr(ATTR_FILTERABLE, false).getValue();
+                if (!field.hasMetaAttr(ATTR_FILTERABLE, true)) continue;
+                Object v = field.getMetaAttr(ATTR_FILTERABLE, true).getValue();
                 boolean filterable =
                     (v instanceof Boolean) ? (Boolean) v
                     : (v instanceof String) ? "true".equalsIgnoreCase((String) v)

@@ -16,7 +16,7 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var f = OwnAttr(IDENTITY_ATTR_FIELDS);
+            var f = Attr(IDENTITY_ATTR_FIELDS);
             return f is IReadOnlyList<string> list ? list : [];
         }
     }
@@ -25,7 +25,7 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
     /// Whether the identity enforces uniqueness.
     /// Defaults to <see langword="true"/>; explicit <c>@unique: false</c> makes it a non-unique index.
     /// </summary>
-    public bool Unique => OwnAttr(IDENTITY_ATTR_UNIQUE) is not false;
+    public bool Unique => Attr(IDENTITY_ATTR_UNIQUE) is not false;
 
     /// <summary>True when this identity's subtype is <c>primary</c>.</summary>
     public bool IsPrimary() => SubType == IDENTITY_SUBTYPE_PRIMARY;
@@ -51,7 +51,7 @@ public class MetaPrimaryIdentity(TypeId typeId, string name) : MetaIdentity(type
     {
         get
         {
-            var v = OwnAttr(IDENTITY_ATTR_GENERATION);
+            var v = Attr(IDENTITY_ATTR_GENERATION);
             return v is string s ? s : null;
         }
     }
@@ -73,7 +73,7 @@ public class MetaReferenceIdentity(TypeId typeId, string name) : MetaIdentity(ty
 {
     /// <summary>Raw <c>@references</c> value, unparsed.</summary>
     public string? ReferencesRaw =>
-        OwnAttr(IDENTITY_REFERENCE_ATTR_REFERENCES) is string s ? s : null;
+        Attr(IDENTITY_REFERENCE_ATTR_REFERENCES) is string s ? s : null;
 
     /// <summary>Target entity name (the part before the dot, or the whole bare value).</summary>
     public string? TargetEntity
@@ -104,5 +104,5 @@ public class MetaReferenceIdentity(TypeId typeId, string name) : MetaIdentity(ty
     }
 
     /// <summary>Whether the reference is physically enforced (default true; <c>@enforce: false</c> = logical-only).</summary>
-    public bool Enforce => OwnAttr(IDENTITY_REFERENCE_ATTR_ENFORCE) is not false;
+    public bool Enforce => Attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is not false;
 }
