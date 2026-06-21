@@ -41,6 +41,17 @@ export interface ValidationContext {
   error(code: LoaderCode, node: MetaData, message: string): void;
 }
 
-/** An imperative validator for a node of a given (type, subType), carried by its
- *  TypeDefinition — the provider that owns the type owns its validation. */
+/**
+ * An imperative validator for a node of a given (type, subType), carried by its
+ * TypeDefinition — the provider that owns the type owns its validation.
+ *
+ * INTENTIONALLY UNUSED BY CORE — do not remove as "dead code". This is an EXTENSION
+ * POINT: a downstream provider registers a new type WITH its own validator (+ its own
+ * error codes) and it runs via the registry with zero core changes — see the
+ * `widget.gauge` proof in test/validation-registry.test.ts (the ADR-0023 thesis). It is
+ * also the documented escape hatch in the config-driven-validation design (issue #51) for
+ * novel cross-field rules that fit no declarative shape. Core's own per-type validation
+ * lives in reference descriptors (live) + declarative rule-shapes (#51, planned), NOT in
+ * this imperative per-node hook — putting a core rule here would contradict #51.
+ */
 export type NodeValidator = (node: MetaData, ctx: ValidationContext) => void;

@@ -30,4 +30,10 @@ class ReferenceDescriptor:
 
 
 # An imperative validator for a node, carried by its TypeDefinition.
+#
+# INTENTIONALLY UNUSED BY CORE — do not remove as "dead code": it is an extension point
+# (a downstream provider registers a new type with its own validator + error codes — the
+# ADR-0023 thesis) and the escape hatch in the config-driven-validation design (#51) for
+# novel cross-field rules that fit no declarative shape. Core's per-type validation lives
+# in reference descriptors (live) + declarative rule-shapes (#51), not this hook.
 NodeValidator = Callable[["MetaData", "ValidationContext"], None]
