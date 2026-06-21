@@ -13,6 +13,8 @@ import {
   IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_REFERENCE_ATTR_ENFORCE,
+  IDENTITY_REFERENCE_ATTR_ON_DELETE,
+  IDENTITY_REFERENCE_ATTR_ON_UPDATE,
 } from "./identity-constants.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 
@@ -102,6 +104,24 @@ export class MetaReferenceIdentity extends MetaIdentity {
    */
   get enforce(): boolean {
     return this.ownAttr(IDENTITY_REFERENCE_ATTR_ENFORCE) !== false;
+  }
+
+  /**
+   * Referential action on parent delete, declared directly on the FK-defining
+   * reference (cascade / set-null / restrict / no-action). Undefined when not
+   * set — callers fall back to a correlated relationship's @onDelete, then the
+   * relationship-subtype default. The FK is declared here, so the action may be
+   * declared here too rather than only on a sibling relationship node.
+   */
+  get onDelete(): string | undefined {
+    const v = this.ownAttr(IDENTITY_REFERENCE_ATTR_ON_DELETE);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  }
+
+  /** Referential action on key update, declared directly on the reference. Undefined when not set. */
+  get onUpdate(): string | undefined {
+    const v = this.ownAttr(IDENTITY_REFERENCE_ATTR_ON_UPDATE);
+    return typeof v === "string" && v !== "" ? v : undefined;
   }
 
   /**

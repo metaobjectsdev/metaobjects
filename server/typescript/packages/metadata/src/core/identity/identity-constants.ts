@@ -27,6 +27,10 @@ export const IDENTITY_ATTR_UNIQUE = "unique";
 export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
 /** Identity-reference attr: physical-enforcement flag. Default true → hard FK constraint; false → logical-only reference. */
 export const IDENTITY_REFERENCE_ATTR_ENFORCE = "enforce";
+/** Identity-reference attr: referential action on parent delete (cascade/set-null/restrict/no-action). */
+export const IDENTITY_REFERENCE_ATTR_ON_DELETE = "onDelete";
+/** Identity-reference attr: referential action on key update (cascade/set-null/restrict/no-action). */
+export const IDENTITY_REFERENCE_ATTR_ON_UPDATE = "onUpdate";
 
 // NOTE: physical RDB-only identity attrs (@constraintName on identity.reference;
 // @orders / @where on identity.secondary) are NOT core — they are contributed by

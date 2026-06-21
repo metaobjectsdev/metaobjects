@@ -41,13 +41,18 @@ export function isRequired(field: MetaData): boolean {
 
 /**
  * Resolve the referential actions for a foreign key inferred from an
- * identity.reference, by correlating it with a sibling relationship on the
- * same entity (matched on target-entity name).
+ * identity.reference.
  *
- * - No correlated relationship → both undefined (no ON DELETE / ON UPDATE clause).
- * - With a relationship: onDelete defaults from the relationship subtype
- *   (composition→cascade, aggregation→set-null, association→restrict);
- *   onUpdate defaults to "cascade". Explicit @onDelete / @onUpdate override.
+ * Precedence (highest first):
+ *   1. @onDelete / @onUpdate declared DIRECTLY on the identity.reference — the
+ *      reference IS the FK, so the action may be declared right where the FK is.
+ *   2. A correlated sibling relationship on the same entity (matched on
+ *      target-entity name): its explicit @onDelete, else its subtype default
+ *      (composition→cascade, aggregation→set-null, association→restrict);
+ *      onUpdate defaults to "cascade".
+ *   3. Neither → undefined (no ON DELETE / ON UPDATE clause).
+ *
+ * - "setnull" is accepted as an alias for the canonical "set-null".
  * - Resolved "no-action" → undefined: introspection in introspect/{postgres,sqlite}.ts
  *   omits actions when the DB value is "no-action", so the expected side does the same
  *   to keep round-trip diffs clean.
@@ -75,11 +80,23 @@ export function resolveReferentialActions(
   // resolve to undefined (no clause emitted) — surfacing the mismatch as a
   // silent loss of intent rather than a wrong action. Cross-language ports
   // should match the same correlation rule.
-  const rel = entity.relationships().find((r) => r.objectRef === target);
-  if (rel === undefined) return { onDelete: undefined, onUpdate: undefined };
+  // (1) Actions declared directly on the FK-defining reference win.
+  const refOnDelete = ref.onDelete;
+  const refOnUpdate = ref.onUpdate;
 
-  const onDeleteRaw = rel.onDelete ?? ON_DELETE_DEFAULT_BY_SUBTYPE[rel.subType];
-  const onUpdateRaw = rel.onUpdate ?? ON_UPDATE_DEFAULT;
+  // (2) Otherwise correlate with a sibling relationship and use its action /
+  //     subtype default. onUpdate's "cascade" default only applies when a
+  //     relationship is present, so a reference-only FK with no explicit
+  //     @onUpdate emits no ON UPDATE clause.
+  const rel = entity.relationships().find((r) => r.objectRef === target);
+
+  const onDeleteRaw =
+    refOnDelete ??
+    (rel ? (rel.onDelete ?? ON_DELETE_DEFAULT_BY_SUBTYPE[rel.subType]) : undefined);
+  const onUpdateRaw =
+    refOnUpdate ??
+    (rel ? (rel.onUpdate ?? ON_UPDATE_DEFAULT) : undefined);
+
   return {
     onDelete: normalize(onDeleteRaw),
     onUpdate: normalize(onUpdateRaw),
@@ -87,8 +104,11 @@ export function resolveReferentialActions(
 }
 
 function normalize(a: string | undefined): FkAction | undefined {
-  if (a === undefined || a === "no-action") return undefined;
-  return a as FkAction;
+  if (a === undefined) return undefined;
+  // Accept the hyphen-less spelling as an alias for the canonical kebab-case form.
+  const canonical = a === "setnull" ? "set-null" : a;
+  if (canonical === "no-action") return undefined;
+  return canonical as FkAction;
 }
 
 // ---------------------------------------------------------------------------
