@@ -8,6 +8,7 @@
 // as Java and TS, keeping all domain field-attrs in domain providers.
 
 using MetaObjects.Core.Field;
+using MetaObjects.Core.Identity;
 
 namespace MetaObjects.Persistence.Db;
 
@@ -40,5 +41,17 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
                 subType,
                 attributes: [DbSchema.ColumnSchema, DbSchema.DbIndexedSchema, DbSchema.DbColumnTypeSchema]);
         }
+
+        // Physical RDB index/constraint attrs on identity subtypes — DB-domain
+        // concerns (index ordering / partial predicate / FK constraint naming),
+        // NOT core identity. Mirror the TS db.json identity extends.
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
+            IdentityConstants.IDENTITY_SUBTYPE_SECONDARY,
+            attributes: [DbSchema.OrdersSchema, DbSchema.WhereSchema, DbSchema.ExprSchema, DbSchema.UsingSchema]);
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
+            IdentityConstants.IDENTITY_SUBTYPE_REFERENCE,
+            attributes: [DbSchema.ConstraintNameSchema]);
     }
 }

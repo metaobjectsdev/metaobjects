@@ -1,7 +1,11 @@
 import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot, MetaValidator } from "@metaobjectsdev/metadata";
 import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
+  VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
   VALIDATOR_ATTR_PATTERN,
+  VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
+  VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
   TYPE_OBJECT,
   TYPE_FIELD,
   OBJECT_ATTR_DISCRIMINATOR,
@@ -9,6 +13,11 @@ import {
   MetaSource,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_UNIQUE,
+  IDENTITY_ATTR_ORDERS,
+  IDENTITY_ATTR_WHERE,
+  IDENTITY_ATTR_EXPR,
+  IDENTITY_ATTR_USING,
+  IDENTITY_ATTR_CONSTRAINT_NAME,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_PRECISION,
@@ -106,7 +115,14 @@ export function buildExpectedSchema(
     entities.push({ entity: child as MetaObject, tableName: resolveTableName(child) });
   }
   const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));
-  const resolveTargetTable = (entityName: string) => entityToTable.get(entityName);
+  // A reference's targetEntity is package-qualified by the loader (e.g.
+  // "acme::a::Foo"), but entityToTable is keyed by the bare entity name ("Foo").
+  // Fall back to the bare suffix so cross-package FK targets resolve.
+  const resolveTargetTable = (entityName: string) =>
+    entityToTable.get(entityName) ??
+    (entityName.includes("::")
+      ? entityToTable.get(entityName.slice(entityName.lastIndexOf("::") + 2))
+      : undefined);
 
   // Pass 2: build full descriptors with FK resolution.
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
@@ -319,18 +335,42 @@ function buildSecondaryIndexes(
   // Drizzle emits the index using the identity's @name attr directly (no table
   // prefix), so the expected name must match.
   for (const identity of entity.secondaryIdentities()) {
+    const exprRaw = identity.ownAttr(IDENTITY_ATTR_EXPR);
+    const expr = typeof exprRaw === "string" && exprRaw.trim().length > 0 ? exprRaw.trim() : undefined;
     const fieldNames = readIdentityFields(identity);
-    if (fieldNames.length === 0) continue;
+    // An expression index keys off @expr (not @fields); a plain index needs @fields.
+    if (fieldNames.length === 0 && expr === undefined) continue;
     const cols = fieldNames.map((jsName) => {
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
     const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
-    indexes.push({
+    const index: IndexDescriptor = {
       name: identity.name,
-      columns: cols,
+      columns: expr ? [] : cols,
       unique: uniqueAttr !== false,
-    });
+    };
+    if (expr) index.expr = expr;
+    const usingRaw = identity.ownAttr(IDENTITY_ATTR_USING);
+    if (typeof usingRaw === "string" && usingRaw.trim().length > 0 && usingRaw.trim() !== "btree") {
+      index.using = usingRaw.trim();
+    }
+    // @orders — per-field sort direction (positional to @fields). Only attach when
+    // at least one field is descending (an all-ascending array is the default and
+    // must serialize identically to "no orders" for diff stability).
+    const ordersRaw = identity.ownAttr(IDENTITY_ATTR_ORDERS);
+    if (Array.isArray(ordersRaw)) {
+      const orders = cols.map((_, i) => (ordersRaw[i] === "desc" ? "desc" : "asc")) as (
+        "asc" | "desc"
+      )[];
+      if (orders.some((o) => o === "desc")) index.orders = orders;
+    }
+    // @where — partial-index predicate.
+    const whereRaw = identity.ownAttr(IDENTITY_ATTR_WHERE);
+    if (typeof whereRaw === "string" && whereRaw.trim().length > 0) {
+      index.where = whereRaw.trim();
+    }
+    indexes.push(index);
   }
   return indexes;
 }
@@ -420,7 +460,103 @@ function buildChecks(
       if (check) checks.push(check);
     }
   }
+  // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
+  for (const v of entity.validators()) {
+    const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
+    if (check) checks.push(check);
+  }
   return checks;
+}
+
+const COMPARISON_SQL_OP: Record<string, string> = {
+  gt: ">", gte: ">=", lt: "<", lte: "<=", ne: "<>", eq: "=",
+};
+
+/** Resolve a by-name field reference to its physical column (quoted) + the MetaField, or null. */
+function resolveRef(
+  entity: MetaObject, name: unknown, strategy: ColumnNamingStrategy,
+): { qcol: string; field: ReturnType<MetaObject["fields"]>[number] } | null {
+  if (typeof name !== "string" || name.length === 0) return null;
+  const field = entity.fields().find((f) => f.name === name);
+  if (!field) return null;
+  return { qcol: quoteCheckCol(resolveColumnName(field, strategy)), field };
+}
+
+/**
+ * Render an @equals gating value as a SQL literal, typed by the gating field's
+ * subtype: boolean → TRUE/FALSE (1/0 on sqlite/d1), numeric → bare number,
+ * everything else → quoted string.
+ */
+function renderEquals(
+  raw: unknown, whenField: ReturnType<MetaObject["fields"]>[number], dialect: Dialect | undefined,
+): string {
+  const s = String(raw);
+  if (whenField.subType === FIELD_SUBTYPE_BOOLEAN) {
+    const truthy = s === "true" || s === "1" || s === "TRUE";
+    if (dialect === "sqlite" || dialect === "d1") return truthy ? "1" : "0";
+    return truthy ? "TRUE" : "FALSE";
+  }
+  const numeric = whenField.subType === FIELD_SUBTYPE_INT || whenField.subType === FIELD_SUBTYPE_LONG
+    || whenField.subType === FIELD_SUBTYPE_DOUBLE || whenField.subType === FIELD_SUBTYPE_FLOAT
+    || whenField.subType === FIELD_SUBTYPE_DECIMAL || whenField.subType === FIELD_SUBTYPE_CURRENCY;
+  if (numeric && /^-?\d+(\.\d+)?$/.test(s)) return s;
+  return `'${s.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Derive a CHECK from an entity-scoped cross-field validator. Every reference is
+ * resolved to its physical column by name; nothing raw is read from metadata.
+ * Returns null (skips the check) if any referenced field is missing.
+ */
+function crossFieldCheck(
+  v: MetaValidator, entity: MetaObject, tableName: string,
+  strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+): CheckDescriptor | null {
+  switch (v.subType) {
+    case VALIDATOR_SUBTYPE_COMPARISON: {
+      const left = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_LEFT), strategy);
+      const right = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_RIGHT), strategy);
+      const op = COMPARISON_SQL_OP[String(v.ownAttr(VALIDATOR_ATTR_OP))];
+      if (!left || !right || !op) return null;
+      const lc = resolveColumnName(left.field, strategy);
+      return { name: `${tableName}_${lc}_cmp_chk`, expression: `${left.qcol} ${op} ${right.qcol}` };
+    }
+    case VALIDATOR_SUBTYPE_REQUIRED_WHEN: {
+      const target = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_FIELD), strategy);
+      const when = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_WHEN), strategy);
+      if (!target || !when) return null;
+      const lit = renderEquals(v.ownAttr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
+      const fc = resolveColumnName(target.field, strategy);
+      return {
+        name: `${tableName}_${fc}_reqwhen_chk`,
+        expression: `(${when.qcol} IS DISTINCT FROM ${lit}) OR (${target.qcol} IS NOT NULL)`,
+      };
+    }
+    case VALIDATOR_SUBTYPE_PRESENT_IFF: {
+      const target = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_FIELD), strategy);
+      const when = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_WHEN), strategy);
+      if (!target || !when) return null;
+      const lit = renderEquals(v.ownAttr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
+      const fc = resolveColumnName(target.field, strategy);
+      return {
+        name: `${tableName}_${fc}_presentiff_chk`,
+        expression: `(${target.qcol} IS NOT NULL) = (${when.qcol} IS NOT DISTINCT FROM ${lit})`,
+      };
+    }
+    case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
+      const raw = v.ownAttr(VALIDATOR_ATTR_FIELDS);
+      const names = Array.isArray(raw) ? raw : (typeof raw === "string" ? [raw] : []);
+      const refs = names.map((n) => resolveRef(entity, n, strategy));
+      if (refs.length === 0 || refs.some((r) => r === null)) return null;
+      const firstCol = resolveColumnName(refs[0]!.field, strategy);
+      return {
+        name: `${tableName}_${firstCol}_atleastone_chk`,
+        expression: refs.map((r) => `${r!.qcol} IS NOT NULL`).join(" OR "),
+      };
+    }
+    default:
+      return null;
+  }
 }
 
 function buildForeignKeys(
@@ -456,7 +592,13 @@ function buildForeignKeys(
       : [applyColumnNamingStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
-    const constraintName = `${tableName}_${fkCols[0]}_fk`;
+    // An explicit @constraintName adopts an existing FK name (e.g. a database
+    // created by another toolchain); absent → the auto-derived default.
+    const constraintNameOverride = refChild.ownAttr(IDENTITY_ATTR_CONSTRAINT_NAME);
+    const constraintName =
+      typeof constraintNameOverride === "string" && constraintNameOverride.length > 0
+        ? constraintNameOverride
+        : `${tableName}_${fkCols[0]}_fk`;
 
     // Guard: ON DELETE SET NULL requires nullable FK columns.
     validateSetNullNullability(entity, refChild, onDelete, constraintName);

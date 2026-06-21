@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.int`, `field.long`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.base`, `validator.length`, `validator.numeric`, `validator.regex`, `validator.required`, `view.base`, `view.currency`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.int`, `field.long`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
 
 **Contributes attributes:**
 
@@ -35,10 +35,14 @@ Core metaobjects metamodel types and subtypes.
 - `relationship.base`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.composition`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `validator.array`: `@max`, `@min`
+- `validator.atLeastOne`: `@fields`
 - `validator.base`: `@max`, `@min`
+- `validator.comparison`: `@left`, `@op`, `@right`
 - `validator.length`: `@max`, `@min`
 - `validator.numeric`: `@max`, `@min`
+- `validator.presentIff`: `@equals`, `@field`, `@when`
 - `validator.regex`: `@max`, `@min`, `@pattern`
+- `validator.requiredWhen`: `@equals`, `@field`, `@when`
 
 ## metaobjects-db
 
@@ -61,6 +65,8 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
+- `identity.reference`: `@constraintName`
+- `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@table`, `@view`
 
 ## metaobjects-documentation

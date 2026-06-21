@@ -8,7 +8,7 @@ import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
-import { checkExprEquals } from "../check-expr-compare.js";
+import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 export interface DiffArgs {
@@ -27,6 +27,22 @@ export interface DiffArgs {
    * the default. Pass additional patterns to extend.
    */
   ignoreTables?: string[];
+  /**
+   * Restrict the diff to a set of DB schemas. A table whose schema is not in this
+   * set is excluded from BOTH sides — neither created/altered nor dropped.
+   *
+   * When omitted, the scope is **auto-derived from the schemas the expected
+   * (metadata) side declares**: the model manages only the schemas it actually
+   * mentions, so a table living in a schema the model never declares belongs to
+   * another owner (e.g. a downstream app's schema sharing the same database) and is
+   * left untouched. This makes per-owner drift gates clean without manual config —
+   * a model that declares only `public` ignores a co-located downstream-app schema,
+   * and vice versa. Pass an explicit set to override; pass nothing for the smart default.
+   *
+   * Auto-scoping is skipped when the expected side declares no tables at all
+   * (nothing to manage → prior whole-DB behavior is preserved).
+   */
+  scopeSchemas?: string[];
   /** Dialect; CHECK-constraint evolution on existing tables is emitted for postgres only. */
   dialect?: Dialect;
 }
@@ -101,16 +117,34 @@ export async function diff(
   const changes: Change[] = [];
 
   const ignorePatterns = args.ignoreTables ?? DEFAULT_IGNORE_TABLES;
+
+  // Schema scope (see DiffArgs.scopeSchemas): an explicit set, else the schemas the
+  // expected/metadata side declares (the smart default — the model owns only the
+  // schemas it mentions), else null = no scoping (empty model → prior whole-DB
+  // behavior). A table outside the scope is excluded from both sides, so a
+  // co-located schema owned by another app is neither dropped nor reported.
+  const declaredSchemas = new Set(
+    args.expected.tables.map((t) => t.schema ?? DEFAULT_DB_SCHEMA_POSTGRES),
+  );
+  const scopeSchemas: Set<string> | null =
+    args.scopeSchemas !== undefined
+      ? new Set(args.scopeSchemas)
+      : declaredSchemas.size > 0
+        ? declaredSchemas
+        : null;
+  const inScope = (schema: string | undefined): boolean =>
+    scopeSchemas === null || scopeSchemas.has(schema ?? DEFAULT_DB_SCHEMA_POSTGRES);
+
   // Key tables on (schema, name) identity — same table name in different schemas
   // are distinct entities. tableIdentity normalizes undefined → "public".
   const expectedTables = new Map(
     args.expected.tables
-      .filter((t) => !shouldIgnoreTable(t.name, ignorePatterns))
+      .filter((t) => !shouldIgnoreTable(t.name, ignorePatterns) && inScope(t.schema))
       .map((t) => [tableIdentity(t), t] as const),
   );
   const actualTables = new Map(
     args.actual.tables
-      .filter((t) => !shouldIgnoreTable(t.name, ignorePatterns))
+      .filter((t) => !shouldIgnoreTable(t.name, ignorePatterns) && inScope(t.schema))
       .map((t) => [tableIdentity(t), t] as const),
   );
 
@@ -168,7 +202,11 @@ export async function diff(
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
   // with a divergent body (whitespace-/wrapper-normalized) emits replace-view;
   // introspect now reads the actual body so view-body drift is visible.
-  diffViews(args.expected.views, args.actual.views, changes);
+  diffViews(
+    args.expected.views.filter((v) => inScope(v.schema)),
+    args.actual.views.filter((v) => inScope(v.schema)),
+    changes,
+  );
 
   // Pass 3: detect table renames BEFORE column renames — so a renamed table's
   // columns are not scanned as orphaned drop/add pairs.
@@ -354,8 +392,28 @@ function columnDefaultsEqual(a: ColumnDescriptor["default"], b: ColumnDescriptor
 
 function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {
   if (a.unique !== b.unique) return false;
+  // Access method: absent = "btree" (the default).
+  if ((a.using ?? "btree") !== (b.using ?? "btree")) return false;
+  // Expression-key index: compare the normalized key expression (same canonicalizer
+  // as predicates). Both-absent = plain index; one-absent = different.
+  if ((a.expr === undefined) !== (b.expr === undefined)) return false;
+  if (a.expr !== undefined && b.expr !== undefined) {
+    if (normalizeCheckExpr(a.expr) !== normalizeCheckExpr(b.expr)) return false;
+  }
   if (a.columns.length !== b.columns.length) return false;
-  return a.columns.every((c, i) => c === b.columns[i]);
+  if (!a.columns.every((c, i) => c === b.columns[i])) return false;
+  // Per-column ordering: an absent `orders` means all-ascending, so compare against
+  // a normalized array (default "asc") rather than requiring both to be present.
+  const orderAt = (ix: IndexDescriptor, i: number): "asc" | "desc" => ix.orders?.[i] ?? "asc";
+  if (a.columns.some((_, i) => orderAt(a, i) !== orderAt(b, i))) return false;
+  // Partial-index predicate: normalize (reuse the CHECK-expr canonicalizer — same PG
+  // rewrites: casts, parens, whitespace) so an authored predicate compares equal to
+  // the introspected `pg_get_expr` form. Both-absent = equal; one-absent = different.
+  if ((a.where === undefined) !== (b.where === undefined)) return false;
+  if (a.where !== undefined && b.where !== undefined) {
+    if (normalizeCheckExpr(a.where) !== normalizeCheckExpr(b.where)) return false;
+  }
+  return true;
 }
 
 function fkEquals(a: FkDescriptor, b: FkDescriptor): boolean {

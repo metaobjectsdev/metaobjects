@@ -645,6 +645,26 @@ _VALIDATOR_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
     ],
     vc.VALIDATOR_SUBTYPE_NUMERIC: list(_VALIDATOR_MIN_MAX_ATTRS),
     vc.VALIDATOR_SUBTYPE_ARRAY: list(_VALIDATOR_MIN_MAX_ATTRS),
+    # Cross-field validators — entity-scoped, reference sibling fields by name.
+    vc.VALIDATOR_SUBTYPE_COMPARISON: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_LEFT, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=vc.VALIDATOR_ATTR_OP, value_type=ATTR_SUBTYPE_STRING, required=True,
+                   allowed_values=("gt", "gte", "lt", "lte", "ne", "eq")),
+        AttrSchema(name=vc.VALIDATOR_ATTR_RIGHT, value_type=ATTR_SUBTYPE_STRING, required=True),
+    ],
+    vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_FIELD, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=vc.VALIDATOR_ATTR_WHEN, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=vc.VALIDATOR_ATTR_EQUALS, value_type=ATTR_SUBTYPE_STRING, required=True),
+    ],
+    vc.VALIDATOR_SUBTYPE_PRESENT_IFF: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_FIELD, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=vc.VALIDATOR_ATTR_WHEN, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=vc.VALIDATOR_ATTR_EQUALS, value_type=ATTR_SUBTYPE_STRING, required=True),
+    ],
+    vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+    ],
 }
 for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():
     core_provider.add(

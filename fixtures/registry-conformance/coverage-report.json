@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 56,
+  "registeredSubTypeCount": 60,
   "exercisedSubTypeCount": 39,
   "untestedSubTypes": [
     "attr.base",
@@ -17,26 +17,24 @@
     "relationship.base",
     "source.base",
     "template.base",
+    "validator.atLeastOne",
     "validator.base",
+    "validator.comparison",
+    "validator.presentIff",
+    "validator.requiredWhen",
     "view.base"
   ],
   "untestedAttrsByExercisedSubType": [
     {
       "key": "field.boolean",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -44,20 +42,13 @@
     {
       "key": "field.currency",
       "untestedAttrs": [
-        "autoSet",
-        "column",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -71,14 +62,9 @@
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -86,18 +72,14 @@
     {
       "key": "field.decimal",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
         "readOnly",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -105,20 +87,14 @@
     {
       "key": "field.double",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -126,19 +102,13 @@
     {
       "key": "field.enum",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -146,21 +116,15 @@
     {
       "key": "field.float",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "db.indexed",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -168,17 +132,11 @@
     {
       "key": "field.int",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
-        "scale",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -186,18 +144,12 @@
     {
       "key": "field.long",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "db.indexed",
         "dbColumnType",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
-        "scale",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -205,17 +157,13 @@
     {
       "key": "field.object",
       "untestedAttrs": [
-        "autoSet",
         "column",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "precision",
         "readOnly",
         "required",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
         "unique",
@@ -225,11 +173,7 @@
     {
       "key": "field.string",
       "untestedAttrs": [
-        "objectRef",
-        "precision",
-        "scale",
         "sortableDefaultOrder",
-        "storage",
         "xmlText"
       ]
     },
@@ -243,14 +187,9 @@
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -263,12 +202,7 @@
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
-        "scale",
         "sortableDefaultOrder",
-        "storage",
         "unique",
         "xmlText"
       ]
@@ -276,35 +210,35 @@
     {
       "key": "field.uuid",
       "untestedAttrs": [
-        "autoSet",
         "db.indexed",
         "dbColumnType",
         "default",
         "example",
         "instruction",
-        "maxLength",
-        "objectRef",
-        "precision",
         "readOnly",
-        "scale",
         "sortable",
         "sortableDefaultOrder",
-        "storage",
         "xmlText"
       ]
     },
     {
-      "key": "object.projection",
+      "key": "identity.reference",
       "untestedAttrs": [
-        "discriminator",
-        "discriminatorValue"
+        "constraintName"
+      ]
+    },
+    {
+      "key": "identity.secondary",
+      "untestedAttrs": [
+        "expr",
+        "orders",
+        "using",
+        "where"
       ]
     },
     {
       "key": "object.value",
       "untestedAttrs": [
-        "discriminator",
-        "discriminatorValue",
         "normalize"
       ]
     },

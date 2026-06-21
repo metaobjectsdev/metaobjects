@@ -66,6 +66,10 @@ public class ReferenceIdentity extends MetaIdentity {
                 ATTR_REFERENCES, com.metaobjects.object.MetaObject.TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE"));
             def.optionalAttributeWithConstraints(ATTR_ENFORCE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // RDB-physical FK constraint-name override contributed by the db provider
+            // (db.json extends identity.reference). Description sourced from the embedded
+            // spec/metamodel/db.json by applySpecDescriptions.
+            def.optionalAttributeWithConstraints(ATTR_CONSTRAINT_NAME).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // NOTE: @onDelete / @onUpdate are NOT declared on identity.reference in the
             // cross-port canonical — referential-action vocabulary lives only on

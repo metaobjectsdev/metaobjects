@@ -44,11 +44,15 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
   secondary: {
     fields: FIELDS,
     unique: { valueType: "boolean", required: false },
+    // NOTE: @orders / @where are physical RDB attrs contributed by the db provider
+    // (registry.extend), NOT core — so they are absent from this core-only registry.
   },
   reference: {
     fields: FIELDS,
     references: { valueType: "string", required: true },
     enforce: { valueType: "boolean", required: false },
+    // NOTE: @constraintName is a physical RDB attr contributed by the db provider,
+    // NOT core — absent from this core-only registry.
   },
 };
 

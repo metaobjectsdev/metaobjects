@@ -68,6 +68,29 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
   generators: GeneratorSpec[];
   /** How field names map to DB column names when @dbColumn is omitted. Defaults to "snake_case". */
   columnNamingStrategy?: ColumnNamingStrategy;
+  /**
+   * Auto-pluralize the Drizzle collection (table) variable name derived from
+   * each entity (`AgentConfig` → `agentConfigs`). Defaults to `true`. Set
+   * `false` to keep collection vars singular. Per-entity exceptions go in
+   * {@link collectionNameOverrides}. Naming is a per-port codegen concern
+   * (ADR-0001), so this is config — not a metadata attribute — and carries no
+   * cross-port conformance cost.
+   */
+  pluralizeCollections?: boolean;
+  /**
+   * Per-entity exact collection-var-name overrides, keyed by the bare entity
+   * name. Wins over {@link pluralizeCollections} — the escape hatch for the
+   * handful of tables a global rule gets wrong
+   * (e.g. `{ AuditLog: "auditLog", LlmTierConfig: "llmTierConfig" }`).
+   */
+  collectionNameOverrides?: Record<string, string>;
+  /**
+   * Drizzle timestamp column mode. "string" (default) types timestamp columns as
+   * ISO-8601 strings (matches the generated Zod + cross-port wire contract); "date"
+   * uses drizzle's native JS-Date mode (for consumers whose hand-written code works
+   * with `Date`).
+   */
+  timestampMode?: "date" | "string";
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
   apiPrefix?: string;
   /**
@@ -102,6 +125,9 @@ export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfi
   /** Fully resolved — every string spec has been mapped to its factory result. */
   generators: Generator[];
   columnNamingStrategy: ColumnNamingStrategy;
+  pluralizeCollections: boolean;
+  collectionNameOverrides: Record<string, string>;
+  timestampMode: "date" | "string";
   apiPrefix: string;
   emitAbstractShapes: boolean;
   outputLayout: OutputLayout;
@@ -222,6 +248,9 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     ...config,
     generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+    pluralizeCollections: config.pluralizeCollections ?? true,
+    collectionNameOverrides: config.collectionNameOverrides ?? {},
+    timestampMode: config.timestampMode ?? "string",
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,
     outputLayout: config.outputLayout ?? "flat",

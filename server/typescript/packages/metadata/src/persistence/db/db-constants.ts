@@ -10,6 +10,22 @@ export const FIELD_ATTR_COLUMN = "column";
 /** When true, suppress the @filterable-without-index Loader warning (Project D drift check). */
 export const FIELD_ATTR_DB_INDEXED = "db.indexed";
 
+// --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
+// These EXTEND core identity subtypes (via registry.extend) rather than living on
+// core, because they are pure physical-storage concerns (index ordering, partial-
+// index predicate, FK constraint naming) with no logical-model meaning.
+
+/** identity.secondary: per-field index-key sort direction array ('asc' | 'desc'), positional to @fields. Drives DESC-ordered index keys. */
+export const IDENTITY_ATTR_ORDERS = "orders";
+/** identity.secondary: a partial-index predicate (raw SQL). When set, the index covers only matching rows. */
+export const IDENTITY_ATTR_WHERE = "where";
+/** identity.secondary: a raw key EXPRESSION for a functional/expression index (e.g. "lower(email)"); used instead of @fields. */
+export const IDENTITY_ATTR_EXPR = "expr";
+/** identity.secondary: index access method (e.g. "gin", "gist"); default "btree", which is not rendered. */
+export const IDENTITY_ATTR_USING = "using";
+/** identity.reference: physical FK constraint-name override. Absent → the auto-derived `<table>_<firstFkColumn>_fk`. */
+export const IDENTITY_ATTR_CONSTRAINT_NAME = "constraintName";
+
 /**
  * R6 Plan 2b: `@dbColumnType` — physical DB column-type override on a field.
  * Selects the DB column type WITHOUT changing the logical field type or its

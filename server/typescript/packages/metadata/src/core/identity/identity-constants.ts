@@ -28,6 +28,10 @@ export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
 /** Identity-reference attr: physical-enforcement flag. Default true → hard FK constraint; false → logical-only reference. */
 export const IDENTITY_REFERENCE_ATTR_ENFORCE = "enforce";
 
+// NOTE: physical RDB-only identity attrs (@constraintName on identity.reference;
+// @orders / @where on identity.secondary) are NOT core — they are contributed by
+// the db provider and declared in persistence/db/db-constants.ts.
+
 // ---------------------------------------------------------------------------
 // Identity generation strategies (values for IDENTITY_ATTR_GENERATION)
 // ---------------------------------------------------------------------------

@@ -32,6 +32,7 @@ import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
 import type { RenderContext } from "../render-context.js";
+import { valueObjectModuleSpecifier } from "../import-path.js";
 
 /**
  * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
@@ -73,7 +74,7 @@ export function isTphSubtype(obj: MetaObject): boolean {
  * back from the DB arrives as `null`, not `undefined`, so the read schema must
  * accept null (the insert schema, by contrast, makes them `.optional()`).
  */
-export function renderTphSubtypeReadSchema(obj: MetaObject): Code {
+export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const tphPin = tphDiscriminatorPin(obj);
 
@@ -83,7 +84,7 @@ export function renderTphSubtypeReadSchema(obj: MetaObject): Code {
       fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
       continue;
     }
-    const expr = zodFieldExpr(child);
+    const expr = zodFieldExpr(child, obj, ctx);
     // zodFieldExpr already appends `.optional()` for non-required fields; add
     // `.nullable()` on top so a NULL column value (the TPH default for any
     // subtype-only column) parses cleanly.
@@ -125,7 +126,7 @@ function autoGenPkFieldNames(obj: MetaObject): Set<string> {
  * so consumer imports don't churn. A future polish PR could add a `<Name>Schema`
  * alias for clarity.
  */
-export function renderInsertSchemaOnly(obj: MetaObject): Code {
+export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -153,7 +154,7 @@ export function renderInsertSchemaOnly(obj: MetaObject): Code {
         code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child)}`);
+      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     }
   }
 
@@ -329,9 +330,15 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
     const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified or bare — the referenced
-      // <Ref>InsertSchema + its sibling module use the BARE short name.
+      // <Ref>InsertSchema is named by the BARE short name. The import MODULE is
+      // resolved via the shared layout/package/extStyle-aware helper (the SAME
+      // one the field's TS type + Drizzle .$type<> use) so all three agree.
+      // Without owner/ctx (bare unit-test calls) fall back to the flat same-dir.
       const refBase = stripPackage(ref);
-      const refImp = imp(`${refBase}InsertSchema@./${refBase}.js`);
+      const moduleSpec = (ctx && owner)
+        ? valueObjectModuleSpecifier(refBase, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refBase}.js`;
+      const refImp = imp(`${refBase}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
       if (field.isArray) base = code`z.array(${base})`;
       return appendValidatorChain(base, field);

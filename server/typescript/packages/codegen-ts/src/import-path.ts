@@ -49,6 +49,34 @@ export function crossEntitySpecifier(
   return withExt(`${prefix}${toEntity}`, extStyle);
 }
 
+/**
+ * Module specifier to import a value-object's emitted module (`<VO>.ts`) from a
+ * file that lives in `fromPkg`. Value objects are emitted by the entity-file
+ * generator into the SAME target as entities, so this is the same same-target,
+ * package- + extStyle-aware resolution that FK references use.
+ *
+ * This is the SINGLE source of truth shared by the three places that reference a
+ * VO — the field's TS type (inferred-types), its runtime Zod schema
+ * (zod-validators), and its Drizzle `.$type<>()` (drizzle-schema). They MUST
+ * resolve a given VO to the identical module or they would import two distinct
+ * symbols; routing all three through this function makes divergence impossible.
+ *
+ * `voPkg` is looked up from `packageOf` (which includes `object.value` nodes —
+ * `root.objects()` returns every `TYPE_OBJECT` child). An unknown VO falls back
+ * to `fromPkg`, yielding a same-dir `./<VO>` specifier (correct for flat layout
+ * and for a same-package reference).
+ */
+export function valueObjectModuleSpecifier(
+  voName: string,
+  packageOf: ReadonlyMap<string, string | undefined>,
+  fromPkg: string | undefined,
+  layout: OutputLayout,
+  extStyle: ExtStyle,
+): string {
+  const voPkg = packageOf.has(voName) ? packageOf.get(voName) : fromPkg;
+  return crossEntitySpecifier(layout, fromPkg, voPkg, voName, extStyle);
+}
+
 /** Barrel (at outDir root) re-export specifier for an entity.
  *  Equivalent to crossEntitySpecifier with fromPkg=undefined (barrel is always at root). */
 export function barrelEntrySpecifier(

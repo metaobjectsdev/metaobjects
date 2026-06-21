@@ -89,7 +89,7 @@ export function renderEntityFile(
   const tphBase = tphBlock !== null && isTphDiscriminatorBase(entity, ctx.loadedRoot);
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
-    renderInferredTypes(entity, tphBase),
+    renderInferredTypes(entity, tphBase, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix),

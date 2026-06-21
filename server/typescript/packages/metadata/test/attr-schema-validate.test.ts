@@ -323,6 +323,70 @@ describe("attr-schema validation — allowedValues", () => {
     });
     expect(errors).toHaveLength(0);
   });
+
+  // allowedValues on an isArray attr must validate each ELEMENT, not the array as a
+  // whole (regression: `allowedValues.includes(theArray)` always failed). @orders on
+  // identity.secondary is the first isArray+allowedValues attr.
+  it("accepts an isArray @orders whose elements are all allowed", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Event",
+              children: [
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "device_id" } },
+                { "field.timestamp": { name: "ts" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+                {
+                  "identity.secondary": {
+                    name: "event_recent_idx",
+                    "@fields": ["device_id", "ts"],
+                    "@orders": ["asc", "desc"],
+                    "@unique": false,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    expect(errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE")).toHaveLength(0);
+  });
+
+  it("flags the offending ELEMENT of an isArray @orders", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "demo",
+        children: [
+          {
+            "object.entity": {
+              name: "Event",
+              children: [
+                { "field.timestamp": { name: "ts" } },
+                { "identity.primary": { name: "pk", "@fields": "ts" } },
+                {
+                  "identity.secondary": {
+                    name: "event_idx",
+                    "@fields": ["ts"],
+                    "@orders": ["sideways"],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const msgs = errors.map((e) => e.message);
+    expect(msgs).toContain(
+      "identity.secondary 'event_idx' attribute '@orders' has value 'sideways' " +
+        "which is not one of the allowed values: asc, desc",
+    );
+  });
 });
 
 describe("attr-schema validation — open policy", () => {

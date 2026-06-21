@@ -24,7 +24,7 @@ import {
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { variableNameFromEntity, routesHandlerName } from "../naming.js";
+import { routesHandlerName } from "../naming.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
@@ -122,7 +122,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   }
 
   // --- Vanilla / write-through entity path: full CRUD routes ---
-  const tableVar = variableNameFromEntity(entityName);
+  const tableVar = ctx.collectionName(entityName);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
@@ -239,7 +239,7 @@ function renderM2mMount(
   fastifyVar: string,
 ): Code {
   const junctionVarSym = imp(
-    `${variableNameFromEntity(entry.junctionEntity)}@${crossEntitySpecifier(
+    `${ctx.collectionName(entry.junctionEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
       source.package,
       ctx.packageOf.get(entry.junctionEntity),
@@ -248,7 +248,7 @@ function renderM2mMount(
     )}`,
   );
   const targetVarSym = imp(
-    `${variableNameFromEntity(entry.targetEntity)}@${crossEntitySpecifier(
+    `${ctx.collectionName(entry.targetEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
       source.package,
       ctx.packageOf.get(entry.targetEntity),
@@ -312,7 +312,7 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
   // Single source of truth for the discriminator field + subtypes + route segments.
   const plan = tphPlan(base, ctx.loadedRoot)!;
   const discField = plan.discriminatorField;
-  const tableVar = variableNameFromEntity(baseName);
+  const tableVar = ctx.collectionName(baseName);
 
   const baseFileSpec = entityModuleSpecifier(
     ctx.selfTarget, ctx.entityModuleTarget, base.package, baseName, ctx.extStyle,

@@ -36,6 +36,12 @@ describe("diff — schema-aware table identity", () => {
       expected,
       actual,
       allow: { dropTable: true },
+      // Explicitly scope to BOTH schemas so this test exercises cross-schema table
+      // IDENTITY (same name, different schema → distinct, not a rename). With the
+      // default auto-scope the `p3_api` table would be out of the expected model's
+      // declared scope ({public}) and thus left untouched — that default is covered
+      // by diff-schema-scope.test.ts.
+      scopeSchemas: ["public", "p3_api"],
     });
 
     const kinds = result.changes.map((c) => c.kind).sort();

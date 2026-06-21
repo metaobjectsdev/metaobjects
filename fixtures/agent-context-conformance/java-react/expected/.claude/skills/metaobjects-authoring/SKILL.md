@@ -165,6 +165,26 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }
 ```
 
+**Arrays of value objects** — set `isArray: true` with `@storage: jsonb`. The whole
+array lives in **one** jsonb column (a JSON array), never a native `jsonb[]`. The
+generated Postgres column is typed `.$type<VO[]>()` and the Zod schema is
+`z.array(<VO>InsertSchema)`:
+
+```json
+{ "field.object": { "name": "triples", "@objectRef": "Triple",
+    "@storage": "jsonb", "isArray": true } }
+```
+
+**Opaque jsonb (no value object)** — when the payload has no fixed shape (freeform
+config, passthrough metadata, an open-keyed map), do NOT use `field.object` (it
+requires `@objectRef`, and a partial VO would let the generated Zod strip unknown
+keys → data loss). Model it as a `field.string` with the physical-type override
+`@dbColumnType: jsonb` — the logical type stays string-bound, the column is jsonb:
+
+```json
+{ "field.string": { "name": "metadata", "@dbColumnType": "jsonb" } }
+```
+
 ## YAML sigil-free authoring + the coercion footgun
 
 In YAML, write the fused `type.subType` key with a **map body**, bare reserved
@@ -205,6 +225,12 @@ reference for navigation/typing/codegen only. Referential actions
 (`@onDelete`/`@onUpdate`) are NOT on `identity.reference` — they live on the
 `relationship.*` node (see Relationships below).
 
+`@references` resolves cross-package by **fully-qualified name**
+(`@references: "shared::billing::Account"`), the same rule as `extends`; a bare
+name resolves within the current package. The FK target must be an entity with a
+single-column primary key (the FK points at that PK); a target with a composite
+PK needs the explicit dotted form `@references: "pkg::Target.fieldA,fieldB"`.
+
 ```json
 { "identity.primary":   { "name": "id", "@fields": ["id"], "@generation": "increment" } }
 { "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
@@ -227,6 +253,17 @@ the two halves of one FK.
 { "relationship.composition": {
     "name": "posts", "@objectRef": "Post",
     "@cardinality": "many", "@onDelete": "cascade" } }
+```
+
+**Adoption footgun — pin BOTH actions.** `@onDelete` and `@onUpdate` each default to
+`cascade` when omitted, but a plain SQL foreign key is `NO ACTION` on both. If you're
+adopting an existing database (matching metadata to a live schema), omitting these
+makes the metadata declare `CASCADE` where the DB has `NO ACTION` — a perpetual
+`verify --db` drift. Pin **both** explicitly to the DB's real behavior:
+
+```json
+{ "relationship.composition": { "name": "author", "@objectRef": "User",
+    "@cardinality": "one", "@onDelete": "no-action", "@onUpdate": "no-action" } }
 ```
 
 ## Sources — `source.rdb` + `@kind`

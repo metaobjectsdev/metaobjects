@@ -27,6 +27,14 @@ public class SecondaryIdentity extends MetaIdentity {
      */
     /** Logical uniqueness marker (boolean) — cross-port canonical attr on identity.secondary. */
     public static final String ATTR_UNIQUE = "unique";
+    /** Physical index-key sort direction array (asc|desc) — db-provider attr (RDB-physical). */
+    public static final String ATTR_ORDERS = "orders";
+    /** Partial-index predicate (raw SQL) — db-provider attr (RDB-physical). */
+    public static final String ATTR_WHERE = "where";
+    /** Raw key EXPRESSION for a functional/expression index — db-provider attr (RDB-physical). */
+    public static final String ATTR_EXPR = "expr";
+    /** Index access method (e.g. "gin"); default "btree" — db-provider attr (RDB-physical). */
+    public static final String ATTR_USING = "using";
 
     public SecondaryIdentity(String name) {
         super(SUBTYPE_SECONDARY, name);
@@ -50,6 +58,14 @@ public class SecondaryIdentity extends MetaIdentity {
             def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_UNIQUE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // RDB-physical index attrs contributed by the db provider (db.json extends
+            // identity.secondary). Descriptions are sourced from the embedded
+            // spec/metamodel/db.json by applySpecDescriptions; allowedValues for @orders
+            // (asc|desc) is not part of the v1 manifest contract.
+            def.optionalAttributeWithConstraints(ATTR_ORDERS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_WHERE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_EXPR).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_USING).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
             def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");

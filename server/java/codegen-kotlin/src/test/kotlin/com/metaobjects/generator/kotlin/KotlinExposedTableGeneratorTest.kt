@@ -105,6 +105,63 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // === reserved-name / PK-ordering / non-id FK target coverage =============
+
+    /**
+     * Node has: a `source` column (collides with the Exposed `ColumnSet.source`
+     * member), a self-referential FK (`parentId` → Node) declared BEFORE its PK
+     * `id`, and an FK to Account whose PK is `accountId` (not `id`). All three
+     * shapes used to emit non-compiling Kotlin.
+     */
+    private val edgeFixture = """{
+      "metadata.root": { "package": "acme::demo", "children": [
+        { "object.entity": { "name": "Account", "children": [
+            { "field.long":   { "name": "accountId" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "source.rdb":   { "@table": "accounts" } },
+            { "identity.primary": { "name": "pk", "@fields": ["accountId"], "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "Node", "children": [
+            { "field.long":   { "name": "parentId" } },
+            { "field.string": { "name": "source", "@maxLength": 50 } },
+            { "field.long":   { "name": "accountRef" } },
+            { "field.long":   { "name": "id" } },
+            { "source.rdb":   { "@table": "nodes" } },
+            { "identity.primary":   { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": { "name": "fkParent",  "@fields": ["parentId"],   "@references": "Node" } },
+            { "identity.reference": { "name": "fkAccount", "@fields": ["accountRef"], "@references": "Account" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `reserved name, PK-first ordering, and non-id FK target all emit compilable Kotlin`() {
+        val outDir = Files.createTempDirectory("ktbl-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("edge", edgeFixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/NodeTable.kt"))
+
+            // (1) reserved Exposed member `source` → safe `sourceColumn` val; column name kept.
+            assertTrue("val sourceColumn = varchar(\"source\", 50)" in src,
+                "expected reserved `source` renamed to `sourceColumn`; saw:\n$src")
+
+            // (2) PK `id` emitted BEFORE the self-referential FK that references it.
+            val idIdx = src.indexOf("val id = ")
+            val parentIdx = src.indexOf("val parentId = ")
+            assertTrue(idIdx in 0 until parentIdx,
+                "PK `id` must be declared before self-FK `parentId` (idIdx=$idIdx parentIdx=$parentIdx);\n$src")
+            assertTrue("references(NodeTable.id)" in src, "expected self-FK references(NodeTable.id);\n$src")
+
+            // (3) FK to Account targets its real PK `accountId`, not a hardcoded `.id`.
+            assertTrue("references(AccountTable.accountId)" in src,
+                "expected FK to non-id PK `references(AccountTable.accountId)`; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     // === field.object + @storage coverage ===================================
 
     /**

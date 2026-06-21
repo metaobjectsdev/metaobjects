@@ -41,6 +41,11 @@ public class ValidatorTypesMetaDataProvider implements MetaDataTypeProvider {
         RegexValidator.registerTypes(registry);
         NumericValidator.registerTypes(registry);
         ArrayValidator.registerTypes(registry);
+        // Cross-field validators (entity-scoped, reference sibling fields by name).
+        ComparisonValidator.registerTypes(registry);
+        RequiredWhenValidator.registerTypes(registry);
+        PresentIffValidator.registerTypes(registry);
+        AtLeastOneValidator.registerTypes(registry);
 
         log.debug("Validator types registered via provider");
     }
