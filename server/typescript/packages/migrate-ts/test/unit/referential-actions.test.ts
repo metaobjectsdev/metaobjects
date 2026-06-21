@@ -142,3 +142,70 @@ describe("end-to-end FK actions in emitted DDL", () => {
     expect(up).toContain('FOREIGN KEY ("program_id") REFERENCES "programs" ("id") ON DELETE SET NULL ON UPDATE CASCADE');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Referential actions declared DIRECTLY on the identity.reference (the FK).
+//
+// Regression: an @onDelete / @onUpdate authored on the identity.reference was
+// previously ignored — only a correlated relationship node supplied actions —
+// so FKs declared with @onDelete: cascade emitted a bare FK (no ON DELETE),
+// silently dropping cascade intent.
+// ---------------------------------------------------------------------------
+
+function weekDocRef(refAttrs: Record<string, unknown>, rel?: Record<string, unknown>) {
+  return { "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Program", children: [
+      { "field.long": { name: "id" } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
+    ] } },
+    { "object.entity": { name: "Week", children: [
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "programId" } },
+      ...(rel ? [rel] : []),
+      { "identity.reference": { name: "ref_program", "@fields": ["programId"], "@references": "Program", ...refAttrs } },
+      { "identity.primary": { "name": "id", "@fields": "id" } },
+    ] } },
+  ] } };
+}
+
+async function loadWeekRef(refAttrs: Record<string, unknown>, rel?: Record<string, unknown>) {
+  const { root, errors } = await loadDoc(weekDocRef(refAttrs, rel));
+  expect(errors).toHaveLength(0);
+  const week = root.objects().find((o) => o.name === "Week")!;
+  const ref = week.referenceIdentities()[0]!;
+  return { root, week, ref };
+}
+
+describe("reference-level @onDelete / @onUpdate (declared on identity.reference)", () => {
+  test("reference @onDelete wins with no relationship; onUpdate stays absent", async () => {
+    const { week, ref } = await loadWeekRef({ "@onDelete": "cascade" });
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "cascade", onUpdate: undefined });
+  });
+
+  test("reference @onUpdate is honored independently", async () => {
+    const { week, ref } = await loadWeekRef({ "@onDelete": "restrict", "@onUpdate": "cascade" });
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "restrict", onUpdate: "cascade" });
+  });
+
+  test("'setnull' is accepted as an alias for the canonical 'set-null'", async () => {
+    const { week, ref } = await loadWeekRef({ "@onDelete": "setnull" });
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "set-null", onUpdate: undefined });
+  });
+
+  test("reference @onDelete overrides a correlated relationship's action", async () => {
+    const { week, ref } = await loadWeekRef(
+      { "@onDelete": "restrict" },
+      { "relationship.composition": { name: "program", "@objectRef": "Program", "@cardinality": "one" } },
+    );
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "restrict", onUpdate: "cascade" });
+  });
+
+  test("end-to-end: reference @onDelete: cascade → ON DELETE CASCADE (Postgres), no relationship node", async () => {
+    const { root } = await loadWeekRef({ "@onDelete": "cascade" });
+    const snapshot = buildExpectedSchema(root);
+    const { changes } = await diff(snapshot, EMPTY_SCHEMA);
+    const { up } = emit(changes, { dialect: "postgres" });
+    expect(up).toContain('ADD CONSTRAINT "weeks_program_id_fk"');
+    expect(up).toContain('REFERENCES "programs" ("id") ON DELETE CASCADE');
+  });
+});
