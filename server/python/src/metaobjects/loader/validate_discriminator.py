@@ -106,7 +106,7 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
             continue  # root's own ERR_DISCRIMINATOR_FIELD_NOT_FOUND already fires
 
         if field.sub_type == FIELD_SUBTYPE_ENUM:
-            enum_values = field.attr(FIELD_ATTR_VALUES)
+            enum_values = field.attrs().get(FIELD_ATTR_VALUES)
             members = [str(v) for v in enum_values] if isinstance(enum_values, (list, tuple)) else []
             if value not in members:
                 errors.append(
