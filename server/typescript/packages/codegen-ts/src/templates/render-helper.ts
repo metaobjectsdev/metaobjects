@@ -81,7 +81,7 @@ function derivePayloadFieldTree(
   const fields: PayloadField[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = f.ownAttr(FIELD_ATTR_OBJECT_REF);
+      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string") {
         fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, nextSeen) });
         continue;

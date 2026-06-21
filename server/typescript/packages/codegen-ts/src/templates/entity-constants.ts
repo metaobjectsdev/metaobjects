@@ -160,12 +160,12 @@ function renderFieldRules(field: MetaField): string | undefined {
   }
 
   // Field-level @required attr (if not already covered by validator).
-  if (!hasRequired && field.ownAttr(FIELD_ATTR_REQUIRED) === true) {
+  if (!hasRequired && field.attr(FIELD_ATTR_REQUIRED) === true) {
     ruleParts.push(`required: ${JSON.stringify(`${humanize(field.name)} is required`)}`);
   }
 
   // Field-level @maxLength attr (if not already covered).
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const maxLenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (!hasMaxLength && typeof maxLenAttr === "number") {
     ruleParts.push(
       `maxLength: { value: ${maxLenAttr}, message: ${JSON.stringify(`Must be ${maxLenAttr} characters or fewer`)} }`,

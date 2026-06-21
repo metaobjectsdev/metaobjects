@@ -157,7 +157,7 @@ export function renderEntityNeighborhoodErBlock(
   // column?" Click-through to the VO docs answers that.
   for (const field of focal.fields()) {
     if (field.subType !== FIELD_SUBTYPE_OBJECT) continue;
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref !== "string" || ref.length === 0) continue;
     const targetName = ref.split("::").pop()!;
     if (classify(targetName) === undefined) continue;

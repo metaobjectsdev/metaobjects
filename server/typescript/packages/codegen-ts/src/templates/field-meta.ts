@@ -114,7 +114,7 @@ export function zodTypeFor(field: MetaField): string {
 export function currencyMetaFor(field: MetaField): { currency: string; locale: string } | null {
   if (field.subType !== FIELD_SUBTYPE_CURRENCY) return null;
   const currency =
-    (field.ownAttr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
+    (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
   const viewChild = field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
   const locale =
     (viewChild?.ownAttr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??

@@ -15,10 +15,10 @@ import { FIELD_ATTR_FILTERABLE, FIELD_ATTR_SORTABLE } from "@metaobjectsdev/meta
  *   3. no @sortable     → sortable iff @filterable === true
  */
 export function isSortableField(field: MetaField): boolean {
-  const sortableAttr = field.ownAttr(FIELD_ATTR_SORTABLE);
+  const sortableAttr = field.attr(FIELD_ATTR_SORTABLE);
   if (sortableAttr === true) return true;
   if (sortableAttr === false) return false;
-  return field.ownAttr(FIELD_ATTR_FILTERABLE) === true;
+  return field.attr(FIELD_ATTR_FILTERABLE) === true;
 }
 
 /**

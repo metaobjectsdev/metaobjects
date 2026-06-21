@@ -177,7 +177,7 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
  */
 export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       const base = stripPackage(ref);
       return field.isArray ? `${base}[]` : base;
@@ -210,7 +210,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   // so ts-poet hoists the import. Mirrors zod-validators.ts's `<Ref>InsertSchema`
   // import strategy, just for the type alias instead of the schema constant.
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
       // referenced interface is named by the BARE short name. The import MODULE is
@@ -269,7 +269,7 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
 
   const lines: Code[] = [];
   for (const field of entity.fields()) {
-    const required = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+    const required = field.attr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
     const tsType = valueObjectFieldType(entity, field, ctx);
     lines.push(code`  ${field.name}${optional}: ${tsType};`);

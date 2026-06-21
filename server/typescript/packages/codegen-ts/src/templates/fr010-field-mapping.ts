@@ -76,21 +76,21 @@ export function isArray(field: MetaData): boolean {
 
 /** True iff the field's @required is explicitly true (or the string "true"). */
 export function isRequired(field: MetaData): boolean {
-  const v = field.ownAttr(FIELD_ATTR_REQUIRED);
+  const v = field.attr(FIELD_ATTR_REQUIRED);
   if (v === true) return true;
   return typeof v === "string" && v.toLowerCase() === "true";
 }
 
 /** True iff the field's @xmlText is explicitly true (the XML text-content extract marker). */
 export function xmlText(field: MetaData): boolean {
-  const v = field.ownAttr(FIELD_ATTR_XML_TEXT);
+  const v = field.attr(FIELD_ATTR_XML_TEXT);
   if (v === true) return true;
   return typeof v === "string" && v.toLowerCase() === "true";
 }
 
 /** The string members of an enum field's @values attr (empty when absent). */
 export function enumValues(field: MetaData): string[] {
-  const v = field.ownAttr(FIELD_ATTR_VALUES);
+  const v = field.attr(FIELD_ATTR_VALUES);
   if (Array.isArray(v)) return v.map((e) => String(e));
   return [];
 }
@@ -100,7 +100,7 @@ export function enumValues(field: MetaData): string[] {
  * or null when absent. Read own-attr only — `@coerceDefault` is concrete, never inherited.
  */
 export function coerceDefault(field: MetaData): string | null {
-  const v = field.ownAttr(FIELD_ATTR_COERCE_DEFAULT);
+  const v = field.attr(FIELD_ATTR_COERCE_DEFAULT);
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
@@ -108,7 +108,7 @@ export function coerceDefault(field: MetaData): string | null {
  * FR-011: the field's `@default` member symbol (absent-fill enum value), or null when absent.
  */
 export function defaultValue(field: MetaData): string | null {
-  const v = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const v = field.attr(FIELD_ATTR_DEFAULT);
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
@@ -128,7 +128,7 @@ export function resolveNormalize(field: MetaData, ownerObject: MetaData | null):
 
 /** The `@normalize` attr of a node as a NormalizeMode, or null when absent. */
 function normalizeAttrOf(node: MetaData): NormalizeMode | null {
-  const v = node.ownAttr(FIELD_ATTR_NORMALIZE);
+  const v = node.attr(FIELD_ATTR_NORMALIZE);
   return typeof v === "string" && v.length > 0 ? (v as NormalizeMode) : null;
 }
 

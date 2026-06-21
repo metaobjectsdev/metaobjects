@@ -37,7 +37,7 @@ function findObject(root: MetaData, name: string): MetaData | undefined {
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
 function refVo(field: MetaData, root: MetaData): MetaData | undefined {
-  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string") return undefined;
   const direct = findObject(root, ref);
   if (direct !== undefined) return direct;

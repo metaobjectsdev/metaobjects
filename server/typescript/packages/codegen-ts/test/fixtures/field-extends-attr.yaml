@@ -1,0 +1,27 @@
+metadata:
+  package: t
+  children:
+  # Abstract field — its attrs (required, maxLength) are inherited via field-level extends.
+  - field.string:
+      name: Name
+      abstract: true
+      required: true
+      maxLength: 200
+  - object.entity:
+      name: Owner
+      children:
+      - source.rdb: { table: owners }
+      - field.uuid: { name: id, required: true, default: gen_random_uuid() }
+      - identity.primary: { name: pk, fields: [id], generation: uuid }
+  - object.entity:
+      name: Widget
+      children:
+      - source.rdb: { table: widgets }
+      - field.uuid: { name: id, required: true, default: gen_random_uuid() }
+      # `name` inherits required + maxLength from the abstract Name field (effective attrs).
+      - field.string: { name: name, extends: Name }
+      - field.uuid: { name: ownerId, column: owner_id }
+      - identity.primary: { name: pk, fields: [id], generation: uuid }
+      # The YAML loader resolves `references: Owner` to the FQN `t::Owner`; the codegen
+      # must strip the package to find the target and still emit the FK.
+      - identity.reference: { name: fkOwner, fields: [ownerId], references: Owner }
