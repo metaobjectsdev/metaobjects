@@ -16,7 +16,7 @@ namespace MetaObjects.Core.Field;
 public static class FieldConstants
 {
     // -----------------------------------------------------------------------
-    // Field subtypes (15)
+    // Field subtypes (16)
     // -----------------------------------------------------------------------
 
     public const string FIELD_SUBTYPE_STRING    = "string";
@@ -30,6 +30,7 @@ public static class FieldConstants
     public const string FIELD_SUBTYPE_TIME      = "time";
     public const string FIELD_SUBTYPE_TIMESTAMP = "timestamp";
     public const string FIELD_SUBTYPE_OBJECT    = "object";
+    public const string FIELD_SUBTYPE_MAP       = "map";
     public const string FIELD_SUBTYPE_CURRENCY  = "currency";
     public const string FIELD_SUBTYPE_ENUM      = "enum";
     /// <summary>
@@ -55,6 +56,7 @@ public static class FieldConstants
         FIELD_SUBTYPE_TIME,
         FIELD_SUBTYPE_TIMESTAMP,
         FIELD_SUBTYPE_OBJECT,
+        FIELD_SUBTYPE_MAP,
         FIELD_SUBTYPE_CURRENCY,
         FIELD_SUBTYPE_ENUM,
         FIELD_SUBTYPE_UUID,
@@ -87,6 +89,13 @@ public static class FieldConstants
     /// spelling as the relationship <c>@objectRef</c> — Java's single ATTR_OBJECT_REF.
     /// </summary>
     public const string FIELD_ATTR_OBJECT_REF            = "objectRef";
+
+    /// <summary>
+    /// Scalar value subtype of a <c>field.map</c> (open-keyed map). Mutually exclusive
+    /// with @objectRef (which sets a value-object value type). Keys are always strings.
+    /// Mirrors TS <c>FIELD_ATTR_VALUE_TYPE</c>.
+    /// </summary>
+    public const string FIELD_ATTR_VALUE_TYPE            = "valueType";
 
     /// <summary>
     /// Storage strategy for an object-typed field. Meaningful only when @objectRef is set.

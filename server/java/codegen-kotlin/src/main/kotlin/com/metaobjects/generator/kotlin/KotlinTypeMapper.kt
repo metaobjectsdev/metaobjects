@@ -10,18 +10,22 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
 import com.metaobjects.`object`.MetaObject
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FLOAT
 import com.squareup.kotlinpoet.INT
 import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.MAP
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 
@@ -213,10 +217,40 @@ object KotlinTypeMapper {
         // on a field.string is the separate physical escape hatch and keeps the String
         // property — handled by the StringField arm, not here.
         is UuidField      -> ClassName("java.util", "UUID")
+        // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
+        // Keys are always String. The value type is the scalar named by @valueType,
+        // or (for an @objectRef map) the referenced VO — which needs the loader to
+        // resolve, so the VO case is handled by KotlinEntityGenerator.resolveElementType;
+        // here the @objectRef branch falls back to Map<String, Any>.
+        is MapField       -> MAP.parameterizedBy(STRING, mapValueScalarTypeName(field) ?: ANY)
         else -> throw IllegalArgumentException(
             "unsupported Kotlin type mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
+
+    /**
+     * The Kotlin value TypeName for a scalar-valued [MapField] (the type named by its
+     * `@valueType` attr — string/int/long/double/float/decimal/boolean/date/time/
+     * timestamp/uuid). Returns null when the map carries no `@valueType` (an
+     * `@objectRef`-valued map — the VO element type is resolved by the entity generator,
+     * which has the loader). The loader has already validated that exactly one of
+     * `@valueType` / `@objectRef` is set and that `@valueType` names a scalar subtype.
+     */
+    fun mapValueScalarTypeName(field: MapField): TypeName? =
+        when (stringAttr(field, MapField.ATTR_VALUE_TYPE)) {
+            StringField.SUBTYPE_STRING    -> STRING
+            IntegerField.SUBTYPE_INT      -> INT
+            LongField.SUBTYPE_LONG        -> LONG
+            DoubleField.SUBTYPE_DOUBLE    -> DOUBLE
+            FloatField.SUBTYPE_FLOAT      -> FLOAT
+            DecimalField.SUBTYPE_DECIMAL  -> ClassName("java.math", "BigDecimal")
+            BooleanField.SUBTYPE_BOOLEAN  -> BOOLEAN
+            DateField.SUBTYPE_DATE        -> ClassName("java.time", "LocalDate")
+            TimeField.SUBTYPE_TIME        -> ClassName("java.time", "LocalTime")
+            TimestampField.SUBTYPE_TIMESTAMP -> ClassName("java.time", "LocalDateTime")
+            UuidField.SUBTYPE_UUID        -> ClassName("java.util", "UUID")
+            else -> null
+        }
 
     /**
      * Map a MetaField to the Exposed `Table` column statement (e.g., `varchar("name", 100)`).
@@ -266,6 +300,9 @@ object KotlinTypeMapper {
         // member — no import. All other StringField shapes (varchar/text) are Table members.
         is StringField    ->
             if (dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
+        // field.map emits the `jsonb(...)` extension (single JSONB column), which needs
+        // the exposed-json import — same as the `@dbColumnType=jsonb` string path.
+        is MapField       -> EXPOSED_JSONB_IMPORT
         // IntegerField, LongField, DoubleField, FloatField, BooleanField, CurrencyField,
         // EnumField, and UuidField all map to member functions on Table.
         // No additional import required.
@@ -338,6 +375,14 @@ object KotlinTypeMapper {
         // field.uuid → Exposed's first-class `uuid(name)` (native Postgres uuid column).
         // R6 Plan 2a: matched by instanceof now that UuidField is a real JVM class.
         is UuidField      -> "uuid(\"$colName\")"
+        // field.map → a single Postgres `JSONB` column holding the JSON object. Same
+        // emission as a `field.object` jsonb column (the typed-object JSONB path) — the
+        // Exposed `jsonb(name, encoder, decoder)` extension with kotlinx.serialization
+        // Json. Never flattened; isArray does not apply to a map. (Map columns are
+        // normally produced by KotlinExposedTableGenerator.buildObjectColumns; this arm
+        // keeps the mapper total for direct callers.)
+        is MapField       ->
+            "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
         else -> throw IllegalArgumentException(
             "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
         )

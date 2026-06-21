@@ -62,6 +62,20 @@ public static class CSharpNaming
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);
 
+    /// <summary>
+    /// The C# value type of a <c>field.map</c> (an open-keyed map): the value-object
+    /// (@objectRef → Pascal class name) when set, else the scalar named by @valueType
+    /// (defaulting to <c>string</c>). Keys are always strings, so the emitted property
+    /// type is <c>Dictionary&lt;string, V&gt;</c>. Mirrors the TS/Python map value mapping.
+    /// </summary>
+    public static string MapValueType(MetaField field)
+    {
+        if (field.ObjectRef is { } oref && oref.Length > 0)
+            return Pascal(StripPkg(oref));
+        var vt = field.ValueType;
+        return vt is not null ? (ScalarFor(vt) ?? "string") : "string";
+    }
+
     /// <summary>PascalCase the (camelCase) metadata name for a C# member/type identifier.</summary>
     public static string Pascal(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];

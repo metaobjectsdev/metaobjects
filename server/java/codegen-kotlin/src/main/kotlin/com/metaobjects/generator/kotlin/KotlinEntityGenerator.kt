@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.MetaData
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.generator.GeneratorIOWriter
@@ -21,9 +22,11 @@ import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.LIST
+import com.squareup.kotlinpoet.MAP
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import java.io.OutputStream
@@ -214,6 +217,17 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             if (target != null) {
                 val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
                 return ClassName(targetPkg, targetShort)
+            }
+        }
+        // field.map → Map<String, V>. The value is the @valueType scalar (handled by
+        // kotlinTypeName below) or, for an @objectRef map, the referenced VO data class —
+        // which needs the loader to resolve, so build the Map<String, VO> here.
+        if (field is MapField) {
+            val ref = readObjectRef(field)
+            val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+            if (target != null) {
+                val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
+                return MAP.parameterizedBy(STRING, ClassName(targetPkg, targetShort))
             }
         }
         return KotlinTypeMapper.kotlinTypeName(field)

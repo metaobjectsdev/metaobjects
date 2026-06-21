@@ -34,6 +34,7 @@ children, and cardinality of a subtype. Universal documentation attributes
 | `field.float` | Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money. | [types/field.md#fieldfloat](types/field.md#fieldfloat) |
 | `field.int` | 32-bit signed integer. Binds to the native int type; DB column is INTEGER. | [types/field.md#fieldint](types/field.md#fieldint) |
 | `field.long` | 64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT. | [types/field.md#fieldlong](types/field.md#fieldlong) |
+| `field.map` | An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object). | [types/field.md#fieldmap](types/field.md#fieldmap) |
 | `field.object` | A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint). | [types/field.md#fieldobject](types/field.md#fieldobject) |
 | `field.string` | Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)). | [types/field.md#fieldstring](types/field.md#fieldstring) |
 | `field.time` | Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME. | [types/field.md#fieldtime](types/field.md#fieldtime) |

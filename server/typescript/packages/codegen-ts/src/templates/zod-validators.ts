@@ -15,12 +15,12 @@ import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
-  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_READ_ONLY,
+  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE, FIELD_ATTR_READ_ONLY,
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
@@ -321,6 +321,14 @@ ${joinCode(updateFieldLines, { on: ",\n" })}
 `;
 }
 
+/** Zod expression for a scalar value subtype (used for a field.map's @valueType). */
+function zodScalarFor(subType: string): string {
+  if (subType === FIELD_SUBTYPE_INT || subType === FIELD_SUBTYPE_LONG || subType === FIELD_SUBTYPE_CURRENCY) return "z.number().int()";
+  if (subType === FIELD_SUBTYPE_DOUBLE || subType === FIELD_SUBTYPE_FLOAT) return "z.number()";
+  if (subType === FIELD_SUBTYPE_BOOLEAN) return "z.boolean()";
+  return "z.string()"; // string/uuid/date/time/timestamp/decimal/enum on the wire
+}
+
 function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
   // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
   // via an imp() so ts-poet hoists the cross-module import. Without this the
@@ -348,6 +356,22 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
     let base: Code = code`z.unknown()`;
     if (field.isArray) base = code`z.array(${base})`;
     return appendValidatorChain(base, field);
+  }
+
+  // field.map → z.record(z.string(), V): value is a VO's InsertSchema (@objectRef)
+  // or a scalar zod (@valueType). Keys are always strings.
+  if (field.subType === FIELD_SUBTYPE_MAP) {
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref === "string" && ref.length > 0) {
+      const refBase = stripPackage(ref);
+      const moduleSpec = (ctx && owner)
+        ? valueObjectModuleSpecifier(refBase, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refBase}.js`;
+      const refImp = imp(`${refBase}InsertSchema@${moduleSpec}`);
+      return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field);
+    }
+    const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
+    return appendValidatorChain(code`z.record(z.string(), ${zodScalarFor(typeof vt === "string" ? vt : "string")})`, field);
   }
 
   let baseStr: string;

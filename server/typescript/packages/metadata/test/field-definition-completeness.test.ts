@@ -39,6 +39,7 @@ import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_DATE,
@@ -90,6 +91,12 @@ const OBJECT_CORE_EXTRA: Record<string, AttrExp> = {
 const CURRENCY_EXTRA: Record<string, AttrExp> = {
   currency: { valueType: "string", required: false },
 };
+// field.map carries @valueType (scalar value subtype) + @objectRef (VO value);
+// exactly one is set per instance (a loader rule, not a registration concern).
+const MAP_EXTRA: Record<string, AttrExp> = {
+  valueType: { valueType: "string", required: false },
+  objectRef: { valueType: "string", required: false },
+};
 const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
   values: { valueType: "string", required: true },
   provided: { valueType: "boolean", required: false },
@@ -128,6 +135,7 @@ const EXPECTED_DATA_TYPE: Record<string, string> = {
   time: "date",
   timestamp: "date",
   object: "object",
+  map: "object",
   currency: "long",
   enum: "string",
   uuid: "string",
@@ -138,6 +146,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
   if (subType === FIELD_SUBTYPE_STRING) Object.assign(exp, STRING_EXTRA);
   if (subType === FIELD_SUBTYPE_DECIMAL) Object.assign(exp, DECIMAL_EXTRA);
   if (subType === FIELD_SUBTYPE_OBJECT) Object.assign(exp, OBJECT_CORE_EXTRA, STORAGE_EXTRA);
+  if (subType === FIELD_SUBTYPE_MAP) Object.assign(exp, MAP_EXTRA);
   if (subType === FIELD_SUBTYPE_CURRENCY) Object.assign(exp, CURRENCY_EXTRA);
   if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA);
   if (TEMPORAL.has(subType)) Object.assign(exp, AUTO_SET_EXTRA);
@@ -145,7 +154,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
 }
 
 describe("field provider externalization — strict per-subtype completeness", () => {
-  test("registers all 15 field subtypes", () => {
+  test("registers all 16 field subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_FIELD).sort();
     expect(registered).toEqual([...FIELD_SUBTYPES].sort());
   });

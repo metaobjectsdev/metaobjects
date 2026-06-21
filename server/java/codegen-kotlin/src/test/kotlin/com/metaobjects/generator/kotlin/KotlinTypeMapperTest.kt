@@ -11,6 +11,7 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
@@ -23,6 +24,7 @@ import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FLOAT
 import com.squareup.kotlinpoet.INT
 import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.STRING
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -327,6 +329,40 @@ class KotlinTypeMapperTest {
         assertEquals("uuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
         // `uuid(...)` is a Table member — no extra import line needed.
         assertNull(KotlinTypeMapper.exposedColumnImport(f))
+    }
+
+    // === field.map coverage =================================================
+
+    @Test fun `map field with valueType=string maps to Map of String to String`() {
+        // field.map @valueType=string → Kotlin `Map<String, String>` property.
+        val f = MapField("labels")
+        f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "string"))
+        assertEquals(
+            com.squareup.kotlinpoet.MAP.parameterizedBy(STRING, STRING),
+            KotlinTypeMapper.kotlinTypeName(f),
+        )
+    }
+
+    @Test fun `map field with valueType=long maps to Map of String to Long`() {
+        val f = MapField("counts")
+        f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "long"))
+        assertEquals(
+            com.squareup.kotlinpoet.MAP.parameterizedBy(STRING, LONG),
+            KotlinTypeMapper.kotlinTypeName(f),
+        )
+    }
+
+    @Test fun `map field emits a single jsonb exposed column`() {
+        // field.map → ONE jsonb column (same emission as a jsonb-stored field.object).
+        // Never flattened, never a native array.
+        val f = MapField("labels")
+        f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "string"))
+        assertEquals(
+            "jsonb(\"labels\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })",
+            KotlinTypeMapper.exposedColumnSpec(f),
+        )
+        // The jsonb column needs the exposed-json import.
+        assertEquals("org.jetbrains.exposed.sql.json.jsonb", KotlinTypeMapper.exposedColumnImport(f))
     }
 
     // === else-guard: an unmapped field subtype must fail loud, not silently regress ===

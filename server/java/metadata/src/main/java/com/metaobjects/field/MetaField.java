@@ -169,6 +169,9 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     /** Object-reference target for object-valued fields (string). */
     public static final String ATTR_OBJECT_REF = "objectRef";
 
+    /** Scalar value subtype for an open-keyed map field (string: string/int/long/...). */
+    public static final String ATTR_VALUE_TYPE = "valueType";
+
     /** Physical column name (string). Cross-port name {@code column}. */
     public static final String ATTR_COLUMN = "column";
 
@@ -272,6 +275,12 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
                 def.optionalAttributeWithConstraints(ATTR_STORAGE)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_OBJECT_REF)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                // @valueType: scalar value subtype for an open-keyed map field
+                // (field.map). Declared on field.base so it propagates via the
+                // inheritance snapshot; FR-033 strict-attr scoping keeps it only on
+                // field.map (the sole subtype the spec scopes it to).
+                def.optionalAttributeWithConstraints(ATTR_VALUE_TYPE)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_COLUMN)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();

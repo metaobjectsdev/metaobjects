@@ -1429,6 +1429,76 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass 8b: ValidateFieldMap
+    //   field.map is an open-keyed map (IDictionary<string,V>) stored in a single
+    //   jsonb column. Keys are always strings. The value type is set by EXACTLY ONE
+    //   of @valueType (a scalar value subtype) or @objectRef (a value-object). This
+    //   pass enforces that exactly-one-of rule and that @valueType (when set) names a
+    //   known scalar subtype. Cross-port parity: TS validateFieldMap, Java
+    //   validateFieldMap, Python _validate_field_map.
+    //
+    // Ported from validateFieldMap in
+    // typescript/packages/metadata/src/loader/validation-passes.ts.
+    // =========================================================================
+
+    /// <summary>The scalar value subtypes a field.map's @valueType may name.</summary>
+    private static readonly HashSet<string> MapScalarValueSubtypes = new(StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_STRING,
+        FIELD_SUBTYPE_INT,
+        FIELD_SUBTYPE_LONG,
+        FIELD_SUBTYPE_DOUBLE,
+        FIELD_SUBTYPE_FLOAT,
+        FIELD_SUBTYPE_DECIMAL,
+        FIELD_SUBTYPE_BOOLEAN,
+        FIELD_SUBTYPE_DATE,
+        FIELD_SUBTYPE_TIME,
+        FIELD_SUBTYPE_TIMESTAMP,
+        FIELD_SUBTYPE_UUID,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateFieldMap(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                if (field.SubType != FIELD_SUBTYPE_MAP) continue;
+
+                var valueType = field.OwnAttr(FIELD_ATTR_VALUE_TYPE);
+                var hasValueType = valueType is string vt && vt.Length > 0;
+                var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+                var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
+
+                if (hasValueType == hasObjectRef)
+                {
+                    errors.Add(new MetaError(
+                        $"field.map \"{obj.Name}.{field.Name}\" must set exactly one of @valueType " +
+                        "(a scalar value subtype) or @objectRef (a value-object); " +
+                        (hasValueType ? "both are set" : "neither is set"),
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: field.Source));
+                    continue;
+                }
+
+                if (hasValueType && !MapScalarValueSubtypes.Contains((string)valueType!))
+                {
+                    errors.Add(new MetaError(
+                        $"field.map \"{obj.Name}.{field.Name}\" has @valueType \"{valueType}\" which is not " +
+                        "a scalar value subtype (string/int/long/double/float/decimal/boolean/date/time/" +
+                        "timestamp/uuid). For a value-object-valued map use @objectRef instead.",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: field.Source));
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
     // Pass 14 (FR-017): ValidateRelationships — M:N slim-vocabulary rules.
     //
     // Deferred-resolution validation (runs after all files load + extends:

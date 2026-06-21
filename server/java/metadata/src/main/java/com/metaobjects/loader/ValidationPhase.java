@@ -23,16 +23,20 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
+import com.metaobjects.field.MapField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UuidField;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
@@ -167,6 +171,7 @@ public final class ValidationPhase {
         }
         pass(collected, () -> validateOrigins(root));
         pass(collected, () -> validateObjectFieldStorage(root));
+        pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         pass(collected, () -> validateDataGridLayouts(root));
         pass(collected, () -> validateTemplates(root));
@@ -1339,6 +1344,82 @@ public final class ValidationPhase {
                     + " (use @storage=\"jsonb\" for owned-array storage)",
                 ErrorCode.ERR_STORAGE_FLATTENED_ARRAY, field.getSource());
         }
+    }
+
+    // =========================================================================
+    // field.map value-type validation
+    //
+    // Mirrors the TS validateFieldMap pass (server/typescript/packages/metadata/
+    // src/loader/validation-passes.ts). A field.map is an open-keyed map
+    // ({@code Map<String, V>}) stored in a single jsonb column. Keys are always
+    // strings; the value type is set by EXACTLY ONE of @valueType (a scalar value
+    // subtype) or @objectRef (a value-object). This pass enforces that
+    // exactly-one-of rule and that @valueType (when set) names a known scalar
+    // subtype. Cross-port parity: TS validateFieldMap, Python _validate_field_map,
+    // C# ValidateFieldMap. Both violations report ERR_BAD_ATTR_VALUE.
+    // =========================================================================
+
+    /** The scalar value subtypes a field.map's @valueType may name. */
+    private static final java.util.Set<String> MAP_SCALAR_VALUE_SUBTYPES = java.util.Set.of(
+        StringField.SUBTYPE_STRING,
+        IntegerField.SUBTYPE_INT,
+        LongField.SUBTYPE_LONG,
+        DoubleField.SUBTYPE_DOUBLE,
+        FloatField.SUBTYPE_FLOAT,
+        DecimalField.SUBTYPE_DECIMAL,
+        BooleanField.SUBTYPE_BOOLEAN,
+        DateField.SUBTYPE_DATE,
+        TimeField.SUBTYPE_TIME,
+        TimestampField.SUBTYPE_TIMESTAMP,
+        UuidField.SUBTYPE_UUID);
+
+    static void validateFieldMap(MetaRoot root) {
+        walkFieldMap(root);
+    }
+
+    private static void walkFieldMap(MetaData node) {
+        validateFieldMapNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkFieldMap(child);
+        }
+    }
+
+    private static void validateFieldMapNode(MetaData node) {
+        if (!(node instanceof MapField)) return;
+
+        MapField field = (MapField) node;
+
+        String valueType = attrStringOrNull(node, MapField.ATTR_VALUE_TYPE);
+        boolean hasValueType = valueType != null && !valueType.isEmpty();
+        String objectRef = attrStringOrNull(node, MapField.ATTR_OBJECTREF);
+        boolean hasObjectRef = objectRef != null && !objectRef.isEmpty();
+
+        if (hasValueType == hasObjectRef) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field.map '" + field.getName()
+                    + "' must set exactly one of @valueType (a scalar value subtype)"
+                    + " or @objectRef (a value-object); "
+                    + (hasValueType ? "both are set" : "neither is set"),
+                ErrorCode.ERR_BAD_ATTR_VALUE, field.getSource());
+        }
+
+        if (hasValueType && !MAP_SCALAR_VALUE_SUBTYPES.contains(valueType)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field.map '" + field.getName()
+                    + "' has @valueType \"" + valueType + "\" which is not a scalar"
+                    + " value subtype (string/int/long/double/float/decimal/boolean/"
+                    + "date/time/timestamp/uuid). For a value-object-valued map use"
+                    + " @objectRef instead.",
+                ErrorCode.ERR_BAD_ATTR_VALUE, field.getSource());
+        }
+    }
+
+    /** The own-attr string value (own-only, matching @objectRef/@storage reads), or null when absent. */
+    private static String attrStringOrNull(MetaData node, String attrName) {
+        if (!node.hasMetaAttr(attrName, false)) return null;
+        return node.getMetaAttr(attrName, false).getValueAsString();
     }
 
     // =========================================================================

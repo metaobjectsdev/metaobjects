@@ -2,6 +2,7 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.template.MetaTemplate
@@ -103,8 +104,9 @@ internal object KotlinOutputFormatSpecEmitter {
         val required = KotlinExtractSchemaEmitter.isRequired(field)
         val array = field.isArray
 
-        // Nested object — bounded deferral (mirrors Java plan 3.1).
-        if (field is ObjectField) {
+        // Nested object OR open-keyed map — both structured JSON values; bounded
+        // deferral (mirrors Java plan 3.1). FieldKind.OBJECT, nested prompt deferred.
+        if (field is ObjectField || field is MapField) {
             return "PromptField(\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(name)}\", FieldKind.OBJECT, $required, $array, null, null, null, null, null) /* FR-010: nested prompt deferred */"
         }
 

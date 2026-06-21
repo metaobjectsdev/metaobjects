@@ -26,6 +26,20 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     }
 
     /// <summary>
+    /// Scalar value subtype of a <c>field.map</c> (the <c>@valueType</c> attr):
+    /// one of string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid,
+    /// or null when the map is value-object-valued (set via <c>@objectRef</c>) or absent.
+    /// </summary>
+    public string? ValueType
+    {
+        get
+        {
+            var v = OwnAttr(FIELD_ATTR_VALUE_TYPE);
+            return v is string s ? s : null;
+        }
+    }
+
+    /// <summary>
     /// Storage strategy for an object-typed field (the <c>@storage</c> attr):
     /// <c>flattened</c> / <c>jsonb</c> / <c>subdocument</c>, or null when absent
     /// (a relational target treats absent as single-jsonb-column, per back-compat).

@@ -12,6 +12,10 @@ FIELD_SUBTYPE_TIMESTAMP = "timestamp"
 FIELD_SUBTYPE_TIME = "time"
 FIELD_SUBTYPE_DECIMAL = "decimal"
 FIELD_SUBTYPE_OBJECT = "object"
+# An open-keyed map (dict[str, V] / Record<string,V>) stored in a single jsonb
+# column. Keys are always strings; the value type is set by @valueType (a scalar
+# field subtype) or @objectRef (a value-object). Mirrors TS FIELD_SUBTYPE_MAP.
+FIELD_SUBTYPE_MAP = "map"
 FIELD_SUBTYPE_CURRENCY = "currency"
 FIELD_SUBTYPE_ENUM = "enum"
 # R6 Plan 2a — field.uuid is a logical identity scalar (ADR-0013). String-backed
@@ -33,6 +37,7 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_TIME,
     FIELD_SUBTYPE_DECIMAL,
     FIELD_SUBTYPE_OBJECT,
+    FIELD_SUBTYPE_MAP,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_UUID,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
@@ -58,6 +63,10 @@ FIELD_ATTR_SORTABLE = "sortable"
 FIELD_ATTR_SORTABLE_DEFAULT_ORDER = "sortableDefaultOrder"
 FIELD_ATTR_AUTO_SET = "autoSet"
 FIELD_ATTR_OBJECT_REF = "objectRef"
+# @valueType — scalar value subtype of a field.map (open-keyed map). Mutually
+# exclusive with @objectRef (which sets a value-object value type); exactly one of
+# the two must be set. Keys are always strings. Mirrors TS FIELD_ATTR_VALUE_TYPE.
+FIELD_ATTR_VALUE_TYPE = "valueType"
 FIELD_ATTR_VALUES = "values"
 # FR-010 field-teaching attrs (any field; drive the output-format prompt fragment).
 # Never carried in comments.

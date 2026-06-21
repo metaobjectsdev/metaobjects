@@ -84,7 +84,7 @@ object KotlinM2mSupport {
             val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
             val junctionShort = PackageMapping.splitFqn(junction.name).second
             val targetScalars = target.metaFields
-                .filterNot { it is com.metaobjects.field.ObjectField }
+                .filterNot { it is com.metaobjects.field.ObjectField || it is com.metaobjects.field.MapField }
                 .map { it.name }
 
             out.add(

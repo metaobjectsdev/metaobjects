@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 60,
+  "registeredSubTypeCount": 61,
   "exercisedSubTypeCount": 39,
   "untestedSubTypes": [
     "attr.base",
@@ -11,6 +11,7 @@
     "attr.long",
     "attr.string",
     "field.base",
+    "field.map",
     "layout.base",
     "object.base",
     "origin.base",

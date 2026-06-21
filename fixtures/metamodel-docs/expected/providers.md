@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.int`, `field.long`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
 
 **Contributes attributes:**
 
@@ -21,6 +21,7 @@ Core metaobjects metamodel types and subtypes.
 - `field.currency`: `@currency`
 - `field.decimal`: `@precision`, `@scale`
 - `field.enum`: `@provided`, `@values`
+- `field.map`: `@objectRef`, `@valueType`
 - `field.object`: `@objectRef`
 - `field.string`: `@maxLength`
 - `identity.primary`: `@fields`, `@generation`
@@ -60,6 +61,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.float`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.long`: `@column`, `@db.indexed`, `@dbColumnType`
+- `field.map`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@storage`
 - `field.string`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
@@ -91,6 +93,7 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.float`: `@example`, `@instruction`, `@xmlText`
 - `field.int`: `@example`, `@instruction`, `@xmlText`
 - `field.long`: `@example`, `@instruction`, `@xmlText`
+- `field.map`: `@example`, `@instruction`, `@xmlText`
 - `field.object`: `@example`, `@instruction`, `@xmlText`
 - `field.string`: `@example`, `@instruction`, `@xmlText`
 - `field.time`: `@example`, `@instruction`, `@xmlText`
@@ -117,6 +120,7 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 - `field.float`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.int`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.long`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
+- `field.map`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.object`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.string`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.time`: `@filterable`, `@sortable`, `@sortableDefaultOrder`

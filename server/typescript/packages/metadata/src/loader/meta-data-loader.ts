@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
@@ -511,6 +511,10 @@ export class MetaDataLoader {
       // Ninth pass: @storage cross-attribute validation — @storage requires
       // @objectRef, and @storage "flattened" forbids isArray=true.
       errors.push(...validateFieldObjectStorage(root));
+
+      // field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
+      // @valueType (when set) must name a known scalar subtype.
+      errors.push(...validateFieldMap(root));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

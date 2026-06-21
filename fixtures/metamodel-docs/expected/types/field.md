@@ -326,6 +326,40 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 - `validator.*` — 0..*
 - `view.*` — 0..*
 
+### field.map
+
+An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).
+
+**Owning provider:** metaobjects-core-types
+
+**Rules:** Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
+| `@dbColumnType` | string | no |  |  | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb \| timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. |
+| `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
+| `@example` | string | no |  |  | metaobjects-prompt | FR-010: an example value for this field, shown in the generated output-format prompt fragment. |
+| `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer). |
+| `@instruction` | string | no |  |  | metaobjects-prompt | FR-010: a short instruction for this field, shown in the generated output-format prompt fragment. |
+| `@objectRef` | string | no |  |  | metaobjects-core-types | Name (or FQN) of the value-object for a value-object-valued map. Mutually exclusive with @valueType; exactly one of the two must be set. |
+| `@readOnly` | boolean | no |  |  | metaobjects-core-types | FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. |
+| `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. |
+| `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
+| `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
+| `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
+| `@valueType` | string | no |  |  | metaobjects-core-types | Scalar value subtype for a scalar-valued map (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually exclusive with @objectRef; exactly one of the two must be set. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+
+**Allowed children**
+
+- `origin.*` — 0..*
+- `validator.*` — 0..*
+- `view.*` — 0..*
+
 ### field.object
 
 A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).

@@ -9,6 +9,7 @@ import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
@@ -145,7 +146,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface on the Exposed Table; @storage controls a separate column shape).
         val sortFields = entity.metaFields
-            .filterNot { it is ObjectField }
+            .filterNot { it is ObjectField || it is MapField }
             .map { it.name }
 
         // Per-field dispatch map (filter dispatch); only used inside the generated
@@ -154,7 +155,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // (drives the eq/ne/in value cast — Exposed's typed `Column<T>.eq` rejects a bare
         // `Any?`, so each predicate value is cast to the column's element type).
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
-            .filterNot { it is ObjectField }
+            .filterNot { it is ObjectField || it is MapField }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
@@ -242,7 +243,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
             append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField) continue
+                if (field is ObjectField || field is MapField) continue
                 append("    ${field.name} = row[${tableObjectName}.${field.name}],\n")
             }
             append(")\n\n")
@@ -302,7 +303,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    fun create(@Valid @RequestBody dto: ${shortName}): ResponseEntity<${shortName}> = transaction {\n")
             append("        val newId = ${tableObjectName}.insert {\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField) continue
+                if (field is ObjectField || field is MapField) continue
                 // Skip the PK column on insert — the table's @generation=increment owns it.
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
@@ -323,7 +324,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    fun update(@PathVariable id: Long, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        val updated = ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField) continue
+                if (field is ObjectField || field is MapField) continue
                 if (field.name == pkFieldName) continue
                 append("            it[${field.name}] = dto.${field.name}\n")
             }
@@ -404,9 +405,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         }
 
         // Union scalar fields (base own + subtype-only), in the data class / table order.
-        val scalarFields = (base.metaFields.filterNot { it is ObjectField } +
-            KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField })
-        val sortFields = base.metaFields.filterNot { it is ObjectField }.map { it.name }
+        val scalarFields = (base.metaFields.filterNot { it is ObjectField || it is MapField } +
+            KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
+        val sortFields = base.metaFields.filterNot { it is ObjectField || it is MapField }.map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
         val allowlistName = "${shortName}FilterAllowlist"
         // Union filter-dispatch specs (base + subtype columns) for the FR-009 pipeline — EXCLUDING the

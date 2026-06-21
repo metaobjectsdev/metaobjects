@@ -17,6 +17,9 @@ _FIELD_DATA_TYPE = {
     fc.FIELD_SUBTYPE_TIME: DataType.DATE,
     fc.FIELD_SUBTYPE_DECIMAL: DataType.DECIMAL,
     fc.FIELD_SUBTYPE_OBJECT: DataType.OBJECT,
+    # field.map is the map analog of field.object — an open-keyed map stored as a
+    # single jsonb/object column. Same logical data type as field.object.
+    fc.FIELD_SUBTYPE_MAP: DataType.OBJECT,
     fc.FIELD_SUBTYPE_CURRENCY: DataType.LONG,
     fc.FIELD_SUBTYPE_ENUM: DataType.STRING,
     # R6 Plan 2a — field.uuid is string-backed on the wire; the native uuid.UUID

@@ -108,6 +108,8 @@ public static class CoreTypes
         [FIELD_SUBTYPE_TIME]      = DataType.Date,
         [FIELD_SUBTYPE_TIMESTAMP] = DataType.Date,
         [FIELD_SUBTYPE_OBJECT]    = DataType.Object,
+        // field.map — an open-keyed map; its data type is Object (same as field.object).
+        [FIELD_SUBTYPE_MAP]       = DataType.Object,
     };
 
     // -------------------------------------------------------------------------
@@ -265,6 +267,10 @@ public static class CoreTypes
             List<AttrSchema> fieldAttrs = subType switch
             {
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
+                // field.map — the open-keyed map. @objectRef is already in CommonFieldAttrs;
+                // @valueType is map-specific. Strict attr scoping (from spec field.json's
+                // field.map allow-list) then prunes the object-only @storage attr.
+                FIELD_SUBTYPE_MAP      => [.. FieldSchema.CommonFieldAttrs, FieldSchema.MapValueTypeAttr],
                 // FR-033: field.enum keeps the structural @values / @provided in core; its
                 // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
                 // @normalize) are re-homed to the metaobjects-prompt concern provider

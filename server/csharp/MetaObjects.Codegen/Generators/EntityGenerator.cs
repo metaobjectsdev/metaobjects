@@ -173,6 +173,10 @@ public class EntityGenerator : IGenerator
                 }
                 member = ObjectNavProperty(entity, field, ctx);
             }
+            else if (field.SubType == FIELD_SUBTYPE_MAP)
+            {
+                member = MapProperty(entity, field, ctx);
+            }
             if (member is null) continue;
             member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
@@ -356,6 +360,8 @@ public class EntityGenerator : IGenerator
                 member = TphSubtypeEnumProperty(entity, field, ctx.Config, strategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT)
                 member = ObjectNavProperty(entity, field, ctx);
+            else if (field.SubType == FIELD_SUBTYPE_MAP)
+                member = MapProperty(entity, field, ctx);
             if (member is null) continue;
             member = ApplyPropertyAttributes(member, entity, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
@@ -556,6 +562,8 @@ public class EntityGenerator : IGenerator
                 member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
                 member = nav;
+            else if (field.SubType == FIELD_SUBTYPE_MAP)
+                member = MapProperty(vo, field, ctx, withAttributes: false);
             if (member is null) continue;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
@@ -911,6 +919,24 @@ public class EntityGenerator : IGenerator
             : $"    public {typeName}? {propName} {{ get; set; }}";
     }
 
+    // A property for a field.map (an open-keyed map). Emits a single
+    // Dictionary<string, V> property stored in one json column — the map analog of
+    // ObjectNavProperty's single-jsonb-column object field. Keys are always strings;
+    // V is a value-object (@objectRef) or a scalar (@valueType, defaulting to string).
+    // isArray does not apply (a map is never wrapped in a collection-of-maps), so the
+    // property is a non-null dictionary with an empty-dictionary initializer (matching
+    // the array/enum-array convention — the dictionary itself is never null in C#).
+    // When @objectRef names a value object, the resolved VO becomes a referenced POCO
+    // via the normal ReferencedValueObjects walk. withAttributes adds the EF [Column]
+    // mapping; value-object POCOs (no EF mapping) pass false.
+    protected string MapProperty(MetaObject owner, MetaField field, GenContext ctx, bool withAttributes = true)
+    {
+        var valueType = CSharpNaming.MapValueType(field);
+        var propName = PropertyName(field);
+        var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, ctx.Config.ColumnNamingStrategy)}\")]\n" : "";
+        return $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();";
+    }
+
     // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:
     // the result type of MIN(col)/MAX(col) in SQL is the aggregated column's own type,
     // NOT the (often-widened) field.* declaration. e.g. MIN over an INTEGER column is
@@ -932,6 +958,13 @@ public class EntityGenerator : IGenerator
         return sourceField is null ? null : CSharpNaming.ScalarFor(sourceField.SubType);
     }
 
+    // True for the fields that reference a value-object by @objectRef and so contribute
+    // a VO to the referenced-POCO closure: a field.object (a single nested VO) OR a
+    // field.map with @objectRef (a Dictionary<string, VO>). A scalar-valued field.map
+    // (@valueType) references no VO.
+    private static bool ReferencesValueObject(MetaField f) =>
+        (f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP) && f.ObjectRef is not null;
+
     // Transitive closure of plain value objects reachable through entity object-fields.
     protected static List<MetaObject> ReferencedValueObjects(IReadOnlyList<MetaObject> mapped, GenContext ctx)
     {
@@ -939,9 +972,9 @@ public class EntityGenerator : IGenerator
         var result = new List<MetaObject>();
         var queue = new Queue<MetaObject>();
 
-        // Seed from entity object-fields (projections handled separately).
+        // Seed from entity object-/map-fields (projections handled separately).
         foreach (var e in mapped.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
-            foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_OBJECT))
+            foreach (var f in e.Fields().Where(ReferencesValueObject))
                 Enqueue(f.ObjectRef);
 
         // FR-015: a callable's args value object is referenced via source.rdb @parameterRef
@@ -957,7 +990,7 @@ public class EntityGenerator : IGenerator
         {
             var vo = queue.Dequeue();
             result.Add(vo);
-            foreach (var f in vo.Fields().Where(f => f.SubType == FIELD_SUBTYPE_OBJECT))
+            foreach (var f in vo.Fields().Where(ReferencesValueObject))
                 Enqueue(f.ObjectRef);
         }
         return result.OrderBy(o => o.Name, StringComparer.Ordinal).ToList();
