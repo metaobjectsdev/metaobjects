@@ -5,6 +5,7 @@ import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.registry.TypeDefinition;
+import com.metaobjects.validation.MetaDataValidationException;
 import com.metaobjects.validation.ValidationError;
 import org.junit.Test;
 
@@ -66,6 +67,31 @@ public class DownstreamValidationTest extends SharedRegistryTestBase {
             String msg = ex.getMessage() + (ex.getCause() != null ? ex.getCause().getMessage() : "");
             assertTrue("expected ERR_INVALID_RELATIONSHIP, got: " + msg,
                 msg.contains("does not resolve") || msg.contains("ERR_INVALID_RELATIONSHIP"));
+        }
+    }
+
+    @Test
+    public void reportsEveryDanglingReferenceNotJustTheFirst() {
+        // Drift UX: a model with TWO broken object references reports BOTH in one load,
+        // rather than stopping at the first. The registry-derived reference pass already
+        // collects every finding; the loader now surfaces all of them.
+        String bad =
+            "{ \"metadata.root\": { \"package\": \"app\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Author\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"relationship.composition\": { \"name\": \"posts\", \"@objectRef\": \"NoSuchA\", \"@cardinality\": \"many\" } }," +
+            "    { \"relationship.composition\": { \"name\": \"tags\", \"@objectRef\": \"NoSuchB\", \"@cardinality\": \"many\" } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+        try {
+            newLoader().load(List.of(new InMemoryStringSource(bad, "bad2.json")));
+            org.junit.Assert.fail("expected a dangling-objectRef load error");
+        } catch (MetaDataValidationException ex) {
+            assertEquals("both dangling references reported", 2, ex.getValidationErrors().size());
+            String msg = ex.getMessage();
+            assertTrue("first dangling ref present: " + msg, msg.contains("NoSuchA"));
+            assertTrue("second dangling ref present: " + msg, msg.contains("NoSuchB"));
         }
     }
 

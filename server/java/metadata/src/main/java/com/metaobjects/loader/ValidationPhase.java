@@ -148,9 +148,15 @@ public final class ValidationPhase {
         if (loader != null && loader.getTypeRegistry() != null) {
             java.util.List<com.metaobjects.validation.ValidationError> refErrors =
                 com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry());
-            if (!refErrors.isEmpty()) {
+            if (refErrors.size() == 1) {
+                // Single finding: throw the plain exception (byte-identical to before — the
+                // single-error conformance fixtures depend on this exact shape).
                 com.metaobjects.validation.ValidationError e = refErrors.get(0);
                 throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
+            } else if (refErrors.size() > 1) {
+                // Multiple findings: surface them ALL (drift UX). The aggregated exception
+                // IS-A MetaDataException carrying the first error's code/envelope for back-compat.
+                throw new com.metaobjects.validation.MetaDataValidationException(refErrors);
             }
         }
         validateOrigins(root);
