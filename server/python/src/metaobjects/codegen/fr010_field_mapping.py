@@ -34,12 +34,12 @@ def fields(vo: MetaData) -> list[MetaData]:
 def is_array(field: MetaData) -> bool:
     """Array-ness from either form: the node property (programmatic build) or the
     ``@isArray`` attr (how metadata loads from JSON)."""
-    return bool(field.is_array) or field.attr(KEY_IS_ARRAY) is True
+    return bool(field.is_array) or field.attrs().get(KEY_IS_ARRAY) is True
 
 
 def is_required(field: MetaData) -> bool:
     """``@required`` — accepts a bool ``True`` or the string ``"true"``."""
-    v = field.attr(fc.FIELD_ATTR_REQUIRED)
+    v = field.attrs().get(fc.FIELD_ATTR_REQUIRED)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"
@@ -49,7 +49,7 @@ def xml_text(field: MetaData) -> bool:
     """``@xmlText`` — the XML text-content extract marker (accepts a bool ``True`` or the
     string ``"true"``). When set, codegen bakes a ``FieldSpec.text_content_field(...)``.
     Mirrors the TS ``xmlText(field)`` helper."""
-    v = field.attr(TEMPLATE_ATTR_XML_TEXT)
+    v = field.attrs().get(TEMPLATE_ATTR_XML_TEXT)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"
@@ -57,7 +57,7 @@ def xml_text(field: MetaData) -> bool:
 
 def enum_values(field: MetaData) -> list[str]:
     """The string members of an enum field's ``@values`` attr (empty when absent)."""
-    v = field.attr(fc.FIELD_ATTR_VALUES)
+    v = field.attrs().get(fc.FIELD_ATTR_VALUES)
     if isinstance(v, (list, tuple)):
         return [str(x) for x in v]
     return []

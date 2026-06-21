@@ -107,9 +107,9 @@ function autoGenPkFieldNames(obj: MetaObject): Set<string> {
   const out = new Set<string>();
   const primary = obj.primaryIdentity();
   if (primary) {
-    const generation = primary.ownAttr(IDENTITY_ATTR_GENERATION);
+    const generation = primary.attr(IDENTITY_ATTR_GENERATION);
     if (generation === GENERATION_INCREMENT || generation === GENERATION_UUID) {
-      const fields = primary.ownAttr(IDENTITY_ATTR_FIELDS);
+      const fields = primary.attr(IDENTITY_ATTR_FIELDS);
       const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
       for (const f of fieldsList) out.add(String(f));
     }

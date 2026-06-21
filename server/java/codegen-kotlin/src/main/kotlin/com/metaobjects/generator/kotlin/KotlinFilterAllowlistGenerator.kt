@@ -167,8 +167,8 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
 
         /** True iff `field` carries `@filterable: true` as a metadata attribute. */
         private fun isFilterable(field: MetaField<*>): Boolean {
-            if (!field.hasMetaAttr(ATTR_FILTERABLE, false)) return false
-            val raw = runCatching { field.getMetaAttr(ATTR_FILTERABLE, false).value }.getOrNull()
+            if (!field.hasMetaAttr(ATTR_FILTERABLE, true)) return false
+            val raw = runCatching { field.getMetaAttr(ATTR_FILTERABLE, true).value }.getOrNull()
             return when (raw) {
                 is Boolean -> raw
                 is String -> raw.equals("true", ignoreCase = true)

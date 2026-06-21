@@ -172,7 +172,7 @@ def is_field_required(field: MetaField) -> bool:
     additionally treat the string ``"true"`` as required. The payload type's optionality
     and the extractor mapper's None-guarding are kept in lockstep by sharing THIS
     predicate, so do not "reconcile" it with the runtime predicate."""
-    return field.attr(fc.FIELD_ATTR_REQUIRED) is True
+    return field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
 
 
 def _resolve_object_field_type(
@@ -186,7 +186,7 @@ def _resolve_object_field_type(
     (array). The target VO is scheduled for in-file emission (per-file dedupe, same
     mechanism as ``origin.collection``). Falls back to the bare type-map form when the
     ``@objectRef`` can't be resolved (defensive — loader validation gates it first)."""
-    ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
+    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return _fallback_type(field)
     target = _resolve_object_by_short_or_fqn(root, ref)

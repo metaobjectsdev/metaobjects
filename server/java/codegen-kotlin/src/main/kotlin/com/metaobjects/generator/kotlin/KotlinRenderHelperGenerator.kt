@@ -254,8 +254,8 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `object.value` is found.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null
-        val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).valueAsString
+        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
+        val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
         if (ref.isNullOrEmpty()) return null
         val refShort = ref.substringAfterLast("::")
         for (obj in loader.metaObjects) {

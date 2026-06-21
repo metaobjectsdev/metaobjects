@@ -36,14 +36,14 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const varName = ctx.collectionName(obj.name);
 
   const primary = obj.primaryIdentity();
-  const rawPkFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS);
+  const rawPkFields = primary?.attr(IDENTITY_ATTR_FIELDS);
   const pkFieldsList: string[] = Array.isArray(rawPkFields)
     ? rawPkFields as string[]
     : typeof rawPkFields === "string"
       ? rawPkFields.split(",").map((f) => f.trim()).filter(Boolean)
       : [];
   const pkFieldNames = new Set<string>(pkFieldsList);
-  const pkGeneration = primary?.ownAttr(IDENTITY_ATTR_GENERATION) as string | undefined;
+  const pkGeneration = primary?.attr(IDENTITY_ATTR_GENERATION) as string | undefined;
 
   const fkMap = buildFkMapForEntity(obj, ctx);
 
@@ -56,9 +56,9 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const secondaryIdentities = obj.secondaryIdentities();
   const uniqueFieldNames = new Set<string>();
   for (const sec of secondaryIdentities) {
-    const uniqueAttr = sec.ownAttr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
     if (uniqueAttr === false) continue; // explicit non-unique → don't mark column
-    const fields = sec.ownAttr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
+    const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length !== 1) continue; // multi-col uniques use a callback index, not a column flag
     uniqueFieldNames.add(fields[0]!);
   }
@@ -115,13 +115,13 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   }
 
   for (const sec of secondaryIdentities) {
-    const fields = sec.ownAttr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
+    const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length === 0) continue;
     const indexName = `idx_${tableName}_${fields.map((f) => columnNameFromField(f, ctx.columnNamingStrategy)).join("_")}`;
     // @unique on the identity defaults to true (preserves back-compat with
     // foundations fixtures that assumed secondary identities were always
     // unique). Explicit @unique: false → ordinary non-unique index.
-    const uniqueAttr = sec.ownAttr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
     const isUnique = uniqueAttr !== false;
     const indexFn = isUnique ? "uniqueIndex" : "index";
     const indexSym = imp(`${indexFn}@${importModule}`);

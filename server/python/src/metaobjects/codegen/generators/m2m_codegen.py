@@ -96,7 +96,7 @@ def _column_of(field: MetaField | None, fallback: str) -> str:
     ``@column`` overrides)."""
     if field is None:
         return fallback
-    col = field.attr(fc.FIELD_ATTR_COLUMN)
+    col = field.attrs().get(fc.FIELD_ATTR_COLUMN)
     return col if isinstance(col, str) and col else field.name
 
 
