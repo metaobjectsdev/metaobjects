@@ -306,17 +306,22 @@ public class MetaSourceTest extends SharedRegistryTestBase {
     public void badRoleValueRaisesError() {
         String canonical = entityWith(
             "{ \"source.rdb\": { \"@table\": \"products\", \"@role\": \"unknown\" } }");
+        // A bad @role both IS an invalid attr value (ERR_BAD_ATTR_VALUE) AND leaves the object
+        // with no primary source (ERR_SOURCE_NO_PRIMARY). The loader now reports BOTH; assert
+        // ERR_BAD_ATTR_VALUE is among ALL reported errors (loader.getErrors() + the thrown one),
+        // rather than depending on which one happens to be thrown.
+        MetaDataLoader loader = newTestLoader();
         try {
-            loadThrough(canonical, "source-rdb-bad-role-test.json");
+            loader.load(List.of(new InMemoryStringSource(canonical, "source-rdb-bad-role-test.json")));
             fail("Expected MetaDataException for invalid @role value");
-        } catch (MetaDataException e) {
-            boolean hasCode = e.getCode()
-                .map(c -> c == ErrorCode.ERR_BAD_ATTR_VALUE)
-                .orElse(false);
-            boolean hasMsg = e.getMessage() != null &&
-                e.getMessage().contains("ERR_BAD_ATTR_VALUE");
-            assertTrue("Exception must signal ERR_BAD_ATTR_VALUE (via code or message): " + e.getMessage(),
-                hasCode || hasMsg);
+        } catch (MetaDataException thrown) {
+            java.util.List<MetaDataException> all = new java.util.ArrayList<>(loader.getErrors());
+            all.add(thrown);
+            boolean signalsBadAttr = all.stream().anyMatch(e ->
+                e.getCode().map(c -> c == ErrorCode.ERR_BAD_ATTR_VALUE).orElse(false)
+                || (e.getMessage() != null && e.getMessage().contains("ERR_BAD_ATTR_VALUE")));
+            assertTrue("Some reported error must signal ERR_BAD_ATTR_VALUE; reported: " + all,
+                signalsBadAttr);
         }
     }
 

@@ -5,7 +5,6 @@ import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import com.metaobjects.registry.TypeDefinition;
-import com.metaobjects.validation.MetaDataValidationException;
 import com.metaobjects.validation.ValidationError;
 import org.junit.Test;
 
@@ -73,8 +72,9 @@ public class DownstreamValidationTest extends SharedRegistryTestBase {
     @Test
     public void reportsEveryDanglingReferenceNotJustTheFirst() {
         // Drift UX: a model with TWO broken object references reports BOTH in one load,
-        // rather than stopping at the first. The registry-derived reference pass already
-        // collects every finding; the loader now surfaces all of them.
+        // rather than stopping at the first. The loader records all-but-last via addError()
+        // and throws the last, so the full set is getErrors() + the thrown exception — the
+        // same merge the conformance harness uses.
         String bad =
             "{ \"metadata.root\": { \"package\": \"app\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Author\", \"children\": [" +
@@ -84,15 +84,21 @@ public class DownstreamValidationTest extends SharedRegistryTestBase {
             "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
             "  ] } }" +
             "] } }";
+        MetaDataLoader loader = newLoader();
+        MetaDataException thrown = null;
         try {
-            newLoader().load(List.of(new InMemoryStringSource(bad, "bad2.json")));
+            loader.load(List.of(new InMemoryStringSource(bad, "bad2.json")));
             org.junit.Assert.fail("expected a dangling-objectRef load error");
-        } catch (MetaDataValidationException ex) {
-            assertEquals("both dangling references reported", 2, ex.getValidationErrors().size());
-            String msg = ex.getMessage();
-            assertTrue("first dangling ref present: " + msg, msg.contains("NoSuchA"));
-            assertTrue("second dangling ref present: " + msg, msg.contains("NoSuchB"));
+        } catch (MetaDataException ex) {
+            thrown = ex;
         }
+        StringBuilder all = new StringBuilder(thrown.getMessage());
+        for (MetaDataException recorded : loader.getErrors()) all.append("\n").append(recorded.getMessage());
+        String msg = all.toString();
+        assertEquals("both dangling references reported (1 recorded + 1 thrown)",
+            1, loader.getErrors().size());
+        assertTrue("first dangling ref present: " + msg, msg.contains("NoSuchA"));
+        assertTrue("second dangling ref present: " + msg, msg.contains("NoSuchB"));
     }
 
     @Test

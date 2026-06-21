@@ -110,63 +110,107 @@ public final class ValidationPhase {
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
      * @param loader the loader that produced {@code root}; may be {@code null} to
      *               skip warning collection (legacy callers)
-     * @throws MetaDataException on the first validation error found (eager-throw)
+     * @throws MetaDataException when any validation error is found. The load reports
+     *         EVERY error: each pass records its finding and the walk continues, so a
+     *         model with multiple defects surfaces all of them. The recorded errors are
+     *         put on the loader (source order) via {@link MetaDataLoader#addError} and the
+     *         LAST one is thrown — matching the conformance harness's "drain getErrors()
+     *         then the thrown error" merge. A single-error load records nothing and throws
+     *         that one error, byte-identical to the historical eager-throw.
      */
     public static void run(MetaRoot root, MetaDataLoader loader) {
         if (root == null) return;
+        // Collect EVERY pass's findings rather than aborting on the first (cross-port parity
+        // with TS/C#/Python, which collect). Each pass below still throws a MetaDataException
+        // on a defect; pass(...) catches it, records it, and lets the next pass run.
+        java.util.List<MetaDataException> collected = new java.util.ArrayList<>();
+
         // Generic required-attr pass runs first: any node whose registered schema
         // declares required:true attrs that are absent on the node fires
         // ERR_MISSING_REQUIRED_ATTR. Mirrors TS attr-schema-validate / C#
         // ValidateAttrSchemaNode / Python validate_attr_schema. This collapses
         // per-subtype "missing @X" blocks (previously R1 for template.prompt,
         // R1b for template.toolcall) into a single cross-port-aligned pass.
-        validateRequiredAttrs(root, loader);
+        pass(collected, () -> validateRequiredAttrs(root, loader));
         // Generic singleton-cardinality pass: any parent declaring more children
         // of a registered maxOccurs==1 type.subType than allowed fires
         // ERR_TOO_MANY_OCCURRENCES (e.g. two identity.primary on one object).
-        validateMaxOccurs(root, loader);
-        validateEnumValues(root);
-        validateFieldDefaults(root);
-        validateDbColumnType(root);
-        validateSourceAttrs(root);
-        validateSourcePhysicalNames(root, loader);
+        pass(collected, () -> validateMaxOccurs(root, loader));
+        pass(collected, () -> validateEnumValues(root));
+        pass(collected, () -> validateFieldDefaults(root));
+        pass(collected, () -> validateDbColumnType(root));
+        pass(collected, () -> validateSourceAttrs(root));
+        pass(collected, () -> validateSourcePhysicalNames(root, loader));
         // FR-013 — field-level @readOnly cross-attribute rules.
-        validateFieldReadOnly(root, loader);
+        pass(collected, () -> validateFieldReadOnly(root, loader));
         // FR-014 — TPH discriminator cross-attribute rules.
-        validateDiscriminator(root);
+        pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
-        validateSourceParameterRef(root);
-        validateOnePrimarySource(root);
-        validateRelationshipReferentialActions(root);
-        validateRelationshipsM2M(root);
+        pass(collected, () -> validateSourceParameterRef(root));
+        pass(collected, () -> validateOnePrimarySource(root));
+        pass(collected, () -> validateRelationshipReferentialActions(root));
+        pass(collected, () -> validateRelationshipsM2M(root));
         // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
         // carries its reference descriptors + imperative validator (relationship @objectRef,
         // identity.reference @references for core; a downstream provider's type carries its
-        // own). One recursive walk over a built-once symbol table, collected then eager-
-        // thrown (first error) to preserve cross-port behavior. Needs the registry, so it is
-        // skipped on the legacy null-loader path (like validateRequiredAttrs/MaxOccurs).
+        // own). One recursive walk over a built-once symbol table; this pass ALREADY collects
+        // every finding — fold them all in. Needs the registry, so it is skipped on the legacy
+        // null-loader path (like validateRequiredAttrs/MaxOccurs).
         if (loader != null && loader.getTypeRegistry() != null) {
-            java.util.List<com.metaobjects.validation.ValidationError> refErrors =
-                com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry());
-            if (refErrors.size() == 1) {
-                // Single finding: throw the plain exception (byte-identical to before — the
-                // single-error conformance fixtures depend on this exact shape).
-                com.metaobjects.validation.ValidationError e = refErrors.get(0);
-                throw new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source());
-            } else if (refErrors.size() > 1) {
-                // Multiple findings: surface them ALL (drift UX). The aggregated exception
-                // IS-A MetaDataException carrying the first error's code/envelope for back-compat.
-                throw new com.metaobjects.validation.MetaDataValidationException(refErrors);
+            for (com.metaobjects.validation.ValidationError e :
+                    com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry())) {
+                collected.add(new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source()));
             }
         }
-        validateOrigins(root);
-        validateObjectFieldStorage(root);
-        validateIdentityFieldsAndGeneration(root);
-        validateDataGridLayouts(root);
-        validateTemplates(root);
-        validateEntityHasPrimaryIdentity(root, loader);
-        validateFilterableHasSupportedOps(root);
-        warnFilterableWithoutIndex(root, loader);
+        pass(collected, () -> validateOrigins(root));
+        pass(collected, () -> validateObjectFieldStorage(root));
+        pass(collected, () -> validateIdentityFieldsAndGeneration(root));
+        pass(collected, () -> validateDataGridLayouts(root));
+        pass(collected, () -> validateTemplates(root));
+        pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
+        pass(collected, () -> validateFilterableHasSupportedOps(root));
+        warnFilterableWithoutIndex(root, loader); // warnings only — never throws
+
+        // The SAME defect can be flagged by more than one pass (e.g. a missing required attr
+        // caught by both the generic required-attr pass and a subtype-specific pass) — that is
+        // one finding, not two, and the envelope (code + source) is identical. Dedupe on it so
+        // a defect is reported once, while genuinely-distinct findings stay separate.
+        java.util.List<MetaDataException> findings = dedupe(collected);
+
+        // Surface ALL findings: record every error but the last on the loader (source order),
+        // then throw the last so the load still fails. Single error → records nothing, throws
+        // the one (byte-identical to the historical eager-throw).
+        if (!findings.isEmpty()) {
+            if (loader != null) {
+                for (int i = 0; i < findings.size() - 1; i++) {
+                    loader.addError(findings.get(i));
+                }
+            }
+            throw findings.get(findings.size() - 1);
+        }
+    }
+
+    /** Run one validation pass, catching its finding (if any) into {@code collected} so the
+     *  remaining passes still run. Only {@link MetaDataException} (a validation finding) is
+     *  caught — any other exception is a genuine bug and propagates. */
+    private static void pass(java.util.List<MetaDataException> collected, Runnable p) {
+        try {
+            p.run();
+        } catch (MetaDataException e) {
+            collected.add(e);
+        }
+    }
+
+    /** Collapse duplicate findings (same code + same source envelope), preserving first-seen
+     *  order. Two errors the conformance envelope model cannot tell apart ARE the same finding. */
+    private static java.util.List<MetaDataException> dedupe(java.util.List<MetaDataException> in) {
+        java.util.Map<String, MetaDataException> byKey = new java.util.LinkedHashMap<>();
+        for (MetaDataException e : in) {
+            String key = e.getCode().map(Enum::name).orElse("")
+                + "|" + e.getEnvelope().map(Object::toString).orElse("");
+            byKey.putIfAbsent(key, e);
+        }
+        return new java.util.ArrayList<>(byKey.values());
     }
 
     /**
