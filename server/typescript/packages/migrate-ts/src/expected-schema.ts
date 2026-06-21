@@ -19,6 +19,9 @@ import {
   IDENTITY_ATTR_USING,
   IDENTITY_ATTR_CONSTRAINT_NAME,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_AUTO_SET,
+  AUTO_SET_ON_CREATE,
+  AUTO_SET_ON_UPDATE,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
@@ -669,6 +672,16 @@ function buildColumn(
     col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
   } else if (typeof defaultRaw === "boolean" || typeof defaultRaw === "number") {
     col.default = { kind: "literal", value: String(defaultRaw) };
+  } else {
+    // @autoSet stamps a timestamp column with the current time: "onCreate" on
+    // insert, "onUpdate" on every write. Both need an insert-time DEFAULT so a
+    // NOT NULL timestamp populates without an explicit value. (The per-update
+    // refresh for "onUpdate" is the ORM/trigger's job, not the column default.)
+    // An explicit @default always wins, so this only applies when none was set.
+    const autoSet = field.ownAttr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
+      col.default = { kind: "expr", value: "now()" };
+    }
   }
 
   if (isPk && (pkGeneration === "increment" || pkGeneration === "uuid")) {
