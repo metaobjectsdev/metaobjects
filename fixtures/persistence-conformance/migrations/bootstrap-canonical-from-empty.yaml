@@ -64,6 +64,7 @@ expect:
       - { table_name: "follows" }
       - { table_name: "friendships" }
       - { table_name: "measurements" }
+      - { table_name: "nodes" }
       - { table_name: "people" }
       - { table_name: "post_tags" }
       - { table_name: "posts" }

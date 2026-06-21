@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Follow> Follows { get; set; } = default!;
     public DbSet<Friendship> Friendships { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
+    public DbSet<Node> Nodes { get; set; } = default!;
     public DbSet<Person> Persons { get; set; } = default!;
     public DbSet<Post> Posts { get; set; } = default!;
     public DbSet<PostTag> PostTags { get; set; } = default!;
