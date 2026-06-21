@@ -30,6 +30,9 @@ export const ERROR_CODES = [
   // author-chosen (e.g. "id"), so the dotted by-name extends form can
   // address them.
   "ERR_IDENTITY_NAME_REQUIRED",
+  // A `type.subType` declared with `maxOccurs` (e.g. identity.primary,
+  // maxOccurs:1) appears more times than allowed under one parent.
+  "ERR_TOO_MANY_OCCURRENCES",
   // FR-024 — an identity.* on an object.projection lacks `extends`; a
   // projection identity is a pass-through of an entity identity.
   "ERR_PROJECTION_IDENTITY_NOT_EXTENDED",

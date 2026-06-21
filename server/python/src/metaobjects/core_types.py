@@ -390,6 +390,8 @@ core_provider.add(
             ),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
+        max_occurs=1,
+        default_name="primary",
     )
 )
 

@@ -7,7 +7,7 @@
         "files": [
           "meta.demo.json"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['identity.primary']"
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[3]['identity.secondary']"
       }
     }
   ],

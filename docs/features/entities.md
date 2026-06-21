@@ -76,6 +76,13 @@ YAML is desugared to canonical JSON at load time. See
 | `identity.secondary` | Unique secondary index. | No. |
 | `identity.reference` | Inbound FK from this entity to another. | No. |
 
+> **`identity.primary` is a singleton — its name is optional.** An entity may carry
+> at most one `identity.primary`; the loader names a name-less one `"primary"`
+> automatically (so `{ "identity.primary": { "@fields": "id" } }` is the canonical
+> minimal form — no need to invent a name). Declaring two primaries on one entity is
+> an `ERR_TOO_MANY_OCCURRENCES` load error. `identity.secondary` / `identity.reference`
+> are not singletons and DO require an explicit `name`.
+
 ## `extends:` for shared abstract bases
 
 Common base fields (`id`, `createdAt`, `updatedAt`) live on an abstract entity that

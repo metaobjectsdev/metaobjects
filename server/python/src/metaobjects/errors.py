@@ -23,6 +23,8 @@ class ErrorCode(str, Enum):
     # Vocabulary-only here until FR-024 Phase E (the Python loader does not
     # enforce these yet); the enum tracks the shared corpus codes.
     ERR_IDENTITY_NAME_REQUIRED = "ERR_IDENTITY_NAME_REQUIRED"
+    # A type.subType declared with maxOccurs (e.g. identity.primary) appears more than allowed under one parent.
+    ERR_TOO_MANY_OCCURRENCES = "ERR_TOO_MANY_OCCURRENCES"
     ERR_PROJECTION_IDENTITY_NOT_EXTENDED = "ERR_PROJECTION_IDENTITY_NOT_EXTENDED"
     ERR_IDENTITY_KEY_MISMATCH = "ERR_IDENTITY_KEY_MISMATCH"
     # FR-024 (ADR-0028): a source.* on an object.projection has a writable

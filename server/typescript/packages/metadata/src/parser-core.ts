@@ -519,10 +519,19 @@ function parseNodeFresh(
 
   // --- Determine name ---
   const rawName = nodeData[RESERVED_KEY_NAME];
-  const name = typeof rawName === "string" ? rawName : "";
+  let name = typeof rawName === "string" ? rawName : "";
 
   // --- Create the model ---
   const def = registry.find(type, subType)!;
+  // Config-driven default name for a SINGLETON child type: when the node is
+  // declared with no name and its type definition is `maxOccurs: 1` with a
+  // `defaultName`, assign it (e.g. identity.primary → "primary"). Safe by
+  // construction — maxOccurs===1 guarantees no sibling can collide — and keeps
+  // the one-and-only node addressable. Multi-cardinality types carry no
+  // defaultName, so they still require an explicit name (FR-024).
+  if (name === "" && def.maxOccurs === 1 && def.defaultName !== undefined) {
+    name = def.defaultName;
+  }
   const model = def.factory(def.typeId, name);
   // FR5a — stamp the source provenance envelope using the parser's current
   // JSONPath stack + source id. setSource happens BEFORE freeze (the parser

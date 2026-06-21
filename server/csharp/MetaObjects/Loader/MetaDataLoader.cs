@@ -365,6 +365,10 @@ public class MetaDataLoader
             errors.AddRange(attrResult.Errors);
             warnings.AddRange(attrResult.Warnings);
 
+            // Pass 6b: generic singleton-cardinality (MaxOccurs) enforcement —
+            // ERR_TOO_MANY_OCCURRENCES (e.g. two identity.primary on one object).
+            errors.AddRange(ValidationPasses.ValidateMaxOccurs(root, _registry));
+
             // Pass 7: dataGrid @filter value validation (field filterable + op allowed)
             errors.AddRange(ValidationPasses.ValidateDataGridFilterValues(root));
 

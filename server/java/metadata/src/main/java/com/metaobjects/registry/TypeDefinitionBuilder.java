@@ -42,6 +42,8 @@ public class TypeDefinitionBuilder {
     private String type;
     private String subType;
     private String description;
+    private int maxOccurs = 0;
+    private String defaultName = null;
     // FR-033 optional documentation slots (null when not set) + the child-side
     // placement claim (sub-step B sources these from the embedded JSON).
     private String rules;
@@ -102,6 +104,11 @@ public class TypeDefinitionBuilder {
         builder.rules = existing.getRules();
         builder.example = existing.getExample();
         builder.whenToUse = existing.getWhenToUse();
+        // Singleton-cardinality + config-driven default name must survive a rebuild
+        // (doc-slot overlay / FR-033 extends all rebuild via from()); without copying
+        // these the loader would lose maxOccurs/defaultName on re-registration.
+        builder.maxOccurs = existing.getMaxOccurs();
+        builder.defaultName = existing.getDefaultName();
         builder.parents = existing.getParents().isEmpty() ? null : new ArrayList<>(existing.getParents());
         builder.parentType = existing.getParentType();
         builder.parentSubType = existing.getParentSubType();
@@ -147,6 +154,18 @@ public class TypeDefinitionBuilder {
      * @param description Description of this type
      * @return This builder for method chaining
      */
+    /** Max children of this type.subType per parent (1 = singleton). Loader-enforced. */
+    public TypeDefinitionBuilder maxOccurs(int maxOccurs) {
+        this.maxOccurs = maxOccurs;
+        return this;
+    }
+
+    /** Default name for a singleton (maxOccurs==1) child declared with no name. */
+    public TypeDefinitionBuilder defaultName(String defaultName) {
+        this.defaultName = defaultName;
+        return this;
+    }
+
     public TypeDefinitionBuilder description(String description) {
         this.description = description;
         return this;
@@ -435,9 +454,12 @@ public class TypeDefinitionBuilder {
             }
         }
 
-        return new TypeDefinition(implementationClass, type, subType, description,
+        TypeDefinition td = new TypeDefinition(implementationClass, type, subType, description,
                                  childRequirements, parentType, parentSubType,
                                  rules, example, whenToUse, parents);
+        td.setMaxOccurs(maxOccurs);
+        td.setDefaultName(defaultName);
+        return td;
     }
     
     /**

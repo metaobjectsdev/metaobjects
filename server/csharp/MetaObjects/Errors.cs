@@ -19,6 +19,9 @@ public enum ErrorCode
     // Vocabulary-only here until FR-024 Phase E (the C# loader does not
     // enforce these yet); the enum tracks the shared corpus codes.
     ERR_IDENTITY_NAME_REQUIRED,
+    // A type.subType declared with maxOccurs (e.g. identity.primary, maxOccurs:1)
+    // appears more times than allowed under one parent.
+    ERR_TOO_MANY_OCCURRENCES,
     ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
     ERR_IDENTITY_KEY_MISMATCH,
     // FR-024 (ADR-0028): a source.* on an object.projection has a writable

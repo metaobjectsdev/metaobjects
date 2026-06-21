@@ -37,6 +37,11 @@ public class PrimaryIdentity extends MetaIdentity {
             // ✅ FLUENT ARRAY CONSTRAINTS WITH CONSTANTS
             def.type(TYPE_IDENTITY).subType(SUBTYPE_PRIMARY)
                .description("Primary identity for object identification")
+               // Singleton: exactly one primary per object. A name-less primary
+               // is defaulted to "primary" by the parser (config-driven, not a
+               // hardcoded loader special-case); two primaries trip the
+               // maxOccurs enforcement pass (ERR_TOO_MANY_OCCURRENCES).
+               .maxOccurs(1).defaultName("primary")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
             // Configure each attribute separately to avoid method chaining conflicts.

@@ -18,6 +18,8 @@ def test_load_single_entity_dir(tmp_path: Path) -> None:
     assert not result.errors
     assert result.root.frozen
     out = json.loads(canonical_serialize(result.root))
+    # identity.primary is a singleton with a config-driven defaultName, so a
+    # name-less primary is serialized named "primary".
     assert out["metadata.root"]["children"][0]["object.entity"]["children"][1] == {
-        "identity.primary": {"@fields": ["id"]}
+        "identity.primary": {"name": "primary", "@fields": ["id"]}
     }

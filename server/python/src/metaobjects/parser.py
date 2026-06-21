@@ -239,6 +239,11 @@ def _build(
 
     body_dict: dict[str, object] = body if isinstance(body, dict) else {}
     name = str(body_dict.get(KEY_NAME, "") or "")
+    # Config-driven default name for a SINGLETON child type (max_occurs == 1 with
+    # a default_name, e.g. identity.primary -> "primary"). Safe by construction —
+    # the singleton constraint (enforced separately) guarantees no collision.
+    if name == "" and definition.max_occurs == 1 and definition.default_name is not None:
+        name = definition.default_name
     node = definition.factory(type_, sub_type, name)
     assert isinstance(node, MetaData)
     # FR5a / ADR-0009 — every parser-constructed node carries its origin.

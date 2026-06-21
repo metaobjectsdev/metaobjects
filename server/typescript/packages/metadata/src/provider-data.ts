@@ -97,6 +97,21 @@ export interface TypeDef {
    * registered output change) under S0.
    */
   extendsBase?: boolean;
+  /**
+   * Max number of children of this `type.subType` permitted under one parent.
+   * `1` marks a singleton child (e.g. `identity.primary` — one per entity). The
+   * loader enforces it. A singleton is the ONLY place a static `defaultName` is
+   * safe (no sibling can collide), so `defaultName` is honored only when
+   * `maxOccurs === 1`. Absent = unbounded.
+   */
+  maxOccurs?: number;
+  /**
+   * Author-omittable name for a singleton child. When a node of this type is
+   * declared with no `name` AND `maxOccurs === 1`, the loader assigns
+   * `defaultName` (e.g. `identity.primary` → `"primary"`). Keeps the one-and-only
+   * node addressable (`Entity.primary`) without forcing a hand-written name.
+   */
+  defaultName?: string;
 }
 
 /**
@@ -240,6 +255,8 @@ export function defineProviderFromData(
       ...(t.rules !== undefined ? { rules: t.rules } : {}),
       ...(t.example !== undefined ? { example: t.example } : {}),
       ...(t.whenToUse !== undefined ? { whenToUse: t.whenToUse } : {}),
+      ...(t.maxOccurs !== undefined ? { maxOccurs: t.maxOccurs } : {}),
+      ...(t.defaultName !== undefined ? { defaultName: t.defaultName } : {}),
     };
   });
 }

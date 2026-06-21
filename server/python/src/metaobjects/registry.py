@@ -75,6 +75,10 @@ class TypeDefinition:
     example: str | None = None
     when_to_use: str | None = None
     parents: list[str] = field(default_factory=list)
+    # Max children of this type.subType per parent (1 = singleton). Loader-enforced.
+    max_occurs: int | None = None
+    # Default name for a singleton (max_occurs==1) child declared with no name.
+    default_name: str | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -140,6 +144,8 @@ class TypeRegistry:
             example=definition.example,
             when_to_use=definition.when_to_use,
             parents=list(definition.parents),
+            max_occurs=definition.max_occurs,
+            default_name=definition.default_name,
         )
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:

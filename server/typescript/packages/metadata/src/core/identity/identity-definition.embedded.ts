@@ -13,6 +13,8 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
       "type": "identity",
       "subType": "primary",
       "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
+      "maxOccurs": 1,
+      "defaultName": "primary",
       "children": [
         {
           "type": "attr",

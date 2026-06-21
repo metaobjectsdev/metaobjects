@@ -32,6 +32,18 @@ public class TypeDefinition {
     private final Map<String, ChildRequirement> childRequirements;
     private final List<ChildRequirement> wildcardRequirements;
     private final Map<String, ChildRequirement> inheritedChildRequirements;
+    // Max children of this type.subType per parent (0 = unbounded; 1 = singleton).
+    // Loader-enforced. Set by the builder at build time (additive, not constructor-threaded).
+    private int maxOccurs = 0;
+    // Default name for a singleton (maxOccurs==1) child declared with no name.
+    private String defaultName = null;
+
+    /** Max children of this type.subType per parent (0 = unbounded). */
+    public int getMaxOccurs() { return maxOccurs; }
+    /** Default name for a singleton child declared with no name (null when none). */
+    public String getDefaultName() { return defaultName; }
+    void setMaxOccurs(int maxOccurs) { this.maxOccurs = maxOccurs; }
+    void setDefaultName(String defaultName) { this.defaultName = defaultName; }
 
     /**
      * Create a type definition with child requirements and optional inheritance

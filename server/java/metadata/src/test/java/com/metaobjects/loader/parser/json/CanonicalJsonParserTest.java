@@ -86,11 +86,10 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         assertEquals("entity", product.getSubType());
         assertEquals("long", product.getChildOfType("field", "id").getSubType());
         assertEquals("string", product.getChildOfType("field", "name").getSubType());
-        // Identity nodes are auto-named when no explicit name is authored (the canonical
-        // serializer suppresses the auto-name on emit to match the TS oracle byte form).
-        // First identity.primary under the entity gets auto-name "primary1", qualified
-        // with the document package: "primary1".
-        assertNotNull(product.getChildOfType("identity", "primary1"));
+        // identity.primary is a singleton (maxOccurs==1) with a config-driven
+        // defaultName: a name-less primary is named "primary" (and serialized with
+        // that name), NOT sequentially auto-named.
+        assertNotNull(product.getChildOfType("identity", "primary"));
     }
 
     // -----------------------------------------------------------------------
@@ -276,10 +275,9 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
 
         MetaData item = loader.getRoot().getChildOfType("object", "acme::Item");
-        // Identity nodes are auto-named when no explicit name is authored
-        // (sequential <subType>N — first unnamed identity.primary → "primary1").
-        // The base parser's package-qualification applies on top.
-        MetaData identity = item.getChildOfType("identity", "primary1");
+        // identity.primary is a singleton with a config-driven defaultName, so a
+        // name-less primary is named "primary" (not sequentially auto-named).
+        MetaData identity = item.getChildOfType("identity", "primary");
         assertNotNull("primary identity should exist", identity);
 
         // The fields attribute should exist and hold "id"

@@ -107,6 +107,10 @@ export interface TypeDefinition {
   example?: string;
   /** FR-033 — guidance on when to reach for this type/subType. Optional. */
   whenToUse?: string;
+  /** Max children of this type.subType per parent (`1` = singleton). Loader-enforced. */
+  maxOccurs?: number;
+  /** Default name for a singleton (`maxOccurs===1`) child declared with no name. */
+  defaultName?: string;
 }
 
 export class TypeRegistry {

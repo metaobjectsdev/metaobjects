@@ -682,7 +682,18 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // out. This preserves byte-parity with the TS oracle, which leaves the name
         // empty and omits the `name` key in canonical output.
         if (name == null || name.isEmpty()) {
-            if (!BaseMetaDataParser.isAutoNamingType(type)) {
+            // Config-driven default name for a singleton type: when the type
+            // definition declares maxOccurs==1 with a defaultName, a name-less
+            // node is named from config and SERIALIZED with that name (e.g.
+            // identity.primary → "primary"). This is a generic registry rule —
+            // NOT a per-type loader special-case — and takes precedence over
+            // sequential auto-naming. Two such singletons trip the maxOccurs
+            // enforcement pass (ERR_TOO_MANY_OCCURRENCES) in ValidationPhase.
+            com.metaobjects.registry.TypeDefinition def =
+                    getTypeRegistry().getTypeDefinition(type, subType);
+            if (def != null && def.getMaxOccurs() == 1 && def.getDefaultName() != null) {
+                name = def.getDefaultName();
+            } else if (!BaseMetaDataParser.isAutoNamingType(type)) {
                 name = subType;
             }
         }
