@@ -90,6 +90,17 @@ carries the type's attrs/constraints/`maxOccurs`. Two tiers:
 2. **Imperative validators** (code) for logic config can't express — a function registered
    per `(type, subType)`, invoked by the recursive walk.
 
+   > **Status note (the `NodeValidator` hook is intentionally unused by core).** The
+   > reference-descriptor half (1) is live in core (relationship `@objectRef`,
+   > identity.reference `@references`). The imperative-validator half (2) is an **extension
+   > point**, not dead code: a downstream provider registers a new type *with* its own
+   > validator and error codes, validating itself with zero core changes (proven by the
+   > `widget.gauge` test). It is also the **escape hatch** in the config-driven-validation
+   > design (issue #51) for novel cross-field rules that fit no declarative shape. Core does
+   > not (and should not) put its own per-type rules here — they belong in reference
+   > descriptors today and declarative rule-shapes under #51; a core rule on the imperative
+   > hook would contradict that direction.
+
 **Dispatch is uniform; the validator *body* is idiomatic per port.** Core's
 `root.validate(ctx)` walks the tree and, per node: *apply declared rules (incl. reference
 descriptors) → invoke `registry.validatorFor(type, subType)` → recurse.*
