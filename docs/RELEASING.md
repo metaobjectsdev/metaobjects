@@ -1,4 +1,23 @@
-# Releasing the TypeScript packages to npm
+# Releasing MetaObjects
+
+> **Who runs releases: the agent (Claude) does — end to end, for every registry.** The
+> credentials are on the maintainer's machine; there is no "hand it to the human to publish"
+> step. Locations:
+> - **npm** → `~/.npmrc` (automation token). Publish with `bun publish`.
+> - **PyPI** → token in `~/Work/Keys/pypi.txt`. **Publish manually with `uv publish`** — the
+>   OIDC Trusted Publishing workflow is misconfigured ([#36]), so the keyless path below does
+>   NOT work yet; use the manual procedure.
+> - **Maven Central** → `~/.m2/settings.xml` (server ids `central` + `gpg-credentials`) + the
+>   local GPG signing key. `mvn -Prelease deploy` from `server/java` (autoPublish — no manual
+>   staging promotion).
+> - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
+>   publish-csharp.yml` (or push a `csharp-v<version>` tag).
+>
+> Run network commands via the sandbox-disabled shell. Versions are **not unified** (TS/C#/Python
+> on the `0.x` line, Java/Kotlin on the `7.x` line). The rest of this doc is the per-registry
+> procedure.
+
+## Releasing the TypeScript packages to npm
 
 How to publish the `@metaobjectsdev/*` TypeScript packages. Read the **Golden rules** first —
 each one cost a broken/burned release to learn.
@@ -272,24 +291,37 @@ subsequent releases keyless.)
    rm -rf dist && uv build --out-dir dist        # must produce BOTH .tar.gz and .whl
    uvx twine check dist/*                         # metadata + README render
    ```
-3. **Publish:** GitHub → **Actions → publish-python → Run workflow** (or push a `python-v<version>` tag).
+3. **Publish — MANUAL (`uv publish`), not the OIDC workflow.** Trusted Publishing is
+   misconfigured ([#36] — `publish-python.yml` fails with `invalid-publisher`), so publish
+   from the local build with the token in `~/Work/Keys/pypi.txt`:
+   ```bash
+   cd server/python   # after the `uv build` above produced dist/
+   UV_PUBLISH_TOKEN="$(sed -n '4p' ~/Work/Keys/pypi.txt)" uv publish dist/*
+   ```
+   (When #36 is fixed, switch to **Actions → publish-python → Run workflow** / a `python-v<version>` tag.)
 4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
 
-## Other language ecosystems (Java)
+# Releasing the Java/Kotlin modules to Maven Central
 
-This guide is **TypeScript / npm-specific** — its gotchas (`workspace:*`, `bun publish`, lockfile
-re-pinning) do not transfer. Each language ships through a different registry with its own tooling,
-auth, signing, and failure modes, so **each gets its own release guide, written when it does its
-first real release** — like this one. The npm rules above were only learned by actually publishing;
-don't pre-write speculative procedures for ecosystems that aren't shipping yet.
+The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
+versioned on the `7.x` line (currently `7.4.0`) in the parent + module poms. Signed with the
+maintainer's GPG key.
 
-What to expect per ecosystem:
+## Procedure
 
-| Language | Registry | Tooling | Gotchas to anticipate |
-|---|---|---|---|
-| Java | Maven Central (Sonatype Central Portal) | `mvn deploy` / Gradle publish | GPG-signed artifacts; `groupId` ownership verification; staging → release promotion; javadoc + sources jars required |
+1. **Bump** the version in all poms (parent + modules): `grep -rl 7.3.0 --include=pom.xml server/java | xargs sed -i 's/7\.3\.0/7.4.0/g'` (verify every `<version>7.3.0</version>` is the project version, not a third-party dep).
+2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
+3. **Deploy:** `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
+   (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
+   the signed bundle and auto-releases — **no manual staging → release promotion**. Auth + the GPG
+   passphrase come from `~/.m2/settings.xml` (server ids `central` + `gpg-credentials`); the GPG
+   secret key must be present (`gpg --list-secret-keys`). The release profile activates GPG signing
+   + the javadoc/sources jars Central requires.
+4. **Verify:** the modules appear at `https://central.sonatype.com/` / `https://repo1.maven.org/maven2/com/metaobjects/` (indexing takes minutes).
 
-(C# and Python now have their own guides above.)
+> Gotchas: Maven Central versions are immutable (like the others); `groupId` ownership is already
+> verified for `com.metaobjects`; a missing GPG key or expired Central token fails the deploy with
+> an auth error, not a clear message.
 
 **Versions are not unified across languages** — TS, C#, and Python are on the `0.9.x` line, the
 Java/Kotlin module line is on the `7.2.x` track. Don't force one number. The cross-language contract
