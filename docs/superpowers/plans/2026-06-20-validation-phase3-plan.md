@@ -18,7 +18,22 @@ the order below or cherry-pick. TDD throughout._
 
 ---
 
-## Task 1 — Propagate `@payloadRef`/`@responseRef` descriptors to Java/C#/Python
+## Task 1 — Reference-validation consistency
+
+> **Status: RESOLVED differently than originally framed** (commit `599a4aed`). Investigation
+> found TS was the *outlier*, not the other ports: migrating `@payloadRef`/`@responseRef` onto
+> descriptors in TS left their dependent `@requiredSlots` check in the template pass, forcing a
+> double resolution — while Java/C#/Python kept it unified (single resolution). So rather than
+> *propagate* the split to three more ports (the original Task 1, which would standardize the
+> messier design), we **reverted the TS split** ("Option 1"): every reference *kind* is now
+> handled identically in every port — `objectRef`/`references` on descriptors, template
+> references unified in the template pass. The right *long-term* answer (make the checks data,
+> not per-port code) is captured separately as the gold-standard direction:
+> **`docs/superpowers/specs/2026-06-21-config-driven-validation-design.md`** (config-driven
+> validation; four closed rule-shapes; sibling to FR-033 / #23). The original propagate-the-
+> descriptor framing below is retained for context but is **not** the path taken.
+
+### (original framing — superseded) Propagate `@payloadRef`/`@responseRef` descriptors to Java/C#/Python
 
 **Goal:** parity with TS — `payloadRef`/`responseRef` resolve via reference descriptors on
 the template `TypeDefinition`s in every port, removing the bespoke existence checks.
