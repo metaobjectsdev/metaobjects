@@ -91,6 +91,62 @@ describe("buildExpectedSchema — nullable / default / identity", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// @autoSet → DEFAULT now() (FR: auto-stamped timestamp columns)
+//
+// Regression: @autoSet (onCreate/onUpdate) marks a timestamp column as
+// auto-stamped, but buildColumn ignored it — a NOT NULL @autoSet column emitted
+// no DEFAULT, so an insert that relied on the DB to stamp it failed the
+// not-null constraint. Both onCreate and onUpdate need an insert-time DEFAULT.
+// ---------------------------------------------------------------------------
+
+describe("buildExpectedSchema — @autoSet timestamp default", () => {
+  async function colsFor(autoSet: string | null, withExplicitDefault = false) {
+    const stampField = {
+      "field.timestamp": {
+        name: "stampedAt",
+        "@required": true,
+        ...(autoSet ? { "@autoSet": autoSet } : {}),
+        ...(withExplicitDefault ? { "@default": "CURRENT_TIMESTAMP" } : {}),
+      },
+    };
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Event", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        stampField,
+      ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(doc)),
+    ]);
+    expect(errors).toHaveLength(0);
+    const cols = buildExpectedSchema(root).tables[0]?.columns ?? [];
+    return new Map(cols.map((c) => [c.name, c]));
+  }
+
+  test("@autoSet onCreate → DEFAULT now() (expr)", async () => {
+    const byName = await colsFor("onCreate");
+    expect(byName.get("stamped_at")?.default).toEqual({ kind: "expr", value: "now()" });
+    expect(byName.get("stamped_at")?.nullable).toBe(false);
+  });
+
+  test("@autoSet onUpdate also gets an insert-time DEFAULT now()", async () => {
+    const byName = await colsFor("onUpdate");
+    expect(byName.get("stamped_at")?.default).toEqual({ kind: "expr", value: "now()" });
+  });
+
+  test("no @autoSet → no default", async () => {
+    const byName = await colsFor(null);
+    expect(byName.get("stamped_at")?.default).toBeUndefined();
+  });
+
+  test("explicit @default wins over @autoSet", async () => {
+    const byName = await colsFor("onCreate", /* withExplicitDefault */ true);
+    expect(byName.get("stamped_at")?.default).toEqual({ kind: "expr", value: "CURRENT_TIMESTAMP" });
+  });
+});
+
 describe("buildExpectedSchema — indexes + FKs", () => {
   let snapshot: SchemaSnapshot;
 
