@@ -114,7 +114,7 @@ def _derive_payload_field_tree(
         if f.type != TYPE_FIELD or not isinstance(f, MetaField):
             continue
         if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-            ref = f.attr(fc.FIELD_ATTR_OBJECT_REF)
+            ref = f.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
             if isinstance(ref, str) and ref:
                 target = _resolve_nested_object_ref(root, ref)
                 if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:

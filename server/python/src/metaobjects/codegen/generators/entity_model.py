@@ -57,7 +57,7 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     # String length: validator.length @min/@max + field @maxLength (max wins per field attr).
     min_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MIN)
     max_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MAX)
-    field_max = field.attr(fc.FIELD_ATTR_MAX_LENGTH)
+    field_max = field.attrs().get(fc.FIELD_ATTR_MAX_LENGTH)
     if _is_int(field_max):
         max_len = field_max
     if min_len is not None:
@@ -110,14 +110,14 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
         imports.update(pt.imports)
         type_expr = pt.expr
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
+        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
             # @objectRef is FQN-expanded at load time; the generated VOs live
             # flat in one package, so import by the bare class name.
             ref_name = str(ref).split("::")[-1]
             imports.add(f"from .{ref_name} import {ref_name}")
-    required = field.attr(fc.FIELD_ATTR_REQUIRED) is True
-    default_raw = field.attr(fc.FIELD_ATTR_DEFAULT)
+    required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
+    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     has_default = default_raw is not None
     enum_type_name = type_name if shared is not None else None
 

@@ -503,7 +503,7 @@ function describeIdentity(id: MetaIdentity): string {
     : `(${fields.map((f) => `\`${f}\``).join(", ")})`;
 
   if (id.subType === IDENTITY_SUBTYPE_PRIMARY) {
-    const gen = id.ownAttr(IDENTITY_ATTR_GENERATION);
+    const gen = id.attr(IDENTITY_ATTR_GENERATION);
     const genSuffix = typeof gen === "string" ? ` — generation: \`${gen}\`` : "";
     return `**Primary key:** ${fieldList}${genSuffix}`;
   }

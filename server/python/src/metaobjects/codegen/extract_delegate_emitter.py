@@ -47,7 +47,7 @@ def ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
     """The ``@objectRef`` target VO for a nested-object field, or ``None`` when
     unresolvable. Matches first on the full ref, then the trailing simple-name
     segment (mirrors the runtime ``_resolve_object_ref`` short-name fallback)."""
-    ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
+    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return None
     direct = _find_object(root, ref)

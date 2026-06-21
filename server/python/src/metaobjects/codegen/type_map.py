@@ -35,7 +35,7 @@ _SCALAR: dict[str, PyType] = {
 def field_is_array(field: MetaField) -> bool:
     """Array-ness from either form: the node property (programmatic build) or the
     `@isArray` attr (how metadata loads from JSON — the conformance-fixture form)."""
-    return field.is_array or field.attr(KEY_IS_ARRAY) is True
+    return field.is_array or field.attrs().get(KEY_IS_ARRAY) is True
 
 
 def _py_str_literal(value: str) -> str:
@@ -66,7 +66,7 @@ def py_type_for(field: MetaField) -> PyType:
     becomes ``list[Literal[...]]``. An enum WITHOUT declared values falls back to
     ``str``."""
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        ref = field.attr(fc.FIELD_ATTR_OBJECT_REF)
+        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         # @objectRef is expanded to a package-qualified FQN at load time
         # (e.g. ``app::pkg::Thing``); the emitted VOs all live flat in one
         # generated package, so type by the bare class name.

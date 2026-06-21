@@ -34,7 +34,7 @@ def _prompt_style_enum(template: MetaData) -> str:
 
 
 def _opt_string_attr(field: MetaData, attr_name: str) -> str:
-    v = field.attr(attr_name)
+    v = field.attrs().get(attr_name)
     return fm.py_string_literal(v) if isinstance(v, str) else "None"
 
 
@@ -54,7 +54,7 @@ def _prompt_field_literal(field: MetaData) -> str:
 
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values_lit = fm.string_list_literal(fm.enum_values(field))
-        enum_doc_lit = fm.properties_map_literal(field.attr(fc.FIELD_ATTR_ENUM_DOC))
+        enum_doc_lit = fm.properties_map_literal(field.attrs().get(fc.FIELD_ATTR_ENUM_DOC))
         return (
             f'PromptField("{name}", FieldKind.ENUM, {req}, array={array}, '
             f"enum_values={values_lit}, enum_doc={enum_doc_lit}, "

@@ -117,7 +117,7 @@ def _is_filterable(field: MetaField) -> bool:
     matching the Java/Kotlin/C# tolerance for either YAML-bool or raw-string
     value forms.
     """
-    raw = field.attr(fc.FIELD_ATTR_FILTERABLE)
+    raw = field.attrs().get(fc.FIELD_ATTR_FILTERABLE)
     if raw is True:
         return True
     if isinstance(raw, str):

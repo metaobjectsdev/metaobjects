@@ -17,7 +17,7 @@ import {
 export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
   // Use primaryIdentity() to find the primary identity (may be inherited from extends:/super:).
   const primary = entity.primaryIdentity();
-  const rawFields = primary?.ownAttr(IDENTITY_ATTR_FIELDS);
+  const rawFields = primary?.attr(IDENTITY_ATTR_FIELDS);
   const fields = Array.isArray(rawFields) ? rawFields : (typeof rawFields === "string" ? [rawFields] : undefined);
   const pkFieldName = fields?.[0] ?? "id";
   const pkInfo = ctx.pkMap.get(entity.name);

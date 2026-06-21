@@ -486,14 +486,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     /** Read the `@storage` attr (own-only); null when absent. */
     private fun readStorage(field: ObjectField): String? {
-        if (!field.hasMetaAttr(ATTR_STORAGE, false)) return null
-        return runCatching { field.getMetaAttr(ATTR_STORAGE, false).valueAsString }.getOrNull()
+        if (!field.hasMetaAttr(ATTR_STORAGE, true)) return null
+        return runCatching { field.getMetaAttr(ATTR_STORAGE, true).valueAsString }.getOrNull()
     }
 
     /** Read the `@objectRef` attr (own-only); null when absent. */
     private fun readObjectRef(field: ObjectField): String? {
-        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) return null
-        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, false).valueAsString }
+        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
+        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
             .getOrNull()
     }
 

@@ -53,7 +53,7 @@ def _field_spec_literal(field: MetaData, owner: MetaData) -> str:
 
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values_lit = fm.string_list_literal(fm.enum_values(field))
-        alias_lit = fm.properties_map_literal(field.attr(fc.FIELD_ATTR_ENUM_ALIAS))
+        alias_lit = fm.properties_map_literal(field.attrs().get(fc.FIELD_ATTR_ENUM_ALIAS))
         # FR-011: resolve the three new enum args (field → object.value → "strip" for
         # normalize). Keep the back-compat 4-arg form when nothing is set; otherwise
         # emit the 7-arg form (..., coerce_default, normalize, default_value).

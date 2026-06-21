@@ -221,8 +221,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /** Read the `@objectRef` attr off a field (own-only); null if absent. */
     private fun readObjectRef(field: MetaField<*>): String? {
-        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) return null
-        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, false).valueAsString }
+        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
+        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
             .getOrNull()
     }
 

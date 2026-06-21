@@ -412,9 +412,9 @@ object KotlinTypeMapper {
 
     /** Resolve @maxLength on a StringField; default 255. */
     private fun stringMaxLength(field: StringField): Int {
-        if (!field.hasMetaAttr(StringField.ATTR_MAX_LENGTH, false)) return 255
+        if (!field.hasMetaAttr(StringField.ATTR_MAX_LENGTH, true)) return 255
         val raw = runCatching {
-            field.getMetaAttr(StringField.ATTR_MAX_LENGTH, false).value
+            field.getMetaAttr(StringField.ATTR_MAX_LENGTH, true).value
         }.getOrNull()
         return when (raw) {
             is Number -> raw.toInt()
