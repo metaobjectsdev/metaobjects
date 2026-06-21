@@ -427,6 +427,10 @@ public static class CoreTypes
                     [Wildcard(TYPE_ATTR)],
                     nodeFactory,
                     idAttrs.ToList(),
+                    // maxOccurs/defaultName are hardcoded here (matching the values in
+                    // spec_metamodel/identity.json, which this port does NOT yet read). Sourcing
+                    // them from that JSON — true single-source-of-truth across all ports — is the
+                    // config-driven-validation work tracked in issue #51.
                     maxOccurs: isPrimary ? 1 : 0,
                     defaultName: isPrimary ? subType : null));
         }
@@ -442,6 +446,25 @@ public static class CoreTypes
                     [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaRelationship(tid, n),
                     RelationshipSchema.RelationshipAttrs.ToList()));
+        }
+
+        // Declare the core cross-references ON their TypeDefinitions — the loader's
+        // registry-derived validation resolves them (a dangling target fails the load).
+        // Mirrors the TS/Java realization (config-on-the-type).
+        foreach (string subType in RELATIONSHIP_SUBTYPES)
+        {
+            var rdef = registry.Find(TYPE_RELATIONSHIP, subType);
+            if (rdef is not null)
+            {
+                rdef.References = [new MetaObjects.Validation.ReferenceDescriptor(
+                    RELATIONSHIP_ATTR_OBJECT_REF, TYPE_OBJECT, null, false, "ERR_INVALID_RELATIONSHIP")];
+            }
+        }
+        var idRefDef = registry.Find(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE);
+        if (idRefDef is not null)
+        {
+            idRefDef.References = [new MetaObjects.Validation.ReferenceDescriptor(
+                IDENTITY_REFERENCE_ATTR_REFERENCES, TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE")];
         }
 
         // template — fourth-pillar metatype (FR-004). prompt + output; attr-only

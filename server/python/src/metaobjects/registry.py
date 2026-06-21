@@ -6,6 +6,7 @@ from typing import Callable
 
 from .errors import ErrorCode, ParseError
 from .shared.base_types import SUBTYPE_BASE
+from .validation_types import NodeValidator, ReferenceDescriptor
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,11 @@ class TypeDefinition:
     max_occurs: int | None = None
     # Default name for a singleton (max_occurs==1) child declared with no name.
     default_name: str | None = None
+    # Validation carried by the type's registration: the cross-references its attrs
+    # declare + its imperative validator. The loader derives validation from these, so a
+    # downstream provider's type validates itself.
+    references: list[ReferenceDescriptor] = field(default_factory=list)
+    validate: NodeValidator | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -146,6 +152,8 @@ class TypeRegistry:
             parents=list(definition.parents),
             max_occurs=definition.max_occurs,
             default_name=definition.default_name,
+            references=list(definition.references),
+            validate=definition.validate,
         )
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:

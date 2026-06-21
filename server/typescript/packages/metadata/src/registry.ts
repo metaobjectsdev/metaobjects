@@ -3,6 +3,7 @@ import { SUBTYPE_BASE, TYPE_ATTR } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { type AttrSubType } from "./core/attr/attr-constants.js";
 import type { DataType } from "./data-type.js";
+import type { ReferenceDescriptor, NodeValidator } from "./validation-types.js";
 import { MetaModelError } from "./errors.js";
 
 export class TypeId {
@@ -111,6 +112,17 @@ export interface TypeDefinition {
   maxOccurs?: number;
   /** Default name for a singleton (`maxOccurs===1`) child declared with no name. */
   defaultName?: string;
+  /**
+   * Cross-references this node's attrs declare — resolved generically against the symbol
+   * table (a dangling/kind-mismatched target fails the load). Carried by the type's
+   * registration, so a downstream provider's references validate with no core changes.
+   */
+  references?: ReferenceDescriptor[];
+  /**
+   * The type's imperative validator (logic config can't express). Invoked by the recursive
+   * validation walk. Owned by the provider that owns the type.
+   */
+  validate?: NodeValidator;
 }
 
 export class TypeRegistry {

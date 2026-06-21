@@ -78,6 +78,9 @@ class ErrorCode(str, Enum):
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.
     ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP"
+    # identity.reference @references names an FK target object that does not resolve
+    # to any object in the loaded tree (a dangling cross-reference between metadata).
+    ERR_INVALID_REFERENCE = "ERR_INVALID_REFERENCE"
     ERR_BAD_ATTR_FILTER = "ERR_BAD_ATTR_FILTER"
     # Reserved structural body key authored as an @-attr (source-v2 / ADR-0007).
     ERR_RESERVED_ATTR = "ERR_RESERVED_ATTR"

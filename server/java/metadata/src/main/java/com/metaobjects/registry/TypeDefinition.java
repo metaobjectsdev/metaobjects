@@ -45,6 +45,22 @@ public class TypeDefinition {
     void setMaxOccurs(int maxOccurs) { this.maxOccurs = maxOccurs; }
     void setDefaultName(String defaultName) { this.defaultName = defaultName; }
 
+    // Validation carried by the type's registration (additive, like maxOccurs): the
+    // cross-references its attrs declare + its imperative validator. The loader derives
+    // validation from these, so a downstream provider's type validates itself.
+    private java.util.List<com.metaobjects.validation.ReferenceDescriptor> references =
+        java.util.Collections.emptyList();
+    private com.metaobjects.validation.NodeValidator validator = null;
+
+    /** Cross-reference descriptors this type's attrs declare. Never null. */
+    public java.util.List<com.metaobjects.validation.ReferenceDescriptor> getReferences() { return references; }
+    /** The type's imperative validator, or null. */
+    public com.metaobjects.validation.NodeValidator getValidator() { return validator; }
+    void setReferences(java.util.List<com.metaobjects.validation.ReferenceDescriptor> references) {
+        this.references = references == null ? java.util.Collections.emptyList() : references;
+    }
+    void setValidator(com.metaobjects.validation.NodeValidator validator) { this.validator = validator; }
+
     /**
      * Create a type definition with child requirements and optional inheritance
      *

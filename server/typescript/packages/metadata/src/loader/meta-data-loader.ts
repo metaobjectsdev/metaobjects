@@ -18,6 +18,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
@@ -489,6 +490,12 @@ export class MetaDataLoader {
       // @symmetric is self-join-only + mutually exclusive with @sourceRefField; M:N attrs
       // are invalid on a 1:N relationship.
       errors.push(...validateRelationships(root));
+
+      // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
+      // carries its reference descriptors + imperative validator, run as one recursive walk
+      // over a built-once symbol table. A downstream provider's custom type validates itself
+      // simply by being in this registry — no separate wiring.
+      errors.push(...runRegisteredValidation(root, this._registry));
 
       // template.* validation — @payloadRef resolves to a known object;
       // @requiredSlots are real fields on it (FR-004 Plan #3, T2).

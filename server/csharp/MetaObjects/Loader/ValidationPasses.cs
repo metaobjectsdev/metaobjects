@@ -1503,6 +1503,10 @@ public static class ValidationPasses
                 bool isMany = cardinality is string cs && cs == CARDINALITY_MANY;
                 bool isM2M = hasThrough && isMany;
 
+                // NOTE: @objectRef existence resolution moved to the validation registry
+                // (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
+                // resolved by RegisteredValidation). The M:N rules below stay here for now.
+
                 // Rule (d): M:N-only attrs on a non-M:N relationship.
                 if (!isM2M)
                 {
@@ -1590,6 +1594,10 @@ public static class ValidationPasses
 
         return errors.AsReadOnly();
     }
+
+    // NOTE: identity.reference @references resolution moved to the validation registry
+    // (a declarative ReferenceDescriptor with dottedFieldPath on the identity.reference
+    // TypeDefinition, resolved by RegisteredValidation).
 
     // =========================================================================
     // Pass 9: ValidateTemplatePayloadRefs

@@ -107,6 +107,7 @@ from .meta.presentation.view.view_constants import (
 )
 from .provider import Provider
 from .registry import AttrSchema, ChildRule, NodeFactory, TypeDefinition, TypeRegistry
+from .validation_types import ReferenceDescriptor
 from .shared.base_types import (
     SUBTYPE_BASE,
     SUBTYPE_ROOT,
@@ -149,6 +150,7 @@ def _register_subtypes(
     factory: NodeFactory,
     child_rules: list[ChildRule] | None = None,
     attrs: list[AttrSchema] | None = None,
+    references: list[ReferenceDescriptor] | None = None,
 ) -> None:
     """Register one TypeDefinition per subtype. Centralises loop boilerplate only —
     all type knowledge (subtypes tuple, node class, child rules) stays with the caller."""
@@ -160,6 +162,7 @@ def _register_subtypes(
                 factory=factory,
                 child_rules=list(child_rules) if child_rules else [],
                 attrs=list(attrs) if attrs else [],
+                references=list(references) if references else [],
             )
         )
 
@@ -390,6 +393,10 @@ core_provider.add(
             ),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
+        # max_occurs/default_name are hardcoded here (matching the values in
+        # spec_metamodel/identity.json, which this port does NOT yet read). Sourcing them from
+        # that JSON — true single-source-of-truth across all ports — is the config-driven-
+        # validation work tracked in issue #51.
         max_occurs=1,
         default_name="primary",
     )
@@ -422,6 +429,10 @@ core_provider.add(
             AttrSchema(name=IDENTITY_REFERENCE_ATTR_ENFORCE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
+        # @references is a cross-reference to a real object (FK target) — the loader's
+        # registry-derived validation resolves it; "Entity.field" resolves the entity head.
+        references=[ReferenceDescriptor(
+            IDENTITY_REFERENCE_ATTR_REFERENCES, TYPE_OBJECT, None, True, "ERR_INVALID_REFERENCE")],
     )
 )
 
@@ -462,6 +473,10 @@ _register_subtypes(
     factory=MetaRelationship,
     child_rules=[ChildRule(TYPE_ATTR, "*")],
     attrs=_RELATIONSHIP_ATTRS,
+    # @objectRef is a cross-reference to a real object (the relationship target); the
+    # loader's registry-derived validation resolves it (dangling target = load error).
+    references=[ReferenceDescriptor(
+        RELATIONSHIP_ATTR_OBJECT_REF, TYPE_OBJECT, None, False, "ERR_INVALID_RELATIONSHIP")],
 )
 
 # source.* — base (no attrs) + rdb (paradigm subtype with @table/@kind/@role/@schema).

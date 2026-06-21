@@ -887,6 +887,8 @@ public class MetaDataRegistry {
             // doc-slot rebuild (constructor does not carry them).
             rebuiltDef.setMaxOccurs(def.getMaxOccurs());
             rebuiltDef.setDefaultName(def.getDefaultName());
+            rebuiltDef.setReferences(def.getReferences());
+            rebuiltDef.setValidator(def.getValidator());
             typeDefinitions.put(id, rebuiltDef);
         }
 
@@ -1004,6 +1006,8 @@ public class MetaDataRegistry {
             // strict-attr-pruning rebuild (constructor does not carry them).
             rebuilt.setMaxOccurs(def.getMaxOccurs());
             rebuilt.setDefaultName(def.getDefaultName());
+            rebuilt.setReferences(def.getReferences());
+            rebuilt.setValidator(def.getValidator());
 
             typeDefinitions.put(id, rebuilt);
         }
@@ -1086,6 +1090,8 @@ public class MetaDataRegistry {
             // structural-graph rebuild (constructor does not carry them).
             rebuilt.setMaxOccurs(def.getMaxOccurs());
             rebuilt.setDefaultName(def.getDefaultName());
+            rebuilt.setReferences(def.getReferences());
+            rebuilt.setValidator(def.getValidator());
 
             typeDefinitions.put(id, rebuilt);
         }

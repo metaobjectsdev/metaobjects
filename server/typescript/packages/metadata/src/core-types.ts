@@ -84,8 +84,9 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
 } from "./core/identity/identity-constants.js";
-import { RELATIONSHIP_SUBTYPES } from "./core/relationship/relationship-constants.js";
+import { RELATIONSHIP_SUBTYPES, RELATIONSHIP_ATTR_OBJECT_REF } from "./core/relationship/relationship-constants.js";
 import { LAYOUT_SUBTYPES } from "./presentation/layout/layout-constants.js";
 import { SOURCE_SUBTYPES } from "./persistence/source/source-constants.js";
 import {
@@ -460,6 +461,30 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     RELATIONSHIP_FACTORIES,
   )) {
     registry.register(relationshipDef);
+  }
+
+  // Declare the core cross-references ON their TypeDefinitions, so the loader's
+  // registry-derived validation resolves them generically (a dangling target fails the
+  // load). Set on the concrete subtypes the parser produces. (Production moves these into
+  // the embedded spec/metamodel JSON once every port's spec reader carries the field.)
+  for (const subType of RELATIONSHIP_SUBTYPES) {
+    const def = registry.find(TYPE_RELATIONSHIP, subType);
+    if (def) {
+      def.references = [
+        { attr: RELATIONSHIP_ATTR_OBJECT_REF, targetType: TYPE_OBJECT, errorCode: "ERR_INVALID_RELATIONSHIP" },
+      ];
+    }
+  }
+  const idRefDef = registry.find(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE);
+  if (idRefDef) {
+    idRefDef.references = [
+      {
+        attr: IDENTITY_REFERENCE_ATTR_REFERENCES,
+        targetType: TYPE_OBJECT,
+        dottedFieldPath: true,
+        errorCode: "ERR_INVALID_REFERENCE",
+      },
+    ];
   }
 
   // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`

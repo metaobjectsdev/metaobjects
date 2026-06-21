@@ -98,6 +98,9 @@ export const ERROR_CODES = [
   // junction declaring two identity.reference children; @sourceRefField must match
   // one of them; M:N attrs are invalid on a 1:N (@cardinality:one / no @through).
   "ERR_INVALID_RELATIONSHIP",
+  // identity.reference @references names an FK target that does not resolve to any
+  // object in the loaded tree (a dangling cross-reference between metadata).
+  "ERR_INVALID_REFERENCE",
   "ERR_VAR_NOT_ON_PAYLOAD",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",
@@ -192,7 +195,10 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
  * envelope's `jsonPath` and `files` and have been dropped — see CHANGELOG.
  */
 export class ParseError extends Error implements LoaderError {
-  readonly code: ErrorCode;
+  // Widened from the core ErrorCode union so a DOWNSTREAM provider's validator can emit its
+  // own codes (LoaderError.code is `string`; the envelope compares codes as strings). Known
+  // core codes still surface in editor suggestions via the `string & {}` idiom.
+  readonly code: ErrorCode | (string & {});
   readonly source: ErrorSource;
   readonly suggestions?: string[];
   readonly fixture?: string;
@@ -201,7 +207,7 @@ export class ParseError extends Error implements LoaderError {
   constructor(
     message: string,
     opts: {
-      code: ErrorCode;
+      code: ErrorCode | (string & {});
       source: ErrorSource;
       suggestions?: string[];
       fixture?: string;

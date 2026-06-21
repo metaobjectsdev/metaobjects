@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- **Metadata reference enforcement** — a dangling cross-reference now fails the load instead of being silently ignored: an unresolved `relationship.@objectRef` raises `ERR_INVALID_RELATIONSHIP` and an unresolved `identity.reference.@references` raises `ERR_INVALID_REFERENCE`, with a source envelope pinpointing the node. Helps catch metadata drift (a renamed/removed entity surfaces immediately).
+- **Validation derived from the type registry** — each type's registration carries its cross-reference descriptors (and an optional validator), enforced by one registry-driven walk, so a downstream provider's new type validates itself with no core changes. (The config-driven, write-once-across-ports evolution of this is tracked in #51.)
+- **A load reports every validation error, not just the first** — validation passes now collect their findings (deduped by code + source) and surface them together rather than aborting on the first, so a model with multiple defects shows them all in one run.
+
+### Changed
+- **BREAKING — dangling metadata references now fail to load.** Models that referenced a non-existent entity via `@objectRef` / `@references` previously loaded silently; they now error (`ERR_INVALID_RELATIONSHIP` / `ERR_INVALID_REFERENCE`). Fix the reference or remove the relationship/identity.
+
+### Cross-port
+- Reference enforcement, the registry-derived validation walk, and the downstream-code-tolerant error mapping ship in all data ports (TS / Java / C# / Python; Kotlin via the shared JVM loader), gated by new shared `fixtures/conformance/` error fixtures (`error-relationship-unresolved-objectref`, `error-identity-reference-unresolved`). Cross-pass collect-all is currently Java-side (the other ports already collected).
+
 ## [0.10.0] — 2026-06-14
 
 ### Added

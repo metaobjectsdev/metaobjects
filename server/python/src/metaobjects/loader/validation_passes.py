@@ -82,7 +82,10 @@ from ..meta.core.relationship.relationship_constants import (
     RELATIONSHIP_ATTR_SYMMETRIC,
     RELATIONSHIP_ATTR_THROUGH,
 )
-from ..meta.core.identity.identity_constants import IDENTITY_SUBTYPE_REFERENCE
+from ..meta.core.identity.identity_constants import (
+    IDENTITY_SUBTYPE_REFERENCE,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
+)
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
@@ -136,6 +139,13 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
     _validate_relationships(root, errors)
+    # Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
+    # carries its reference descriptors (relationship @objectRef, identity.reference
+    # @references for core; a downstream provider's type carries its own) + validator,
+    # run as one recursive walk over a built-once symbol table.
+    if registry is not None:
+        from .registered_validation import run as _run_registered
+        errors.extend(_run_registered(root, registry))
     _validate_one_primary_source(root, errors)
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
@@ -1176,6 +1186,10 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             is_many = cardinality == CARDINALITY_MANY
             is_m2m = has_through and is_many
 
+            # NOTE: @objectRef existence resolution moved to the validation registry
+            # (a declarative ReferenceDescriptor on relationship.* TypeDefinitions,
+            # resolved by registered_validation). The M:N rules below stay here for now.
+
             # Rule (d): M:N-only attrs on a non-M:N relationship.
             if not is_m2m:
                 if has_through:
@@ -1263,6 +1277,11 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         envelope=rel.source,
                     ))
+
+
+# NOTE: identity.reference @references resolution moved to the validation registry
+# (a declarative ReferenceDescriptor with dotted_field_path on the identity.reference
+# TypeDefinition, resolved by registered_validation).
 
 
 # ---------------------------------------------------------------------------

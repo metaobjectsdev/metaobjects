@@ -66,7 +66,10 @@ import {
   FIELD_SUBTYPE_OBJECT,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
-import { IDENTITY_ATTR_FIELDS } from "../core/identity/identity-constants.js";
+import {
+  IDENTITY_ATTR_FIELDS,
+  IDENTITY_SUBTYPE_REFERENCE,
+} from "../core/identity/identity-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
@@ -1199,6 +1202,10 @@ export function validateRelationships(root: MetaData): ParseError[] {
       const isMany = cardinality === CARDINALITY_MANY;
       const isM2M = hasThrough && isMany;
 
+      // NOTE: @objectRef existence resolution moved to the validation registry
+      // (defaultValidationRegistry → a declarative reference descriptor). The M:N
+      // slim-vocabulary rules below stay here for now (Phase 3 migrates them too).
+
       // Rule (d): M:N-only attrs on a non-M:N relationship.
       if (!isM2M) {
         if (hasThrough) {
@@ -1291,6 +1298,9 @@ export function validateRelationships(root: MetaData): ParseError[] {
   }
   return errors;
 }
+
+// NOTE: identity.reference @references resolution moved to the validation registry
+// (defaultValidationRegistry → a declarative reference descriptor with dottedFieldPath).
 
 function checkFilterClauses(
   filter: Record<string, unknown>,

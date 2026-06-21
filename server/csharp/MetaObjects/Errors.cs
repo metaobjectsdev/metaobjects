@@ -81,6 +81,9 @@ public enum ErrorCode
     // does not match one of them, or a M:N-only attr (@through/@sourceRefField/
     // @symmetric) is set on a non-M:N (1:N / @cardinality:one) relationship.
     ERR_INVALID_RELATIONSHIP,
+    // identity.reference @references names an FK target object that does not resolve
+    // to any object in the loaded tree (a dangling cross-reference between metadata).
+    ERR_INVALID_REFERENCE,
     ERR_BAD_ATTR_FILTER,
     ERR_STORAGE_WITHOUT_OBJECT_REF,
     // ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
