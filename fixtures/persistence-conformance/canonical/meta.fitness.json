@@ -29,6 +29,17 @@
         ]
       }},
       { "object.entity": {
+        "name": "Node",
+        "children": [
+          { "source.rdb": { "@table": "nodes" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "label", "@required": true, "@maxLength": 80 } },
+          { "field.long":   { "name": "parentId" } },
+          { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkParent", "@fields": "parentId", "@references": "Node" } }
+        ]
+      }},
+      { "object.entity": {
         "name": "Measurement",
         "children": [
           { "source.rdb": { "@table": "measurements" } },

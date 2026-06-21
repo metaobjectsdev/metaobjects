@@ -10,6 +10,7 @@ import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.AuthTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
+import com.metaobjects.integration.kotlin.tables.NodeTable
 import com.metaobjects.integration.kotlin.tables.ProgramStatView
 import com.metaobjects.integration.kotlin.tables.ProgramTable
 import com.metaobjects.integration.kotlin.tables.ProgramView
@@ -451,6 +452,7 @@ object QueryScenarioRunner {
     private fun tableFor(entity: String): Table = when (entity) {
         "Program" -> ProgramTable
         "Week" -> WeekTable
+        "Node" -> NodeTable
         "Measurement" -> MeasurementTable
         "ProgramStat" -> ProgramStatView
         "ProgramView" -> ProgramView
