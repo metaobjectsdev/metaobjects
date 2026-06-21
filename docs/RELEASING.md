@@ -296,7 +296,8 @@ subsequent releases keyless.)
    from the local build with the token in `~/Work/Keys/pypi.txt`:
    ```bash
    cd server/python   # after the `uv build` above produced dist/
-   UV_PUBLISH_TOKEN="$(sed -n '4p' ~/Work/Keys/pypi.txt)" uv publish dist/*
+   # the token is line 4 of the key file, AFTER the "secret: " label — strip it or you get a 403:
+   UV_PUBLISH_TOKEN="$(sed -n '4p' ~/Work/Keys/pypi.txt | sed 's/^secret:[[:space:]]*//')" uv publish dist/*
    ```
    (When #36 is fixed, switch to **Actions → publish-python → Run workflow** / a `python-v<version>` tag.)
 4. **Verify:** `curl -s https://pypi.org/pypi/metaobjects/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"`.
@@ -322,6 +323,18 @@ maintainer's GPG key.
 > Gotchas: Maven Central versions are immutable (like the others); `groupId` ownership is already
 > verified for `com.metaobjects`; a missing GPG key or expired Central token fails the deploy with
 > an auth error, not a clear message.
+>
+> **`central-publishing-maven-plugin 0.6.0` crashes COSMETICALLY** (`UnrecognizedPropertyException:
+> "warnings"` while parsing Sonatype's response) — `mvn` exits non-zero, but the bundle DID publish
+> (all modules go live on Central via autoPublish). Do **not** blindly re-run (versions are
+> immutable) — first VERIFY:
+> ```bash
+> for m in metadata om omdb-ktx render codegen-spring spring-boot-starter; do
+>   curl -s -o /dev/null -w "%{http_code} metaobjects-$m\n" \
+>     "https://repo1.maven.org/maven2/com/metaobjects/metaobjects-$m/<version>/metaobjects-$m-<version>.pom"; done
+> ```
+> If all are `200`, the release is out — the error was just the response parse. Bump the plugin to
+> ≥`0.7.0` to stop the crash on the next release.
 
 **Versions are not unified across languages** — TS, C#, and Python are on the `0.9.x` line, the
 Java/Kotlin module line is on the `7.2.x` track. Don't force one number. The cross-language contract
