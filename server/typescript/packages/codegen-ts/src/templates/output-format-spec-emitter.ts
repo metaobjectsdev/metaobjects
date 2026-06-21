@@ -76,7 +76,7 @@ function promptFieldLiteral(field: MetaData): string {
 
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const valuesLit = stringArrayLiteral(enumValues(field));
-    const enumDocLit = propertiesMapLiteral(field.ownAttr(FIELD_ATTR_ENUM_DOC));
+    const enumDocLit = propertiesMapLiteral(field.attr(FIELD_ATTR_ENUM_DOC));
     return (
       `{ name: ${name}, kind: FieldKind.ENUM, required: ${required}, array: ${array}, ` +
       `enumValues: ${valuesLit}, enumDoc: ${enumDocLit}, example: ${example}, ` +

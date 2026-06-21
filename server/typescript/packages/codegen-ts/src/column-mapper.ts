@@ -170,7 +170,7 @@ function pgColumnTypeOverride(
   field: MetaField,
   timestampMode: "date" | "string" = "string",
 ): { fnName: string; fnOptions?: Record<string, unknown> } | undefined {
-  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType !== "string") return undefined;
   switch (dbColumnType) {
     case DB_COLUMN_TYPE_UUID:
@@ -191,7 +191,7 @@ function pgColumnTypeOverride(
 /** Resolve max length from validator.length child or @maxLength attr.
  *  Uses field.validators() (effective) so inherited validators are seen. */
 function getMaxLength(field: MetaField): number | undefined {
-  const lenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const lenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof lenAttr === "number") return lenAttr;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
@@ -205,7 +205,7 @@ function getMaxLength(field: MetaField): number | undefined {
 /** Check for validator.required child OR @required attr.
  *  Uses field.validators() (effective) so inherited validators are seen. */
 function isRequired(field: MetaField): boolean {
-  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
+  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
@@ -213,7 +213,7 @@ function isRequired(field: MetaField): boolean {
  *  when unset. Used as the `.$type<VO>()` target + its sibling-module import.
  *  A fully-qualified ref (acme::ai::SourceLens) strips to the short name. */
 function objectRefBaseName(field: MetaField): string | undefined {
-  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref === "string" && ref.length > 0) return stripPackage(ref);
   return undefined;
 }
@@ -339,8 +339,8 @@ export function mapColumnType(
           // declared @precision/@scale (mirroring migrate-ts/expected-schema so
           // codegen and the DDL agree), falling back to a sane default.
           fnName = "numeric";
-          const precision = field.ownAttr(FIELD_ATTR_PRECISION);
-          const scale = field.ownAttr(FIELD_ATTR_SCALE);
+          const precision = field.attr(FIELD_ATTR_PRECISION);
+          const scale = field.attr(FIELD_ATTR_SCALE);
           if (typeof precision === "number" && typeof scale === "number") {
             fnOptions = { precision, scale };
           } else if (typeof precision === "number") {
@@ -414,12 +414,12 @@ export function mapColumnType(
     modifiers.push(".notNull()");
   }
 
-  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) {
+  if (field.attr(FIELD_ATTR_UNIQUE) === true) {
     modifiers.push(".unique()");
   }
 
   let defaultExpr: DefaultExpr | undefined;
-  const defaultAttr = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const defaultAttr = field.attr(FIELD_ATTR_DEFAULT);
   if (defaultAttr !== undefined) {
     // SQL-expression detection runs on the raw string value — a string like
     // "CURRENT_TIMESTAMP" or "now" must be emitted as sql`...`, not a literal.

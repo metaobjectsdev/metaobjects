@@ -3,7 +3,7 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaObject, MetaField } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, stripPackage } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_UNIQUE,
@@ -184,7 +184,11 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     const fkField = fkFieldNames[0]!;
     const targetName = ref.targetEntity;
     if (!targetName) continue;
-    const targetObj = ctx.loadedRoot.findObject(targetName);
+    // @references may be authored bare OR package-qualified, and the loader can
+    // resolve it to an FQN (e.g. the YAML front-end qualifies it). Strip the
+    // package so the lookup matches the object's bare name — mirrors the
+    // relation-resolver, which already does this.
+    const targetObj = ctx.loadedRoot.findObject(stripPackage(targetName));
     if (!targetObj) continue;
     const targetPkField = ref.resolvedTargetPkField(ctx.loadedRoot) ?? "id";
     result.set(fkField, {
@@ -345,7 +349,7 @@ function renderColumn(
   // @autoSet fields: emit .$defaultFn(() => new Date().toISOString()) so Drizzle
   // inserts stamp the server-side timestamp automatically. This means callers don't
   // need to supply createdAt / updatedAt in INSERT calls — Drizzle fills them in.
-  const autoSet = field.ownAttr(FIELD_ATTR_AUTO_SET);
+  const autoSet = field.attr(FIELD_ATTR_AUTO_SET);
   const autoSetSuffix = (autoSet === "onCreate" || autoSet === "onUpdate")
     ? `.$defaultFn(() => new Date().toISOString())`
     : "";

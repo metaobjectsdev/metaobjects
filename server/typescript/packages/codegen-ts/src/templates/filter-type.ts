@@ -54,7 +54,7 @@ function renderFieldUnion(field: MetaField): string {
 export function renderFilterType(entity: MetaObject, exclude?: string): Code {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
   const allFields = entity.fields().filter((c) => c.name !== exclude);
-  const filterableFieldsList = allFields.filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true);
+  const filterableFieldsList = allFields.filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true);
   // Sort union uses isSortableField — same predicate as renderSortAllowlist to prevent
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).
   const sortFieldNames = allFields.filter(isSortableField).map((f) => `"${f.name}"`);

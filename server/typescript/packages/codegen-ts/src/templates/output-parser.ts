@@ -58,7 +58,7 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
   const isArray = field.isArray === true;
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const refName = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const refName = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof refName !== "string") {
       base = "z.unknown()";
     } else if (seen.has(refName)) {

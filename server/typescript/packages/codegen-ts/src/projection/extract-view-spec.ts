@@ -135,7 +135,7 @@ function sourceColumnNameFor(
   entityField: MetaData,
   ctx: ExtractContext,
 ): string {
-  const col = entityField.ownAttr(FIELD_ATTR_COLUMN);
+  const col = entityField.attr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col !== "") return col;
   return columnNameFromField(entityField.name, ctx.columnNamingStrategy);
 }

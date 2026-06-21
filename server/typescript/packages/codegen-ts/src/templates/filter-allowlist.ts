@@ -45,7 +45,7 @@ function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
   return entity
     .fields()
-    .filter((c) => c.ownAttr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
+    .filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
 }
 
 /**
@@ -93,7 +93,7 @@ export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
   }
   const rows = sortable
     .map((f) => {
-      const defaultOrder = f.ownAttr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) as string | undefined;
+      const defaultOrder = f.attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) as string | undefined;
       const rule =
         defaultOrder === "asc" || defaultOrder === "desc"
           ? `{ defaultOrder: ${JSON.stringify(defaultOrder)} as const }`

@@ -137,7 +137,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
     // FR-013: @readOnly fields are populated by DB / replication / external
     // owner; the application has no path to write them. Exclude from the
     // create-shape schema entirely.
-    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
@@ -147,7 +147,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
       continue;
     }
 
-    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
 
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
@@ -201,12 +201,12 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       out.push({ name: child.name, optional: false, pinnedLiteral: tphPin.value });
       continue;
     }
-    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       out.push({ name: child.name, optional: true, autoSet: true });
     } else {
@@ -231,10 +231,10 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
-    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
     if (autoSet === AUTO_SET_ON_CREATE) {
       // Omitted: creation timestamps cannot change after creation.
       continue;
@@ -262,7 +262,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // The DB / trigger / replication owns the write path; the app must not
     // pass these values in POST/PATCH bodies (routesFile enforces the same
     // contract at the boundary with a 400 response).
-    if (child.ownAttr(FIELD_ATTR_READ_ONLY) === true) continue;
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     // The discriminator is implicit on subtype rows (controlled by URL / insert
@@ -275,7 +275,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       continue;
     }
 
-    const autoSet = child.ownAttr(FIELD_ATTR_AUTO_SET);
+    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
 
     // Insert schema: @autoSet fields use transform (always override client input).
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
@@ -327,7 +327,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   // field used to collapse to z.string() / z.array(z.string()) and downstream
   // JSON Schema (e.g. LLM tool_use input_schema) lost the nested object shape.
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       // @objectRef may be authored fully-qualified or bare — the referenced
       // <Ref>InsertSchema is named by the BARE short name. The import MODULE is
@@ -408,11 +408,11 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
 /** Mirrors the optional-or-not decision inside appendValidatorChain so the update-schema
  *  caller can avoid stacking a second `.optional()` onto an already-optional expression. */
 function fieldWillBeOptional(field: MetaField): boolean {
-  let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+  let isRequired = field.attr(FIELD_ATTR_REQUIRED) === true;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
   }
-  const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
+  const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
   return !isRequired || hasDefault;
 }
 
@@ -430,8 +430,8 @@ const NUMERIC_FIELD_SUBTYPES = new Set<string>([
  *  - array (any element)    → .min/.max = element count     (validator.array)
  */
 function appendValidatorChain(base: Code, field: MetaField): Code {
-  let isRequired = field.ownAttr(FIELD_ATTR_REQUIRED) === true;
-  let maxLen: number | undefined = field.ownAttr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
+  let isRequired = field.attr(FIELD_ATTR_REQUIRED) === true;
+  let maxLen: number | undefined = field.attr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
   let pattern: string | undefined;
   let numMin: number | undefined;
@@ -482,7 +482,7 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
   // Fields with DB-level defaults are optional in the InsertSchema: the caller
   // can omit them and the DB will fill in. Otherwise required-with-default
   // would force callers to repeat the default at every call site.
-  const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
+  const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
   if (!isRequired || hasDefault) chain = code`${chain}.optional()`;
   return chain;
 }

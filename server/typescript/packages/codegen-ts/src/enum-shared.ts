@@ -62,7 +62,7 @@ export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
   return {
     name: toPascalCase(decl.name),
     values,
-    provided: decl.ownAttr(FIELD_ATTR_PROVIDED) === true,
+    provided: decl.attr(FIELD_ATTR_PROVIDED) === true,
   };
 }
 

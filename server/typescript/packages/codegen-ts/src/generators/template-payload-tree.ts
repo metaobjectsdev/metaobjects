@@ -58,7 +58,7 @@ export function buildEnrichedPayloadTree(
       required: isFieldRequired(f),
     };
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = f.ownAttr(FIELD_ATTR_OBJECT_REF);
+      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string" && ref.length > 0) {
         // Owner switches to the nested VO for its fields (the recursion below
         // re-derives `owner` from the resolved VO's own name).

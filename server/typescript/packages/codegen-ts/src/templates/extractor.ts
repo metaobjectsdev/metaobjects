@@ -50,7 +50,7 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
 function refVo(field: MetaData, root: MetaData): MetaData | undefined {
-  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string") return undefined;
   const direct = findObject(root, ref);
   if (direct !== undefined) return direct;
@@ -85,7 +85,7 @@ function enumAlias(field: MetaData, ownerName: string): string | undefined {
  * required test (boolean `true` only) so the two never skew.
  */
 function isFieldRequired(field: MetaData): boolean {
-  return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+  return field.attr(FIELD_ATTR_REQUIRED) === true;
 }
 
 /** The mirror→strict mapper name for a value-object (`toStrict<Name>`). */

@@ -82,7 +82,7 @@ export interface BuildDocDataOpts {
  *  the documented model-field optionality. Exported so the field-shape builder
  *  reuses the EXACT same rule rather than re-deriving it. */
 export function isFieldRequired(field: MetaField): boolean {
-  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
+  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
@@ -104,7 +104,7 @@ interface ValidatorParts {
 }
 
 function collectValidatorParts(field: MetaField): ValidatorParts {
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const maxLenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
   const regexParts: string[] = [];
   const lengthParts: string[] = [];
   const numericParts: string[] = [];
@@ -143,7 +143,7 @@ function collectValidatorParts(field: MetaField): ValidatorParts {
 export function neutralTypeStr(field: MetaField): string {
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     base = typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : "object";
   } else {
     base = field.subType;
@@ -165,7 +165,7 @@ function neutralTypeCell(field: MetaField): string {
  *  uses. Deliberately does NOT derive ANSI/ORM SQL so it can't drift vs the
  *  migrate engine or re-introduce language-specific DDL. Wrapped in backticks. */
 function storageTypeCell(field: MetaField): string {
-  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType === "string" && dbColumnType.length > 0) {
     return `\`${dbColumnType.toUpperCase()}\``;
   }
@@ -190,7 +190,7 @@ function buildConstraintRow(
   const rules: string[] = [];
 
   if (isPk) rules.push("primary key");
-  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
+  if (field.attr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
 
   if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
     const values = enumValues(field);
@@ -212,7 +212,7 @@ function buildConstraintRow(
     rules.push(`references \`${fk.targetEntity}.${fk.targetField}\``);
   }
 
-  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const def = field.attr(FIELD_ATTR_DEFAULT);
   if (def !== undefined) rules.push(`default: \`${String(def)}\``);
 
   const sup = field.resolveSuper();
@@ -271,7 +271,7 @@ function buildFieldRow(
   // Otherwise empty. Keeps the column noise-free for the 90% case where
   // field name and column name agree.
   const columnName = field.column;
-  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   const columnDiffers = typeof columnName === "string" && columnName !== field.name;
   const hasPhysicalOverride = typeof dbColumnType === "string" && dbColumnType.length > 0;
   let storageCell = "";
@@ -287,7 +287,7 @@ function buildFieldRow(
   // column, plus the maxLength/length/numeric limits that used to live in
   // the separate Limits cell (collapsed in to keep the table to 5 columns).
   const rules: string[] = [];
-  if (field.ownAttr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
+  if (field.attr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
 
   if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
     const values = enumValues(field);
@@ -303,7 +303,7 @@ function buildFieldRow(
   rules.push(...lengthParts, ...numericParts);
 
   // The FK reference is already encoded in typeCell — don't repeat it in rules.
-  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const def = field.attr(FIELD_ATTR_DEFAULT);
   if (def !== undefined) rules.push(`default: \`${String(def)}\``);
 
   const sup = field.resolveSuper();
@@ -340,10 +340,10 @@ function buildFieldDetail(
   const hasSummary = typeof summary === "string" && summary.length > 0;
   const sup = field.resolveSuper();
   const fk = fkMap.get(field.name);
-  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  const def = field.attr(FIELD_ATTR_DEFAULT);
   const columnName = field.column;
-  const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
-  const isUnique = field.ownAttr(FIELD_ATTR_UNIQUE) === true;
+  const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
+  const isUnique = field.attr(FIELD_ATTR_UNIQUE) === true;
   const isEnum = field.subType === FIELD_SUBTYPE_ENUM && !field.isArray;
   const enumVals = isEnum ? enumValues(field) : undefined;
   const validators = field.validators();
@@ -352,7 +352,7 @@ function buildFieldDetail(
       || v.subType === VALIDATOR_SUBTYPE_REGEX
       || v.subType === VALIDATOR_SUBTYPE_NUMERIC,
   );
-  const maxLenAttr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  const maxLenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
 
   // "Interesting enough to render a detail block" predicate. Plain typed
   // fields with no authored annotations get skipped — the at-a-glance Fields

@@ -65,7 +65,7 @@ function fieldTsType(
   ownerName: string,
 ): { type: string; refVo?: string; enumAlias?: { name: string; decl: string } } {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const refName = typeof ref === "string" ? ref : "unknown";
     // isArray is a structural property on MetaData, not an attr.
     const isArray = field.isArray;
@@ -96,7 +96,7 @@ function fieldTsType(
 
 /** True iff the field's @required is explicitly set to true. */
 function isFieldRequired(field: MetaData): boolean {
-  return field.ownAttr(FIELD_ATTR_REQUIRED) === true;
+  return field.attr(FIELD_ATTR_REQUIRED) === true;
 }
 
 function emitInterface(
