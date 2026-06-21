@@ -92,15 +92,28 @@ matches the JSON.
 
 ## Task 3 — Java collect-all (loader-contract normalization)
 
-> **Status: core shipped** (commit `1e512ea1`). The registry-derived **reference** pass now
-> surfaces *all* dangling references in one load via `MetaDataValidationException` (IS-A
-> `MetaDataException`, first error's code/envelope preserved for back-compat,
-> `getValidationErrors()` for the full set). Single-error loads still throw a plain
-> `MetaDataException` — every single-finding conformance fixture is byte-identical. This is
-> the high-value, zero-blast-radius slice (drift UX: multiple broken refs → all reported).
-> **Deferred:** cross-pass collect-all over the ~20 structural eager-throw passes — those
-> guard a malformed tree, so collecting past the first would risk cascading non-validation
-> exceptions on a half-broken tree. Do that only with per-pass tree-safety review.
+> **Status: SHIPPED — full cross-pass collect-all** (commit `1fab2c98`, superseding the
+> reference-only slice `1e512ea1`). `ValidationPhase` now runs **every** pass and collects
+> each finding instead of aborting on the first, so a model with defects across multiple
+> passes reports them all. Key decisions that made it safe:
+> - **`pass(...)` wrapper** catches each pass's `MetaDataException` and continues; a
+>   non-`MetaDataException` (a genuine bug) still propagates — no swallowing. The feared
+>   cascade (a later pass NPE-ing on a half-broken tree) **did not materialize** across the
+>   whole corpus; if one ever does, it surfaces loudly rather than hiding errors.
+> - **Dedupe on (code + source envelope)** — the same defect flagged by two passes (a missing
+>   required attr caught by both the generic and a subtype pass) is one finding. This kept the
+>   single-error conformance fixtures green without edits.
+> - **Record all-but-last via `loader.addError`, throw the last** — matches the conformance
+>   harness's "drain `getErrors()` (source order) then the thrown error" merge, and keeps
+>   single-error loads byte-identical to the historical eager-throw.
+> - The aggregate `MetaDataValidationException` was dropped; `loader.getErrors()` is the
+>   programmatic channel for the full set.
+>
+> One unit test updated (a bad `@role` now legitimately reports both `ERR_BAD_ATTR_VALUE` and
+> `ERR_SOURCE_NO_PRIMARY`) to assert the expected code is *among* all reported errors. Green:
+> metadata 1058 + conformance 417, all dependent JVM modules. **Cross-port note:** TS/C#/Python
+> already collect; this brings Java to parity. No shared-corpus expected-errors fixtures needed
+> changing (dedupe held them at one finding each).
 
 **Goal:** a load reports **all** errors, not just the first — matching TS/C#/Python (which
 already collect). The genuine user-visible UX win.
