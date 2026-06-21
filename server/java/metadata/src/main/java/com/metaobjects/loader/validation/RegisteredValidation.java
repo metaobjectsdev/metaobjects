@@ -44,16 +44,22 @@ public final class RegisteredValidation {
                     int dot = raw.indexOf('.');
                     String entityRef = (desc.dottedFieldPath() && dot >= 0) ? raw.substring(0, dot) : raw;
                     MetaObject target = ctx.symbols().resolveObject(entityRef);
+                    // Qualify the node name with its owning entity (e.g. "Order.items") so the
+                    // error is locatable from the message alone, not just the source envelope.
+                    String qname = (node.getParent() != null && node.getParent().getShortName() != null
+                            && !node.getParent().getShortName().isEmpty())
+                        ? node.getParent().getShortName() + "." + node.getShortName()
+                        : node.getShortName();
                     if (target == null) {
                         ctx.error(desc.errorCode(), node,
-                            type + "." + subType + " \"" + node.getShortName() + "\" @"
+                            type + "." + subType + " \"" + qname + "\" @"
                                 + desc.attr() + " \"" + raw + "\" does not resolve to an object.");
                     } else if (!target.getType().equals(desc.targetType())
                             || (desc.targetSubType() != null && !target.getSubType().equals(desc.targetSubType()))) {
                         String want = desc.targetSubType() != null
                             ? desc.targetType() + "." + desc.targetSubType() : desc.targetType();
                         ctx.error(desc.errorCode(), node,
-                            type + "." + subType + " \"" + node.getShortName() + "\" @" + desc.attr()
+                            type + "." + subType + " \"" + qname + "\" @" + desc.attr()
                                 + " \"" + raw + "\" resolves to " + target.getType() + "." + target.getSubType()
                                 + ", not a " + want + ".");
                     }

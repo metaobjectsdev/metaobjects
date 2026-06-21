@@ -30,17 +30,20 @@ public static class RegisteredValidation
                 int dot = raw.IndexOf('.');
                 var entityRef = (desc.DottedFieldPath && dot >= 0) ? raw[..dot] : raw;
                 var target = ctx.Symbols.ResolveObject(entityRef);
+                // Qualify the node name with its owning entity (e.g. "Order.items") so the
+                // error is locatable from the message alone, not just the source envelope.
+                var qname = string.IsNullOrEmpty(node.Parent?.Name) ? node.Name : $"{node.Parent!.Name}.{node.Name}";
                 if (target is null)
                 {
                     ctx.Error(desc.ErrorCode, node,
-                        $"{node.Type}.{node.SubType} \"{node.Name}\" @{desc.Attr} \"{raw}\" does not resolve to an object.");
+                        $"{node.Type}.{node.SubType} \"{qname}\" @{desc.Attr} \"{raw}\" does not resolve to an object.");
                 }
                 else if (target.Type != desc.TargetType ||
                          (desc.TargetSubType is not null && target.SubType != desc.TargetSubType))
                 {
                     var want = desc.TargetSubType is not null ? $"{desc.TargetType}.{desc.TargetSubType}" : desc.TargetType;
                     ctx.Error(desc.ErrorCode, node,
-                        $"{node.Type}.{node.SubType} \"{node.Name}\" @{desc.Attr} \"{raw}\" resolves to " +
+                        $"{node.Type}.{node.SubType} \"{qname}\" @{desc.Attr} \"{raw}\" resolves to " +
                         $"{target.Type}.{target.SubType}, not a {want}.");
                 }
             }
@@ -81,8 +84,12 @@ public static class RegisteredValidation
         public void Error(string code, MetaData node, string message)
         {
             // The core descriptors use built-in codes; a downstream provider's custom code
-            // (not in the enum) maps to ERR_UNKNOWN for now (the message carries the detail).
-            var ec = System.Enum.TryParse<ErrorCode>(code, out var parsed) ? parsed : ErrorCode.ERR_UNKNOWN;
+            // (not a defined enum member — including a numeric string) maps to ERR_UNKNOWN for
+            // now (the message carries the detail). Enum.IsDefined guards numeric-string parses
+            // so behaviour matches Python's value-lookup mapping exactly.
+            var ec = System.Enum.TryParse<ErrorCode>(code, out var parsed)
+                && System.Enum.IsDefined(typeof(ErrorCode), parsed)
+                ? parsed : ErrorCode.ERR_UNKNOWN;
             Errors.Add(new MetaError(message, ec, Envelope: node.Source));
         }
     }

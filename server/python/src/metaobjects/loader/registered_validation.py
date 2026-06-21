@@ -67,10 +67,13 @@ def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> Non
                 continue  # absence is the required-attr pass's job
             entity_ref = raw.split(".", 1)[0] if desc.dotted_field_path else raw
             target = ctx.symbols.resolve_object(entity_ref)
+            # Qualify the node name with its owning entity (e.g. "Order.items") so the error
+            # is locatable from the message alone, not just the source envelope.
+            qname = f"{node.parent.name}.{node.name}" if node.parent and node.parent.name else node.name
             if target is None:
                 ctx.error(
                     desc.error_code, node,
-                    f'{node.type}.{node.sub_type} "{node.name}" @{desc.attr} "{raw}" '
+                    f'{node.type}.{node.sub_type} "{qname}" @{desc.attr} "{raw}" '
                     f"does not resolve to an object.",
                 )
             elif target.type != desc.target_type or (
@@ -83,7 +86,7 @@ def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> Non
                 )
                 ctx.error(
                     desc.error_code, node,
-                    f'{node.type}.{node.sub_type} "{node.name}" @{desc.attr} "{raw}" '
+                    f'{node.type}.{node.sub_type} "{qname}" @{desc.attr} "{raw}" '
                     f"resolves to {target.type}.{target.sub_type}, not a {want}.",
                 )
         if type_def.validate is not None:

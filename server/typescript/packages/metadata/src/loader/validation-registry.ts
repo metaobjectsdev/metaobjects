@@ -64,11 +64,14 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
         if (typeof raw !== "string" || raw === "") continue; // absence is the required-attr pass's job
         const entityRef = desc.dottedFieldPath ? (raw.split(".")[0] ?? raw) : raw;
         const target = ctx.symbols.resolveObject(entityRef);
+        // Qualify the node name with its owning entity (e.g. "Order.items") so the error is
+        // locatable from the message alone, not just the source envelope.
+        const qname = node.parent?.name ? `${node.parent.name}.${node.name}` : node.name;
         if (!target) {
           ctx.error(
             desc.errorCode,
             node,
-            `${node.type}.${node.subType} "${node.name}" @${desc.attr} "${raw}" does not resolve to an object.`,
+            `${node.type}.${node.subType} "${qname}" @${desc.attr} "${raw}" does not resolve to an object.`,
           );
         } else if (
           target.type !== desc.targetType ||
@@ -78,7 +81,7 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
           ctx.error(
             desc.errorCode,
             node,
-            `${node.type}.${node.subType} "${node.name}" @${desc.attr} "${raw}" resolves to ` +
+            `${node.type}.${node.subType} "${qname}" @${desc.attr} "${raw}" resolves to ` +
               `${target.type}.${target.subType}, not a ${want}.`,
           );
         }

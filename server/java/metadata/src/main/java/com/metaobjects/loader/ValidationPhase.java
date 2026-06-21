@@ -66,9 +66,12 @@ import java.util.Set;
  * loader transitions to INITIALIZED.
  *
  * <p>Mirrors the C# {@code ValidationPasses} orchestrator in style (stateless static
- * methods, a single public entry point) while preserving Java's eager-throw semantics:
- * the first validation error raises {@link MetaDataException} immediately rather than
- * collecting all errors into a list.</p>
+ * methods, a single public entry point). Each pass COLLECTS its finding rather than aborting
+ * on the first: the load reports every error (a model with defects across multiple passes
+ * surfaces them all). Findings are recorded on the loader (source order) via
+ * {@link MetaDataLoader#addError} and the LAST one is thrown so the load still fails; a
+ * single-error load records nothing and throws that one, byte-identical to the prior
+ * eager-throw. See {@link #run(MetaRoot, MetaDataLoader)}.</p>
  *
  * <p>In this phase only enum {@code @values} content validation is wired here. Other
  * validation passes will be migrated incrementally.</p>
@@ -159,7 +162,7 @@ public final class ValidationPhase {
         if (loader != null && loader.getTypeRegistry() != null) {
             for (com.metaobjects.validation.ValidationError e :
                     com.metaobjects.loader.validation.RegisteredValidation.run(root, loader.getTypeRegistry())) {
-                collected.add(new MetaDataException(e.message(), ErrorCode.valueOf(e.code()), e.source()));
+                collected.add(new MetaDataException(e.message(), toErrorCode(e.code()), e.source()));
             }
         }
         pass(collected, () -> validateOrigins(root));
@@ -202,25 +205,46 @@ public final class ValidationPhase {
     }
 
     /** Collapse duplicate findings (same code + same source envelope), preserving first-seen
-     *  order. Two errors the conformance envelope model cannot tell apart ARE the same finding. */
+     *  order. Two errors the conformance envelope model cannot tell apart ARE the same finding.
+     *  A finding with neither code nor envelope (no distinguishing identity) is never deduped —
+     *  it keeps its own slot via an index-tagged key. */
     private static java.util.List<MetaDataException> dedupe(java.util.List<MetaDataException> in) {
         java.util.Map<String, MetaDataException> byKey = new java.util.LinkedHashMap<>();
-        for (MetaDataException e : in) {
-            String key = e.getCode().map(Enum::name).orElse("")
-                + "|" + e.getEnvelope().map(Object::toString).orElse("");
+        for (int i = 0; i < in.size(); i++) {
+            MetaDataException e = in.get(i);
+            String code = e.getCode().map(Enum::name).orElse("");
+            String env = e.getEnvelope().map(Object::toString).orElse("");
+            // No code AND no envelope → nothing to dedupe on; tag with the index so distinct
+            // such findings are not collapsed into one.
+            String key = (code.isEmpty() && env.isEmpty()) ? ("#" + i) : (code + "|" + env);
             byKey.putIfAbsent(key, e);
         }
         return new java.util.ArrayList<>(byKey.values());
     }
 
+    /** Map a (possibly downstream) error-code STRING to the {@link ErrorCode} enum, falling back
+     *  to {@link ErrorCode#ERR_UNKNOWN} for a code not in the enum — so a downstream provider's
+     *  custom code never throws out of the validation walk (the message carries the raw code). */
+    private static ErrorCode toErrorCode(String code) {
+        try {
+            return ErrorCode.valueOf(code);
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            return ErrorCode.ERR_UNKNOWN;
+        }
+    }
+
     /**
      * Legacy entry point retained for callers that do not have a loader handle.
      * Delegates to {@link #run(MetaRoot, MetaDataLoader)} with a {@code null}
-     * loader, which skips warning collection but still runs all error-throwing
-     * passes.
+     * loader, which skips warning collection and the registry-derived reference pass
+     * but still runs all error-collecting passes.
+     *
+     * <p>Without a loader handle there is no error-accumulator to record into, so the
+     * collected findings cannot be surfaced via {@code getErrors()}; the load still fails
+     * by throwing the last collected finding.</p>
      *
      * @param root the fully-loaded {@link MetaRoot}; must not be {@code null}
-     * @throws MetaDataException on the first validation error found (eager-throw)
+     * @throws MetaDataException when any validation error is found (the last collected one)
      */
     public static void run(MetaRoot root) {
         run(root, null);

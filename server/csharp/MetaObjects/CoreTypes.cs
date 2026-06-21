@@ -427,6 +427,10 @@ public static class CoreTypes
                     [Wildcard(TYPE_ATTR)],
                     nodeFactory,
                     idAttrs.ToList(),
+                    // maxOccurs/defaultName are hardcoded here (matching the values in
+                    // spec_metamodel/identity.json, which this port does NOT yet read). Sourcing
+                    // them from that JSON — true single-source-of-truth across all ports — is the
+                    // config-driven-validation work tracked in issue #51.
                     maxOccurs: isPrimary ? 1 : 0,
                     defaultName: isPrimary ? subType : null));
         }
