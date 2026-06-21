@@ -9,6 +9,7 @@
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
 import { refMatchesObject } from "../naming-refs.js";
+import { resolvedSource } from "../source.js";
 import { TYPE_OBJECT } from "../shared/base-types.js";
 import type { TypeRegistry } from "../registry.js";
 import type { LoaderCode, SymbolTable, ValidationContext } from "../validation-types.js";
@@ -44,6 +45,15 @@ class ValidationContextImpl implements ValidationContext {
   error(code: LoaderCode, node: MetaData, message: string): void {
     this.errors.push(new ParseError(message, { code, source: node.source }));
   }
+
+  // A cross-reference error carries a RESOLVED-source envelope (referrer = the node's fqn,
+  // target = the raw ref value) — consistent across every reference kind (objectRef,
+  // references, payloadRef, …), matching the FR5d convention.
+  errorResolved(code: LoaderCode, node: MetaData, ref: string, message: string): void {
+    this.errors.push(
+      new ParseError(message, { code, source: resolvedSource(node.source, node.fqn(), ref) }),
+    );
+  }
 }
 
 /**
@@ -64,10 +74,12 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
         if (typeof raw !== "string" || raw === "") continue; // absence is the required-attr pass's job
         const entityRef = desc.dottedFieldPath ? (raw.split(".")[0] ?? raw) : raw;
         const target = ctx.symbols.resolveObject(entityRef);
+        const emit = (message: string): void => {
+          if (desc.resolvedSource) ctx.errorResolved(desc.errorCode, node, raw, message);
+          else ctx.error(desc.errorCode, node, message);
+        };
         if (!target) {
-          ctx.error(
-            desc.errorCode,
-            node,
+          emit(
             `${node.type}.${node.subType} "${node.name}" @${desc.attr} "${raw}" does not resolve to an object.`,
           );
         } else if (
@@ -75,9 +87,7 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
           (desc.targetSubType !== undefined && target.subType !== desc.targetSubType)
         ) {
           const want = desc.targetSubType ? `${desc.targetType}.${desc.targetSubType}` : desc.targetType;
-          ctx.error(
-            desc.errorCode,
-            node,
+          emit(
             `${node.type}.${node.subType} "${node.name}" @${desc.attr} "${raw}" resolves to ` +
               `${target.type}.${target.subType}, not a ${want}.`,
           );
