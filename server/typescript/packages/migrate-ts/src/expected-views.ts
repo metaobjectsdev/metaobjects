@@ -58,8 +58,11 @@ function buildView(
   const primarySource = projection.ownChildren().find(
     (c): c is MetaSource => c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
-  if (primarySource?.tableName === undefined) return null;
-  const viewName = primarySource.tableName;
+  // Use physicalName (FR-016 kind-aware), NOT tableName — a view-kind source names
+  // itself via @view, and tableName reads ONLY the @table slot (undefined for views),
+  // which previously bailed every @view projection here before any column was built.
+  if (primarySource === undefined) return null;
+  const viewName = primarySource.physicalName;
 
   const cols: string[] = [];
   let baseEntity: string | undefined;
@@ -75,6 +78,23 @@ function buildView(
   for (const f of projection.fields()) {
     const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const fieldCol = resolveColumnName(f, strategy);
+
+    // FR-024 base-link: a projection field that uses `extends: Base.field` (instead of
+    // an explicit origin) is an implicit passthrough — its source IS the extended field.
+    // That linkage lives in EXTENDED metadata (superRef / resolveSuper()), which
+    // f.ownChildren() cannot see, so without this an extends-based field (typically the
+    // PK that declares the projection's base) falls through to "no resolvable origin" and
+    // bails the whole view — taking the sibling origin.passthrough renames down with it.
+    if (origin === undefined && f.superRef !== undefined && f.superRef.includes(".")) {
+      const [ent, field] = splitDot(f.superRef);
+      const bare = stripPackage(ent);
+      baseEntity ??= bare;
+      if (bare !== baseEntity) { blocked = "passthrough from multiple base entities"; break; }
+      const srcEntity = root.findObject(baseEntity);
+      const srcCol = resolveColumnByName(srcEntity, field, strategy);
+      cols.push(`  "${srcCol}" AS "${fieldCol}"`);
+      continue;
+    }
 
     if (origin instanceof MetaPassthroughOrigin && origin.via === undefined &&
         origin.from !== undefined && origin.from.includes(".")) {
