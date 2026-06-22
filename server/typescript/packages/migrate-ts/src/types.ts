@@ -129,6 +129,14 @@ export interface ViewDescriptor {
    * body change triggers a `replace-view`.
    */
   sql?: string;
+  /**
+   * Physical tables this view reads (base + joined tables). Populated on the
+   * EXPECTED side only (the view producer knows the join graph; introspection
+   * does not resolve it). The diff uses it to drop + recreate the view around a
+   * column-altering change to one of its source tables — postgres blocks ALTER on
+   * a column a view depends on, and sqlite's recreate-and-copy rebuilds the table.
+   */
+  dependsOn?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------

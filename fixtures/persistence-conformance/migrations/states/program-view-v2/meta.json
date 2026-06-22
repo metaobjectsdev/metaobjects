@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "fitness",
+    "children": [
+      { "object.entity": {
+        "name": "Program",
+        "children": [
+          { "source.rdb": { "@table": "programs" } },
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "title", "@required": true, "@maxLength": 500 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.projection": {
+        "name": "ProgramView",
+        "children": [
+          { "source.rdb": { "@kind": "view", "@table": "v_program" } },
+          { "field.long":   { "name": "id",    "extends": "fitness::Program.id" } },
+          { "field.string": { "name": "title", "children": [ { "origin.passthrough": { "@from": "fitness::Program.title" } } ] } },
+          { "identity.primary": { "name": "id", "extends": "fitness::Program.id" } }
+        ]
+      }}
+    ]
+  }
+}

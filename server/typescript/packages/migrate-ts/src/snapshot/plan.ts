@@ -2,7 +2,7 @@
 import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../expected-schema.js";
 import { diff, type DiffArgs } from "../diff/index.js";
-import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
+import type { Dialect, DiffResult, SchemaSnapshot, ViewDescriptor } from "../types.js";
 
 export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "ignoreTables"> {
   metadata: MetaData;
@@ -10,6 +10,8 @@ export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" 
   /** The stored reference snapshot (the "from" side). Use `{ tables: [], views: [] }` for a fresh project. */
   snapshot: SchemaSnapshot;
   columnNamingStrategy?: ColumnNamingStrategy;
+  /** Expected views (via codegen-ts `buildProjectionViews`) — threaded into buildExpectedSchema. */
+  views?: readonly ViewDescriptor[];
 }
 
 export interface PlanOfflineResult {
@@ -28,6 +30,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
   const nextSnapshot = buildExpectedSchema(args.metadata, {
     dialect: args.dialect,
     ...(args.columnNamingStrategy ? { columnNamingStrategy: args.columnNamingStrategy } : {}),
+    ...(args.views !== undefined ? { views: args.views } : {}),
   });
   const result = await diff({
     expected: nextSnapshot,
@@ -45,9 +48,11 @@ export function baselineFromMetadata(
   metadata: MetaData,
   dialect: Dialect,
   columnNamingStrategy?: ColumnNamingStrategy,
+  views?: readonly ViewDescriptor[],
 ): SchemaSnapshot {
   return buildExpectedSchema(metadata, {
     dialect,
     ...(columnNamingStrategy ? { columnNamingStrategy } : {}),
+    ...(views !== undefined ? { views } : {}),
   });
 }

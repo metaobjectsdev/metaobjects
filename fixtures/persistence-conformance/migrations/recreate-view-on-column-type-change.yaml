@@ -1,0 +1,27 @@
+name: recreate-view-on-column-type-change
+description: |
+  A view (projection) reads programs.title. Widening title VARCHAR(200) → VARCHAR(500)
+  is a column-type change postgres REFUSES while a view depends on the column
+  ("cannot alter type of a column used by a view"). The schema-diff's dependency
+  pass (Pass 2c) must drop the view BEFORE the ALTER and recreate it AFTER, so the
+  whole migration applies cleanly and the view still returns rows. This pins the one
+  emission path owning view DDL — no separate view-migration emitter.
+
+seed-metadata: ./states/program-view-v1/
+seed-data: |
+  INSERT INTO "programs" ("id", "title") VALUES (1, 'Foundations'), (2, 'Strength');
+
+target-metadata: ./states/program-view-v2/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'DROP VIEW'
+    - 'v_program'
+    - 'ALTER TABLE "programs"'
+    - 'CREATE VIEW'
+  apply-up-then-query:
+    sql: SELECT "id", "title" FROM "v_program" ORDER BY "id"
+    rows:
+      - { id: "1", title: "Foundations" }
+      - { id: "2", title: "Strength" }

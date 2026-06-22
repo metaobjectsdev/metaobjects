@@ -10,10 +10,10 @@ export interface JoinNode {
   readonly alias: string;
   /** Cardinality of the relationship being traversed. */
   readonly cardinality: "one" | "many";
-  /** FK field name (lives on whichever side `referenceHolder` indicates). */
-  readonly fkField: string;
-  /** PK field name on the side that does NOT hold the FK. */
-  readonly pkField: string;
+  /** FK physical column (strategy + @column resolved); lives on whichever side `referenceHolder` indicates. */
+  readonly fkColumn: string;
+  /** PK physical column (strategy + @column resolved) on the side that does NOT hold the FK. */
+  readonly pkColumn: string;
   /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
   readonly referenceHolder: "source" | "target";
   /** Child joins. */

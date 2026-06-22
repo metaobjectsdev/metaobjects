@@ -137,18 +137,20 @@ ALTER TABLE "friendships" ADD CONSTRAINT "friendships_personAId_fk" FOREIGN KEY 
 ALTER TABLE "friendships" ADD CONSTRAINT "friendships_personBId_fk" FOREIGN KEY ("personBId") REFERENCES "people" ("id");
 
 CREATE VIEW "v_program" AS
-SELECT
-  "id" AS "id",
-  "title" AS "title",
-  "status" AS "status"
-FROM "programs";
+  SELECT
+    p.id AS id,
+    p.title AS title,
+    p.status AS status
+  FROM programs p;
 
 CREATE VIEW "v_program_stat" AS
-SELECT
-  "id" AS "programId",
-  (SELECT count(t."id") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "weekCount",
-  (SELECT sum(t."durationMinutes") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "totalMinutes",
-  (SELECT avg(t."durationMinutes") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "avgMinutes",
-  (SELECT min(t."durationMinutes") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "minMinutes",
-  (SELECT max(t."durationMinutes") FROM "weeks" t WHERE t."programId" = "programs"."id") AS "maxMinutes"
-FROM "programs";
+  SELECT
+    p.id AS "programId",
+    COUNT(DISTINCT w.id) AS "weekCount",
+    SUM(w."durationMinutes") AS "totalMinutes",
+    AVG(w."durationMinutes") AS "avgMinutes",
+    MIN(w."durationMinutes") AS "minMinutes",
+    MAX(w."durationMinutes") AS "maxMinutes"
+  FROM programs p
+  LEFT OUTER JOIN weeks w ON w."programId" = p.id
+  GROUP BY p.id;

@@ -13,8 +13,8 @@ const programSummarySpec: ViewSpec = {
         targetEntity: "Week",
         alias: "w",
         cardinality: "many",
-        fkField: "programId",
-        pkField: "id",
+        fkColumn: "program_id",
+        pkColumn: "id",
         referenceHolder: "target",
         children: [
           {
@@ -22,8 +22,8 @@ const programSummarySpec: ViewSpec = {
             targetEntity: "Workout",
             alias: "wo",
             cardinality: "many",
-            fkField: "weekId",
-            pkField: "id",
+            fkColumn: "week_id",
+            pkColumn: "id",
             referenceHolder: "target",
             children: [],
           },
@@ -90,8 +90,8 @@ describe("emitViewDdl — flat projection with no aggregates", () => {
   });
 });
 
-describe("emitViewDdl — non-id parent join (pkField)", () => {
-  test("uses pkField instead of id when joining on email", () => {
+describe("emitViewDdl — non-id parent join (pkColumn)", () => {
+  test("uses pkColumn instead of id when joining on email", () => {
     const spec: ViewSpec = {
       viewName: "v_customer_summary",
       joinTree: {
@@ -103,8 +103,8 @@ describe("emitViewDdl — non-id parent join (pkField)", () => {
             targetEntity: "Purchase",
             alias: "p",
             cardinality: "many",
-            fkField: "customerEmail",
-            pkField: "email",  // non-id join
+            fkColumn: "customer_email",
+            pkColumn: "email",  // non-id join
             referenceHolder: "target",
             children: [],
           },
@@ -146,8 +146,8 @@ describe("emitViewDdl — belongs-to (reference on source)", () => {
             targetEntity: "Program",
             alias: "p0",
             cardinality: "one",
-            fkField: "programId",
-            pkField: "id",
+            fkColumn: "program_id",
+            pkColumn: "id",
             referenceHolder: "source",
             children: [],
           },

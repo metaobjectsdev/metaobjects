@@ -181,8 +181,9 @@ describe("migrate command with --dialect d1", () => {
     expect(upSql).not.toMatch(/\bCOMMIT\b/i);
 
     const downSql = readFileSync(join(migrationsDir, ".down", "0001_init-programs.sql"), "utf8");
-    // Down must contain DROP VIEW and DROP TABLE.
-    expect(downSql).toContain("DROP VIEW IF EXISTS v_program_summary");
+    // Down must contain DROP VIEW and DROP TABLE. View names are now rendered by
+    // renderSqlite, which quotes identifiers consistently with tables/columns.
+    expect(downSql).toContain(`DROP VIEW IF EXISTS "v_program_summary"`);
     expect(downSql).not.toMatch(/\bBEGIN\b/i);
     expect(downSql).not.toMatch(/\bCOMMIT\b/i);
   });

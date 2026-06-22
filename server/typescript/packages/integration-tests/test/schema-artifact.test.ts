@@ -64,12 +64,18 @@ describe("canonical schema artifact (schema.postgres.sql)", () => {
     // Week numeric source column for the aggregate projections (field.int → INTEGER).
     expect(generated).toContain(`"durationMinutes" INTEGER NOT NULL`);
 
-    // v_program_stat now rolls Week.durationMinutes up via sum/avg/min/max in
-    // addition to the existing count. The emitter renders the @agg verbatim
-    // (lowercase) inside the correlated subquery.
-    expect(generated).toContain(`SELECT sum(t."durationMinutes")`);
-    expect(generated).toContain(`SELECT avg(t."durationMinutes")`);
-    expect(generated).toContain(`SELECT min(t."durationMinutes")`);
-    expect(generated).toContain(`SELECT max(t."durationMinutes")`);
+    // v_program_stat rolls Week.durationMinutes up via sum/avg/min/max (+ count)
+    // through the unified emitter (emitViewDdl): a single LEFT JOIN + GROUP BY,
+    // aggregate keyword uppercased over the joined alias, count() de-duped to
+    // survive the join. (The prior correlated-subquery form came from the
+    // now-deleted migrate-ts view emitter; the two are data-equivalent for a
+    // single has-many join — pinned by the projection-aggregate query scenarios.)
+    expect(generated).toContain(`COUNT(DISTINCT w.id) AS "weekCount"`);
+    expect(generated).toContain(`SUM(w."durationMinutes") AS "totalMinutes"`);
+    expect(generated).toContain(`AVG(w."durationMinutes") AS "avgMinutes"`);
+    expect(generated).toContain(`MIN(w."durationMinutes") AS "minMinutes"`);
+    expect(generated).toContain(`MAX(w."durationMinutes") AS "maxMinutes"`);
+    expect(generated).toContain(`LEFT OUTER JOIN weeks w ON w."programId" = p.id`);
+    expect(generated).toContain(`GROUP BY p.id`);
   });
 });

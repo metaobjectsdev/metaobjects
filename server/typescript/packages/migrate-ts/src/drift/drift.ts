@@ -34,6 +34,12 @@ export interface ComputeDriftOptions {
    * Omit to keep `diff`'s default (migration-tracking sidecar tables).
    */
   ignoreTables?: string[];
+  /**
+   * Expected views (projection → CREATE VIEW body), computed by the caller via
+   * codegen-ts's `buildProjectionViews`. migrate-ts no longer generates view DDL
+   * itself; pass these so view-body drift is detected. Defaults to none.
+   */
+  views?: readonly import("../types.js").ViewDescriptor[];
 }
 
 /**
@@ -54,6 +60,7 @@ export async function computeDrift(
     ...(opts?.columnNamingStrategy !== undefined
       ? { columnNamingStrategy: opts.columnNamingStrategy }
       : {}),
+    ...(opts?.views !== undefined ? { views: opts.views } : {}),
   });
   const actual = await introspect(db, dialect);
   return diff({

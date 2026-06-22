@@ -106,7 +106,7 @@ describe("diff — view-body drift", () => {
   }
 
   test("same-named view, identical body (whitespace-normalized) → no change", async () => {
-    // Expected side carries body-only SQL (as buildExpectedViews produces).
+    // Expected side carries body-only SQL (view body, as buildProjectionViews produces).
     const expected = withViews([{ name: "order_summary", sql: "SELECT id, total FROM orders" }]);
     // Actual side carries the full CREATE VIEW statement (as sqlite_master.sql).
     const actual = withViews([

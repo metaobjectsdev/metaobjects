@@ -1,15 +1,13 @@
 // view-sql-compare.ts — the single shared comparator for view definition SQL.
 //
 // View definition SQL arrives in two shapes across the pipeline:
-//   - EXPECTED (buildExpectedViews): the body only — `SELECT ... FROM ...`.
-//   - ACTUAL (introspect): sqlite's sqlite_master.sql is the full
+//   - EXPECTED (buildProjectionViews): the body only — `SELECT ... FROM ...`.
+//   - ACTUAL (introspect): sqlite's/D1's sqlite_master.sql is the full
 //     `CREATE VIEW <name> AS <body>`; Postgres' view_definition is body-only.
-//   - The CLI's readExistingViewSql synthesizes `CREATE VIEW <name> AS <body>`
-//     for Postgres so it matches what emitViewDdl produces.
 //
-// normalizeViewSql reduces any of these to a comparable canonical form so the
-// diff (expected vs introspected) and the CLI (emitted DDL vs existing DDL) use
-// ONE comparison. It strips a leading `CREATE [OR REPLACE] VIEW <name> AS`,
+// normalizeViewSql reduces either of these to a comparable canonical form so the
+// diff (expected vs introspected) uses ONE comparison. It strips a leading
+// `CREATE [OR REPLACE] VIEW <name> AS`,
 // collapses runs of whitespace to a single space, drops a trailing `;`, and
 // lower-cases — view-body drift should be classified by structure, not by
 // incidental whitespace/case/wrapper differences.

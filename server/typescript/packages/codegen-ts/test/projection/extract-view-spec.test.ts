@@ -85,7 +85,7 @@ describe("extractViewSpec — flat passthrough via extends", () => {
     expect(spec.joinTree.joins.length).toBe(1);
     expect(spec.joinTree.joins[0]!.relationship).toBe("weeks");
     expect(spec.joinTree.joins[0]!.targetEntity).toBe("Week");
-    expect(spec.joinTree.joins[0]!.fkField).toBe("programId");
+    expect(spec.joinTree.joins[0]!.fkColumn).toBe("program_id");
 
     // Select columns: id + title (inherited from extends), weekCount (aggregate)
     const fieldNames = spec.selectSpec.columns.map((c) => c.fieldName);
@@ -330,8 +330,8 @@ describe("extractViewSpec — pure-extends projection (no origin children)", () 
   });
 });
 
-describe("extractViewSpec — pkField resolution", () => {
-  test("defaults pkField to parent primary identity field name", async () => {
+describe("extractViewSpec — pkColumn resolution", () => {
+  test("defaults pkColumn to parent primary identity field's column", async () => {
     const root = await load([
       {
         "object.entity": {
@@ -392,8 +392,8 @@ describe("extractViewSpec — pkField resolution", () => {
     const projection = root.objects().find((o) => o.name === "ProgramSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
-    // Default: parent's primary identity field is "id"
-    expect(spec.joinTree.joins[0]!.pkField).toBe("id");
+    // Default: parent's primary identity field is "id" → column "id"
+    expect(spec.joinTree.joins[0]!.pkColumn).toBe("id");
   });
 
   test("uses explicit dotted @references when set (non-id join like email)", async () => {
@@ -458,14 +458,14 @@ describe("extractViewSpec — pkField resolution", () => {
     const projection = root.objects().find((o) => o.name === "CustomerSummary")!;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
-    // Must resolve to "email", not "id"
-    expect(spec.joinTree.joins[0]!.pkField).toBe("email");
-    expect(spec.joinTree.joins[0]!.fkField).toBe("customerEmail");
+    // Must resolve to the "email" column (via the secondary identity), not "id"
+    expect(spec.joinTree.joins[0]!.pkColumn).toBe("email");
+    expect(spec.joinTree.joins[0]!.fkColumn).toBe("customer_email");
   });
 });
 
 describe("extractViewSpec — belongs-to via identity.reference", () => {
-  test("Purchase.program (one): pkField is target's PK, referenceHolder='source'", async () => {
+  test("Purchase.program (one): pkColumn is target's PK, referenceHolder='source'", async () => {
     const root = await load([
       {
         "object.entity": {
@@ -522,7 +522,7 @@ describe("extractViewSpec — belongs-to via identity.reference", () => {
     const join = spec.joinTree.joins[0]!;
     expect(join.cardinality).toBe("one");
     expect(join.referenceHolder).toBe("source");
-    expect(join.fkField).toBe("programId");
-    expect(join.pkField).toBe("id");
+    expect(join.fkColumn).toBe("program_id");
+    expect(join.pkColumn).toBe("id");
   });
 });
