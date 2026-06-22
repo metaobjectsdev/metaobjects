@@ -50,12 +50,11 @@ export type { EmitOptions } from "./emit/index.js";
 export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migration.js";
 export type { WriteMigrationD1Options, WriteMigrationD1Result } from "./write-migration-d1.js";
 
-// View diff + dialect emitters
+// View-body comparison — used by the diff to detect body drift (replace-view).
+// View DDL itself is produced by the diff + rendered by each dialect's emitter;
+// there is no standalone view-migration emitter (the source-aware-diff / view-diff
+// / view-ddl-{postgres,sqlite} stack was folded into the schema-diff path).
 export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
-export { classifyViewDiff } from "./view-diff.js";
-export type { ViewShape, ViewDiffClass, ViewMigrationOpts } from "./view-diff.js";
-export { emitPostgresViewMigration } from "./view-ddl-postgres.js";
-export { emitSqliteViewMigration } from "./view-ddl-sqlite.js";
 
 // D1 dialect emitter + safety pass.
 // renderD1 is exported directly (unlike renderSqlite/renderPostgres) so
@@ -63,14 +62,6 @@ export { emitSqliteViewMigration } from "./view-ddl-sqlite.js";
 // independently without going through emit().
 export { renderD1 } from "./emit/d1.js";
 export { applyD1SafetyPass, D1UnsupportedStatementError } from "./emit/d1-safety-pass.js";
-
-// View migrations orchestrator
-export {
-  computeViewMigrations,
-  type ViewMigrationInput,
-  type ViewMigrationsOpts,
-  type ViewMigrationsResult,
-} from "./source-aware-diff.js";
 
 // D1 introspection
 export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introspect/d1.js";

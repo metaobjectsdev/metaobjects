@@ -22,7 +22,6 @@ import {
   writeSnapshot,
   BlockedChangesError,
   renderD1,
-  applyD1SafetyPass,
   writeMigrationD1,
   introspectD1,
   applyPending,
@@ -42,10 +41,7 @@ import {
   defaultWranglerRunner,
   type WranglerRunner,
 } from "../lib/wrangler.js";
-import {
-  computeProjectionMigrations,
-  computeProjectionViewDependencies,
-} from "../lib/projection-migrations.js";
+import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
@@ -196,7 +192,25 @@ export async function migrateCommand(
   let changeCounts: Record<string, number> = {};
 
   try {
-    const expected = buildExpectedSchema(metadata, { dialect: kysely.dialect });
+    // Column-naming strategy (from metaobjects.config) drives BOTH the table schema
+    // and projection view DDL — derive it once, up front, so every view path agrees.
+    let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+    try {
+      const cfg = await loadMetaobjectsConfig(metaRoot);
+      if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
+    } catch {
+      // metaobjects.config.ts absent or invalid — use default snake_case
+    }
+    // Expected views from the SINGLE view-SQL source (codegen-ts emitViewDdl, via
+    // buildProjectionViews). Threaded into the schema-diff so the diff produces all
+    // view DDL (create/drop/replace + dependency-recreate) and emit() renders it —
+    // there is no separate view-migration emitter.
+    const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect, columnNamingStrategy });
+    const expected = buildExpectedSchema(metadata, {
+      dialect: kysely.dialect,
+      columnNamingStrategy,
+      views: expectedViews,
+    });
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -244,109 +258,32 @@ export async function migrateCommand(
 
     changeCounts = summarizeChanges(diffResult.changes);
 
-    // Load metaobjects config to pick up columnNamingStrategy for view DDL emit.
-    // If metaobjects.config.ts is absent (e.g. in projects that don't use codegen),
-    // fall back to snake_case so migrate still works without it.
-    let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
-    try {
-      const forgeConfig = await loadMetaobjectsConfig(metaRoot);
-      if (forgeConfig.columnNamingStrategy) {
-        columnNamingStrategy = forgeConfig.columnNamingStrategy;
-      }
-    } catch {
-      // metaobjects.config.ts absent or invalid — use default snake_case
-    }
-
-    // Pull existing view CREATE SQL from the DB so unchanged views can be
-    // skipped (no DROP+CREATE noise when the body hasn't changed).
-    // kysely.dialect is always "sqlite" | "postgres" here — d1 exits above.
-    const existingViewSql = await readExistingViewSql(kysely.db, kysely.dialect as "sqlite" | "postgres");
-
-    // Compute view migrations (projections) independently of table changes.
-    const viewResult = computeProjectionMigrations({
-      metadata,
-      dialect: kysely.dialect,
-      allowBreaking: false,
-      columnNamingStrategy,
-      existingViewSql,
-    });
-    if (viewResult.errors.length > 0) {
-      for (const err of viewResult.errors) log.error(err);
-      await kysely.close();
-      return 1;
-    }
-    const viewUpSql = viewResult.migrations.join("\n\n");
-
-    const hasTableChanges = diffResult.changes.length > 0;
-    const hasViewChanges = viewResult.migrations.length > 0;
-
-    if (!hasTableChanges && !hasViewChanges) {
+    // All changes — tables AND views — are emitted by the one schema-diff path.
+    // View DDL (create/drop/replace) is produced by diff()'s view passes (2b body
+    // comparison, 2c dependency-recreate) and rendered by every dialect's emitter;
+    // STAGE_ORDER sequences drop-view before and create-view after any column change
+    // a view reads. There is no separate view-migration emitter, and unchanged views
+    // produce no change (introspect reads the actual body, diff compares it).
+    if (diffResult.changes.length === 0) {
       // no-op — output will say "No schema changes"
     } else {
-      // Emit table SQL (may be empty if only views changed).
-      let tableSql: EmitResult | undefined;
-      if (hasTableChanges) {
-        try {
-          tableSql = emit(diffResult.changes, {
-            dialect: kysely.dialect,
-            expectedSchema: expected,
-            ...(actual.meta !== undefined ? { actualMeta: actual.meta } : {}),
-          });
-        } catch (err) {
-          if (err instanceof BlockedChangesError) {
-            blocked = blockedToEntries(err);
-            exitCode = 1;
-          } else {
-            throw err;
-          }
+      let emitted: EmitResult | undefined;
+      try {
+        emitted = emit(diffResult.changes, {
+          dialect: kysely.dialect,
+          expectedSchema: expected,
+          ...(actual.meta !== undefined ? { actualMeta: actual.meta } : {}),
+        });
+      } catch (err) {
+        if (err instanceof BlockedChangesError) {
+          blocked = blockedToEntries(err);
+          exitCode = 1;
+        } else {
+          throw err;
         }
       }
 
-      // Combine table + view SQL into a single migration if no errors.
-      if (exitCode === 0) {
-        // Extract view names from the CREATE VIEW statements (used by both the
-        // pre-drop and down-migration paths below).
-        const viewNames = viewResult.migrations
-          .map((s) => {
-            const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
-            return m ? m[1] : undefined;
-          })
-          .filter((n): n is string => Boolean(n));
-
-        // Pre-drop dependent views, BUT only the ones whose source tables are
-        // being recreated. SQLite's ALTER TABLE ... RENAME re-parses dependent
-        // view definitions and errors if any of them reference a source table
-        // that's mid-recreate (the recreate-and-copy pattern temporarily drops
-        // the source table and creates __new_<table>, then RENAMEs). The
-        // viewUpSql block below recreates the dropped views fresh.
-        const recreatedTables = tableSql?.recreatedTables ?? new Set<string>();
-        const viewPreDropSql = recreatedTables.size > 0 && viewNames.length > 0
-          ? (() => {
-              const deps = computeProjectionViewDependencies({
-                metadata,
-                columnNamingStrategy,
-              });
-              const affected = viewNames.filter((n) => {
-                const sources = deps.get(n);
-                if (!sources) return false;
-                for (const t of sources) if (recreatedTables.has(t)) return true;
-                return false;
-              });
-              return affected.length > 0
-                ? affected.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
-                : "";
-            })()
-          : "";
-
-        const upParts = [viewPreDropSql, tableSql?.up, viewUpSql].filter(Boolean);
-        const combinedUp = upParts.join("\n\n");
-        // Down SQL: DROP VIEW statements for any views we created.
-        const viewDownSql = viewNames
-          .map((n) => `DROP VIEW IF EXISTS ${n};`)
-          .join("\n");
-        const downParts = [viewDownSql, tableSql?.down].filter(Boolean);
-        const combinedDown = downParts.join("\n\n");
-
+      if (exitCode === 0 && emitted) {
         if (config.slug === undefined) {
           log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
           await kysely.close();
@@ -354,12 +291,12 @@ export async function migrateCommand(
         }
 
         if (config.dryRun) {
-          log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);
+          log.info(`-- UP --\n${emitted.up}\n\n-- DOWN --\n${emitted.down}`);
         } else {
           const outDir = resolvePath(metaRoot, config.outDir);
           await mkdir(outDir, { recursive: true });
           const res = await writeMigration(
-            { up: combinedUp, down: combinedDown },
+            { up: emitted.up, down: emitted.down },
             { dir: outDir, slug: config.slug },
           );
           writtenPaths = [res.upPath, res.downPath];
@@ -462,7 +399,15 @@ export async function runBaseline(
       log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
       return 2;
     }
-    snapshot = baselineFromMetadata(metadata, config.dialect);
+    let baselineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+    try {
+      const cfg = await loadMetaobjectsConfig(metaRoot);
+      if (cfg.columnNamingStrategy) baselineStrategy = cfg.columnNamingStrategy;
+    } catch {
+      // config absent — default snake_case
+    }
+    const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: baselineStrategy });
+    snapshot = baselineFromMetadata(metadata, config.dialect, baselineStrategy, baselineViews);
   }
 
   if (config.dryRun) {
@@ -516,12 +461,23 @@ export async function runOfflineGenerate(
   const collectedAmbiguous: AmbiguousChange[] = [];
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
+  let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+  try {
+    const cfg = await loadMetaobjectsConfig(metaRoot);
+    if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
+  } catch {
+    // config absent — default snake_case
+  }
+  const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
+
   let plan;
   try {
     plan = await planOffline({
       metadata,
       dialect: config.dialect,
       snapshot,
+      columnNamingStrategy: offlineStrategy,
+      views: offlineViews,
       allow: tokensToAllowOptions(config.allow),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
@@ -694,7 +650,15 @@ async function runD1Migrate(
   }
 
   // 4. Build expected schema + introspect actual.
-  const expected = buildExpectedSchema(metadata, { dialect: "d1" });
+  let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+  try {
+    const cfg = await loadMetaobjectsConfig(metaRoot);
+    if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
+  } catch {
+    // metaobjects.config.ts absent or invalid — use default snake_case
+  }
+  const expectedViews = buildProjectionViews(metadata, { dialect: "d1", columnNamingStrategy });
+  const expected = buildExpectedSchema(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
   let actual;
   try {
     actual = await introspectD1({
@@ -736,36 +700,12 @@ async function runD1Migrate(
 
   const changeCounts = summarizeChanges(diffResult.changes);
 
-  // Load metaobjects config to pick up columnNamingStrategy for view DDL emit.
-  // Defensive try/catch: if metaobjects.config.ts is absent, fall back to snake_case.
-  let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
-  try {
-    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
-    if (forgeConfig.columnNamingStrategy) {
-      columnNamingStrategy = forgeConfig.columnNamingStrategy;
-    }
-  } catch {
-    // metaobjects.config.ts absent or invalid — use default snake_case
-  }
-
-  // 5b. Compute view migrations (projections). D1 reuses the sqlite emitter.
-  // We intentionally skip readExistingViewSql for D1 in v1 — D1 has no
-  // introspection path for view bodies, so we accept over-eager DROP+CREATE.
-  const viewResult = computeProjectionMigrations({
-    metadata,
-    dialect: "d1",
-    allowBreaking: false,
-    columnNamingStrategy,
-  });
-  if (viewResult.errors.length > 0) {
-    for (const err of viewResult.errors) log.error(err);
-    return 1;
-  }
-
-  const hasTableChanges = diffResult.changes.length > 0;
-  const hasViewChanges = viewResult.migrations.length > 0;
-
-  if (!hasTableChanges && !hasViewChanges) {
+  // Views are emitted by the one schema-diff path: renderD1 = renderSqlite (which
+  // renders view DDL) + the D1 safety pass (applied inside renderD1, stripping the
+  // BEGIN/COMMIT + PRAGMA that recreate-and-copy emits). There is no separate
+  // view-migration emitter; introspectD1 now reads view bodies so unchanged views
+  // produce no change and body changes emit a DROP+CREATE.
+  if (diffResult.changes.length === 0) {
     log.info(`migrate: no schema changes for d1 binding '${binding.binding}'`);
     return 0;
   }
@@ -790,41 +730,8 @@ async function runD1Migrate(
     throw err;
   }
 
-  // Combine view SQL with table SQL.
-  // Extract view names from CREATE VIEW statements for pre-drop + down SQL.
-  const viewNames = viewResult.migrations
-    .map((s) => {
-      const m = /CREATE(?:\s+OR\s+REPLACE)?\s+VIEW\s+(\S+)/i.exec(s);
-      return m ? m[1] : undefined;
-    })
-    .filter((n): n is string => Boolean(n));
-
-  // Pre-drop views whose source tables are being recreated (same logic as kysely path).
-  const recreatedTables = emitResult.recreatedTables ?? new Set<string>();
-  const viewPreDropSql = recreatedTables.size > 0 && viewNames.length > 0
-    ? (() => {
-        const deps = computeProjectionViewDependencies({ metadata, columnNamingStrategy });
-        const affected = viewNames.filter((n) => {
-          const sources = deps.get(n);
-          if (!sources) return false;
-          for (const t of sources) if (recreatedTables.has(t)) return true;
-          return false;
-        });
-        return affected.length > 0
-          ? affected.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n")
-          : "";
-      })()
-    : "";
-
-  const viewUpSql = viewResult.migrations.join("\n\n");
-  const viewDownSql = viewNames.map((n) => `DROP VIEW IF EXISTS ${n};`).join("\n");
-
-  // Combine and apply safety pass to the full combined SQL so view DDL
-  // (which uses BEGIN/COMMIT from emitSqliteViewMigration) is stripped too.
-  const rawUp = [viewPreDropSql, emitResult.up, viewUpSql].filter(Boolean).join("\n\n");
-  const rawDown = [viewDownSql, emitResult.down].filter(Boolean).join("\n\n");
-  const combinedUp = applyD1SafetyPass(rawUp);
-  const combinedDown = applyD1SafetyPass(rawDown);
+  const combinedUp = emitResult.up;
+  const combinedDown = emitResult.down;
 
   // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
   // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
@@ -888,44 +795,4 @@ async function runWranglerApply(
     });
     child.on("close", (code) => resolve(code ?? 1));
   });
-}
-
-/**
- * Read existing view CREATE SQL from the DB. Returns an empty map on any
- * introspection failure — the worst case is over-eager DROP+CREATE
- * (the original behaviour), not data loss.
- */
-async function readExistingViewSql(
-  // biome-ignore lint/suspicious/noExplicitAny: kysely raw query, dialect-dispatched
-  db: any,
-  dialect: "sqlite" | "postgres",
-): Promise<ReadonlyMap<string, string>> {
-  const result = new Map<string, string>();
-  try {
-    if (dialect === "sqlite") {
-      const { sql } = await import("kysely");
-      const rows = await sql<{ name: string; sql: string }>`
-        SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%'
-      `.execute(db);
-      for (const r of rows.rows) {
-        if (r.name && r.sql) result.set(r.name, r.sql);
-      }
-    } else {
-      const { sql } = await import("kysely");
-      const rows = await sql<{ name: string; def: string }>`
-        SELECT viewname AS name, definition AS def
-        FROM pg_views
-        WHERE schemaname = 'public'
-      `.execute(db);
-      for (const r of rows.rows) {
-        // Postgres pg_views.definition returns only the SELECT body, not the
-        // full "CREATE VIEW ... AS ...". Synthesize so comparison is apples-
-        // to-apples with what emitViewDdl produces.
-        if (r.name && r.def) result.set(r.name, `CREATE VIEW ${r.name} AS ${r.def}`);
-      }
-    }
-  } catch {
-    // ignore — empty map means over-eager recreate, same as before this fix
-  }
-  return result;
 }

@@ -98,6 +98,8 @@ export { extractViewSpec } from "./projection/extract-view-spec.js";
 export type { ExtractContext } from "./projection/extract-view-spec.js";
 export { emitViewDdl } from "./projection/view-ddl-emit.js";
 export type { EmitOptions as ViewDdlEmitOptions } from "./projection/view-ddl-emit.js";
+export { buildProjectionViews } from "./projection/build-projection-views.js";
+export type { ExpectedView, BuildProjectionViewsOptions } from "./projection/build-projection-views.js";
 export type { JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec } from "./projection/view-spec.js";
 // Prompt construction (FR-004): typed payload + render-handle codegen.
 export { generatePayloadInterfaces, generatePayloadInterfacesBatch, generateRenderHandle } from "./payload-codegen.js";

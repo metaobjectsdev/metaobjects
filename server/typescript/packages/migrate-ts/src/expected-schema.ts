@@ -58,9 +58,8 @@ import {
 import type { SqlType } from "./sql-type.js";
 import type {
   Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
-  CheckDescriptor,
+  CheckDescriptor, ViewDescriptor,
 } from "./types.js";
-import { buildExpectedViews } from "./expected-views.js";
 import {
   resolveReferentialActions,
   validateSetNullNullability,
@@ -85,6 +84,14 @@ export interface BuildExpectedSchemaOptions {
    * mismatch yields a schema whose columns the runtime can't address.
    */
   columnNamingStrategy?: ColumnNamingStrategy;
+  /**
+   * Expected views (projection → CREATE VIEW body), computed by the caller via
+   * codegen-ts's `buildProjectionViews` and threaded in. migrate-ts does NOT
+   * generate view DDL itself (it stays dependency-pure — never importing the
+   * code generator); view SQL has a single source, `emitViewDdl` in codegen-ts.
+   * Defaults to none.
+   */
+  views?: readonly ViewDescriptor[];
 }
 
 export function buildExpectedSchema(
@@ -160,10 +167,10 @@ export function buildExpectedSchema(
     }
   }
 
-  // Pass 4: views from read-only projections. Built regardless of dialect so
-  // the diff produces correct create-view changes; emit() refuses them for
-  // sqlite/d1 with a clear error ("view migration not implemented for ...").
-  const views = buildExpectedViews(root as MetaRoot, strategy);
+  // Pass 4: views from read-only projections — supplied by the caller (computed
+  // via codegen-ts's buildProjectionViews, the single view-SQL source). migrate-ts
+  // never generates view DDL itself, keeping it free of a codegen-ts dependency.
+  const views = (opts?.views ?? []) as ViewDescriptor[];
 
   return { tables, views };
 }

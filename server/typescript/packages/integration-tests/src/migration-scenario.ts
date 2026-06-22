@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildExpectedSchema, diff, emit, introspectPostgres } from "@metaobjectsdev/migrate-ts";
+import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
@@ -31,7 +32,10 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
   // the same physical schema from the same fixture; without this TS would
   // snake_case `programId` → `program_id` and the bootstrap up-SQL assertion
   // for `weeks_programId_fk` would never match.
-  const expected = buildExpectedSchema(targetRoot, { columnNamingStrategy: "literal" });
+  const expected = buildExpectedSchema(targetRoot, {
+    columnNamingStrategy: "literal",
+    views: buildProjectionViews(targetRoot, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  });
 
   // Kysely owns its pool exclusively — calling pool.end() ourselves on a pool
   // shared with kysely produces a "Called end on pool more than once" hang.
@@ -73,7 +77,10 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
 
 async function buildFullCreate(metadataDir: string): Promise<string> {
   const root = await loadMetadataDir(metadataDir);
-  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
+  const expected = buildExpectedSchema(root, {
+    columnNamingStrategy: "literal",
+    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  });
   const result = await diff({ expected, actual: { tables: [], views: [] } });
   return emit(result.changes, { dialect: "postgres" }).up;
 }

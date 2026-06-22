@@ -202,11 +202,18 @@ export async function diff(
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
   // with a divergent body (whitespace-/wrapper-normalized) emits replace-view;
   // introspect now reads the actual body so view-body drift is visible.
+  const expectedViewsInScope = args.expected.views.filter((v) => inScope(v.schema));
   diffViews(
-    args.expected.views.filter((v) => inScope(v.schema)),
+    expectedViewsInScope,
     args.actual.views.filter((v) => inScope(v.schema)),
     changes,
   );
+
+  // Pass 2c: a column-altering change to a table a view reads forces the view to be
+  // dropped before and recreated after — postgres blocks ALTER on a column a view
+  // depends on, and sqlite rebuilds the table via recreate-and-copy. Body-unchanged
+  // dependent views get no change from Pass 2b, so this is where they're picked up.
+  recreateViewsDependingOnChangedTables(expectedViewsInScope, changes);
 
   // Pass 3: detect table renames BEFORE column renames — so a renamed table's
   // columns are not scanned as orphaned drop/add pairs.
@@ -381,6 +388,45 @@ function diffViews(
     if (!exp.has(id)) {
       changes.push({ kind: "drop-view", view: v.name, ...schemaSpread(v.schema), status: ALLOWED });
     }
+  }
+}
+
+/** Column-altering change kinds: a view reading the affected column must be recreated. */
+const VIEW_RECREATE_TRIGGERS = new Set<Change["kind"]>([
+  "change-column-type", "change-column-nullable", "change-column-default",
+  "drop-column", "rename-column",
+]);
+
+function recreateViewsDependingOnChangedTables(
+  expectedViews: ViewDescriptor[],
+  changes: Change[],
+): void {
+  const alteredTables = new Set<string>();
+  for (const c of changes) {
+    if (VIEW_RECREATE_TRIGGERS.has(c.kind)) {
+      const t = (c as { table?: string }).table;
+      if (typeof t === "string") alteredTables.add(t);
+    }
+  }
+  if (alteredTables.size === 0) return;
+
+  for (const v of expectedViews) {
+    if (!(v.dependsOn ?? []).some((t) => alteredTables.has(t))) continue;
+    const id = viewIdentity(v);
+
+    // Brand-new view (create-view already queued): the DB has no prior view to
+    // block the ALTER, and the queued create-view already builds it post-change.
+    if (changes.some((c) => c.kind === "create-view" && viewIdentity(c.view) === id)) continue;
+
+    // Supersede any replace-view (CREATE OR REPLACE can't run mid-ALTER) with an
+    // explicit drop(before)/create(after) pair — the emit STAGE_ORDER sequences
+    // drop-view ahead of the column change and create-view after it.
+    for (let i = changes.length - 1; i >= 0; i--) {
+      const c = changes[i]!;
+      if (c.kind === "replace-view" && viewIdentity(c.view) === id) changes.splice(i, 1);
+    }
+    changes.push({ kind: "drop-view", view: v.name, ...schemaSpread(v.schema), status: ALLOWED });
+    changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
   }
 }
 

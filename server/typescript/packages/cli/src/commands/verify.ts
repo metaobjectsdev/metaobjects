@@ -16,6 +16,7 @@ import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
+import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import { computeDrift, type Change } from "@metaobjectsdev/migrate-ts";
@@ -209,9 +210,13 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
 
     try {
       const allow = tokensToAllowOptions(flags.allow);
+      // Expected views from the single view-SQL source (codegen-ts), so view-body
+      // drift is detected against the live DB.
+      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
+      const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect, columnNamingStrategy: viewStrategy });
       let driftResult;
       try {
-        driftResult = await computeDrift(kysely.db, kysely.dialect, root, { allow });
+        driftResult = await computeDrift(kysely.db, kysely.dialect, root, { allow, views: expectedViews });
       } catch (err) {
         log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
         return 1;

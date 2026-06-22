@@ -21,6 +21,7 @@ import {
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit, type Dialect } from "@metaobjectsdev/migrate-ts";
+import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 
 import { CANONICAL_DIR } from "./paths.ts";
 
@@ -66,6 +67,10 @@ export async function generateCanonicalSchemaSql(root: MetaRoot): Promise<string
   const expected = buildExpectedSchema(root, {
     dialect: CANONICAL_SCHEMA_DIALECT,
     columnNamingStrategy: CANONICAL_COLUMN_NAMING,
+    views: buildProjectionViews(root, {
+      dialect: CANONICAL_SCHEMA_DIALECT,
+      columnNamingStrategy: CANONICAL_COLUMN_NAMING,
+    }),
   });
   const r = await diff({ expected, actual: { tables: [], views: [] } });
   const { up } = emit(r.changes, { dialect: CANONICAL_SCHEMA_DIALECT });

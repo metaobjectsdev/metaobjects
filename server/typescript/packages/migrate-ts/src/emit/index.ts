@@ -3,6 +3,9 @@ import { BlockedChangesError } from "../errors.js";
 import { renderPostgres } from "./postgres.js";
 import { renderSqlite } from "./sqlite.js";
 import { renderD1 } from "./d1.js";
+// View DDL is rendered by every dialect renderer (see their create/drop/replace-view
+// cases): postgres uses CREATE [OR REPLACE] VIEW with schema namespacing; sqlite/d1
+// use DROP+CREATE (no CREATE OR REPLACE, no schema). There is no dialect gate here.
 
 export interface EmitOptions {
   dialect: Dialect;
@@ -19,22 +22,9 @@ export interface EmitOptions {
   actualMeta?: SnapshotMeta;
 }
 
-const VIEW_KINDS = new Set<Change["kind"]>(["create-view", "drop-view", "replace-view"]);
-
 export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   const blocked = changes.filter((c) => c.status.state === "blocked");
   if (blocked.length > 0) throw new BlockedChangesError(blocked);
-
-  // Views are postgres-only for now (sqlite/d1 DDL renderers don't handle them).
-  if (opts.dialect !== "postgres") {
-    const viewChanges = changes.filter((c) => VIEW_KINDS.has(c.kind));
-    if (viewChanges.length > 0) {
-      throw new Error(
-        `view migration not implemented for dialect "${opts.dialect}" ` +
-        `(${viewChanges.length} view-targeting change(s); postgres-only today)`,
-      );
-    }
-  }
 
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);

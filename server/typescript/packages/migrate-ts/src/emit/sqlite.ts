@@ -1,12 +1,17 @@
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor,
-  TableDescriptor, SchemaSnapshot, SnapshotMeta, ColumnDefault,
+  TableDescriptor, SchemaSnapshot, SnapshotMeta, ColumnDefault, ViewDescriptor,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 
 // Stage ordering similar to PG; recreate-and-copy bundles get inserted
 // at their first triggering change's position in Task 23.
 const STAGE_ORDER: Record<Change["kind"], number> = {
+  // drop-view runs FIRST (mirrors postgres): a view that depends on a table about
+  // to be recreated-and-copied must be dropped before the DROP TABLE / RENAME, or
+  // SQLite's rename re-parses the dependent view and can error mid-recreate. The
+  // diff's Pass 2c injects exactly this drop(before)/create(after) pair.
+  "drop-view": 0,
   "create-table": 1,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
@@ -15,7 +20,8 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "add-fk": 5, "drop-fk": 5,
   "add-check": 5, "drop-check": 5,
   "drop-table": 6,
-  "create-view": 99, "drop-view": 99, "replace-view": 99,
+  // create-view / replace-view run LAST — after every table change the view reads.
+  "create-view": 99, "replace-view": 99,
 };
 
 const RECREATE_TRIGGERING_KINDS = new Set<Change["kind"]>([
@@ -204,11 +210,19 @@ function renderUpNative(c: Change): string {
     case "drop-fk":
       // These are handled by renderRecreate before reaching renderUpNative.
       throw new Error(`renderUpNative: ${c.kind} should have been handled by recreate bundler`);
-    case "create-view":
-    case "drop-view":
-    case "replace-view":
-      throw new Error(`unexpected view-kind in renderSqlite: ${c.kind}`);
+    // SQLite has no schema namespacing for views and no CREATE OR REPLACE VIEW;
+    // a replace is DROP + CREATE. The view body lives in ViewDescriptor.sql.
+    case "create-view":   return renderCreateView(c.view);
+    case "drop-view":     return `DROP VIEW IF EXISTS ${quote(c.view)};`;
+    case "replace-view":  return `DROP VIEW IF EXISTS ${quote(c.view.name)};\n${renderCreateView(c.view)}`;
   }
+}
+
+function renderCreateView(v: ViewDescriptor): string {
+  if (v.sql === undefined || v.sql.trim().length === 0) {
+    throw new Error(`view "${v.name}" has no sql body — buildExpectedSchema must populate it before emit`);
+  }
+  return `CREATE VIEW ${quote(v.name)} AS\n${v.sql};`;
 }
 
 function renderDownNative(c: Change): string {
@@ -234,10 +248,9 @@ function renderDownNative(c: Change): string {
     case "drop-fk":
       // These are handled by renderRecreate before reaching renderDownNative.
       throw new Error(`renderDownNative: ${c.kind} should have been handled by recreate bundler`);
-    case "create-view":
-    case "drop-view":
-    case "replace-view":
-      throw new Error(`unexpected view-kind in renderSqlite: ${c.kind}`);
+    case "create-view":   return `DROP VIEW IF EXISTS ${quote(c.view.name)};`;
+    case "drop-view":     return `-- WARNING: down migration cannot restore the original view definition`;
+    case "replace-view":  return `-- WARNING: down migration cannot restore the original view definition`;
   }
 }
 

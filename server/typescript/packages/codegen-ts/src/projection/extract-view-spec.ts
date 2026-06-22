@@ -16,6 +16,7 @@ import {
   CARDINALITY_ONE,
   FIELD_ATTR_COLUMN,
   findReferenceBetween,
+  stripPackage,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
 import { type MetaData, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
@@ -140,6 +141,17 @@ function sourceColumnNameFor(
   return columnNameFromField(entityField.name, ctx.columnNamingStrategy);
 }
 
+/**
+ * Physical column for a join FK/PK field — resolves @column + naming strategy the
+ * same way passthrough columns do (EFFECTIVE fields, so inherited PKs resolve).
+ * The JOIN ON clause must use the real column, not a hardcoded snake_case guess,
+ * or it breaks under the `literal`/`kebab-case` strategies.
+ */
+function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContext): string {
+  const f = entity.fields().find((x) => x.name === fieldName);
+  return f ? sourceColumnNameFor(f, ctx) : columnNameFromField(fieldName, ctx.columnNamingStrategy);
+}
+
 function shortAliasFor(entityName: string, used: Set<string>): string {
   const base = (entityName[0] ?? "x").toLowerCase();
   if (!used.has(base)) { used.add(base); return base; }
@@ -159,8 +171,9 @@ interface PathStep {
   entity: MetaData;
   relationship: string;
   cardinality: "one" | "many";
-  fkField: string;
-  pkField: string;
+  /** Physical column names (strategy + @column resolved), ready for the ON clause. */
+  fkColumn: string;
+  pkColumn: string;
   referenceHolder: "source" | "target";
   targetEntity: string;
 }
@@ -178,6 +191,7 @@ function buildJoinTree(
   root: MetaRoot,
   usedAliases: Set<string>,
   baseAlias: string,
+  ctx: ExtractContext,
 ): JoinTree {
   const allPaths: Path[] = [];
 
@@ -191,9 +205,12 @@ function buildJoinTree(
       if (!viaAttr) continue;
 
       const segments = viaAttr.split(".");
-      const entityName = segments[0];
+      const rawEntity = segments[0];
       const relSegments = segments.slice(1);
-      if (!entityName) continue;
+      if (!rawEntity) continue;
+      // @via may be package-qualified ("pkg::Entity.rel"); the joinTree + findObject
+      // key on bare names (so they line up with bare passthrough @from lookups).
+      const entityName = stripPackage(rawEntity);
       let currentObj = root.findObject(entityName);
       if (!currentObj) continue;
 
@@ -219,14 +236,19 @@ function buildJoinTree(
         const referenceHolder: "source" | "target" =
           ref.holder.name === currentObj.name ? "source" : "target";
 
+        // FK lives on the holder; PK on the entity it references. Resolve both to
+        // physical columns now so the ON clause is naming-strategy correct.
+        const fkHolder = referenceHolder === "source" ? currentObj : target;
+        const pkHolder = referenceHolder === "source" ? target : currentObj;
+
         path.push({
           entity: currentObj,
           relationship: relName,
           cardinality,
-          fkField,
-          pkField: resolvedPkField,
+          fkColumn: joinColumnFor(fkHolder, fkField, ctx),
+          pkColumn: joinColumnFor(pkHolder, resolvedPkField, ctx),
           referenceHolder,
-          targetEntity: targetName,
+          targetEntity: stripPackage(targetName),
         });
         currentObj = target;
       }
@@ -255,8 +277,8 @@ function buildJoinTree(
       targetEntity: step.targetEntity,
       alias: shortAliasFor(step.targetEntity, usedAliases),
       cardinality: step.cardinality,
-      fkField: step.fkField,
-      pkField: step.pkField,
+      fkColumn: step.fkColumn,
+      pkColumn: step.pkColumn,
       referenceHolder: step.referenceHolder,
       children: Array.from(node.children.values()).map(toJoinNode),
     };
@@ -328,14 +350,17 @@ function buildSelectSpec(
       const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
       if (dotIdx < 1) continue;
-      const entityName = from.slice(0, dotIdx);
+      // @from is package-qualified ("pkg::Entity.field"); the joinTree + findObject
+      // key on the BARE entity name, so strip the package before resolving.
+      const entityName = stripPackage(from.slice(0, dotIdx));
       const fieldName = from.slice(dotIdx + 1);
       const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
-      const targetField = targetEntity.ownChildren().find(
-        (c) => c.type === TYPE_FIELD && c.name === fieldName,
-      );
+      // EFFECTIVE fields — the source column may be inherited via `extends`
+      // (e.g. created_at/updated_at/created_by from an audited base), which
+      // ownChildren() would miss.
+      const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;
       columns.push({
         kind: "passthrough",
@@ -350,14 +375,12 @@ function buildSelectSpec(
       if (!agg || !of_) continue;
       const dotIdx = of_.indexOf(".");
       if (dotIdx < 1) continue;
-      const entityName = of_.slice(0, dotIdx);
+      const entityName = stripPackage(of_.slice(0, dotIdx));
       const fieldName = of_.slice(dotIdx + 1);
       const targetEntity = root.findObject(entityName);
       const sourceAlias = findAliasInTree(joinTree, entityName);
       if (!targetEntity || sourceAlias === undefined) continue;
-      const targetField = targetEntity.ownChildren().find(
-        (c) => c.type === TYPE_FIELD && c.name === fieldName,
-      );
+      const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;
       columns.push({
         kind: "aggregate",
@@ -403,7 +426,7 @@ export function extractViewSpec(
   const base = baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
-  const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias);
+  const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx);
   const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx);
   const groupBy = buildGroupBy(selectSpec);
 

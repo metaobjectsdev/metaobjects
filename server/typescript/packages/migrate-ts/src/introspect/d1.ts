@@ -177,10 +177,17 @@ async function readForeignKeys(exec: Exec, table: string): Promise<FkDescriptor[
 }
 
 async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
+  // sqlite_master.sql holds the full `CREATE VIEW <name> AS <body>` statement, so
+  // D1 gets the same view-body drift detection as the kysely sqlite path — the
+  // diff's comparator strips the leading CREATE VIEW before comparing bodies.
   const rows = await exec(
-    "SELECT name FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    "SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
   );
-  return rows.map((r) => ({ name: String(r.name) }));
+  return rows.map((r) => {
+    const view: ViewDescriptor = { name: String(r.name) };
+    if (r.sql) view.sql = String(r.sql);
+    return view;
+  });
 }
 
 /**
