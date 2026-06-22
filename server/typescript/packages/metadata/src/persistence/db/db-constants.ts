@@ -40,12 +40,18 @@ export const DB_COLUMN_TYPE_UUID = "uuid";
 export const DB_COLUMN_TYPE_JSONB = "jsonb";
 /** `@dbColumnType: timestamp_with_tz` — `timestamp with time zone` (legal on field.timestamp). */
 export const DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz";
+/** `@dbColumnType: uuid_array` — native Postgres `uuid[]` column (legal on field.string). */
+export const DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array";
+/** `@dbColumnType: text_array` — native Postgres `text[]` column (legal on field.string). */
+export const DB_COLUMN_TYPE_TEXT_ARRAY = "text_array";
 
 /** The closed set of legal `@dbColumnType` values (raw-dialect passthrough deferred). */
 export const DB_COLUMN_TYPE_VALUES = [
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
+  DB_COLUMN_TYPE_UUID_ARRAY,
+  DB_COLUMN_TYPE_TEXT_ARRAY,
 ] as const;
 export type DbColumnTypeValue = (typeof DB_COLUMN_TYPE_VALUES)[number];
 
@@ -59,4 +65,6 @@ export const DB_COLUMN_TYPE_LEGAL_SUBTYPES: Readonly<Record<DbColumnTypeValue, r
   [DB_COLUMN_TYPE_UUID]: [FIELD_SUBTYPE_STRING],
   [DB_COLUMN_TYPE_JSONB]: [FIELD_SUBTYPE_STRING],
   [DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ]: [FIELD_SUBTYPE_TIMESTAMP],
+  [DB_COLUMN_TYPE_UUID_ARRAY]: [FIELD_SUBTYPE_STRING],
+  [DB_COLUMN_TYPE_TEXT_ARRAY]: [FIELD_SUBTYPE_STRING],
 } as const;

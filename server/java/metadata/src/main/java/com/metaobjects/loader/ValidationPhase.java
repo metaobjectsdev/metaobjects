@@ -710,7 +710,9 @@ public final class ValidationPhase {
         String subType = node.getSubType();
         String requiredSubType = switch (value) {
             case CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID,
-                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB -> StringField.SUBTYPE_STRING;
+                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB,
+                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID_ARRAY,
+                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_TEXT_ARRAY -> StringField.SUBTYPE_STRING;
             case CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ -> TimestampField.SUBTYPE_TIMESTAMP;
             default -> null; // unreachable — Rule 1 already rejected unknown values
         };
@@ -721,7 +723,8 @@ public final class ValidationPhase {
                     + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
                     + "' is not valid on field." + subType
                     + " (requires field." + requiredSubType + "); allowed pairings: "
-                    + "uuid→field.string, jsonb→field.string, timestamp_with_tz→field.timestamp",
+                    + "uuid→field.string, jsonb→field.string, uuid_array→field.string, "
+                    + "text_array→field.string, timestamp_with_tz→field.timestamp",
                 ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
         }
     }

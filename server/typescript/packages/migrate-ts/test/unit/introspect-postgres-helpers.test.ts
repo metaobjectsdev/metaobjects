@@ -68,6 +68,16 @@ describe("pgTypeToSqlType", () => {
     expect(pgTypeToSqlType("  BIGINT ")).toEqual({ kind: "integer", bits: 64 });
     expect(pgTypeToSqlType("TIMESTAMPTZ")).toEqual({ kind: "timestamp", withTimezone: true });
   });
+
+  test("ARRAY columns resolve their element type from udt_name (leading underscore)", () => {
+    expect(pgTypeToSqlType("ARRAY", null, "_uuid")).toEqual({ kind: "array", element: { kind: "uuid" } });
+    expect(pgTypeToSqlType("ARRAY", null, "_text")).toEqual({ kind: "array", element: { kind: "text" } });
+    expect(pgTypeToSqlType("array", null, "_int4")).toEqual({ kind: "array", element: { kind: "integer", bits: 32 } });
+  });
+
+  test("ARRAY without a udt_name falls back to text (defensive)", () => {
+    expect(pgTypeToSqlType("ARRAY")).toEqual({ kind: "text" });
+  });
 });
 
 describe("parsePgDefault", () => {

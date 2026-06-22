@@ -32,12 +32,18 @@ DB_COLUMN_TYPE_UUID = "uuid"
 DB_COLUMN_TYPE_JSONB = "jsonb"
 # @dbColumnType: timestamp_with_tz — timestamp with time zone (legal on field.timestamp).
 DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"
+# @dbColumnType: uuid_array — native Postgres uuid[] array column (legal on field.string).
+DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array"
+# @dbColumnType: text_array — native Postgres text[] array column (legal on field.string).
+DB_COLUMN_TYPE_TEXT_ARRAY = "text_array"
 
 # The closed set of legal @dbColumnType values.
 VALID_DB_COLUMN_TYPES = (
     DB_COLUMN_TYPE_UUID,
     DB_COLUMN_TYPE_JSONB,
     DB_COLUMN_TYPE_TIMESTAMP_TZ,
+    DB_COLUMN_TYPE_UUID_ARRAY,
+    DB_COLUMN_TYPE_TEXT_ARRAY,
 )
 
 # ---------------------------------------------------------------------------

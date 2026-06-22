@@ -311,6 +311,7 @@ function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string 
     case "json":      return "TEXT";          // SQLite has JSON1 but stores as text
     case "blob":      return "BLOB";
     case "uuid":      return "TEXT";
+    case "array":     return "TEXT";          // SQLite has no array type; store as JSON text
   }
 }
 
