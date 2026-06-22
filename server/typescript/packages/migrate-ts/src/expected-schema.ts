@@ -35,6 +35,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
@@ -723,7 +724,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };
     case FIELD_SUBTYPE_TIME:      return { kind: "time" }; // Postgres native TIME (whole-second wire form)
     case FIELD_SUBTYPE_TIMESTAMP: return { kind: "timestamp", withTimezone: false };
-    case FIELD_SUBTYPE_OBJECT:    return { kind: "json" };
+    case FIELD_SUBTYPE_OBJECT:
+    case FIELD_SUBTYPE_MAP:       return { kind: "json" }; // field.map → single jsonb (pg) / text-json (sqlite) column
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid
     default:                      return { kind: "text" }; // unknown → text fallback
   }
