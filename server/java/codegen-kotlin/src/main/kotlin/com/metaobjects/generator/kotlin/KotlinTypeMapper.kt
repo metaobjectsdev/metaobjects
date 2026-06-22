@@ -23,6 +23,7 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FLOAT
 import com.squareup.kotlinpoet.INT
+import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.MAP
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
@@ -108,6 +109,12 @@ object KotlinTypeMapper {
     /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
     private val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ
 
+    /** `@dbColumnType` values on [StringField] that emit native Postgres array columns
+     *  (`uuid[]` / `text[]`) via the Exposed `array<E>("col")` extension. The Kotlin
+     *  property becomes `List<UUID>` / `List<String>`. */
+    private val DB_COLUMN_TYPE_UUID_ARRAY = CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID_ARRAY
+    private val DB_COLUMN_TYPE_TEXT_ARRAY = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TEXT_ARRAY
+
     /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
     private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
 
@@ -181,7 +188,13 @@ object KotlinTypeMapper {
 
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
     fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
-        is StringField    -> STRING
+        // `@dbColumnType=uuid_array/text_array` makes a field.string a native SQL array,
+        // so the property is a List<UUID> / List<String>. Plain strings stay String.
+        is StringField    -> when (dbColumnType(field)) {
+            DB_COLUMN_TYPE_UUID_ARRAY -> LIST.parameterizedBy(ClassName("java.util", "UUID"))
+            DB_COLUMN_TYPE_TEXT_ARRAY -> LIST.parameterizedBy(STRING)
+            else -> STRING
+        }
         is IntegerField   -> INT
         is LongField      -> LONG
         is DoubleField    -> DOUBLE
@@ -298,6 +311,8 @@ object KotlinTypeMapper {
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
         // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
         // member — no import. All other StringField shapes (varchar/text) are Table members.
+        // `uuid_array`/`text_array` emit Exposed's `array<E>("col")` — a Table MEMBER
+        // (like uuid/integer), so no import is required (same as the uuid/varchar paths).
         is StringField    ->
             if (dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
         // field.map emits the `jsonb(...)` extension (single JSONB column), which needs
@@ -329,6 +344,12 @@ object KotlinTypeMapper {
             when (dbColumnType(field)) {
                 DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
                 DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it }, { it })"
+                // Native SQL array columns via Exposed's `array<E>("col", columnType)` Table
+                // member. The element ColumnType is explicit (UUIDColumnType / TextColumnType)
+                // so emission never depends on Exposed's reified resolveColumnType picking
+                // VARCHAR vs TEXT for String. uuid[] / text[] match the migrate-ts DDL.
+                DB_COLUMN_TYPE_UUID_ARRAY -> "array<java.util.UUID>(\"$colName\", org.jetbrains.exposed.sql.UUIDColumnType())"
+                DB_COLUMN_TYPE_TEXT_ARRAY -> "array<String>(\"$colName\", org.jetbrains.exposed.sql.TextColumnType())"
                 else -> {
                     // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
                     //   (1) explicit `@kind: "text"` opt-in, OR

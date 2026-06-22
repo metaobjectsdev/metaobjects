@@ -116,6 +116,20 @@ class KotlinTypeMapperTest {
         assertEquals("long(\"id\")", spec)
     }
 
+    @Test fun `string field with dbColumnType=uuid_array maps to List of UUID + Exposed array column`() {
+        val f = StringField("memberIds")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "uuid_array"))
+        assertEquals("kotlin.collections.List<java.util.UUID>", KotlinTypeMapper.kotlinTypeName(f).toString())
+        assertEquals("array<java.util.UUID>(\"member_ids\", org.jetbrains.exposed.sql.UUIDColumnType())", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `string field with dbColumnType=text_array maps to List of String + Exposed array column`() {
+        val f = StringField("tags")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "text_array"))
+        assertEquals("kotlin.collections.List<kotlin.String>", KotlinTypeMapper.kotlinTypeName(f).toString())
+        assertEquals("array<String>(\"tags\", org.jetbrains.exposed.sql.TextColumnType())", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
     @Test fun `int field maps to integer exposed column`() {
         val f = IntegerField("count")
         assertEquals("integer(\"count\")", KotlinTypeMapper.exposedColumnSpec(f))
