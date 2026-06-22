@@ -377,6 +377,28 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
     expect(col?.sqlType).toEqual({ kind: "json" });
   });
 
+  test("field.map (scalar- and VO-valued) → SqlType.json single column (never text)", async () => {
+    const root = await loadInline([
+      { "object.value": { name: "Tool", children: [{ "field.string": { name: "n" } }] } },
+      {
+        "object.entity": {
+          name: "A",
+          children: [
+            { "source.rdb": { "@table": "a" } },
+            { "field.long":   { name: "id" } },
+            { "field.map": { name: "labels", "@valueType": "string" } },   // scalar-valued
+            { "field.map": { name: "tools", "@objectRef": "Tool" } },      // VO-valued
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const cols = snapshot.tables.find((t) => t.name === "a")?.columns ?? [];
+    expect(cols.find((c) => c.name === "labels")?.sqlType).toEqual({ kind: "json" });
+    expect(cols.find((c) => c.name === "tools")?.sqlType).toEqual({ kind: "json" });
+  });
+
   test("@dbColumnType:timestamp_with_tz on field.timestamp → SqlType.timestamp{withTimezone:true}", async () => {
     const root = await loadInline([
       {
