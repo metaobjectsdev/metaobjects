@@ -155,7 +155,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.9.0`):
+Four packages, version-locked at the C# port version (currently `0.11.1`):
 
 | Package | Contents |
 |---|---|
@@ -230,7 +230,7 @@ lock the repo/owner IDs against resurrection attacks.)
      MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj \
      -c Release -o /tmp/mo-nupkg
    # inspect a nuspec — version, license, readme, deps:
-   unzip -p /tmp/mo-nupkg/MetaObjects.Render.0.9.0.nupkg MetaObjects.Render.nuspec | grep -iE '<id>|<version>|<license|<readme>|<dependenc'
+   unzip -p /tmp/mo-nupkg/MetaObjects.Render.0.11.1.nupkg MetaObjects.Render.nuspec | grep -iE '<id>|<version>|<license|<readme>|<dependenc'
    # optional: install the tool from the local dir and smoke-test it
    dotnet tool install --global --add-source /tmp/mo-nupkg MetaObjects.Cli && dotnet meta --help
    ```
@@ -247,7 +247,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.9.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.11.1`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -305,12 +305,12 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.4.0`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.4.1`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
 
-1. **Bump** the version in all poms (parent + modules): `grep -rl 7.3.0 --include=pom.xml server/java | xargs sed -i 's/7\.3\.0/7.4.0/g'` (verify every `<version>7.3.0</version>` is the project version, not a third-party dep).
+1. **Bump** the version in all poms (parent + modules): `grep -rl 7.4.0 --include=pom.xml server/java | xargs sed -i 's/7\.4\.0/7.4.1/g'` (verify every `<version>7.4.0</version>` is the project version, not a third-party dep).
 2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
 3. **Deploy:** `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads

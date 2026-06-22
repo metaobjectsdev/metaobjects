@@ -11,9 +11,9 @@ Postgres + Npgsql.
 ```xml
 <!-- YourApp.csproj — planned coordinates once published -->
 <ItemGroup>
-  <PackageReference Include="MetaObjects"          Version="0.10.0" />
-  <PackageReference Include="MetaObjects.Codegen"  Version="0.10.0" />
-  <PackageReference Include="MetaObjects.Render"   Version="0.10.0" />
+  <PackageReference Include="MetaObjects"          Version="0.11.1" />
+  <PackageReference Include="MetaObjects.Codegen"  Version="0.11.1" />
+  <PackageReference Include="MetaObjects.Render"   Version="0.11.1" />
 </ItemGroup>
 ```
 

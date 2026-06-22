@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Override package version (blank = use Directory.Build.props, currently 0.9.0)"
+        description: "Override package version (blank = use Directory.Build.props, currently 0.11.1)"
         required: false
         default: ""
   push:

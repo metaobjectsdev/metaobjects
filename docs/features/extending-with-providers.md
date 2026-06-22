@@ -309,7 +309,7 @@ goes up sharply at each step: **attr (cheap) < abstract (free) < subtype
 adding power; defaulting to attrs keeps the vocabulary narrow and the
 configuration rich.
 
-## Cross-port parity status (as of 0.10.0)
+## Cross-port parity status (as of 0.11.1)
 
 | Port | API | Status |
 |---|---|---|

@@ -17,9 +17,9 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 ## Status
 
-_Last refreshed 2026-05-30._
+_Last refreshed 2026-06-22._
 
-**TypeScript reference implementation** is **published to npm at `0.7.0-rc.2`** (`@metaobjectsdev/*` packages, 12 packages on the `latest` tag). 2500+ tests passing across the workspace.
+**TypeScript reference implementation** is **published to npm at `0.11.1`** (`@metaobjectsdev/*` packages on the `latest` tag; `cli` + `migrate-ts` at `0.11.2`). C# / Python at `0.11.1` (NuGet / PyPI); Java / Kotlin at `7.4.1` (Maven Central). 2500+ tests passing across the workspace.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 
@@ -38,7 +38,7 @@ _Last refreshed 2026-05-30._
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + 10 filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Current release line.** `0.7.0-rc.2` accumulates the 0.6.x → 0.7.0 consumer-friction batch (stock `promptRender()` generator, `db`-parameter generated repo helpers per ADR-0008, Cloudflare Workers deploy recipe, CHANGELOG backfill + naming-convention docs) plus the FR5 + FR-003 Plan 4 + FR-006 Java work. GA promotion is the next release move.
+**Current release line.** `0.11.x` (npm / NuGet / PyPI) · `7.4.x` (Maven Central). The latest releases add semantic cross-field validators, expression/functional indexes, metadata reference enforcement, and the `field.map` subtype (open-keyed maps → a single `jsonb` column). See `CHANGELOG.md` for the per-version detail. GA promotion is the next release move.
 
 See `spec/roadmap.md` for the active + planned work picture.
 
