@@ -7,6 +7,40 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.11.5] — 2026-06-22
+
+_npm `0.11.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Changed
+- **All view DDL is unified onto one emitter + the single schema-diff path.** The
+  parallel `computeProjectionMigrations` / `source-aware-diff` view-migration stack
+  is deleted; `emitViewDdl` (via `buildProjectionViews`) is now the sole producer of
+  every `CREATE VIEW`, and the schema-diff produces all view changes (create / drop /
+  replace) including a dependency-recreate pass that drops + recreates a view around
+  a column-altering change to a table it reads.
+- **Aggregate views now render as `LEFT JOIN + GROUP BY`** (with `COUNT(DISTINCT …)`)
+  instead of correlated subqueries. The two are data-equivalent for a single
+  has-many join — pinned by the `projection-aggregate` persistence-conformance
+  scenarios (populated rows + the empty-parent `NULL` case).
+
+### Fixed
+- **View JOIN columns now honor the column-naming strategy + `@column`** instead of a
+  hardcoded `snake_case` guess, and **view-body identifiers are quoted when needed**,
+  so `literal` / `kebab-case` columns (e.g. `programId`) survive Postgres
+  case-folding.
+- **SQLite/D1 view migrations** are now emitted (previously Postgres-only); `drop-view`
+  is staged before the recreate-and-copy so a dependent view can't error mid-recreate.
+  `introspectD1` now reads view bodies, so D1 detects view-body drift.
+
+### Removed
+- migrate-ts barrel exports for the deleted view-diff stack
+  (`classifyViewDiff`, `computeViewMigrations`, `emitPostgresViewMigration`,
+  `emitSqliteViewMigration`, and the `ViewShape` / `ViewDiffClass` / `ViewMigrationOpts`
+  / `ViewMigration*` types).
+
+_(0.11.3 was deprecated as a broken isolated patch; 0.11.4 — full lockstep view-DDL
+fix + native SQL array columns — shipped without a changelog entry.)_
+
 ## [0.11.2] — 2026-06-22
 
 _npm `cli` + `migrate-ts` `0.11.2` (isolated patch; other packages stay `0.11.1`)._
