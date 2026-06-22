@@ -147,6 +147,36 @@ describe("buildExpectedSchema — @autoSet timestamp default", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// @dbColumnType uuid_array / text_array → native SQL array columns
+// (metaobjects can't model Postgres arrays via field subtypes; the physical
+// @dbColumnType escape hatch carries them, emitting uuid[] / text[].)
+// ---------------------------------------------------------------------------
+
+describe("buildExpectedSchema — native array columns (@dbColumnType *_array)", () => {
+  async function arrayCols() {
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Bag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "field.string": { name: "memberIds", "@dbColumnType": "uuid_array" } },
+        { "field.string": { name: "tags", "@dbColumnType": "text_array" } },
+      ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(doc)),
+    ]);
+    expect(errors).toHaveLength(0);
+    return new Map((buildExpectedSchema(root).tables[0]?.columns ?? []).map((c) => [c.name, c]));
+  }
+
+  test("uuid_array → array of uuid; text_array → array of text", async () => {
+    const byName = await arrayCols();
+    expect(byName.get("member_ids")?.sqlType).toEqual({ kind: "array", element: { kind: "uuid" } });
+    expect(byName.get("tags")?.sqlType).toEqual({ kind: "array", element: { kind: "text" } });
+  });
+});
+
 describe("buildExpectedSchema — indexes + FKs", () => {
   let snapshot: SchemaSnapshot;
 

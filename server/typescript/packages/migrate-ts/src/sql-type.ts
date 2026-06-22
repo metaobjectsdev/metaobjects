@@ -17,7 +17,8 @@ export type SqlType =
   | { kind: "time" }
   | { kind: "json" }
   | { kind: "blob" }
-  | { kind: "uuid" };
+  | { kind: "uuid" }
+  | { kind: "array"; element: SqlType };   // native SQL array (e.g. uuid[], text[])
 
 /** Structural equality on SqlType. */
 export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
@@ -33,6 +34,8 @@ export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
     }
     case "timestamp":
       return a.withTimezone === (b as Extract<SqlType, { kind: "timestamp" }>).withTimezone;
+    case "array":
+      return sqlTypeEquals(a.element, (b as Extract<SqlType, { kind: "array" }>).element);
     case "real":
     case "real4":
     case "boolean":
@@ -92,6 +95,8 @@ export function isWidening(from: SqlType, to: SqlType): boolean {
     case "blob":
     case "uuid":
     case "timestamp":
+    case "array":
+      // Array element-type changes are not auto-widened — require explicit allow.
       return false;
   }
 }

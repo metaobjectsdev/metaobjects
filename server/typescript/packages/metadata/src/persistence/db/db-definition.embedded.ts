@@ -35,7 +35,7 @@ export const DB_DEFINITION: ProviderDefinition = {
           "name": "dbColumnType",
           "min": 0,
           "max": 1,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
         }
       ]
     },

@@ -48,6 +48,8 @@ import {
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
+  DB_COLUMN_TYPE_UUID_ARRAY,
+  DB_COLUMN_TYPE_TEXT_ARRAY,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
@@ -196,6 +198,10 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
       // conformance corpus is Postgres-only, but TS supports a sqlite dialect).
       // Collapse uuid → text so the expected snapshot matches what the SQLite
       // introspector produces, preventing a phantom change-column-type diff.
+      return { kind: "text" };
+    case "array":
+      // SQLite has no array type; the sqlite emit stores arrays as TEXT (JSON),
+      // so the expected snapshot collapses array → text to match introspection.
       return { kind: "text" };
     default:
       return sqlType;
@@ -705,6 +711,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
       case DB_COLUMN_TYPE_UUID:              return { kind: "uuid" };
       case DB_COLUMN_TYPE_JSONB:             return { kind: "json" };
       case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ: return { kind: "timestamp", withTimezone: true };
+      case DB_COLUMN_TYPE_UUID_ARRAY:        return { kind: "array", element: { kind: "uuid" } };
+      case DB_COLUMN_TYPE_TEXT_ARRAY:        return { kind: "array", element: { kind: "text" } };
     }
   }
 

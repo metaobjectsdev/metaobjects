@@ -77,8 +77,15 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
  *
  * If character_maximum_length is available, callers should pass `maxLength`.
  */
-export function pgTypeToSqlType(dataType: string, maxLength?: number | null): SqlType {
+export function pgTypeToSqlType(dataType: string, maxLength?: number | null, udtName?: string): SqlType {
   const dt = dataType.toLowerCase().trim();
+
+  // Array columns: information_schema reports data_type "ARRAY" and the element
+  // type in udt_name with a leading underscore (e.g. "_uuid", "_text", "_varchar").
+  if (dt === "array" && typeof udtName === "string") {
+    const elemUdt = udtName.replace(/^_/, "").toLowerCase();
+    return { kind: "array", element: pgTypeToSqlType(elemUdt, maxLength) };
+  }
 
   // Length-bearing text types — may arrive as "character varying(255)" (full
   // inline) or as bare "character varying" with maxLength from a separate column.
@@ -279,7 +286,7 @@ async function readColumns(k: Kysely<any>, schema: string, tableName: string): P
   `.execute(k);
 
   return rows.rows.map((r) => {
-    const sqlType = pgTypeToSqlType(r.data_type, r.character_maximum_length);
+    const sqlType = pgTypeToSqlType(r.data_type, r.character_maximum_length, r.udt_name);
     const col: ColumnDescriptor = {
       name: r.column_name,
       sqlType,
