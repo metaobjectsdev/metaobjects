@@ -52,14 +52,49 @@ describe("resolveFormat — dispatch boundary (unit)", () => {
     expect(resolveFormat("text", true)).toBe("text");
     expect(resolveFormat("text", false)).toBe("text");
   });
-  test("unknown format falls back to TTY-aware default", () => {
-    // Invalid flags are ignored; resolveFormat returns the TTY default.
+  test("unknown format falls back to TTY-aware default (resolveFormat is reached only post-validation)", () => {
+    // resolveFormat itself is total — dispatch rejects unknown values before it runs.
     expect(resolveFormat("bogus", true)).toBe("text");
     expect(resolveFormat("bogus", false)).toBe("toon");
   });
   test("absent flag defaults TTY-aware: text on TTY, toon off-TTY", () => {
     expect(resolveFormat(undefined, true)).toBe("text");
     expect(resolveFormat(undefined, false)).toBe("toon");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dispatch: an unrecognized --format is a usage error (exit 2), not a silent default
+// ---------------------------------------------------------------------------
+describe("--format validation (dispatch)", () => {
+  /** Capture console.error during a run() and return exit + stderr. */
+  async function captureRunErr(argv: string[]): Promise<{ exit: number; err: string }> {
+    const captured: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => { captured.push(args.map(String).join(" ")); };
+    let exit: number;
+    try {
+      exit = await run(argv);
+    } finally {
+      console.error = origErr;
+    }
+    return { exit, err: captured.join("\n") };
+  }
+
+  test("--format jsonn (typo) exits 2 with a usage error", async () => {
+    const { exit, err } = await captureRunErr(["gen", "--format", "jsonn"]);
+    expect(exit).toBe(2);
+    expect(err).toContain("--format must be one of");
+  });
+
+  test("--format=bogus (equals-form typo) exits 2", async () => {
+    const { exit } = await captureRunErr(["gen", "--format=bogus"]);
+    expect(exit).toBe(2);
+  });
+
+  test("empty --format= exits 2", async () => {
+    const { exit } = await captureRunErr(["gen", "--format="]);
+    expect(exit).toBe(2);
   });
 });
 

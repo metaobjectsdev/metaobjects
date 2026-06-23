@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
-import { resolveFormat } from "./lib/format.js";
+import { resolveFormat, isValidFormat, VALID_FORMATS } from "./lib/format.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -193,6 +193,12 @@ export async function run(argv: string[]): Promise<number> {
     cleaned.push(a);
   }
 
+  // An explicit but unrecognized --format is a usage error (exit 2) — mirrors the
+  // --cwd missing-value handling above. Absent --format keeps the TTY-aware default.
+  if (formatFlag !== undefined && !isValidFormat(formatFlag)) {
+    log.error(`--format must be one of: ${VALID_FORMATS.join(", ")} (got '${formatFlag}')`);
+    return 2;
+  }
   const fmt = resolveFormat(formatFlag, process.stdout.isTTY ?? false);
 
   const [cmd, ...rest] = cleaned;

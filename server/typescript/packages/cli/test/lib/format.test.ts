@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { resolveFormat, toonEncode } from "../../src/lib/format.js";
+import { resolveFormat, toonEncode, isValidFormat } from "../../src/lib/format.js";
 
 describe("resolveFormat", () => {
   test("explicit flag wins over TTY", () => {
@@ -10,6 +10,19 @@ describe("resolveFormat", () => {
   test("default is TTY-aware: text on TTY, toon on non-TTY", () => {
     expect(resolveFormat(undefined, true)).toBe("text");
     expect(resolveFormat(undefined, false)).toBe("toon");
+  });
+});
+
+describe("isValidFormat", () => {
+  test("accepts the three recognized formats", () => {
+    expect(isValidFormat("toon")).toBe(true);
+    expect(isValidFormat("json")).toBe(true);
+    expect(isValidFormat("text")).toBe(true);
+  });
+  test("rejects unrecognized / empty values", () => {
+    expect(isValidFormat("jsonn")).toBe(false);
+    expect(isValidFormat("bogus")).toBe(false);
+    expect(isValidFormat("")).toBe(false);
   });
 });
 

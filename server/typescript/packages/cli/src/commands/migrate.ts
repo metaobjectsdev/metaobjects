@@ -184,14 +184,29 @@ export async function migrateCommand(
   if (config.dialect === "d1") {
     if (config.baseline) {
       log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
+      emitStructuredError(
+        `migrate baseline is not supported for dialect 'd1'`,
+        "drop 'baseline' for d1 — snapshots are a postgres/sqlite concept",
+        fmt,
+      );
       return 2;
     }
     if (config.databaseUrl !== undefined) {
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
+      emitStructuredError(
+        `migrate: --db / DATABASE_URL is not used for dialect 'd1'`,
+        "remove --db / DATABASE_URL for d1 — wrangler.toml owns the connection",
+        fmt,
+      );
       return 2;
     }
     if (config.rollback !== undefined) {
       log.error(`migrate: --rollback is not supported for dialect 'd1' (use 'wrangler d1 migrations' tooling)`);
+      emitStructuredError(
+        `migrate: --rollback is not supported for dialect 'd1'`,
+        "use 'wrangler d1 migrations' tooling to roll back d1",
+        fmt,
+      );
       return 2;
     }
     return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner, fmt);
@@ -211,6 +226,11 @@ export async function migrateCommand(
 
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
+    emitStructuredError(
+      `migrate: --db <url> required`,
+      "pass --db <url>, set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json",
+      fmt,
+    );
     return 2;
   }
 

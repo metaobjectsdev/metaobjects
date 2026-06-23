@@ -336,6 +336,72 @@ describe("migrate structured error output (--format json)", () => {
     expect(stdout).toContain("baseline");
   });
 
+  test("--from-db without --db emits structured JSON on stdout (json) and stays exit 2", async () => {
+    const root = await project();
+    const { exit, stdout, stderr } = await captureCommand(
+      ["--dialect", "sqlite", "--from-db"],
+      root,
+      "json",
+    );
+    expect(exit).toBe(2);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toContain("--db <url> required");
+    expect(parsed.hint).toContain("DATABASE_URL");
+    // text guidance still goes to stderr
+    expect(stderr).toContain("--db");
+  });
+
+  test("d1 baseline emits structured JSON on stdout (json) and stays exit 2", async () => {
+    const root = await project();
+    const { exit, stdout } = await captureCommand(
+      ["baseline", "--dialect", "d1"],
+      root,
+      "json",
+    );
+    expect(exit).toBe(2);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toContain("baseline");
+    expect(parsed.error).toContain("d1");
+    expect(typeof parsed.hint).toBe("string");
+  });
+
+  test("d1 + --db emits structured TOON on stdout (toon) and stays exit 2", async () => {
+    const root = await project();
+    const { exit, stdout } = await captureCommand(
+      ["--dialect", "d1", "--db", "file:local.db"],
+      root,
+      "toon",
+    );
+    expect(exit).toBe(2);
+    expect(stdout).toContain("error");
+    expect(stdout).toContain("wrangler");
+  });
+
+  test("d1 + --rollback emits structured JSON on stdout (json) and stays exit 2", async () => {
+    const root = await project();
+    const { exit, stdout } = await captureCommand(
+      ["--dialect", "d1", "--rollback", "0001"],
+      root,
+      "json",
+    );
+    expect(exit).toBe(2);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toContain("--rollback");
+    expect(parsed.hint).toContain("wrangler");
+  });
+
+  test("text format keeps these branch errors on stderr only (no stdout structured output)", async () => {
+    const root = await project();
+    const { exit, stdout, stderr } = await captureCommand(
+      ["--dialect", "sqlite", "--from-db"],
+      root,
+      "text",
+    );
+    expect(exit).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("--db");
+  });
+
   test("unexpected throw from sub-function is caught by top-level catch and emits structured JSON on stdout", async () => {
     const root = await project();
     // Trigger the re-throw path in runOfflineGenerate: write a snapshot file with an
