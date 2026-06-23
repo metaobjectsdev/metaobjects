@@ -76,6 +76,83 @@ Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)
 ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
+/** Focused per-subcommand usage slices shown by `<cmd> --help`. */
+const COMMAND_HELP: Record<string, string> = {
+  gen: `meta gen — codegen TS targets from metaobjects/ entities
+
+USAGE:
+  meta gen [<entity>...] [flags]
+
+FLAGS:
+  --dry-run             Compute and print, don't write
+  <entity> [<entity>]   Positional filter on entity names
+  --help, -h            Print this help
+
+NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
+`,
+  verify: `meta verify — drift gate (templates / DB schema / codegen)
+
+USAGE:
+  meta verify [flags]
+
+FLAGS:
+  --templates           Template/prompt {{field}}↔payload drift (default when bare)
+  --codegen             Codegen drift — regenerate to temp dir and diff committed output
+                        Needs metaobjects.config.ts; exit 2 if absent.
+  --db <url>            Schema drift — live DB URL enables the schema-drift gate.
+                        Supports: file:, libsql:, postgres:, postgresql:
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+  --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
+  --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
+  --skip-schema         Skip the schema-drift gate even when --db is present
+  --help, -h            Print this help
+`,
+  export: `meta export — flatten loaded metadata to one canonical JSON artifact
+
+USAGE:
+  meta export [flags]
+
+FLAGS:
+  --out <file>          Write output to a file (default: stdout)
+  --help, -h            Print this help
+`,
+  docs: `meta docs — generate neutral metadata documentation (entity + template pages)
+
+USAGE:
+  meta docs [<metadata>] [flags]
+
+FLAGS:
+  <metadata>            Project root holding metaobjects/ (default: current directory)
+  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --help, -h            Print this help
+`,
+  init: `meta init — scaffold metaobjects/ + .metaobjects/ in the current repo
+
+USAGE:
+  meta init [flags]
+
+FLAGS:
+  --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  --force               Overwrite existing files
+  --quiet               Suppress output
+  --print-only          Print what would be written, don't write
+  --d1                  Include D1 (Cloudflare) migration config
+  --no-wire-root        Skip wiring root metaobjects.config.ts
+  --help, -h            Print this help
+`,
+  "prompt-snapshot": `meta prompt-snapshot — snapshot rendered template.* output
+
+USAGE:
+  meta prompt-snapshot [flags]
+
+FLAGS:
+  --check               Compare against committed snapshots; exit 1 on drift (CI gate)
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+  --help, -h            Print this help
+`,
+};
+
 export async function run(argv: string[]): Promise<number> {
   // Extract the global --cwd / -C and --format flags (anywhere in argv).
   // A relative --cwd path resolves against the real process.cwd().
@@ -119,8 +196,42 @@ export async function run(argv: string[]): Promise<number> {
   const fmt = resolveFormat(formatFlag, process.stdout.isTTY ?? false);
 
   const [cmd, ...rest] = cleaned;
+
+  // Intercept per-subcommand --help / -h before dispatching (mirrors migrate's own pattern).
+  if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && cmd !== "--version" && cmd !== "-v") {
+    if (rest.includes("--help") || rest.includes("-h")) {
+      const helpText = COMMAND_HELP[cmd];
+      if (helpText !== undefined) {
+        log.info(helpText);
+        return 0;
+      }
+      // Unknown command with --help → fall through to the default: branch below.
+    }
+  }
+
   switch (cmd) {
-    case undefined:
+    case undefined: {
+      // Content-first no-args view: concise status + next-step help[] rather than
+      // dumping the full manual (full manual is still available via `meta --help`).
+      const metaobjectsExists = await import("node:fs/promises")
+        .then(({ stat }) => stat(resolve(cwd, "metaobjects")).then(() => true).catch(() => false));
+      const statusLine = metaobjectsExists
+        ? `meta — MetaObjects CLI (v${VERSION})  ·  metaobjects/ found`
+        : `meta — MetaObjects CLI (v${VERSION})  ·  no metaobjects/ here`;
+      const nextSteps = metaobjectsExists
+        ? [
+            "  meta gen              Run codegen",
+            "  meta verify           Check for drift",
+            "  meta migrate          Diff vs DB and emit SQL",
+            "  meta --help           Full command reference",
+          ]
+        : [
+            "  meta init             Scaffold metaobjects/ in this directory",
+            "  meta --help           Full command reference",
+          ];
+      log.info(`${statusLine}\n\n${nextSteps.join("\n")}\n`);
+      return 0;
+    }
     case "--help":
     case "-h":
       log.info(HELP_TEXT);
@@ -158,8 +269,7 @@ export async function run(argv: string[]): Promise<number> {
       return migrateCommand(rest, cwd, undefined, fmt);
     }
     default:
-      log.error(`Unknown command: ${cmd}`);
-      log.info(HELP_TEXT);
+      log.error(`Unknown command: ${cmd}. Run \`meta --help\` for available commands.`);
       return 2;
   }
 }
