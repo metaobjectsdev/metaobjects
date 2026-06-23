@@ -158,7 +158,6 @@
       },
       "devDependencies": {
         "@libsql/client": "^0.14.0",
-        "@libsql/kysely-libsql": "^0.4.1",
         "@types/node": "^22.0.0",
         "@types/pg": "^8.0.0",
         "bun-types": "latest",

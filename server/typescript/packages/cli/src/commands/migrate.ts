@@ -94,6 +94,17 @@ function emitStructuredError(error: string, hint: string, fmt: OutputFormat): vo
   // text format: errors go to stderr via log.error() — the caller handles that path
 }
 
+/**
+ * Sentinel thrown by sub-functions that have already emitted a structured error
+ * via emitStructuredError(). The top-level catch in migrateCommand re-throws
+ * this as-is without double-emitting.
+ */
+class AlreadyEmittedError extends Error {
+  constructor(public readonly exitCode: number) {
+    super("already-emitted");
+  }
+}
+
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
 }
@@ -169,6 +180,7 @@ export async function migrateCommand(
   const metaRoot = cwd;
   const config = await resolveMigrateConfig(flags, metaRoot);
 
+  try {
   if (config.dialect === "d1") {
     if (config.baseline) {
       log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
@@ -182,19 +194,19 @@ export async function migrateCommand(
       log.error(`migrate: --rollback is not supported for dialect 'd1' (use 'wrangler d1 migrations' tooling)`);
       return 2;
     }
-    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
+    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner, fmt);
   }
 
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
   if (config.baseline) {
-    return await runBaseline(config, metaRoot);
+    return await runBaseline(config, metaRoot, fmt);
   }
 
   // Default = offline snapshot generation. The live-introspection path runs only
   // when explicitly requested via --from-db, when --apply needs a connection, or
   // for --rollback (which runs hand-authored down.sql against the live DB).
   if (!config.fromDb && !config.apply && config.rollback === undefined) {
-    return await runOfflineGenerate(config, metaRoot);
+    return await runOfflineGenerate(config, metaRoot, fmt);
   }
 
   if (config.databaseUrl === undefined) {
@@ -422,6 +434,16 @@ export async function migrateCommand(
     }
   }
   return exitCode;
+  } catch (err) {
+    // AlreadyEmittedError: sub-function already called emitStructuredError — just
+    // propagate the exit code without double-emitting.
+    if (err instanceof AlreadyEmittedError) return err.exitCode;
+    // Unexpected error: emit structured error on stdout in the active format, then exit 1.
+    const msg = (err as Error).message ?? String(err);
+    log.error(`migrate: unexpected error: ${msg}`);
+    emitStructuredError(`migrate: unexpected error: ${msg}`, "run `meta migrate --help` for usage", fmt);
+    return 1;
+  }
 }
 
 /**
@@ -432,6 +454,7 @@ export async function migrateCommand(
 export async function runBaseline(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  _fmt: OutputFormat = "text",
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
@@ -498,6 +521,7 @@ export async function runBaseline(
 export async function runOfflineGenerate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
@@ -522,12 +546,11 @@ export async function runOfflineGenerate(
   }
   if (snapshot === null) {
     log.error(`migrate: no schema snapshot at ${path}`);
-    // Structured next-step on stdout so callers / agents can parse it.
-    log.info(
-      JSON.stringify({
-        error: "no schema snapshot",
-        "help[]": `first run \`meta migrate baseline --dialect ${config.dialect}\``,
-      }),
+    // Structured next-step on stdout so callers / agents can parse it, in the active format.
+    emitStructuredError(
+      "no schema snapshot",
+      `first run \`meta migrate baseline --dialect ${config.dialect}\``,
+      fmt,
     );
     return 2;
   }
@@ -661,6 +684,7 @@ async function runD1Migrate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
   runner: WranglerRunner,
+  _fmt: OutputFormat = "text",
 ): Promise<number> {
   // 1. Resolve wrangler.toml + binding.
   const wranglerConfigPath = config.d1.wranglerConfigPath
