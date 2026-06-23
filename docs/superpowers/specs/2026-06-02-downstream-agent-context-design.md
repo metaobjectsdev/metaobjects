@@ -144,6 +144,16 @@ consumer-project/
 A Python+TanStack project gets `python` + `tanstack` instead. Nothing carries the
 languages it doesn't use.
 
+> **Update (2026-06-23) — SUPERSEDED (deploy-all):** `references/<lang>.md` fragments
+> are now deployed for **all** languages, not stack-selectively. Stack-detection misses
+> (e.g. a monorepo whose root `package.json` lacks the deps — as happened to this repo's
+> own init, which recorded `servers: []`) were *silently* starving agents of every
+> language reference. Deploy-all is robust: the agent reads the reference matching its
+> stack (`SKILL.md` points to them), and a detection miss can never leave a skill
+> reference-less. The always-on AGENTS.md/CLAUDE.md stay stack-aware, and point 2's
+> body→reference progressive disclosure still holds. Implemented by removing the token
+> filter in `assemble.ts`; see `docs/superpowers/plans/2026-06-23-agent-context-deploy-all-references.md`.
+
 **Context is optimized at two levels:**
 1. **Scaffold-time selection** — the init command detects the stack (`package.json`
    deps → react/tanstack/angular; `pom.xml`/Gradle → java/kotlin; `*.csproj` → C#;
