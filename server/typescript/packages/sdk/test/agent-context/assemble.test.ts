@@ -33,6 +33,7 @@ describe("assemble", () => {
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/kotlin.md");
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/csharp.md");
+    expect(p).toContain(".claude/skills/metaobjects-codegen/references/python.md");
     // ...and all client refs regardless of which client is in the stack:
     expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
     expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
