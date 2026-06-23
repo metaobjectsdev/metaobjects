@@ -48,10 +48,12 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
     const refDir = join(skillDir, "references");
     if (existsSync(refDir) && statSync(refDir).isDirectory()) {
+      // Deploy-all: every reference fragment is installed; the agent reads the
+      // one(s) matching its stack (SKILL.md points to them). Robust to
+      // stack-detection misses — a narrow/empty stack never starves the agent.
       const refs = readdirSync(refDir)
         .filter((f) => f.endsWith(".md"))
         .map((f) => f.replace(/\.md$/, ""))
-        .filter((token) => stack.tokens.has(token))
         .sort();
       for (const token of refs) {
         out.push({

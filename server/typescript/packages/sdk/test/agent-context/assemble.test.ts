@@ -25,28 +25,29 @@ describe("assemble", () => {
     expect(agents.contents.toLowerCase()).toContain("react");
   });
 
-  test("installs a reference fragment IFF its token is in the stack", () => {
-    const stack = makeStack(["typescript"], ["react"]);
+  test("installs ALL reference fragments regardless of stack (deploy-all; agent picks)", () => {
+    const stack = makeStack(["typescript"], ["react"]); // a narrow stack...
     const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack }));
+    // ...still gets every language's codegen reference:
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
-    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/java.md");
-    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/typescript.md");
+    expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");
+    expect(p).toContain(".claude/skills/metaobjects-codegen/references/kotlin.md");
+    expect(p).toContain(".claude/skills/metaobjects-codegen/references/csharp.md");
+    // ...and all client refs regardless of which client is in the stack:
     expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
-    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/java.md");
-    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
     expect(p).toContain(".claude/skills/metaobjects-verify/references/migration.md");
     for (const s of ["authoring", "codegen", "runtime-ui", "prompts", "verify"]) {
       expect(p).toContain(`.claude/skills/metaobjects-${s}/SKILL.md`);
     }
-    expect(p.some((x) => x.startsWith(".claude/skills/metaobjects-authoring/references/"))).toBe(false);
   });
 
-  test("a java+react stack installs java (not typescript) server refs + react (not tanstack)", () => {
-    const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["java"], ["react"]) }));
+  test("a different narrow stack (java) gets the SAME full reference set (deploy-all)", () => {
+    const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["java"], []) }));
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");
-    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
+    expect(p).toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
     expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
-    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
   });
 
   test("a kotlin-primary stack assembles without throwing and uses the kotlin codegen command", () => {
