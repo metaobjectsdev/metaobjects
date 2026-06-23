@@ -28,7 +28,10 @@ each one cost a broken/burned release to learn.
 
 ## What gets published
 
-The 12 publish-candidate packages (versioned in lockstep unless a package gets an isolated patch):
+The publish-candidate packages (versioned in lockstep unless a package gets an
+isolated patch). **Enumerate the set each release — do not trust this count** (it
+was **13** at 0.11.5); the lockstep set is "every non-`private` package at the
+previous version" (a sed/grep over `*/package.json`):
 
 | Tier | Packages |
 |---|---|
@@ -36,7 +39,7 @@ The 12 publish-candidate packages (versioned in lockstep unless a package gets a
 | 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `runtime-web` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |
-| 4 | `cli` |
+| 4 | `cli`, `ai-runtime` (leaves — nothing depends on them; publish last) |
 
 Publish in tier order so a dependent never lands before its dependency. **`forge` and
 `conformance` are `private: true` and must never be published** (bun refuses them).
@@ -82,12 +85,21 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
 
 ## Procedure
 
-Run everything from the repo root unless noted. Bump the 11 publish-candidate versions only (not
-the private root, not forge/conformance).
+Run everything from the repo root unless noted. Bump the publish-candidate set only
+(not the private root, not forge/conformance) — enumerate it (see "What gets published").
+
+### 0. Build fresh — the stale-`dist` trap
+`bun publish` does NOT rebuild, `dist/` is gitignored, and `main` points at `dist/`,
+so a stale `dist` publishes code *without* your change. `tsc` also leaves orphaned
+`.js` for deleted sources. **Clean-rebuild before publishing:**
+```bash
+bun run clean && bun run build
+```
+Spot-check `dist` reflects the change (a deleted source's `.js` is gone, new code present).
 
 ### 1. Release candidate → `next`
 ```bash
-# bump the 11 to <version>-rc.N (sed the "version" field in each publish-candidate package.json)
+# bump the candidate set to <version>-rc.N (sed the "version" field in each publish-candidate package.json)
 rm bun.lock && bun install                       # CRITICAL — re-pins workspace versions
 # verify a packed tarball's deps show <version>-rc.N (rule 2)
 # publish each package in tier order:
@@ -124,7 +136,7 @@ strategy mismatches) that the unit suites missed.
 
 ### 3. Promote to `latest`
 ```bash
-# bump the 11 to the final <version>
+# bump the candidate set to the final <version>
 rm bun.lock && bun install
 # verify packed deps (rule 2); commit "chore(release): <version>"
 ( cd <pkg-dir> && bun publish )                  # default tag = latest, tier order
