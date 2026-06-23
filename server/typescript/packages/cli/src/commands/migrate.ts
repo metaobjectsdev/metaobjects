@@ -4,7 +4,9 @@ import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
 import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
 import type { ResolvedMigrateConfig } from "../lib/config.js";
-import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
+import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
+import { formatMigrateResultJson } from "../lib/output-json.js";
+import type { OutputFormat } from "../lib/format.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
@@ -98,6 +100,7 @@ export async function migrateCommand(
   cwd: string,
   /** Injectable wrangler runner — tests pass a mock; production uses the default. */
   wranglerRunner?: WranglerRunner,
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   let flags;
   try {
@@ -240,7 +243,7 @@ export async function migrateCommand(
       // with the collected ambiguity list.
       if ((err as Error).message.includes("aborted by onAmbiguous")) {
         ambiguous = ambiguousToEntries(collectedAmbiguous);
-        const output = formatMigrateResult({
+        const migrateResult = {
           dialect: kysely.dialect,
           displayUrl: kysely.displayUrl,
           changeCounts: {},
@@ -248,7 +251,11 @@ export async function migrateCommand(
           ambiguous,
           writtenPaths: [],
           dryRun: config.dryRun,
-        }, { isTTY: !!process.stdout.isTTY });
+        };
+        const output =
+          fmt === "toon" ? formatMigrateResultToon(migrateResult)
+          : fmt === "json" ? formatMigrateResultJson(migrateResult)
+          : formatMigrateResult(migrateResult, { isTTY: !!process.stdout.isTTY });
         log.info(output);
         await kysely.close();
         return 1;
@@ -336,7 +343,7 @@ export async function migrateCommand(
     }
   }
 
-  const output = formatMigrateResult({
+  const migrateResult = {
     dialect: kysely.dialect,
     displayUrl: kysely.displayUrl,
     changeCounts,
@@ -344,7 +351,11 @@ export async function migrateCommand(
     ambiguous,
     writtenPaths,
     dryRun: config.dryRun,
-  }, { isTTY: !!process.stdout.isTTY });
+  };
+  const output =
+    fmt === "toon" ? formatMigrateResultToon(migrateResult)
+    : fmt === "json" ? formatMigrateResultJson(migrateResult)
+    : formatMigrateResult(migrateResult, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
   if (config.apply && exitCode === 0) {

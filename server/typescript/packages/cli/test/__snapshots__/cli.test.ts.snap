@@ -20,6 +20,7 @@ COMMANDS:
 
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
+  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY)
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write

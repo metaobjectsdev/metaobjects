@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
+import { resolveFormat } from "./lib/format.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -25,6 +26,7 @@ COMMANDS:
 
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
+  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY)
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
@@ -75,9 +77,11 @@ ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
 export async function run(argv: string[]): Promise<number> {
-  // Extract the global --cwd / -C flag (anywhere in argv). A relative path
-  // resolves against the real process.cwd(). Absent → process.cwd().
+  // Extract the global --cwd / -C and --format flags (anywhere in argv).
+  // A relative --cwd path resolves against the real process.cwd().
+  // Absent --cwd → process.cwd(). Absent --format → TTY-aware default.
   let cwd = process.cwd();
+  let formatFlag: string | undefined;
   const cleaned: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -100,8 +104,19 @@ export async function run(argv: string[]): Promise<number> {
       cwd = resolve(process.cwd(), val);
       continue;
     }
+    if (a === "--format") {
+      formatFlag = argv[i + 1];
+      i++; // consume the value
+      continue;
+    }
+    if (a.startsWith("--format=")) {
+      formatFlag = a.slice("--format=".length);
+      continue;
+    }
     cleaned.push(a);
   }
+
+  const fmt = resolveFormat(formatFlag, process.stdout.isTTY ?? false);
 
   const [cmd, ...rest] = cleaned;
   switch (cmd) {
@@ -120,7 +135,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
-      return genCommand(rest, cwd);
+      return genCommand(rest, cwd, fmt);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
@@ -140,7 +155,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
-      return migrateCommand(rest, cwd);
+      return migrateCommand(rest, cwd, undefined, fmt);
     }
     default:
       log.error(`Unknown command: ${cmd}`);
