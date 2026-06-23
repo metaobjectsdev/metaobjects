@@ -187,3 +187,43 @@ export function genResultToData(result: GenResultShape): {
 export function formatGenResultToon(result: GenResultShape): string {
   return toonEncode(genResultToData(result));
 }
+
+// ---------------------------------------------------------------------------
+// migrate TOON/JSON formatters (axi)
+// ---------------------------------------------------------------------------
+
+export function migrateResultToData(result: MigrateResultShape): {
+  changes: { kind: string; count: number }[];
+  written: string[];
+  summary: string;
+  help: string[];
+} {
+  const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
+  const changes = changeEntries.map(([kind, count]) => ({ kind, count }));
+
+  const hasChanges = changeEntries.length > 0 || result.blocked.length > 0 || result.ambiguous.length > 0;
+  const isBlocked = result.blocked.length > 0 || result.ambiguous.length > 0;
+
+  let summary: string;
+  if (!hasChanges) {
+    summary = "no schema changes";
+  } else {
+    const changeSummary = changeEntries.map(([k, v]) => `${v} ${k}`).join(", ");
+    summary = isBlocked
+      ? `${changeSummary}; not applied`
+      : `${changeSummary}; applied`;
+  }
+
+  const help: string[] = isBlocked
+    ? [
+        ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
+        ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
+      ]
+    : ["inspect with `meta migrate status`", "roll back with `meta migrate down --slug <name>`"];
+
+  return { changes, written: result.writtenPaths, summary, help };
+}
+
+export function formatMigrateResultToon(result: MigrateResultShape): string {
+  return toonEncode(migrateResultToData(result));
+}
