@@ -4,6 +4,7 @@
 // (NEW MERGED CONFLICT UNCHANGED REFUSED) otherwise. Per SP5 §5.1.
 
 import type { Dialect } from "./kysely.js";
+import { toonEncode } from "./format.js";
 
 export interface FormatOptions {
   isTTY: boolean;
@@ -155,4 +156,34 @@ export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOpt
   }
 
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// gen TOON/JSON formatters (axi)
+// ---------------------------------------------------------------------------
+
+export function genResultToData(result: GenResultShape): {
+  gen: { file: string; status: GenFileStatus }[]; summary: string; help: string[];
+} {
+  const counts = result.files.reduce<Record<GenFileStatus, number>>(
+    (a, f) => ((a[f.status] = (a[f.status] ?? 0) + 1), a),
+    { new: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0 },
+  );
+  const parts: string[] = [];
+  if (counts.new) parts.push(`${counts.new} written`);
+  if (counts.merged) parts.push(`${counts.merged} merged`);
+  if (counts.conflict) parts.push(`${counts.conflict} conflict`);
+  if (counts.unchanged) parts.push(`${counts.unchanged} unchanged`);
+  if (counts.refused) parts.push(`${counts.refused} refused`);
+  const summary = result.files.length === 0
+    ? `no entities to generate in ${result.outDir}`
+    : parts.join(", ");
+  const help = result.files.length === 0
+    ? ["author entities under metaobjects/ then re-run `meta gen`"]
+    : ["typecheck the generated code with `npx tsc`", "run schema with `meta migrate --db <url> --slug <name>`"];
+  return { gen: result.files.map((f) => ({ file: f.path, status: f.status })), summary, help };
+}
+
+export function formatGenResultToon(result: GenResultShape): string {
+  return toonEncode(genResultToData(result));
 }
