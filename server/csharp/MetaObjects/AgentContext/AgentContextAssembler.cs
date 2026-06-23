@@ -50,7 +50,8 @@ public static partial class AgentContextAssembler
         output.Add(new AssembledFile(".metaobjects/AGENTS.md", alwaysOn));
         output.Add(new AssembledFile(".metaobjects/CLAUDE.md", alwaysOn));
 
-        // 2. Skills: body + only the references whose token is in the stack.
+        // 2. Skills: body + ALL references (deploy-all: every fragment is installed
+        //    regardless of stack; robust to stack-detection misses).
         foreach (var skill in Stack.SkillNames)
         {
             var skillDir = Path.Combine(contentRoot, "skills", skill);
@@ -60,12 +61,11 @@ public static partial class AgentContextAssembler
             var refDir = Path.Combine(skillDir, "references");
             if (Directory.Exists(refDir))
             {
-                // Tokens (filename-without-".md") in the stack, sorted ascending (ordinal).
+                // All tokens (filename-without-".md"), sorted ascending (ordinal).
                 var tokens = Directory.EnumerateFiles(refDir)
                     .Select(Path.GetFileName)
                     .Where(n => n is not null && n.EndsWith(".md", StringComparison.Ordinal))
                     .Select(n => n![..^".md".Length])
-                    .Where(stack.Tokens.Contains)
                     .OrderBy(t => t, StringComparer.Ordinal)
                     .ToArray();
                 foreach (var token in tokens)

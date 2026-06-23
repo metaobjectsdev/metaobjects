@@ -21,7 +21,44 @@ npm install --save-dev @metaobjectsdev/cli @metaobjectsdev/migrate-ts
 You point the tool at the **same database your server connects to** — its
 connection is independent of your runtime tier.
 
+## Output format
+
+`meta migrate` (and the CLI generally) is TTY-aware: when stdout is a terminal it
+emits human-readable text; when piped to an agent or CI system it defaults to TOON
+(a compact, unambiguous machine-readable format). Override with `--format`:
+
+```bash
+meta migrate ... --format toon   # TOON (machine-readable, the pipe/agent default)
+meta migrate ... --format json   # JSON
+meta migrate ... --format text   # human-readable text (the TTY default)
+```
+
+Structured errors and next-step hints are also emitted on stdout (not stderr) in the
+active format, so callers can parse them without scraping stderr.
+
 ## The workflow
+
+### Fresh database: baseline first
+
+The default `meta migrate` path is **offline** — it diffs metadata against a
+committed schema snapshot rather than the live DB. On a fresh database there is no
+snapshot yet; run the `baseline` step once before the first migration generate:
+
+```bash
+meta migrate baseline --dialect sqlite     # seed snapshot from metadata (no DB needed)
+meta migrate baseline --dialect postgres   # same for Postgres
+meta migrate baseline --from-db --db postgresql://... --dialect postgres
+                                           # alternative: seed from live DB (for existing schemas)
+```
+
+`baseline` writes a reference snapshot to `.metaobjects/migrations/` and exits
+without emitting any SQL. After this, `meta migrate --dialect <d> --slug <name>`
+operates offline against that snapshot.
+
+If you run `meta migrate` before baselining, the CLI surfaces a structured
+next-step hint pointing to the exact `baseline` command.
+
+### Generating a migration
 
 1. **Generate a migration** by diffing metadata vs the prior state (the live DB or a
    committed snapshot). The engine emits paired `up.sql` + `down.sql`:

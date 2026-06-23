@@ -107,7 +107,8 @@ def assemble(content_root: Path, stack: Stack) -> list[AssembledFile]:
     out.append(AssembledFile(".metaobjects/AGENTS.md", always_on))
     out.append(AssembledFile(".metaobjects/CLAUDE.md", always_on))
 
-    # 2. Skills: body + only the references whose token is in the stack.
+    # 2. Skills: body + ALL references (deploy-all: every fragment is installed
+    #    regardless of stack; robust to stack-detection misses).
     for skill in SKILL_NAMES:
         skill_dir = content_root / "skills" / skill
         body = _read_text(skill_dir / "SKILL.md")
@@ -118,7 +119,7 @@ def assemble(content_root: Path, stack: Stack) -> list[AssembledFile]:
             tokens = sorted(
                 p.stem
                 for p in ref_dir.iterdir()
-                if p.is_file() and p.suffix == ".md" and p.stem in stack.tokens
+                if p.is_file() and p.suffix == ".md"
             )
             for token in tokens:
                 out.append(
