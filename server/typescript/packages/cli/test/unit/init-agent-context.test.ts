@@ -11,13 +11,17 @@ afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
 const javaReact = { servers: ["java"], clients: ["react"] };
 
 describe("init() — agent-context scaffolding", () => {
-  test("scaffolds always-on + skills + only the stack's reference fragments + a manifest", async () => {
+  test("scaffolds always-on + skills + all language reference fragments + a manifest", async () => {
     await init({ cwd, servers: javaReact.servers, clients: javaReact.clients });
     expect(existsSync(join(cwd, ".metaobjects/AGENTS.md"))).toBe(true);
     expect(existsSync(join(cwd, ".metaobjects/CLAUDE.md"))).toBe(true);
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+    // deploy-all: every language reference is installed regardless of detected stack
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/java.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/typescript.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/typescript.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/kotlin.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/csharp.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/python.md"))).toBe(true);
     expect(existsSync(join(cwd, ".metaobjects/.agent-context.json"))).toBe(true);
     expect(readFileSync(join(cwd, ".metaobjects/AGENTS.md"), "utf8").toLowerCase()).toContain("java");
   });
