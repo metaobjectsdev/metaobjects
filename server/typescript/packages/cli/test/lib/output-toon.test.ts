@@ -59,7 +59,7 @@ describe("migrate TOON output (axi)", () => {
     expect(d.summary).toContain("1 create-table");
     expect(d.summary).toContain("applied");
     expect(Array.isArray(d.help)).toBe(true);
-    expect(d.help.join(" ")).toContain("status");
+    expect(d.help.join(" ")).toContain("--rollback");
   });
   test("TOON string collapses the changes array to a tabular block", () => {
     const s = formatMigrateResultToon(migrateResult);

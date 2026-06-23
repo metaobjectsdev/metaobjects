@@ -545,7 +545,7 @@ export async function runOfflineGenerate(
     return 2;
   }
   if (snapshot === null) {
-    log.error(`migrate: no schema snapshot at ${path}`);
+    log.error(`migrate: no schema snapshot at ${path}; run \`meta migrate baseline --dialect ${config.dialect}\` first`);
     // Structured next-step on stdout so callers / agents can parse it, in the active format.
     emitStructuredError(
       "no schema snapshot",

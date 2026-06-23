@@ -92,19 +92,25 @@ async function captureCommand(
   args: string[],
   cwd: string,
   fmt: "text" | "toon" | "json" = "text",
-): Promise<{ exit: number; stdout: string }> {
-  const captured: string[] = [];
+): Promise<{ exit: number; stdout: string; stderr: string }> {
+  const capturedOut: string[] = [];
+  const capturedErr: string[] = [];
   const origLog = console.log;
+  const origErr = console.error;
   console.log = (...logArgs: unknown[]) => {
-    captured.push(logArgs.map(String).join(" "));
+    capturedOut.push(logArgs.map(String).join(" "));
+  };
+  console.error = (...errArgs: unknown[]) => {
+    capturedErr.push(errArgs.map(String).join(" "));
   };
   let exit: number;
   try {
     exit = await migrateCommand(args, cwd, undefined, fmt);
   } finally {
     console.log = origLog;
+    console.error = origErr;
   }
-  return { exit, stdout: captured.join("\n") };
+  return { exit, stdout: capturedOut.join("\n"), stderr: capturedErr.join("\n") };
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +201,19 @@ describe("migrate offline: no-snapshot discoverability hint", () => {
     expect(exit).toBe(2);
     // TOON output must mention baseline
     expect(stdout).toContain("baseline");
+  });
+
+  test("when no snapshot exists, text format (default) includes baseline next-step in stderr", async () => {
+    const root = await project();
+    // text is the default / human TTY format — emitStructuredError is a no-op, so the
+    // baseline guidance must come from the log.error() message on stderr.
+    const { exit, stderr } = await captureCommand(
+      ["--dialect", "sqlite", "--slug", "auto"],
+      root,
+      "text",
+    );
+    expect(exit).toBe(2);
+    expect(stderr).toContain("baseline");
   });
 });
 

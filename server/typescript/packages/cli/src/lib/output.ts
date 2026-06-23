@@ -219,7 +219,7 @@ export function migrateResultToData(result: MigrateResultShape): {
         ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
         ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
       ]
-    : ["inspect with `meta migrate status`", "roll back with `meta migrate down --slug <name>`"];
+    : ["roll back with `meta migrate --rollback <target>`"];
 
   return { changes, written: result.writtenPaths, summary, help };
 }
