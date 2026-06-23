@@ -8,12 +8,17 @@
 //   - Insert/Update types
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaField, MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
+import {
+  MetaField, MetaObject, type MetaRoot,
+  FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF, stripPackage,
+} from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
+import type { RenderContext } from "../render-context.js";
 import { mapColumnType } from "../column-mapper.js";
+import { valueObjectModuleSpecifier } from "../import-path.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, zodTypeFor, currencyMetaFor, labelFor } from "./field-meta.js";
@@ -34,6 +39,12 @@ export interface ProjectionDeclOpts {
    * dependency-free consumer (no runtime-ts) gets compilable output.
    */
   readonly allowlists?: boolean;
+  /**
+   * Render context, when available — used to resolve value-object import MODULES
+   * (`.$type<VO>()` + the VO Zod schema) in a layout/package/extStyle-aware way.
+   * Absent in bare unit-test calls, which fall back to a flat same-dir import.
+   */
+  readonly ctx?: RenderContext;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +84,20 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
-  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true } = opts;
+  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx } = opts;
+
+  // Resolve a value-object name → its import module. Layout/package/extStyle-aware
+  // when a render context is present (so the projection's VO imports match the
+  // entity's), else a flat same-dir import — identical to zodFieldExpr's fallback.
+  const voModule = (refBase: string): string =>
+    ctx
+      ? valueObjectModuleSpecifier(refBase, ctx.packageOf, projection.package, ctx.outputLayout, ctx.extStyle)
+      : `./${refBase}.js`;
+  const objectRefOf = (f: MetaField): string | undefined => {
+    if (f.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
+    const ref = f.attr(FIELD_ATTR_OBJECT_REF);
+    return typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : undefined;
+  };
 
   const viewFn = dialect === "postgres" ? "pgView" : "sqliteView";
   const viewModule =
@@ -102,9 +126,18 @@ export function renderProjectionDecl(
   }
   for (const f of projection.ownFields()) allFields.push(f);
 
-  const zodLines: Code[] = allFields.map(
-    (f) => code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`,
-  );
+  // A field.object passthrough carries the value-object's Zod schema (so the
+  // view's read schema + inferred type expose the VO shape, not z.unknown()).
+  const zodLines: Code[] = allFields.map((f) => {
+    const refBase = objectRefOf(f);
+    if (refBase) {
+      const schemaSym = imp(`${refBase}InsertSchema@${voModule(refBase)}`);
+      return f.isArray
+        ? code`  ${f.name}: ${z}.array(${schemaSym})`
+        : code`  ${f.name}: ${schemaSym}`;
+    }
+    return code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`;
+  });
 
   // Typed view column map for the Drizzle `.existing()` declaration — keyed by
   // projection field name, valued by the column builder for the (renamed)
@@ -122,7 +155,15 @@ export function renderProjectionDecl(
     // shapes the SELECT type); `.primaryKey()`/`.default()`/`.references()` are
     // table-DDL concerns and invalid on a `.existing()` view declaration.
     const notNull = spec.modifiers.includes(".notNull()") ? ".notNull()" : "";
-    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${notNull}`;
+    // Narrow a jsonb passthrough to its value-object type — `.$type<VO>()` —
+    // mirroring the entity column, so the read row is typed (not `unknown`).
+    let dollarType: Code | string = "";
+    const dtr = spec.dollarTypeRef;
+    if (dtr?.kind === "objectRef") {
+      const voTypeSym = imp(`${dtr.name}@${voModule(dtr.name)}`);
+      dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
+    }
+    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${notNull}`;
   });
 
   const constFieldLines: string[] = allFields.map((f) => {

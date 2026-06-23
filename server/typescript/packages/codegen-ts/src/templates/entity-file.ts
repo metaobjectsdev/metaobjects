@@ -67,6 +67,7 @@ export function renderEntityFile(
       apiPrefix: ctx.apiPrefix,
       timestampMode: ctx.timestampMode,
       allowlists,
+      ctx,
     });
   }
 
