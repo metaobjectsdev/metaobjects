@@ -78,6 +78,75 @@ describe("pathFromProjectionName — pluralization edge cases", () => {
   });
 });
 
+describe("renderProjectionDecl — typed view columns + allowlists gate", () => {
+  // A passthrough projection over a jsonb + timestamp source. The view declaration
+  // must carry TYPED columns (not an empty `{}`), honoring @dbColumnType, so the
+  // generated view backs a typed `db.select()`. With allowlists:false it must NOT
+  // import runtime-ts (dependency-free output).
+  async function load() {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "test",
+        children: [
+          { "object.entity": {
+            name: "Cfg",
+            children: [
+              { "source.rdb": { "@table": "cfgs" } },
+              { "field.uuid": { name: "id" } },
+              { "field.string": { name: "payloadJson", "@dbColumnType": "jsonb" } },
+              { "field.timestamp": { name: "createdAt" } },
+              { "identity.primary": { name: "id", "@fields": "id" } },
+            ],
+          }},
+          { "object.projection": {
+            name: "CfgView",
+            children: [
+              { "source.rdb": { "@kind": "view", "@table": "v_cfg" } },
+              { "field.uuid": { name: "id", extends: "Cfg.id" } },
+              { "field.string": { name: "payload", "@dbColumnType": "jsonb",
+                children: [{ "origin.passthrough": { "@from": "Cfg.payloadJson" } }] } },
+              { "field.timestamp": { name: "created_at",
+                children: [{ "origin.passthrough": { "@from": "Cfg.createdAt" } }] } },
+              { "identity.primary": { name: "id", extends: "Cfg.id" } },
+            ],
+          }},
+        ],
+      },
+    });
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
+    const projection = result.root.objects().find((o) => o.name === "CfgView")!;
+    return { root: result.root, projection };
+  }
+
+  test("emits typed pgView columns (jsonb/timestamp), not an empty map", async () => {
+    const { root, projection } = await load();
+    const code = renderProjectionDecl(projection, root, {
+      columnNamingStrategy: "snake_case", dialect: "postgres", timestampMode: "date", allowlists: false,
+    });
+    expect(code).not.toContain("pgView(\"v_cfg\", {})");
+    expect(code).toContain('jsonb("payload")');           // @dbColumnType honored
+    expect(code).toContain('timestamp("created_at"');     // timestamp builder
+    expect(code).toContain('uuid("id")');
+  });
+
+  test("allowlists:false omits the runtime-ts import", async () => {
+    const { root, projection } = await load();
+    const code = renderProjectionDecl(projection, root, {
+      columnNamingStrategy: "snake_case", dialect: "postgres", timestampMode: "date", allowlists: false,
+    });
+    expect(code).not.toContain("@metaobjectsdev/runtime-ts");
+  });
+
+  test("allowlists:true (default) still emits the allowlists", async () => {
+    const { root, projection } = await load();
+    const code = renderProjectionDecl(projection, root, {
+      columnNamingStrategy: "snake_case", dialect: "postgres", timestampMode: "date",
+    });
+    expect(code).toContain("FilterAllowlist");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Helper — load a Program + Week + ProgramSummary tri-entity setup.
 // Returns { root, projection } — root is the loader's root MetaData (all

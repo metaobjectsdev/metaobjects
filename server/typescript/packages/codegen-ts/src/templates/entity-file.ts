@@ -65,6 +65,8 @@ export function renderEntityFile(
       columnNamingStrategy: ctx.columnNamingStrategy,
       dialect: ctx.dialect,
       apiPrefix: ctx.apiPrefix,
+      timestampMode: ctx.timestampMode,
+      allowlists,
     });
   }
 

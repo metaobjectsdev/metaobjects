@@ -13,6 +13,7 @@ import { projectionViewName } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
+import { mapColumnType } from "../column-mapper.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, zodTypeFor, currencyMetaFor, labelFor } from "./field-meta.js";
@@ -25,6 +26,14 @@ export interface ProjectionDeclOpts {
   readonly columnNamingStrategy: ColumnNamingStrategy;
   readonly dialect: "postgres" | "sqlite";
   readonly apiPrefix?: string;
+  /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
+  readonly timestampMode?: "date" | "string";
+  /**
+   * When false, omit the Fastify-flavored filter/sort allowlists (and their
+   * `runtime-ts` import) — mirrors entity-file's `allowlists` option so a
+   * dependency-free consumer (no runtime-ts) gets compilable output.
+   */
+  readonly allowlists?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +73,7 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
-  const { dialect, columnNamingStrategy, apiPrefix = "" } = opts;
+  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true } = opts;
 
   const viewFn = dialect === "postgres" ? "pgView" : "sqliteView";
   const viewModule =
@@ -97,6 +106,25 @@ export function renderProjectionDecl(
     (f) => code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`,
   );
 
+  // Typed view column map for the Drizzle `.existing()` declaration — keyed by
+  // projection field name, valued by the column builder for the (renamed)
+  // physical view column, so `db.select().from(<view>)` is typed. Honors
+  // `@dbColumnType` (e.g. a passthrough of a jsonb column). `.existing()` views
+  // carry type + physical name only — no PK/default/notNull modifiers.
+  const viewColumnLines: Code[] = allFields.map((f) => {
+    const spec = mapColumnType(f, dialect, columnNamingStrategy, timestampMode);
+    const colSym = imp(`${spec.fnName}@${spec.importModule}`);
+    const optsArg =
+      spec.fnOptions && Object.keys(spec.fnOptions).length > 0
+        ? `, ${JSON.stringify(spec.fnOptions)}`
+        : "";
+    // Of the table modifiers, only `.notNull()` carries to an existing view (it
+    // shapes the SELECT type); `.primaryKey()`/`.default()`/`.references()` are
+    // table-DDL concerns and invalid on a `.existing()` view declaration.
+    const notNull = spec.modifiers.includes(".notNull()") ? ".notNull()" : "";
+    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${notNull}`;
+  });
+
   const constFieldLines: string[] = allFields.map((f) => {
     const dbCol = columnNameFromField(f.name, columnNamingStrategy);
     const view = inferViewKind(f);
@@ -118,7 +146,9 @@ export function renderProjectionDecl(
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
-export const ${camelName}View = ${viewSym}(${JSON.stringify(viewName)}, {}).existing();
+export const ${camelName}View = ${viewSym}(${JSON.stringify(viewName)}, {
+${joinCode(viewColumnLines, { on: ",\n" })}
+}).existing();
 `,
     code`
 export const ${projName}Schema = ${z}.object({
@@ -137,8 +167,9 @@ export const ${projName} = {
 ${constFieldLines.join("\n")}
 } as const;
 `,
-    renderFilterAllowlist(projection),
-    renderSortAllowlist(projection),
+    ...(allowlists
+      ? [renderFilterAllowlist(projection), renderSortAllowlist(projection)]
+      : []),
     renderFilterType(projection),
   ];
 
