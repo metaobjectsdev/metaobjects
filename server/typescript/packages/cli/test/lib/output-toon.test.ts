@@ -42,6 +42,8 @@ const migrateResult = {
   ambiguous: [],
   writtenPaths: ["migrations/V1__create_user.sql"],
   dryRun: false,
+  applied: [],
+  applyFailed: false,
 };
 
 describe("migrate TOON output (axi)", () => {
@@ -51,15 +53,35 @@ describe("migrate TOON output (axi)", () => {
     expect(typeof d.summary).toBe("string");
     expect(formatMigrateResultToon(migrateResult)).toContain("changes[");
   });
-  test("data has tabular changes, written list, aggregate summary, and next-step help", () => {
+  test("files-only run (no --apply) reports 'wrote', not 'applied'", () => {
     const d = migrateResultToData(migrateResult) as any;
     expect(d.changes).toHaveLength(1);
     expect(d.changes[0]).toEqual({ kind: "create-table", count: 1 });
     expect(d.written).toEqual(["migrations/V1__create_user.sql"]);
     expect(d.summary).toContain("1 create-table");
-    expect(d.summary).toContain("applied");
+    expect(d.summary).toContain("wrote");
+    expect(d.summary).not.toContain("applied");
     expect(Array.isArray(d.help)).toBe(true);
+    expect(d.help.join(" ")).toContain("--apply");
+    // The rollback hint must NOT appear when nothing was applied.
+    expect(d.help.join(" ")).not.toContain("--rollback");
+  });
+  test("a successful --apply run reports 'applied N' and the rollback hint", () => {
+    const d = migrateResultToData({ ...migrateResult, applied: ["V1__create_user.sql"] }) as any;
+    expect(d.summary).toContain("applied 1 migration(s)");
     expect(d.help.join(" ")).toContain("--rollback");
+  });
+  test("a failed --apply run reports 'apply failed', never 'applied'", () => {
+    const d = migrateResultToData({ ...migrateResult, applyFailed: true }) as any;
+    expect(d.summary).toContain("apply failed");
+    expect(d.summary).not.toContain("; applied");
+    expect(d.help.join(" ")).not.toContain("--rollback");
+  });
+  test("a --dry-run run reports preview-only and never 'applied'", () => {
+    const d = migrateResultToData({ ...migrateResult, writtenPaths: [], dryRun: true }) as any;
+    expect(d.summary).toContain("preview only");
+    expect(d.summary).not.toContain("applied");
+    expect(d.help.join(" ")).toContain("--dry-run");
   });
   test("TOON string collapses the changes array to a tabular block", () => {
     const s = formatMigrateResultToon(migrateResult);

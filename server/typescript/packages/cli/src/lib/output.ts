@@ -113,6 +113,10 @@ export interface MigrateResultShape {
   ambiguous: AmbiguousEntry[];
   writtenPaths: string[];
   dryRun: boolean;
+  /** Names of migrations actually applied to the DB this run (empty unless --apply ran and succeeded). */
+  applied?: string[];
+  /** True when --apply was attempted but failed (exit 1). */
+  applyFailed?: boolean;
 }
 
 export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOptions): string {
@@ -203,23 +207,41 @@ export function migrateResultToData(result: MigrateResultShape): {
 
   const hasChanges = changeEntries.length > 0 || result.blocked.length > 0 || result.ambiguous.length > 0;
   const isBlocked = result.blocked.length > 0 || result.ambiguous.length > 0;
+  const changeSummary = changeEntries.map(([k, v]) => `${v} ${k}`).join(", ");
+  const applied = result.applied ?? [];
+  const applyFailed = result.applyFailed ?? false;
 
+  // Summary + help reflect what ACTUALLY happened, not just whether changes were
+  // blocked: a dry-run wrote nothing, a generate-only run wrote files but applied
+  // nothing, and only an --apply that ran AND succeeded is "applied". The
+  // `--rollback` hint appears only when something was actually applied.
   let summary: string;
+  let help: string[];
   if (!hasChanges) {
     summary = "no schema changes";
+    help = ["metadata and schema are in sync — nothing to do"];
+  } else if (isBlocked) {
+    summary = `${changeSummary}; not applied`;
+    help = [
+      ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
+      ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
+    ];
+  } else if (applyFailed) {
+    summary = `${changeSummary}; apply failed`;
+    help = ["resolve the apply error above, then re-run `meta migrate --apply`"];
+  } else if (result.dryRun) {
+    summary = `${changeSummary}; preview only (nothing written)`;
+    help = ["re-run without --dry-run to write the migration"];
+  } else if (applied.length > 0) {
+    summary = `${changeSummary}; applied ${applied.length} migration(s)`;
+    help = ["roll back with `meta migrate --rollback <target>`"];
+  } else if (result.writtenPaths.length > 0) {
+    summary = `${changeSummary}; wrote ${result.writtenPaths.length} migration file(s)`;
+    help = ["apply with `meta migrate --db <url> --apply`"];
   } else {
-    const changeSummary = changeEntries.map(([k, v]) => `${v} ${k}`).join(", ");
-    summary = isBlocked
-      ? `${changeSummary}; not applied`
-      : `${changeSummary}; applied`;
+    summary = `${changeSummary}; not written`;
+    help = ["re-run with --slug <name> to write the migration"];
   }
-
-  const help: string[] = isBlocked
-    ? [
-        ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
-        ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
-      ]
-    : ["roll back with `meta migrate --rollback <target>`"];
 
   return { changes, written: result.writtenPaths, summary, help };
 }

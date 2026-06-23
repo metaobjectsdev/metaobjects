@@ -278,6 +278,7 @@ export async function migrateCommand(
   let exitCode = 0;
   let writtenPaths: string[] = [];
   let appliedNames: string[] = [];
+  let applyFailed = false;
   let blocked: BlockedEntry[] = [];
   let ambiguous: AmbiguousEntry[] = [];
   let changeCounts: Record<string, number> = {};
@@ -339,6 +340,8 @@ export async function migrateCommand(
           ambiguous,
           writtenPaths: [],
           dryRun: config.dryRun,
+          applied: [],
+          applyFailed: false,
         };
         const output =
           fmt === "toon" ? formatMigrateResultToon(migrateResult)
@@ -421,6 +424,7 @@ export async function migrateCommand(
       } catch (err) {
         log.error(`migrate: apply failed: ${(err as Error).message}`);
         exitCode = 1;
+        applyFailed = true;
       }
     }
   } finally {
@@ -439,6 +443,8 @@ export async function migrateCommand(
     ambiguous,
     writtenPaths,
     dryRun: config.dryRun,
+    applied: appliedNames,
+    applyFailed,
   };
   const output =
     fmt === "toon" ? formatMigrateResultToon(migrateResult)
