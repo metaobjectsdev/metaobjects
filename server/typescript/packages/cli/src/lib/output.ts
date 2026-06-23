@@ -205,39 +205,46 @@ export function migrateResultToData(result: MigrateResultShape): {
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
   const changes = changeEntries.map(([kind, count]) => ({ kind, count }));
 
-  const hasChanges = changeEntries.length > 0 || result.blocked.length > 0 || result.ambiguous.length > 0;
   const isBlocked = result.blocked.length > 0 || result.ambiguous.length > 0;
   const changeSummary = changeEntries.map(([k, v]) => `${v} ${k}`).join(", ");
   const applied = result.applied ?? [];
   const applyFailed = result.applyFailed ?? false;
+  // `--apply` also applies previously-written-but-unapplied ledger files, so
+  // `applied` can be non-empty even when there is no fresh metadata diff.
+  const hasChanges = changeEntries.length > 0 || isBlocked;
+  const prefix = changeSummary.length > 0 ? `${changeSummary}; ` : "";
 
-  // Summary + help reflect what ACTUALLY happened, not just whether changes were
-  // blocked: a dry-run wrote nothing, a generate-only run wrote files but applied
-  // nothing, and only an --apply that ran AND succeeded is "applied". The
-  // `--rollback` hint appears only when something was actually applied.
+  // Summary + help reflect what ACTUALLY happened, computed from the real signals
+  // (dry-run, blocked/ambiguous, files written, files applied) rather than
+  // short-circuiting on the presence of a fresh diff: a dry-run wrote nothing, a
+  // generate-only run wrote files but applied nothing, and `--apply` can apply a
+  // pending ledger file even with no new diff. The `--rollback` hint appears only
+  // when something was actually applied.
   let summary: string;
   let help: string[];
-  if (!hasChanges) {
-    summary = "no schema changes";
-    help = ["metadata and schema are in sync — nothing to do"];
-  } else if (isBlocked) {
+  if (isBlocked) {
     summary = `${changeSummary}; not applied`;
     help = [
       ...result.blocked.map((b) => `re-run with --allow ${b.allowFlag} to apply: ${b.description}`),
       ...result.ambiguous.map((a) => `re-run with --on-ambiguous to resolve: ${a.hint}`),
     ];
-  } else if (applyFailed) {
-    summary = `${changeSummary}; apply failed`;
-    help = ["resolve the apply error above, then re-run `meta migrate --apply`"];
   } else if (result.dryRun) {
-    summary = `${changeSummary}; preview only (nothing written)`;
-    help = ["re-run without --dry-run to write the migration"];
+    summary = hasChanges ? `${changeSummary}; preview only (nothing written)` : "no schema changes";
+    help = hasChanges
+      ? ["re-run without --dry-run to write the migration"]
+      : ["metadata and schema are in sync — nothing to do"];
+  } else if (applyFailed) {
+    summary = `${prefix}apply failed`;
+    help = ["resolve the apply error above, then re-run `meta migrate --apply`"];
   } else if (applied.length > 0) {
-    summary = `${changeSummary}; applied ${applied.length} migration(s)`;
+    summary = `${prefix}applied ${applied.length} migration(s)`;
     help = ["roll back with `meta migrate --rollback <target>`"];
   } else if (result.writtenPaths.length > 0) {
-    summary = `${changeSummary}; wrote ${result.writtenPaths.length} migration file(s)`;
+    summary = `${prefix}wrote ${result.writtenPaths.length} migration file(s)`;
     help = ["apply with `meta migrate --db <url> --apply`"];
+  } else if (!hasChanges) {
+    summary = "no schema changes";
+    help = ["metadata and schema are in sync — nothing to do"];
   } else {
     summary = `${changeSummary}; not written`;
     help = ["re-run with --slug <name> to write the migration"];

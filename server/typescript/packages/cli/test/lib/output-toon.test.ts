@@ -102,4 +102,26 @@ describe("migrate TOON output (axi)", () => {
     const d = migrateResultToData({ ...migrateResult, changeCounts: {}, writtenPaths: [] }) as any;
     expect(d.summary.toLowerCase()).toContain("no schema changes");
   });
+  test("in-sync metadata but applied a pending ledger file reports 'applied'", () => {
+    const d = migrateResultToData({
+      ...migrateResult,
+      changeCounts: {},
+      writtenPaths: [],
+      applied: ["V1__create_user.sql"],
+    }) as any;
+    expect(d.summary).toContain("applied 1 migration(s)");
+    expect(d.summary.toLowerCase()).not.toContain("no schema changes");
+    expect(d.help.join(" ")).toContain("--rollback");
+  });
+  test("dry-run with no changes reports 'no schema changes', never preview", () => {
+    const d = migrateResultToData({
+      ...migrateResult,
+      changeCounts: {},
+      writtenPaths: [],
+      dryRun: true,
+    }) as any;
+    expect(d.summary.toLowerCase()).toContain("no schema changes");
+    expect(d.summary).not.toContain("preview");
+    expect(d.summary).not.toContain("applied");
+  });
 });
