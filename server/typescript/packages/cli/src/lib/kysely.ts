@@ -110,8 +110,9 @@ export async function buildKyselyFromUrl(
     pg = await import("pg") as unknown as PgPoolModule;
     ({ PostgresDialect } = await import("kysely"));
   } catch {
+    const cmd = await installCommand("pg", process.cwd());
     throw new Error(
-      `dialect 'postgres' requires 'pg'; install it: 'bun add pg'`,
+      `dialect 'postgres' requires 'pg'; install it: '${cmd}'`,
     );
   }
   const PoolCtor = pg.Pool ?? pg.default?.Pool;
