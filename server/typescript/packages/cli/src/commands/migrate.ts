@@ -7,6 +7,7 @@ import type { ResolvedMigrateConfig } from "../lib/config.js";
 import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
 import { formatMigrateResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
+import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
@@ -45,6 +46,53 @@ import {
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
+
+const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
+
+USAGE:
+  meta migrate [baseline] [flags]
+
+SUBCOMMANDS:
+  baseline             Seed the committed reference snapshot (no migration emitted).
+                       Required before the first offline generate.
+
+MIGRATE FLAGS:
+  --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
+                       Supports: file:, libsql:, postgres:, postgresql:
+  --dialect sqlite|postgres|d1
+                       Optional dialect override (auto-detected from URL scheme)
+  --out-dir <path>     Migration directory (default: ./.metaobjects/migrations)
+  --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
+  --allow <csv>        Comma-separated destructive-change permissions:
+                       drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null
+  --on-ambiguous abort|rename|drop-add
+                       How to handle ambiguous renames (default: abort)
+  --from-db            Introspect live DB instead of using the committed snapshot
+  --apply              Run pending migration files against the DB after writing
+  --rollback <target>  Roll back applied migrations newer than <target>
+  --d1 <binding>       D1 binding name from wrangler.toml (only with --dialect d1)
+  --remote             Target remote D1 instead of local (only with --dialect d1)
+  --yes                Skip the --remote --apply confirmation pause
+  --dry-run            Print SQL to stdout, don't write
+  --help, -h           Print this help
+
+EXAMPLES:
+  meta migrate baseline --dialect sqlite
+  meta migrate --dialect sqlite --slug add-users
+  meta migrate --db file:local.db --slug add-orders
+  meta migrate --db postgresql://localhost/mydb --slug add-index --apply
+`;
+
+/** Emit a structured error on stdout (not stderr) in the active format, per axi. */
+function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
+  const payload = { error, hint };
+  if (fmt === "json") {
+    log.info(JSON.stringify(payload, null, 2));
+  } else if (fmt === "toon") {
+    log.info(toonEncode(payload));
+  }
+  // text format: errors go to stderr via log.error() — the caller handles that path
+}
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
@@ -102,11 +150,19 @@ export async function migrateCommand(
   wranglerRunner?: WranglerRunner,
   fmt: OutputFormat = "text",
 ): Promise<number> {
+  // Intercept --help / -h before parseMigrateArgs (parseArgs strict mode rejects them).
+  if (args.includes("--help") || args.includes("-h")) {
+    log.info(MIGRATE_HELP_TEXT);
+    return 0;
+  }
+
   let flags;
   try {
     flags = parseMigrateArgs(args);
   } catch (err) {
-    log.error(`migrate: ${(err as Error).message}`);
+    const msg = (err as Error).message;
+    log.error(`migrate: ${msg}`);
+    emitStructuredError(`migrate: ${msg}`, "run `meta migrate --help` for usage", fmt);
     return 2;
   }
 
@@ -465,7 +521,14 @@ export async function runOfflineGenerate(
     return 2;
   }
   if (snapshot === null) {
-    log.error(`migrate: no schema snapshot at ${path}; run 'meta migrate baseline' first`);
+    log.error(`migrate: no schema snapshot at ${path}`);
+    // Structured next-step on stdout so callers / agents can parse it.
+    log.info(
+      JSON.stringify({
+        error: "no schema snapshot",
+        "help[]": `first run \`meta migrate baseline --dialect ${config.dialect}\``,
+      }),
+    );
     return 2;
   }
 
