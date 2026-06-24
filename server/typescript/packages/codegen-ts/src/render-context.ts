@@ -105,6 +105,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     importBase: undefined,
     outputLayout,
     dbImport: opts.dbImport,
+    runtime: true,
   };
   const collectionNameOpts = {
     pluralize: opts.pluralizeCollections ?? true,

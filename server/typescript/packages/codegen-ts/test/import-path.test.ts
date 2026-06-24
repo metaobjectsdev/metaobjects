@@ -14,11 +14,11 @@ import {
 
 const model = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
   name: "default", outDir: "db/gen", importBase: "@mf/db/generated",
-  outputLayout: "package", dbImport: "../index", ...over,
+  outputLayout: "package", dbImport: "../index", runtime: true, ...over,
 });
 const web = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
   name: "web", outDir: "web/gen", importBase: undefined,
-  outputLayout: "package", dbImport: "../index", ...over,
+  outputLayout: "package", dbImport: "../index", runtime: true, ...over,
 });
 
 describe("entityModuleSpecifier", () => {

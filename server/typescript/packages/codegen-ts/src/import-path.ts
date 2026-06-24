@@ -118,6 +118,19 @@ export interface ResolvedTarget {
   importBase: string | undefined;
   outputLayout: OutputLayout;
   dbImport: string;
+  /**
+   * Whether this target emits server runtime bindings. `true` (the default for
+   * the implicit "default" target) = a full server package: Drizzle tables/views,
+   * `runtime-ts` filter/sort allowlists, the whole DB layer. `false` = a
+   * contract-only target: Zod schemas + inferred TS types ONLY, with no
+   * `drizzle-orm` / `runtime-ts` import — for a shared wire-contract package
+   * consumed by a UI/web client that has no database. The axis is the target's
+   * AUDIENCE (server vs client), not any one artifact: in a contract target an
+   * entity drops its `pgTable`, a projection drops its `pgView`, every object
+   * renders as its plain shape. Allowlists are off here too (contract ⇒ no
+   * `runtime-ts`); the finer `allowlists` knob only applies within a runtime target.
+   */
+  runtime: boolean;
 }
 
 /** importBase + (package path when package layout) + entity, extension-less. */

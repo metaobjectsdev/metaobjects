@@ -33,11 +33,16 @@ import { isAbstract } from "../instance-artifacts.js";
  * drop `@metaobjectsdev/runtime-ts` from their deps entirely. The client-side
  * `<Entity>Filter` type is always emitted — consumers still want it for typed
  * client calls regardless of how the server is wired.
+ *
+ * Whether the file emits ANY server runtime binding at all (Drizzle table/view,
+ * the allowlists) is governed by the TARGET, not this option: `ctx.selfTarget.runtime`.
+ * A contract-only target (`runtime: false`) renders every object as its plain
+ * shape (interface + Zod) and every projection as its read schema — no
+ * `drizzle-orm`, no `runtime-ts`. `allowlists` is a finer Fastify-vs-Hono opt-out
+ * that only matters within a runtime target.
  */
 export interface RenderEntityFileOpts {
   readonly allowlists?: boolean;
-  /** Forwarded to renderProjectionDecl — false ⇒ contract-only (no Drizzle pgView). */
-  readonly includeViewDecl?: boolean;
 }
 
 export function renderEntityFile(
@@ -45,8 +50,10 @@ export function renderEntityFile(
   ctx: RenderContext,
   opts?: RenderEntityFileOpts,
 ): string {
-  const allowlists = opts?.allowlists ?? true;
-  const includeViewDecl = opts?.includeViewDecl ?? true;
+  // Contract-only target ⇒ no server runtime: no Drizzle pgView/pgTable, no
+  // runtime-ts allowlists. The read schema + inferred types still emit.
+  const runtime = ctx.selfTarget.runtime;
+  const allowlists = runtime ? (opts?.allowlists ?? true) : false;
 
   // --- Abstract path (shape only) ---
   // An abstract entity contributes shape via inheritance only — it must NEVER
@@ -71,15 +78,17 @@ export function renderEntityFile(
       timestampMode: ctx.timestampMode,
       allowlists,
       ctx,
-      includeViewDecl,
+      // Contract target drops the Drizzle .existing() view decl + drizzle-orm import.
+      includeViewDecl: runtime,
     });
   }
 
-  // --- Value-only path (no writable source.rdb: in-memory / transit shape) ---
-  // No Drizzle table, no migration footprint. Consumers that need to validate
-  // the shape (LLM tool_use input_schema, REST body parsing) use the Zod
-  // schema; consumers that need the type use the interface.
-  if (!hasWritableRdbSource(entity)) {
+  // --- Value-only / contract path (no Drizzle table) ---
+  // Reached when the entity has no writable source.rdb (in-memory / transit
+  // shape) OR the target is contract-only (a UI/wire package gets the read shape,
+  // not a DB table). Either way: interface + Zod, no migration footprint, no
+  // drizzle-orm. Consumers validate via the Zod schema and type via the interface.
+  if (!runtime || !hasWritableRdbSource(entity)) {
     return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
 

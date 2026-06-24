@@ -32,6 +32,14 @@ export interface TargetConfig {
   importBase?: string;
   outputLayout?: OutputLayout;
   dbImport?: string;
+  /**
+   * Whether this target emits server runtime bindings. Defaults to `true` (a full
+   * server package: Drizzle tables/views + the DB layer). Set `false` for a
+   * contract-only target — Zod schemas + inferred TS types only, no `drizzle-orm`
+   * / `runtime-ts` import — e.g. a shared wire-contract package consumed by a web
+   * client with no database. See {@link ResolvedTarget.runtime}.
+   */
+  runtime?: boolean;
 }
 
 /** Subset of MetaobjectsGenConfig surfaced to generators via GenContext. */
@@ -195,6 +203,8 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       importBase: config.importBase,
       outputLayout: layout,
       dbImport: config.dbImport,
+      // The default target is the server package — runtime bindings on.
+      runtime: true,
     },
   };
   for (const [name, t] of Object.entries(config.targets ?? {})) {
@@ -204,6 +214,7 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       importBase: t.importBase,
       outputLayout: t.outputLayout ?? layout,
       dbImport: t.dbImport ?? config.dbImport,
+      runtime: t.runtime ?? true,
     };
   }
   return out;
