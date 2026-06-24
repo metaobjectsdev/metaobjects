@@ -1,15 +1,16 @@
 // AgentContextStalenessTests — the staleness-nudge feature (port of the TS
 // agent-context-staleness wiring).
 //
-// Three things are exercised:
-//   1. The stamp — `dotnet meta agent-docs` writes a `generatedBy` into the manifest.
-//   2. The pure decision — AgentContextScaffold.AgentContextStaleness(manifest, current):
+// Two things are exercised:
+//   1. The pure decision — AgentContextScaffold.AgentContextStaleness(manifest, current):
 //        null manifest                 -> null (no agent context here)
 //        manifest.GeneratedBy == cur   -> null (in sync; exact equality on purpose)
-//        differs / null GeneratedBy    -> a one-line nudge naming both versions + agent-docs
-//   3. The version source — the installed-assembly version is read, never hardcoded.
+//        differs / null GeneratedBy    -> a one-line nudge naming both versions + npx meta agent-docs
+//   2. The version source — the installed-assembly version is read, never hardcoded.
+//
+// The stamp test (agent-docs writes generatedBy into the manifest) is removed: agent-docs
+// is now a redirect to the Node meta CLI and no longer writes the manifest.
 
-using System.Text.Json;
 using MetaObjects.AgentContext;
 using MetaObjects.Cli;
 using Xunit;
@@ -18,39 +19,7 @@ namespace MetaObjects.Cli.Tests;
 
 public sealed class AgentContextStalenessTests
 {
-    // ---- 1. the stamp -------------------------------------------------------
-
-    [Fact]
-    public void AgentDocs_stamps_generatedBy_into_the_manifest()
-    {
-        var tmp = Path.Combine(Path.GetTempPath(), "meta-stale-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tmp);
-        try
-        {
-            // A *.csproj triggers the csharp-server stack auto-detection.
-            File.WriteAllText(Path.Combine(tmp, "App.csproj"), "<Project />");
-
-            var exit = AgentDocsCommand.Run(new[] { "--out", tmp });
-            Assert.Equal(0, exit);
-
-            var manifestPath = Path.Combine(tmp, AgentContextScaffold.ManifestPath);
-            Assert.True(File.Exists(manifestPath), "manifest was not written");
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
-            Assert.True(doc.RootElement.TryGetProperty("generatedBy", out var gb),
-                "manifest is missing the generatedBy property");
-            var stamped = gb.GetString();
-            Assert.False(string.IsNullOrEmpty(stamped));
-            // It must be the live installed version, not a literal.
-            Assert.Equal(AgentContextStalenessCheck.CurrentVersion(), stamped);
-        }
-        finally
-        {
-            try { Directory.Delete(tmp, recursive: true); } catch { }
-        }
-    }
-
-    // ---- 2. the pure decision ----------------------------------------------
+    // ---- 1. the pure decision ----------------------------------------------
 
     [Fact]
     public void Null_manifest_is_not_stale()
@@ -73,7 +42,7 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(msg);
         Assert.Contains("1.0.0", msg);
         Assert.Contains("2.0.0", msg);
-        Assert.Contains("dotnet meta agent-docs", msg);
+        Assert.Contains("npx meta agent-docs --server csharp", msg);
     }
 
     [Fact]
@@ -84,7 +53,7 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(msg);
         Assert.Contains("an older MetaObjects", msg);
         Assert.Contains("2.0.0", msg);
-        Assert.Contains("dotnet meta agent-docs", msg);
+        Assert.Contains("npx meta agent-docs --server csharp", msg);
     }
 
     // Even a prerelease/build-metadata difference nudges (exact equality, not semver).
@@ -95,7 +64,7 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(AgentContextScaffold.AgentContextStaleness(m, "1.2.3-rc.1"));
     }
 
-    // ---- 3. version source --------------------------------------------------
+    // ---- 2. version source --------------------------------------------------
 
     [Fact]
     public void CurrentVersion_reads_a_nonempty_value_from_the_assembly()

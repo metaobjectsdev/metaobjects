@@ -28,19 +28,4 @@
     <InternalsVisibleTo Include="MetaObjects.Cli.Tests" />
   </ItemGroup>
 
-  <!-- Bundle the repo-root agent-context/ content tree so `dotnet meta agent-docs`
-       resolves it both in dev (run-from-output) and when installed as a .NET tool.
-       Copied under <output>/agent-context/, where ContentRoot.Resolve looks first.
-       CopyToOutputDirectory feeds both: dev run-from-output AND the .NET tool
-       package (PackAsTool bundles the build output into tools/<tfm>/any/, which
-       already carries these copied files). We set Pack=false so the normal
-       content/ + contentFiles/ pack pipeline does NOT also add them — that path
-       both double-adds (NU5118) and flattens same-named files into collisions. -->
-  <ItemGroup>
-    <Content Include="../../../agent-context/**/*">
-      <Link>agent-context/%(RecursiveDir)%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Pack>false</Pack>
-    </Content>
-  </ItemGroup>
 </Project>
