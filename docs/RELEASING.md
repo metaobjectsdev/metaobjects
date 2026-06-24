@@ -174,7 +174,7 @@ Four packages, version-locked at the C# port version (currently `0.11.1`):
 | `MetaObjects` | Loader + canonical serializer |
 | `MetaObjects.Render` | Mustache render + payload-VO + `verify` |
 | `MetaObjects.Codegen` | EF Core + ASP.NET codegen + the runtime filter/dispatch helpers generated code references |
-| `MetaObjects.Cli` | The `dotnet meta` .NET tool (`gen` / `verify` / `agent-docs`) |
+| `MetaObjects.Cli` | The `dotnet meta` .NET tool (`gen` / `verify`; `agent-docs` is a redirect stub to the Node `meta` CLI) |
 
 Shared package metadata lives in [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props);
 per-package `PackageId`/`Title`/`Description` live in each `.csproj`. Test/integration projects set
@@ -220,15 +220,11 @@ lock the repo/owner IDs against resurrection attacks.)
    *deprecate*. So validate the packed `.nupkg` locally before triggering the workflow.
 3. **Bump the version in `Directory.Build.props`** (`<Version>`), not per-project. The
    workflow can also override per-run via the `version` dispatch input (`-p:Version=`).
-4. **Don't re-add `Pack`/`PackagePath` to the CLI's `agent-context/` Content item.** `PackAsTool`
-   already bundles build output (the files arrive via `CopyToOutputDirectory`) into
-   `tools/net8.0/any/`; an explicit `PackagePath` double-adds every file → **NU5118**, which is
-   fatal under this repo's `TreatWarningsAsErrors`. The item is deliberately `Pack=false`.
-5. **The temp key is single-use and ~1 h.** The workflow requests it immediately before push — don't
+4. **The temp key is single-use and ~1 h.** The workflow requests it immediately before push — don't
    move the `NuGet/login` step earlier.
-6. **The policy is bound to the org + repo + workflow *filename*.** Renaming `publish-csharp.yml`, or
+5. **The policy is bound to the org + repo + workflow *filename*.** Renaming `publish-csharp.yml`, or
    the policy owner leaving/locking the `metaobjects` org, makes the policy inactive until fixed.
-7. **Source Link + symbols are on** (`PublishRepositoryUrl`, `EmbedUntrackedSources`, `snupkg`); CI
+6. **Source Link + symbols are on** (`PublishRepositoryUrl`, `EmbedUntrackedSources`, `snupkg`); CI
    sets `ContinuousIntegrationBuild` for deterministic builds. No action needed — just don't strip them.
 
 ## Procedure
@@ -283,16 +279,14 @@ subsequent releases keyless.)
 
 ## Gotchas (the non-obvious ones)
 
-1. **The `agent-context/` bundle is vendored by a build hook, not a parent-path include.**
-   `hatch_build.py` copies the repo-root `agent-context/` into
-   `src/metaobjects/agent_context/_content` at build time, and `[tool.hatch.build]
-   artifacts` forces it into **both** sdist and wheel. Do **not** revert to a
-   `force-include` of `../../agent-context` — that builds a direct wheel but breaks
-   `uv build` (sdist → wheel), because the parent path is absent when building from the sdist.
-2. **PyPI versions are immutable** (like npm/NuGet). You can't re-upload a version — only
+1. **PyPI versions are immutable** (like npm/NuGet). You can't re-upload a version — only
    yank. Validate locally first (below).
-3. **Bump the version in `pyproject.toml`** (`[project].version`).
-4. **The wheel is pure-Python/universal** (`py3-none-any`) — one wheel serves every platform.
+2. **Bump the version in `pyproject.toml`** (`[project].version`).
+3. **The wheel is pure-Python/universal** (`py3-none-any`) — one wheel serves every platform.
+
+   (No agent-context content is vendored into the wheel anymore — scaffolding moved to the
+   Node `meta agent-docs` CLI, so `hatch_build.py` is a no-op. Don't re-add a
+   `force-include` of `../../agent-context`.)
 
 ## Procedure
 
