@@ -15,6 +15,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
@@ -141,6 +142,21 @@ FLAGS:
   --no-wire-root        Skip wiring root metaobjects.config.ts
   --help, -h            Print this help
 `,
+  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)
+
+USAGE:
+  meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
+
+FLAGS:
+  --server <lang>       Server language (repeatable; e.g. csharp, kotlin, python, node)
+  --client <fw>         Client framework (repeatable; e.g. react, vue)
+  --out <dir>           Output directory (default: current directory)
+  --no-skills           Skip .claude/skills/ scaffold
+  --no-wire-root        Skip wiring root CLAUDE.md @import
+  --help, -h            Print this help
+
+NOTE: This is the canonical scaffolder for all language ports. Non-Node CLIs redirect here.
+`,
   "prompt-snapshot": `meta prompt-snapshot — snapshot rendered template.* output
 
 USAGE:
@@ -249,6 +265,35 @@ export async function run(argv: string[]): Promise<number> {
     case "init": {
       const { initCommand } = await import("./commands/init.js");
       return initCommand(rest, cwd);
+    }
+    case "agent-docs": {
+      const { parseAgentDocsArgs } = await import("./lib/args.js");
+      const { init } = await import("./commands/init.js");
+      let flags;
+      try {
+        flags = parseAgentDocsArgs(rest);
+      } catch (err) {
+        log.error((err as Error).message);
+        return 2;
+      }
+      const targetCwd = flags.out !== undefined ? resolve(cwd, flags.out) : cwd;
+      try {
+        const result = await init({
+          cwd: targetCwd,
+          servers: flags.servers,
+          clients: flags.clients,
+          noSkills: flags.noSkills,
+          wireRoot: flags.wireRoot,
+          docsOnly: true,
+        });
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        for (const w of result.warnings) log.info(`  ${w}`);
+        log.info("Re-run agent-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        return 0;
+      } catch (err) {
+        log.error((err as Error).message);
+        return 1;
+      }
     }
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
