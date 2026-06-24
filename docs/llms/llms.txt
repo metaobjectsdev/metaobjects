@@ -18,7 +18,7 @@ If you are an AI assistant helping someone adopt MetaObjects in their project, d
    - a slim always-on `.metaobjects/AGENTS.md` + `.metaobjects/CLAUDE.md` agent context, **auto-wired into the project's root `CLAUDE.md`/`AGENTS.md`** (an `@.metaobjects/AGENTS.md` import line) so it loads automatically; and
    - five `metaobjects-*` Claude Code skills under `.claude/skills/`, carrying only the language reference fragments for the project's stack.
 
-   Re-run `meta init --refresh-docs` to update the scaffolded agent docs after a CLI upgrade. (Native per-port scaffold commands for JVM/Python/C#-only projects are forthcoming; today, run the Node `meta init` regardless of backend language.)
+   Re-run `meta init --refresh-docs` to update the scaffolded agent docs after a CLI upgrade. (The Node `meta` CLI is the single agent-context scaffolder for every backend, by design — ADR-0033; the JVM/Python/C# CLIs deliberately redirect to it. Run `meta init` regardless of backend language, or `npx meta agent-docs --server <lang>` to scaffold just the agent context.)
 
 3. **After scaffolding, load `.metaobjects/AGENTS.md` and the `.claude/skills/metaobjects-*` skills.** They teach metadata authoring, codegen, runtime/UI, prompt construction, and `verify` — for this project's exact stack and version.
 

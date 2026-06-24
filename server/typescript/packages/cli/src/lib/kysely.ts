@@ -1,5 +1,6 @@
 import { Kysely } from "kysely";
 import { BunSqliteDialect, isBun } from "./bun-sqlite-dialect.js";
+import { installCommand } from "./pm-detect.js";
 
 export type Dialect = "sqlite" | "postgres" | "d1";
 
@@ -80,8 +81,9 @@ export async function buildKyselyFromUrl(
         const mod = await import("@libsql/kysely-libsql");
         LibsqlDialect = mod.LibsqlDialect as unknown as LibsqlDialectCtor;
       } catch {
+        const cmd = await installCommand("@libsql/kysely-libsql", process.cwd());
         throw new Error(
-          `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: 'bun add @libsql/kysely-libsql'`,
+          `dialect 'sqlite' requires '@libsql/kysely-libsql'; install it: '${cmd}'`,
         );
       }
       sqliteDialect = new LibsqlDialect({ url });
@@ -108,8 +110,9 @@ export async function buildKyselyFromUrl(
     pg = await import("pg") as unknown as PgPoolModule;
     ({ PostgresDialect } = await import("kysely"));
   } catch {
+    const cmd = await installCommand("pg", process.cwd());
     throw new Error(
-      `dialect 'postgres' requires 'pg'; install it: 'bun add pg'`,
+      `dialect 'postgres' requires 'pg'; install it: '${cmd}'`,
     );
   }
   const PoolCtor = pg.Pool ?? pg.default?.Pool;

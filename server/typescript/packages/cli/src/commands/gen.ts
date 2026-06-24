@@ -3,7 +3,9 @@ import { existsSync } from "node:fs";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { formatGenResult, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
+import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
+import { formatGenResultJson } from "../lib/output-json.js";
+import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
@@ -22,7 +24,7 @@ function mapStatus(s: WriteStatus): GenFileStatus {
   }
 }
 
-export async function genCommand(args: string[], cwd: string): Promise<number> {
+export async function genCommand(args: string[], cwd: string, fmt: OutputFormat = "text"): Promise<number> {
   let flags;
   try { flags = parseGenArgs(args); }
   catch (err) { log.error((err as Error).message); return 2; }
@@ -97,13 +99,17 @@ export async function genCommand(args: string[], cwd: string): Promise<number> {
     (forgeConfig.targets ? Object.values(forgeConfig.targets).map((t) => t.outDir) : [])
       .concat([forgeConfig.outDir]),
   ));
-  const output = formatGenResult({
+  const genResult = {
     files,
     outDir: targetDirs.length > 1 ? targetDirs.join(", ") : forgeConfig.outDir,
     dialect: forgeConfig.dialect,
     dryRun: cliConfig.dryRun,
     warnings: [],
-  }, { isTTY: !!process.stdout.isTTY });
+  };
+  const output =
+    fmt === "toon" ? formatGenResultToon(genResult)
+    : fmt === "json" ? formatGenResultJson(genResult)
+    : formatGenResult(genResult, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
 

@@ -51,6 +51,18 @@ verify), `runtime` (SQLAlchemy-Core object manager), and `migrate`.
   ([ADR-0006](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/decisions/ADR-0006-ai-first-yaml-authoring.md)).
   Desugared to canonical JSON at load time. A directory may mix both freely.
 
+## AI assistant context
+
+To scaffold MetaObjects context files (`.metaobjects/AGENTS.md`, `.metaobjects/CLAUDE.md`, and
+`.claude/skills/metaobjects-*/`) into your project so your AI assistant understands how to
+author metadata and run codegen, use the Node `meta` CLI:
+
+```bash
+npx meta agent-docs --server python
+```
+
+(Running `metaobjects agent-docs` in the Python CLI prints this redirect and exits.)
+
 ## Links
 
 - Standard, docs, and the other four ports: <https://metaobjects.dev>

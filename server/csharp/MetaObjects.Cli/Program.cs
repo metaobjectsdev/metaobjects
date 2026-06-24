@@ -28,10 +28,7 @@ if (args.Length == 0)
         "                                                     emit the generated C# SDK api reference\n" +
         "                                                     (the api/csharp surface: one page per\n" +
         "                                                     entity + template, README, AGENT-API)\n" +
-        "    agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>]\n" +
-        "                                                     scaffold the slim MetaObjects Claude Code\n" +
-        "                                                     agent context (defaults to csharp when a\n" +
-        "                                                     *.csproj is present)");
+        "    agent-docs                                           see `npx meta agent-docs`");
     return 2;
 }
 
@@ -40,7 +37,7 @@ return args[0] switch
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
     "docs" => RunDocs(args[1..]),
-    "agent-docs" => AgentDocsCommand.Run(args[1..]),
+    "agent-docs" => AgentDocsRedirect(),
     _ => Unknown(args[0]),
 };
 
@@ -152,6 +149,13 @@ static int Unknown(string cmd)
 {
     Console.Error.WriteLine($"dotnet meta: unknown command \"{cmd}\"");
     return 2;
+}
+
+static int AgentDocsRedirect()
+{
+    Console.Error.WriteLine("agent-context scaffolding moved to the meta CLI — run: "
+        + "npx meta agent-docs --server csharp [--client <fw>] [--out <dir>]");
+    return 1;
 }
 
 // `dotnet meta verify` — ADR-0021 D2 explicit subverbs. Parses --templates /

@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
+import { resolveFormat, isValidFormat, VALID_FORMATS } from "./lib/format.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -14,6 +15,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
@@ -25,6 +27,7 @@ COMMANDS:
 
 GLOBAL OPTIONS:
   --cwd <path>, -C <path>   Run as if launched from <path> (default: current directory)
+  --format <toon|json|text> Output format (default: toon on non-TTY, text on TTY)
 
 GEN FLAGS:
   --dry-run             Compute and print, don't write
@@ -74,10 +77,104 @@ Other commands (ingest, mcp, serve, install-hooks, audit, capture, promote)
 ship in later sub-projects. See https://metaobjects.com for docs.
 `;
 
+/** Focused per-subcommand usage slices shown by `<cmd> --help`. */
+const COMMAND_HELP: Record<string, string> = {
+  gen: `meta gen — codegen TS targets from metaobjects/ entities
+
+USAGE:
+  meta gen [<entity>...] [flags]
+
+FLAGS:
+  --dry-run             Compute and print, don't write
+  <entity> [<entity>]   Positional filter on entity names
+  --help, -h            Print this help
+
+NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
+`,
+  verify: `meta verify — drift gate (templates / DB schema / codegen)
+
+USAGE:
+  meta verify [flags]
+
+FLAGS:
+  --templates           Template/prompt {{field}}↔payload drift (default when bare)
+  --codegen             Codegen drift — regenerate to temp dir and diff committed output
+                        Needs metaobjects.config.ts; exit 2 if absent.
+  --db <url>            Schema drift — live DB URL enables the schema-drift gate.
+                        Supports: file:, libsql:, postgres:, postgresql:
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+  --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
+  --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
+  --skip-schema         Skip the schema-drift gate even when --db is present
+  --help, -h            Print this help
+`,
+  export: `meta export — flatten loaded metadata to one canonical JSON artifact
+
+USAGE:
+  meta export [flags]
+
+FLAGS:
+  --out <file>          Write output to a file (default: stdout)
+  --help, -h            Print this help
+`,
+  docs: `meta docs — generate neutral metadata documentation (entity + template pages)
+
+USAGE:
+  meta docs [<metadata>] [flags]
+
+FLAGS:
+  <metadata>            Project root holding metaobjects/ (default: current directory)
+  --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --help, -h            Print this help
+`,
+  init: `meta init — scaffold metaobjects/ + .metaobjects/ in the current repo
+
+USAGE:
+  meta init [flags]
+
+FLAGS:
+  --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  --force               Overwrite existing files
+  --quiet               Suppress output
+  --print-only          Print what would be written, don't write
+  --d1                  Include D1 (Cloudflare) migration config
+  --no-wire-root        Skip wiring root metaobjects.config.ts
+  --help, -h            Print this help
+`,
+  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)
+
+USAGE:
+  meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
+
+FLAGS:
+  --server <lang>       Server language (repeatable; e.g. csharp, kotlin, python, node)
+  --client <fw>         Client framework (repeatable; e.g. react, vue)
+  --out <dir>           Output directory (default: current directory)
+  --no-skills           Skip .claude/skills/ scaffold
+  --no-wire-root        Skip wiring root CLAUDE.md @import
+  --help, -h            Print this help
+
+NOTE: This is the canonical scaffolder for all language ports. Non-Node CLIs redirect here.
+`,
+  "prompt-snapshot": `meta prompt-snapshot — snapshot rendered template.* output
+
+USAGE:
+  meta prompt-snapshot [flags]
+
+FLAGS:
+  --check               Compare against committed snapshots; exit 1 on drift (CI gate)
+  --prompts <dir>       Directory of provider-resolved template text (default: prompts)
+  --help, -h            Print this help
+`,
+};
+
 export async function run(argv: string[]): Promise<number> {
-  // Extract the global --cwd / -C flag (anywhere in argv). A relative path
-  // resolves against the real process.cwd(). Absent → process.cwd().
+  // Extract the global --cwd / -C and --format flags (anywhere in argv).
+  // A relative --cwd path resolves against the real process.cwd().
+  // Absent --cwd → process.cwd(). Absent --format → TTY-aware default.
   let cwd = process.cwd();
+  let formatFlag: string | undefined;
   const cleaned: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -100,12 +197,63 @@ export async function run(argv: string[]): Promise<number> {
       cwd = resolve(process.cwd(), val);
       continue;
     }
+    if (a === "--format") {
+      formatFlag = argv[i + 1];
+      i++; // consume the value
+      continue;
+    }
+    if (a.startsWith("--format=")) {
+      formatFlag = a.slice("--format=".length);
+      continue;
+    }
     cleaned.push(a);
   }
 
+  // An explicit but unrecognized --format is a usage error (exit 2) — mirrors the
+  // --cwd missing-value handling above. Absent --format keeps the TTY-aware default.
+  if (formatFlag !== undefined && !isValidFormat(formatFlag)) {
+    log.error(`--format must be one of: ${VALID_FORMATS.join(", ")} (got '${formatFlag}')`);
+    return 2;
+  }
+  const fmt = resolveFormat(formatFlag, process.stdout.isTTY ?? false);
+
   const [cmd, ...rest] = cleaned;
+
+  // Intercept per-subcommand --help / -h before dispatching (mirrors migrate's own pattern).
+  if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && cmd !== "--version" && cmd !== "-v") {
+    if (rest.includes("--help") || rest.includes("-h")) {
+      const helpText = COMMAND_HELP[cmd];
+      if (helpText !== undefined) {
+        log.info(helpText);
+        return 0;
+      }
+      // Unknown command with --help → fall through to the default: branch below.
+    }
+  }
+
   switch (cmd) {
-    case undefined:
+    case undefined: {
+      // Content-first no-args view: concise status + next-step help[] rather than
+      // dumping the full manual (full manual is still available via `meta --help`).
+      const metaobjectsExists = await import("node:fs/promises")
+        .then(({ stat }) => stat(resolve(cwd, "metaobjects")).then(() => true).catch(() => false));
+      const statusLine = metaobjectsExists
+        ? `meta — MetaObjects CLI (v${VERSION})  ·  metaobjects/ found`
+        : `meta — MetaObjects CLI (v${VERSION})  ·  no metaobjects/ here`;
+      const nextSteps = metaobjectsExists
+        ? [
+            "  meta gen              Run codegen",
+            "  meta verify           Check for drift",
+            "  meta migrate          Diff vs DB and emit SQL",
+            "  meta --help           Full command reference",
+          ]
+        : [
+            "  meta init             Scaffold metaobjects/ in this directory",
+            "  meta --help           Full command reference",
+          ];
+      log.info(`${statusLine}\n\n${nextSteps.join("\n")}\n`);
+      return 0;
+    }
     case "--help":
     case "-h":
       log.info(HELP_TEXT);
@@ -118,9 +266,38 @@ export async function run(argv: string[]): Promise<number> {
       const { initCommand } = await import("./commands/init.js");
       return initCommand(rest, cwd);
     }
+    case "agent-docs": {
+      const { parseAgentDocsArgs } = await import("./lib/args.js");
+      const { init } = await import("./commands/init.js");
+      let flags;
+      try {
+        flags = parseAgentDocsArgs(rest);
+      } catch (err) {
+        log.error((err as Error).message);
+        return 2;
+      }
+      const targetCwd = flags.out !== undefined ? resolve(cwd, flags.out) : cwd;
+      try {
+        const result = await init({
+          cwd: targetCwd,
+          servers: flags.servers,
+          clients: flags.clients,
+          noSkills: flags.noSkills,
+          wireRoot: flags.wireRoot,
+          docsOnly: true,
+        });
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        for (const w of result.warnings) log.info(`  ${w}`);
+        log.info("Re-run agent-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        return 0;
+      } catch (err) {
+        log.error((err as Error).message);
+        return 1;
+      }
+    }
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
-      return genCommand(rest, cwd);
+      return genCommand(rest, cwd, fmt);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
@@ -140,11 +317,10 @@ export async function run(argv: string[]): Promise<number> {
     }
     case "migrate": {
       const { migrateCommand } = await import("./commands/migrate.js");
-      return migrateCommand(rest, cwd);
+      return migrateCommand(rest, cwd, undefined, fmt);
     }
     default:
-      log.error(`Unknown command: ${cmd}`);
-      log.info(HELP_TEXT);
+      log.error(`Unknown command: ${cmd}. Run \`meta --help\` for available commands.`);
       return 2;
   }
 }

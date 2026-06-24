@@ -21,6 +21,7 @@ command surface splits in two:
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
 | Project scaffold (`init`) | Node `meta` | `meta init` | TS projects |
+| **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
@@ -89,6 +90,25 @@ Java, Python, and Kotlin command surfaces are **codegen only** (`gen` + codegen
 `verify`). The Java port's former `meta:migrate` / live-DB `meta:verify` Maven
 goals and the C#/Python migrate surfaces were removed in the schema-authority
 consolidation; the only schema entry point anywhere is the Node `meta`.
+
+## Agent-context scaffold is Node-only — by design
+
+The `.metaobjects/AGENTS.md`/`CLAUDE.md` always-on files and the
+`.claude/skills/metaobjects-*/` reference tree are assembled by **one** tool: the
+Node `meta agent-docs` command. Per [ADR-0033](../../spec/decisions/ADR-0033-single-agent-context-assembler.md)
+the per-port native assemblers (Python/Java/C#) and their byte-identity conformance
+gates were removed — that content is effectively one static artifact, and every port
+already needs the Node `meta` CLI or its binary for schema ops (ADR-0015).
+
+```bash
+npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | node
+```
+
+The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
+stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
+agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
+in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);
+its message now points at `npx meta agent-docs --server <lang>`.
 
 ## Running Kotlin codegen via Maven
 

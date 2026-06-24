@@ -1,55 +1,24 @@
-"""Agent-context assembler — scaffold the slim MetaObjects Claude Code context.
+"""Agent-context staleness nudge — manifest reader for gen/verify.
 
-Reproduces the TypeScript reference assembler (``server/typescript/packages/sdk/
-src/agent-context/``) BYTE-FOR-BYTE: given the repo-root ``agent-context/``
-content tree and a resolved :class:`Stack`, emit the consumer files
-(``.metaobjects/AGENTS.md`` + ``CLAUDE.md`` and the five ``metaobjects-*`` Claude
-Code skills, carrying only the reference fragments for the project's stack).
-
-The assembly is pure given the content tree — the only computed content is the
-two always-on template substitutions; every other file is a verbatim UTF-8 copy.
+The assembly path has moved to the Node ``meta agent-docs`` CLI. This package
+now only exposes the staleness-nudge symbols (``agent_context_staleness``,
+``Manifest``, ``AGENT_CONTEXT_MANIFEST_PATH``, ``installed_metaobjects_version``)
+used by ``gen``/``verify`` to detect when the copied-in agent context predates
+the installed MetaObjects version.
 """
 
 from __future__ import annotations
 
-from .assemble import (
-    AssembledFile,
-    assemble,
-    make_stack,
-)
-from .content_root import resolve_agent_context_root
 from .scaffold import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
-    ScaffoldDecision,
     agent_context_staleness,
-    hash_contents,
     installed_metaobjects_version,
-    plan_scaffold,
-)
-from .types import (
-    CLIENT_FRAMEWORKS,
-    MIGRATION_TOKEN,
-    SERVER_LANGS,
-    SKILL_NAMES,
-    Stack,
 )
 
 __all__ = [
     "AGENT_CONTEXT_MANIFEST_PATH",
-    "AssembledFile",
-    "CLIENT_FRAMEWORKS",
-    "MIGRATION_TOKEN",
     "Manifest",
-    "SERVER_LANGS",
-    "SKILL_NAMES",
-    "ScaffoldDecision",
-    "Stack",
     "agent_context_staleness",
-    "assemble",
-    "hash_contents",
     "installed_metaobjects_version",
-    "make_stack",
-    "plan_scaffold",
-    "resolve_agent_context_root",
 ]

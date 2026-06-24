@@ -45,32 +45,6 @@
                 <artifactId>maven-site-plugin</artifactId>
                 <version>3.21.0</version>
             </plugin>
-            <!-- Bundle the repo-root agent-context/ content tree into the published
-                 plugin jar (target/classes/agent-context) so the metaobjects:agent-docs
-                 goal can load it from the classpath when published. In dev/test the
-                 goal falls back to walking up to the monorepo's agent-context/. -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>bundle-agent-context</id>
-                        <phase>generate-resources</phase>
-                        <goals>
-                            <goal>copy-resources</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.outputDirectory}/agent-context</outputDirectory>
-                            <resources>
-                                <resource>
-                                    <directory>${maven.multiModuleProjectDirectory}/../../agent-context</directory>
-                                    <filtering>false</filtering>
-                                </resource>
-                            </resources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
 

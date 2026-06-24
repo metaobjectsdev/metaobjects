@@ -48,38 +48,35 @@
     "drift-detection"
   ],
   "dependencies": {
-    "@metaobjectsdev/sdk": "workspace:*",
-    "@metaobjectsdev/metadata": "workspace:*",
-    "@metaobjectsdev/render": "workspace:*",
+    "@libsql/kysely-libsql": "^0.4.0",
     "@metaobjectsdev/codegen-ts": "workspace:*",
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
+    "@metaobjectsdev/render": "workspace:*",
     "@metaobjectsdev/runtime-ts": "workspace:*",
+    "@metaobjectsdev/sdk": "workspace:*",
+    "@toon-format/toon": "^2.3.0",
     "jiti": "^2.4.0"
   },
   "peerDependencies": {
     "kysely": ">=0.27.0",
-    "pg": ">=8.0.0",
-    "@libsql/kysely-libsql": ">=0.4.0"
+    "pg": ">=8.0.0"
   },
   "peerDependenciesMeta": {
     "pg": {
       "optional": true
-    },
-    "@libsql/kysely-libsql": {
-      "optional": true
     }
   },
   "devDependencies": {
-    "bun-types": "latest",
-    "typescript": "^5.6.0",
-    "@types/node": "^22.0.0",
-    "@libsql/kysely-libsql": "^0.4.1",
     "@libsql/client": "^0.14.0",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.0.0",
+    "bun-types": "latest",
     "kysely": "^0.27.0",
     "pg": "^8.0.0",
-    "@types/pg": "^8.0.0",
-    "pg-mem": "^3.0.4"
+    "pg-mem": "^3.0.4",
+    "typescript": "^5.6.0"
   }
 }

@@ -4,7 +4,10 @@ import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
 import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
 import type { ResolvedMigrateConfig } from "../lib/config.js";
-import { formatMigrateResult, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
+import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type AmbiguousEntry } from "../lib/output.js";
+import { formatMigrateResultJson } from "../lib/output-json.js";
+import type { OutputFormat } from "../lib/format.js";
+import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
@@ -43,6 +46,64 @@ import {
 } from "../lib/wrangler.js";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
+
+const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
+
+USAGE:
+  meta migrate [baseline] [flags]
+
+SUBCOMMANDS:
+  baseline             Seed the committed reference snapshot (no migration emitted).
+                       Required before the first offline generate.
+
+MIGRATE FLAGS:
+  --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
+                       Supports: file:, libsql:, postgres:, postgresql:
+  --dialect sqlite|postgres|d1
+                       Optional dialect override (auto-detected from URL scheme)
+  --out-dir <path>     Migration directory (default: ./.metaobjects/migrations)
+  --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
+  --allow <csv>        Comma-separated destructive-change permissions:
+                       drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null
+  --on-ambiguous abort|rename|drop-add
+                       How to handle ambiguous renames (default: abort)
+  --from-db            Introspect live DB instead of using the committed snapshot
+  --apply              Run pending migration files against the DB after writing
+  --rollback <target>  Roll back applied migrations newer than <target>
+  --d1 <binding>       D1 binding name from wrangler.toml (only with --dialect d1)
+  --remote             Target remote D1 instead of local (only with --dialect d1)
+  --yes                Skip the --remote --apply confirmation pause
+  --dry-run            Print SQL to stdout, don't write
+  --help, -h           Print this help
+
+EXAMPLES:
+  meta migrate baseline --dialect sqlite
+  meta migrate --dialect sqlite --slug add-users
+  meta migrate --db file:local.db --slug add-orders
+  meta migrate --db postgresql://localhost/mydb --slug add-index --apply
+`;
+
+/** Emit a structured error on stdout (not stderr) in the active format, per axi. */
+function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
+  const payload = { error, hint };
+  if (fmt === "json") {
+    log.info(JSON.stringify(payload, null, 2));
+  } else if (fmt === "toon") {
+    log.info(toonEncode(payload));
+  }
+  // text format: errors go to stderr via log.error() — the caller handles that path
+}
+
+/**
+ * Sentinel thrown by sub-functions that have already emitted a structured error
+ * via emitStructuredError(). The top-level catch in migrateCommand re-throws
+ * this as-is without double-emitting.
+ */
+class AlreadyEmittedError extends Error {
+  constructor(public readonly exitCode: number) {
+    super("already-emitted");
+  }
+}
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
@@ -98,48 +159,78 @@ export async function migrateCommand(
   cwd: string,
   /** Injectable wrangler runner — tests pass a mock; production uses the default. */
   wranglerRunner?: WranglerRunner,
+  fmt: OutputFormat = "text",
 ): Promise<number> {
+  // Intercept --help / -h before parseMigrateArgs (parseArgs strict mode rejects them).
+  if (args.includes("--help") || args.includes("-h")) {
+    log.info(MIGRATE_HELP_TEXT);
+    return 0;
+  }
+
   let flags;
   try {
     flags = parseMigrateArgs(args);
   } catch (err) {
-    log.error(`migrate: ${(err as Error).message}`);
+    const msg = (err as Error).message;
+    log.error(`migrate: ${msg}`);
+    emitStructuredError(`migrate: ${msg}`, "run `meta migrate --help` for usage", fmt);
     return 2;
   }
 
   const metaRoot = cwd;
   const config = await resolveMigrateConfig(flags, metaRoot);
 
+  try {
   if (config.dialect === "d1") {
     if (config.baseline) {
       log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
+      emitStructuredError(
+        `migrate baseline is not supported for dialect 'd1'`,
+        "drop 'baseline' for d1 — snapshots are a postgres/sqlite concept",
+        fmt,
+      );
       return 2;
     }
     if (config.databaseUrl !== undefined) {
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
+      emitStructuredError(
+        `migrate: --db / DATABASE_URL is not used for dialect 'd1'`,
+        "remove --db / DATABASE_URL for d1 — wrangler.toml owns the connection",
+        fmt,
+      );
       return 2;
     }
     if (config.rollback !== undefined) {
       log.error(`migrate: --rollback is not supported for dialect 'd1' (use 'wrangler d1 migrations' tooling)`);
+      emitStructuredError(
+        `migrate: --rollback is not supported for dialect 'd1'`,
+        "use 'wrangler d1 migrations' tooling to roll back d1",
+        fmt,
+      );
       return 2;
     }
-    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner);
+    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner, fmt);
   }
 
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
   if (config.baseline) {
-    return await runBaseline(config, metaRoot);
+    return await runBaseline(config, metaRoot, fmt);
   }
 
   // Default = offline snapshot generation. The live-introspection path runs only
   // when explicitly requested via --from-db, when --apply needs a connection, or
   // for --rollback (which runs hand-authored down.sql against the live DB).
   if (!config.fromDb && !config.apply && config.rollback === undefined) {
-    return await runOfflineGenerate(config, metaRoot);
+    return await runOfflineGenerate(config, metaRoot, fmt);
   }
 
   if (config.databaseUrl === undefined) {
     log.error(`migrate: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
+    emitStructuredError(
+      `migrate: --db <url> required`,
+      "pass --db <url>, set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json",
+      fmt,
+    );
     return 2;
   }
 
@@ -187,6 +278,7 @@ export async function migrateCommand(
   let exitCode = 0;
   let writtenPaths: string[] = [];
   let appliedNames: string[] = [];
+  let applyFailed = false;
   let blocked: BlockedEntry[] = [];
   let ambiguous: AmbiguousEntry[] = [];
   let changeCounts: Record<string, number> = {};
@@ -240,7 +332,7 @@ export async function migrateCommand(
       // with the collected ambiguity list.
       if ((err as Error).message.includes("aborted by onAmbiguous")) {
         ambiguous = ambiguousToEntries(collectedAmbiguous);
-        const output = formatMigrateResult({
+        const migrateResult = {
           dialect: kysely.dialect,
           displayUrl: kysely.displayUrl,
           changeCounts: {},
@@ -248,7 +340,13 @@ export async function migrateCommand(
           ambiguous,
           writtenPaths: [],
           dryRun: config.dryRun,
-        }, { isTTY: !!process.stdout.isTTY });
+          applied: [],
+          applyFailed: false,
+        };
+        const output =
+          fmt === "toon" ? formatMigrateResultToon(migrateResult)
+          : fmt === "json" ? formatMigrateResultJson(migrateResult)
+          : formatMigrateResult(migrateResult, { isTTY: !!process.stdout.isTTY });
         log.info(output);
         await kysely.close();
         return 1;
@@ -326,6 +424,7 @@ export async function migrateCommand(
       } catch (err) {
         log.error(`migrate: apply failed: ${(err as Error).message}`);
         exitCode = 1;
+        applyFailed = true;
       }
     }
   } finally {
@@ -336,7 +435,7 @@ export async function migrateCommand(
     }
   }
 
-  const output = formatMigrateResult({
+  const migrateResult = {
     dialect: kysely.dialect,
     displayUrl: kysely.displayUrl,
     changeCounts,
@@ -344,7 +443,13 @@ export async function migrateCommand(
     ambiguous,
     writtenPaths,
     dryRun: config.dryRun,
-  }, { isTTY: !!process.stdout.isTTY });
+    applied: appliedNames,
+    applyFailed,
+  };
+  const output =
+    fmt === "toon" ? formatMigrateResultToon(migrateResult)
+    : fmt === "json" ? formatMigrateResultJson(migrateResult)
+    : formatMigrateResult(migrateResult, { isTTY: !!process.stdout.isTTY });
 
   log.info(output);
   if (config.apply && exitCode === 0) {
@@ -355,6 +460,16 @@ export async function migrateCommand(
     }
   }
   return exitCode;
+  } catch (err) {
+    // AlreadyEmittedError: sub-function already called emitStructuredError — just
+    // propagate the exit code without double-emitting.
+    if (err instanceof AlreadyEmittedError) return err.exitCode;
+    // Unexpected error: emit structured error on stdout in the active format, then exit 1.
+    const msg = (err as Error).message ?? String(err);
+    log.error(`migrate: unexpected error: ${msg}`);
+    emitStructuredError(`migrate: unexpected error: ${msg}`, "run `meta migrate --help` for usage", fmt);
+    return 1;
+  }
 }
 
 /**
@@ -365,6 +480,7 @@ export async function migrateCommand(
 export async function runBaseline(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  _fmt: OutputFormat = "text",
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
@@ -431,6 +547,7 @@ export async function runBaseline(
 export async function runOfflineGenerate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
@@ -454,7 +571,13 @@ export async function runOfflineGenerate(
     return 2;
   }
   if (snapshot === null) {
-    log.error(`migrate: no schema snapshot at ${path}; run 'meta migrate baseline' first`);
+    log.error(`migrate: no schema snapshot at ${path}; run \`meta migrate baseline --dialect ${config.dialect}\` first`);
+    // Structured next-step on stdout so callers / agents can parse it, in the active format.
+    emitStructuredError(
+      "no schema snapshot",
+      `first run \`meta migrate baseline --dialect ${config.dialect}\``,
+      fmt,
+    );
     return 2;
   }
 
@@ -587,6 +710,7 @@ async function runD1Migrate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
   runner: WranglerRunner,
+  _fmt: OutputFormat = "text",
 ): Promise<number> {
   // 1. Resolve wrangler.toml + binding.
   const wranglerConfigPath = config.d1.wranglerConfigPath

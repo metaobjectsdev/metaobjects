@@ -10,9 +10,10 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 bun add -D @metaobjectsdev/cli
 ```
 
-Optional driver peers (install the one matching your DB):
-- SQLite/Turso: `bun add -D @libsql/kysely-libsql`
+The SQLite/Turso driver (`@libsql/kysely-libsql`) ships as a direct dependency — `meta migrate` against a `sqlite`/`libsql` URL works out of the box. Postgres remains an optional peer (install only if you target Postgres):
 - Postgres: `bun add -D pg`
+
+If a required driver is ever missing, the CLI prints an install command matching your project's package manager (npm / pnpm / yarn / bun, detected from the lockfile).
 
 ## Standalone binary (no Node/Bun toolchain to run)
 
@@ -41,7 +42,7 @@ bun build ./bin/meta.ts --compile --target=bun-windows-x64 --outfile dist/meta-w
 
 ### SQLite driver inside the binary
 
-The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution continues to use the `@libsql/kysely-libsql` peer dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
+The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the bundled `@libsql/kysely-libsql` dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
 
 Run schema ops from the compiled binary:
 
@@ -67,6 +68,19 @@ meta gen
 # 4. Diff metadata against your DB and emit migration SQL
 meta migrate --db file:./local.db --slug initial
 ```
+
+## Global options
+
+These apply to every command:
+
+- `--cwd <path>`, `-C <path>` — run as if launched from `<path>` (default: current directory)
+- `--format <toon|json|text>` — output format. The default is **TTY-aware**: a human at a terminal gets human-readable `text`, while a pipe or agent gets [TOON](https://github.com/toon-format/toon) (a compact, token-efficient structured format). Pass `--format json` for plain JSON, or force `--format text` when piping but still wanting the human view. Currently honored by `gen` and `migrate`.
+- `--help`, `-h` — print help. Bare `meta --help` prints the full command reference; `meta <command> --help` prints focused usage for that command (e.g. `meta migrate --help`).
+- `--version`, `-v` — print the CLI version.
+
+Running `meta` with no arguments prints a concise status line (whether a `metaobjects/` directory is present) plus the most relevant next-step commands, rather than the full manual.
+
+**Exit codes:** `0` success (including idempotent no-op runs), `1` runtime error, `2` usage error (bad flag, missing required argument, invalid `--format`). For agent-friendliness, structured errors and next-step hints are emitted on **stdout** in the active `--format` (not stderr), so callers can parse them without scraping stderr.
 
 ## Commands
 

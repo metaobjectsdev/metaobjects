@@ -50,6 +50,40 @@ export function parseInitArgs(argv: string[]): InitFlags {
 }
 
 // ---------------------------------------------------------------------------
+// agent-docs flags — docs-only scaffold (always-on + skills), no metaobjects/ project
+// ---------------------------------------------------------------------------
+
+export interface AgentDocsFlags {
+  servers: string[];
+  clients: string[];
+  out: string | undefined;
+  noSkills: boolean;
+  wireRoot: boolean;
+}
+
+export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      server: { type: "string", multiple: true },
+      client: { type: "string", multiple: true },
+      out: { type: "string" },
+      "no-skills": { type: "boolean", default: false },
+      "no-wire-root": { type: "boolean", default: false },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+  return {
+    servers: (values.server as string[] | undefined) ?? [],
+    clients: (values.client as string[] | undefined) ?? [],
+    out: values.out as string | undefined,
+    noSkills: !!values["no-skills"],
+    wireRoot: !values["no-wire-root"],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // gen flags — minimal: metaobjects.config.ts holds outDir/dialect/dbImport/extStyle
 // ---------------------------------------------------------------------------
 
