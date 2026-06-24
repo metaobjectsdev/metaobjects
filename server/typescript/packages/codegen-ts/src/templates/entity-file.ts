@@ -36,6 +36,8 @@ import { isAbstract } from "../instance-artifacts.js";
  */
 export interface RenderEntityFileOpts {
   readonly allowlists?: boolean;
+  /** Forwarded to renderProjectionDecl — false ⇒ contract-only (no Drizzle pgView). */
+  readonly includeViewDecl?: boolean;
 }
 
 export function renderEntityFile(
@@ -44,6 +46,7 @@ export function renderEntityFile(
   opts?: RenderEntityFileOpts,
 ): string {
   const allowlists = opts?.allowlists ?? true;
+  const includeViewDecl = opts?.includeViewDecl ?? true;
 
   // --- Abstract path (shape only) ---
   // An abstract entity contributes shape via inheritance only — it must NEVER
@@ -68,6 +71,7 @@ export function renderEntityFile(
       timestampMode: ctx.timestampMode,
       allowlists,
       ctx,
+      includeViewDecl,
     });
   }
 

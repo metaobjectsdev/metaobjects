@@ -24,10 +24,17 @@ export interface EntityFileOpts {
    * client-side type with no runtime-ts dependency.
    */
   allowlists?: boolean;
+  /**
+   * Whether projections emit the Drizzle `.existing()` view declaration. Default
+   * true. Set false for a contract-only target (Zod + type, no drizzle-orm) — a
+   * shared/web types package consumed without a DB layer.
+   */
+  includeViewDecl?: boolean;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {
   const allowlists = opts?.allowlists ?? true;
+  const includeViewDecl = opts?.includeViewDecl ?? true;
   const perEntityEmit = perEntity(async (entity, ctx) => {
     if (!ctx.renderContext) {
       throw new Error("entity-file: renderContext is required (provided by runGen)");
@@ -40,7 +47,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     }
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.ts`),
-      content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists })),
+      content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists, includeViewDecl })),
     };
   });
 

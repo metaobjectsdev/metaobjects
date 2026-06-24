@@ -45,6 +45,13 @@ export interface ProjectionDeclOpts {
    * Absent in bare unit-test calls, which fall back to a flat same-dir import.
    */
   readonly ctx?: RenderContext;
+  /**
+   * Whether to emit the Drizzle `.existing()` view declaration (and its
+   * drizzle-orm import). Default true. Set false for a contract-only output
+   * (Zod read schema + inferred type + constants, no runtime DB dependency) —
+   * e.g. a shared types package consumed by a web client that has no Drizzle.
+   */
+  readonly includeViewDecl?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +91,7 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
-  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx } = opts;
+  const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx, includeViewDecl = true } = opts;
 
   // Resolve a value-object name → its import module. Layout/package/extStyle-aware
   // when a render context is present (so the projection's VO imports match the
@@ -183,14 +190,16 @@ export function renderProjectionDecl(
   const path = pathFromProjectionName(projName);
 
   const sections: Code[] = [
-    code`
+    ...(includeViewDecl
+      ? [code`
 // View declaration — Drizzle uses this for typed SELECT queries.
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
 export const ${camelName}View = ${viewSym}(${JSON.stringify(viewName)}, {
 ${joinCode(viewColumnLines, { on: ",\n" })}
 }).existing();
-`,
+`]
+      : []),
     code`
 export const ${projName}Schema = ${z}.object({
 ${joinCode(zodLines, { on: ",\n" })}
