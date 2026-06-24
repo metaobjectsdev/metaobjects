@@ -9,7 +9,7 @@ describe("resolveTargets", () => {
     const t = resolveTargets({ ...base, importBase: "@mf/db/generated", outputLayout: "package" });
     expect(t[DEFAULT_TARGET_NAME]).toEqual({
       name: "default", outDir: "db/gen", importBase: "@mf/db/generated",
-      outputLayout: "package", dbImport: "../index",
+      outputLayout: "package", dbImport: "../index", runtime: true,
     });
   });
 
@@ -27,8 +27,8 @@ describe("resolveTargets", () => {
         web: { outDir: "web/gen" },
       },
     });
-    expect(t.api).toEqual({ name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database" });
-    expect(t.web).toEqual({ name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index" });
+    expect(t.api).toEqual({ name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database", runtime: true });
+    expect(t.web).toEqual({ name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true });
   });
 
   test("named target may override outputLayout + importBase", () => {

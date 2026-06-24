@@ -244,4 +244,58 @@ describe("renderEntityFile — source-aware dispatch", () => {
       expect(out).not.toContain("sqliteView");
     });
   });
+
+  // A contract-only target (selfTarget.runtime === false) is the UI/wire-package
+  // axis: no server runtime bindings at all. A projection keeps its Zod read
+  // schema + inferred type but drops the Drizzle view; a write-through entity
+  // renders as its plain shape (interface + Zod) instead of a Drizzle table.
+  // Neither imports drizzle-orm. This replaces the old per-call includeViewDecl
+  // flag — the decision now lives on the target's audience, not on each artifact.
+  describe("contract-only target (runtime: false)", () => {
+    function contractCtx(root: Parameters<typeof buildPkMap>[0]) {
+      return makeRenderContext({
+        dialect: "postgres",
+        loadedRoot: root,
+        outDir: "/x",
+        dbImport: "~/db",
+        pkMap: buildPkMap(root),
+        relationMap: buildRelationMap(root),
+        selfTarget: {
+          name: "shared", outDir: "/x", importBase: "@pkg/shared/generated",
+          outputLayout: "flat", dbImport: "~/db", runtime: false,
+        },
+      });
+    }
+
+    test("projection: keeps Zod read schema + type, drops pgView + drizzle-orm", async () => {
+      const { root, projection } = await loadProjectionFixture();
+      const out = renderEntityFile(projection, contractCtx(root));
+      // contract kept:
+      expect(out).toContain("ProgramSummarySchema");
+      expect(out).toContain("export type ProgramSummary");
+      // runtime stripped:
+      expect(out).not.toContain("pgView");
+      expect(out).not.toContain(".existing()");
+      expect(out).not.toContain("drizzle-orm");
+    });
+
+    test("write-through entity: renders plain shape, no pgTable / drizzle-orm", async () => {
+      const { root, entity } = await loadVanillaFixture();
+      const out = renderEntityFile(entity, contractCtx(root));
+      // shape kept (Zod schema + a type for the entity):
+      expect(out).toContain("z.object");
+      expect(out).toContain("Post");
+      // runtime stripped:
+      expect(out).not.toContain("pgTable");
+      expect(out).not.toContain("drizzle-orm");
+      expect(out).not.toContain("InferSelectModel");
+    });
+
+    test("no runtime-ts allowlists in a contract target", async () => {
+      const { root, projection } = await loadProjectionFixture();
+      const out = renderEntityFile(projection, contractCtx(root));
+      expect(out).not.toContain("@metaobjectsdev/runtime-ts");
+      expect(out).not.toContain("FilterAllowlist");
+    });
+  });
 });

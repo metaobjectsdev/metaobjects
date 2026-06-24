@@ -104,6 +104,7 @@ describe("public template-export composition seam", () => {
       importBase: undefined,
       outputLayout: "flat",
       dbImport: "~/db",
+      runtime: true,
     };
     const barrel = renderBarrel(entries, "none", target, target);
     expect(barrel).toContain("export * from");

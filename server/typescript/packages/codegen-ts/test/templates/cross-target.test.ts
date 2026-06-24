@@ -25,8 +25,8 @@ async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
   return { entity, ctx };
 }
 
-const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index" };
-const api:   ResolvedTarget = { name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database" };
+const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+const api:   ResolvedTarget = { name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database", runtime: true };
 
 describe("queries-file — same target stays relative", () => {
   it("imports entity via './<Entity>'", async () => {
