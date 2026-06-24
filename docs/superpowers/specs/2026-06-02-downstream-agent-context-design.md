@@ -38,6 +38,8 @@ All five ports deliver equivalent context; a conformance corpus gates it.
   add only thin overlays + a delivery command.
 - **Not** a universal `npx` scaffolder for non-TS shops (noted as a possible later
   convenience; each port ships its own native command instead).
+  > **Superseded (2026-06-23) by ADR-0033:** the Node `meta` CLI is now the single
+  > agent-context assembler for all ports; non-Node CLIs redirect via a pointer stub.
 - **Not** documenting the adopter's *own* entities — that is the neutral-metadata-docs
   work above.
 

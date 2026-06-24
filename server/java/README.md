@@ -120,6 +120,20 @@ mvn -pl integration-tests-kotlin verify  # persistence-conformance against Testc
 
 Releases to Maven Central: see [docs/RELEASING-java.md](../../docs/RELEASING-java.md).
 
+## AI assistant context
+
+To scaffold MetaObjects context files (`.metaobjects/AGENTS.md`, `.metaobjects/CLAUDE.md`, and
+`.claude/skills/metaobjects-*/`) into your project so your AI assistant understands how to
+author metadata and run codegen, use the Node `meta` CLI:
+
+```bash
+npx meta agent-docs --server java
+# or for a Kotlin project:
+npx meta agent-docs --server kotlin
+```
+
+(Running `mvn metaobjects:agent-docs` in the Maven plugin prints this redirect and exits.)
+
 ## License
 
 [Apache License 2.0](LICENSE).

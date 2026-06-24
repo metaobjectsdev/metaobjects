@@ -15,6 +15,18 @@ C# implementation of the MetaObjects metadata Loader. Targets .NET 8 (C# 12).
 - Runtime helpers (ObjectManager, filter parsing, CRUD endpoints) — per-language runtime concerns.
 - The `dbProvider` provider — the conformance corpus uses only `metaobjects-core-types`.
 
+## AI assistant context
+
+To scaffold MetaObjects context files (`.metaobjects/AGENTS.md`, `.metaobjects/CLAUDE.md`, and
+`.claude/skills/metaobjects-*/`) into your project so your AI assistant understands how to
+author metadata and run codegen, use the Node `meta` CLI:
+
+```bash
+npx meta agent-docs --server csharp
+```
+
+(Running `dotnet meta agent-docs` prints this redirect and exits.)
+
 ## Running
 
 ```bash

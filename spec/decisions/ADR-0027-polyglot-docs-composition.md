@@ -1,5 +1,8 @@
 # ADR-0027: Polyglot docs composition — per-language api surfaces, model once
 
+> Superseded in part (2026-06-23): ADR-0033 supersedes any implied per-port ownership
+> of agent-context scaffolding — the Node `meta` CLI is now the single assembler.
+
 **Status:** Accepted
 **Date:** 2026-06-06
 **Extends:** ADR-0025 (unified docs door) — generalizes its single api surface to a
