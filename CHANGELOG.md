@@ -7,6 +7,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.11.6] — 2026-06-24
+
+_npm `0.11.6` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **Typed projection (view-kind) read models.** A projection's Drizzle `.existing()`
+  view declaration now emits a typed column map (honoring `@dbColumnType`, e.g.
+  jsonb/timestamp) instead of an empty `{}`, so `db.select().from(view)` is typed.
+- **Projection passthroughs resolve value-object refs** — a `field.object` passthrough
+  carries the value object's Zod schema + `.$type<VO>()` into the read schema/type, so
+  the row is typed as the VO rather than `unknown`.
+- **`runtime` flag on output targets** (`TargetConfig.runtime`, default `true`). A
+  contract-only target (`runtime: false`) emits Zod schemas + inferred TS types and
+  nothing else — no `drizzle-orm` (table or view) and no `runtime-ts` allowlists — so a
+  shared wire-contract package consumed by a UI client carries no DB dependency. The
+  axis is the target's audience (server vs contract), applied uniformly to entities,
+  value objects, and projections.
+
+### Changed
+- Replaced the short-lived per-artifact `includeViewDecl` generator option with the
+  target-level `runtime` flag above. `allowlists` remains as the finer Fastify-vs-Hono
+  opt-out within a runtime target.
+
 ## [0.11.5] — 2026-06-22
 
 _npm `0.11.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

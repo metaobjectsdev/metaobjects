@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/tanstack",
-  "version": "0.11.5",
+  "version": "0.11.6",
   "description": "TanStack runtime for metaobjects: EntityFetcherProvider, EntityGrid, default cell renderers.",
   "type": "module",
   "main": "./dist/index.js",
