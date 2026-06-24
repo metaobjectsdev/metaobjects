@@ -45,11 +45,7 @@ from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
     agent_context_staleness,
-    assemble,
     installed_metaobjects_version,
-    make_stack,
-    plan_scaffold,
-    resolve_agent_context_root,
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
@@ -521,129 +517,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return exit_code
 
 
-#: The root-doc filenames we look for / create, and the line we append so a
-#: Claude Code agent always picks up the slim always-on context.
-_ROOT_DOC_CANDIDATES = ("CLAUDE.md", "AGENTS.md")
-_ROOT_DOC_IMPORT_LINE = "@.metaobjects/AGENTS.md"
-
-
-def _detect_python_server(out_dir: Path) -> bool:
-    """Simple stack detection: a ``pyproject.toml`` in --out marks a Python project."""
-    return (out_dir / "pyproject.toml").is_file()
-
-
-def _wire_root_doc(out_dir: Path) -> str | None:
-    """Append ``@.metaobjects/AGENTS.md`` to the root CLAUDE.md/AGENTS.md.
-
-    Idempotent — if the import line is already present in either doc, do nothing.
-    If neither doc exists, create ``CLAUDE.md`` with the import line. Returns the
-    doc filename that was created/updated, or ``None`` if it was already wired.
-    """
-    existing = [name for name in _ROOT_DOC_CANDIDATES if (out_dir / name).is_file()]
-    # Already wired in any existing doc → idempotent no-op.
-    for name in existing:
-        text = (out_dir / name).read_text(encoding="utf-8")
-        if _ROOT_DOC_IMPORT_LINE in text:
-            return None
-
-    if existing:
-        target = out_dir / existing[0]
-        text = target.read_text(encoding="utf-8")
-        sep = "" if text.endswith("\n") or text == "" else "\n"
-        target.write_text(f"{text}{sep}{_ROOT_DOC_IMPORT_LINE}\n", encoding="utf-8")
-        return existing[0]
-
-    target = out_dir / "CLAUDE.md"
-    target.write_text(f"{_ROOT_DOC_IMPORT_LINE}\n", encoding="utf-8")
-    return "CLAUDE.md"
-
-
 def _cmd_agent_docs(args: argparse.Namespace) -> int:
-    """``agent-docs`` — scaffold the slim MetaObjects Claude Code agent context.
-
-    Resolve the stack from ``--server`` / ``--client`` (repeatable). With neither,
-    detect ``pyproject.toml`` → a python server. Assemble against the bundled
-    content tree, then write the files into ``--out`` (default cwd): each new or
-    manifest-unmodified file is written at its path; a hand-edited file's fresh
-    contents go to ``<path>.new``. Append the always-on import to a root
-    CLAUDE.md/AGENTS.md (idempotent), and persist the sidecar manifest.
-    """
-    out_dir = Path(args.out).resolve() if args.out else Path.cwd()
-
-    servers = list(args.server or [])
-    clients = list(args.client or [])
-    if not servers and not clients:
-        if _detect_python_server(out_dir):
-            servers = ["python"]
-        else:
-            print(
-                "error: no --server/--client given and no pyproject.toml found to "
-                "detect a stack. Pass at least one --server or --client.",
-                file=sys.stderr,
-            )
-            return 2
-
-    try:
-        content_root = resolve_agent_context_root()
-    except FileNotFoundError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-
-    stack = make_stack(servers, clients)
-    assembled = assemble(content_root, stack)
-
-    # Load the prior manifest, if any, so hand-edits are preserved on re-run.
-    manifest_path = out_dir / AGENT_CONTEXT_MANIFEST_PATH
-    prior: Manifest | None = None
-    if manifest_path.is_file():
-        try:
-            prior = Manifest.from_json(
-                json.loads(manifest_path.read_text(encoding="utf-8"))
-            )
-        except (json.JSONDecodeError, ValueError, KeyError):
-            prior = None  # corrupt sidecar → treat as a fresh scaffold
-
-    def _read_current(rel: str) -> str | None:
-        p = out_dir / rel
-        return p.read_bytes().decode("utf-8") if p.is_file() else None
-
-    decision = plan_scaffold(
-        stack,
-        assembled,
-        prior,
-        _read_current,
-        generated_by=installed_metaobjects_version(),
-    )
-
-    for w in decision.writes:
-        dest = out_dir / w.path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(w.contents.encode("utf-8"))
-        print(f"wrote {w.path}")
-    for c in decision.conflicts:
-        dest = out_dir / c.new_path
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(c.contents.encode("utf-8"))
-        print(f"hand-edited; wrote fresh copy to {c.new_path} (kept your {c.path})")
-    for rel in decision.removed:
-        print(f"note: {rel} no longer applies to this stack (not deleted)")
-
-    # Persist the manifest.
-    assert decision.manifest is not None
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(
-        json.dumps(decision.manifest.to_json(), indent=2) + "\n", encoding="utf-8"
-    )
-
-    wired = _wire_root_doc(out_dir)
-    if wired is not None:
-        print(f"wired {_ROOT_DOC_IMPORT_LINE} into {wired}")
-
+    """``agent-docs`` — redirect to the canonical Node meta CLI scaffolder."""
     print(
-        f"metaobjects agent-docs: scaffolded {len(assembled)} file(s) for stack "
-        f"servers={list(stack.servers)} clients={list(stack.clients)} under {out_dir}"
+        "agent-context scaffolding moved to the meta CLI — run: "
+        "npx meta agent-docs --server python [--client <fw>] [--out <dir>]",
+        file=sys.stderr,
     )
-    return 0
+    return 1
 
 
 def _build_parser() -> argparse.ArgumentParser:

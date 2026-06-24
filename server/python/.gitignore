@@ -4,5 +4,3 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 
-# Vendored at build time by hatch_build.py from the repo-root agent-context/ tree.
-src/metaobjects/agent_context/_content/
