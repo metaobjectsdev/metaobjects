@@ -43,7 +43,6 @@ from pathlib import Path
 from metaobjects import MetaDataLoader
 from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
-    Manifest,
     agent_context_staleness,
     installed_metaobjects_version,
 )
