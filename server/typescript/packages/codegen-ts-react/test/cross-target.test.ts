@@ -8,8 +8,8 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 // Product lives in package "shop::commerce" → package-layout path "shop/commerce/Product".
 const FIXTURE = resolve(import.meta.dir, "fixtures", "packaged-entity.json");
 
-const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index" };
-const web:   ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index" };
+const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+const web:   ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true };
 
 async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
   const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
