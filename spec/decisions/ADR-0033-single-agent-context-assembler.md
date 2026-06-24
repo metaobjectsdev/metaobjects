@@ -41,7 +41,7 @@ toolkit.
 
 **Non-Node CLIs keep a non-executing pointer stub for `agent-docs`.** The native
 implementation is deleted, but each non-Node CLI retains a minimal stub: invoking
-`agent-docs` prints a redirect message to stdout and exits 1. It never execs any
+`agent-docs` prints a redirect message to stderr and exits 1. It never execs any
 process, reads embedded content, or imports any assembler symbol. This preserves
 discoverability with zero fragility.
 

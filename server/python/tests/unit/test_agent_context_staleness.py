@@ -44,7 +44,7 @@ def test_differing_version_nudges_naming_both_versions_and_command() -> None:
     assert "0.6.1" in msg  # the from-version
     assert "0.7.0" in msg  # the current version
     assert "agent-docs" in msg  # names the refresh command
-    assert "metaobjects agent-docs" in msg
+    assert "npx meta agent-docs --server python" in msg
 
 
 def test_absent_generated_by_nudges_with_older_phrase() -> None:
@@ -54,7 +54,7 @@ def test_absent_generated_by_nudges_with_older_phrase() -> None:
     assert msg is not None
     assert "an older MetaObjects" in msg
     assert "0.7.0" in msg
-    assert "metaobjects agent-docs" in msg
+    assert "npx meta agent-docs --server python" in msg
 
 
 def test_installed_version_is_a_string() -> None:
