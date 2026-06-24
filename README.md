@@ -17,6 +17,14 @@ working code.
 > design you are never blocked on the maintainer: the generated code runs with no
 > MetaObjects runtime dependency (see above), so you are never locked in.
 
+> **Built AI-first, verified by construction.** This standard is developed with heavy
+> AI assistance under a disciplined review-and-verify process — nothing ships that
+> can't be explained. Breadth across five language ports is a deliberate choice, and
+> the architecture is what makes it safe: a single metadata spine, a cross-language
+> conformance corpus that byte-checks every port ([`fixtures/`](fixtures/)), and drift
+> that breaks the build. The same mechanism that keeps *your* AI-generated code
+> coherent is the one that keeps this codebase honest.
+
 ## Quick links
 
 - New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python).
