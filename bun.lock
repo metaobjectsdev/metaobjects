@@ -43,7 +43,7 @@
     },
     "client/web/packages/react": {
       "name": "@metaobjectsdev/react",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/runtime-web": "workspace:*",
       },
@@ -75,7 +75,7 @@
     },
     "client/web/packages/runtime-web": {
       "name": "@metaobjectsdev/runtime-web",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "qs": "^6.13.0",
@@ -88,7 +88,7 @@
     },
     "client/web/packages/tanstack": {
       "name": "@metaobjectsdev/tanstack",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/react": "workspace:*",
         "@metaobjectsdev/runtime-web": "workspace:*",
@@ -118,7 +118,7 @@
     },
     "server/typescript/packages/ai-runtime": {
       "name": "@metaobjectsdev/ai-runtime",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
@@ -139,7 +139,7 @@
     },
     "server/typescript/packages/cli": {
       "name": "@metaobjectsdev/cli",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "bin": {
         "meta": "./dist/bin/meta.js",
       },
@@ -176,7 +176,7 @@
     },
     "server/typescript/packages/codegen-ts": {
       "name": "@metaobjectsdev/codegen-ts",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
@@ -219,7 +219,7 @@
     },
     "server/typescript/packages/codegen-ts-react": {
       "name": "@metaobjectsdev/codegen-ts-react",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -236,7 +236,7 @@
     },
     "server/typescript/packages/codegen-ts-tanstack": {
       "name": "@metaobjectsdev/codegen-ts-tanstack",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -301,7 +301,7 @@
     },
     "server/typescript/packages/metadata": {
       "name": "@metaobjectsdev/metadata",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "yaml": "^2.9.0",
       },
@@ -314,7 +314,7 @@
     },
     "server/typescript/packages/migrate-ts": {
       "name": "@metaobjectsdev/migrate-ts",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@iarna/toml": "^2.2.5",
         "@metaobjectsdev/metadata": "workspace:*",
@@ -334,7 +334,7 @@
     },
     "server/typescript/packages/render": {
       "name": "@metaobjectsdev/render",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "mustache": "^4.2.0",
       },
@@ -346,7 +346,7 @@
     },
     "server/typescript/packages/runtime-ts": {
       "name": "@metaobjectsdev/runtime-ts",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
@@ -383,7 +383,7 @@
     },
     "server/typescript/packages/sdk": {
       "name": "@metaobjectsdev/sdk",
-      "version": "0.11.6",
+      "version": "0.12.0",
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
         "zod": "^3.23.0",
@@ -1093,7 +1093,7 @@
 
     "node-fetch": ["node-fetch@3.3.2", "", { "dependencies": { "data-uri-to-buffer": "^4.0.0", "fetch-blob": "^3.1.4", "formdata-polyfill": "^4.0.10" } }, "sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA=="],
 
-    "node-releases": ["node-releases@2.0.49", "", {}, "sha512-f06bl1D+8ZDkn2oOQQKAh5/otFWqVnM1Q5oerA8Pex7UfT66Tx4IPHIqVVFKqFT3FUtaDstdgkM7yT7JWhqxfw=="],
+    "node-releases": ["node-releases@2.0.50", "", {}, "sha512-J6l92tKHX6w8Jy5nO1Vuc01NoIiRGi/d6qBKVxh+IQ8Cr3b6HbVNfKiF8ZpFKufTwpwxMmce2W3iQZ861ZRyTg=="],
 
     "normalize-path": ["normalize-path@3.0.0", "", {}, "sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA=="],
 
@@ -1181,7 +1181,7 @@
 
     "punycode": ["punycode@2.3.1", "", {}, "sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg=="],
 
-    "qs": ["qs@6.15.2", "", { "dependencies": { "side-channel": "^1.1.0" } }, "sha512-Rzq0KEyX/w/tEybncDgdkZrJgVUsUMk3xjh3t5bv3S1HTAtg+uOYt72+ZfwiQwKdysThkTBdL/rTi6HDmX9Ddw=="],
+    "qs": ["qs@6.15.3", "", { "dependencies": { "es-define-property": "^1.0.1", "side-channel": "^1.1.1" } }, "sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A=="],
 
     "quick-format-unescaped": ["quick-format-unescaped@4.0.4", "", {}, "sha512-tYC1Q1hgyRuHgloV/YXs2w15unPVh8qfu/qCTfhTYamaw7fyhumKa2yGpdSo87vY32rIclj+4fWYQXUMs9EHvg=="],
 
