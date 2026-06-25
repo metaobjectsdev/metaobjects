@@ -6,9 +6,9 @@ plus the `metaobjects-maven-plugin` for build-time codegen (`meta:gen` / `meta:e
 
 Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
 the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
-`meta:verify` Maven goals were removed. OMDB retains runtime persistence and a
-dev/test runtime auto-create path (`MetaClassDBValidatorService`) only. Prompt /
-template drift is still checked via the `metaobjects-render` `Verify` API.
+`meta:verify` Maven goals were removed. Per ADR-0015 the OMDB runtime auto-create
+path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
+Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
 ## Install
 
@@ -138,9 +138,9 @@ mvn compile                  # runs the generate goal (bound to generate-sources
 ```
 
 Schema migrations are not a Java-port concern — author them with the TypeScript
-toolchain (`@metaobjectsdev/cli migrate`). OMDB's runtime auto-create path can
-bootstrap a dev/test schema at startup (`MetaClassDBValidatorService` with
-`autoCreate=true`), but it is not a migration tool.
+toolchain (`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the
+database OMDB connects to. OMDB itself is pure data-access; the former runtime
+auto-create path was removed per ADR-0015.
 
 ## Use
 
@@ -247,7 +247,7 @@ configuration model that has not yet been specced.
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
 | Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
 | Output parser codegen (FR-006) | Not yet — see note below |
-| Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java engine was removed; OMDB offers runtime auto-create for dev/test only |
+| Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
 | Drift verify | `Renderer.verify` / `Verify.verify` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
