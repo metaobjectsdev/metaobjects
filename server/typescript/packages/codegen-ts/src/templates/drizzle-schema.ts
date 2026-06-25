@@ -326,12 +326,18 @@ function renderColumn(
   // FK .references() uses imp() so ts-poet tracks the cross-entity import.
   let fkRefSegment: Code | null = null;
   if (fkInfo !== undefined && !isPk) {
+    // Always annotate the .references() callback with the dialect's Any*Column return
+    // type. Drizzle needs this to break circular type inference — not only for
+    // self-referential FKs but also for cross-module circular references (table A → B
+    // while B → A), which otherwise surface as TS7022 ("implicitly has type 'any'
+    // because it does not have a type annotation and is referenced … in its own
+    // initializer") under `strict`. The annotation is a harmless explicit supertype
+    // for acyclic FKs, so emitting it unconditionally is safe.
+    const anyColType = ctx.dialect === "sqlite" ? "AnySQLiteColumn" : "AnyPgColumn";
+    const anyColSym = imp(`${anyColType}@${spec.importModule}`);
     if (fkInfo.targetEntityName === currentEntityName) {
-      // Self-referential FK (e.g. createdBy → this same table). Drizzle requires
-      // referencing the local table const directly — NOT a self-import — with an
-      // explicit `Any*Column` return type to break the circular type inference.
-      const anyColType = ctx.dialect === "sqlite" ? "AnySQLiteColumn" : "AnyPgColumn";
-      const anyColSym = imp(`${anyColType}@${spec.importModule}`);
+      // Self-referential FK (e.g. createdBy → this same table): reference the local
+      // table const directly — NOT a self-import.
       fkRefSegment = code`.references((): ${anyColSym} => ${fkInfo.targetVarName}.${fkInfo.targetPkField})`;
     } else {
       const targetSpec = crossEntitySpecifier(
@@ -342,7 +348,7 @@ function renderColumn(
         ctx.extStyle,
       );
       const targetVarSym = imp(`${fkInfo.targetVarName}@${targetSpec}`);
-      fkRefSegment = code`.references(() => ${targetVarSym}.${fkInfo.targetPkField})`;
+      fkRefSegment = code`.references((): ${anyColSym} => ${targetVarSym}.${fkInfo.targetPkField})`;
     }
   }
 

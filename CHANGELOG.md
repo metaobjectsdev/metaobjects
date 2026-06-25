@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Drizzle codegen annotates every FK `.references()` callback with `(): Any{Pg,SQLite}Column`.**
+  Previously only self-referential FKs carried the explicit return type; cross-module
+  circular references (table A → B while B → A) went through the un-annotated branch and
+  failed `tsc --strict` with TS7022 (`implicitly has type 'any' … referenced in its own
+  initializer`). The annotation is Drizzle's documented fix for circular inference and a
+  harmless explicit supertype for acyclic FKs, so `codegen-ts` now emits it unconditionally.
+
 ## [0.12.0] — 2026-06-25
 
 _npm `0.12.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

@@ -117,12 +117,14 @@ Core / SQLAlchemy at codegen time.
 
 ```ts
 // generated/acme/blog/Post.ts
+import { AnyPgColumn } from "drizzle-orm/pg-core";
+
 export const post = pgTable("posts", {
   id:       bigserial("id", { mode: "number" }).primaryKey(),
   title:    varchar("title", { length: 255 }).notNull(),
   authorId: bigint("author_id", { mode: "number" })
               .notNull()
-              .references(() => author.id, { onDelete: "cascade" }),
+              .references((): AnyPgColumn => author.id, { onDelete: "cascade" }),
 });
 
 // generated/acme/blog/Author.queries.ts (excerpt)
@@ -130,6 +132,13 @@ export async function findPostsForAuthor(db: Db, authorId: number): Promise<Post
   return db.select().from(post).where(eq(post.authorId, authorId));
 }
 ```
+
+Every `.references()` callback carries the explicit `(): AnyPgColumn` return type
+(`AnySQLiteColumn` for the `sqlite` dialect). Drizzle requires this to break circular
+type inference — not only for self-referential FKs but also for cross-module circular
+references (table A → B while B → A), which otherwise surface as TS7022 (`implicitly has
+type 'any' … referenced … in its own initializer`) under `strict`. It is a harmless
+explicit supertype for acyclic FKs, so codegen emits it unconditionally.
 
 ### Java
 

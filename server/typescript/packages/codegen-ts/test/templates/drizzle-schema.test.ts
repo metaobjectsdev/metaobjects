@@ -490,3 +490,45 @@ describe("renderDrizzleSchema — self-referential FK", () => {
     expect(out).not.toContain('from "./Node"');
   });
 });
+
+describe("renderDrizzleSchema — cross-module circular FK", () => {
+  // Two entities that reference each other (Author → Book and Book → Author).
+  // Like a self-FK, the cross-MODULE import cycle makes TS infer the table const
+  // as `any` (TS7022 "implicitly has type 'any' … referenced in its own
+  // initializer") under `strict` unless the .references() callback carries an
+  // explicit `Any*Column` return type. Regression: cross-entity FK callbacks must
+  // be annotated too — not only self-referential ones.
+  function makeAuthorBook(): MetaObject[] {
+    const mkEntity = (name: string, table: string, fkField: string, target: string): MetaObject => {
+      const e = metaObject(OBJECT_SUBTYPE_ENTITY, name);
+      attachRdbSource(e, table);
+      e.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+      e.addChild(metaField(FIELD_SUBTYPE_LONG, fkField));
+      const pk = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "pk");
+      pk.setAttr("fields", ["id"]);
+      pk.setAttr("generation", "increment");
+      e.addChild(pk);
+      const ref = meta(new TypeId(TYPE_IDENTITY, "reference"), "fk");
+      ref.setAttr("fields", [fkField]);
+      ref.setAttr("references", target);
+      e.addChild(ref);
+      return e;
+    };
+    return [
+      mkEntity("Author", "authors", "favoriteBookId", "Book"),
+      mkEntity("Book", "books", "authorId", "Author"),
+    ];
+  }
+
+  test("Postgres: cross-entity FK in a reference cycle is annotated with AnyPgColumn", () => {
+    const root = makeRoot(makeAuthorBook());
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    const authorOut = renderDrizzleSchema(root.findObject("Author")!, ctx).toString();
+    expect(authorOut).toContain("references((): AnyPgColumn => books.id)");
+    const bookOut = renderDrizzleSchema(root.findObject("Book")!, ctx).toString();
+    expect(bookOut).toContain("references((): AnyPgColumn => authors.id)");
+  });
+});

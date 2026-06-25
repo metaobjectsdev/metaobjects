@@ -40,6 +40,6 @@ describe("field-level extends + qualified-ref codegen", () => {
 
   test("a package-qualified FK target still emits .references()", async () => {
     const out = await renderWidget();
-    expect(out).toContain("ownerId: uuid(\"owner_id\").references(() => owners.id)");
+    expect(out).toContain("ownerId: uuid(\"owner_id\").references((): AnyPgColumn => owners.id)");
   });
 });

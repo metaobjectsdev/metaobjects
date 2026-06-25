@@ -2,7 +2,12 @@
 // Source metadata: Video (Video)
 // Customize via Video.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { exercises } from "./Exercise";
 
@@ -10,7 +15,7 @@ export const videos = sqliteTable("videos", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   exerciseId: integer("exercise_id")
     .notNull()
-    .references(() => exercises.id),
+    .references((): AnySQLiteColumn => exercises.id),
   url: text("url").notNull(),
   title: text("title"),
   durationSeconds: integer("duration_seconds"),
