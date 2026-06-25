@@ -37,9 +37,9 @@ can't drift by construction).
 - **`--db`** — schema drift. Introspects the live database and fails if it has
   diverged from metadata. This is a **schema concern, so it is the Node toolchain's
   job regardless of your server language** (see migrations below). On the JVM ports
-  a runtime startup validator catches generated-table drift at app boot as a
-  complementary check, but the authoritative DB-vs-metadata gate is the Node
-  `verify --db`.
+  a runtime startup validator *can* catch generated-table drift at app boot as an
+  optional complementary check (if your project wires one), but the authoritative
+  DB-vs-metadata gate is the Node `verify --db`.
 
 - **`--codegen`** — regeneration drift. Re-runs generation and diffs the result
   against the committed generated files; a non-empty diff means someone edited

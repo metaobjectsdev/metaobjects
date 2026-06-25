@@ -56,7 +56,7 @@ working code.
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen | Yes (via projection) | – (consumers use `Map`) | Yes (`@Serializable`) | Yes | – (consumers use `dict`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
-| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; startup: `MetaClassDBValidatorService` | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
+| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
