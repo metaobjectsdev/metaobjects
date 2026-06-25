@@ -17,6 +17,7 @@ COMMANDS:
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
+  types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
@@ -302,6 +303,10 @@ export async function run(argv: string[]): Promise<number> {
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
       return exportCommand(rest, cwd);
+    }
+    case "types": {
+      const { typesCommand } = await import("./commands/types.js");
+      return typesCommand(rest);
     }
     case "docs": {
       const { docsCommand } = await import("./commands/docs.js");

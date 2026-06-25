@@ -35,12 +35,14 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
     {
       "type": "validator",
       "subType": "required",
-      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field."
+      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
+      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check."
     },
     {
       "type": "validator",
       "subType": "length",
       "description": "Bounds string length / collection size via @min/@max.",
+      "whenToUse": "Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.",
       "children": [
         {
           "type": "attr",
@@ -64,6 +66,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "regex",
       "description": "Requires the value match a regular expression (@pattern).",
+      "whenToUse": "A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.",
       "children": [
         {
           "type": "attr",
@@ -95,6 +98,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "numeric",
       "description": "Bounds a numeric value's magnitude via @min/@max.",
+      "whenToUse": "Bound a number's magnitude. Use @min/@max instead of hand-written range checks.",
       "children": [
         {
           "type": "attr",
@@ -118,6 +122,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "array",
       "description": "Bounds the element count of an array-valued field via @min/@max.",
+      "whenToUse": "Bound the element count of an array field. Use @min/@max instead of a hand-written length check.",
       "children": [
         {
           "type": "attr",
@@ -141,6 +146,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "comparison",
       "description": "Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp <= max_hp or expires_at > created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.",
+      "whenToUse": "Two sibling fields must stand in an order (start <= end, currentHp <= maxHp). Declare it instead of hand-writing the cross-field assertion.",
       "rules": "@left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend's relational operator is (SQL: a NULL operand yields no violation).",
       "children": [
         {
@@ -181,6 +187,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "requiredWhen",
       "description": "One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.",
+      "whenToUse": "A field becomes required only when another field has a given value. Declare it instead of conditional validation code.",
       "rules": "@field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).",
       "children": [
         {
@@ -213,6 +220,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "presentIff",
       "description": "Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.",
+      "whenToUse": "A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.",
       "rules": "@field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.",
       "children": [
         {
@@ -245,6 +253,7 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
       "type": "validator",
       "subType": "atLeastOne",
       "description": "Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).",
+      "whenToUse": "At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.",
       "rules": "@fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.",
       "children": [
         {

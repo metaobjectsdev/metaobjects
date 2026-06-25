@@ -75,6 +75,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "string",
       "extendsBase": true,
       "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
+      "whenToUse": "Plain variable-length text. Set @maxLength to size the column. The default for textual data.",
       "children": [
         {
           "type": "attr",
@@ -91,21 +92,24 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "subType": "int",
       "dataType": "int",
       "extendsBase": true,
-      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER."
+      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
+      "whenToUse": "A whole number within +/-2^31. Use long instead if values can exceed that."
     },
     {
       "type": "field",
       "subType": "long",
       "dataType": "long",
       "extendsBase": true,
-      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT."
+      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
+      "whenToUse": "A whole number that may exceed 32 bits (ids, counters, epoch millis)."
     },
     {
       "type": "field",
       "subType": "double",
       "dataType": "double",
       "extendsBase": true,
-      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal."
+      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
+      "whenToUse": "An approximate floating-point number where exactness is not required. For money/precision use decimal."
     },
     {
       "type": "field",
@@ -120,6 +124,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "string",
       "extendsBase": true,
       "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
+      "whenToUse": "A value needs exact precision (money amounts, rates, quantities). Use decimal with @precision/@scale — never double, which loses precision.",
       "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
       "children": [
         {
@@ -145,14 +150,16 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "subType": "boolean",
       "dataType": "boolean",
       "extendsBase": true,
-      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN."
+      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
+      "whenToUse": "A true/false flag."
     },
     {
       "type": "field",
       "subType": "date",
       "dataType": "date",
       "extendsBase": true,
-      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE."
+      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
+      "whenToUse": "A column is a calendar date with no time-of-day. Use date instead of a string."
     },
     {
       "type": "field",
@@ -166,7 +173,8 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "subType": "timestamp",
       "dataType": "date",
       "extendsBase": true,
-      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping."
+      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
+      "whenToUse": "A column records an instant (created/updated at). Use timestamp so it serializes ISO-8601 with timezone consistently."
     },
     {
       "type": "field",
@@ -174,6 +182,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "object",
       "extendsBase": true,
       "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
+      "whenToUse": "A field holds a nested structured value (or an array of them). Set @objectRef + @storage so the shape is typed and persisted (flattened/jsonb) instead of an untyped blob.",
       "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
       "children": [
         {
@@ -192,6 +201,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "object",
       "extendsBase": true,
       "description": "An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).",
+      "whenToUse": "A field is an open-keyed map of values (Record<string,V>). Use it for dynamic keys instead of an untyped jsonb string.",
       "rules": "Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.",
       "children": [
         {
@@ -218,6 +228,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "long",
       "extendsBase": true,
       "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
+      "whenToUse": "A column holds money. Use currency so it stores integer minor-units and the client formats it — never floats or hand-rolled cents math.",
       "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
       "children": [
         {
@@ -237,6 +248,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "dataType": "string",
       "extendsBase": true,
       "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
+      "whenToUse": "A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.",
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "children": [
         {
@@ -263,7 +275,8 @@ export const FIELD_DEFINITION: ProviderDefinition = {
       "subType": "uuid",
       "dataType": "string",
       "extendsBase": true,
-      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid."
+      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
+      "whenToUse": "A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string."
     }
   ]
 };
