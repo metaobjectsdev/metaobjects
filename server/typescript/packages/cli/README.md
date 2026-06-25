@@ -103,6 +103,31 @@ Flags:
 
 Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
 
+### `meta types [<query>]`
+
+Searches the metadata vocabulary (types, subtypes, `@attrs`) without loading it all into context — apropos + `kubectl explain` over the live registry. Use it to find the declarative construct for a piece of data logic instead of hand-writing it.
+
+```
+meta types relationship                 # subtypes/attrs whose name matches "relationship"
+meta types --all money                   # search names AND descriptions ("find by what it does")
+meta types --type field --kind subtype   # all field subtypes (terse)
+meta types field.enum --detail           # one construct: description + when-to-use + valid @attrs
+meta types --type origin --json          # machine-readable subtree
+```
+
+`QUERY` is a case-insensitive substring matched on the name (`type.subType` / `@attr`).
+
+Flags:
+- `--desc` / `--all` — also match `QUERY` against descriptions + when-to-use guidance (not just names)
+- `--kind <type|subtype|attr>` — filter by category (comma-list ok)
+- `--type <name>` — scope to one top-level type (e.g. `--type field`)
+- `--detail` — drill in: full description, when-to-use, and valid `@attrs`
+- `--json` — emit the matching registry subtree verbatim (stable-sorted)
+- `--limit <N>` — cap results (default 20; `0` = unlimited)
+- `--no-headers` — omit the `N of M`/match-count footer (parse-friendly)
+
+Default output is one terse line per match.
+
 ### `meta migrate`
 
 Diffs `metaobjects/` metadata against a live DB and emits paired migration SQL files (per-migration subdirectories with `up.sql` and `down.sql`).
