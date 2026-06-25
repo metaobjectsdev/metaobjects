@@ -19,7 +19,7 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 _Last refreshed 2026-06-22._
 
-**TypeScript reference implementation** is **published to npm at `0.11.6`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# / Python at `0.11.1` (NuGet / PyPI); Java / Kotlin at `7.4.1` (Maven Central). 2500+ tests passing across the workspace.
+**TypeScript reference implementation** is **published to npm at `0.12.0`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# / Python at `0.11.1` (NuGet / PyPI); Java / Kotlin at `7.4.1` (Maven Central). 2500+ tests passing across the workspace.
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 

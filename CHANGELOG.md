@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-25
+
+_npm `0.12.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **Agent-friendly `meta` CLI.** A `--format` flag with TOON output (a compact,
+  machine-readable format that becomes the default when stdout is piped to an
+  agent/CI), structured errors and next-step hints emitted on stdout, package-manager
+  detection, and deploy-all agent-context reference fragments (#71).
+
+### Fixed
+- **`meta init` agent-context scaffold no longer guesses the migration binding.**
+  The injected `AGENTS.md`/`CLAUDE.md` now name the database schema **and migrations**
+  as metadata-derived in the "never hand-write" principle ("change the metadata and
+  regenerate, never hand-write SQL"), and the stack line dropped the guessed
+  "migrations are TS" clause. This prevents an AI agent from hand-writing a raw
+  `ALTER TABLE` against a generated schema and silently reintroducing the drift
+  `meta verify` exists to catch. The verify skill's JVM startup-validator note was
+  also hedged to an opt-in (#1, #73).
+
 ## [0.11.6] — 2026-06-24
 
 _npm `0.11.6` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
