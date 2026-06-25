@@ -7,7 +7,12 @@ import {
   relations,
   sql,
 } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { programs } from "./Program";
 import { subscribers } from "./Subscriber";
@@ -16,10 +21,10 @@ export const purchases = sqliteTable("purchases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   subscriberId: integer("subscriber_id")
     .notNull()
-    .references(() => subscribers.id),
+    .references((): AnySQLiteColumn => subscribers.id),
   programId: integer("program_id")
     .notNull()
-    .references(() => programs.id),
+    .references((): AnySQLiteColumn => programs.id),
   amountCents: integer("amount_cents").notNull(),
   purchasedAt: text("purchased_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

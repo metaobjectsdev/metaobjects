@@ -2,7 +2,12 @@
 // Source metadata: Tag (Tag)
 // Customize via Tag.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { products } from "./shop/commerce/Product";
 import { customers } from "./shop/users/Customer";
@@ -12,7 +17,7 @@ export const tags = sqliteTable("tags", {
   label: text("label").notNull(),
   customerId: integer("customer_id")
     .notNull()
-    .references(() => customers.id),
+    .references((): AnySQLiteColumn => customers.id),
 });
 export const tagsRelations = relations(tags, ({ one, many }) => ({
   products: many(products),

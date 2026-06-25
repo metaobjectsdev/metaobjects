@@ -3,6 +3,7 @@
 // Customize via Video.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import {
+  AnyPgColumn,
   bigint,
   bigserial,
   integer,
@@ -16,7 +17,7 @@ export const videos = pgTable("videos", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   exerciseId: bigint("exercise_id", { mode: "number" })
     .notNull()
-    .references(() => exercises.id),
+    .references((): AnyPgColumn => exercises.id),
   url: varchar("url", { length: 500 }).notNull(),
   title: varchar("title", { length: 200 }),
   durationSeconds: integer("duration_seconds"),

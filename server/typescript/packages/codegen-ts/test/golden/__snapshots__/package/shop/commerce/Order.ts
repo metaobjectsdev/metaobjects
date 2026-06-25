@@ -2,7 +2,7 @@
 // Source metadata: Order (shop::commerce::Order)
 // Customize via Order.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
-import { integer, sqliteTable } from "drizzle-orm/sqlite-core";
+import { AnySQLiteColumn, integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { customers } from "../users/Customer";
 import { products } from "./Product";
@@ -11,10 +11,10 @@ export const orders = sqliteTable("orders", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   customerId: integer("customer_id")
     .notNull()
-    .references(() => customers.id),
+    .references((): AnySQLiteColumn => customers.id),
   productId: integer("product_id")
     .notNull()
-    .references(() => products.id),
+    .references((): AnySQLiteColumn => products.id),
   quantity: integer("quantity").notNull(),
 });
 export const ordersRelations = relations(orders, ({ one }) => ({

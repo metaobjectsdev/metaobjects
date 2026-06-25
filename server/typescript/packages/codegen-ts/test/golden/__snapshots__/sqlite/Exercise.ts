@@ -2,7 +2,12 @@
 // Source metadata: Exercise (Exercise)
 // Customize via Exercise.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { videos } from "./Video";
 import { workouts } from "./Workout";
@@ -11,7 +16,7 @@ export const exercises = sqliteTable("exercises", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   workoutId: integer("workout_id")
     .notNull()
-    .references(() => workouts.id),
+    .references((): AnySQLiteColumn => workouts.id),
   name: text("name").notNull(),
   sets: integer("sets"),
   reps: integer("reps"),

@@ -3,6 +3,7 @@
 // Customize via WorkoutEvent.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import {
+  AnyPgColumn,
   bigint,
   bigserial,
   integer,
@@ -17,10 +18,10 @@ export const workoutEvents = pgTable("workout_events", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   subscriberId: bigint("subscriber_id", { mode: "number" })
     .notNull()
-    .references(() => subscribers.id),
+    .references((): AnyPgColumn => subscribers.id),
   workoutId: bigint("workout_id", { mode: "number" })
     .notNull()
-    .references(() => workouts.id),
+    .references((): AnyPgColumn => workouts.id),
   completedAt: timestamp("completed_at", { mode: "string" })
     .notNull()
     .defaultNow(),

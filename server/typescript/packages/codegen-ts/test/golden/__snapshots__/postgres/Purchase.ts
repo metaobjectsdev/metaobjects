@@ -3,6 +3,7 @@
 // Customize via Purchase.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import {
+  AnyPgColumn,
   bigint,
   bigserial,
   integer,
@@ -17,10 +18,10 @@ export const purchases = pgTable("purchases", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   subscriberId: bigint("subscriber_id", { mode: "number" })
     .notNull()
-    .references(() => subscribers.id),
+    .references((): AnyPgColumn => subscribers.id),
   programId: bigint("program_id", { mode: "number" })
     .notNull()
-    .references(() => programs.id),
+    .references((): AnyPgColumn => programs.id),
   amountCents: integer("amount_cents").notNull(),
   purchasedAt: timestamp("purchased_at", { mode: "string" })
     .notNull()

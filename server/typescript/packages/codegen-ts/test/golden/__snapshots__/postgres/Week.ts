@@ -3,6 +3,7 @@
 // Customize via Week.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
 import {
+  AnyPgColumn,
   bigint,
   bigserial,
   integer,
@@ -17,7 +18,7 @@ export const weeks = pgTable("weeks", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   programId: bigint("program_id", { mode: "number" })
     .notNull()
-    .references(() => programs.id),
+    .references((): AnyPgColumn => programs.id),
   weekNumber: integer("week_number").notNull(),
   title: varchar("title", { length: 200 }).notNull(),
 });

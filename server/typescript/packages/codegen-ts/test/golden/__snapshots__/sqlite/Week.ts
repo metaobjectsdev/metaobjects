@@ -2,7 +2,12 @@
 // Source metadata: Week (Week)
 // Customize via Week.extra.ts in this directory.
 import { InferInsertModel, InferSelectModel, relations } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  AnySQLiteColumn,
+  integer,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { programs } from "./Program";
 import { workouts } from "./Workout";
@@ -11,7 +16,7 @@ export const weeks = sqliteTable("weeks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   programId: integer("program_id")
     .notNull()
-    .references(() => programs.id),
+    .references((): AnySQLiteColumn => programs.id),
   weekNumber: integer("week_number").notNull(),
   title: text("title").notNull(),
 });
