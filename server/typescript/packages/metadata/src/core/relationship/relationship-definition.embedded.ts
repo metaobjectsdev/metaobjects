@@ -89,6 +89,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
       "type": "relationship",
       "subType": "association",
       "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
+      "whenToUse": "A plain directed reference to another entity, no ownership or cascade. The lightest link — when you just need to point at another entity.",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).",
       "children": [
         {
@@ -165,6 +166,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
       "type": "relationship",
       "subType": "aggregation",
       "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
+      "whenToUse": "One entity groups others it does NOT own (children outlive the parent; delete sets the FK null). Use instead of composition when there is no ownership.",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).",
       "children": [
         {
@@ -241,6 +243,7 @@ export const RELATIONSHIP_DEFINITION: ProviderDefinition = {
       "type": "relationship",
       "subType": "composition",
       "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
+      "whenToUse": "You need a parent that OWNS a child collection (one-to-many, cascade on delete). Declare it to generate the FK + typed navigation instead of a bare FK field + hand-written joins.",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).",
       "children": [
         {

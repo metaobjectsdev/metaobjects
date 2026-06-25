@@ -18,6 +18,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
       "type": "origin",
       "subType": "passthrough",
       "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
+      "whenToUse": "A projection field just surfaces a field from a related entity. Declare the cross-entity passthrough instead of re-joining and re-selecting it by hand.",
       "children": [
         {
           "type": "attr",
@@ -41,6 +42,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
       "type": "origin",
       "subType": "aggregate",
       "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
+      "whenToUse": "A projection needs a derived count/sum/avg/min/max over related rows. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.",
       "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
       "children": [
         {
@@ -80,6 +82,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
       "type": "origin",
       "subType": "collection",
       "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
+      "whenToUse": "A projection needs an array of nested child view-objects (a parent with its children inline). Declare it instead of hand-assembling the nested query + mapping.",
       "children": [
         {
           "type": "attr",

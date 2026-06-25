@@ -13,6 +13,7 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
       "type": "identity",
       "subType": "primary",
       "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
+      "whenToUse": "Every entity needs exactly one — names the primary-key field(s) and how the value is generated. Always declare it.",
       "maxOccurs": 1,
       "defaultName": "primary",
       "children": [
@@ -44,6 +45,7 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
       "type": "identity",
       "subType": "secondary",
       "description": "A secondary index (unique by default via @unique).",
+      "whenToUse": "A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.",
       "children": [
         {
           "type": "attr",
@@ -68,6 +70,7 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
       "type": "identity",
       "subType": "reference",
       "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
+      "whenToUse": "This entity holds a foreign key to another. Declare it to generate the FK constraint + typed navigation, instead of a loose id field you join on by hand.",
       "children": [
         {
           "type": "attr",

@@ -18,6 +18,7 @@ export const SOURCE_DEFINITION: ProviderDefinition = {
       "type": "source",
       "subType": "rdb",
       "description": "The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural `name`), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.",
+      "whenToUse": "The entity is backed by a relational table or view. Set @table/@kind — the default persistence source for any entity.",
       "rules": "ADR-0007: source declares where an object's data lives; rdb is the relational paradigm subtype. An object may declare multiple sources, distinguished by @role, with exactly ONE @role: \"primary\" per object (write-through CQRS: a writable table for writes plus a read-only view for reads). The physical name is the @table attr (or the @kind-matching alias), never the structural `name`. Read-only-ness is derived from @kind (table → writable; view / materializedView / storedProc / tableFunction → read-only). The pre-v2 dbTable / dbView subtypes are retired."
     }
   ]

@@ -188,6 +188,7 @@
       "type": "field",
       "subType": "boolean",
       "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
+      "whenToUse": "A true/false flag.",
       "attrs": [
         {
           "name": "column",
@@ -310,6 +311,7 @@
       "subType": "currency",
       "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
       "rules": "Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.",
+      "whenToUse": "A column holds money. Use currency so it stores integer minor-units and the client formats it — never floats or hand-rolled cents math.",
       "attrs": [
         {
           "name": "column",
@@ -438,6 +440,7 @@
       "type": "field",
       "subType": "date",
       "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
+      "whenToUse": "A column is a calendar date with no time-of-day. Use date instead of a string.",
       "attrs": [
         {
           "name": "autoSet",
@@ -567,6 +570,7 @@
       "subType": "decimal",
       "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
       "rules": "The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).",
+      "whenToUse": "A value needs exact precision (money amounts, rates, quantities). Use decimal with @precision/@scale — never double, which loses precision.",
       "attrs": [
         {
           "name": "column",
@@ -702,6 +706,7 @@
       "type": "field",
       "subType": "double",
       "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
+      "whenToUse": "An approximate floating-point number where exactness is not required. For money/precision use decimal.",
       "attrs": [
         {
           "name": "column",
@@ -824,6 +829,7 @@
       "subType": "enum",
       "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
+      "whenToUse": "A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.",
       "attrs": [
         {
           "name": "coerceDefault",
@@ -1108,6 +1114,7 @@
       "type": "field",
       "subType": "int",
       "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
+      "whenToUse": "A whole number within +/-2^31. Use long instead if values can exceed that.",
       "attrs": [
         {
           "name": "column",
@@ -1229,6 +1236,7 @@
       "type": "field",
       "subType": "long",
       "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
+      "whenToUse": "A whole number that may exceed 32 bits (ids, counters, epoch millis).",
       "attrs": [
         {
           "name": "column",
@@ -1351,6 +1359,7 @@
       "subType": "map",
       "description": "An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).",
       "rules": "Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.",
+      "whenToUse": "A field is an open-keyed map of values (Record<string,V>). Use it for dynamic keys instead of an untyped jsonb string.",
       "attrs": [
         {
           "name": "column",
@@ -1487,6 +1496,7 @@
       "subType": "object",
       "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
       "rules": "Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.",
+      "whenToUse": "A field holds a nested structured value (or an array of them). Set @objectRef + @storage so the shape is typed and persisted (flattened/jsonb) instead of an untyped blob.",
       "attrs": [
         {
           "name": "column",
@@ -1622,6 +1632,7 @@
       "type": "field",
       "subType": "string",
       "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
+      "whenToUse": "Plain variable-length text. Set @maxLength to size the column. The default for textual data.",
       "attrs": [
         {
           "name": "column",
@@ -1878,6 +1889,7 @@
       "type": "field",
       "subType": "timestamp",
       "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
+      "whenToUse": "A column records an instant (created/updated at). Use timestamp so it serializes ISO-8601 with timezone consistently.",
       "attrs": [
         {
           "name": "autoSet",
@@ -2006,6 +2018,7 @@
       "type": "field",
       "subType": "uuid",
       "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
+      "whenToUse": "A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string.",
       "attrs": [
         {
           "name": "column",
@@ -2127,6 +2140,7 @@
       "type": "identity",
       "subType": "primary",
       "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
+      "whenToUse": "Every entity needs exactly one — names the primary-key field(s) and how the value is generated. Always declare it.",
       "attrs": [
         {
           "name": "fields",
@@ -2149,6 +2163,7 @@
       "type": "identity",
       "subType": "reference",
       "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
+      "whenToUse": "This entity holds a foreign key to another. Declare it to generate the FK constraint + typed navigation, instead of a loose id field you join on by hand.",
       "attrs": [
         {
           "name": "constraintName",
@@ -2185,6 +2200,7 @@
       "type": "identity",
       "subType": "secondary",
       "description": "A secondary index (unique by default via @unique).",
+      "whenToUse": "A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.",
       "attrs": [
         {
           "name": "expr",
@@ -2364,6 +2380,7 @@
       "subType": "entity",
       "description": "An object that owns its data: own identity, writable sources, and lifecycle. The default object subtype — a bare `object:` key resolves to entity. May co-locate templates (template.prompt and friends) with the owning entity.",
       "rules": "object.entity owns data — it declares its own identity, its primary source must be a writable @kind (read-only kinds may appear only in a read role), and it carries lifecycle. A field carrying origin.* is derived ⇒ read-only wherever it lives, including on an entity. Templates (template.*) may be nested so a prompt can be co-located with its owning entity. See ADR-0028 (object taxonomy).",
+      "whenToUse": "The thing owns its own data and lifecycle — a table you create/read/update/delete. The default for any persisted resource.",
       "attrs": [
         {
           "name": "discriminator",
@@ -2437,6 +2454,7 @@
       "subType": "projection",
       "description": "A derived read-only representation of entities. Its fields are extends-bound / origin-derived / self-declared-under-external-assembly, all read-only at the subtype level. Identity is optional and MUST extend an entity identity; sources are restricted to read-only @kinds. The declared field set IS the exposure (inclusive, fail-closed).",
       "rules": "object.projection is a derived read-only representation: every field is extends-bound, origin-derived, or self-declared-under-external-assembly, and all are read-only at the subtype level. Identity is optional and, when present, MUST extend an entity identity. Sources are restricted to read-only @kinds. The declared field set IS the exposure — an inclusive list, fail-closed. A projection NEVER declares relationships (derivation is expressed via @via, not a relationship child) and NEVER co-locates templates — hence its child set omits both relationship and template. See ADR-0028 (object taxonomy, projection).",
+      "whenToUse": "You need a derived, read-only view over entities — a report, summary, or joined/aggregated read model. Declare it (with origin.* children) instead of hand-writing the SELECT/joins; it stays read-only and regenerates.",
       "attrs": [],
       "children": [
         {
@@ -2481,6 +2499,7 @@
       "subType": "value",
       "description": "A value object — pure shape with NO identity and NO source, ever. Constructed (by caller / assembly / embedding), never populated from a store. May `extends` an entity's fields to reuse shape. Equality is by content.",
       "rules": "object.value is pure shape: it NEVER declares an identity and NEVER declares a source, in any role. It is constructed — by a caller, by assembly, or by embedding — and is never populated from a backing store. It may `extends` an entity's fields to reuse their shape. @normalize is the object-level default ASCII normalization mode applied to this value's enum fields' tolerant extract (each field may still override per-field). See ADR-0028 (object taxonomy, value purity).",
+      "whenToUse": "You need a reusable typed shape with NO identity and NO table — an embedded value, a DTO, a prompt/response payload. Constructed in memory, never persisted on its own.",
       "attrs": [
         {
           "name": "normalize",
@@ -2540,6 +2559,7 @@
       "subType": "aggregate",
       "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
       "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
+      "whenToUse": "A projection needs a derived count/sum/avg/min/max over related rows. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.",
       "attrs": [
         {
           "name": "agg",
@@ -2576,6 +2596,7 @@
       "type": "origin",
       "subType": "collection",
       "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
+      "whenToUse": "A projection needs an array of nested child view-objects (a parent with its children inline). Declare it instead of hand-assembling the nested query + mapping.",
       "attrs": [
         {
           "name": "via",
@@ -2591,6 +2612,7 @@
       "type": "origin",
       "subType": "passthrough",
       "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
+      "whenToUse": "A projection field just surfaces a field from a related entity. Declare the cross-entity passthrough instead of re-joining and re-selecting it by hand.",
       "attrs": [
         {
           "name": "from",
@@ -2614,6 +2636,7 @@
       "subType": "aggregation",
       "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).",
+      "whenToUse": "One entity groups others it does NOT own (children outlive the parent; delete sets the FK null). Use instead of composition when there is no ownership.",
       "attrs": [
         {
           "name": "cardinality",
@@ -2672,6 +2695,7 @@
       "subType": "association",
       "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).",
+      "whenToUse": "A plain directed reference to another entity, no ownership or cascade. The lightest link — when you just need to point at another entity.",
       "attrs": [
         {
           "name": "cardinality",
@@ -2788,6 +2812,7 @@
       "subType": "composition",
       "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
       "rules": "M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).",
+      "whenToUse": "You need a parent that OWNS a child collection (one-to-many, cascade on delete). Declare it to generate the FK + typed navigation instead of a bare FK field + hand-written joins.",
       "attrs": [
         {
           "name": "cardinality",
@@ -2853,6 +2878,7 @@
       "subType": "rdb",
       "description": "The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural `name`), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.",
       "rules": "ADR-0007: source declares where an object's data lives; rdb is the relational paradigm subtype. An object may declare multiple sources, distinguished by @role, with exactly ONE @role: \"primary\" per object (write-through CQRS: a writable table for writes plus a read-only view for reads). The physical name is the @table attr (or the @kind-matching alias), never the structural `name`. Read-only-ness is derived from @kind (table → writable; view / materializedView / storedProc / tableFunction → read-only). The pre-v2 dbTable / dbView subtypes are retired.",
+      "whenToUse": "The entity is backed by a relational table or view. Set @table/@kind — the default persistence source for any entity.",
       "attrs": [
         {
           "name": "function",
@@ -2933,6 +2959,7 @@
       "subType": "output",
       "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs, the FR-010 @promptStyle, and the @kind + email part-refs.",
       "rules": "output is either a document (@kind=\"document\" or absent → renders @textRef in @format to one string) or an email (@kind=\"email\" → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments.",
+      "whenToUse": "You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time.",
       "attrs": [
         {
           "name": "format",
@@ -3026,6 +3053,7 @@
       "subType": "prompt",
       "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef.",
       "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation.",
+      "whenToUse": "You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable — instead of string-building it in code.",
       "attrs": [
         {
           "name": "format",
@@ -3148,6 +3176,7 @@
       "type": "validator",
       "subType": "array",
       "description": "Bounds the element count of an array-valued field via @min/@max.",
+      "whenToUse": "Bound the element count of an array field. Use @min/@max instead of a hand-written length check.",
       "attrs": [
         {
           "name": "max",
@@ -3171,6 +3200,7 @@
       "subType": "atLeastOne",
       "description": "Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).",
       "rules": "@fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.",
+      "whenToUse": "At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.",
       "attrs": [
         {
           "name": "fields",
@@ -3209,6 +3239,7 @@
       "subType": "comparison",
       "description": "Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp <= max_hp or expires_at > created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.",
       "rules": "@left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend's relational operator is (SQL: a NULL operand yields no violation).",
+      "whenToUse": "Two sibling fields must stand in an order (start <= end, currentHp <= maxHp). Declare it instead of hand-writing the cross-field assertion.",
       "attrs": [
         {
           "name": "left",
@@ -3238,6 +3269,7 @@
       "type": "validator",
       "subType": "length",
       "description": "Bounds string length / collection size via @min/@max.",
+      "whenToUse": "Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.",
       "attrs": [
         {
           "name": "max",
@@ -3260,6 +3292,7 @@
       "type": "validator",
       "subType": "numeric",
       "description": "Bounds a numeric value's magnitude via @min/@max.",
+      "whenToUse": "Bound a number's magnitude. Use @min/@max instead of hand-written range checks.",
       "attrs": [
         {
           "name": "max",
@@ -3283,6 +3316,7 @@
       "subType": "presentIff",
       "description": "Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.",
       "rules": "@field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.",
+      "whenToUse": "A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.",
       "attrs": [
         {
           "name": "equals",
@@ -3312,6 +3346,7 @@
       "type": "validator",
       "subType": "regex",
       "description": "Requires the value match a regular expression (@pattern).",
+      "whenToUse": "A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.",
       "attrs": [
         {
           "name": "max",
@@ -3341,6 +3376,7 @@
       "type": "validator",
       "subType": "required",
       "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
+      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check.",
       "attrs": [],
       "children": []
     },
@@ -3349,6 +3385,7 @@
       "subType": "requiredWhen",
       "description": "One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.",
       "rules": "@field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).",
+      "whenToUse": "A field becomes required only when another field has a given value. Declare it instead of conditional validation code.",
       "attrs": [
         {
           "name": "equals",

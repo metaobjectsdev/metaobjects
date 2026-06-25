@@ -5,6 +5,7 @@
       "type": "identity",
       "subType": "primary",
       "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
+      "whenToUse": "Every entity needs exactly one — names the primary-key field(s) and how the value is generated. Always declare it.",
       "maxOccurs": 1,
       "defaultName": "primary",
       "children": [
@@ -16,6 +17,7 @@
       "type": "identity",
       "subType": "secondary",
       "description": "A secondary index (unique by default via @unique).",
+      "whenToUse": "A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.",
       "children": [
         { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite." },
         { "type": "attr", "subType": "boolean", "name": "unique", "min": 0, "max": 1, "description": "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index." }
@@ -25,6 +27,7 @@
       "type": "identity",
       "subType": "reference",
       "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
+      "whenToUse": "This entity holds a foreign key to another. Declare it to generate the FK constraint + typed navigation, instead of a loose id field you join on by hand.",
       "children": [
         { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite." },
         { "type": "attr", "subType": "string", "name": "references", "min": 1, "max": 1, "description": "Target of the reference. Bare entity name (e.g. 'Program') resolves to that entity's primary identity. Dotted forms ('Program.id' or 'Program.fieldA,fieldB') target an explicit field set on the entity." },
