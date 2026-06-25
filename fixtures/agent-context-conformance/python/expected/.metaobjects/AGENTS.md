@@ -1,12 +1,12 @@
 # Working with MetaObjects in this project
 
-> Stack: python server, no client; migrations are TS.
+> Stack: python server, no client.
 
 MetaObjects is a metadata standard: typed metadata in `metaobjects/` is the durable
 spine; generated code is the disposable artifact. Regenerate with `metaobjects gen`.
 
 ## Principles
-- Pattern-derivable from metadata = codegen, never hand-write (FKs, CRUD, validators, finders).
+- Pattern-derivable from metadata = codegen, never hand-write — FKs, CRUD, validators, finders, and the database schema and migrations. The schema is a disposable, generated artifact: change the metadata and regenerate, never hand-write SQL.
 - Never hand-edit generated files — change the metadata and regenerate (three-way merge preserves hand-written regions).
 - Use the generated constants for any string that names metadata.
 - The loaded metadata model is READ-ONLY — never inject nodes or mutate the tree at load time (no "enrich the model on load" hooks). Need an extra field/column? Author it in the metadata, or derive it during codegen (read the metadata, emit output). Mutating the loaded model makes it diverge from what's declared — a bad practice reserved for very rare cases.

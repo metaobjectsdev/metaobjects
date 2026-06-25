@@ -16,7 +16,12 @@ function stackLine(contentRoot: string, stack: Stack): { line: string; codegenCo
   const serverPart = stack.servers.length ? stack.servers.join(", ") + " server" : "no server";
   const clientPart = stack.clients.length ? stack.clients.join(", ") + " client" : "no client";
   return {
-    line: `Stack: ${serverPart}, ${clientPart}; migrations are TS.`,
+    // Describe only what the stack actually declares — never assert a migration
+    // binding (the tool states invariants; the project states bindings). The
+    // "schema + migrations are metadata-derived" invariant lives in the template
+    // principle, and the always-installed metaobjects-verify/migration reference
+    // fragment carries the project-agnostic how. See issue #1.
+    line: `Stack: ${serverPart}, ${clientPart}.`,
     codegenCommand: meta ? meta.codegenCommand : "meta gen",
   };
 }
