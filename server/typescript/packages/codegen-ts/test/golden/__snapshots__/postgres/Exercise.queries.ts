@@ -3,8 +3,8 @@
 // Customize via Exercise.extra.ts in this directory (additional queries, custom logic).
 import { eq } from "drizzle-orm";
 
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-type Db = NodePgDatabase<Record<string, never>>;
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;
 
 import { type Exercise, ExerciseInsertSchema, exercises } from "./Exercise";
 export async function findExerciseById(

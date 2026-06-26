@@ -5,26 +5,30 @@ describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false,
     });
   });
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false,
     });
   });
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
-      templates: false, codegen: false, anyExplicit: true,
+      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false,
     });
+  });
+  test("--no-antipatterns is captured", () => {
+    expect(parseVerifyArgs(["--no-antipatterns"]).noAntipatterns).toBe(true);
+    expect(parseVerifyArgs([]).noAntipatterns).toBe(false);
   });
   test("--allow csv is parsed into tokens", () => {
     expect(parseVerifyArgs(["--allow", "drop-column,drop-table"])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false,
     });
   });
 

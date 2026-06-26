@@ -188,6 +188,8 @@ export interface VerifyFlags {
   codegen: boolean;
   /** Whether ANY explicit subverb flag (--templates/--db/--codegen) was passed. */
   anyExplicit: boolean;
+  /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
+  noAntipatterns: boolean;
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
@@ -201,6 +203,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       "skip-schema": { type: "boolean", default: false },
       templates: { type: "boolean", default: false },
       codegen: { type: "boolean", default: false },
+      "no-antipatterns": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -238,6 +241,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     templates,
     codegen,
     anyExplicit,
+    noAntipatterns: !!values["no-antipatterns"],
   };
 }
 

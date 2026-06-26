@@ -144,6 +144,35 @@ describe("meta verify", () => {
     }
   });
 
+  test("advisory anti-pattern pass warns on a hand-rolled aggregate but stays exit 0", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-antipat-"));
+    mkdirSync(join(tmp, "metaobjects"), { recursive: true });
+    // Minimal metadata with no templates (template gate is a clean no-op → exit 0).
+    writeFileSync(
+      join(tmp, "metaobjects", "meta.x.json"),
+      JSON.stringify({ "metadata.root": { package: "acme::x", children: [] } }),
+      "utf8",
+    );
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    writeFileSync(
+      join(tmp, "src", "routes.ts"),
+      "const r = await db.execute(`SELECT recipe_id, AVG(value) FROM ratings GROUP BY recipe_id`);",
+      "utf8",
+    );
+    try {
+      expect(await run(["verify", "--cwd", tmp])).toBe(0); // advisory never fails
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("origin.aggregate");
+      expect(all).toContain("meta types origin.aggregate");
+      // --no-antipatterns suppresses it
+      out.length = 0; err.length = 0;
+      expect(await run(["verify", "--cwd", tmp, "--no-antipatterns"])).toBe(0);
+      expect([...out, ...err].join("\n")).not.toContain("origin.aggregate");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("a custom --prompts dir is honored", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-custom-"));
     mkdirSync(join(tmp, "metaobjects"), { recursive: true });

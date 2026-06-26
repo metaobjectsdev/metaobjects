@@ -4,7 +4,7 @@
 import { eq } from "drizzle-orm";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
 import { type Purchase, PurchaseInsertSchema, purchases } from "./Purchase";
 export async function findPurchaseById(

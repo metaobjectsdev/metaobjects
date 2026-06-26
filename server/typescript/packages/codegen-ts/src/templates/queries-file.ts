@@ -17,9 +17,10 @@ import {
   renderDeleteByIdFn,
   getPkInfo,
 } from "./queries.js";
-import { pluralize } from "../naming.js";
+import { pluralize, findByIdFnName, listFnName } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
+import { isProjection } from "../projection/projection-detector.js";
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // FR-017 Tier 2 — a TPH discriminator base gets a polymorphic queries file:
@@ -28,6 +29,15 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // filtered out of the queries generator entirely — their CRUD lives here.)
   if (isTphDiscriminatorBase(obj, ctx.loadedRoot)) {
     return renderTphQueriesFile(obj, ctx);
+  }
+
+  // A projection is view-backed and read-only: its entity file emits NO
+  // InsertSchema and a `<camel>View` instead of a Drizzle table. Emitting the
+  // table-style CRUD here (with its `<Name>InsertSchema` import + create/update)
+  // references exports that don't exist → TS2724. Mirror routes-file's projection
+  // guard: read-only queries (findById + list) selecting from the view.
+  if (isProjection(obj)) {
+    return renderProjectionQueriesFile(obj, ctx);
   }
 
   const entityName = obj.name;
@@ -48,12 +58,19 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // anything to construct one. Consumers pass any compatible Drizzle instance.
   const dbTypeImport =
     ctx.dialect === "postgres"
-      ? `import type { NodePgDatabase } from "drizzle-orm/node-postgres";`
+      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
       : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
   const dbTypeAlias =
     ctx.dialect === "postgres"
-      ? `type Db = NodePgDatabase<Record<string, never>>;`
-      : `type Db = BaseSQLiteDatabase<"async", Record<string, never>>;`;
+      // Postgres: the base class every PG driver extends (node-postgres,
+      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
+      // PG driver the consumer chose is accepted.
+      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
+      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
+      // drivers. Generated queries `await` their results, which is valid on
+      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
+      // (the most common SQLite driver) with "is not assignable".
+      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
 
   // Literal imports (Db type + entity types) live in a code block so they sort
   // alongside ts-poet's hoisted imp() imports at the top of the body.
@@ -79,6 +96,69 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${obj.fqn()})\n` +
+    `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
+  return header + body;
+}
+
+/**
+ * Read-only queries file for a projection (view-backed, ADR Project E).
+ *
+ * Emits only `find<Name>ById` + `list<Plural>`, selecting from the projection's
+ * `<camel>View` Drizzle view and returning the inferred read type. Deliberately
+ * NO create/update/delete and NO `<Name>InsertSchema` import — a projection is
+ * read-only and its entity file never exports an insert schema.
+ */
+function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): string {
+  const entityName = obj.name;
+  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const viewVar = `${camelName}View`;
+  const entityFileName = entityModuleSpecifier(
+    ctx.selfTarget, ctx.entityModuleTarget, obj.package, entityName, ctx.extStyle,
+  );
+  const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
+  const eqSym = imp("eq@drizzle-orm");
+
+  const dbTypeImport =
+    ctx.dialect === "postgres"
+      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
+      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
+  const dbTypeAlias =
+    ctx.dialect === "postgres"
+      // Postgres: the base class every PG driver extends (node-postgres,
+      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
+      // PG driver the consumer chose is accepted.
+      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
+      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
+      // drivers. Generated queries `await` their results, which is valid on
+      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
+      // (the most common SQLite driver) with "is not assignable".
+      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
+
+  const literalImports = code`
+${dbTypeImport}
+${dbTypeAlias}
+
+import { ${viewVar}, type ${entityName} } from ${JSON.stringify(entityFileName)};
+`;
+
+  const reads = code`
+export async function ${findByIdFnName(entityName)}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
+  const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
+  return row ?? null;
+}
+
+export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
+  let q = db.select().from(${viewVar}).$dynamic();
+  if (opts?.limit !== undefined) q = q.limit(opts.limit);
+  if (opts?.offset !== undefined) q = q.offset(opts.offset);
+  return q;
+}
+`;
+
+  const body = joinCode([literalImports, reads], { on: "\n" }).toString();
+  const header =
+    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// Source metadata: ${entityName} (${obj.fqn()}) — projection (read-only)\n` +
     `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
   return header + body;
 }
@@ -112,12 +192,19 @@ function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
 
   const dbTypeImport =
     ctx.dialect === "postgres"
-      ? `import type { NodePgDatabase } from "drizzle-orm/node-postgres";`
+      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
       : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
   const dbTypeAlias =
     ctx.dialect === "postgres"
-      ? `type Db = NodePgDatabase<Record<string, never>>;`
-      : `type Db = BaseSQLiteDatabase<"async", Record<string, never>>;`;
+      // Postgres: the base class every PG driver extends (node-postgres,
+      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
+      // PG driver the consumer chose is accepted.
+      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
+      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
+      // drivers. Generated queries `await` their results, which is valid on
+      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
+      // (the most common SQLite driver) with "is not assignable".
+      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
 
   // --- Polymorphic base reads ---
   const polymorphic = code`

@@ -86,14 +86,62 @@ the data access too.
   `meta migrate` its DB view), and you **call that generated query from your
   route**. Declaring the projection is only half the win — *consuming* its
   generated query is the other half.
-- **Codegen is yours to extend.** A generated file carries the `@generated` header
-  and is a normal source file: copy it and customize the copy (three-way merge
-  preserves your edits on regen), or write your own `Generator` (the plugin
-  interface) and add it to the `generators` array for an artifact the built-ins
-  don't cover.
 
 `meta gen --list` prints every generator by stable name; the `generators` array in
 `metaobjects.config.ts` is where you opt each one in or out.
+
+## Write your own generators — the built-ins rarely fit an app exactly
+
+The built-in generators (entity, queries, routes, form, grid, barrel) cover the
+common shape, but **real apps routinely need output the built-ins don't emit as-is**
+— a bespoke REST contract, custom DTO/response shapes, an app-specific service or
+repository layer, a UI the defaults don't produce. When that happens the model-first
+move is **not** to abandon metadata and hand-write the layer. Write a **custom
+generator** that reads the same metadata and emits *your* app's shape.
+
+Treat this as a first-class, expected activity — not an escape hatch. A custom
+generator is still model-first: it derives from the metadata spine, so it
+regenerates on change and stays consistent across every entity — the leverage you'd
+forfeit by hand-writing. Hand-rolling *away from* metadata is the anti-pattern;
+generating *your own shape from* metadata is the point.
+
+The plugin interface is small (`@metaobjectsdev/codegen-ts`): a `Generator` is
+`{ name, filter?, generate }`, where `generate(ctx)` returns `EmittedFile[]`
+(`{ path, content }`). `perEntity` / `oncePerRun` wrap the common cases:
+
+```ts
+import { perEntity } from "@metaobjectsdev/codegen-ts";
+import type { Generator } from "@metaobjectsdev/codegen-ts";
+
+// One file per entity, in YOUR shape — reads the loaded metadata, emits your code.
+export function serviceFile(): Generator {
+  return {
+    name: "service-file",                      // kebab-case; shows in `meta gen --list`
+    filter: (e) => e.isEntity,                 // which nodes it applies to
+    generate: perEntity((entity, ctx) => ({
+      path: `${entity.name}.service.ts`,
+      content: renderYourService(entity.fields(), ctx),  // walk the typed metadata
+    })),
+  };
+}
+```
+
+`ctx` gives you `entities`, the `loadedRoot`, and `config`; `oncePerRun((entities,
+ctx) => …)` is the one-shot variant (a barrel, an app-config). Add your generator to
+the `generators` array in `metaobjects.config.ts` next to the built-ins — it runs in
+the same pass, writes under the same target rules, and carries the `@generated`
+header so it round-trips like any other.
+
+**Close but not exact?** You don't always need a new generator — a generated file is
+a normal source file. Copy it and customize the copy (three-way merge preserves your
+edits on regen), or customize the template a built-in renders from. Reach for a
+custom generator when you want the change applied **consistently across every
+entity** (the scale win); a one-off edit when it's genuinely one file.
+
+**The decision ladder:** a built-in fits → use it · close → customize the
+output/template · doesn't fit → write a generator that emits your shape *from the
+metadata* · only the genuinely un-modelable (business algorithms, external calls) is
+hand-written outside codegen — and it still imports the generated types.
 
 ## Dialects
 

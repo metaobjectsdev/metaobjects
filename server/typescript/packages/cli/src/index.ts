@@ -54,6 +54,8 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
                         verify drift gate (the gate fails on ANY detected change)
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
+                        model" pass (aggregate/currency/enum hints; warnings only)
 
 PROMPT-SNAPSHOT FLAGS:
   --check               Compare against committed snapshots; exit 1 on drift (CI gate)
@@ -107,7 +109,13 @@ FLAGS:
   --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --help, -h            Print this help
+
+A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your authored
+source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points you
+at the construct that models them (origin.aggregate / field.currency / field.enum).
+Warnings only — it never fails the build.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 
