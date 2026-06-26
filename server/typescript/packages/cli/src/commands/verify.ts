@@ -111,8 +111,9 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
-  // Suppressed with --no-antipatterns for the rare noisy project.
-  if (!flags.noAntipatterns) runAntiPatternAdvisory();
+  // Suppressed with --no-antipatterns or META_NO_ANTIPATTERNS=1 for the rare
+  // noisy project (both opt-outs work on `meta verify` and `meta gen`).
+  if (!flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") runAntiPatternAdvisory();
 
   return Math.max(templateExit, schemaExit, codegenExit);
 

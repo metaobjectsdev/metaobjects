@@ -130,8 +130,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // surface authored source that hand-rolls what the metadata could model. `gen`
   // is the command an agent always runs, so this is where the teaching actually
   // reaches it. Warnings ONLY — never affects the exit code. Suppress with
-  // META_NO_ANTIPATTERNS=1.
-  if (!cliConfig.dryRun && process.env.META_NO_ANTIPATTERNS !== "1") {
+  // --no-antipatterns or META_NO_ANTIPATTERNS=1 (both opt-outs work on `meta gen`
+  // and `meta verify`).
+  if (!cliConfig.dryRun && !flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") {
     try {
       const findings = scanSourceForAntiPatterns(projectRoot);
       if (findings.length > 0) {

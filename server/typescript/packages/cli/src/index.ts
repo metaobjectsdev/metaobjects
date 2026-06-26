@@ -89,8 +89,15 @@ USAGE:
 
 FLAGS:
   --dry-run             Compute and print, don't write
+  --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
+
+A real write run (not --dry-run) also runs an ADVISORY anti-pattern pass: it scans
+your authored source for hand-rolled aggregates, money-as-float, and CHECK-IN enums
+and points you at the construct that models them (origin.aggregate / field.currency /
+field.enum). Warnings only — it never fails the build. Opt out with --no-antipatterns
+or META_NO_ANTIPATTERNS=1.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
@@ -115,7 +122,8 @@ FLAGS:
 A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your authored
 source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points you
 at the construct that models them (origin.aggregate / field.currency / field.enum).
-Warnings only — it never fails the build.
+Warnings only — it never fails the build. Opt out with --no-antipatterns or
+META_NO_ANTIPATTERNS=1.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 
