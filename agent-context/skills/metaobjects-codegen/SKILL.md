@@ -79,10 +79,13 @@ the data access too.
   never forced into all-generated or all-hand-written.
 - **Derived/aggregate data → declare a projection, then USE its generated query.**
   Don't hand-write a join or an `AVG()`/`COUNT()`. Declare an `object.projection`
-  with `origin.aggregate` / `origin.passthrough` / `origin.collection` children;
-  `meta gen` emits a read-only query for it (and `meta migrate` its DB view), and
-  you **call that generated query from your route**. Declaring the projection is
-  only half the win — *consuming* its generated query is the other half.
+  with `origin.aggregate` / `origin.passthrough` / `origin.collection` children
+  **and a read-only `source.rdb` `@kind: view` child** (codegen detects a
+  projection by that read-only source, not by the subtype alone — omit it and
+  nothing is generated). `meta gen` emits a read-only query for it (and
+  `meta migrate` its DB view), and you **call that generated query from your
+  route**. Declaring the projection is only half the win — *consuming* its
+  generated query is the other half.
 - **Codegen is yours to extend.** A generated file carries the `@generated` header
   and is a normal source file: copy it and customize the copy (three-way merge
   preserves your edits on regen), or write your own `Generator` (the plugin

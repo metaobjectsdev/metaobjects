@@ -351,7 +351,10 @@ child traversal, package only on the root segment) and/or carry `origin.*`
 children (`passthrough` / `aggregate` / `collection`) declaring assembly; its
 identity passes through via `extends` (`identity.primary: { name: id, extends:
 "Author.id" }`); it is read-only by construction and the declared field set IS
-the exposure (fail-closed).
+the exposure (fail-closed). Give it a read-only `source.rdb` `@kind: view`
+child (`source.rdb: { kind: view, table: v_author }`) — codegen keys projection
+detection + view DDL off that read-only source, so without it `meta gen` emits
+nothing for the projection.
 
 ## Abstracts + `extends` (deferred resolution) + `overlay`
 
