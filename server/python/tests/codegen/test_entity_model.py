@@ -74,6 +74,60 @@ def test_nested_object_array_imports_ref() -> None:
     assert "posts: list[PostBrief] | None = None" in out
 
 
+def test_column_attr_overrides_python_field_name() -> None:
+    """A field's ``@column`` (the physical DB column) is the Pydantic field name
+    when present, falling back to ``field.name``. This lets one entity carry the
+    camelCase ``field.name`` the TS port emits as a property AND the snake_case
+    ``@column`` the Python port emits as the model field (= DB column), so a single
+    cross-port entity feeds both languages idiomatically."""
+    f = _f("callPurpose", fc.FIELD_SUBTYPE_STRING, required=True)
+    f.set_attr(fc.FIELD_ATTR_COLUMN, "call_purpose")
+    e = _entity("LlmCall", [f], package="app::telemetry")
+    out = render_entity_model(e)
+    assert "call_purpose: str" in out
+    assert "callPurpose" not in out
+
+
+def test_field_name_used_when_no_column_attr() -> None:
+    """Backward-compat: with no ``@column``, the Pydantic field name is ``field.name``
+    verbatim (so snake-authored models regenerate byte-identically)."""
+    e = _entity("Subscriber", [_f("email_address", fc.FIELD_SUBTYPE_STRING, required=True)])
+    out = render_entity_model(e)
+    assert "email_address: str" in out
+
+
+def test_server_default_expression_is_not_a_python_default() -> None:
+    """A server-side default EXPRESSION (gen_random_uuid(), now(), CURRENT_TIMESTAMP)
+    is filled by the database, not the Python model — so it must NOT become a Pydantic
+    field default (``id: uuid.UUID = "gen_random_uuid()"`` is invalid). The field keeps
+    its required/optional shape with no Python default. Mirrors the TS column-mapper's
+    SQL_EXPR_PATTERNS so both ports agree on what's an expression."""
+    fid = _f("id", fc.FIELD_SUBTYPE_UUID, required=True)
+    fid.set_attr(fc.FIELD_ATTR_DEFAULT, "gen_random_uuid()")
+    fts = _f("started_at", fc.FIELD_SUBTYPE_TIMESTAMP, required=True)
+    fts.set_attr(fc.FIELD_ATTR_DEFAULT, "now()")
+    fcur = _f("logged_at", fc.FIELD_SUBTYPE_TIMESTAMP)
+    fcur.set_attr(fc.FIELD_ATTR_DEFAULT, "CURRENT_TIMESTAMP")
+    out = render_entity_model(_entity("Row", [fid, fts, fcur]))
+    assert "id: uuid.UUID" in out
+    assert "gen_random_uuid" not in out
+    assert "started_at: datetime.datetime" in out
+    assert "now()" not in out
+    assert "logged_at: datetime.datetime | None = None" in out
+    assert "CURRENT_TIMESTAMP" not in out
+
+
+def test_literal_default_is_still_emitted() -> None:
+    """A non-expression default (a string literal, bool, number) stays a Python default."""
+    fstatus = _f("status", fc.FIELD_SUBTYPE_STRING)
+    fstatus.set_attr(fc.FIELD_ATTR_DEFAULT, "active")
+    fflag = _f("enabled", fc.FIELD_SUBTYPE_BOOLEAN)
+    fflag.set_attr(fc.FIELD_ATTR_DEFAULT, True)
+    out = render_entity_model(_entity("Row", [fstatus, fflag]))
+    assert "status: str = 'active'" in out
+    assert "enabled: bool = True" in out
+
+
 def test_header_fqn_folds_file_default_package_after_merge() -> None:
     """After a multi-file merge an object hangs under one package-less merged
     root, so the naive nearest-ancestor walk would fold every object onto the

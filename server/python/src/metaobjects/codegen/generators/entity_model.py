@@ -1,6 +1,8 @@
 """object.* → Pydantic v2 model module (sub-project A)."""
 from __future__ import annotations
 
+import re
+
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.field import field_constants as fc
@@ -23,6 +25,27 @@ from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
 def _is_int(value: object) -> bool:
     """A real int (bool is an int subclass, so `@maxLength: true` etc. must not count)."""
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+# SQL expression defaults: anything matching is a SERVER-side default (the DB fills
+# it), NOT a Python literal default — so `@default: gen_random_uuid()` must not emit
+# `id: uuid.UUID = "gen_random_uuid()"`. Mirrors the TS column-mapper's
+# SQL_EXPR_PATTERNS (and migrate-ts EXPR_DEFAULT_PATTERNS) so every port agrees on
+# what counts as an expression.
+_SQL_EXPR_DEFAULT_PATTERNS = (
+    re.compile(r"^now$", re.I),
+    re.compile(r"^now\(\)$", re.I),
+    re.compile(r"^current_timestamp$", re.I),
+    re.compile(r"^current_date$", re.I),
+    re.compile(r"^current_time$", re.I),
+    re.compile(r"\(\)$"),  # anything function-like, e.g. gen_random_uuid()
+)
+
+
+def _is_sql_expr_default(value: object) -> bool:
+    """True iff *value* is a server-side SQL expression default (DB-filled), not a
+    Python literal. Only string defaults can be expressions."""
+    return isinstance(value, str) and any(p.search(value) for p in _SQL_EXPR_DEFAULT_PATTERNS)
 
 
 def _validators(field: MetaField, sub_type: str) -> list[MetaField]:
@@ -121,7 +144,10 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
             imports.add(f"from .{ref_name} import {ref_name}")
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    has_default = default_raw is not None
+    # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
+    # is filled by the DB — the Python model carries no default for it (the field keeps
+    # its required/optional shape). Only literal defaults become Pydantic defaults.
+    has_default = default_raw is not None and not _is_sql_expr_default(default_raw)
     enum_type_name = type_name if shared is not None else None
 
     constraints = _validator_constraints(field)
@@ -154,7 +180,13 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     else:
         assignment = " = None"
 
-    return f"    {field.name}: {annotation}{assignment}", uses_field
+    # Pydantic field name = @column when present, else field.name. A cross-port
+    # entity carries the camelCase field.name (the TS property) AND the snake_case
+    # @column (the physical DB column); the Python model field IS the column, so it
+    # binds straight to the row. Backward-compatible: snake-authored models with no
+    # @column emit field.name unchanged.
+    py_name = field.attrs().get(fc.FIELD_ATTR_COLUMN) or field.name
+    return f"    {py_name}: {annotation}{assignment}", uses_field
 
 
 def _effective_fqn(entity: MetaObject) -> str:

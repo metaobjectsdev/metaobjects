@@ -129,21 +129,37 @@ def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
     return gens, errors
 
 
+def _parse_entities(value: str | None) -> list[str] | None:
+    """Parse a comma-separated ``--entities`` value into a name list (``None`` =
+    no filter = generate every entity). Blank names are dropped."""
+    if not value:
+        return None
+    names = [n.strip() for n in value.split(",") if n.strip()]
+    return names or None
+
+
 def _generate(
-    metadata_dir: str, out_dir: str, generators: list[Generator] | None = None
+    metadata_dir: str,
+    out_dir: str,
+    generators: list[Generator] | None = None,
+    entity_filter: list[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
     ``generators`` defaults to the zero-config default suite; pass a registry-
-    resolved subset for ``--generators``. Returns ``(written_paths, errors)``. On
-    a load error, ``errors`` is non-empty and no files are written.
+    resolved subset for ``--generators``. ``entity_filter`` (the ``--entities``
+    allowlist) restricts which entities are EMITTED while the WHOLE model is still
+    loaded, so cross-entity references (``extends`` bases, ``@objectRef`` VOs)
+    resolve — emit a subset without splitting the metadata. Returns
+    ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
+    files are written.
     """
     root, errors = _load_root(metadata_dir)
     if root is None:
         return [], errors
     config = GenConfig(out_dir=out_dir)
     suite = generators if generators is not None else _default_generators()
-    result = run_gen(config, root, generators=suite)
+    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
     written = [path for path, status in result.files if status != "refused"]
     return written, []
 
@@ -277,7 +293,8 @@ def _cmd_gen(args: argparse.Namespace) -> int:
                 print(f"  {msg}", file=sys.stderr)
             return 1
 
-    written, errors = _generate(args.metadata_dir, args.out, generators)
+    entities = _parse_entities(getattr(args, "entities", None))
+    written, errors = _generate(args.metadata_dir, args.out, generators, entities)
     if errors:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -317,9 +334,12 @@ def _verify_codegen(args: argparse.Namespace) -> int:
         )
         return 2
 
-    # Reuse the exact gen code path — regenerate into a throwaway temp dir.
+    # Reuse the exact gen code path — regenerate into a throwaway temp dir. The
+    # --entities filter must match the `gen` that produced --out, or the diff
+    # reports the un-emitted entities as spurious drift.
     with tempfile.TemporaryDirectory() as tmp:
-        written, errors = _generate(args.metadata_dir, tmp)
+        entities = _parse_entities(getattr(args, "entities", None))
+        written, errors = _generate(args.metadata_dir, tmp, None, entities)
         if errors:
             print("error: failed to load metadata:", file=sys.stderr)
             for msg in errors:
@@ -566,6 +586,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="(reserved) package hint; Python derives package from metadata",
     )
+    gen.add_argument(
+        "--entities",
+        default=None,
+        help=(
+            "comma-separated entity NAMES to emit (allowlist). The whole model is "
+            "still loaded so `extends` bases and @objectRef VOs resolve; only the "
+            "named entities are written. Omit to emit every entity."
+        ),
+    )
     gen.set_defaults(func=_cmd_gen)
 
     docs = sub.add_parser(
@@ -637,6 +666,11 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="templates_root",
         default=None,
         help="on-disk template/prompt dir the --templates gate resolves refs against",
+    )
+    verify.add_argument(
+        "--entities",
+        default=None,
+        help="comma-separated entity allowlist for --codegen drift (match `gen --entities`)",
     )
     verify.set_defaults(func=_cmd_verify)
 

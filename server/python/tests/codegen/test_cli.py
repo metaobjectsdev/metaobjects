@@ -39,6 +39,30 @@ def test_gen_writes_files(tmp_path: Path) -> None:
     assert (out / "Program.py").exists()
 
 
+def test_gen_entities_allowlist_emits_only_named(tmp_path: Path) -> None:
+    """`gen --entities` emits only the named entities (the whole model is still
+    loaded, so references resolve); the others are not written."""
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    rc = main(["gen", meta_dir, "--out", str(out), "--entities", "Program,Week"])
+    assert rc == 0
+    assert (out / "Program.py").exists()
+    assert (out / "Week.py").exists()
+    # Other fixture entities are excluded by the allowlist.
+    assert not (out / "Node.py").exists()
+    assert not (out / "Measurement.py").exists()
+    assert not (out / "Asset.py").exists()
+
+
+def test_verify_entities_allowlist_in_sync(tmp_path: Path) -> None:
+    """verify --codegen with the SAME --entities as the gen reports no drift
+    (without the filter it would flag the un-emitted entities as missing)."""
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    assert main(["gen", meta_dir, "--out", str(out), "--entities", "Program,Week"]) == 0
+    assert main(["verify", meta_dir, "--out", str(out), "--entities", "Program,Week"]) == 0
+
+
 def test_verify_in_sync_returns_zero(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
