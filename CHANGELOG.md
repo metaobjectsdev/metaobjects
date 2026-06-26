@@ -7,13 +7,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.12.3] — 2026-06-26
+
+_npm `0.12.3` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **Agent-context: granular codegen control + projection consumption + the runtime→Fastify
+  mount API.** The `metaobjects-codegen` skill now teaches that codegen is à la carte (omit
+  `routesFile()` to generate the data layer + hand-write the routes, mix generated and
+  hand-written, declare an `object.projection` *and consume its generated query*, copy/extend
+  generators); the `metaobjects-runtime-ui` (TypeScript) reference documents the real
+  `@metaobjectsdev/runtime-ts/drizzle-fastify` mount helpers (`mountCrudRoutes({ expose })`,
+  `mount<Verb>Route`, `mountReadOnlyCrudRoutes`) so agents stop reverse-engineering
+  `node_modules` (#78).
+
+## [0.12.2] — 2026-06-25
+
+_npm `0.12.2` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 - **Drizzle codegen annotates every FK `.references()` callback with `(): Any{Pg,SQLite}Column`.**
-  Previously only self-referential FKs carried the explicit return type; cross-module
-  circular references (table A → B while B → A) went through the un-annotated branch and
-  failed `tsc --strict` with TS7022 (`implicitly has type 'any' … referenced in its own
-  initializer`). The annotation is Drizzle's documented fix for circular inference and a
-  harmless explicit supertype for acyclic FKs, so `codegen-ts` now emits it unconditionally.
+  Cross-module circular references (table A → B while B → A) went through the un-annotated
+  branch and failed `tsc --strict` with TS7022; `codegen-ts` now emits the explicit return
+  type unconditionally (Drizzle's documented fix for circular inference) (#76).
+
+## [0.12.1] — 2026-06-25
+
+_npm `0.12.1` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **`meta types` vocabulary search + `whenToUse` decisional guidance.** A new
+  `meta types [query]` command — apropos + `kubectl explain` over the live registry
+  (`--desc`/`--all` description search, `--kind`/`--type` filters, terse/`--detail`/`--json`
+  output) — plus the canonical `whenToUse` "reach for this when…" guidance on the data-modeling
+  constructs in `spec/metamodel/*.json` (flows to all five ports), so an agent finds and uses
+  the right metadata construct instead of hand-writing data logic (#74).
 
 ## [0.12.0] — 2026-06-25
 
