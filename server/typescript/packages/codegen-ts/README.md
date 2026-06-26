@@ -124,17 +124,26 @@ target, every specifier takes the relative branch, so output is unchanged.
 
 ## Driver compatibility
 
-Generated `<Entity>.queries.ts` files use Drizzle's `.returning()` API in
-`create*` and `update*` functions. This works on:
+The `type Db = ...` alias at the top of each generated `<Entity>.queries.ts` is
+the **base** Drizzle class every driver of that dialect extends, so any
+compatible Drizzle instance type-checks:
 
-- `libsql` / Turso
-- `node-postgres` (`pg`)
-- `@neondatabase/serverless`
+- **Postgres** → `PgDatabase<PgQueryResultHKT, ...>` — accepts `node-postgres`
+  (`pg`), `postgres.js`, `@neondatabase/serverless`, `@vercel/postgres`, and
+  `pglite`.
+- **SQLite** → `BaseSQLiteDatabase<"sync" | "async", unknown>` — accepts both the
+  sync driver (`better-sqlite3`) and the async ones (`libsql` / Turso / D1).
 
-It does **not** work on `better-sqlite3` or `bun:sqlite` (no native
-`RETURNING` support). Users on those drivers should override the affected
-functions in the sibling `<Entity>.extra.ts` file with a non-`.returning()`
-form, or switch to a supported driver.
+Reads (`find*ById`, `list*`, and a projection's read-only queries) work on every
+one of those drivers.
+
+**Write caveat (`create*` / `update*`).** Those functions use Drizzle's
+`.returning()` API, which needs native `RETURNING` support. Every Postgres driver
+has it, as do `libsql` / Turso / D1. It does **not** work on `better-sqlite3` or
+`bun:sqlite` (no native `RETURNING`) — code still compiles against the `Db` type,
+but `create*` / `update*` fail at runtime. On those two drivers, override the
+affected functions in the sibling `<Entity>.extra.ts` file with a
+non-`.returning()` form, or switch to an async SQLite driver.
 
 ## `outputParser()` — typed parsers for `template.output`
 

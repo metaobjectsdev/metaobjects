@@ -24,6 +24,11 @@ npx --no-install meta verify --prompts data/templates
 Exit 0 = clean. Non-zero = drift. The drift report goes to stdout — same shape
 as the CI action's PR comment.
 
+`meta verify` also prints an **advisory** anti-pattern pass (hand-rolled
+aggregates / money-as-float / `CHECK (... IN (...))` enums, with the construct
+that models them). It is warnings only — it **never** changes the exit code, so it
+won't block a commit. Silence it with `--no-antipatterns` or `META_NO_ANTIPATTERNS=1`.
+
 ## Choose your hook manager
 
 The MetaObjects framework is hook-manager-agnostic. Three common setups:

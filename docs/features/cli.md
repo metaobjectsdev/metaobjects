@@ -84,6 +84,25 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
 
+## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
+
+Both `meta verify` and a real `meta gen` write run (not `--dry-run`) end with a
+**"verify-as-teacher"** advisory scan over your authored source. It flags a few
+high-precision constructs you hand-rolled that the metadata could model and names
+the construct that replaces it:
+
+| Hand-rolled pattern | Suggested construct |
+|---|---|
+| an aggregate computed by hand (SQL `AVG`/`SUM`, a summing `.reduce(...)`) | `origin.aggregate` (on an `object.projection`) |
+| money as a float / hand-rolled minor units (a money-named field with `* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) | `field.currency` |
+| a fixed value set enforced by a SQL `CHECK (... IN (...))` | `field.enum` |
+
+It is **warnings only** — it never changes the exit code (bias to under-flagging;
+a >15% false-positive rate is a project kill criterion). Suppress it with
+`--no-antipatterns` on either command, or `META_NO_ANTIPATTERNS=1` in the
+environment. This pass is **Node-`meta`-specific**; the C#/Java/Kotlin/Python
+codegen surfaces do not run it.
+
 ## Schema is Node-only — by design
 
 No port other than the Node `meta` exposes `migrate` or `verify --db`. The C#,
