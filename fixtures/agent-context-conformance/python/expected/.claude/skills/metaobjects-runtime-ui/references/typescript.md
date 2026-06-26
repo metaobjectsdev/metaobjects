@@ -90,3 +90,33 @@ The routes call `parseFilterParams` (from `@metaobjectsdev/runtime-ts/drizzle-fa
 to validate `?filter[..][..]=..&sort=..&limit=&offset=` against the generated
 `<Entity>FilterAllowlist` / `<Entity>SortAllowlist`, returning HTTP 400 on an
 unknown field or disallowed operator.
+
+### Granular routes — mount some, hand-write the rest (don't read `node_modules`)
+
+When the API doesn't match generated CRUD, you don't have to choose all-generated
+or all-hand-written, and you never need to reverse-engineer the runtime package.
+`@metaobjectsdev/runtime-ts/drizzle-fastify` exports the mount helpers the generated
+routes are built from — call them directly:
+
+```ts
+import {
+  mountCrudRoutes, mountGetRoute, mountListRoute, mountReadOnlyCrudRoutes,
+} from "@metaobjectsdev/runtime-ts/drizzle-fastify";
+import { RecipeInsertSchema, RecipeUpdateSchema } from "./generated/Recipe.js";
+
+// all five verbs:
+mountCrudRoutes({ fastify: app, path: "/recipes", db, table: recipes,
+  insertSchema: RecipeInsertSchema, updateSchema: RecipeUpdateSchema });
+
+mountCrudRoutes({ ...opts, expose: ["list", "get"] }); // only some verbs
+mountReadOnlyCrudRoutes({ ...opts });                  // list + get only
+mountGetRoute({ ...opts });                            // a single verb
+```
+
+`CrudRoutesOptions` = `{ fastify, path, db, table, insertSchema, updateSchema }`
+plus `expose?` (limit verbs), `routeOptions?` (Fastify hooks — e.g.
+`{ preHandler: requireAuthHook }` for auth), and `updateMethod?` (`"patch"` default
+/ `"put"`). So **mount the standard verbs with these helpers and hand-write only the
+custom routes** (HTML pages, nested resources, computed fields) — calling the
+generated query helpers, and a projection's generated query for derived/aggregate
+data. Generate the data layer; hand-write only what's genuinely custom.
