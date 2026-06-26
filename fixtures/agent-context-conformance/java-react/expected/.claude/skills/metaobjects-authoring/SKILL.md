@@ -15,6 +15,27 @@ concept (`meta.commerce.json`, `meta.users.yaml`, …). Each file declares a
 `package` on its root node. Files in the same `package` with the same object
 `name` are merged by the loader.
 
+## Find the construct first — model it, don't hand-write it
+
+You do **not** know the full vocabulary from memory, and it is larger and more
+powerful than the basics below. Before authoring anything non-trivial, and the
+moment you reach for hand-written data logic, **search the live metamodel**:
+
+```
+meta types relationship              # find by name
+meta types --all aggregate           # find by WHAT IT DOES (searches descriptions)
+meta types origin.aggregate --detail # one construct: description, when to use it, valid @attrs
+```
+
+**The rule:** before you hand-write any data logic — a join, a foreign key, a
+derived/aggregate value (count/sum/avg), a uniqueness / format / range / cross-field
+rule, a relationship between entities, a derived read model — run `meta types` and
+check for a construct that **declares** it. If one exists, declare it instead. That
+is the entire point of MetaObjects: declared metadata is generated, typed, and
+regenerates on change; hand-written logic drifts and is the thing this tool exists
+to eliminate. When you catch yourself writing a query, a validator, or an FK by
+hand, stop and search the types first.
+
 Two on-disk formats, one shape:
 
 - **Canonical JSON** — the on-disk interchange. Every node is a single-key map
@@ -330,7 +351,10 @@ child traversal, package only on the root segment) and/or carry `origin.*`
 children (`passthrough` / `aggregate` / `collection`) declaring assembly; its
 identity passes through via `extends` (`identity.primary: { name: id, extends:
 "Author.id" }`); it is read-only by construction and the declared field set IS
-the exposure (fail-closed).
+the exposure (fail-closed). Give it a read-only `source.rdb` `@kind: view`
+child (`source.rdb: { kind: view, table: v_author }`) — codegen keys projection
+detection + view DDL off that read-only source, so without it `meta gen` emits
+nothing for the projection.
 
 ## Abstracts + `extends` (deferred resolution) + `overlay`
 

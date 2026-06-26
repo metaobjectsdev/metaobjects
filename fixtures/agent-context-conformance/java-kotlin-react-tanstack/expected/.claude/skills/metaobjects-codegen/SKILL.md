@@ -61,6 +61,40 @@ entity never emits instance/write artifacts regardless.
 Per-entity opt-outs exist (e.g. skipping client-side artifacts for a given
 entity) and are set as attributes on the entity in metadata, not in code.
 
+## You don't have to generate everything — pick your layers
+
+Codegen is **granular and à la carte, not all-or-nothing.** The most powerful
+pattern when an app's API doesn't match generated CRUD: **generate the data layer,
+hand-write only the API layer** — never abandon codegen wholesale and hand-write
+the data access too.
+
+- **Generate the data layer, skip the routes.** Omit `routesFile()` from the
+  `generators` array (keep `entityFile()` + `queriesFile()` + `barrel()`): you get
+  the typed entity/table, schemas, and query/finder helpers, then write your own
+  routes by hand — *calling the generated queries*. Do this whenever the API shape
+  (custom paths, HTML responses, nested payloads) doesn't fit generated REST CRUD.
+- **Mix generated and hand-written routes.** Even with custom paths, mount the
+  standard verbs with the runtime helpers and hand-write only the custom ones (see
+  the runtime skill's `mountCrudRoutes` / `mount<Verb>Route` / `expose`). You are
+  never forced into all-generated or all-hand-written.
+- **Derived/aggregate data → declare a projection, then USE its generated query.**
+  Don't hand-write a join or an `AVG()`/`COUNT()`. Declare an `object.projection`
+  with `origin.aggregate` / `origin.passthrough` / `origin.collection` children
+  **and a read-only `source.rdb` `@kind: view` child** (codegen detects a
+  projection by that read-only source, not by the subtype alone — omit it and
+  nothing is generated). `meta gen` emits a read-only query for it (and
+  `meta migrate` its DB view), and you **call that generated query from your
+  route**. Declaring the projection is only half the win — *consuming* its
+  generated query is the other half.
+- **Codegen is yours to extend.** A generated file carries the `@generated` header
+  and is a normal source file: copy it and customize the copy (three-way merge
+  preserves your edits on regen), or write your own `Generator` (the plugin
+  interface) and add it to the `generators` array for an artifact the built-ins
+  don't cover.
+
+`meta gen --list` prints every generator by stable name; the `generators` array in
+`metaobjects.config.ts` is where you opt each one in or out.
+
 ## Dialects
 
 Generated DB schema/DDL targets a SQL **dialect**:
