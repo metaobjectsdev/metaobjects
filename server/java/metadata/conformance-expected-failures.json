@@ -1,26 +1,10 @@
 {
   "language": "java",
-  "_comment": "FR-013/FR-014/FR-015 validation passes shipped. The former subtype-field-override gap (MergedSource envelopes on extends-overrides) is RETIRED: FR-024's addressing-model fix (bare nested names + own-children-only overlay lookup in BaseMetaDataParser) made subtype same-name children SHADOWING REDECLARATIONS per the cross-port contract, which was the root cause — error-field-readonly-downgrade and field-readonly-upgrade-on-subtype now pass byte-identically.",
+  "_comment": "FR-013/FR-014/FR-015 validation passes shipped. The former subtype-field-override gap (MergedSource envelopes on extends-overrides) is RETIRED: FR-024's addressing-model fix (bare nested names + own-children-only overlay lookup in BaseMetaDataParser) made subtype same-name children SHADOWING REDECLARATIONS per the cross-port contract, which was the root cause \u2014 error-field-readonly-downgrade and field-readonly-upgrade-on-subtype now pass byte-identically.",
   "_comment_ai_pilot": "ai-trace-* fixtures now pass in Java (@responseRef + template.* child admitted)",
-  "_comment_fr024": "FR-024 loader-grammar slice SHIPPED in this port (object.projection registration + dotted Entity.child extends-resolution [incl. nested-referrer package-context derivation + short-name child matching for Java's folded identity names] + @fields-satisfied-through-inheritance + aggregate @via optional). ALL happy projection/extends fixtures now pass natively and are un-ledgered. The FR-024 VALIDATION passes (identity pass-through, subtype rules, via inference/cardinality, agreement/providability) are still TS-only — those error fixtures stay ledgered until Phase-E validation parity.",
-  "_comment_fr024_b3": "FR-024 B3 validation pending Phase E: object.projection + dotted extends LOAD cleanly in this port (the loader-grammar slice shipped, 3479f66b). These ERROR fixtures expect identity name/pass-through/key-correspondence codes (ERR_IDENTITY_NAME_REQUIRED / ERR_PROJECTION_IDENTITY_NOT_EXTENDED / ERR_IDENTITY_KEY_MISMATCH) that this port's validation passes do not emit yet — the inputs load with zero errors where the fixture expects one. The happy projection fixtures (projection-basic etc.) are UN-ledgered (pass natively).",
-  "_comment_fr024_b4a": "FR-024 B4a validation pending Phase E: value-purity + projection-licensing error fixtures expect ERR_SUBTYPE_RULE_VIOLATION / ERR_PROJECTION_SOURCE_WRITABLE this port does not emit yet; the inputs load cleanly (zero errors). The positive projection-extends-projection is un-ledgered (passes).",
-  "_comment_fr024_b5": "FR-024 B5 validation pending Phase E: error-origin-via-ambiguous expects ERR_AMBIGUOUS_PATH; error-origin-passthrough-to-many / error-origin-aggregate-no-to-many expect ERR_ORIGIN_CARDINALITY — none emitted here yet; the inputs load cleanly. The grammar (aggregate @via optional) shipped, so the happy origin-via-inferred-single-hop and entity-derived-fields-multi-source are UN-ledgered (pass natively).",
-  "_comment_fr024_b6": "FR-024 B6 validation pending Phase E: error-extends-origin-mismatch expects ERR_EXTENDS_ORIGIN_MISMATCH; error-derived-field-no-read-source expects ERR_DERIVED_FIELD_NO_READ_SOURCE — neither emitted here yet; the inputs load cleanly.",
+  "_comment_fr024": "FR-024 Phase-E validation parity SHIPPED in this port (ValidationPhase.java): subtype rules (identity-name, value purity, projection licensing), projection identity pass-through + key correspondence, source-role B4b cutover, origin @via single-hop inference + cardinality + extends/origin agreement, and derived-field providability. All 13 FR-024 error fixtures now emit their expected code + envelope and are un-ledgered. Kotlin rides this same JVM loader.",
   "fixtures": [
-    "error-identity-name-required",
-    "error-projection-identity-not-extended",
-    "error-identity-key-mismatch",
-    "error-projection-extends-entity",
-    "error-projection-source-writable",
-    "error-value-with-identity-secondary",
-    "error-value-with-source",
-    "error-origin-via-ambiguous",
-    "error-origin-passthrough-to-many",
-    "error-origin-aggregate-no-to-many",
-    "error-extends-origin-mismatch",
-    "error-derived-field-no-read-source",
     "error-entity-primary-source-readonly"
   ],
-  "_comment_fr024_b4b": "FR-024 B4b validation pending Phase E: error-entity-primary-source-readonly expects ERR_ENTITY_PRIMARY_SOURCE_READONLY (the hard cutover) this port does not emit yet — the legacy view-primary entity input loads cleanly here."
+  "_comment_fr024_b4b": "FR-024 B4b (ERR_ENTITY_PRIMARY_SOURCE_READONLY) DEFERRED to the FR-024 projection-codegen increment \u2014 enforcing it forbids the view/proc-primary entity spellings codegen fixtures still encode. Un-ledger with the codegen fan-out."
 }

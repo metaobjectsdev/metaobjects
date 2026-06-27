@@ -23,7 +23,7 @@ public class ProjectionTests
         { "field.int":  { "name": "weekCount" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.value": { "name": "TagCount", "children": [
+      { "object.projection": { "name": "TagCount", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_tag_count" } },
         { "field.string": { "name": "tag" } },
         { "field.int":    { "name": "count" } }

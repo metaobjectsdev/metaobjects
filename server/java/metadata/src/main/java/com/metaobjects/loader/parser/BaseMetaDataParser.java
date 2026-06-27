@@ -262,6 +262,11 @@ public abstract class BaseMetaDataParser {
 
         if ( subTypeName != null && subTypeName.equals("*")) subTypeName = null;
 
+        // FR-024 D2: track whether THIS node's name was author-supplied. An
+        // identity that gets auto-named below has no author-chosen name, which
+        // the subtype-rules validation pass rejects (ERR_IDENTITY_NAME_REQUIRED).
+        boolean autoNamedNode = false;
+
         // v6.0.0: Enhanced auto-naming logic with validation rules
         if (name == null || name.equals("")) {
             // Validation rule: Abstract metadata must have names specified
@@ -285,7 +290,8 @@ public abstract class BaseMetaDataParser {
                         ? subTypeName.toLowerCase() 
                         : typeName.toLowerCase();
                 name = getNextNamePrefix(parent, typeName, namePrefix);
-                
+                autoNamedNode = true;
+
                 if ( name == null ) throw new MetaDataException("Auto-naming failed for MetaData [" +typeName+ "] on parent [" +parent
                         + "] in file ["+getFilename()+"]");
             } else if (!Boolean.TRUE.equals(isOverlay)) {
@@ -380,6 +386,10 @@ public abstract class BaseMetaDataParser {
                 // Forward / cross-file extends — queue for post-load resolution.
                 getLoader().addPendingExtends(new com.metaobjects.loader.MetaDataLoader.PendingExtends(
                     md, typeName, superName, packageName, getFilename()));
+            }
+            // FR-024 D2 — record that this fresh node's name was auto-generated.
+            if (autoNamedNode) {
+                md.setAutoNamed(true);
             }
         }
 

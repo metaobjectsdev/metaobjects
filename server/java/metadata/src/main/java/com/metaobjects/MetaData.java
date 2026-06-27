@@ -320,6 +320,18 @@ public class MetaData implements Cloneable, Serializable {
     // CanonicalJsonSerializer's `extends` emission and the TS `model.superRef`.
     private String authoredSuperRef = null;
 
+    // FR-024 D2: true when the parser AUTO-GENERATED this node's name (the author
+    // omitted it). Unlike TS/Python (which leave a nameless node's name === ""),
+    // this port auto-names auto-naming types (identity/source/view/validator/origin),
+    // so a post-load "is this identity nameless?" check needs this parser-set flag.
+    private boolean autoNamed = false;
+
+    /** True when the parser auto-generated this node's name (no author-supplied name). */
+    public boolean isAutoNamed() { return autoNamed; }
+
+    /** Records that the parser auto-generated this node's name. */
+    public void setAutoNamed(boolean autoNamed) { this.autoNamed = autoNamed; }
+
     /**
      * Constructs a MetaData object with enhanced type system integration.
      * 

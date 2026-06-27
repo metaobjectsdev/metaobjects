@@ -52,7 +52,10 @@ from ..meta.persistence.db.db_constants import (
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
-from ..meta.persistence.source.source_constants import SOURCE_ROLE_PRIMARY
+from ..meta.persistence.source.source_constants import (
+    SOURCE_READ_ONLY_KINDS,
+    SOURCE_ROLE_PRIMARY,
+)
 from ..meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRINGARRAY,
@@ -83,6 +86,7 @@ from ..meta.persistence.origin.origin_constants import (
 )
 from ..meta.core.relationship.relationship_constants import (
     CARDINALITY_MANY,
+    CARDINALITY_ONE,
     RELATIONSHIP_ATTR_CARDINALITY,
     RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
@@ -90,11 +94,16 @@ from ..meta.core.relationship.relationship_constants import (
     RELATIONSHIP_ATTR_THROUGH,
 )
 from ..meta.core.identity.identity_constants import (
+    IDENTITY_SUBTYPE_PRIMARY,
     IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
 )
 from ..shared.separators import PACKAGE_SEP
-from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE
+from ..meta.core.object.object_constants import (
+    OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_PROJECTION,
+    OBJECT_SUBTYPE_VALUE,
+)
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..source import resolved_source
 
@@ -145,6 +154,8 @@ def run_validations(
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
     _validate_origin_paths(root, errors)
+    # FR-024 B6 — an entity's origin-bearing field needs a read-capable source.
+    _validate_derived_field_providability(root, errors)
     _validate_relationships(root, errors)
     # Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
     # carries its reference descriptors (relationship @objectRef, identity.reference
@@ -168,6 +179,8 @@ def run_validations(
     _validate_field_map(root, errors)
     _validate_templates(root, errors)
     _validate_subtype_rules(root, errors, warnings)
+    # FR-024 B3 — projection identity pass-through + key correspondence.
+    _validate_identity_passthrough(root, errors)
     _validate_max_occurs(root, registry, errors)
     _validate_filterable_has_index(root, warnings)
     # SP-H Unit9 — @filterable on a subtype with no operator band → error.
@@ -903,10 +916,12 @@ def _validate_entity_field_ref(
     errors: list[MetaError],
     origin_node: MetaData,
     referrer: str,
-) -> bool:
+) -> tuple[MetaObject, MetaData] | None:
     """Validate a dotted 'Entity.fieldName' reference.
 
-    Appends ERR_INVALID_ORIGIN to *errors* if invalid; returns True if valid.
+    Returns the resolved (entity, field-node) on full success (FR-024 B5 needs
+    the entity for @via inference; B6 agreement needs the field node), or None
+    when any error was pushed (malformed shape / unknown entity / unknown field).
 
     *attr_name* is used only for the error message text; *context* identifies the
     origin node for diagnostic purposes; *origin_node* carries the parse-time
@@ -926,7 +941,7 @@ def _validate_entity_field_ref(
                 envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
-        return False
+        return None
     entity_name, field_name = parts
     entity = object_index.get(entity_name)
     if entity is None:
@@ -938,20 +953,21 @@ def _validate_entity_field_ref(
                 envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
-        return False
-    field_names = {f.name for f in entity.fields()}
-    if field_name not in field_names:
+        return None
+    field_node = next((f for f in entity.fields() if f.name == field_name), None)
+    if field_node is None:
         # FR5d — entity resolved, field on it did not. target = full ref.
+        known = sorted(f.name for f in entity.fields())
         errors.append(
             MetaError(
                 f"{context} @{attr_name}='{ref}' references field '{field_name}' which does "
-                f"not exist on entity '{entity_name}' (known fields: {sorted(field_names)})",
+                f"not exist on entity '{entity_name}' (known fields: {known})",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 envelope=resolved_source(origin_node.source, referrer, ref),
             )
         )
-        return False
-    return True
+        return None
+    return (entity, field_node)
 
 
 def _validate_via_path(
@@ -961,10 +977,12 @@ def _validate_via_path(
     errors: list[MetaError],
     origin_node: MetaData,
     referrer: str,
-) -> bool:
+) -> list[MetaData] | None:
     """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
 
-    Returns True if valid; appends ERR_INVALID_ORIGIN and returns False if not.
+    Returns the walked relationship hop nodes (in path order) on full success
+    (FR-024 B5 runs the cardinality checks over them); appends ERR_INVALID_ORIGIN
+    and returns None if not.
 
     *origin_node* carries the parse-time envelope (files/json_path); *referrer*
     is the canonical referrer FQN (``<projection-FQN>::<fieldName>``) attached
@@ -983,7 +1001,7 @@ def _validate_via_path(
                 envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
-        return False
+        return None
 
     # First segment: starting entity
     current_name = segments[0]
@@ -996,13 +1014,14 @@ def _validate_via_path(
                 envelope=resolved_source(origin_node.source, referrer, via),
             )
         )
-        return False
+        return None
 
     # FR5d — track the deepest-valid-prefix as we walk. The prefix starts at
     # the entity name (resolved above) and grows by one segment per successful
     # relationship hop. On hop failure the message names the prefix that DID
     # resolve so authors can fix multi-hop typos quickly.
     valid_segments: list[str] = [current_name]
+    hops: list[MetaData] = []
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         rel_node = rels.get(rel_name)
@@ -1017,7 +1036,7 @@ def _validate_via_path(
                     envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
-            return False
+            return None
 
         # Advance to the referenced entity
         obj_ref = rel_node.attr(RELATIONSHIP_ATTR_OBJECT_REF)
@@ -1030,7 +1049,7 @@ def _validate_via_path(
                     envelope=resolved_source(origin_node.source, referrer, via),
                 )
             )
-            return False
+            return None
 
         next_entity = object_index.get(obj_ref)
         if next_entity is None:
@@ -1044,49 +1063,288 @@ def _validate_via_path(
                     envelope=resolved_source(origin_node.source, referrer, obj_ref),
                 )
             )
-            return False
+            return None
 
         valid_segments.append(rel_name)
+        hops.append(rel_node)
         current_entity = next_entity
 
-    return True
+    return hops
+
+
+# ---------------------------------------------------------------------------
+# FR-024 B5/B6 helpers — base-entity derivation, single-hop-unique @via
+# inference, origin cardinality, extends/origin agreement (spec §5–§6; ADR-0029).
+# Mirror the TS reference (validation-passes.ts).
+# ---------------------------------------------------------------------------
+
+
+def _hop_cardinality(rel: MetaData) -> str | None:
+    """A hop relationship's effective @cardinality, or None when not declared."""
+    v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY)
+    return v if isinstance(v, str) else None
+
+
+def _ref_named_owner(node: MetaData, object_index: dict[str, MetaObject]) -> MetaData | None:
+    """The entity NAMED by a node's dotted extends ref — the OWNER part of
+    ``<owner>.<child>...``. Differs from ``super_data.parent`` when the resolved
+    child is INHERITED: ``Product.id`` selecting BaseEntity's identity through
+    Product must anchor Product (what the author wrote), not BaseEntity."""
+    ref = node.super_ref
+    if not ref:
+        return None
+    last_sep = ref.rfind(PACKAGE_SEP)
+    tail = ref if last_sep == -1 else ref[last_sep + len(PACKAGE_SEP):]
+    dot = tail.find(".")
+    if dot <= 0:
+        return None
+    return object_index.get(tail[:dot])
+
+
+def _is_base_relation_target(target: MetaData, base: MetaData, host: MetaData) -> bool:
+    """True when the @from/@of target IS the host's base relation: the base
+    entity itself, or an ancestor on the base's (or the host's) whole-object
+    extends chain (the legacy ``Summary extends Program`` style)."""
+    cur: MetaData | None = base
+    while cur is not None:
+        if cur is target:
+            return True
+        cur = cur.super_data
+    cur = host
+    while cur is not None:
+        if cur is target:
+            return True
+        cur = cur.super_data
+    return False
+
+
+def _derive_base_entity(
+    obj: MetaData,
+    object_index: dict[str, MetaObject],
+    field_name: str,
+    origin_source: object,
+    errors: list[MetaError],
+) -> MetaData | None:
+    """Derive the BASE entity a no-@via origin path anchors at (spec §5)."""
+    if obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+        return obj
+
+    # 1) The extended identity anchors the base entity (declared, not inferred).
+    for identity in (c for c in obj.own_children() if c.type == TYPE_IDENTITY):
+        extended = identity.super_data
+        if extended is not None and extended.type == TYPE_IDENTITY:
+            named = _ref_named_owner(identity, object_index)
+            if named is not None:
+                return named
+            owner = extended.parent
+            if owner is not None and owner.type == TYPE_OBJECT:
+                return owner
+
+    # 2) Fallback: the single distinct entity targeted by plain field-extends.
+    targets: list[MetaData] = []
+    seen: set[int] = set()
+    for f in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+        sup = f.super_data
+        if sup is None:
+            continue
+        named = _ref_named_owner(f, object_index)
+        owner = named if named is not None else sup.parent
+        if (
+            owner is not None
+            and owner.type == TYPE_OBJECT
+            and owner.sub_type != OBJECT_SUBTYPE_VALUE
+            and owner is not obj
+            and id(owner) not in seen
+        ):
+            seen.add(id(owner))
+            targets.append(owner)
+    if len(targets) == 1:
+        return targets[0]
+    if len(targets) > 1:
+        names = ", ".join(f'"{t.name}"' for t in targets)
+        errors.append(
+            MetaError(
+                f"origin on {obj.name}.{field_name}: cannot derive the base entity — the "
+                f"projection's fields extend multiple entities ({names}) and no identity "
+                f"extends an entity identity. Declare an extended identity to anchor the "
+                f"base entity (FR-024).",
+                ErrorCode.ERR_AMBIGUOUS_PATH,
+                envelope=origin_source,
+            )
+        )
+    else:
+        errors.append(
+            MetaError(
+                f"origin on {obj.name}.{field_name}: cannot derive the base entity for @via "
+                f"inference — the projection has no extended identity and no entity-targeted "
+                f"field extends. Declare an extended identity or an explicit @via (FR-024).",
+                ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=origin_source,
+            )
+        )
+    return None
+
+
+def _infer_via_single_hop(
+    base: MetaData,
+    target_entity: MetaData,
+    obj: MetaData,
+    field_name: str,
+    from_attr: str,
+    ctx: str,
+    origin_source: object,
+    referrer: str,
+    errors: list[MetaError],
+) -> list[MetaData] | None:
+    """Single-hop-unique @via inference (ADR-0029 decision 5): scan the base
+    entity's effective relationships for those whose @objectRef resolves to the
+    @from/@of target entity. Exactly one → the inferred path. Zero →
+    ERR_INVALID_ORIGIN. More than one → ERR_AMBIGUOUS_PATH."""
+    candidates = [
+        rel
+        for rel in base.children()
+        if rel.type == TYPE_RELATIONSHIP
+        and isinstance(rel.attr(RELATIONSHIP_ATTR_OBJECT_REF), str)
+        and _strip_package(rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)) == target_entity.name
+    ]
+    if len(candidates) == 1:
+        return [candidates[0]]
+    if len(candidates) == 0:
+        errors.append(
+            MetaError(
+                f"{ctx} '{from_attr}': no @via and no single-hop relationship from base "
+                f"entity '{base.name}' to '{target_entity.name}' — cannot infer the path. "
+                f"Declare @via explicitly (multi-hop paths are always explicit; ADR-0029).",
+                ErrorCode.ERR_INVALID_ORIGIN,
+                envelope=resolved_source(origin_source, referrer, from_attr),
+            )
+        )
+        return None
+    names = ", ".join(f'"{r.name}"' for r in candidates)
+    errors.append(
+        MetaError(
+            f"{ctx} '{from_attr}': no @via and {len(candidates)} relationships from base "
+            f"entity '{base.name}' to '{target_entity.name}' ({names}) — ambiguous. Declare "
+            f"@via naming one of them (ADR-0029).",
+            ErrorCode.ERR_AMBIGUOUS_PATH,
+            envelope=resolved_source(origin_source, referrer, from_attr),
+        )
+    )
+    return None
+
+
+def _check_passthrough_cardinality(
+    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+) -> None:
+    """ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
+    EVERY hop. A hop is to-many only when it DECLARES @cardinality "many"."""
+    for rel in hops:
+        if _hop_cardinality(rel) == CARDINALITY_MANY:
+            errors.append(
+                MetaError(
+                    f"origin.passthrough on {field_name}: @via hop '{rel.name}' is to-many "
+                    f'(@cardinality "{CARDINALITY_MANY}") — a row-multiplying passthrough — '
+                    f"you meant aggregate (ADR-0029).",
+                    ErrorCode.ERR_ORIGIN_CARDINALITY,
+                    envelope=origin_source,
+                )
+            )
+            return
+
+
+def _check_aggregate_cardinality(
+    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+) -> None:
+    """ADR-0029 decision 6 — an aggregate via-path must contain at least one
+    to-many hop. Conservative: fires only when PROVABLY to-one (every hop
+    declares @cardinality "one")."""
+    if not hops:
+        return
+    if all(_hop_cardinality(rel) == CARDINALITY_ONE for rel in hops):
+        errors.append(
+            MetaError(
+                f"origin.aggregate on {field_name}: every @via hop is to-one "
+                f'(@cardinality "{CARDINALITY_ONE}") — aggregating over a to-one path — '
+                f"you meant passthrough (ADR-0029).",
+                ErrorCode.ERR_ORIGIN_CARDINALITY,
+                envelope=origin_source,
+            )
+        )
+
+
+def _check_extends_origin_agreement(
+    field: MetaData,
+    from_field: MetaData,
+    from_attr: str,
+    obj: MetaData,
+    origin_source: object,
+    referrer: str,
+    errors: list[MetaError],
+) -> None:
+    """FR-024 B6 (spec §4; ADR-0029 decision 7) — when a field declares BOTH an
+    entity-nested extends (shape lineage) and an origin.passthrough @from (data
+    lineage), the resolved @from target must be the same node as the field's
+    resolved extends target, or appear on its extends chain."""
+    sup = field.super_data
+    if sup is None or sup.type != TYPE_FIELD:
+        return
+    sup_owner = sup.parent
+    if sup_owner is None or sup_owner.type != TYPE_OBJECT:
+        return
+    cur: MetaData | None = sup
+    while cur is not None:
+        if cur is from_field:
+            return  # shape lineage and data lineage agree
+        cur = cur.super_data
+    errors.append(
+        MetaError(
+            f"origin.passthrough on {obj.name}.{field.name}: @from '{from_attr}' disagrees "
+            f"with the field's extends target '{sup_owner.name}.{sup.name}' — extends (shape "
+            f"lineage) and origin.passthrough (data lineage) must point at the same entity "
+            f"field (FR-024).",
+            ErrorCode.ERR_EXTENDS_ORIGIN_MISMATCH,
+            envelope=resolved_source(origin_source, referrer, from_attr),
+        )
+    )
 
 
 def _validate_origin_paths(
     root: MetaData,
     errors: list[MetaError],
 ) -> None:
-    """Validate @from/@of/@via dotted-path attrs on origin.passthrough and
-    origin.aggregate nodes.
+    """Validate @from/@of/@via on origin.passthrough/aggregate, plus FR-024 B5/B6
+    (@via single-hop inference, cardinality, extends/origin agreement).
 
-    Errors use ERR_INVALID_ORIGIN. Only validates; does NOT alter the tree.
+    Errors use ERR_INVALID_ORIGIN / ERR_AMBIGUOUS_PATH / ERR_ORIGIN_CARDINALITY /
+    ERR_EXTENDS_ORIGIN_MISMATCH. Only validates; does NOT alter the tree.
     """
     object_index = _build_object_index(root)
 
     for node in _walk(root):
         if node.type != TYPE_FIELD:
             continue
-        # The projection that owns this field. The field walks via _walk so the
-        # field's parent is the containing object (.projection in source-v2).
-        projection = node.parent if hasattr(node, "parent") else None
-        for origin in node.children():
+        # The object that owns this field (the field's parent in source-v2).
+        obj = node.parent if hasattr(node, "parent") else None
+        if obj is None or obj.type != TYPE_OBJECT:
+            continue
+        # FR-024 B5: object.value hosts are EXEMPT from @via inference and
+        # cardinality checks — a value's origin.passthrough is FR-015 parameter
+        # lineage (constructed, not assembled). @from is still resolution-checked.
+        is_value_host = obj.sub_type == OBJECT_SUBTYPE_VALUE
+        for origin in node.own_children():
             if origin.type != TYPE_ORIGIN:
                 continue
             ctx = f"field '{node.name}' origin.{origin.sub_type}"
-            # FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
-            # "where the broken reference lives" identifier). When we cannot
-            # find a projection (defensive), fall back to the field's own FQN.
-            if projection is not None and hasattr(projection, "fqn"):
-                referrer = f"{projection.fqn()}::{node.name}"
-            else:
-                referrer = node.fqn() if hasattr(node, "fqn") else node.name
+            # FR5d — referrer is `<host-FQN>::<fieldName>`.
+            referrer = (
+                f"{obj.fqn()}::{node.name}"
+                if hasattr(obj, "fqn")
+                else (node.fqn() if hasattr(node, "fqn") else node.name)
+            )
 
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
                 if not isinstance(from_ref, str) or not from_ref:
-                    # Missing-attr (not a reference resolution failure) — keep
-                    # the origin node's own source envelope (json/yaml/merged).
-                    # Mirrors TS validation-passes.ts L370-378.
                     errors.append(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_FROM}'",
@@ -1094,14 +1352,38 @@ def _validate_origin_paths(
                             envelope=origin.source,
                         )
                     )
-                else:
-                    _validate_entity_field_ref(
-                        from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin,
-                        referrer,
+                    continue
+                from_target = _validate_entity_field_ref(
+                    from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin, referrer
+                )
+                # FR-024 B6 — extends/origin agreement (host-agnostic).
+                if from_target is not None:
+                    _check_extends_origin_agreement(
+                        node, from_target[1], from_ref, obj, origin.source, referrer, errors
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    hops = _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    if hops is not None:
+                        _check_passthrough_cardinality(hops, node.name, origin.source, errors)
+                elif from_target is not None and not is_value_host:
+                    # FR-024 §6 — no @via: derive the base entity; a @from on the
+                    # base relation itself is a plain base column (no checks);
+                    # otherwise infer the single-hop-unique path and gate cardinality.
+                    base = _derive_base_entity(
+                        obj, object_index, node.name, origin.source, errors
+                    )
+                    if base is not None and not _is_base_relation_target(
+                        from_target[0], base, obj
+                    ):
+                        hops = _infer_via_single_hop(
+                            base, from_target[0], obj, node.name, from_ref, ctx,
+                            origin.source, referrer, errors,
+                        )
+                        if hops is not None:
+                            _check_passthrough_cardinality(
+                                hops, node.name, origin.source, errors
+                            )
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
@@ -1113,22 +1395,53 @@ def _validate_origin_paths(
                             envelope=origin.source,
                         )
                     )
-                else:
-                    _validate_entity_field_ref(
-                        of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin,
-                        referrer,
-                    )
+                    continue
+                # NOTE (FR-024 B6): NO extends/origin agreement on aggregates —
+                # an aggregate computes something new (spec §4 is passthrough-only).
+                of_target = _validate_entity_field_ref(
+                    of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin, referrer
+                )
                 via = origin.attr(ORIGIN_ATTR_VIA)
-                if not isinstance(via, str) or not via:
+                if isinstance(via, str) and via:
+                    hops = _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    if hops is not None:
+                        _check_aggregate_cardinality(hops, node.name, origin.source, errors)
+                    continue
+                # FR-024 §6 — no @via on an aggregate: inference applies only when
+                # @of targets a non-base entity from a non-value host.
+                if of_target is None:
+                    continue
+                if is_value_host:
                     errors.append(
                         MetaError(
-                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}'",
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
+                            f"(aggregates require a relationship path)",
                             ErrorCode.ERR_INVALID_ORIGIN,
                             envelope=origin.source,
                         )
                     )
-                else:
-                    _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    continue
+                base = _derive_base_entity(
+                    obj, object_index, node.name, origin.source, errors
+                )
+                if base is None:
+                    continue
+                if _is_base_relation_target(of_target[0], base, obj):
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
+                            f"(aggregates require a relationship path)",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=origin.source,
+                        )
+                    )
+                    continue
+                hops = _infer_via_single_hop(
+                    base, of_target[0], obj, node.name, of_ref, ctx,
+                    origin.source, referrer, errors,
+                )
+                if hops is not None:
+                    _check_aggregate_cardinality(hops, node.name, origin.source, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -1346,6 +1659,176 @@ def _validate_one_primary_source(
                 )
             )
 
+        # FR-024 B4b (ADR-0028) — THE HARD CUTOVER (an entity's PRIMARY source
+        # must be a writable kind) is DEFERRED to the FR-024 projection-codegen
+        # increment: enforcing it here forbids the view/proc-primary entity
+        # spellings that codegen fixtures still encode. Re-add with the codegen
+        # fan-out (subtype-based projection detection). See ERR_ENTITY_PRIMARY_SOURCE_READONLY.
+
+
+# ---------------------------------------------------------------------------
+# Pass: FR-024 B3 — projection identity pass-through + key correspondence
+# ---------------------------------------------------------------------------
+# A projection's identity is a PASS-THROUGH of an entity identity:
+#   - every identity child of an object.projection MUST extend an entity identity
+#     (ERR_PROJECTION_IDENTITY_NOT_EXTENDED);
+#   - key correspondence: every field named by the extended identity's @fields
+#     must have a local projection field extending it (ERR_IDENTITY_KEY_MISMATCH);
+#   - the local key is COMPUTED on read (never written back); an explicit @fields
+#     that disagrees with the computed set → ERR_IDENTITY_KEY_MISMATCH.
+# Mirrors TS core/identity/validate-identity-passthrough.ts.
+
+
+def _normalize_identity_fields(raw: object) -> list[str] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (list, tuple)):
+        return [str(v).strip() for v in raw]
+    if isinstance(raw, str):
+        return [s.strip() for s in raw.split(",") if s.strip()]
+    return None
+
+
+def _extends_chain_reaches(node: MetaData, target: MetaData) -> bool:
+    cur = node.super_data
+    while cur is not None:
+        if cur is target:
+            return True
+        cur = cur.super_data
+    return False
+
+
+def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> None:
+    for obj in (
+        c
+        for c in root.own_children()
+        if c.type == TYPE_OBJECT and c.sub_type == OBJECT_SUBTYPE_PROJECTION
+    ):
+        for identity in (c for c in obj.own_children() if c.type == TYPE_IDENTITY):
+            if not identity.super_ref:
+                errors.append(
+                    MetaError(
+                        f"identity '{identity.name}' on projection '{obj.name}' must extend "
+                        f'an entity identity (e.g. extends: "Customer.id") — a projection '
+                        f"identity is a pass-through (FR-024)",
+                        ErrorCode.ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+                        envelope=identity.source,
+                    )
+                )
+                continue
+
+            extended = identity.super_data
+            # Unresolved / non-identity target: ERR_UNRESOLVED_SUPER /
+            # ERR_EXTENDS_TARGET_MISMATCH already reported by super-resolution.
+            if extended is None or extended.type != TYPE_IDENTITY:
+                continue
+            entity = extended.parent
+            if entity is None or entity.type != TYPE_OBJECT:
+                continue
+            owner = identity.parent
+            if owner is None:
+                continue
+
+            extended_fields = (
+                _normalize_identity_fields(extended.attr(IDENTITY_ATTR_FIELDS)) or []
+            )
+            computed: list[str] = []
+            missing: list[str] = []
+            for field_name in extended_fields:
+                entity_field = next(
+                    (
+                        c
+                        for c in entity.children()
+                        if c.type == TYPE_FIELD and c.name == field_name
+                    ),
+                    None,
+                )
+                if entity_field is None:
+                    missing.append(field_name)
+                    continue
+                local = next(
+                    (
+                        c
+                        for c in owner.own_children()
+                        if c.type == TYPE_FIELD
+                        and _extends_chain_reaches(c, entity_field)
+                    ),
+                    None,
+                )
+                if local is None:
+                    missing.append(field_name)
+                    continue
+                computed.append(local.name)
+
+            if missing:
+                refs = ", ".join(f"'{entity.name}.{f}'" for f in missing)
+                errors.append(
+                    MetaError(
+                        f"identity '{identity.name}' on projection '{obj.name}' does not "
+                        f"correspond to its extended identity: no local field extends {refs} "
+                        f"(FR-024)",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH,
+                        envelope=identity.source,
+                    )
+                )
+                continue
+
+            explicit = _normalize_identity_fields(
+                identity.own_attrs().get(IDENTITY_ATTR_FIELDS)
+            )
+            if explicit is not None and explicit != computed:
+                errors.append(
+                    MetaError(
+                        f"identity '{identity.name}' on projection '{obj.name}' declares "
+                        f"@fields [{', '.join(explicit)}] but the computed pass-through key "
+                        f"is [{', '.join(computed)}] — omit @fields (it is derived) or make "
+                        f"them agree (FR-024)",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH,
+                        envelope=identity.source,
+                    )
+                )
+
+
+# ---------------------------------------------------------------------------
+# Pass: FR-024 B6 — derived-field providability
+# ---------------------------------------------------------------------------
+# An object.ENTITY field carrying any origin.* child is derived (read-only): it
+# does not exist on the writable table — a read-capable (read-only-kind) source
+# must provide it on read. An entity with an origin-bearing OWN field but no
+# read-capable source → ERR_DERIVED_FIELD_NO_READ_SOURCE.
+# Mirrors TS validateDerivedFieldProvidability.
+
+
+def _validate_derived_field_providability(
+    root: MetaData, errors: list[MetaError]
+) -> None:
+    for obj in (
+        c
+        for c in root.own_children()
+        if c.type == TYPE_OBJECT and c.sub_type == OBJECT_SUBTYPE_ENTITY
+    ):
+        has_read_capable = any(
+            isinstance(s, MetaSource) and s.is_read_only()
+            for s in obj.children()
+            if s.type == TYPE_SOURCE
+        )
+        if has_read_capable:
+            continue
+        for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+            if not any(c.type == TYPE_ORIGIN for c in field.own_children()):
+                continue
+            errors.append(
+                MetaError(
+                    f'derived field "{obj.name}.{field.name}" carries an origin.* but '
+                    f'entity "{obj.name}" declares no read-capable source — derived fields '
+                    f"do not exist on the writable table. Declare a read-only source "
+                    f'(e.g. source.rdb @kind "view" @role "replica") to provide it, or move '
+                    f"the field to an object.projection (FR-024 §7).",
+                    ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE,
+                    envelope=field.source,
+                )
+            )
+
 
 # ---------------------------------------------------------------------------
 # Pass: subtype-rules
@@ -1382,12 +1865,95 @@ def _validate_max_occurs(
                 )
 
 
+# FR-024 value purity (ADR-0028): a value object is a pure data shape — it
+# carries NO identity of any subtype and NO source. Mirrors TS subtype-rules.ts
+# validateValuePurity (effective children; envelope = the offending child).
+def _validate_value_purity(node: MetaObject, errors: list[MetaError]) -> None:
+    for child in node.children():
+        if child.type == TYPE_IDENTITY:
+            errors.append(
+                MetaError(
+                    f"value object '{node.fqn()}' must not have an identity "
+                    f"({TYPE_IDENTITY}.{child.sub_type} '{child.name}') — value objects are "
+                    f'pure data shapes; use subType: "entity" for records with identity '
+                    f"(FR-024, ADR-0028)",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                    envelope=child.source,
+                )
+            )
+        elif child.type == TYPE_SOURCE:
+            errors.append(
+                MetaError(
+                    f"value object '{node.fqn()}' must not have a source "
+                    f"({TYPE_SOURCE}.{child.sub_type}) — value objects are not persisted "
+                    f'shapes; use subType: "entity" or "projection" for stored objects '
+                    f"(FR-024, ADR-0028)",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                    envelope=child.source,
+                )
+            )
+
+
+# FR-024 projection licensing (ADR-0028): a projection's object-level extends may
+# only target another object.projection (ERR_SUBTYPE_RULE_VIOLATION); every OWN
+# source must have a read-only @kind (ERR_PROJECTION_SOURCE_WRITABLE); identity is
+# optional. Mirrors TS subtype-rules.ts validateProjectionLicensing.
+def _validate_projection_licensing(node: MetaObject, errors: list[MetaError]) -> None:
+    sup = node.super_data
+    if sup is not None and not (
+        sup.type == TYPE_OBJECT and sup.sub_type == OBJECT_SUBTYPE_PROJECTION
+    ):
+        errors.append(
+            MetaError(
+                f"projection '{node.fqn()}' extends '{sup.fqn()}' which is "
+                f"{sup.type}.{sup.sub_type} — a projection may only extend another "
+                f"projection (FR-024, ADR-0028)",
+                ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                envelope=node.source,
+            )
+        )
+
+    # OWN sources only: an inherited source is validated on the projection that
+    # declares it; an inherited source from a non-projection super is unreachable
+    # without first tripping the extends rule above.
+    for child in node.own_children():
+        if child.type != TYPE_SOURCE:
+            continue
+        kind = child.effective_kind() if isinstance(child, MetaSource) else child.sub_type
+        if kind not in SOURCE_READ_ONLY_KINDS:
+            errors.append(
+                MetaError(
+                    f"projection '{node.fqn()}' has a writable source (@kind \"{kind}\") — "
+                    f"a projection is a derived read-only representation; its sources must "
+                    f"be read-only kinds (view, materializedView, storedProc, tableFunction) "
+                    f"(FR-024, ADR-0028)",
+                    ErrorCode.ERR_PROJECTION_SOURCE_WRITABLE,
+                    envelope=child.source,
+                )
+            )
+
+
 def _validate_subtype_rules(
     root: MetaData,
     errors: list[MetaError],
     warnings: list[str],
 ) -> None:
     for node in _walk(root):
+        # FR-024 D2 — identity nodes require an author-chosen name (any nesting:
+        # object children AND field-nested identities) so the dotted by-name
+        # extends form can address them. A nameless node parses with name == ""
+        # (only identity.primary carries a default_name in this port).
+        if node.type == TYPE_IDENTITY and node.name == "":
+            errors.append(
+                MetaError(
+                    f"identity.{node.sub_type} has no name — identity nodes require an "
+                    f'author-chosen name (e.g. "id") so dotted extends refs can address '
+                    f"them (FR-024)",
+                    ErrorCode.ERR_IDENTITY_NAME_REQUIRED,
+                    envelope=node.source,
+                )
+            )
+
         if node.type != TYPE_OBJECT:
             continue
         if not isinstance(node, MetaObject):
@@ -1402,15 +1968,10 @@ def _validate_subtype_rules(
                 )
 
         elif node.sub_type == OBJECT_SUBTYPE_VALUE:
-            # value object should NOT have a primary identity.
-            if node.primary_identity() is not None:
-                errors.append(
-                    MetaError(
-                        f"{_node_label(node)} is a value object but declares a primary identity",
-                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
-                        envelope=node.source,
-                    )
-                )
+            _validate_value_purity(node, errors)
+
+        elif node.sub_type == OBJECT_SUBTYPE_PROJECTION:
+            _validate_projection_licensing(node, errors)
 
 
 # ---------------------------------------------------------------------------

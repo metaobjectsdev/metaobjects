@@ -55,28 +55,35 @@ public static class ValidationPasses
         List<MetaError> errors,
         List<string> warnings)
     {
+        // FR-024 D2 — identity nodes require an author-chosen name (any nesting:
+        // object children AND field-nested identities). A nameless node parses
+        // with Name == "".
+        if (model.Type == TYPE_IDENTITY && model.Name == "")
+        {
+            var owner = model.Parent?.Fqn();
+            errors.Add(new MetaError(
+                $"identity.{model.SubType}" +
+                (owner is not null && owner != "" ? $" under '{owner}'" : "") +
+                " has no name — identity nodes require an author-chosen name (e.g. \"id\") " +
+                "so dotted extends refs can address them (FR-024)",
+                ErrorCode.ERR_IDENTITY_NAME_REQUIRED,
+                Envelope: model.Source));
+        }
+
         if (model.Type == TYPE_OBJECT)
         {
-            // Use Children() (effective) so inherited identities count.
-            bool hasPrimary = model.Children().Any(
-                c => c.Type == TYPE_IDENTITY &&
-                     c.SubType == IDENTITY_SUBTYPE_PRIMARY);
-
-            if (model.SubType == OBJECT_SUBTYPE_VALUE && hasPrimary)
+            switch (model.SubType)
             {
-                errors.Add(new MetaError(
-                    $"value object '{model.Fqn()}' must not have a primary identity " +
-                    "(use subType: \"entity\" for records with identity)",
-                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
-                    Envelope: model.Source));
-            }
-            else if (model.SubType == OBJECT_SUBTYPE_ENTITY &&
-                     !hasPrimary &&
-                     !model.IsAbstract)
-            {
-                warnings.Add(
-                    $"entity object '{model.Fqn()}' has no primary identity " +
-                    "(add an identity child or mark @isAbstract: true)");
+                case OBJECT_SUBTYPE_VALUE:
+                    ValidateValuePurity(model, errors);
+                    break;
+                case OBJECT_SUBTYPE_ENTITY:
+                    ValidateEntityIdentity(model, warnings);
+                    break;
+                case OBJECT_SUBTYPE_PROJECTION:
+                    ValidateProjectionLicensing(model, errors);
+                    break;
+                // object.base is a template — no rule.
             }
         }
 
@@ -84,6 +91,82 @@ public static class ValidationPasses
         foreach (var child in model.OwnChildren())
         {
             WalkSubtypeRules(child, errors, warnings);
+        }
+    }
+
+    // FR-024 value purity (ADR-0028): a value object is a pure data shape — it
+    // carries NO identity of any subtype and NO source.
+    private static void ValidateValuePurity(MetaData model, List<MetaError> errors)
+    {
+        foreach (var child in model.Children())
+        {
+            if (child.Type == TYPE_IDENTITY)
+            {
+                errors.Add(new MetaError(
+                    $"value object '{model.Fqn()}' must not have an identity " +
+                    $"({TYPE_IDENTITY}.{child.SubType} '{child.Name}') — value objects are " +
+                    "pure data shapes; use subType: \"entity\" for records with identity (FR-024, ADR-0028)",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                    Envelope: child.Source));
+            }
+            else if (child.Type == TYPE_SOURCE)
+            {
+                errors.Add(new MetaError(
+                    $"value object '{model.Fqn()}' must not have a source " +
+                    $"({TYPE_SOURCE}.{child.SubType}) — value objects are not persisted " +
+                    "shapes; use subType: \"entity\" or \"projection\" for stored objects (FR-024, ADR-0028)",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                    Envelope: child.Source));
+            }
+        }
+    }
+
+    // Entities SHOULD have a primary identity unless abstract (warning).
+    private static void ValidateEntityIdentity(MetaData model, List<string> warnings)
+    {
+        bool hasPrimary = model.Children().Any(
+            c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_PRIMARY);
+        if (!hasPrimary && !model.IsAbstract)
+        {
+            warnings.Add(
+                $"entity object '{model.Fqn()}' has no primary identity " +
+                "(add an identity child or mark @isAbstract: true)");
+        }
+    }
+
+    // FR-024 projection licensing (ADR-0028):
+    //   - object-level extends may only target another object.projection;
+    //   - every OWN source must have a read-only @kind;
+    //   - identity is OPTIONAL on a projection (no warning when absent).
+    private static void ValidateProjectionLicensing(MetaData model, List<MetaError> errors)
+    {
+        var sup = model.SuperData;
+        if (sup is not null &&
+            (sup.Type != TYPE_OBJECT || sup.SubType != OBJECT_SUBTYPE_PROJECTION))
+        {
+            errors.Add(new MetaError(
+                $"projection '{model.Fqn()}' extends '{sup.Fqn()}' which is " +
+                $"{sup.Type}.{sup.SubType} — a projection may only extend another projection (FR-024, ADR-0028)",
+                ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                Envelope: model.Source));
+        }
+
+        // OWN sources only: an inherited source is validated on the object that
+        // declares it; an inherited source from a non-projection super is
+        // unreachable without first tripping the extends rule above.
+        foreach (var child in model.OwnChildren())
+        {
+            if (child.Type != TYPE_SOURCE) continue;
+            string kind = child is MetaSource ms ? ms.EffectiveKind : child.SubType;
+            if (!SOURCE_READ_ONLY_KINDS.Contains(kind))
+            {
+                errors.Add(new MetaError(
+                    $"projection '{model.Fqn()}' has a writable source (@kind \"{kind}\") — " +
+                    "a projection is a derived read-only representation; its sources must be " +
+                    "read-only kinds (view, materializedView, storedProc, tableFunction) (FR-024, ADR-0028)",
+                    ErrorCode.ERR_PROJECTION_SOURCE_WRITABLE,
+                    Envelope: child.Source));
+            }
         }
     }
 
@@ -249,6 +332,12 @@ public static class ValidationPasses
         foreach (var obj in root.OwnChildren()
                      .Where(c => c.Type == TYPE_OBJECT))
         {
+            // FR-024 B5: object.value hosts are EXEMPT from @via inference and
+            // cardinality checks — a value's origin.passthrough is FR-015 parameter
+            // lineage (values are constructed, never assembled; spec §7), not an
+            // assembly path. Their @from refs are still resolution-validated.
+            bool isValueHost = obj.SubType == OBJECT_SUBTYPE_VALUE;
+
             foreach (var field in obj.OwnChildren()
                          .Where(c => c.Type == TYPE_FIELD))
             {
@@ -257,8 +346,8 @@ public static class ValidationPasses
                 {
                     if (origin.SubType == ORIGIN_SUBTYPE_PASSTHROUGH)
                     {
-                        var from = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
-                        if (from is not string fromStr || fromStr == "")
+                        var fromObj = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
+                        if (fromObj is not string from || from == "")
                         {
                             // Missing-attr (not a reference resolution failure) —
                             // keep the node's own source envelope (json/yaml/merged).
@@ -268,19 +357,41 @@ public static class ValidationPasses
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateFromPath(fromStr, root, obj, field.Name, errors,
+                        var fromTarget = ValidateFromPath(from, root, obj, field.Name, errors,
                             "origin.passthrough.@from", origin.Source);
-
-                        var via = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
-                        if (via is string viaStr && viaStr != "")
+                        // FR-024 B6 — extends/origin agreement (host-agnostic; runs
+                        // whether @via is explicit, inferred, or a base-relation column).
+                        if (fromTarget is ResolvedFromTarget ft1)
                         {
-                            ValidateViaPath(viaStr, root, obj, field.Name, errors, origin.Source);
+                            CheckExtendsOriginAgreement(field, ft1.Field, from, obj, origin.Source, errors);
+                        }
+                        var viaObj = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
+                        if (viaObj is string via && via != "")
+                        {
+                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
+                            if (hops is not null)
+                                CheckPassthroughCardinality(hops, obj, field.Name, origin.Source, errors);
+                        }
+                        else if (fromTarget is ResolvedFromTarget ft2 && !isValueHost)
+                        {
+                            // FR-024 §6 — no @via: derive the base entity; a @from
+                            // targeting the base relation itself is a plain base column
+                            // (no checks); otherwise infer the single-hop-unique path
+                            // and gate cardinality.
+                            var baseEntity = DeriveBaseEntity(obj, root, field.Name, origin.Source, errors);
+                            if (baseEntity is not null && !IsBaseRelationTarget(ft2.Entity, baseEntity, obj))
+                            {
+                                var hops = InferViaSingleHop(baseEntity, ft2.Entity, obj, field.Name, from,
+                                    "origin.passthrough.@from", origin.Source, errors);
+                                if (hops is not null)
+                                    CheckPassthroughCardinality(hops, obj, field.Name, origin.Source, errors);
+                            }
                         }
                     }
                     else if (origin.SubType == ORIGIN_SUBTYPE_AGGREGATE)
                     {
-                        var of = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
-                        if (of is not string ofStr || ofStr == "")
+                        var ofObj = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
+                        if (ofObj is not string of || of == "")
                         {
                             // Missing-attr — keep origin's own source envelope.
                             errors.Add(new MetaError(
@@ -289,13 +400,22 @@ public static class ValidationPasses
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateFromPath(ofStr, root, obj, field.Name, errors,
+                        // NOTE (FR-024 B6): NO extends/origin agreement on aggregates.
+                        var ofTarget = ValidateFromPath(of, root, obj, field.Name, errors,
                             "origin.aggregate.@of", origin.Source);
-
-                        var via = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
-                        if (via is not string viaStr || viaStr == "")
+                        var viaObj = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+                        if (viaObj is string via && via != "")
                         {
-                            // Missing-attr — keep origin's own source envelope.
+                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
+                            if (hops is not null)
+                                CheckAggregateCardinality(hops, obj, field.Name, origin.Source, errors);
+                            continue;
+                        }
+                        // FR-024 §6 — no @via on an aggregate: inference applies only
+                        // when @of targets a non-base entity from a non-value host.
+                        if (ofTarget is not ResolvedFromTarget oft) continue; // @of did not resolve
+                        if (isValueHost)
+                        {
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
                                 "(aggregates require a relationship path).",
@@ -303,7 +423,21 @@ public static class ValidationPasses
                                 Envelope: origin.Source));
                             continue;
                         }
-                        ValidateViaPath(viaStr, root, obj, field.Name, errors, origin.Source);
+                        var aggBase = DeriveBaseEntity(obj, root, field.Name, origin.Source, errors);
+                        if (aggBase is null) continue; // base underivable — error already pushed
+                        if (IsBaseRelationTarget(oft.Entity, aggBase, obj))
+                        {
+                            errors.Add(new MetaError(
+                                $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
+                                "(aggregates require a relationship path).",
+                                ErrorCode.ERR_INVALID_ORIGIN,
+                                Envelope: origin.Source));
+                            continue;
+                        }
+                        var aggHops = InferViaSingleHop(aggBase, oft.Entity, obj, field.Name, of,
+                            "origin.aggregate.@of", origin.Source, errors);
+                        if (aggHops is not null)
+                            CheckAggregateCardinality(aggHops, obj, field.Name, origin.Source, errors);
                     }
                 }
             }
@@ -362,7 +496,15 @@ public static class ValidationPasses
     // Origin helper: _validateFromPath
     // -------------------------------------------------------------------------
 
-    private static void ValidateFromPath(
+    /// Resolved `Entity.field` reference target: the entity AND the field node.
+    /// FR-024 B5 inference needs the entity; the B6 agreement check compares
+    /// against the field node identity.
+    private readonly record struct ResolvedFromTarget(MetaData Entity, MetaData Field);
+
+    /// Validate a passthrough `@from` / aggregate `@of` "Entity.field" reference.
+    /// Returns the resolved (entity, field) on full success, or null when any
+    /// error was pushed (malformed shape / unknown entity / unknown field).
+    private static ResolvedFromTarget? ValidateFromPath(
         string fromAttr,
         MetaData root,
         MetaData projection,
@@ -387,7 +529,7 @@ public static class ValidationPasses
                 "must be of form \"Entity.field\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
-            return;
+            return null;
         }
 
         string entityName = fromAttr[..dotIdx];
@@ -402,7 +544,7 @@ public static class ValidationPasses
                 $"no such entity \"{entityName}\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
-            return;
+            return null;
         }
 
         var sourceField = FindField(sourceObj, targetFieldName);
@@ -414,14 +556,20 @@ public static class ValidationPasses
                 $"no such field \"{targetFieldName}\" on {entityName}.",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
+            return null;
         }
+
+        return new ResolvedFromTarget(sourceObj, sourceField);
     }
 
     // -------------------------------------------------------------------------
     // Origin helper: _validateViaPath
     // -------------------------------------------------------------------------
 
-    private static void ValidateViaPath(
+    /// Validate an explicit `@via` "Entity.rel[.rel...]" path. Returns the walked
+    /// relationship hop nodes (in path order) on full success — FR-024 B5 runs
+    /// the cardinality checks over them — or null when any error was pushed.
+    private static List<MetaData>? ValidateViaPath(
         string viaAttr,
         MetaData root,
         MetaData projection,
@@ -441,7 +589,7 @@ public static class ValidationPasses
                 "must be of form \"Entity.relationship[.relationship...]\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
-            return;
+            return null;
         }
 
         string entityName = segments[0];
@@ -455,7 +603,7 @@ public static class ValidationPasses
                 $"no such entity \"{entityName}\".",
                 ErrorCode.ERR_INVALID_ORIGIN,
                 Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
-            return;
+            return null;
         }
 
         // FR5d — track the deepest-valid-prefix as we walk. The prefix grows
@@ -464,6 +612,7 @@ public static class ValidationPasses
         // After the entity lookup above, the deepest valid prefix is just the
         // entity name; each successful relationship hop appends a segment.
         var validSegments = new List<string> { entityName };
+        var hops = new List<MetaData>();
 
         foreach (var relName in relSegments)
         {
@@ -477,7 +626,7 @@ public static class ValidationPasses
                     $"Deepest valid prefix was \"{prefix}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
-                return;
+                return null;
             }
 
             var refTarget = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
@@ -488,7 +637,7 @@ public static class ValidationPasses
                     $"relationship \"{relName}\" on {currentObj.Name} is missing @objectRef.",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
-                return;
+                return null;
             }
 
             var nextObj = FindObject(root, refStr);
@@ -501,12 +650,349 @@ public static class ValidationPasses
                     $"relationship \"{relName}\" points to non-existent entity \"{refStr}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, refStr)));
-                return;
+                return null;
             }
 
             validSegments.Add(relName);
+            hops.Add(rel);
             currentObj = nextObj;
         }
+
+        return hops;
+    }
+
+    // -------------------------------------------------------------------------
+    // FR-024 B5 — base-entity derivation, single-hop-unique @via inference, and
+    // origin cardinality checks (spec §5–§6; ADR-0029 decisions 5–6).
+    // -------------------------------------------------------------------------
+
+    /// A hop relationship's effective @cardinality, or null when not declared.
+    private static string? HopCardinality(MetaData rel)
+        => rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
+
+    /// FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part
+    /// of `<owner>.<child>...` resolved as an object. Differs from
+    /// SuperData.Parent when the resolved child is INHERITED.
+    private static MetaData? RefNamedOwner(MetaData node, MetaData root)
+    {
+        var reference = node.SuperRef;
+        if (reference is null) return null;
+        int lastSep = reference.LastIndexOf("::", StringComparison.Ordinal);
+        string tail = lastSep == -1 ? reference : reference[(lastSep + 2)..];
+        int dot = tail.IndexOf('.', StringComparison.Ordinal);
+        if (dot <= 0) return null;
+        return FindObject(root, tail[..dot]);
+    }
+
+    /// Derive the BASE entity a no-`@via` origin path anchors at (spec §5).
+    /// Returns null when no base is derivable (an error has been pushed).
+    private static MetaData? DeriveBaseEntity(
+        MetaData obj, MetaData root, string fieldName, ErrorSource originSource, List<MetaError> errors)
+    {
+        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return obj;
+
+        // 1) The extended identity anchors the base entity (declared, not inferred).
+        foreach (var identity in obj.OwnChildren().Where(c => c.Type == TYPE_IDENTITY))
+        {
+            var extended = identity.SuperData;
+            if (extended is not null && extended.Type == TYPE_IDENTITY)
+            {
+                var named = RefNamedOwner(identity, root);
+                if (named is not null) return named;
+                var owner = extended.Parent;
+                if (owner is not null && owner.Type == TYPE_OBJECT) return owner;
+            }
+        }
+
+        // 2) Fallback: the single distinct entity targeted by plain field-extends —
+        //    preferring the ref-named owner over the physical declaring ancestor.
+        var targets = new HashSet<MetaData>();
+        foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+        {
+            var sup = f.SuperData;
+            if (sup is null) continue;
+            var named = RefNamedOwner(f, root);
+            var owner = named ?? sup.Parent;
+            if (owner is not null && owner.Type == TYPE_OBJECT &&
+                owner.SubType != OBJECT_SUBTYPE_VALUE && !ReferenceEquals(owner, obj))
+            {
+                targets.Add(owner);
+            }
+        }
+        if (targets.Count == 1) return targets.First();
+        if (targets.Count > 1)
+        {
+            string names = string.Join(", ", targets.Select(t => $"\"{t.Name}\""));
+            errors.Add(new MetaError(
+                $"origin on {obj.Name}.{fieldName}: cannot derive the base entity — the projection's fields extend " +
+                $"multiple entities ({names}) and no identity extends an entity identity. Declare an extended identity " +
+                "(e.g. identity.primary { name: \"id\", extends: \"<Entity>.<identity>\" }) to anchor the base entity (FR-024).",
+                ErrorCode.ERR_AMBIGUOUS_PATH,
+                Envelope: originSource));
+        }
+        else
+        {
+            errors.Add(new MetaError(
+                $"origin on {obj.Name}.{fieldName}: cannot derive the base entity for @via inference — the projection " +
+                "has no extended identity and no entity-targeted field extends. Declare an extended identity or an explicit @via (FR-024).",
+                ErrorCode.ERR_INVALID_ORIGIN,
+                Envelope: originSource));
+        }
+        return null;
+    }
+
+    /// True when the @from/@of target IS the host's base relation: the derived
+    /// base entity itself, or an ancestor on the base's (or host's) extends chain.
+    private static bool IsBaseRelationTarget(MetaData target, MetaData baseEntity, MetaData host)
+    {
+        for (MetaData? cur = baseEntity; cur is not null; cur = cur.SuperData)
+            if (ReferenceEquals(cur, target)) return true;
+        for (MetaData? cur = host; cur is not null; cur = cur.SuperData)
+            if (ReferenceEquals(cur, target)) return true;
+        return false;
+    }
+
+    /// Single-hop-unique `@via` inference (ADR-0029 decision 5). Exactly one
+    /// matching relationship → the inferred path; zero → ERR_INVALID_ORIGIN;
+    /// more than one → ERR_AMBIGUOUS_PATH.
+    private static List<MetaData>? InferViaSingleHop(
+        MetaData baseEntity, MetaData targetEntity, MetaData obj, string fieldName,
+        string fromAttr, string label, ErrorSource originSource, List<MetaError> errors)
+    {
+        var candidates = baseEntity.Children()
+            .Where(c => c.Type == TYPE_RELATIONSHIP)
+            .Where(rel =>
+            {
+                var r = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+                return r is string rs && StripPackageName(rs) == targetEntity.Name;
+            })
+            .ToList();
+        string referrer = $"{obj.Fqn()}::{fieldName}";
+        if (candidates.Count == 1) return new List<MetaData> { candidates[0] };
+        if (candidates.Count == 0)
+        {
+            errors.Add(new MetaError(
+                $"{label} \"{fromAttr}\" on {obj.Name}.{fieldName}: no @via and no single-hop relationship from base " +
+                $"entity \"{baseEntity.Name}\" to \"{targetEntity.Name}\" — cannot infer the path. Declare @via explicitly " +
+                "(multi-hop paths are always explicit; ADR-0029).",
+                ErrorCode.ERR_INVALID_ORIGIN,
+                Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
+            return null;
+        }
+        string names = string.Join(", ", candidates.Select(r => $"\"{r.Name}\""));
+        errors.Add(new MetaError(
+            $"{label} \"{fromAttr}\" on {obj.Name}.{fieldName}: no @via and {candidates.Count} relationships from " +
+            $"base entity \"{baseEntity.Name}\" to \"{targetEntity.Name}\" ({names}) — ambiguous. Declare @via naming one of them (ADR-0029).",
+            ErrorCode.ERR_AMBIGUOUS_PATH,
+            Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
+        return null;
+    }
+
+    private static string StripPackageName(string name)
+    {
+        int idx = name.LastIndexOf("::", StringComparison.Ordinal);
+        return idx >= 0 ? name[(idx + 2)..] : name;
+    }
+
+    /// ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
+    /// EVERY hop. A hop is to-many only when it DECLARES @cardinality "many".
+    private static void CheckPassthroughCardinality(
+        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors)
+    {
+        foreach (var rel in hops)
+        {
+            if (HopCardinality(rel) == CARDINALITY_MANY)
+            {
+                errors.Add(new MetaError(
+                    $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +
+                    $"(@cardinality \"{CARDINALITY_MANY}\") — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
+                    ErrorCode.ERR_ORIGIN_CARDINALITY,
+                    Envelope: originSource));
+                return;
+            }
+        }
+    }
+
+    /// ADR-0029 decision 6 — an aggregate via-path must contain at least one
+    /// to-many hop. The error fires only when the path is PROVABLY to-one
+    /// (every hop declares @cardinality "one").
+    private static void CheckAggregateCardinality(
+        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors)
+    {
+        if (hops.Count == 0) return;
+        bool provablyToOne = hops.All(rel => HopCardinality(rel) == CARDINALITY_ONE);
+        if (provablyToOne)
+        {
+            errors.Add(new MetaError(
+                $"origin.aggregate on {obj.Name}.{fieldName}: every @via hop is to-one (@cardinality \"{CARDINALITY_ONE}\") — " +
+                "aggregating over a to-one path — you meant passthrough (ADR-0029).",
+                ErrorCode.ERR_ORIGIN_CARDINALITY,
+                Envelope: originSource));
+        }
+    }
+
+    /// FR-024 B6 (spec §4; ADR-0029 decision 7) — extends/origin agreement.
+    /// When a field declares BOTH an entity-nested extends and an
+    /// origin.passthrough @from, the resolved @from target must be the same node
+    /// as the field's resolved extends target (or on its extends chain).
+    private static void CheckExtendsOriginAgreement(
+        MetaData field, MetaData fromField, string fromAttr, MetaData obj, ErrorSource originSource, List<MetaError> errors)
+    {
+        var sup = field.SuperData;
+        if (sup is null || sup.Type != TYPE_FIELD) return;
+        var supOwner = sup.Parent;
+        if (supOwner is null || supOwner.Type != TYPE_OBJECT) return;
+        for (MetaData? cur = sup; cur is not null; cur = cur.SuperData)
+            if (ReferenceEquals(cur, fromField)) return; // shape + data lineage agree
+        errors.Add(new MetaError(
+            $"origin.passthrough on {obj.Name}.{field.Name}: @from \"{fromAttr}\" disagrees with the field's extends " +
+            $"target \"{supOwner.Name}.{sup.Name}\" — extends (shape lineage) and origin.passthrough (data lineage) " +
+            "must point at the same entity field (FR-024).",
+            ErrorCode.ERR_EXTENDS_ORIGIN_MISMATCH,
+            Envelope: ResolvedSource.From(originSource, $"{obj.Fqn()}::{field.Name}", fromAttr)));
+    }
+
+    // =========================================================================
+    // FR-024 B3 — projection identity pass-through + key correspondence.
+    //   ERR_PROJECTION_IDENTITY_NOT_EXTENDED / ERR_IDENTITY_KEY_MISMATCH.
+    //   Ported from core/identity/validate-identity-passthrough.ts
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateIdentityPassthrough(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        {
+            foreach (var identity in obj.OwnChildren().Where(c => c.Type == TYPE_IDENTITY))
+            {
+                if (identity.SuperRef is null)
+                {
+                    errors.Add(new MetaError(
+                        $"identity '{identity.Name}' on projection '{obj.Name}' must extend an entity identity " +
+                        "(e.g. extends: \"Customer.id\") — a projection identity is a pass-through (FR-024)",
+                        ErrorCode.ERR_PROJECTION_IDENTITY_NOT_EXTENDED,
+                        Envelope: identity.Source));
+                    continue;
+                }
+
+                var res = ResolveIdentityPassthrough(identity);
+                // Unresolved / non-identity target: ERR_UNRESOLVED_SUPER /
+                // ERR_EXTENDS_TARGET_MISMATCH already reported by super resolution.
+                if (res is null) continue;
+                var (entity, computedFields, missing) = res.Value;
+
+                if (missing.Count > 0)
+                {
+                    string missingRefs = string.Join(", ", missing.Select(f => $"'{entity.Name}.{f}'"));
+                    errors.Add(new MetaError(
+                        $"identity '{identity.Name}' on projection '{obj.Name}' does not correspond to its " +
+                        $"extended identity: no local field extends {missingRefs} — every field of the " +
+                        "extended identity needs a pass-through field on the projection (FR-024)",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH,
+                        Envelope: identity.Source));
+                    continue;
+                }
+
+                var explicitFields = IdentityOwnFields(identity);
+                if (explicitFields is not null && !explicitFields.SequenceEqual(computedFields))
+                {
+                    errors.Add(new MetaError(
+                        $"identity '{identity.Name}' on projection '{obj.Name}' declares @fields " +
+                        $"[{string.Join(", ", explicitFields)}] but the computed pass-through key is " +
+                        $"[{string.Join(", ", computedFields)}] — omit @fields (it is derived) or make them agree (FR-024)",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH,
+                        Envelope: identity.Source));
+                }
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    private static List<string>? NormalizeIdentityFields(object? raw)
+    {
+        if (raw is null) return null;
+        if (raw is string s)
+            return s.Split(',').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        if (raw is System.Collections.IEnumerable en)
+            return en.Cast<object?>().Select(v => (v?.ToString() ?? "").Trim()).ToList();
+        return null;
+    }
+
+    private static List<string>? IdentityOwnFields(MetaData identity)
+        => NormalizeIdentityFields(identity.OwnAttr(IDENTITY_ATTR_FIELDS));
+
+    private static List<string>? IdentityEffectiveFields(MetaData identity)
+        => NormalizeIdentityFields(identity.Attr(IDENTITY_ATTR_FIELDS));
+
+    private static (MetaData Entity, List<string> ComputedFields, List<string> Missing)?
+        ResolveIdentityPassthrough(MetaData identity)
+    {
+        var extended = identity.SuperData;
+        if (extended is null || extended.Type != TYPE_IDENTITY) return null;
+        var entity = extended.Parent;
+        if (entity is null || entity.Type != TYPE_OBJECT) return null;
+        var owner = identity.Parent;
+        if (owner is null) return null;
+
+        var extendedFields = IdentityEffectiveFields(extended) ?? new List<string>();
+        var computedFields = new List<string>();
+        var missing = new List<string>();
+        foreach (var fieldName in extendedFields)
+        {
+            var entityField = entity.Children()
+                .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == fieldName);
+            if (entityField is null) { missing.Add(fieldName); continue; }
+            var local = owner.OwnChildren()
+                .FirstOrDefault(c => c.Type == TYPE_FIELD && ExtendsChainReaches(c, entityField));
+            if (local is null) { missing.Add(fieldName); continue; }
+            computedFields.Add(local.Name);
+        }
+        return (entity, computedFields, missing);
+    }
+
+    private static bool ExtendsChainReaches(MetaData node, MetaData target)
+    {
+        var cur = node.SuperData;
+        while (cur is not null)
+        {
+            if (ReferenceEquals(cur, target)) return true;
+            cur = cur.SuperData;
+        }
+        return false;
+    }
+
+    // =========================================================================
+    // FR-024 B6 — derived-field providability (spec §7 population doctrine).
+    //   An object.entity field carrying any origin.* is derived (read-only): it
+    //   does not exist on the writable table — a read-capable (read-only-kind)
+    //   source must provide it on read. → ERR_DERIVED_FIELD_NO_READ_SOURCE.
+    //   Ported from loader/validation-passes.ts validateDerivedFieldProvidability.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateDerivedFieldProvidability(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_ENTITY))
+        {
+            bool hasReadCapableSource = obj.Children()
+                .Where(c => c.Type == TYPE_SOURCE)
+                .OfType<MetaSource>()
+                .Any(s => s.IsReadOnly());
+            if (hasReadCapableSource) continue;
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                if (!field.OwnChildren().Any(c => c.Type == TYPE_ORIGIN)) continue;
+                errors.Add(new MetaError(
+                    $"derived field \"{obj.Name}.{field.Name}\" carries an origin.* but entity \"{obj.Name}\" declares no " +
+                    "read-capable source — derived fields do not exist on the writable table. Declare a read-only source " +
+                    "(e.g. source.rdb @kind \"view\" @role \"replica\") to provide it, or move the field to an object.projection (FR-024 §7).",
+                    ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE,
+                    Envelope: field.Source));
+            }
+        }
+        return errors.AsReadOnly();
     }
 
     // =========================================================================
@@ -1000,6 +1486,12 @@ public static class ValidationPasses
                 ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY,
                 Envelope: obj.Source));
         }
+
+        // FR-024 (ADR-0028) — THE HARD CUTOVER (B4b: an entity's PRIMARY source
+        // must be a writable kind) is DEFERRED to the FR-024 projection-codegen
+        // increment: enforcing it forbids the view/proc-primary entity spellings
+        // that codegen fixtures still encode. Re-add with the codegen fan-out
+        // (subtype-based projection detection). See ERR_ENTITY_PRIMARY_SOURCE_READONLY.
     }
 
     // =========================================================================

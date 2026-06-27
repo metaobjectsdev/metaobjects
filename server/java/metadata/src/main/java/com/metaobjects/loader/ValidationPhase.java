@@ -170,9 +170,15 @@ public final class ValidationPhase {
             }
         }
         pass(collected, () -> validateOrigins(root));
+        // FR-024 B6 — derived-field providability (entity origin fields need a read source).
+        pass(collected, () -> validateDerivedFieldProvidability(root));
         pass(collected, () -> validateObjectFieldStorage(root));
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
+        // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
+        pass(collected, () -> validateSubtypeRules(root));
+        // FR-024 B3 — projection identity pass-through + key correspondence.
+        pass(collected, () -> validateIdentityPassthrough(root));
         pass(collected, () -> validateDataGridLayouts(root));
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
@@ -1003,6 +1009,12 @@ public final class ValidationPhase {
                     + "\"; exactly one is required",
                 ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY, obj.getSource());
         }
+
+        // FR-024 B4b (ADR-0028) — THE HARD CUTOVER (an entity's PRIMARY source must
+        // be a writable kind) is DEFERRED to the FR-024 projection-codegen increment:
+        // enforcing it forbids the view/proc-primary entity spellings that codegen
+        // fixtures still encode. Re-add with the codegen fan-out (subtype-based
+        // projection detection). See ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY.
     }
 
     // =========================================================================
@@ -1490,6 +1502,10 @@ public final class ValidationPhase {
                                            MetaField<?> field, MetaOrigin origin) {
         String subType = origin.getSubType();
 
+        // FR-024 B5: an object.value host is EXEMPT from @via inference + cardinality
+        // (a value's origin.passthrough is FR-015 parameter lineage, not assembly).
+        boolean isValueHost = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
+
         if (PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(subType)) {
             String from = origin.getFrom();
             if (from == null || from.isEmpty()) {
@@ -1499,11 +1515,25 @@ public final class ValidationPhase {
                         + ": missing @from.",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateFromOrOfPath(from, root, obj, field.getName(),
+            OriginTarget fromTarget = validateFromOrOfPath(from, root, obj, field.getName(),
                 "origin.passthrough.@from", origin.getSource());
+            // FR-024 B6 — extends/origin agreement (host-agnostic; before via/inference).
+            checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                validateViaPath(via, root, obj, field.getName(), origin.getSource());
+                java.util.List<MetaRelationship> hops =
+                    validateViaPath(via, root, obj, field.getName(), origin.getSource());
+                checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
+            } else if (!isValueHost) {
+                // FR-024 §6 — no @via: derive the base entity; a @from targeting the
+                // base relation itself is a plain base column; else infer single-hop.
+                MetaObject base = deriveBaseEntity(obj, root, field.getName(), origin.getSource());
+                if (base != null && !isBaseRelationTarget(fromTarget.entity, base, obj)) {
+                    java.util.List<MetaRelationship> hops = inferViaSingleHop(
+                        base, fromTarget.entity, obj, field.getName(), from,
+                        "origin.passthrough.@from", origin.getSource());
+                    checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
+                }
             }
             return;
         }
@@ -1530,18 +1560,39 @@ public final class ValidationPhase {
                         + ": missing @of.",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateFromOrOfPath(of, root, obj, field.getName(),
+            OriginTarget ofTarget = validateFromOrOfPath(of, root, obj, field.getName(),
                 "origin.aggregate.@of", origin.getSource());
 
             String via = origin.getVia();
-            if (via == null || via.isEmpty()) {
+            if (via != null && !via.isEmpty()) {
+                java.util.List<MetaRelationship> hops =
+                    validateViaPath(via, root, obj, field.getName(), origin.getSource());
+                checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
+                return;
+            }
+            // FR-024 §6 — no @via on an aggregate: inference applies only when @of
+            // targets a non-base entity from a non-value host; an aggregate over the
+            // base relation itself still requires an explicit path.
+            if (isValueHost) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @via (aggregates require a relationship path).",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            validateViaPath(via, root, obj, field.getName(), origin.getSource());
+            MetaObject base = deriveBaseEntity(obj, root, field.getName(), origin.getSource());
+            if (base == null) return; // base underivable — error already thrown
+            if (isBaseRelationTarget(ofTarget.entity, base, obj)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + ": missing @via (aggregates require a relationship path).",
+                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+            }
+            java.util.List<MetaRelationship> hops = inferViaSingleHop(
+                base, ofTarget.entity, obj, field.getName(), of,
+                "origin.aggregate.@of", origin.getSource());
+            checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
             return;
         }
 
@@ -2171,7 +2222,15 @@ public final class ValidationPhase {
      *
      * @param projection the projection node that owns the field carrying the origin
      */
-    private static void validateFromOrOfPath(String pathAttr, MetaRoot root,
+    /** FR-024 B5/B6 — the resolved target of a {@code @from}/{@code @of} ref: the
+     *  named root entity and the resolved field node on it (inherited included). */
+    private static final class OriginTarget {
+        final MetaObject entity;
+        final MetaField<?> field;
+        OriginTarget(MetaObject entity, MetaField<?> field) { this.entity = entity; this.field = field; }
+    }
+
+    private static OriginTarget validateFromOrOfPath(String pathAttr, MetaRoot root,
                                              MetaObject projection, String fieldName,
                                              String label,
                                              com.metaobjects.source.ErrorSource envelope) {
@@ -2210,14 +2269,14 @@ public final class ValidationPhase {
         }
 
         // Inherited fields included — getChildren(..., true) walks super data.
-        boolean fieldExists = false;
+        MetaField<?> resolvedField = null;
         for (MetaData child : sourceObj.getChildren(MetaData.class, true)) {
             if (child instanceof MetaField && nameMatches(child, targetFieldName)) {
-                fieldExists = true;
+                resolvedField = (MetaField<?>) child;
                 break;
             }
         }
-        if (!fieldExists) {
+        if (resolvedField == null) {
             // FR5d — entity resolved, field on it did not. target = full ref.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -2228,6 +2287,7 @@ public final class ValidationPhase {
                 ErrorCode.ERR_INVALID_ORIGIN,
                 ResolvedSource.from(envelope, referrer, pathAttr));
         }
+        return new OriginTarget(sourceObj, resolvedField);
     }
 
     /**
@@ -2237,13 +2297,14 @@ public final class ValidationPhase {
      * and carry a {@code @objectRef} that resolves to another entity at root,
      * which becomes the next hop's current entity.
      */
-    private static void validateViaPath(String viaAttr, MetaRoot root,
+    private static java.util.List<MetaRelationship> validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
                                         com.metaobjects.source.ErrorSource envelope) {
         // FR5d — referrer is `<projection-bare-name>::<fieldName>` (matches
         // TS/C#/Python: bare entity name, not package-qualified).
         String projectionName = projection.getName();
         String referrer = projection.getShortName() + "::" + fieldName;
+        java.util.List<MetaRelationship> hops = new java.util.ArrayList<>();
         String[] segments = viaAttr.split("\\.");
         if (segments.length < 2) {
             throw new MetaDataException(
@@ -2316,8 +2377,10 @@ public final class ValidationPhase {
                     ResolvedSource.from(envelope, referrer, refTarget));
             }
             validSegments.add(relName);
+            hops.add(rel);
             currentObj = nextObj;
         }
+        return hops;
     }
 
     /**
@@ -2387,6 +2450,381 @@ public final class ValidationPhase {
         if (full == null) return null;
         int idx = full.lastIndexOf(MetaData.PKG_SEPARATOR);
         return (idx >= 0) ? full.substring(idx + MetaData.PKG_SEPARATOR.length()) : full;
+    }
+
+    // =========================================================================
+    // FR-024 B5/B6 — base-entity derivation, single-hop @via inference, origin
+    // cardinality, and extends/origin agreement (spec §5–§6; ADR-0029 dec 5–7).
+    // Mirrors TS validation-passes.ts / the Python port. Throw-first per pass.
+    // =========================================================================
+
+    /** A hop relationship's DECLARED @cardinality, or null when absent. Mirrors TS
+     *  {@code _hopCardinality} (rel.attr → undefined when not declared): the
+     *  conservative cardinality checks must never judge an undeclared hop, so we
+     *  read the RAW own attr rather than {@link MetaRelationship#getCardinality()}
+     *  (which defaults to "one"). */
+    private static String hopCardinality(MetaRelationship rel) {
+        return rel.hasMetaAttr(MetaRelationship.ATTR_CARDINALITY)
+            ? rel.getMetaAttr(MetaRelationship.ATTR_CARDINALITY).getValueAsString()
+            : null;
+    }
+
+    /** Strip a package prefix from a dotted/qualified ref's leading segment. */
+    private static String stripPkg(String ref) {
+        int i = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
+        return (i >= 0) ? ref.substring(i + MetaData.PKG_SEPARATOR.length()) : ref;
+    }
+
+    /**
+     * The entity NAMED by a node's dotted extends ref — the OWNER part of
+     * {@code <owner>.<child>...} resolved as a root object. Differs from
+     * {@code getSuperData().getParent()} when the resolved child is INHERITED:
+     * {@code Product.id} selecting BaseEntity's identity must anchor Product
+     * (what the author wrote), not BaseEntity (where it physically lives).
+     */
+    private static MetaObject refNamedOwner(MetaData node, MetaRoot root) {
+        String ref = node.getAuthoredSuperRef();
+        if (ref == null) return null;
+        int lastSep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String tail = (lastSep == -1) ? ref : ref.substring(lastSep + MetaData.PKG_SEPARATOR.length());
+        int dot = tail.indexOf('.');
+        if (dot <= 0) return null;
+        return findRootObject(root, tail.substring(0, dot));
+    }
+
+    /**
+     * Derive the BASE entity a no-{@code @via} origin path anchors at (spec §5):
+     * a non-projection host is its own base; a projection's base is the owner
+     * entity of its extended identity (preferring the ref-named owner), else the
+     * single distinct entity targeted by plain field-extends. Throws
+     * ERR_AMBIGUOUS_PATH (&gt;1) / ERR_INVALID_ORIGIN (0) when underivable.
+     */
+    private static MetaObject deriveBaseEntity(MetaObject obj, MetaRoot root, String fieldName,
+                                               com.metaobjects.source.ErrorSource originSource) {
+        if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return obj;
+
+        for (MetaData ic : obj.getChildren(MetaData.class, false)) {
+            if (!(ic instanceof MetaIdentity)) continue;
+            MetaData extended = ic.getSuperData();
+            if (extended != null && MetaIdentity.TYPE_IDENTITY.equals(extended.getType())) {
+                MetaObject named = refNamedOwner(ic, root);
+                if (named != null) return named;
+                MetaData owner = extended.getParent();
+                if (owner instanceof MetaObject) return (MetaObject) owner;
+            }
+        }
+
+        java.util.Set<MetaObject> targets = new java.util.LinkedHashSet<>();
+        for (MetaData fc : obj.getChildren(MetaData.class, false)) {
+            if (!(fc instanceof MetaField)) continue;
+            MetaData sup = fc.getSuperData();
+            if (sup == null) continue;
+            MetaObject named = refNamedOwner(fc, root);
+            MetaData owner = (named != null) ? named : sup.getParent();
+            if (owner instanceof MetaObject) {
+                MetaObject mo = (MetaObject) owner;
+                if (!MetaObject.SUBTYPE_VALUE.equals(mo.getSubType()) && mo != obj) targets.add(mo);
+            }
+        }
+        if (targets.size() == 1) return targets.iterator().next();
+        if (targets.size() > 1) {
+            StringBuilder names = new StringBuilder();
+            for (MetaObject t : targets) { if (names.length() > 0) names.append(", "); names.append('"').append(t.getName()).append('"'); }
+            throw new MetaDataException(
+                "ERR_AMBIGUOUS_PATH"
+                    + ": origin on " + obj.getName() + "." + fieldName
+                    + ": cannot derive the base entity — fields extend multiple entities ("
+                    + names + ") and no identity extends an entity identity (FR-024).",
+                ErrorCode.ERR_AMBIGUOUS_PATH, originSource);
+        }
+        throw new MetaDataException(
+            ErrorMessageConstants.ERR_INVALID_ORIGIN
+                + ": origin on " + obj.getName() + "." + fieldName
+                + ": cannot derive the base entity for @via inference — declare an extended identity or an explicit @via (FR-024).",
+            ErrorCode.ERR_INVALID_ORIGIN, originSource);
+    }
+
+    /** True when {@code target} is {@code base} or {@code host}, or on either's extends chain. */
+    private static boolean isBaseRelationTarget(MetaObject target, MetaObject base, MetaObject host) {
+        for (MetaData cur = base; cur != null; cur = cur.getSuperData()) if (cur == target) return true;
+        for (MetaData cur = host; cur != null; cur = cur.getSuperData()) if (cur == target) return true;
+        return false;
+    }
+
+    /**
+     * Single-hop-unique @via inference (ADR-0029 dec 5): scan the base entity's
+     * effective relationships for those whose @objectRef resolves to the target
+     * entity. Exactly one → that hop. Zero → ERR_INVALID_ORIGIN. &gt;1 → ERR_AMBIGUOUS_PATH.
+     */
+    private static java.util.List<MetaRelationship> inferViaSingleHop(
+            MetaObject base, MetaObject targetEntity, MetaObject obj, String fieldName,
+            String fromAttr, String label, com.metaobjects.source.ErrorSource originSource) {
+        String targetBare = shortNameOf(targetEntity);
+        java.util.List<MetaRelationship> candidates = new java.util.ArrayList<>();
+        for (MetaData c : base.getChildren(MetaData.class, true)) {
+            if (!(c instanceof MetaRelationship)) continue;
+            MetaRelationship rel = (MetaRelationship) c;
+            String ref = rel.getObjectRef();
+            if (ref != null && stripPkg(ref).equals(targetBare)) candidates.add(rel);
+        }
+        String referrer = obj.getShortName() + "::" + fieldName;
+        if (candidates.size() == 1) return java.util.List.of(candidates.get(0));
+        if (candidates.isEmpty()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    + ": " + label + " \"" + fromAttr + "\" on " + obj.getName() + "." + fieldName
+                    + ": no @via and no single-hop relationship from base \"" + base.getName()
+                    + "\" to \"" + targetEntity.getName() + "\" — declare @via explicitly (ADR-0029).",
+                ErrorCode.ERR_INVALID_ORIGIN,
+                ResolvedSource.from(originSource, referrer, fromAttr));
+        }
+        throw new MetaDataException(
+            "ERR_AMBIGUOUS_PATH"
+                + ": " + label + " \"" + fromAttr + "\" on " + obj.getName() + "." + fieldName
+                + ": no @via and " + candidates.size() + " relationships from base \"" + base.getName()
+                + "\" to \"" + targetEntity.getName() + "\" — ambiguous; declare @via (ADR-0029).",
+            ErrorCode.ERR_AMBIGUOUS_PATH,
+            ResolvedSource.from(originSource, referrer, fromAttr));
+    }
+
+    /** ADR-0029 dec 6 — a passthrough via-path must be to-one at every hop. */
+    private static void checkPassthroughCardinality(java.util.List<MetaRelationship> hops,
+            MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
+        for (MetaRelationship rel : hops) {
+            if (MetaRelationship.CARDINALITY_MANY.equals(hopCardinality(rel))) {
+                throw new MetaDataException(
+                    "ERR_ORIGIN_CARDINALITY"
+                        + ": origin.passthrough on " + obj.getName() + "." + fieldName
+                        + ": @via hop \"" + rel.getName() + "\" is to-many — you meant aggregate (ADR-0029).",
+                    ErrorCode.ERR_ORIGIN_CARDINALITY, originSource);
+            }
+        }
+    }
+
+    /** ADR-0029 dec 6 — an aggregate via-path must have ≥1 to-many hop (conservative). */
+    private static void checkAggregateCardinality(java.util.List<MetaRelationship> hops,
+            MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
+        if (hops.isEmpty()) return;
+        boolean provablyToOne = true;
+        for (MetaRelationship rel : hops) {
+            if (!MetaRelationship.CARDINALITY_ONE.equals(hopCardinality(rel))) { provablyToOne = false; break; }
+        }
+        if (provablyToOne) {
+            throw new MetaDataException(
+                "ERR_ORIGIN_CARDINALITY"
+                    + ": origin.aggregate on " + obj.getName() + "." + fieldName
+                    + ": every @via hop is to-one — you meant passthrough (ADR-0029).",
+                ErrorCode.ERR_ORIGIN_CARDINALITY, originSource);
+        }
+    }
+
+    /** FR-024 B6 — extends (shape) and origin.passthrough (data) lineage must agree. */
+    private static void checkExtendsOriginAgreement(MetaField<?> field, MetaField<?> fromField,
+            String fromAttr, MetaObject obj, com.metaobjects.source.ErrorSource originSource) {
+        MetaData sup = field.getSuperData();
+        if (!(sup instanceof MetaField)) return;
+        MetaData supOwner = sup.getParent();
+        if (!(supOwner instanceof MetaObject)) return;
+        for (MetaData cur = sup; cur != null; cur = cur.getSuperData()) {
+            if (cur == fromField) return; // shape + data lineage agree
+        }
+        String referrer = obj.getShortName() + "::" + field.getName();
+        throw new MetaDataException(
+            "ERR_EXTENDS_ORIGIN_MISMATCH"
+                + ": origin.passthrough on " + obj.getName() + "." + field.getName()
+                + ": @from \"" + fromAttr + "\" disagrees with the field's extends target \""
+                + supOwner.getName() + "." + sup.getName() + "\" (FR-024).",
+            ErrorCode.ERR_EXTENDS_ORIGIN_MISMATCH,
+            ResolvedSource.from(originSource, referrer, fromAttr));
+    }
+
+    // =========================================================================
+    // FR-024 B3/B4a — subtype rules: identity-name-required, value purity,
+    // projection licensing. Mirrors TS subtype-rules.ts / the Python port.
+    // =========================================================================
+
+    static void validateSubtypeRules(MetaRoot root) {
+        walkSubtypeRules(root);
+    }
+
+    private static void walkSubtypeRules(MetaData node) {
+        // FR-024 D2 — every identity node needs an author-chosen name (any nesting).
+        // This port auto-names a nameless identity (unlike TS/Python which leave
+        // name === ""), so detect the omission via the parser's auto-named flag.
+        if (node instanceof MetaIdentity && node.isAutoNamed()) {
+            throw new MetaDataException(
+                "ERR_IDENTITY_NAME_REQUIRED"
+                    + ": identity." + node.getSubType()
+                    + " has no name — identity nodes require an author-chosen name (FR-024).",
+                ErrorCode.ERR_IDENTITY_NAME_REQUIRED, node.getSource());
+        }
+        if (node instanceof MetaObject) {
+            MetaObject obj = (MetaObject) node;
+            if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) {
+                validateValuePurity(obj);
+            } else if (MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) {
+                validateProjectionLicensing(obj);
+            }
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkSubtypeRules(child);
+        }
+    }
+
+    /** A value object is a pure shape — NO identity of any subtype and NO source. */
+    private static void validateValuePurity(MetaObject obj) {
+        for (MetaData child : obj.getChildren(MetaData.class, true)) {
+            if (child instanceof MetaIdentity) {
+                throw new MetaDataException(
+                    "ERR_SUBTYPE_RULE_VIOLATION"
+                        + ": value object '" + obj.getName() + "' must not have an identity ("
+                        + child.getType() + "." + child.getSubType() + ") — use subType \"entity\" (FR-024).",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, child.getSource());
+            }
+            if (child instanceof MetaSource) {
+                throw new MetaDataException(
+                    "ERR_SUBTYPE_RULE_VIOLATION"
+                        + ": value object '" + obj.getName() + "' must not have a source — "
+                        + "use subType \"entity\" or \"projection\" (FR-024).",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, child.getSource());
+            }
+        }
+    }
+
+    /** A projection may only object-extend another projection; its sources must be read-only kinds. */
+    private static void validateProjectionLicensing(MetaObject obj) {
+        MetaData sup = obj.getSuperData();
+        if (sup != null && !(MetaObject.TYPE_OBJECT.equals(sup.getType())
+                && MetaObject.SUBTYPE_PROJECTION.equals(sup.getSubType()))) {
+            throw new MetaDataException(
+                "ERR_SUBTYPE_RULE_VIOLATION"
+                    + ": projection '" + obj.getName() + "' extends '" + sup.getName() + "' which is "
+                    + sup.getType() + "." + sup.getSubType() + " — a projection may only extend a projection (FR-024).",
+                ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, obj.getSource());
+        }
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaSource)) continue;
+            MetaSource s = (MetaSource) child;
+            if (!MetaSource.READ_ONLY_KINDS.contains(s.getEffectiveKind())) {
+                throw new MetaDataException(
+                    "ERR_PROJECTION_SOURCE_WRITABLE"
+                        + ": projection '" + obj.getName() + "' has a writable source (@kind \""
+                        + s.getEffectiveKind() + "\") — projection sources must be read-only kinds (FR-024).",
+                    ErrorCode.ERR_PROJECTION_SOURCE_WRITABLE, child.getSource());
+            }
+        }
+    }
+
+    // =========================================================================
+    // FR-024 B3 — projection identity pass-through + key correspondence.
+    // Mirrors TS validate-identity-passthrough.ts / the Python port.
+    // =========================================================================
+
+    static void validateIdentityPassthrough(MetaRoot root) {
+        for (MetaData c : root.getChildren(MetaData.class, false)) {
+            if (!(c instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) c;
+            if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) continue;
+            for (MetaData ic : obj.getChildren(MetaData.class, false)) {
+                if (!(ic instanceof MetaIdentity)) continue;
+                MetaIdentity identity = (MetaIdentity) ic;
+                if (identity.getAuthoredSuperRef() == null) {
+                    throw new MetaDataException(
+                        "ERR_PROJECTION_IDENTITY_NOT_EXTENDED"
+                            + ": identity '" + identity.getName() + "' on projection '" + obj.getName()
+                            + "' must extend an entity identity — a projection identity is a pass-through (FR-024).",
+                        ErrorCode.ERR_PROJECTION_IDENTITY_NOT_EXTENDED, identity.getSource());
+                }
+                MetaData extended = identity.getSuperData();
+                if (!(extended instanceof MetaIdentity)) continue; // unresolved/mismatch reported elsewhere
+                MetaData entityNode = extended.getParent();
+                if (!(entityNode instanceof MetaObject)) continue;
+                MetaObject entity = (MetaObject) entityNode;
+
+                java.util.List<String> extendedFields = ((MetaIdentity) extended).getFields();
+                java.util.List<String> computed = new java.util.ArrayList<>();
+                boolean missing = false;
+                for (String fn : extendedFields) {
+                    MetaField<?> entityField = findFieldByName(entity, fn);
+                    if (entityField == null) { missing = true; break; }
+                    MetaField<?> local = null;
+                    for (MetaData oc : obj.getChildren(MetaData.class, false)) {
+                        if (oc instanceof MetaField && extendsChainReaches(oc, entityField)) {
+                            local = (MetaField<?>) oc; break;
+                        }
+                    }
+                    if (local == null) { missing = true; break; }
+                    computed.add(shortNameOf(local));
+                }
+                if (missing) {
+                    throw new MetaDataException(
+                        "ERR_IDENTITY_KEY_MISMATCH"
+                            + ": identity '" + identity.getName() + "' on projection '" + obj.getName()
+                            + "' does not correspond to its extended identity — every extended-identity field "
+                            + "needs a pass-through field on the projection (FR-024).",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH, identity.getSource());
+                }
+                java.util.List<String> explicit = identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false)
+                    ? identity.getFields() : null;
+                if (explicit != null && !explicit.equals(computed)) {
+                    throw new MetaDataException(
+                        "ERR_IDENTITY_KEY_MISMATCH"
+                            + ": identity '" + identity.getName() + "' on projection '" + obj.getName()
+                            + "' declares @fields " + explicit + " but the computed pass-through key is "
+                            + computed + " — omit @fields (it is derived) or make them agree (FR-024).",
+                        ErrorCode.ERR_IDENTITY_KEY_MISMATCH, identity.getSource());
+                }
+            }
+        }
+    }
+
+    private static MetaField<?> findFieldByName(MetaObject entity, String name) {
+        for (MetaData c : entity.getChildren(MetaData.class, true)) {
+            if (c instanceof MetaField && nameMatches(c, name)) return (MetaField<?>) c;
+        }
+        return null;
+    }
+
+    private static boolean extendsChainReaches(MetaData node, MetaData target) {
+        for (MetaData cur = node.getSuperData(); cur != null; cur = cur.getSuperData()) {
+            if (cur == target) return true;
+        }
+        return false;
+    }
+
+    // =========================================================================
+    // FR-024 B6 — derived-field providability (spec §7). An object.entity field
+    // carrying an origin.* is derived (read-only); the entity needs a read-capable
+    // source to provide it. Mirrors TS validateDerivedFieldProvidability.
+    // =========================================================================
+
+    static void validateDerivedFieldProvidability(MetaRoot root) {
+        for (MetaData c : root.getChildren(MetaData.class, false)) {
+            if (!(c instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) c;
+            if (!MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) continue;
+            boolean hasReadCapable = false;
+            for (MetaSource s : obj.getSources(true)) {
+                if (s.isReadOnly()) { hasReadCapable = true; break; }
+            }
+            if (hasReadCapable) continue;
+            for (MetaData fc : obj.getChildren(MetaData.class, false)) {
+                if (!(fc instanceof MetaField)) continue;
+                boolean hasOrigin = false;
+                for (MetaData oc : fc.getChildren(MetaData.class, false)) {
+                    if (oc instanceof MetaOrigin) { hasOrigin = true; break; }
+                }
+                if (hasOrigin) {
+                    throw new MetaDataException(
+                        "ERR_DERIVED_FIELD_NO_READ_SOURCE"
+                            + ": derived field \"" + obj.getName() + "." + fc.getName()
+                            + "\" carries an origin.* but entity \"" + obj.getName()
+                            + "\" declares no read-capable source — declare a read-only source "
+                            + "or move the field to an object.projection (FR-024 §7).",
+                        ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE, fc.getSource());
+                }
+            }
+        }
     }
 
     // =========================================================================

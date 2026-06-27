@@ -342,10 +342,14 @@ public class MetaDataLoader
                     Envelope: envelope));
             }
 
-            // Pass 2: subtype rules (value must not have primary identity; entity should have one)
+            // Pass 2: subtype rules (FR-024 value-purity / projection-licensing /
+            // identity-name-required; entity should have a primary identity)
             var subtypeResult = ValidationPasses.ValidateSubtypeRules(root);
             errors.AddRange(subtypeResult.Errors);
             warnings.AddRange(subtypeResult.Warnings);
+
+            // Pass 2b: FR-024 B3 — projection identity pass-through + key correspondence
+            errors.AddRange(ValidationPasses.ValidateIdentityPassthrough(root));
 
             // Pass 3: dataGrid @defaultSortField cross-reference
             errors.AddRange(ValidationPasses.ValidateDataGridSortFields(root));
@@ -356,8 +360,12 @@ public class MetaDataLoader
             // Pass 4b: @filterable on a subtype with no operator band → error (SP-H Unit9)
             errors.AddRange(ValidationPasses.ValidateFilterableHasSupportedOps(root));
 
-            // Pass 5: origin path validation
+            // Pass 5: origin path validation (FR-024 B5/B6 — @via inference,
+            // cardinality, extends/origin agreement)
             errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
+
+            // Pass 5b: FR-024 B6 — derived-field providability on entities
+            errors.AddRange(ValidationPasses.ValidateDerivedFieldProvidability(root));
 
             // Pass 6: attribute-schema validation. Under strict load (ADR-0023) an
             // own @-attr declared by no provider -> ERR_UNKNOWN_ATTR (Check 0).

@@ -103,6 +103,12 @@ def _build_passthrough_tree(from_ref: str) -> MetaData:
     root.add_child(program)
 
     summary = MetaObject(TYPE_OBJECT, "entity", "ProgramSummary")
+    # ProgramSummary extends Program (this builder's documented contract). Wire the
+    # resolved super directly since this unit test bypasses super-resolution. Under
+    # FR-024 §6 this anchors the base entity so a valid @from="Program.title" is a
+    # base-relation column (no @via inference attempted → no ERR_INVALID_ORIGIN).
+    summary.super_ref = "Program"
+    summary.super_data = program
     field = MetaField(TYPE_FIELD, "string", "displayTitle")
     origin = MetaData(TYPE_ORIGIN, "passthrough", "")
     origin.set_attr("from", from_ref, ATTR_SUBTYPE_STRING)
@@ -274,15 +280,18 @@ def test_aggregate_missing_of_emits_err_invalid_origin() -> None:
 
 
 def test_aggregate_missing_via_emits_err_invalid_origin() -> None:
-    """An origin.aggregate with no @via must emit ERR_INVALID_ORIGIN."""
+    """An origin.aggregate with no @of must emit ERR_INVALID_ORIGIN.
+
+    FR-024/ADR-0029: @via is now OPTIONAL on an aggregate (single-hop-unique
+    inference fills it). The tree below is missing BOTH @of and @via; only the
+    missing @of is an error now — a missing @via no longer errors on its own
+    (it would be inferred, but @of did not resolve so no inference is attempted).
+    """
     root = _build_aggregate_tree_missing_attrs()
     errors, _ = _errors_and_warnings(root)
-    codes = [e.code for e in errors]
-    # Both @of and @via are missing — ERR_INVALID_ORIGIN should appear at least once
     invalid_origin_errors = [e for e in errors if e.code == ErrorCode.ERR_INVALID_ORIGIN]
-    assert len(invalid_origin_errors) >= 2, (
-        f"Expected at least 2 ERR_INVALID_ORIGIN errors (one for @of, one for @via); "
-        f"got: {invalid_origin_errors}"
+    assert len(invalid_origin_errors) >= 1, (
+        f"Expected ERR_INVALID_ORIGIN for the missing @of; got: {invalid_origin_errors}"
     )
 
 
