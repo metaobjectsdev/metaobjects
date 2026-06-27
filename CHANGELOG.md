@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **codegen-ts — projection read-type nullability** now mirrors the view column:
+  a non-`@required` projection field generates a nullable Drizzle view column but
+  previously kept a non-null Zod read type, so the generated projection query
+  returned `T | null` into a non-null `<Name>` field and failed to compile under
+  strict TS. The read field is now emitted as `.nullable()` whenever its view
+  column is not `.notNull()`, so the read type matches the view's SELECT type.
+
 ## [0.12.4] — 2026-06-27
 
 _npm `0.12.4` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

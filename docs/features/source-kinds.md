@@ -45,9 +45,9 @@ mutation routes, and read-only finders. A `table` emits the full CRUD surface.
     "name": "AuthorView",
     "children": [
       { "source.rdb": { "@kind": "view", "@table": "v_author" } },
-      { "field.long":   { "name": "id",
+      { "field.long":   { "name": "id", "@required": true,
         "children": [ { "origin.passthrough": { "@from": "Author.id" } } ] } },
-      { "field.string": { "name": "name",
+      { "field.string": { "name": "name", "@required": true,
         "children": [ { "origin.passthrough": { "@from": "Author.name" } } ] } },
       { "field.long":   { "name": "postCount",
         "children": [ { "origin.aggregate": {
@@ -124,12 +124,18 @@ export const authorView = pgView("v_author").as((qb) => qb.selectFrom("authors")
 export const AuthorViewSchema = z.object({
   id: z.number(),
   name: z.string(),
-  postCount: z.number(),
+  postCount: z.number().nullable(),
 });
 
 export type AuthorView = z.infer<typeof AuthorViewSchema>;
 // no createAuthorView / updateAuthorView / deleteAuthorView — read-only.
 ```
+
+Read-schema nullability mirrors the view column: a field that is not `@required`
+(here `postCount`, a derived aggregate) is nullable in the view's SELECT type, so
+its Zod read field is emitted as `.nullable()` — matching what
+`db.select().from(view)` actually returns. A `@required` field (`id`, `name`) stays
+non-null.
 
 ### Java
 
