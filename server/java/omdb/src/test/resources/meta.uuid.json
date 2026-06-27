@@ -3,7 +3,7 @@
     "package": "uuidtest",
     "children": [
       {
-        "object.value": {
+        "object.entity": {
           "name": "Widget",
           "package": "uuidtest",
           "@object": "com.metaobjects.object.value.ValueObject",

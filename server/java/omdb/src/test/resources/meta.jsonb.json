@@ -3,7 +3,7 @@
     "package": "jsonbtest",
     "children": [
       {
-        "object.value": {
+        "object.entity": {
           "name": "Item",
           "@object": "com.metaobjects.object.value.ValueObject",
           "children": [

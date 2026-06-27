@@ -3,7 +3,7 @@
     "package": "produce",
     "children": [
       {
-        "object.value": {
+        "object.entity": {
           "name": "Basket",
           "package": "container",
           "@object": "com.metaobjects.object.value.ValueObject",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "object.value": {
+        "object.entity": {
           "name": "FullBasketView",
           "extends": "container::Basket",
           "@object": "com.metaobjects.object.value.ValueObject",

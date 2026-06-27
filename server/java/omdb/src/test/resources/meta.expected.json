@@ -3,7 +3,7 @@
     "package": "myapp::commerce",
     "children": [
       {
-        "object.value": {
+        "object.entity": {
           "name": "Program",
           "@object": "com.metaobjects.object.value.ValueObject",
           "children": [

@@ -3,7 +3,7 @@
     "package": "ktx",
     "children": [
       {
-        "object.value": {
+        "object.entity": {
           "name": "Widget",
           "@object": "com.metaobjects.object.value.ValueObject",
           "children": [
