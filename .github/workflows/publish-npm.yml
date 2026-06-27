@@ -1,0 +1,74 @@
+name: publish-npm
+
+# Publishes the @metaobjectsdev/* npm packages (the full lockstep set) to npm,
+# in tier order (a dependency never lands after its dependent). Mirrors
+# publish-csharp.yml / publish-python.yml: tag-triggered or manual.
+#
+# This publishes the versions ALREADY COMMITTED in each package.json at the tagged
+# commit — bump + commit them first (locally: `bun run release <ver>` does the
+# bump/build/verify/publish in one shot WITH a confirm gate; this workflow is the
+# hands-off CI alternative for the common tag-and-go case). The pre-publish
+# pack-verify here catches the stale-lockfile sibling-pinning bug before anything
+# ships. npm versions are immutable.
+#
+# One-time setup (repo Settings -> Secrets and variables -> Actions):
+#   NPM_TOKEN = a granular automation token from npmjs.com with publish rights to
+#   the @metaobjectsdev scope. (OIDC trusted publishing for npm can't drive
+#   dist-tags yet, so a token is still the pragmatic choice for a lockstep set.)
+#
+# Triggers: a `npm-v*` tag (e.g. `npm-v0.12.6`), or manual workflow_dispatch.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'npm-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install + build
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Pack-verify the cli tarball pins siblings (no workspace:*)
+        run: |
+          set -euo pipefail
+          VER=$(node -e "console.log(require('./server/typescript/packages/cli/package.json').version)")
+          echo "publishing version: $VER"
+          cd server/typescript/packages/cli && bun pm pack --destination /tmp/p
+          PACKED=$(tar -xzOf /tmp/p/*.tgz package/package.json)
+          echo "$PACKED" | node -e '
+            const p = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const ver = p.version;
+            const bad = Object.entries(p.dependencies || {})
+              .filter(([k, v]) => k.startsWith("@metaobjectsdev/") && v !== ver);
+            if (bad.length) { console.error("stale/workspace sibling deps:", bad); process.exit(1); }
+            console.log("packed deps OK: all @metaobjectsdev/* pinned to", ver);
+          '
+
+      - name: Publish in tier order
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          pub() { ( cd "$1" && bun publish --access public ) && echo "  ✓ $1"; }
+          # tier 0 → 4 (deps before dependents)
+          for d in server/typescript/packages/metadata server/typescript/packages/render \
+                   server/typescript/packages/codegen-ts server/typescript/packages/runtime-ts \
+                   server/typescript/packages/migrate-ts server/typescript/packages/sdk \
+                   client/web/packages/runtime-web \
+                   server/typescript/packages/codegen-ts-react server/typescript/packages/codegen-ts-tanstack \
+                   client/web/packages/react client/web/packages/tanstack \
+                   server/typescript/packages/cli server/typescript/packages/ai-runtime ; do
+            pub "$d"
+          done
+          rm -f ~/.npmrc
