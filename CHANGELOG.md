@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **cli — `meta init` gitignore hardening:** the scaffolded
+  `.metaobjects/.gitignore` previously ignored only `.gen-state/`, so a
+  multi-target codegen config routing a target's `outDir` under
+  `.metaobjects/<target>/src/generated/` let that regenerable generated shadow
+  get committed by default. The scaffold now also ignores `*/src/generated/` and
+  re-includes the tracked artifacts (`!migrations/`, `!config.json`,
+  `!package.meta.json`) so they can never be swept up.
+- **cli — `meta init` monorepo-subdir warning:** scaffolding the agent-context
+  `.claude/skills/` into a git subdirectory means a repo-root-launched Claude
+  session won't discover the skills (discovery walks cwd + ancestors, never down
+  into subdirs). `meta init` now warns when run inside a subdir of a git repo and
+  points at `cd <repo-root> && meta init --docs-only --server <lang>`. Scaffold
+  warnings are also now surfaced on the normal init output path (previously
+  dropped).
+
 ## [0.12.5] — 2026-06-27
 
 _npm `0.12.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

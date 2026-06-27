@@ -160,16 +160,28 @@ jobs:
           #   composes the metamodel provider set so codegen-base/om classpath SPI does not pollute it).
           mvn -pl codegen-kotlin test -Dtest='ObjectModelConformanceTest,OutputPromptConformanceTest,ValidationConformanceTest,GeneratorRegistryConformanceTest,RegistryManifestConformanceTest' -q
 
-  java-smoke-compile:
-    # The scoped `mvn -pl ... test` jobs above compile only metadata / render /
-    # codegen-spring / codegen-kotlin (+ their -am deps). Whole modules are
-    # otherwise NEVER built by CI: codegen-mustache, codegen-plantuml,
-    # maven-plugin, dynamic, core-spring, metadata-ktx, omdb-ktx,
-    # spring-boot-starter, om, omdb. A compile break in any of them ships green.
-    # A cheap reactor-wide `install -DskipTests` compiles + packages every module
-    # in the parent reactor (integration-tests* are intentionally out-of-reactor —
-    # they need Docker), so a break in the Maven plugin / Spring Boot starter /
-    # mustache/plantuml/ktx facades fails CI here.
+  java-reactor:
+    # FULL-REACTOR build AND test of the Java parent reactor (server/java).
+    #
+    # The scoped `mvn -pl ... test` jobs above run ONLY a curated `-Dtest=` subset
+    # in metadata / render / codegen-spring / codegen-kotlin (+ their -am deps).
+    # Every other reactor module's tests are otherwise NEVER run by CI — most
+    # notably the `maven-plugin` mojo tests (MetaDataGeneratorMojoTest, DocsMojoTest,
+    # MetaDataVerifyMojoTest, ...). That gap let issue #37 ship: a mojo-test fixture
+    # broke `mvn clean install` on `main` while every PR showed green, because this
+    # job used to run `install -DskipTests` (compile only, no tests).
+    #
+    # Running a full-reactor `mvn install` (tests ON) compiles, packages, AND tests
+    # every module in the parent reactor — so a red reactor can no longer slip past
+    # green PR checks. No reactor module's tests need Docker/Testcontainers (verified:
+    # the only Testcontainers suites are integration-tests* and integration-tests-kotlin,
+    # which are INTENTIONALLY out-of-reactor and gated separately by integration-tests.yml).
+    #
+    # Intentionally still OUT of this gate (documented):
+    #   - integration-tests / integration-tests-kotlin — out-of-reactor Docker/
+    #     Testcontainers persistence + api-contract corpora; gated by integration-tests.yml.
+    #   - fatjar-smoke — standalone Spring Boot fat-jar bootstrap smoke (no tests);
+    #     out-of-reactor by design, run on demand via scripts/fatjar-smoke.sh.
     needs: fixture-lint
     runs-on: ubuntu-latest
     steps:
@@ -180,8 +192,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
           cache: maven
-      - name: Reactor-wide compile (all modules, no tests)
-        run: cd server/java && mvn -q install -DskipTests
+      - name: Full-reactor build + test (all modules, tests on)
+        run: cd server/java && mvn -q clean install
 
   completeness-gate:
     needs: [conformance, conformance-kotlin]

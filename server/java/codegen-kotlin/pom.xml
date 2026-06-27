@@ -132,6 +132,17 @@
       <version>1.7.3</version>
       <scope>test</scope>
     </dependency>
+    <!-- KotlinM2mTraversalCompileRunTest compiles the GENERATED Exposed Table + M:N relation
+         helpers against exposed-core, resolving the jar from the local m2 repo. Declaring it
+         test-scoped here forces Maven to resolve it into ~/.m2 during this module's build, so
+         the test no longer depends on a prior build (e.g. the reactor-excluded
+         integration-tests-kotlin) having populated the local repository first. -->
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-core</artifactId>
+      <version>0.55.0</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>

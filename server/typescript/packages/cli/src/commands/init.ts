@@ -24,7 +24,24 @@ const META_COMMON_JSON = JSON.stringify(
   2,
 ) + "\n";
 
+// Issue #75 — a multi-target codegen config can route a target's outDir under
+// `.metaobjects/<targetName>/src/generated/`. That output is the regenerable
+// shadow (the canonical output lives at the configured outDir; re-running
+// `meta gen` recreates the shadow), so it must NOT be committed by default. We
+// ignore the per-target generated shadow with a narrow `*/src/generated/`
+// pattern, then explicitly re-include `migrations/` and `config.json` so the
+// tracked artifacts are never swept up even if a future broad pattern were added.
 const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
+
+# Per-target codegen output routed under .metaobjects/<target>/ is regenerable
+# (re-run \`meta gen\`); never commit it. The canonical output is your configured
+# outDir, not this shadow.
+*/src/generated/
+
+# These ARE meant to be tracked — keep them even if a broad pattern matches.
+!migrations/
+!config.json
+!package.meta.json
 `;
 
 function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
@@ -96,7 +113,44 @@ async function readManifest(cwd: string): Promise<Manifest | undefined> {
   try { return JSON.parse(await readFile(p, "utf8")) as Manifest; } catch { return undefined; }
 }
 
+/**
+ * Walk up from `start` looking for a `.git` directory; return the repo root, or
+ * undefined when `start` is not inside a git working tree. (`.git` can be a file
+ * in worktrees/submodules — accept either a dir or a file.)
+ */
+function findGitRoot(start: string): string | undefined {
+  let dir = start;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (existsSyncWrap(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined; // reached filesystem root
+    dir = parent;
+  }
+}
+
+/**
+ * Issue #77 — Claude Code discovers `.claude/skills/` only from cwd + ANCESTOR
+ * dirs + the user level; it never walks DOWN into subdirs. So scaffolding the
+ * agent-context into a monorepo subdir means a root-launched session won't load
+ * the skills (the common case). When the init dir is inside a git repo whose
+ * root is an ANCESTOR (i.e. a subdir init), warn and point the user at the repo
+ * root. The metadata/config/migrations correctly stay in the subdir regardless.
+ */
+function warnIfMonorepoSubdir(opts: InitOptions, result: InitResult): void {
+  if (opts.noSkills) return; // no skills written → nothing to warn about
+  const gitRoot = findGitRoot(opts.cwd);
+  if (gitRoot === undefined || gitRoot === opts.cwd) return; // repo root or non-git → fine
+  const lang = opts.servers && opts.servers.length > 0 ? opts.servers[0]! : "<lang>";
+  result.warnings.push(
+    "agent-context skills scaffolded into a monorepo subdir won't be discovered from a " +
+    "root-launched session (Claude Code only walks cwd + ancestors). Scaffold the context " +
+    `at the repo root instead: cd <repo-root> && meta init --docs-only --server ${lang}`,
+  );
+}
+
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
+  warnIfMonorepoSubdir(opts, result);
   const stack = resolveStack(opts.cwd, { servers: opts.servers ?? [], clients: opts.clients ?? [] });
   let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack });
   if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
@@ -367,6 +421,9 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
       } else {
         log.info(nextStepsBlock());
+        // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
+        // discovery warning) — these are otherwise dropped on the normal init path.
+        for (const w of result.warnings) log.warn(w);
       }
     }
     return 0;
