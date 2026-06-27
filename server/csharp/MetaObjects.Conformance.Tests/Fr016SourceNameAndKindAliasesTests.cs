@@ -31,14 +31,29 @@ public class Fr016SourceNameAndKindAliasesTests
         return (MetaSource)entity.OwnChildren().First(c => c.Type == "source");
     }
 
-    private static string OneEntityDoc(string entityName, string sourceBody) =>
-        "{ \"metadata.root\": { \"package\": \"demo\", \"children\": [" +
-        "  { \"object.entity\": { \"name\": \"" + entityName + "\", \"children\": [" +
-        "    { \"source.rdb\": " + sourceBody + " }," +
-        "    { \"field.long\": { \"name\": \"id\" } }," +
-        "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
-        "  ]}}" +
-        "]}}";
+    private static readonly string[] ReadOnlyKinds = { "view", "materializedView", "storedProc", "tableFunction" };
+
+    // FR-024 B4b: a read-only-kind primary source can't sit on an object.entity —
+    // a derived read model is an object.projection. The subtype is chosen from the
+    // source body's @kind so these FR-016 physical-name-alias fixtures stay loadable;
+    // a projection's identity must extend an entity identity, so the projection
+    // variant omits identity (projection identity is optional).
+    private static string OneEntityDoc(string entityName, string sourceBody)
+    {
+        bool readOnly = ReadOnlyKinds.Any(k =>
+            sourceBody.Contains("\"@kind\": \"" + k + "\"") || sourceBody.Contains("\"@kind\":\"" + k + "\""));
+        string subtype = readOnly ? "object.projection" : "object.entity";
+        string tail = readOnly
+            ? "    { \"field.long\": { \"name\": \"id\" } }"
+            : "    { \"field.long\": { \"name\": \"id\" } }," +
+              "    { \"identity.primary\": { \"@fields\": \"id\" } }";
+        return "{ \"metadata.root\": { \"package\": \"demo\", \"children\": [" +
+            "  { \"" + subtype + "\": { \"name\": \"" + entityName + "\", \"children\": [" +
+            "    { \"source.rdb\": " + sourceBody + " }," +
+            tail +
+            "  ]}}" +
+            "]}}";
+    }
 
     // -------------------------------------------------------------------------
     // 1. Constants + map exposure

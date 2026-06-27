@@ -34,16 +34,16 @@ public class Fr015CodegenTests
         { "field.int":       { "name": "caseId", "@required": true } },
         { "field.timestamp": { "name": "asOfDate" } }
       ]}},
-      { "object.entity": { "name": "PhaseSummary", "children": [
+      { "object.projection": { "name": "PhaseSummary", "children": [
         { "source.rdb":  { "@kind": "storedProc", "@proc": "fn_phase_summary", "@schema": "analytics", "@parameterRef": "PhaseSummaryArgs" } },
         { "field.long":   { "name": "phaseId" } },
         { "field.string": { "name": "phaseName" } }
       ]}},
-      { "object.entity": { "name": "ActivePhases", "children": [
+      { "object.projection": { "name": "ActivePhases", "children": [
         { "source.rdb":  { "@kind": "tableFunction", "@function": "fn_active_phases", "@parameterRef": "PhaseSummaryArgs" } },
         { "field.long":   { "name": "phaseId" } }
       ]}},
-      { "object.entity": { "name": "AllPhases", "children": [
+      { "object.projection": { "name": "AllPhases", "children": [
         { "source.rdb":  { "@kind": "storedProc", "@proc": "fn_all_phases" } },
         { "field.long":   { "name": "phaseId" } }
       ]}},

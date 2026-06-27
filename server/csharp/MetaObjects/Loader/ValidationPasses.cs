@@ -1487,11 +1487,26 @@ public static class ValidationPasses
                 Envelope: obj.Source));
         }
 
-        // FR-024 (ADR-0028) — THE HARD CUTOVER (B4b: an entity's PRIMARY source
-        // must be a writable kind) is DEFERRED to the FR-024 projection-codegen
-        // increment: enforcing it forbids the view/proc-primary entity spellings
-        // that codegen fixtures still encode. Re-add with the codegen fan-out
-        // (subtype-based projection detection). See ERR_ENTITY_PRIMARY_SOURCE_READONLY.
+        // FR-024 (ADR-0028) — THE HARD CUTOVER (B4b): an entity's PRIMARY source
+        // must be a writable kind; read-only kinds (view/materializedView/storedProc/
+        // tableFunction) are legal only in non-primary (read) roles. The pre-FR-024
+        // spellings (view-primary "projection" entities, proc-result-as-entity) are
+        // removed outright — a derived read model is an object.projection.
+        if (obj.IsEntity())
+        {
+            foreach (var s in sources)
+            {
+                if (s.Role == SOURCE_ROLE_PRIMARY && s.IsReadOnly())
+                {
+                    errors.Add(new MetaError(
+                        $"entity \"{obj.Name}\" has a primary source of read-only kind \"{s.EffectiveKind}\" — " +
+                        "read-only kinds are legal only in non-primary roles; a derived read model " +
+                        "is an object.projection (FR-024, ADR-0028)",
+                        ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY,
+                        Envelope: s.Source));
+                }
+            }
+        }
     }
 
     // =========================================================================

@@ -92,7 +92,8 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// write). Write-through objects (a read-only and a writable primary) are NOT
     /// read-only projections — they're CQRS write-through.
     /// </summary>
-    public bool IsReadOnlyProjection() => DbView is not null && DbTable is null;
+    public bool IsReadOnlyProjection() =>
+        OwnSources().Any(s => s.IsReadOnly()) && !OwnSources().Any(s => s.IsWritable());
 
     /// <summary>True when the object's subtype is <c>entity</c>.</summary>
     public bool IsEntity() => SubType == OBJECT_SUBTYPE_ENTITY;

@@ -122,8 +122,10 @@ public class FilterAllowlistGeneratorTests
             { "field.string": { "name": "name", "@filterable": true } },
             { "identity.primary": { "@fields": "id" } }
           ]}},
-          { "object.entity": { "name": "AuthorView", "extends": "Author", "children": [
-            { "source.rdb": { "@kind": "view", "@table": "v_authors" } }
+          { "object.projection": { "name": "AuthorView", "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_authors" } },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "name" } }
           ]}}
         ]}}
         """;

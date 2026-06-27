@@ -1,11 +1,9 @@
 {
   "language": "csharp",
-  "_comment": "FR5a envelope-shape gates: TS is the reference port for source.format / source.files / source.jsonPath. C# is now reconciled with TS on the JSON-side FR5a envelopes (parser malformed-JSON catch builds a $-rooted JsonSource with the source-file name; inline-attr loop reports ERR_RESERVED_ATTR / ERR_UNKNOWN_ATTR / ERR_BAD_ATTR_VALUE at the parent's path \u2014 not key-deeper). Keep this file as the documented ledger surface.",
+  "_comment": "FR-024 fully enforced (B3/B4a/B5/B6 + B4b cutover). No expected failures.",
   "_notes": "FR5c (finalized 2026-05-27, all four ports): merge-phase contributors + ERR_MERGE_CONFLICT envelope + WARN_DUPLICATE_DECLARATION. FR5d (finalized 2026-05-27, all four ports): reference-resolution errors emit format=resolved with referrer + target. FR-013 (@readOnly), FR-014 (TPH discriminator), and FR-015 (@parameterRef) VALIDATION passes shipped in the C# port (ValidationPasses.ValidateFieldReadOnly / ValidateDiscriminator / ValidateSourceParameterRef); all error-* fixtures now produce the expected envelopes. No interim known-gaps.",
-  "_comment_ai_pilot": "AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti now load + canonical-serialize cleanly in the C# port (Unit 1 metamodel slice): @responseRef is registered on template.prompt (carved out of the cross-port registry manifest as ExclusionReason.TsPilotVocab until the atomic all-ports flip), and template.* is admitted as an object.entity child (CoreTypes objectRules). The sibling ai-llm-call-extends has always passed cross-port.",
-  "_comment_fr024": "FR-024 SHIPPED in this port \u2014 loader grammar (object.projection registration + dotted Entity.child extends-resolution + origin.aggregate @via optional) AND the Phase-E VALIDATION passes: B3 identity name-required + projection identity pass-through/key-correspondence (ValidationPasses.ValidateSubtypeRules / ValidateIdentityPassthrough), B4a value-purity + projection-licensing (ValidateSubtypeRules), B4b entity-primary-source-readonly hard cutover (ValidateObjectPrimarySource), B5 @via single-hop inference + origin cardinality (ValidateOriginPaths), B6 extends/origin agreement + derived-field providability (ValidateOriginPaths / ValidateDerivedFieldProvidability). All FR-024 error-* fixtures now emit the expected code + envelope and are un-ledgered. NOTE: the registry manifest still emits origin.aggregate @via required:true via the Fr024Pending carve-out \u2014 that is the cross-port ATOMIC flip (shared expected-registry.json), pending parent coordination, not a per-port change.",
-  "fixtures": [
-    "error-entity-primary-source-readonly"
-  ],
-  "_comment_fr024_b4b": "FR-024 B4b (ERR_ENTITY_PRIMARY_SOURCE_READONLY) DEFERRED to the FR-024 projection-codegen increment \u2014 enforcing it forbids the view/proc-primary entity spellings codegen fixtures still encode. Un-ledger with the codegen fan-out."
+  "_comment_ai_pilot": "FR-024 fully enforced (B3/B4a/B5/B6 + B4b cutover). No expected failures.",
+  "_comment_fr024": "FR-024 fully enforced (B3/B4a/B5/B6 + B4b cutover). No expected failures.",
+  "fixtures": [],
+  "_comment_fr024_b4b": "FR-024 fully enforced (B3/B4a/B5/B6 + B4b cutover). No expected failures."
 }
