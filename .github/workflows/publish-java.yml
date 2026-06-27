@@ -1,0 +1,68 @@
+name: publish-java
+
+# Publishes the com.metaobjects:* modules (Java AND Kotlin — they share the
+# server/java Maven reactor) to Maven Central via the Sonatype Central Portal,
+# signed with the maintainer's GPG key. Mirrors publish-csharp.yml: tag-triggered
+# or manual. This is the CI equivalent of the documented manual
+# `mvn -Prelease deploy` from server/java (docs/RELEASING.md).
+#
+# Publishes the versions already in the parent + module poms at the tagged commit
+# (the `7.x` line) — bump them first, commit, then tag. The central-publishing
+# plugin runs with <autoPublish>true</autoPublish> + <waitUntil>published</waitUntil>,
+# so a green run means the artifacts are live on Central (no manual staging
+# promotion). Maven Central versions are immutable.
+#
+# One-time setup (repo Settings -> Secrets and variables -> Actions) — ALREADY SET:
+#   MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD = the Central Portal token pair
+#     (the `central` server in the maintainer's ~/.m2/settings.xml).
+#   GPG_PRIVATE_KEY = ASCII-armored secret key (`gpg --armor --export-secret-keys`).
+#   MAVEN_GPG_PASSPHRASE = the key's passphrase (empty here — the signing key is
+#     passphraseless; the empty secret is intentional).
+#
+# Triggers: a `java-v*` tag (e.g. `java-v7.4.3`), or manual workflow_dispatch.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'java-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21 + Maven settings (Central server + GPG import)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Writes ~/.m2/settings.xml with a `central` server whose creds come from
+          # the env vars below, and imports the GPG key for maven-gpg-plugin.
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Allow non-interactive (loopback) GPG signing
+        run: |
+          # maven-gpg-plugin 3.x signs via the agent; in CI it must use loopback
+          # pinentry. The signing key is passphraseless, so an empty passphrase
+          # plus loopback signs without a prompt.
+          mkdir -p ~/.gnupg
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpg-connect-agent reloadagent /bye || true
+
+      - name: Deploy to Maven Central (signed, auto-published)
+        working-directory: server/java
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        # Tests run on every PR via the conformance workflow; the release tag is cut
+        # from already-green main, so the publish build skips them (it still builds
+        # + signs + attaches the javadoc/sources jars Central requires via -Prelease).
+        run: mvn -B -Prelease deploy -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"

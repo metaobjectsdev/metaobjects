@@ -1,18 +1,20 @@
 name: publish-python
 
-# Publishes the `metaobjects` Python package to PyPI via Trusted Publishing (OIDC) —
-# no API token. PyPI mints short-lived credentials after validating GitHub's OIDC
-# token against the trusted publisher configured for the project. See docs/RELEASING.md.
+# Publishes the `metaobjects` Python package to PyPI using an API token.
+# Mirrors publish-csharp.yml / publish-npm.yml: tag-triggered or manual.
 #
-# One-time setup on PyPI (project `metaobjects` -> Settings -> Publishing ->
-# Add a new GitHub publisher):
-#   Owner:        metaobjectsdev
-#   Repository:   metaobjects
-#   Workflow:     publish-python.yml
-#   Environment:  (leave empty unless you uncomment `environment:` below)
-# Once that's added you can DELETE any long-lived PyPI API token.
+# We use a token (not OIDC Trusted Publishing) because the pypi.org trusted
+# publisher for this project isn't configured — the token works today. To switch
+# to OIDC later: add a GitHub publisher on PyPI (Owner `metaobjectsdev`, Repo
+# `metaobjects`, Workflow `publish-python.yml`), then drop `password:` below and
+# add `permissions: id-token: write`.
 #
-# Triggers: manual (workflow_dispatch) or a python-v* tag.
+# One-time setup (repo Settings -> Secrets and variables -> Actions) — ALREADY SET:
+#   PYPI_API_TOKEN = a PyPI API token (pypi-...) with upload rights to `metaobjects`.
+#
+# PyPI versions are immutable — bump server/python's version, commit, then tag.
+#
+# Triggers: a `python-v*` tag (e.g. `python-v0.12.1`), or manual workflow_dispatch.
 
 on:
   workflow_dispatch:
@@ -23,12 +25,6 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # If you scope the PyPI trusted publisher to a GitHub environment, create it in
-    # repo Settings and uncomment (must match the publisher's Environment exactly):
-    # environment: release
-    permissions:
-      id-token: write   # required: lets this job mint a GitHub OIDC token for PyPI
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +35,8 @@ jobs:
         working-directory: server/python
         run: uv build --out-dir dist
 
-      - name: Publish to PyPI (Trusted Publishing)
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: server/python/dist
+          password: ${{ secrets.PYPI_API_TOKEN }}
