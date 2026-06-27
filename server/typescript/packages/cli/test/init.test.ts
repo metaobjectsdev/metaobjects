@@ -50,6 +50,26 @@ describe("init() — happy path", () => {
     expect(ignore).toContain(".gen-state/");
   });
 
+  // Issue #75 — a multi-target codegen config can route a target's outDir under
+  // .metaobjects/<targetName>/src/generated/. That output is regenerable (re-run
+  // `meta gen` recreates it) and must NOT be committed by default. The scaffolded
+  // .gitignore must ignore the per-target shadow WITHOUT ignoring the tracked
+  // migrations/ or config.json.
+  test("scaffolded .gitignore ignores per-target generated shadow but tracks migrations/ and config.json", async () => {
+    await init({ cwd });
+    const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
+    // The per-target generated shadow pattern is present.
+    expect(ignore).toContain("*/src/generated/");
+    // migrations/ and config.json are NOT ignored (they are meant to be tracked).
+    const lines = ignore.split("\n").map((l) => l.trim());
+    expect(lines).not.toContain("migrations/");
+    expect(lines).not.toContain("migrations");
+    expect(lines).not.toContain("config.json");
+    // A negated re-include guard keeps migrations tracked even if a broad pattern
+    // were ever to match.
+    expect(ignore).toContain("!migrations/");
+  });
+
   test("does NOT create legacy .meta/ directory", async () => {
     await init({ cwd });
     expect(existsSync(join(cwd, ".meta"))).toBe(false);
@@ -131,6 +151,39 @@ describe("init() --force config preservation", () => {
     const reloaded = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(reloaded.schema_version).toBe(1);
     expect(reloaded.pending_in_git).toBe(true); // back to default
+  });
+});
+
+// Issue #77 — `meta init` scaffolds agent-context skills relative to cwd. In a
+// monorepo subdir the skills land where Claude Code won't discover them (it only
+// walks cwd + ancestors + user level, never down into subdirs). Detect that case
+// and WARN, pointing the user at the repo root.
+describe("init() — monorepo-subdir agent-context warning (#77)", () => {
+  test("warns when init runs from a subdir of a git repo (skills won't be discovered from root)", async () => {
+    // cwd is a temp dir; make it a git repo root, then init from a nested subdir.
+    mkdirSync(join(cwd, ".git"));
+    const subdir = join(cwd, "packages", "api");
+    mkdirSync(subdir, { recursive: true });
+
+    const result = await init({ cwd: subdir });
+    const warned = result.warnings.some(
+      (w) => /repo root/i.test(w) && /--docs-only/.test(w),
+    );
+    expect(warned).toBe(true);
+  });
+
+  test("does NOT warn when init runs at the git repo root", async () => {
+    mkdirSync(join(cwd, ".git"));
+    const result = await init({ cwd });
+    const warned = result.warnings.some((w) => /repo root/i.test(w) && /--docs-only/.test(w));
+    expect(warned).toBe(false);
+  });
+
+  test("does NOT warn when init runs in a non-git directory", async () => {
+    // cwd has no .git anywhere up the tree (tmpdir).
+    const result = await init({ cwd });
+    const warned = result.warnings.some((w) => /repo root/i.test(w) && /--docs-only/.test(w));
+    expect(warned).toBe(false);
   });
 });
 
