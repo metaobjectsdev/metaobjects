@@ -100,8 +100,11 @@ Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query
 
 Flags:
 - `--dry-run` — informational; files still written (true no-write planned)
+- `--no-antipatterns` — suppress the advisory anti-pattern pass (see below)
 
 Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
+
+On a real write run (not `--dry-run`), `meta gen` also runs an **advisory anti-pattern pass** — the same "verify-as-teacher" scan as `meta verify`. It scans your authored source for hand-rolled aggregates, money-as-float, and `CHECK (... IN (...))` enums and points you at the construct that models them (`origin.aggregate` / `field.currency` / `field.enum`). It emits **warnings only** and never changes the exit code. Opt out with `--no-antipatterns` or `META_NO_ANTIPATTERNS=1`.
 
 ### `meta types [<query>]`
 

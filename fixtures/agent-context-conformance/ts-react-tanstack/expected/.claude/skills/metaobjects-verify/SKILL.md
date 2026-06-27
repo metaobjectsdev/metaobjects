@@ -30,6 +30,20 @@ Two more are caught structurally rather than by a command: **generated-edited**
 **migration-vs-metadata** (migrations are emitted *from* metadata diffs, so they
 can't drift by construction).
 
+## Run `meta verify` before you call a build done
+
+Make a bare `meta verify` the last step before you consider any MetaObjects work
+finished — not only in CI. Besides the drift checks below, a bare `verify` (and
+every `meta gen`) runs an **advisory anti-pattern pass**: it scans your authored
+source and flags where you hand-rolled something the metadata could model, naming
+the construct that replaces it — a hand-written aggregate (`AVG`/`reduce`-sum →
+`origin.aggregate` on an `object.projection`), money as a float (`* 100`/`toFixed`
+→ `field.currency`), a `CHECK (... IN ...)` value set (→ `field.enum`). It is
+advisory (never fails the build), but each line is the fix: when you see one, model
+it and call the generated query/field instead of keeping the hand-rolled version.
+This is the most common way a build ends up *declaring* a projection yet still
+hand-aggregating in a route — verify catches exactly that.
+
 ## The `verify` subverbs
 
 `verify` has three drift checks. Run them in CI.

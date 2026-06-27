@@ -8,11 +8,16 @@ describe("parseGenArgs", () => {
       entities: [],
       baseline: "default",
       list: false,
+      noAntipatterns: false,
     });
   });
 
   test("--list", () => {
     expect(parseGenArgs(["--list"]).list).toBe(true);
+  });
+
+  test("--no-antipatterns", () => {
+    expect(parseGenArgs(["--no-antipatterns"]).noAntipatterns).toBe(true);
   });
 
   test("--baseline=fresh", () => {

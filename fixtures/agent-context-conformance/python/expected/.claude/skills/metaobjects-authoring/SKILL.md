@@ -15,36 +15,51 @@ concept (`meta.commerce.json`, `meta.users.yaml`, …). Each file declares a
 `package` on its root node. Files in the same `package` with the same object
 `name` are merged by the loader.
 
-## Find the construct first — model it, don't hand-write it
+## The operating principle: model-first, generate-first
 
-You do **not** know the full vocabulary from memory, and it is larger and more
-powerful than the basics below. Before authoring anything non-trivial, and the
-moment you reach for hand-written data logic, **search the live metamodel**:
+You are not hand-writing an application — you are **declaring the model it is
+generated from.** Persistence, data access, validation, APIs, and UI scaffolding are
+**derived from metadata, never authored by hand.** Model-first is the default for
+*every* capability; hand-writing one of these layers is an exception you must
+**justify**, not a convenience you reach for.
 
-```
-meta types relationship              # find by name
-meta types --all aggregate           # find by WHAT IT DOES (searches descriptions)
-meta types origin.aggregate --detail # one construct: description, when to use it, valid @attrs
-```
+**This requires thinking differently.** Imperative code asks *"how do I implement
+this endpoint?"* Model-first asks *"what is this resource, and what is true about
+it?"* — and lets codegen own the *how*. **Describe WHAT, not HOW.** The metadata is
+the source of truth; generated code is a disposable, regenerable artifact — delete
+it and `meta gen` restores it identically.
 
-**The rule:** before you hand-write any data logic — a join, a foreign key, a
-derived/aggregate value (count/sum/avg), a uniqueness / format / range / cross-field
-rule, a relationship between entities, a derived read model — run `meta types` and
-check for a construct that **declares** it. If one exists, declare it instead. That
-is the entire point of MetaObjects: declared metadata is generated, typed, and
-regenerates on change; hand-written logic drifts and is the thing this tool exists
-to eliminate. When you catch yourself writing a query, a validator, or an FK by
-hand, stop and search the types first.
+**Why model-first wins even when hand-writing is cheaper this once — and it often
+is, this once:**
+- **Hand-writing a layer the metadata could own creates a second source of truth for
+  one fact.** A field's type, validation, column, route, and form then change in N
+  places and must stay consistent forever — not drift *risk*, but two sources of
+  truth for one fact, broken by construction.
+- **The hand-roll saving is paid once; the consistency tax is paid on every future
+  change.** Assume the system will grow — it always does. The metadata amortizes
+  toward zero as the model is reused across layers and time; the hand-rolled
+  liability compounds with every field, refactor, and language port.
+- **One metadata change regenerates persistence + DAO + API + UI consistently** —
+  and inherits every future generator improvement. Hand-writing opts out of all of
+  it, permanently.
 
-Two on-disk formats, one shape:
+**Before you hand-write anything data-shaped, STOP and find the model.** The moment
+you reach for a hand-written query, route, validator, form, relationship, or
+aggregate — that is almost always **metadata you have not declared yet.** In order:
+1. **Search the vocabulary** — `meta types <term>`, or `meta types --all
+   <what-it-does>` to search by behavior. There are field subtypes, relationships,
+   projections, origins, identities, sources, and attributes you may not know exist.
+   Find the construct that models it.
+2. **Declare it and generate** — then *consume* the generated query/type/route;
+   never reimplement it alongside.
+3. **Only if no construct can express it** — and you have actually looked —
+   hand-write it, wired to generated types. Business algorithms, external
+   integrations, and bespoke interactions are legitimately hand-written; CRUD,
+   validation, finders, relationships, and derived/aggregate data are not.
 
-- **Canonical JSON** — the on-disk interchange. Every node is a single-key map
-  whose key fuses the type and subtype.
-- **YAML** — the sigil-free authoring front-end. Lowered to canonical JSON at load
-  time, so it shares the entire downstream pipeline.
+Rule of thumb: **if the metadata could describe it, declaring it is never the wrong
+call** — even when a one-off hand-write would be faster today.
 
-Author in whichever fits the project. Prefer YAML for new hand-authored metadata
-(it's less noisy); JSON is the format conformance fixtures and tooling pin.
 
 ## The fused-key encoding (non-negotiable)
 

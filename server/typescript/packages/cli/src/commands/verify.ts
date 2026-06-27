@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { parseVerifyArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -107,7 +108,32 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   const templateExit = runTemplates ? runTemplateVerify() : 0;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
+
+  // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
+  // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
+  // Suppressed with --no-antipatterns or META_NO_ANTIPATTERNS=1 for the rare
+  // noisy project (both opt-outs work on `meta verify` and `meta gen`).
+  if (!flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") runAntiPatternAdvisory();
+
   return Math.max(templateExit, schemaExit, codegenExit);
+
+  // -- verify-as-teacher (advisory) ------------------------------------------
+  function runAntiPatternAdvisory(): void {
+    let findings;
+    try {
+      findings = scanSourceForAntiPatterns(cwd);
+    } catch {
+      return; // never let an advisory scan break verify
+    }
+    if (findings.length === 0) return;
+    const CAP = 10;
+    log.warn(
+      `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
+        `(advisory — does not fail the build):`,
+    );
+    for (const f of findings.slice(0, CAP)) log.warn(`  ${f.message}`);
+    if (findings.length > CAP) log.warn(`  …and ${findings.length - CAP} more.`);
+  }
 
   // -- template (prompt / output) drift --------------------------------------
   function runTemplateVerify(): number {

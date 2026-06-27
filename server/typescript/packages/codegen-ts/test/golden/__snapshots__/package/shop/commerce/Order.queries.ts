@@ -4,7 +4,7 @@
 import { eq } from "drizzle-orm";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
 import { type Order, OrderInsertSchema, orders } from "./Order";
 export async function findOrderById(db: Db, id: number): Promise<Order | null> {

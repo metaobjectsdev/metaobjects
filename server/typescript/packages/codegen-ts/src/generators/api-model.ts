@@ -729,11 +729,11 @@ function callableSymbol(
   // callable template uses) to type the `args` param — undefined ⇒ zero-arg proc.
   const argsRef = callableArgsRef(obj, root);
   const signature = argsRef
-    ? `${fn}(db: NodePgDatabase, args: ${argsRef}): Promise<${name}[]>`
-    : `${fn}(db: NodePgDatabase): Promise<${name}[]>`;
+    ? `${fn}(db: PgDatabase, args: ${argsRef}): Promise<${name}[]>`
+    : `${fn}(db: PgDatabase): Promise<${name}[]>`;
   const params = argsRef
-    ? [`db: NodePgDatabase`, `args: ${argsRef}`]
-    : [`db: NodePgDatabase`];
+    ? [`db: PgDatabase`, `args: ${argsRef}`]
+    : [`db: PgDatabase`];
 
   return {
     name: fn,

@@ -2,12 +2,12 @@
 // procedure or table function. One generated file per callable entity:
 //
 //   import { sql } from "drizzle-orm";
-//   import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+//   import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 //   import type { PhaseSummaryArgs } from "./PhaseSummaryArgs.js";
 //   import { PhaseSummarySchema, type PhaseSummary } from "./PhaseSummary.js";
 //
 //   export async function callPhaseSummary(
-//     db: NodePgDatabase,
+//     db: PgDatabase<PgQueryResultHKT, Record<string, never>>,
 //     args: PhaseSummaryArgs,
 //   ): Promise<PhaseSummary[]> {
 //     const r = await db.execute(
@@ -99,12 +99,12 @@ export function renderCallableFile(entity: MetaObject): string {
     : "";
 
   const signature = argsObject
-    ? `db: NodePgDatabase, args: ${argsObjectName}`
-    : `db: NodePgDatabase`;
+    ? `db: PgDatabase<PgQueryResultHKT, Record<string, never>>, args: ${argsObjectName}`
+    : `db: PgDatabase<PgQueryResultHKT, Record<string, never>>`;
 
   return `// ${GENERATED_HEADER}
 import { sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 ${argsImport}import { ${projectionSchemaName}, type ${projectionType} } from "./${entity.name}.js";
 
 /**

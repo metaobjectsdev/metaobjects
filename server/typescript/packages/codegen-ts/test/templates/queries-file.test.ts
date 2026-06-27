@@ -74,7 +74,9 @@ describe("renderQueriesFile", () => {
     });
     const out = renderQueriesFile(post, ctx);
     expect(out).toContain('import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"');
-    expect(out).toContain('type Db = BaseSQLiteDatabase<"async", Record<string, never>>;');
+    // Accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1) drivers —
+    // pinning <"async"> wrongly rejected better-sqlite3.
+    expect(out).toContain('type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;');
   });
 
   test("emits postgres-flavoured `type Db = ...` alias for postgres", () => {
@@ -90,8 +92,10 @@ describe("renderQueriesFile", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderQueriesFile(post, ctx);
-    expect(out).toContain('import type { NodePgDatabase } from "drizzle-orm/node-postgres"');
-    expect(out).toContain('type Db = NodePgDatabase<Record<string, never>>;');
+    // The base class every PG driver extends — accepts node-postgres, postgres.js,
+    // Neon, Vercel, pglite — not just node-postgres.
+    expect(out).toContain('import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core"');
+    expect(out).toContain('type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;');
   });
 
   test("imports entity types from ./Post.js", () => {

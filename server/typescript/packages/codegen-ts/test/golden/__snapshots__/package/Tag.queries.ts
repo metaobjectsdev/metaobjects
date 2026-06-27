@@ -4,7 +4,7 @@
 import { eq } from "drizzle-orm";
 
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-type Db = BaseSQLiteDatabase<"async", Record<string, never>>;
+type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
 import { type Tag, TagInsertSchema, tags } from "./Tag";
 export async function findTagById(db: Db, id: number): Promise<Tag | null> {

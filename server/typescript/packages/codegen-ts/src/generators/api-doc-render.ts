@@ -101,7 +101,7 @@ const INDEX_NODE: DocPageNode = { name: "index" };
 // need (`db` / `provider` / `root`). This is PROSE (not gate-enforced), so every
 // import + type here is grounded in the REAL runtime API:
 //   • `db`       — the generated CRUD helpers take `db: Db`, a Drizzle alias
-//                  (`NodePgDatabase` / `BaseSQLiteDatabase`, queries-file.ts);
+//                  (`PgDatabase` / `BaseSQLiteDatabase`, queries-file.ts);
 //                  construction is adopter-specific ("pass any compatible
 //                  Drizzle instance"), so we show the standard drizzle() call
 //                  rather than invent a framework import.
@@ -140,7 +140,7 @@ function setupHandle(handle: string, note: string, snippet: string): SetupHandle
 const SETUP_HANDLES: Record<"db" | "provider" | "root", SetupHandleVM> = {
   db: setupHandle(
     "db",
-    "your Drizzle connection — the generated queries take `db: Db` (a `NodePgDatabase` / `BaseSQLiteDatabase` alias). Construct one over your own driver and pass any compatible Drizzle instance:",
+    "your Drizzle connection — the generated queries take `db: Db` (a `PgDatabase` / `BaseSQLiteDatabase` alias). Construct one over your own driver and pass any compatible Drizzle instance:",
     `import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 const db = drizzle(new Pool({ connectionString: process.env.DATABASE_URL }));`,

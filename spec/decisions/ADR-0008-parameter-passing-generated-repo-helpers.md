@@ -54,9 +54,10 @@ purity and complicate dead-code elimination.
 persistence-context as a parameter**, or via the language-idiomatic equivalent:
 
 - **TypeScript** (`@metaobjectsdev/codegen-ts`) — `db` is the first positional argument
-  to every generated query helper. The dialect-correct Drizzle type (`BaseSQLiteDatabase`
-  for sqlite/d1/libsql; `NodePgDatabase` for postgres) is imported at the top of the
-  generated `<Entity>.queries.ts` file.
+  to every generated query helper. The dialect-correct Drizzle base type
+  (`BaseSQLiteDatabase<"sync" | "async", …>` for sqlite/d1/libsql; `PgDatabase` for
+  postgres — the base class every driver of that dialect extends) is imported at the
+  top of the generated `<Entity>.queries.ts` file.
 - **C#** (`MetaObjects.Codegen`) — `AppDbContext` constructor injection (the EF Core
   idiom). Already conforms.
 - **Java** (when codegen ships) — `@Repository` / Spring Data injection of the DAO's

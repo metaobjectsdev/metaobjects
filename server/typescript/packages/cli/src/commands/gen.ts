@@ -8,6 +8,7 @@ import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
@@ -123,6 +124,27 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       `meta gen completed with ${result.conflicts.length} conflict(s). ` +
         `Resolve and re-run to advance the canonical state.\n${list}`,
     );
+  }
+
+  // Advisory verify-as-teacher pass (same as `meta verify`): on a real write run,
+  // surface authored source that hand-rolls what the metadata could model. `gen`
+  // is the command an agent always runs, so this is where the teaching actually
+  // reaches it. Warnings ONLY — never affects the exit code. Suppress with
+  // --no-antipatterns or META_NO_ANTIPATTERNS=1 (both opt-outs work on `meta gen`
+  // and `meta verify`).
+  if (!cliConfig.dryRun && !flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") {
+    try {
+      const findings = scanSourceForAntiPatterns(projectRoot);
+      if (findings.length > 0) {
+        const CAP = 10;
+        log.warn(
+          `\nmeta gen — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
+            `(advisory — declaring the construct lets codegen own it):`,
+        );
+        for (const f of findings.slice(0, CAP)) log.warn(`  ${f.message}`);
+        if (findings.length > CAP) log.warn(`  …and ${findings.length - CAP} more.`);
+      }
+    } catch { /* never let an advisory scan break gen */ }
   }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
