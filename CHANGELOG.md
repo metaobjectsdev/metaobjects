@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.12.5] — 2026-06-27
+
+_npm `0.12.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 - **codegen-ts — projection read-type nullability** now mirrors the view column:
   a non-`@required` projection field generates a nullable Drizzle view column but
