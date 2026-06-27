@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.12.4] — 2026-06-27
+
+_npm `0.12.4` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Fixed
+- **codegen-ts — projection codegen:** an `object.projection` (read-only,
+  view-backed) now generates **read-only** query helpers (`find…ById` + `list…`
+  selecting from the view) instead of table-style create/update that imported a
+  nonexistent `<Name>InsertSchema`. This fixes a `TS2724` compile error that made a
+  declared projection fail to build, forcing consumers to revert to hand-rolled
+  aggregates. (Mirrors the `isProjection` guard the routes generator already had.)
+- **codegen-ts — generated SQLite `Db` type** is now
+  `BaseSQLiteDatabase<"sync" | "async", unknown>`, accepting **both** sync
+  (`better-sqlite3`, the most common driver) and async (libsql/Turso/D1) Drizzle
+  databases. The previous `<"async">` pin rejected `better-sqlite3` with
+  "is not assignable", forcing `db: any` casts.
+- **codegen-ts — generated Postgres `Db` type** is now the base
+  `PgDatabase<PgQueryResultHKT, …>` that every PG driver extends (node-postgres,
+  postgres.js, Neon, Vercel, pglite), not just `NodePgDatabase`.
+
+### Added
+- **cli — verify-as-teacher:** `meta verify` and `meta gen` run an **advisory**
+  pass that flags hand-rolled aggregates, money-as-float, and `CHECK (… IN …)`
+  enums and names the construct that models them. Warnings only — never changes the
+  exit code. Opt out with `--no-antipatterns` or `META_NO_ANTIPATTERNS=1` (both
+  honored on both commands).
+- **agent-context skills:** a model-first / generate-first operating principle in
+  the authoring skill, and a first-class "write your own generators" section in the
+  codegen skill (with the accurate `Generator` / `perEntity` API).
+
 ## [0.12.3] — 2026-06-26
 
 _npm `0.12.3` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
