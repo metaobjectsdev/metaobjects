@@ -70,10 +70,11 @@ public class Fr016SourcePhysicalNameTest extends SharedRegistryTestBase {
         // not an entity (an entity's primary source must be writable). The object
         // subtype is irrelevant to the source physical-name resolution under test;
         // a projection carries no non-extending identity, so it is omitted.
-        boolean readOnly = sourceBodyJson.contains("\"view\"")
-            || sourceBodyJson.contains("\"materializedView\"")
-            || sourceBodyJson.contains("\"storedProc\"")
-            || sourceBodyJson.contains("\"tableFunction\"");
+        String kinds = sourceBodyJson.replaceAll("\\s+", "");
+        boolean readOnly = kinds.contains("\"@kind\":\"view\"")
+            || kinds.contains("\"@kind\":\"materializedView\"")
+            || kinds.contains("\"@kind\":\"storedProc\"")
+            || kinds.contains("\"@kind\":\"tableFunction\"");
         String subtype = readOnly ? "object.projection" : "object.entity";
         String identityChild = readOnly ? ""
             : ",    { \"identity.primary\": { \"@fields\": \"id\" } }";

@@ -59,10 +59,11 @@ public class PrimaryRdbTableTest extends SharedRegistryTestBase {
         // FR-024 B4b: a read-only-kind primary source makes the object a projection,
         // not an entity (an entity's primary source must be writable). A projection
         // carries no non-extending identity, so it is omitted in that case.
-        boolean readOnly = childrenJson.contains("\"view\"")
-            || childrenJson.contains("\"materializedView\"")
-            || childrenJson.contains("\"storedProc\"")
-            || childrenJson.contains("\"tableFunction\"");
+        String kinds = childrenJson.replaceAll("\\s+", "");
+        boolean readOnly = kinds.contains("\"@kind\":\"view\"")
+            || kinds.contains("\"@kind\":\"materializedView\"")
+            || kinds.contains("\"@kind\":\"storedProc\"")
+            || kinds.contains("\"@kind\":\"tableFunction\"");
         String subtype = readOnly ? "object.projection" : "object.entity";
         String identityChild = readOnly ? ""
             : ",    { \"identity.primary\": { \"@fields\": \"id\" } }";
