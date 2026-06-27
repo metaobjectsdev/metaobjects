@@ -132,12 +132,17 @@ public class FruitDBTest extends AbstractOMDBTest {
         data = omdb.getObjects(oc, mo2);
         assertFalse( "isEmpty", data.isEmpty() );
         
-        // Empty the basket
-        ValueObject o = (ValueObject) data.iterator().next();
-        o.setInt( "apples", 0 );
-        o.setInt( "oranges", 0 );
-        omdb.updateObject( oc, o);
-        
+        // Empty the basket — FR-024: FullBasketView is a read-only projection (a view),
+        // so the write goes through the underlying writable Basket entity, not the view.
+        ValueObject viewRow = (ValueObject) data.iterator().next();
+        long basketId = viewRow.getLong( "id" );
+        ValueObject basket = (ValueObject) omdb
+                .getObjects( oc, mo, new QueryOptions( new Expression( "id", basketId ) ) )
+                .iterator().next();
+        basket.setInt( "apples", 0 );
+        basket.setInt( "oranges", 0 );
+        omdb.updateObject( oc, basket );
+
         // Now the view should be empty
         data = omdb.getObjects(oc, mo2);
         assertTrue( "isEmpty", data.isEmpty() );

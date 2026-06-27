@@ -69,7 +69,11 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in loader.metaObjects) {
-            if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // FR-024: a stored-proc binding is gated on the SOURCE @kind, not the object
+            // subtype — a proc-backed object.projection (the post-B4b spelling) emits a
+            // callable just like the legacy proc-backed entity did.
+            if (entity.subType != MetaObject.SUBTYPE_ENTITY &&
+                entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a stored-proc binding.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue

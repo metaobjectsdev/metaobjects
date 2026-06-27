@@ -457,12 +457,11 @@ class KotlinExposedTableGeneratorTest {
     @Test fun viewKindEmitsReadOnlyTable() {
         val viewFixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "AuthorSummary", "children": [
+            { "object.projection": { "name": "AuthorSummary", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "name", "@required": true } },
                 { "field.int":    { "name": "postCount" } },
-                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -509,12 +508,11 @@ class KotlinExposedTableGeneratorTest {
                 { "source.rdb":   { "@table": "authors" } },
                 { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
             ] } },
-            { "object.entity": { "name": "PostView", "children": [
+            { "object.projection": { "name": "PostView", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.long":   { "name": "authorId" } },
                 { "field.string": { "name": "title", "@required": true } },
-                { "source.rdb":   { "@table": "v_posts", "@kind": "view" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@table": "v_posts", "@kind": "view" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -548,10 +546,9 @@ class KotlinExposedTableGeneratorTest {
     @Test fun viewKindUsesSourceRdbTableNameAsViewName() {
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "AuthorSummary", "children": [
+            { "object.projection": { "name": "AuthorSummary", "children": [
                 { "field.long":   { "name": "id" } },
-                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } }
             ] } }
           ] }
         }""".trimIndent()

@@ -83,12 +83,11 @@ public class SpringProjectionDtoCompileRunTest extends SharedRegistryTestBase {
                 { "source.rdb":   { "@table": "programs" } },
                 { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
             ] } },
-            { "object.entity": { "name": "ProgramSummary", "children": [
+            { "object.projection": { "name": "ProgramSummary", "children": [
                 { "field.long":   { "name": "id", "@required": true } },
                 { "field.string": { "name": "title", "@maxLength": 200, "@required": true } },
                 { "field.int":    { "name": "weekCount" } },
-                { "source.rdb":   { "@table": "v_program_summary", "@kind": "view" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@table": "v_program_summary", "@kind": "view" } }
             ] } }
           ] }
         }

@@ -50,11 +50,10 @@ public class SpringAppliesToTest {
                 { "source.rdb":   { "@table": "authors" } },
                 { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
             ] } },
-            { "object.entity": { "name": "SalesReport", "children": [
+            { "object.projection": { "name": "SalesReport", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "regionName", "@maxLength": 100 } },
-                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } },
-                { "identity.primary": { "@fields": "id" } }
+                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
             ] } },
             { "object.entity": { "name": "AbstractEntity", "abstract": true, "children": [
                 { "field.long":   { "name": "id" } },

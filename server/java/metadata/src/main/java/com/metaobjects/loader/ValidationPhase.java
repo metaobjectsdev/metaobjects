@@ -1010,11 +1010,22 @@ public final class ValidationPhase {
                 ErrorCode.ERR_SOURCE_MULTIPLE_PRIMARY, obj.getSource());
         }
 
-        // FR-024 B4b (ADR-0028) — THE HARD CUTOVER (an entity's PRIMARY source must
-        // be a writable kind) is DEFERRED to the FR-024 projection-codegen increment:
-        // enforcing it forbids the view/proc-primary entity spellings that codegen
-        // fixtures still encode. Re-add with the codegen fan-out (subtype-based
-        // projection detection). See ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY.
+        // FR-024 B4b (ADR-0028) — THE HARD CUTOVER: an entity's PRIMARY source must be
+        // a writable kind; read-only kinds (view/materializedView/storedProc/
+        // tableFunction) are legal only in non-primary (read) roles. A derived read
+        // model is an object.projection. Mirrors TS validate-source-roles.ts.
+        if (MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) {
+            for (MetaSource s : sources) {
+                if (MetaSource.ROLE_PRIMARY.equals(s.getRole()) && s.isReadOnly()) {
+                    throw new MetaDataException(
+                        "entity \"" + obj.getName() + "\" has a primary source of read-only kind \""
+                            + s.getEffectiveKind() + "\" — read-only kinds are legal only in "
+                            + "non-primary roles; a derived read model is an object.projection "
+                            + "(FR-024, ADR-0028)",
+                        ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY, s.getSource());
+                }
+            }
+        }
     }
 
     // =========================================================================

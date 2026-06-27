@@ -2,9 +2,6 @@
   "language": "java",
   "_comment": "FR-013/FR-014/FR-015 validation passes shipped. The former subtype-field-override gap (MergedSource envelopes on extends-overrides) is RETIRED: FR-024's addressing-model fix (bare nested names + own-children-only overlay lookup in BaseMetaDataParser) made subtype same-name children SHADOWING REDECLARATIONS per the cross-port contract, which was the root cause \u2014 error-field-readonly-downgrade and field-readonly-upgrade-on-subtype now pass byte-identically.",
   "_comment_ai_pilot": "ai-trace-* fixtures now pass in Java (@responseRef + template.* child admitted)",
-  "_comment_fr024": "FR-024 Phase-E validation parity SHIPPED in this port (ValidationPhase.java): subtype rules (identity-name, value purity, projection licensing), projection identity pass-through + key correspondence, source-role B4b cutover, origin @via single-hop inference + cardinality + extends/origin agreement, and derived-field providability. All 13 FR-024 error fixtures now emit their expected code + envelope and are un-ledgered. Kotlin rides this same JVM loader.",
-  "fixtures": [
-    "error-entity-primary-source-readonly"
-  ],
-  "_comment_fr024_b4b": "FR-024 B4b (ERR_ENTITY_PRIMARY_SOURCE_READONLY) DEFERRED to the FR-024 projection-codegen increment \u2014 enforcing it forbids the view/proc-primary entity spellings codegen fixtures still encode. Un-ledger with the codegen fan-out."
+  "_comment_fr024": "FR-024 validation parity SHIPPED in this port (ValidationPhase.java): subtype rules (identity-name, value purity, projection licensing), projection identity pass-through + key correspondence, source-role B4b cutover (ERR_ENTITY_PRIMARY_SOURCE_READONLY), origin @via single-hop inference + cardinality + extends/origin agreement, and derived-field providability. All 13 FR-024 error fixtures emit their expected code + envelope. Kotlin rides this same JVM loader. B4b landed with the FR-024 projection-codegen increment (proc/view-primary entity fixtures migrated to object.projection).",
+  "fixtures": []
 }
