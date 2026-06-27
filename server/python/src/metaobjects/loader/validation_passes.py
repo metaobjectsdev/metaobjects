@@ -1659,11 +1659,28 @@ def _validate_one_primary_source(
                 )
             )
 
-        # FR-024 B4b (ADR-0028) — THE HARD CUTOVER (an entity's PRIMARY source
-        # must be a writable kind) is DEFERRED to the FR-024 projection-codegen
-        # increment: enforcing it here forbids the view/proc-primary entity
-        # spellings that codegen fixtures still encode. Re-add with the codegen
-        # fan-out (subtype-based projection detection). See ERR_ENTITY_PRIMARY_SOURCE_READONLY.
+        # FR-024 B4b (ADR-0028) — THE HARD CUTOVER: an entity's PRIMARY source
+        # must be a writable kind; read-only kinds (view/materializedView/
+        # storedProc/tableFunction) are legal only in non-primary (read) roles.
+        # A derived read model is an object.projection. Mirrors TS
+        # persistence/source/validate-source-roles.ts.
+        if node.sub_type == OBJECT_SUBTYPE_ENTITY:
+            for s in sources:
+                if (
+                    isinstance(s, MetaSource)
+                    and s.role() == SOURCE_ROLE_PRIMARY
+                    and s.effective_kind() in SOURCE_READ_ONLY_KINDS
+                ):
+                    errors.append(
+                        MetaError(
+                            f'entity "{node.name}" has a primary source of read-only '
+                            f'kind "{s.effective_kind()}" — read-only kinds are legal '
+                            f"only in non-primary roles; a derived read model is an "
+                            f"object.projection (FR-024, ADR-0028)",
+                            ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY,
+                            envelope=s.source,
+                        )
+                    )
 
 
 # ---------------------------------------------------------------------------

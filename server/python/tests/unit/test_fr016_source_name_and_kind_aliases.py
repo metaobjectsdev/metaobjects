@@ -87,23 +87,31 @@ def _load(doc: dict, file_name: str = "meta.test.json") -> tuple[list[str], list
 
 
 def _one_source(entity_name: str, source_body: dict) -> dict:
+    # FR-024 B4b: a read-only @kind (view/materializedView/storedProc/tableFunction)
+    # can only back a PROJECTION as a primary source — a read-only-kind primary on an
+    # object.entity is now rejected (ERR_ENTITY_PRIMARY_SOURCE_READONLY). So build a
+    # projection (identity optional, omitted — a projection identity must extend an
+    # entity identity) for read-only kinds, and an entity for a writable table.
+    kind = source_body.get("@kind", SOURCE_KIND_TABLE)
+    read_only = kind != SOURCE_KIND_TABLE
+    object_subtype = "object.projection" if read_only else "object.entity"
+    children: list[dict] = [
+        {"source.rdb": source_body},
+        {"field.long": {"name": "id"}},
+    ]
+    if not read_only:
+        children.append({"identity.primary": {"@fields": "id"}})
     return {
         "metadata.root": {
             "package": "demo",
-            "children": [
-                {
-                    "object.entity": {
-                        "name": entity_name,
-                        "children": [
-                            {"source.rdb": source_body},
-                            {"field.long": {"name": "id"}},
-                            {"identity.primary": {"@fields": "id"}},
-                        ],
-                    }
-                }
-            ],
+            "children": [{object_subtype: {"name": entity_name, "children": children}}],
         }
     }
+
+
+def _object_key(canonical_tree: dict) -> str:
+    """The single top-level object's type key (object.entity or object.projection)."""
+    return next(iter(canonical_tree["metadata.root"]["children"][0]))
 
 
 def _first_source(root) -> MetaSource:
@@ -195,7 +203,7 @@ def test_canonical_serializer_rewrites_legacy_table_for_view() -> None:
         _one_source("L", {"@kind": "view", "@table": "v_old"})
     )
     tree = json.loads(canonical)
-    src = tree["metadata.root"]["children"][0]["object.entity"]["children"][0]["source.rdb"]
+    src = tree["metadata.root"]["children"][0][_object_key(tree)]["children"][0]["source.rdb"]
     assert "@table" not in src, f"@table should be rewritten away; got {src}"
     assert src.get("@view") == "v_old", src
 
@@ -205,7 +213,7 @@ def test_canonical_serializer_rewrites_legacy_table_for_stored_proc() -> None:
         _one_source("L", {"@kind": "storedProc", "@table": "fn_x"})
     )
     tree = json.loads(canonical)
-    src = tree["metadata.root"]["children"][0]["object.entity"]["children"][0]["source.rdb"]
+    src = tree["metadata.root"]["children"][0][_object_key(tree)]["children"][0]["source.rdb"]
     assert "@table" not in src
     assert src.get("@proc") == "fn_x"
 

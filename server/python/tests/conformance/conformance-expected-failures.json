@@ -1,9 +1,6 @@
 {
   "language": "python",
-  "fixtures": [
-    "error-entity-primary-source-readonly"
-  ],
+  "fixtures": [],
   "_comment_fr024": "FR-024 Phase-E validation parity SHIPPED in this port. The full FR-024 loader contract now holds: object.projection registration + per-subtype projection child rules + dotted Entity.child extends-resolution (type-scoped, ERR_EXTENDS_TARGET_MISMATCH), AND the validation passes \u2014 identity names required + projection identity pass-through/key-correspondence (B3), value-purity + projection-licensing subtype rules (B4a), the entity-primary-source-readonly hard cutover (B4b), @via single-hop-unique inference + origin cardinality (B5), and extends/origin agreement + derived-field providability (B6). Every former FR-024 error fixture (error-identity-name-required, error-projection-identity-not-extended, error-identity-key-mismatch, error-projection-extends-entity, error-projection-source-writable, error-value-with-identity-secondary, error-value-with-source, error-origin-via-ambiguous, error-origin-passthrough-to-many, error-origin-aggregate-no-to-many, error-extends-origin-mismatch, error-derived-field-no-read-source, error-entity-primary-source-readonly) now emits its expected code with the byte-identical source envelope and is un-ledgered.",
-  "notes": "No expected failures remain. The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti load + canonical-serialize cleanly in the Python port (@responseRef registered on template.prompt, carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip; template.* admitted as an object.entity child).",
-  "_comment_fr024_b4b": "FR-024 B4b \u2014 the hard cutover (ERR_ENTITY_PRIMARY_SOURCE_READONLY) is DEFERRED to the FR-024 projection-codegen increment: enforcing it forbids the view/proc-primary entity spellings codegen fixtures still encode. Un-ledger with the codegen fan-out (subtype-based projection detection)."
+  "notes": "No expected failures remain. The AI LLM-call trace fixtures ai-trace-prompt-nested and ai-trace-sti load + canonical-serialize cleanly in the Python port (@responseRef registered on template.prompt, carved out of the cross-port registry manifest as ExclusionReason.TS_PILOT_VOCAB until the atomic all-ports flip; template.* admitted as an object.entity child)."
 }
