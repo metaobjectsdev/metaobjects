@@ -136,14 +136,25 @@ export function renderProjectionDecl(
   // A field.object passthrough carries the value-object's Zod schema (so the
   // view's read schema + inferred type expose the VO shape, not z.unknown()).
   const zodLines: Code[] = allFields.map((f) => {
+    // The read schema's nullability MUST mirror the view column's: a column that
+    // is not `.notNull()` infers `T | null` in Drizzle's SELECT type, so the Zod
+    // read type (and thus the generated query's return type) must be `.nullable()`
+    // too — otherwise `db.select().from(view)` yields `T | null` into a non-null
+    // `<Name>` field and the generated query fails to compile under strict TS.
+    const nullable =
+      mapColumnType(f, dialect, columnNamingStrategy, timestampMode)
+        .modifiers.includes(".notNull()")
+        ? ""
+        : ".nullable()";
     const refBase = objectRefOf(f);
     if (refBase) {
       const schemaSym = imp(`${refBase}InsertSchema@${voModule(refBase)}`);
-      return f.isArray
-        ? code`  ${f.name}: ${z}.array(${schemaSym})`
-        : code`  ${f.name}: ${schemaSym}`;
+      const base = f.isArray
+        ? code`${z}.array(${schemaSym})`
+        : code`${schemaSym}`;
+      return code`  ${f.name}: ${base}${nullable}`;
     }
-    return code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}`;
+    return code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}${nullable}`;
   });
 
   // Typed view column map for the Drizzle `.existing()` declaration — keyed by
