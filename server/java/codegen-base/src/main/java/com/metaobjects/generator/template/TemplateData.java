@@ -1,9 +1,9 @@
 package com.metaobjects.generator.template;
 
-import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.relationship.MetaRelationship;
 import com.metaobjects.validator.MetaValidator;
@@ -46,13 +46,12 @@ public final class TemplateData {
     }
 
     public static boolean isConcrete(MetaObject o) {
-        return !(o.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT)
-            && "true".equals(o.getMetaAttr(MetaData.ATTR_IS_ABSTRACT).getValueAsString()));
+        return !GeneratorUtil.isAbstract(o);
     }
 
     private static boolean isRequired(MetaField f) {
-        if (f.hasMetaAttr(MetaField.ATTR_REQUIRED)
-            && "true".equals(f.getMetaAttr(MetaField.ATTR_REQUIRED).getValueAsString())) {
+        if (f.hasMetaAttr(MetaField.ATTR_REQUIRED, false)
+            && "true".equals(f.getMetaAttr(MetaField.ATTR_REQUIRED, false).getValueAsString())) {
             return true;
         }
         for (MetaValidator v : f.getChildren(MetaValidator.class)) {
@@ -67,8 +66,8 @@ public final class TemplateData {
         d.put("type", f.getSubType());
         d.put("required", isRequired(f));
         d.put("isArray", f.isArrayType());
-        if (f.hasMetaAttr(MetaField.ATTR_MAX_LENGTH)) {
-            d.put("maxLength", Integer.valueOf(f.getMetaAttr(MetaField.ATTR_MAX_LENGTH).getValueAsString()));
+        if (f.hasMetaAttr(MetaField.ATTR_MAX_LENGTH, false)) {
+            d.put("maxLength", Integer.valueOf(f.getMetaAttr(MetaField.ATTR_MAX_LENGTH, false).getValueAsString()));
         }
         if (SUBTYPE_ENUM.equals(f.getSubType()) && f.hasMetaAttr(EnumField.ATTR_VALUES)) {
             Object raw = f.getMetaAttr(EnumField.ATTR_VALUES).getValue();
