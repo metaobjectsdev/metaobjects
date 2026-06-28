@@ -114,6 +114,14 @@ The Python port mirrors this contract dict (plain `dict`/`list`) under
 keys (`maxLength`, `enumValues`) are omitted when absent so a `{{#maxLength}}`
 section gates identically to TS.
 
+The C# port mirrors the same contract as a `Dictionary<string, object?>` under
+`MetaObjects.Codegen.TemplateCodegen`: `TemplateData.Entity` / `TemplateData.Package`
+/ `TemplateData.Model` (Stubble renders the dictionaries), `OutputPattern.Expand`, and
+the JSON template-spec parser `TemplateSpec.Parse` / `TemplateSpec.ToGenerators`.
+Optional keys are likewise omitted when absent. Own-vs-effective discipline matches
+the other ports (own-only for `@required` / `maxLength` / identity fields / relationship
+cardinality+objectRef; effective for the required-validator and enum values).
+
 ### Section-presence flags (`hasX`)
 
 Mustache cleanly iterates an array (`{{#identities}}...{{/identities}}`) but

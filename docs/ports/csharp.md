@@ -86,6 +86,10 @@ dotnet meta verify ./metadata --templates ./prompts
 Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 `gen` + `verify` only.
 
+`gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default
+`templates`) — the declarative Mustache template-codegen surface; see
+[Declarative template-codegen](#declarative-template-codegen---template-spec) below.
+
 The codegen emits:
 
 - `Author.cs` — record per entity.
@@ -205,6 +209,40 @@ the feature reference is at
 NuGet package to add. The generated parser uses the strict (case-sensitive)
 default options.
 
+## Declarative template-codegen (`--template-spec`)
+
+Beyond the built-in EF Core / routes suite, `dotnet meta gen` runs **declarative
+Mustache template generators** from a JSON template-spec — the cross-port contract
+shared with the Python port (see
+[`docs/features/codegen-concepts.md`](../features/codegen-concepts.md#declarative-template-scopes)
+and the neutral data dict in
+[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
+
+```bash
+dotnet meta gen ./metadata --out ./Generated \
+  --template-spec ./template-spec.json --template-root ./templates
+```
+
+```jsonc
+// template-spec.json — the cross-port shape
+{ "generators": [
+    { "name": "entity-doc",
+      "scope": "perEntity",            // perEntity | perPackage | perModel
+      "outputPattern": "{package}/{Name}.md",
+      "template": "entity-doc",          // resolved under --template-root
+      "format": "markdown" }            // optional; a registered escaper format
+]}
+```
+
+Each spec entry derives the neutral template data dict for its scope
+(`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
+`outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators
+are **appended** to the default suite and gated byte-identical against the shared
+`fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has
+no output-target concept); a bad template ref or wrong `--template-root` surfaces as a
+clean error, not a stack trace. For output to be regenerable, the **template** must emit
+the `@generated` header itself (the write path refuses to overwrite files lacking it).
+
 ## Angular 18 frontend
 
 C# 12 / .NET 8 backends pair cleanly with an Angular 18 client built from
@@ -236,6 +274,7 @@ are not yet generated — see
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes (`MetaObjects.Codegen`) |
+| Declarative template-codegen | Yes — `dotnet meta gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
 | Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
 | Drift verify | `dotnet meta verify` (template drift, FR-004) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
