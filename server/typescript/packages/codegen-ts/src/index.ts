@@ -7,7 +7,27 @@ export { runGen } from "./runner.js";
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
 export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
-export { perEntity, oncePerRun } from "./generator.js";
+export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
+
+// SP-1 declarative Mustache template-codegen — scope walks, neutral data dict,
+// output-pattern, and the JSON template-spec the CLI ports reuse.
+export { expandOutputPattern } from "./template-codegen/output-pattern.js";
+export {
+  buildEntityTemplateData,
+  buildPackageTemplateData,
+  buildModelTemplateData,
+} from "./template-codegen/template-data.js";
+export type {
+  FieldTemplateData,
+  EntityTemplateData,
+  IdentityTemplateData,
+  RelationshipTemplateData,
+  PackageTemplateData,
+  ModelTemplateData,
+} from "./template-codegen/template-data.js";
+export { parseTemplateSpec, templateSpecToGenerators } from "./template-codegen/template-spec.js";
+export type { TemplateSpecEntry, TemplateSpecFile } from "./template-codegen/template-spec.js";
+export type { TemplateScope } from "./generators/template-generator.js";
 
 // ADR-0021 D3 — stable-name generator registry + discoverability surface.
 export {

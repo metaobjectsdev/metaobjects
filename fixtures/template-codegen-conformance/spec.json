@@ -1,0 +1,7 @@
+{
+  "generators": [
+    { "name": "ent", "template": "entity", "scope": "perEntity", "outputPattern": "{name}.txt" },
+    { "name": "pkg", "template": "package", "scope": "perPackage", "outputPattern": "{package}/_package.txt" },
+    { "name": "mdl", "template": "model", "scope": "perModel", "outputPattern": "_model.txt" }
+  ]
+}

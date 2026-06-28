@@ -17,6 +17,17 @@ import type { MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import { render, type Provider, type RenderFormat } from "@metaobjectsdev/render";
 import type { Generator, GenContext, EmittedFile, GeneratorFactory } from "../generator.js";
 import { projectProvider } from "../render-engine/framework-provider.js";
+import { expandOutputPattern } from "../template-codegen/output-pattern.js";
+import {
+  buildEntityTemplateData,
+  buildPackageTemplateData,
+  buildModelTemplateData,
+  packageOf,
+} from "../template-codegen/template-data.js";
+
+/** The three built-in walk scopes (SP-1 §3.1). Same vocabulary as the engine
+ *  helpers perEntity/perPackage/perModel. */
+export type TemplateScope = "perEntity" | "perPackage" | "perModel";
 
 export type TemplateFormat = RenderFormat;
 
@@ -34,8 +45,17 @@ export interface TemplateGeneratorOpts {
   name: string;
   /** Walk the loaded metadata tree and produce `{ data, outputPath }` tuples
    *  — one per emitted file. Pattern A (per-entity), pattern B (single
-   *  aggregator), pattern C (mixed), pattern D (filter inline) all fit. */
-  walk: (root: MetaRoot) => TemplateWalkResult[] | Promise<TemplateWalkResult[]>;
+   *  aggregator), pattern C (mixed), pattern D (filter inline) all fit.
+   *  Mutually exclusive with `scope` — provide exactly one. The power-user
+   *  escape hatch; most consumers declare a `scope` + `outputPattern` instead. */
+  walk?: (root: MetaRoot) => TemplateWalkResult[] | Promise<TemplateWalkResult[]>;
+  /** Built-in walk scope (SP-1 §3.1) — declarative alternative to `walk`. The
+   *  generator derives the neutral data dict (template-data.ts) per unit and
+   *  names each file via `outputPattern`. Mutually exclusive with `walk`. */
+  scope?: TemplateScope;
+  /** Output path pattern for the built-in `scope` walk: `{name}` `{Name}`
+   *  `{package}` (SP-1 §3.3). Required with `scope`; ignored with `walk`. */
+  outputPattern?: string;
   /** Template reference. Resolved by the configured Provider chain — by
    *  default the project's `templates/<ref>.mustache` first, then the
    *  framework defaults at `codegen-ts/templates/<ref>.mustache`. */
@@ -57,10 +77,53 @@ export interface TemplateGeneratorOpts {
   target?: string;
 }
 
+/** Derive a `walk` from a built-in scope + output pattern. Each scope yields the
+ *  neutral data dict for its unit and names the file via the pattern. */
+function scopeWalk(
+  scope: TemplateScope,
+  pattern: string,
+): (root: MetaRoot) => TemplateWalkResult[] {
+  return (root) => {
+    const concrete = root.objects().filter((o) => o.isAbstract !== true);
+    if (scope === "perEntity") {
+      return concrete.map((e) => ({
+        data: buildEntityTemplateData(e),
+        outputPath: expandOutputPattern(pattern, { name: e.name, package: packageOf(e) }),
+      }));
+    }
+    if (scope === "perPackage") {
+      const byPkg = new Map<string, MetaObject[]>();
+      for (const o of concrete) {
+        const pkg = packageOf(o);
+        let bucket = byPkg.get(pkg);
+        if (bucket === undefined) { bucket = []; byPkg.set(pkg, bucket); }
+        bucket.push(o);
+      }
+      return [...byPkg.keys()].sort().map((pkg) => ({
+        data: buildPackageTemplateData(pkg, byPkg.get(pkg)!),
+        outputPath: expandOutputPattern(pattern, { package: pkg }),
+      }));
+    }
+    // perModel — one file over the whole model.
+    return [{ data: buildModelTemplateData(root), outputPath: expandOutputPattern(pattern, {}) }];
+  };
+}
+
 export const templateGenerator = function templateGenerator(
   opts: TemplateGeneratorOpts,
 ): Generator {
   const fmt: TemplateFormat = opts.format ?? "text";
+  const hasWalk = typeof opts.walk === "function";
+  const hasScope = opts.scope !== undefined;
+  if (hasWalk === hasScope) {
+    throw new Error(
+      `templateGenerator(${opts.name}): provide exactly one of \`walk\` or (\`scope\` + \`outputPattern\`)`,
+    );
+  }
+  if (hasScope && (opts.outputPattern === undefined || opts.outputPattern === "")) {
+    throw new Error(`templateGenerator(${opts.name}): \`scope\` requires a non-empty \`outputPattern\``);
+  }
+  const walk = hasWalk ? opts.walk! : scopeWalk(opts.scope!, opts.outputPattern!);
   const generator: Generator = {
     name: opts.name,
     async generate(ctx: GenContext): Promise<EmittedFile[]> {
@@ -77,7 +140,7 @@ export const templateGenerator = function templateGenerator(
         );
         provider = projectProvider(process.cwd());
       }
-      const walkRes = await opts.walk(ctx.loadedRoot);
+      const walkRes = await walk(ctx.loadedRoot);
       const files: EmittedFile[] = [];
       for (const { data, outputPath } of walkRes) {
         let content: string;

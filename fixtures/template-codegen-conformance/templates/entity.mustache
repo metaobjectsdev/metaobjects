@@ -1,0 +1,5 @@
+// {{name}} ({{package}})
+{{#fields}}- {{name}}: {{type}}{{#isArray}}[]{{/isArray}}{{#required}} required{{/required}}{{#maxLength}} maxLength={{maxLength}}{{/maxLength}}
+{{/fields}}
+{{#relationships}}rel {{name}} -> {{targetRef}} ({{cardinality}})
+{{/relationships}}

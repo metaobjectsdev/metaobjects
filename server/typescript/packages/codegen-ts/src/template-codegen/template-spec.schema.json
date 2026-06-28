@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metaobjects.dev/schema/template-spec.json",
+  "title": "MetaObjects template-codegen spec",
+  "description": "Declarative Mustache template-generator spec (SP-1). Consumed by the CLI ports (C#/Python) and TS.",
+  "type": "object",
+  "required": ["generators"],
+  "additionalProperties": false,
+  "properties": {
+    "generators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "template", "scope", "outputPattern"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "template": { "type": "string", "minLength": 1 },
+          "scope": { "enum": ["perEntity", "perPackage", "perModel"] },
+          "outputPattern": { "type": "string", "minLength": 1 },
+          "format": { "enum": ["text", "html", "xml", "csv", "json", "markdown", "spreadsheet"] },
+          "target": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

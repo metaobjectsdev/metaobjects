@@ -8,6 +8,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- **codegen-ts — declarative Mustache template-codegen (SP-1a):** a
+  `templateGenerator` can now take its walk **declaratively** via `scope`
+  (`"perEntity" | "perPackage" | "perModel"`) + `outputPattern` instead of a
+  hand-written `walk` (the two are mutually exclusive — provide exactly one). The
+  generator derives a **neutral, structural** template data dict per unit
+  (`buildEntityTemplateData` / `buildPackageTemplateData` / `buildModelTemplateData`,
+  with types `FieldTemplateData` / `EntityTemplateData` / `IdentityTemplateData` /
+  `RelationshipTemplateData` / `PackageTemplateData` / `ModelTemplateData`) — raw
+  structural facts only, distinct from the Markdown-flavored `EntityDocData`, and
+  byte-gated as a cross-port contract by `fixtures/template-codegen-conformance/`.
+  `outputPattern` supports `{name}` / `{Name}` / `{package}` (`::` → `/`; unknown
+  placeholder throws), expandable via the exported `expandOutputPattern`. A JSON
+  **template-spec** (`parseTemplateSpec` / `templateSpecToGenerators`, types
+  `TemplateSpecEntry` / `TemplateSpecFile`, JSON Schema beside the source) is the
+  surface the C#/Python CLI ports will reuse. New package-scope engine helper
+  `perPackage(fn)` joins `perEntity` / `perModel`. All exported from the package
+  main entry `@metaobjectsdev/codegen-ts`.
 - **cli — `meta init` scaffolds owned codegen generators (ADR-0034 scaffold-and-own, step 2):**
   `meta init` now copies the four codegen reference templates (step 1) into the
   consumer repo at `codegen/generators/{entity,queries,routes,barrel}.ts` and
@@ -34,6 +51,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   generator-export deprecation, and the guidance rewrite are later steps.)
 
 ### Deprecated
+- **codegen-ts — `oncePerRun` scope helper (SP-1a):** renamed to `perModel` —
+  "run" is ambiguous under multi-target output (it reads as "per target"), while
+  `perModel` names the data scope (the whole model). `oncePerRun` is kept as a
+  soft-deprecated alias and still works.
 - **codegen-ts — `@metaobjectsdev/codegen-ts/generators` factory re-exports
   (ADR-0034 scaffold-and-own, step 2):** importing `entityFile` / `queriesFile` /
   `routesFile` / `barrel` from the package `/generators` export is deprecated in

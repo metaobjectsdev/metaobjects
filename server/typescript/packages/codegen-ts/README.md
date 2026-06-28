@@ -86,7 +86,8 @@ from the **owned local copies** that `meta init` scaffolds into
 `codegen/generators/` (ADR-0034 scaffold-and-own). Importing them from
 `@metaobjectsdev/codegen-ts/generators` still works but is **deprecated** — own a
 copy instead; the package export will be removed in a future major. The engine and
-primitives (`runGen`, `perEntity`, `oncePerRun`, `RenderContext`, the loader and
+primitives (`runGen`, the scope helpers `perEntity` / `perPackage` / `perModel`
+(`oncePerRun` is a soft-deprecated alias of `perModel`), `RenderContext`, the loader and
 render helpers) remain the stable, versioned import from `@metaobjectsdev/codegen-ts`,
 and an owned generator imports them from there.
 

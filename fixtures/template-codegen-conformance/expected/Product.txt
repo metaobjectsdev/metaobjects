@@ -1,0 +1,4 @@
+// Product (shop)
+- id: long
+- name: string required maxLength=120
+- status: enum

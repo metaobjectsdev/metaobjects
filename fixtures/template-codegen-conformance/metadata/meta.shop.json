@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            { "source.rdb": { "@table": "products" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true, "@maxLength": 120 } },
+            { "field.enum": { "name": "status", "@values": ["ACTIVE", "ARCHIVED"] } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "productId" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "product", "@cardinality": "one", "@objectRef": "Product" } }
+          ]
+        }
+      }
+    ]
+  }
+}
