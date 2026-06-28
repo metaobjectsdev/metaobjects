@@ -100,7 +100,16 @@ codegen-templates/                         # in the repo / shipped as reference
 pick (or compose from several) starting templates using their "use when" data →
 copy them into `codegen/generators/` → wire the config to import them → customize to
 the project. The *mechanics* are plain `read template → write into repo → edit
-config`, which Claude does natively and a human does trivially.
+config`, which Claude does natively and a human does trivially. The guidance also
+teaches the **durable codegen concepts** — authoring-mechanism tradeoffs
+(direct-code speed vs Mustache/Groovy readability + portability), regeneration
+strategy (timestamp-skip only for slow template paths; always-regen for fast direct
+code), hand-edit preservation (three-way merge vs base-class+extension vs partials,
+per language), and the extension+git pattern (commit the owned extension once;
+gitignore the regenerated base) — captured in
+[docs/features/codegen-concepts.md](../../features/codegen-concepts.md). The skill +
+agent-context distil that guide; the website's Codegen section is its public face
+(see §10).
 
 **(c) Tooling stays minimal — a running start, not a selector.**
 - `meta init` scaffolds the metamodel layout, a **sensible default** generator set,
@@ -232,3 +241,33 @@ CLI build-out and not new codegen machinery.
   fork-mid-build).
 - Makes the product boundary honest: the metamodel + engine are the product;
   templates are scaffolding.
+
+## 10. Documentation homes + website information architecture
+
+The codegen concepts (§3b) need a durable home, an agent-facing form, and a public
+face. Three layers, one source of truth:
+
+1. **Dev guide (source of truth):** [`docs/features/codegen-concepts.md`](../../features/codegen-concepts.md)
+   — the *why* (authoring tradeoffs, regen strategy, hand-edit preservation, the
+   extension+git pattern, build-time binding, tiering). Complements the existing
+   `codegen-data-shapes.md` / `templates-and-payloads.md`.
+2. **Agent-facing:** the `metaobjects-codegen` skill + `agent-context` distil the
+   guide into operating rules so Claude *applies* the concepts when generating
+   (rewritten in Phase 1 step 3).
+3. **Public face (website):** a **dedicated Codegen section** on `metaobjects.dev`
+   (today the site is just home / getting-started / story / articles).
+
+**Website IA (the "other dedicated sections" too).** The site should grow from a
+landing page into pillar-shaped sections, each the public face of the matching docs:
+
+- **Home** · **Getting Started** (exist)
+- **The four pillars — dedicated sections:** **Codegen** (concepts + scaffold-and-own
+  + the authoring menu), **Runtime metadata**, **Prompt construction**, **Drift
+  detection**
+- **The Metamodel** (the durable spine — entities/fields/relationships/sources/
+  projections), **Ports** (TS / Java / Kotlin / C# / Python)
+- **Story** · **Articles** · **llms.txt / llms-full.txt** (exist)
+
+The Codegen section is the first to build (it's the active work); the others follow
+the same pattern. Implementation lives in the separate `metaobjects.dev` repo — this
+design just fixes the IA so the dev guide and the site stay one story.
