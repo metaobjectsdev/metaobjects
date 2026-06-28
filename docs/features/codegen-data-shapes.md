@@ -68,6 +68,44 @@ trivial and cross-port walkers don't have to re-derive the rules.
 file into your project; the project's `templates/` directory takes precedence
 over the framework defaults. Same for any partial under `templates/docs/`.
 
+### Neutral structural shapes → `EntityTemplateData` / `PackageTemplateData` / `ModelTemplateData`
+
+The declarative template scopes (`scope: "perEntity" | "perPackage" | "perModel"`
+on `templateGenerator`) feed a **neutral, structural** data dict — deliberately
+distinct from the Markdown-flavored `EntityDocData` above. It carries raw
+structural facts only, so a consumer's template can emit any language's code from
+it. The field names are a byte-gated **cross-port contract** (the
+`fixtures/template-codegen-conformance/` corpus locks them) — change them only via
+the spec.
+
+```ts
+interface FieldTemplateData {
+  name: string;
+  type: string;            // neutral subtype: "string" | "int" | "currency" | "enum" | ...
+  required: boolean;
+  isArray: boolean;        // arrayness is carried here, NOT appended to `type`
+  maxLength?: number;
+  enumValues?: string[];   // present only for field.enum
+}
+interface IdentityTemplateData { kind: string; fields: string[]; }
+interface RelationshipTemplateData { name: string; cardinality: string; targetRef: string; }
+interface EntityTemplateData {
+  name: string;
+  package: string;         // effective package (`::`-separated), "" when none
+  fields: FieldTemplateData[];
+  identities: IdentityTemplateData[];
+  relationships: RelationshipTemplateData[];
+}
+interface PackageTemplateData { package: string; entities: EntityTemplateData[]; }
+interface ModelTemplateData { packages: PackageTemplateData[]; }   // packages ascending
+```
+
+These types and their builders (`buildEntityTemplateData`,
+`buildPackageTemplateData`, `buildModelTemplateData`) are exported from the package
+**main entry** (`@metaobjectsdev/codegen-ts`), alongside `expandOutputPattern` and
+the JSON template-spec parser (`parseTemplateSpec`, `templateSpecToGenerators`).
+Abstract objects are excluded from every scope (they emit no instance artifact).
+
 ### Section-presence flags (`hasX`)
 
 Mustache cleanly iterates an array (`{{#identities}}...{{/identities}}`) but

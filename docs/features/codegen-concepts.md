@@ -150,14 +150,34 @@ whole-model are just different walks.
 **The model to expose.** Three scope helpers, so the scope is declared, not buried in
 custom iteration:
 
-- **`perEntity(fn)`** — object scope. *(exists)*
-- **`perPackage(fn)`** — package scope: group matching objects by package, run `fn`
-  once per package. *(the gap — Java never had this cleanly either, so this is an
-  improvement on the predecessor, not just parity.)*
-- **`oncePerRun(fn)`** — app scope: run once over all matching objects. *(exists; an
-  `appLevel` alias can make the intent explicit.)*
+- **`perEntity(fn)`** — object scope. Runs `fn` once per matched object.
+- **`perPackage(fn)`** — package scope: group matching objects by package (packages
+  ascending, objects keeping `ctx.entities` order), run `fn` once per package. Groups
+  by `effectivePackage` so objects with a bare FQN (FR5d) still bucket correctly.
+- **`perModel(fn)`** — app scope: run once over all matching objects. (`oncePerRun`
+  is kept as a soft-deprecated alias — "run" is ambiguous under multi-target output;
+  `perModel` names the data scope.)
 
 A generator picks its scope by which helper it composes — the same way it picks
-object vs run today. Reference templates and the guidance call out the scope each
+object vs model today. Reference templates and the guidance call out the scope each
 starting point is for, so "I need a per-package service layer" maps to a clear
 pattern instead of hand-rolled grouping.
+
+### Declarative template scopes
+
+A `templateGenerator` can take the scope walk declaratively instead of a hand-written
+`walk` — pass `scope` (`"perEntity" | "perPackage" | "perModel"`) plus an
+`outputPattern`, and the generator derives the neutral template data dict per unit and
+names each file via the pattern. `walk` and `scope` are mutually exclusive — provide
+exactly one. The `outputPattern` placeholders are `{name}`, `{Name}`, and `{package}`
+(an unknown placeholder throws); `{package}` resolves through `effectivePackage` and
+renders `::`-separated segments as nested path directories.
+
+```ts
+templateGenerator({
+  name: "entity-doc",
+  scope: "perEntity",
+  outputPattern: "{package}/{Name}.md",
+  template: "entity-doc",
+});
+```
