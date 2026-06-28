@@ -35,7 +35,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
 | FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
 | FR-023 | Metadata packages (cross-project sharing) | 📋 | 1.x | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
-| FR-024 | Entity surfaces (projection/value + declared API) | 🔵 active **pre-GA** (subtype taxonomy + B3/B4a/B5/B6 validation parity shipped all 5 ports; B4b cutover + projection codegen fan-out + declared-API remain) | 1.0 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
+| FR-024 | Entity surfaces (projection/value + declared API) | 🔵 active **pre-GA** (subtype taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen fan-out shipped all 5 ports; declared-API remains) | 1.0 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
 | FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
 | FR-026 | Forms completeness (edit forms + view parity) | 📋 | 1.0 | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
 | FR-027 | DataGrid downloads (CSV/XLSX/PDF/TXT) | 📋 | 1.2 | [#13](https://github.com/metaobjectsdev/metaobjects/issues/13) |

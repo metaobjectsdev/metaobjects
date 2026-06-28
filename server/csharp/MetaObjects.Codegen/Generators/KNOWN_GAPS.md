@@ -13,7 +13,7 @@ Update when a gap closes or a new one surfaces.
 - `?filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` sugar form for `eq`) — honoured against a per-entity `<Entity>FilterAllowlist` emitted by `FilterAllowlistGenerator`. Errors return 400 `{ "error": "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" }`. The list handler calls `FilterParser.Parse` and dispatches via `EfCoreFilterDispatch.ApplyFilter` (both in `MetaObjects.Codegen.Runtime`). FR-009.
 - Both `PATCH` and `PUT` map to the same update handler (TS reference exposes both verbs; C# now matches).
 - 404 carries a JSON envelope: `{ "error": "not_found" }`.
-- Projection (`source.dbView`) routes are read-only — only `GET` list + `GET /:id` are mounted; no `POST` / `PATCH` / `PUT` / `DELETE`.
+- Projection (`object.projection` over a read-only `source.rdb` `@kind: view`) routes are read-only — only `GET` list + `GET /:id` are mounted; no `POST` / `PATCH` / `PUT` / `DELETE`.
 - HTTP status codes: `200` / `201` (POST) / `204` (PATCH/PUT/DELETE) / `400` (validation) / `404` (not found).
 - Sort dispatch uses `EF.Property<object>(x, "<Name>")` — no runtime reflection (AOT-safe). Filter dispatch uses the same approach via `EfCoreFilterDispatch`.
 
