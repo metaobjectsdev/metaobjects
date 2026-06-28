@@ -116,9 +116,11 @@ public class TphCodegenTests
         var bridge = FileContent(files, "BridgeAuth.g.cs");
         Assert.Contains("public class BridgeAuth : Auth", bridge);
         Assert.DoesNotContain("[Table", bridge);
-        // Own field only — subtype column is nullable in the single table (EF folds it),
-        // so even an @required subtype field is emitted nullable.
-        Assert.Contains("public int? Quantity { get; set; }", bridge);
+        // Own field only. A @required subtype field is non-null in CLR (logically
+        // required); EF Core auto-nullables the underlying COLUMN for TPH-derived
+        // properties (a row of another subtype stores NULL there), so the non-null CLR
+        // type still maps to a nullable column correctly (#38, @required CLR nullability).
+        Assert.Contains("public int Quantity { get; set; }", bridge);
         // Inherited columns are NOT re-emitted on the subtype.
         Assert.DoesNotContain("public long Id", bridge);
         Assert.DoesNotContain("public string Reference", bridge);

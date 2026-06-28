@@ -11,5 +11,5 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class BridgeAuth : Auth
 {
     [Column("quantity")]
-    public int? Quantity { get; set; }
+    public int Quantity { get; set; }
 }

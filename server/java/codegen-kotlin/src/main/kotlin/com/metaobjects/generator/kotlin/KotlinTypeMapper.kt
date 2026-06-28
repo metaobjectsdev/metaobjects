@@ -154,8 +154,17 @@ object KotlinTypeMapper {
         // top-most super (`Priority`) so the generated type is shared (and deduped by FQN at
         // emission). Walk the super chain to the root. When there is no super, fall back to the
         // per-entity `<EntityShort><FieldPascal>` naming. Mirrors the C#/TS/Python ports.
+        // Collapse onto a SHARED enum type only for a package-level ABSTRACT enum super (FR-019,
+        // e.g. two fields `extends: Priority`) — identified by having NO declaring object. A super
+        // bound to a CONCRETE entity field (e.g. a read-model projection `extends`-ing
+        // `ActiveNpc.status`) does NOT collapse: it falls through to the per-object naming below,
+        // so the projection gets its OWN `<ProjectionShort><FieldPascal>` enum in its OWN package
+        // (self-contained — no cross-package reference), populated with the values it inherits via
+        // `extends` ([KotlinEnumEmitter.readEnumValues] is inheritance-aware). Without this guard
+        // such a field named the enum from the super's bare short name (`status`), which `splitFqn`
+        // collapsed to a root-package `Status` — colliding across every entity that has a `status`.
         val superRoot = resolveSuperRoot(field)
-        if (superRoot != null) {
+        if (superRoot != null && runCatching { superRoot.declaringObject }.getOrNull() == null) {
             val (superPkg, superShort) = PackageMapping.splitFqn(superRoot.name)
             return ClassName(superPkg, superShort.replaceFirstChar { it.uppercase() })
         }
@@ -410,11 +419,15 @@ object KotlinTypeMapper {
     }
 
     /**
-     * Read the `@dbColumnType` attribute (own-only, case-folded) for column-type overrides.
+     * Read the `@dbColumnType` attribute (case-folded) for column-type overrides. Resolved
+     * THROUGH the `extends` super-field chain (`includeParent = true`), so an `object.projection`
+     * field that binds a base-entity column via `extends:` inherits that column's physical type
+     * (uuid / text_array / timestamp_with_tz) — exactly as it already inherits `@maxLength` (see
+     * [stringMaxLength]). Own value still wins (checked first by [MetaData.hasMetaAttr]).
      * Returns null when absent. See [ATTR_DB_COLUMN_TYPE] for recognised values.
      */
     private fun dbColumnType(field: MetaField<*>): String? =
-        stringAttr(field, ATTR_DB_COLUMN_TYPE)?.lowercase()
+        stringAttr(field, ATTR_DB_COLUMN_TYPE, includeParent = true)?.lowercase()
 
     /**
      * True iff [field] carries `@dbColumnType=timestamp_with_tz` (case-insensitive).
@@ -434,15 +447,16 @@ object KotlinTypeMapper {
         field is TimestampField && timestampWithTzOptIn(field)
 
     /**
-     * Best-effort read of a named string attribute (own-only) on [field]. Returns null when
+     * Best-effort read of a named string attribute on [field] (own-only by default;
+     * [includeParent] = true also walks the `extends` super-field chain). Returns null when
      * the attribute is absent, throws during lookup, or isn't a [com.metaobjects.attr.MetaAttribute].
      * Used for non-typed dispatch keys (e.g. `@kind`) that aren't part of the registered
      * StringField attribute schema.
      */
-    private fun stringAttr(field: MetaField<*>, name: String): String? {
-        if (!field.hasMetaAttr(name, false)) return null
+    private fun stringAttr(field: MetaField<*>, name: String, includeParent: Boolean = false): String? {
+        if (!field.hasMetaAttr(name, includeParent)) return null
         val attr = runCatching {
-            field.getMetaAttr(name, false)
+            field.getMetaAttr(name, includeParent)
         }.getOrNull() as? com.metaobjects.attr.MetaAttribute<*> ?: return null
         return attr.valueAsString
     }

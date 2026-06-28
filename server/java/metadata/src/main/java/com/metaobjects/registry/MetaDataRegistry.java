@@ -2396,9 +2396,17 @@ public class MetaDataRegistry {
 
 
     /**
-     * Add a constraint to the registry with context-aware duplicate detection
+     * Add a constraint to the registry with context-aware duplicate detection.
+     * <p>
+     * Re-adding an <em>identical</em> constraint (same id, same constraint class,
+     * same description) is idempotent — a no-op rather than an error — so a
+     * registry re-init that replays provider constraint registration (e.g. after
+     * {@code clear()}) does not fail. A genuine conflict (same id but a different
+     * constraint class or description) still throws when strict detection is
+     * enabled, preserving ADR-0023 strict provenance.
      * @param constraint The constraint to add
-     * @throws MetaDataException if a constraint with the same ID already exists and strict detection is enabled
+     * @throws MetaDataException if a constraint with the same ID but a conflicting
+     *         definition already exists and strict detection is enabled
      */
     public void addConstraint(Constraint constraint) {
         if (constraint == null) {
@@ -2415,6 +2423,23 @@ public class MetaDataRegistry {
                 .findFirst();
 
             if (existing.isPresent()) {
+                // Idempotent re-registration: an IDENTICAL constraint (same id, same
+                // class, same description) being added again is a benign re-init — e.g.
+                // a test calls clear() (which resets `initialized`, NOT the constraints),
+                // and a later type access re-runs loadServiceProviders, replaying every
+                // provider's constraint registration. Treat that as a no-op rather than
+                // a fatal duplicate; this is the intermittent full-reactor failure
+                // ("DUPLICATE CONSTRAINT DETECTED: object.base.implements.array …").
+                // A GENUINE conflict (same id but a DIFFERENT definition — different
+                // constraint class or description) still throws, preserving ADR-0023
+                // strict provenance and the registry-conformance gate.
+                Constraint ex = existing.get();
+                boolean identical = ex.getClass() == constraint.getClass()
+                    && Objects.equals(ex.getDescription(), constraint.getDescription());
+                if (identical) {
+                    log.debug("Idempotent re-registration of identical constraint: {}", constraintId);
+                    return;
+                }
                 String errorMessage = String.format(
                     "DUPLICATE CONSTRAINT DETECTED: Constraint ID '%s' already registered!\n\n" +
                     "This usually indicates a test registry isolation problem:\n" +
