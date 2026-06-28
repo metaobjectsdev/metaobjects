@@ -56,7 +56,7 @@ Run schema ops from the compiled binary:
 ## Quick start
 
 ```bash
-# 1. Scaffold metaobjects/ + .metaobjects/ + metaobjects.config.ts
+# 1. Scaffold metaobjects/ + .metaobjects/ + codegen/generators/ + metaobjects.config.ts
 meta init
 
 # 2. Author entity metadata
@@ -86,7 +86,9 @@ Running `meta` with no arguments prints a concise status line (whether a `metaob
 
 ### `meta init`
 
-Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `package.meta.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), and `metaobjects.config.ts` at the repo root.
+Scaffolds `metaobjects/` (visible entity declarations, with a placeholder `meta.common.json`), `.metaobjects/` (hidden tool state: `config.json`, `package.meta.json`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `.gen-state/`), the **owned codegen generators** at `codegen/generators/{entity,queries,routes,barrel}.ts`, and `metaobjects.config.ts` at the repo root.
+
+The generators are copied from the codegen reference templates and are **yours to edit** (ADR-0034 scaffold-and-own); the scaffolded `metaobjects.config.ts` imports them locally, and `meta gen` runs from those local copies — not from the package. Each generator file is written only if absent, so re-running with `--force` never clobbers a hand-edited generator.
 
 Flags:
 - `--force` — overwrite scaffold files (memory records preserved)
@@ -159,11 +161,14 @@ Flags:
 
 Two config files, by design:
 
-**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS:
+**`metaobjects.config.ts`** (at repo root) — generator wiring and codegen knobs, type-checked TS. The generators are imported from the **owned local copies** that `meta init` scaffolded into `codegen/generators/` (ADR-0034 scaffold-and-own), not from the package:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -175,6 +180,10 @@ export default defineConfig({
 });
 ```
 
+> Importing these generator factories from `@metaobjectsdev/codegen-ts/generators`
+> still works but is **deprecated** (ADR-0034) — own a local copy instead. The
+> package export will be removed in a future major.
+
 ### Multiple output targets
 
 By default every generator writes to `outDir`. To route each generator's output
@@ -183,7 +192,11 @@ concern — declare named **targets** and point generators at them with `target`
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 

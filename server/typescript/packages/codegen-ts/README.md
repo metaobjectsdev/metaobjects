@@ -72,12 +72,23 @@ dependency tree entirely:
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
   generators: [entityFile({ allowlists: false }), queriesFile(), barrel()],
 });
 ```
+
+The `entityFile` / `queriesFile` / `routesFile` / `barrel` factories are imported
+from the **owned local copies** that `meta init` scaffolds into
+`codegen/generators/` (ADR-0034 scaffold-and-own). Importing them from
+`@metaobjectsdev/codegen-ts/generators` still works but is **deprecated** — own a
+copy instead; the package export will be removed in a future major. The engine and
+primitives (`runGen`, `perEntity`, `oncePerRun`, `RenderContext`, the loader and
+render helpers) remain the stable, versioned import from `@metaobjectsdev/codegen-ts`,
+and an owned generator imports them from there.
 
 The client-side `<Entity>Filter` type is still emitted regardless — it has zero
 runtime-ts dependency and consumers want it for typed client calls. Default is
@@ -153,7 +164,12 @@ For every `template.output` declared in your metadata, `outputParser()` emits
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, barrel, promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { barrel } from "./codegen/generators/barrel";
+// Prompt/output generators have no reference template yet — package import.
+import { promptRender, outputParser } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   generators: [entityFile(), queriesFile(), barrel(), promptRender(), outputParser()],

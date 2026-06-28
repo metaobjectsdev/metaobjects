@@ -76,7 +76,10 @@ describe("metaobjects.config.ts wiring still scaffolded", () => {
     await init({ cwd });
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
     expect(configTs).toContain("defineConfig");
-    expect(configTs).toContain("@metaobjectsdev/codegen-ts/generators");
+    // ADR-0034 — the scaffolded config imports the OWNED local generators, never the
+    // deprecated package `/generators` export.
+    expect(configTs).toContain('from "./codegen/generators/entity"');
+    expect(configTs).not.toContain("@metaobjectsdev/codegen-ts/generators");
   });
 });
 
