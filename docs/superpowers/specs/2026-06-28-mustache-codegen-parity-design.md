@@ -50,7 +50,7 @@ code** for the common cases:
 1. Drop a Mustache template in the project templates dir, e.g.
    `templates/service/entity-service.mustache`.
 2. Declare a template generator in the port's own build/config surface:
-   `template` (ref), `scope` (`perEntity` | `perPackage` | `wholeModel`),
+   `template` (ref), `scope` (`perEntity` | `perPackage` | `perModel`),
    `outputPattern` (e.g. `"{package}/{name}Service.java"`), `format?` (escaper).
 3. Run the port's normal gen verb.
 
@@ -70,7 +70,23 @@ below. Wiring, file I/O, and registration stay idiomatic per port.
 
 ### 3.1 Scope names (exact strings, all ports)
 
-`perEntity` · `perPackage` · `wholeModel`
+`perEntity` · `perPackage` · `perModel`
+
+These are both the declarative `scope` values (in the per-port config below) and the
+TS engine helper names (`perEntity(fn)` / `perPackage(fn)` / `perModel(fn)`). One
+vocabulary across the code API and the declarative surface. The grammar is parallel —
+each name is exactly the slice the generator sees once per call (one entity, one
+package, the whole model) — which is how Telosys ("for each entity"), EF Core T4
+("for each entity type"), and Prisma/EF (the whole "model") describe these scopes.
+
+The existing TS helper `oncePerRun` is renamed to `perModel`; `oncePerRun` stays as a
+**soft-deprecated alias** (drop in a future major — the same deprecation pattern as the
+`@metaobjectsdev/codegen-ts/generators` export). "Run" is avoided deliberately: the
+runner has per-target `RenderContext`s and multi-target output, so "per run" reads
+ambiguously as "per target"; `perModel` ties the scope to the metadata model (the
+durable spine), not an execution event. (`appLevel` may be offered later as a
+documented alias for the deployment-framing reader, but is not canonical — "app" is a
+deployment concept, not a model-breadth one.)
 
 ### 3.2 The template data dict per scope (the portable shape templates reference)
 
@@ -88,7 +104,7 @@ codegen template data model and the docs data model do not drift.
   }
   ```
 - **`perPackage`** → one file per package: `{ package, entities: [ <perEntity dict> … ] }`
-- **`wholeModel`** → one file total: `{ packages: [ { package, entities: [ <perEntity dict> … ] } ] }`
+- **`perModel`** → one file total: `{ packages: [ { package, entities: [ <perEntity dict> … ] } ] }`
 
 `type` is the **neutral metamodel field subtype** (`string`, `int`, `long`, `currency`,
 `enum`, …) — NOT a language type. Templates that need a language type map it themselves
@@ -103,7 +119,7 @@ fast-follow once v1 is gated (§6).
 
 Placeholders, expanded per walk unit: `{name}` (object name), `{Name}` (PascalCase),
 `{package}` (package rendered as a path, `::` → `/`). `perPackage` patterns may use
-`{package}`; `wholeModel` patterns are literal (no per-unit placeholder). Unknown
+`{package}`; `perModel` patterns are literal (no per-unit placeholder). Unknown
 placeholder → hard error at gen time (no silent passthrough).
 
 ### 3.4 Template resolution
@@ -127,19 +143,40 @@ introduced — consistent with "each port runs codegen through its own build too
 - **TS** (`@metaobjectsdev/codegen-ts`): `templateGenerator({ name, template, scope,
   outputPattern, format? })`. `scope` selects a built-in walk; the existing
   `walk` option stays for power users (mutually exclusive with `scope`). Reference
-  implementation + the `perPackage` engine helper land here.
+  implementation + the `perPackage` engine helper + the `oncePerRun`→`perModel` rename
+  (alias retained) land here.
 - **Java + Kotlin** (Maven plugin): a `<templateGenerator>` config element
   (`<template>`, `<scope>`, `<outputPattern>`, `<format>`) the plugin turns into a real
   `Generator` wrapping the cross-port `render/TemplateGenerator` + the named walk. **This
   is where Kotlin gains a template generator** — it is JVM and reuses the shared engine;
   no KotlinPoet involvement. Multiple `<templateGenerator>` elements allowed.
-- **C#** (`dotnet meta`): a `--template-spec <file>` surface (JSON: an array of
-  `{ name, template, scope, outputPattern, format? }`) — a CLI-only port, so the spec is
-  a file, not a closure. Turns the no-op registry primitive into a real consumer-usable
-  generator. (A `metaobjects.config`-style file is explicitly out of scope; ADR-0015 keeps
-  C# CLI-flag-driven.)
-- **Python** (`metaobjects gen`): the same `--template-spec <file>` surface as C#,
-  replacing programmatic-only use.
+- **C#** (`dotnet meta`) and **Python** (`metaobjects gen`): the same declarative
+  **JSON spec file** surface — `--template-spec <path>`, with a conventional default the
+  port auto-discovers and the flag overriding (mirrors `.config/dotnet-ef.json` and
+  `datamodel-code-generator`'s auto-discovery-with-flag-override). These are CLI-only
+  ports, so the spec is a file, not a closure. The file is a JSON object:
+  ```json
+  { "generators": [
+    { "name": "service", "template": "service/entity-service",
+      "scope": "perEntity", "outputPattern": "{package}/{Name}Service.cs", "format": "text" }
+  ] }
+  ```
+  Turns C#'s no-op registry primitive (and Python's programmatic-only path) into a real
+  consumer-usable generator. JSON, not YAML/TOML, is the deliberate choice: it is the
+  **only** format both runtimes parse with their standard library (System.Text.Json /
+  `json`), so one identical file works byte-for-byte on both ports — best parity, zero
+  added deps, and consistent with the canonical-JSON interchange (ADR-0006). It matches
+  the validated shape for "a list of generator specs" (Smithy `smithy-build.json`,
+  OpenAPI's `files` node, Buf's `plugins` list). Inline flags are rejected (protoc's
+  cautionary tale); a `pyproject.toml`/`.csproj` section is rejected (TOML-vs-XML kills
+  cross-port parity).
+
+A **JSON Schema** for the spec ships with the feature; both `gen` and `verify` validate
+authored specs against it (guardrails for agent authors + a drift check, consistent with
+the `verify` philosophy). TS keeps its executable config; the JSON spec is the
+CLI-port equivalent, expressing the same neutral `{ name, template, scope, outputPattern,
+format? }` records. If human authoring ergonomics later matter, YAML may be added as a
+*desugar-to-this-JSON* front-end (ADR-0006 pattern), never as the interchange.
 
 The walk + data dict + pattern expansion is shared-by-contract (gated); the registration
 surface is per-port.
@@ -149,8 +186,9 @@ surface is per-port.
 Mirrors how cross-port features land in this repo — TS reference first, then fan out,
 flipping the corpus on per port as it lands.
 
-1. **SP-1a — TS reference.** Named scope walks (`perEntity`/`perPackage`/`wholeModel`)
-   + the `perPackage` engine helper + `outputPattern` + data-dict builder, wired into
+1. **SP-1a — TS reference.** Named scope walks (`perEntity`/`perPackage`/`perModel`)
+   + the `perPackage` engine helper + the `oncePerRun`→`perModel` rename (alias kept)
+   + `outputPattern` + data-dict builder + the JSON-spec schema, wired into
    `templateGenerator`. Author `fixtures/template-codegen-conformance/` and gate TS
    against it. (Lands the concepts-guide §10 `perPackage` gap.)
 2. **SP-1b — JVM (Java + Kotlin).** Wire `<templateGenerator>` into the Maven plugin
@@ -178,15 +216,23 @@ merge — admin-merge after local green, per the repo flow).
   display labels) — a fast-follow once the v1 dict is gated.
 - **Groovy** — dropped; Mustache covers the need.
 
-## 7. Risks / open points
+## 7. Decisions + remaining risks
+
+**Decided** (researched against prior art, 2026-06-28):
+
+- **Scope names: `perEntity` / `perPackage` / `perModel`** (one vocabulary for the code
+  helpers and the declarative `scope` value); `oncePerRun` → soft-deprecated alias of
+  `perModel`. Grounded in Telosys / EF Core T4 / Prisma / OpenAPI Generator scope
+  vocabulary; "run" rejected as ambiguous under multi-target output. (§3.1)
+- **CLI-port declarative surface: a JSON spec file** (`--template-spec <path>` + auto-
+  discovered default + JSON Schema), identical on C# and Python. Grounded in Smithy /
+  OpenAPI Generator `files` / Buf / `.config/dotnet-ef.json`; YAML/TOML/inline-flags
+  rejected (stdlib-parity, protoc cautionary tale, cross-port divergence). (§4)
+
+**Remaining risks:**
 
 - **Data-dict scope creep.** v1 is intentionally thin. The gate makes additions cheap to
   verify but every field added is a cross-port obligation — add only on demonstrated need.
 - **Reusing the docs data builder.** If the docs builder's shape is awkward for codegen,
   the codegen dict may need its own builder that shares helpers rather than the exact
   struct. Decide during SP-1a against the real fixture; do not force-fit.
-- **`perPackage` naming.** The helper name (`perPackage`) and an optional `appLevel`
-  alias for `oncePerRun` are cosmetic; confirm during SP-1a so all ports adopt the same
-  scope strings.
-- **C#/Python `--template-spec` ergonomics.** A JSON spec file is the lowest-risk
-  declarative surface for the flag-driven ports; revisit only if it proves clumsy.
