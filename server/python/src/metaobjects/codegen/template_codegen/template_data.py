@@ -83,13 +83,17 @@ def build_entity_template_data(o: Any) -> dict[str, Any]:
     relationships: list[dict[str, Any]] = []
     for c in o.children():
         if c.type == TYPE_IDENTITY:
-            identities.append({"kind": c.sub_type, "fields": list(c.attrs().get("fields", []))})
+            id_fields = c.own_attrs().get("fields")
+            identities.append(
+                {"kind": c.sub_type, "fields": list(id_fields) if isinstance(id_fields, list) else []}
+            )
         elif c.type == TYPE_RELATIONSHIP:
+            own = c.own_attrs()
             relationships.append(
                 {
                     "name": c.name,
-                    "cardinality": c.attrs().get("cardinality", "") or "",
-                    "targetRef": c.attrs().get("objectRef", "") or "",
+                    "cardinality": own.get("cardinality", "") or "",
+                    "targetRef": own.get("objectRef", "") or "",
                 }
             )
     return {

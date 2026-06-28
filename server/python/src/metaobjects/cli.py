@@ -143,6 +143,7 @@ def _generate(
     out_dir: str,
     generators: list[Generator] | None = None,
     entity_filter: list[str] | None = None,
+    emit_package_init: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
@@ -150,14 +151,17 @@ def _generate(
     resolved subset for ``--generators``. ``entity_filter`` (the ``--entities``
     allowlist) restricts which entities are EMITTED while the WHOLE model is still
     loaded, so cross-entity references (``extends`` bases, ``@objectRef`` VOs)
-    resolve — emit a subset without splitting the metadata. Returns
+    resolve — emit a subset without splitting the metadata. ``emit_package_init``
+    is ``False`` for the format-agnostic ``--template-spec`` generators (whose
+    output is text/markdown/csv/json/xml/html, never a Python package) so no
+    spurious ``__init__.py`` is scattered through their output tree. Returns
     ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
     files are written.
     """
     root, errors = _load_root(metadata_dir)
     if root is None:
         return [], errors
-    config = GenConfig(out_dir=out_dir)
+    config = GenConfig(out_dir=out_dir, emit_package_init=emit_package_init)
     suite = generators if generators is not None else _default_generators()
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
     written = [path for path, status in result.files if status != "refused"]
@@ -293,8 +297,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
                 print(f"  {msg}", file=sys.stderr)
             return 1
 
-    # SP-1: declarative Mustache generators from a JSON template-spec, appended to
-    # the suite. Templates resolve under --templates via a FilesystemProvider.
+    # SP-1: declarative Mustache generators from a JSON template-spec. Their output
+    # is format-agnostic (text/markdown/csv/json/xml/html), so they run as a SECOND,
+    # SEPARATE pass with emit_package_init=False — no Python __init__.py is injected
+    # into their (possibly non-Python) output tree. Templates resolve under
+    # --templates via a FilesystemProvider.
+    spec_gens: list[Generator] = []
     if getattr(args, "template_spec", None):
         from metaobjects.codegen.template_codegen.template_spec import (
             parse_template_spec,
@@ -308,9 +316,6 @@ def _cmd_gen(args: argparse.Namespace) -> int:
             return 1
         provider = FilesystemProvider(args.templates)
         spec_gens = template_spec_to_generators(spec, provider)
-        # The default suite still runs unless --generators narrowed it; append.
-        base = generators if generators is not None else _default_generators()
-        generators = list(base) + spec_gens
 
     entities = _parse_entities(getattr(args, "entities", None))
     written, errors = _generate(args.metadata_dir, args.out, generators, entities)
@@ -319,6 +324,16 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         for msg in errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+    if spec_gens:
+        spec_written, spec_errors = _generate(
+            args.metadata_dir, args.out, spec_gens, entities, emit_package_init=False
+        )
+        if spec_errors:
+            print("error: failed to load metadata:", file=sys.stderr)
+            for msg in spec_errors:
+                print(f"  {msg}", file=sys.stderr)
+            return 1
+        written = list(written) + spec_written
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
