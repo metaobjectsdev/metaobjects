@@ -116,3 +116,40 @@ C#, Spring for Java/Kotlin, Pydantic for Python) — collapsing them to one gene
 emitter is the OpenAPI-Generator trap. Keep language-*neutral* artifacts (migrations,
 docs, future OpenAPI/Mermaid) as **one shared engine**. The test: does the output depend
 on the implementation language? If yes, it's per-port; if no, it's shared. (ADR-0020.)
+
+## 10. Codegen scopes — object, package, app
+
+MetaObjects codegen has been object-centric (one artifact per MetaObject), but
+generation has three natural scopes, and all three are legitimate first-class
+patterns. **The scope *is* the walk** — what the generator iterates over:
+
+| Scope | Walks | Emits | Examples |
+|---|---|---|---|
+| **Object** | each MetaObject | one artifact per object | entity, queries, routes, DTO, repository |
+| **Package** | each package (objects grouped by package) | one artifact per package | a service-layer module, a package barrel/index, a package-scoped registry or config |
+| **App** | the whole model once | one artifact for the app | a shared component, an app-wide config (e.g. a Spring `@Configuration`), a global object/binding registry, the overall barrel, a whole-model diagram |
+
+**Lineage (the Java predecessor).** App-level generation was first-class there —
+`SingleFileDirectGeneratorBase` (one whole-model PlantUML diagram), or overriding
+`execute(loader)` to emit a single app config (`KotlinSpringConfigGenerator`), or the
+`getFinalWriter()` hook (per-object files *plus* one final app file). Package-level
+was *not* first-class even there — it was done ad-hoc, grouping by `getPackage()`
+inside a generator's `execute()` (the FR-019 shared-enum aggregation). The newest,
+cleanest shape is the cross-port `TemplateGenerator`'s caller-supplied **`walk`
+function**: the walk returns the units to render, so per-object / per-package /
+whole-model are just different walks.
+
+**The model to expose.** Three scope helpers, so the scope is declared, not buried in
+custom iteration:
+
+- **`perEntity(fn)`** — object scope. *(exists)*
+- **`perPackage(fn)`** — package scope: group matching objects by package, run `fn`
+  once per package. *(the gap — Java never had this cleanly either, so this is an
+  improvement on the predecessor, not just parity.)*
+- **`oncePerRun(fn)`** — app scope: run once over all matching objects. *(exists; an
+  `appLevel` alias can make the intent explicit.)*
+
+A generator picks its scope by which helper it composes — the same way it picks
+object vs run today. Reference templates and the guidance call out the scope each
+starting point is for, so "I need a per-package service layer" maps to a clear
+pattern instead of hand-rolled grouping.
