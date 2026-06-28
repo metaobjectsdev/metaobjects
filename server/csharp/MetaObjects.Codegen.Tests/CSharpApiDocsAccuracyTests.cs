@@ -50,6 +50,11 @@ public sealed class CSharpApiDocsAccuracyTests
         { "field.object": { "name": "home", "@objectRef": "Address" } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } }
       ]}},
+      { "object.projection": { "name": "AuthorSummary", "children": [
+        { "source.rdb": { "@kind": "view", "@table": "v_author_summary" } },
+        { "field.string": { "name": "name" } },
+        { "field.long":   { "name": "tagCount" } }
+      ]}},
       { "object.value": { "name": "SummaryPayload", "children": [
         { "field.string": { "name": "summary", "@required": true } }
       ]}},
@@ -144,8 +149,10 @@ public sealed class CSharpApiDocsAccuracyTests
         {
             var (model, _) = BuildAndGenerate(tpl);
             var nodes = model.Units.Select(u => u.Node).OrderBy(n => n, StringComparer.Ordinal).ToList();
-            // Author + Address + SummaryPayload + SummaryOutput; BaseNode (abstract) is absent.
-            Assert.Equal(new[] { "Address", "Author", "SummaryOutput", "SummaryPayload" }, nodes);
+            // Author + Address + AuthorSummary (projection) + SummaryPayload + SummaryOutput;
+            // BaseNode (abstract) is absent.
+            Assert.Equal(
+                new[] { "Address", "Author", "AuthorSummary", "SummaryOutput", "SummaryPayload" }, nodes);
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }
@@ -234,6 +241,49 @@ public sealed class CSharpApiDocsAccuracyTests
             // No AddressController/Routes/FilterAllowlist generated either — even the names absent.
             Assert.False(ContainsIdentifier(all, "AddressRoutes"));
             Assert.False(ContainsIdentifier(all, "AddressFilterAllowlist"));
+        }
+        finally { Directory.Delete(tpl, recursive: true); }
+    }
+
+    [Fact]
+    public void Projection_is_documented_as_read_model_with_readonly_dbset_no_write_surface()
+    {
+        var tpl = WriteTemplates();
+        try
+        {
+            var (model, all) = BuildAndGenerate(tpl);
+            var summary = model.Units.Single(u => u.Node == "AuthorSummary");
+
+            // A view-kind object.projection → a read-model unit with a read-only DbSet +
+            // read routes, but NO write surfaces (no Validation / FilterAllowlist). The
+            // DbSet + read routes ARE generated for a projection (DbView != null), so the
+            // builder must document them — the bug was the `if (entity)` gate hiding them.
+            Assert.Equal("projection", summary.Kind);
+            var kinds = summary.Symbols.Select(s => s.Kind).ToHashSet();
+            Assert.Contains(ApiSymbolKind.Model, kinds);
+            Assert.Contains(ApiSymbolKind.DataAccess, kinds);
+            Assert.DoesNotContain(ApiSymbolKind.Validation, kinds);
+            Assert.DoesNotContain(ApiSymbolKind.Filter, kinds);
+
+            // Forward-confirm the documented DbSet is really declared on the AppDbContext...
+            var dbSet = summary.Symbols.Single(s => s.Kind == ApiSymbolKind.DataAccess);
+            Assert.True(ContainsDeclaration(all, dbSet.Name),
+                $"documented projection DbSet '{dbSet.Name}' is not declared in the generated C#");
+
+            // ...every documented REST verb maps to a real route registration (read verbs
+            // only — a read-only projection generates no POST/PATCH/PUT/DELETE)...
+            foreach (var sym in summary.Symbols.Where(s => s.Kind == ApiSymbolKind.Rest))
+            {
+                var parts = sym.Name.Split(' ', 2);
+                Assert.Equal("GET", parts[0]);
+                var remainder = parts[1]["/api".Length..];
+                Assert.True(all.Contains("MapGet(prefix + \"" + remainder + "\""),
+                    $"documented projection REST '{sym.Name}' has no matching MapGet registration");
+            }
+
+            // ...and NO filter allowlist CLASS is declared for the projection (the builder
+            // documents no FILTER symbol, matching FilterAllowlistGenerator skipping it).
+            Assert.False(ContainsDeclaration(all, "AuthorSummaryFilterAllowlist"));
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }

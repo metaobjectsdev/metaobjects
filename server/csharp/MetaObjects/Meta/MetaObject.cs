@@ -101,6 +101,9 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>True when the object's subtype is <c>value</c>.</summary>
     public bool IsValue() => SubType == OBJECT_SUBTYPE_VALUE;
 
+    /// <summary>True when the object's subtype is <c>projection</c> (a derived read-only model).</summary>
+    public bool IsProjection() => SubType == OBJECT_SUBTYPE_PROJECTION;
+
     // -------------------------------------------------------------------------
     // Fields
     // -------------------------------------------------------------------------

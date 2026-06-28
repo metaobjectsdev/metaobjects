@@ -88,7 +88,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         outRoot: java.nio.file.Path,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
-        val objectName = shortName + "Proc"
+        val objectName = KotlinNaming.procObjectName(shortName)
         val procName = resolveProcName(sourceRdb, shortName)
 
         val allFields = entity.metaFields.toList()

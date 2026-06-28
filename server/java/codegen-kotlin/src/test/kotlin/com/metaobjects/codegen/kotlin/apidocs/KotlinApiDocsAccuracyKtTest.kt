@@ -11,6 +11,7 @@ import com.metaobjects.generator.kotlin.KotlinPayloadGenerator
 import com.metaobjects.generator.kotlin.KotlinRelationsGenerator
 import com.metaobjects.generator.kotlin.KotlinRenderHelperGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
+import com.metaobjects.generator.kotlin.KotlinStoredProcGenerator
 import com.metaobjects.generator.kotlin.apidocs.ApiSymbol
 import com.metaobjects.generator.kotlin.apidocs.ApiSymbolKind
 import com.metaobjects.generator.kotlin.apidocs.ApiUnit
@@ -95,6 +96,18 @@ class KotlinApiDocsAccuracyKtTest {
         { "object.value": { "name": "Address", "children": [
             { "field.string": { "name": "street", "@required": true } },
             { "field.string": { "name": "city" } }
+        ] } },
+        { "object.projection": { "name": "SalesReport", "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "regionName", "@maxLength": 100 } },
+            { "field.long":   { "name": "totalCents" } },
+            { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
+        ] } },
+        { "object.projection": { "name": "OrderReport", "children": [
+            { "field.long":   { "name": "orderId", "@param": true } },
+            { "field.string": { "name": "status", "@maxLength": 50 } },
+            { "field.long":   { "name": "totalCents" } },
+            { "source.rdb":   { "@kind": "storedProc", "@table": "get_order_report" } }
         ] } },
         { "object.value": { "name": "SummaryPayload", "children": [
             { "field.string": { "name": "summary", "@required": true } }
@@ -270,6 +283,49 @@ class KotlinApiDocsAccuracyKtTest {
     }
 
     @Test
+    fun viewProjectionIsDocumentedAsReadModelWithExposedTable() {
+        // A view-kind object.projection → MODEL (read-model data class) + a read-only Exposed
+        // Table DATA_ACCESS surface. NO write surfaces (no REST/FILTER/VALIDATION — the controller
+        // / filter / validation gates require a writable table entity).
+        val sales = unit("SalesReport")
+        assertEquals("projection", sales.kind, "view projection SalesReport → projection unit kind")
+        assertEquals(
+            setOf(ApiSymbolKind.MODEL, ApiSymbolKind.DATA_ACCESS), kinds(sales),
+            "view projection SalesReport → MODEL + read-only Exposed table only",
+        )
+        // Forward-confirm both documented symbols are really generated...
+        assertTrue(containsIdentifier(allGenerated, "SalesReport"), "documented SalesReport model must be generated")
+        val dataAccess = symbol(sales, ApiSymbolKind.DATA_ACCESS, "SalesReportTable")
+        assertTrue(
+            containsIdentifier(allGenerated, dataAccess.name),
+            "documented projection Exposed table '${dataAccess.name}' must be generated",
+        )
+        // ...and NO controller / filter allowlist is generated for the projection.
+        assertFalse(containsIdentifier(allGenerated, "SalesReportController"), "no SalesReportController")
+        assertFalse(containsIdentifier(allGenerated, "SalesReportFilterAllowlist"), "no SalesReportFilterAllowlist")
+    }
+
+    @Test
+    fun procProjectionIsDocumentedAsReadModelWithProcCallable() {
+        // A storedProc-kind object.projection → MODEL + the <Name>Proc callable DATA_ACCESS surface
+        // (KotlinStoredProcGenerator emits it for a proc-backed projection). No write surfaces.
+        val order = unit("OrderReport")
+        assertEquals("projection", order.kind, "proc projection OrderReport → projection unit kind")
+        assertEquals(
+            setOf(ApiSymbolKind.MODEL, ApiSymbolKind.DATA_ACCESS), kinds(order),
+            "proc projection OrderReport → MODEL + the proc callable only",
+        )
+        val dataAccess = symbol(order, ApiSymbolKind.DATA_ACCESS, "OrderReportProc")
+        assertTrue(
+            containsIdentifier(allGenerated, dataAccess.name),
+            "documented proc callable '${dataAccess.name}' must be generated",
+        )
+        // No Exposed Table is generated for a proc-backed projection (table generator skips it).
+        assertFalse(containsIdentifier(allGenerated, "OrderReportTable"), "no OrderReportTable for a proc projection")
+        assertFalse(containsIdentifier(allGenerated, "OrderReportController"), "no OrderReportController")
+    }
+
+    @Test
     fun abstractObjectIsNotDocumented() {
         // An abstract entity yields no MODEL (cannot be instantiated) and every instance generator
         // skips it → NO symbols → NO unit (not an empty unit).
@@ -315,6 +371,7 @@ class KotlinApiDocsAccuracyKtTest {
         val tpl = templateRoot.toString()
         run(KotlinEntityGenerator(), mapOf("outputDir" to dir))
         run(KotlinExposedTableGenerator(), mapOf("outputDir" to dir))
+        run(KotlinStoredProcGenerator(), mapOf("outputDir" to dir))
         run(KotlinSpringControllerGenerator(), mapOf("outputDir" to dir))
         run(KotlinFilterAllowlistGenerator(), mapOf("outputDir" to dir))
         run(KotlinRelationsGenerator(), mapOf("outputDir" to dir))

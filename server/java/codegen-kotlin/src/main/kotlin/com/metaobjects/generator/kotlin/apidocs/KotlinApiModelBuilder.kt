@@ -35,7 +35,9 @@ import com.metaobjects.template.TemplateConstants
  *   `@Serializable data class` from `KotlinEntityGenerator`). A writable-table entity additionally
  *   yields DATA_ACCESS (the Exposed `Table` object) / VALIDATION (the jakarta constraints on the
  *   data class, the controller's `@Valid @RequestBody`) / REST (one per controller route + each M:N
- *   traversal) / FILTER (the `<Entity>FilterAllowlist` object). A value object → MODEL only. An
+ *   traversal) / FILTER (the `<Entity>FilterAllowlist` object). A read-only `object.projection` →
+ *   MODEL + a single read-only DATA_ACCESS surface (the Exposed `Table` for a view kind, or the
+ *   `<Name>Proc` callable for a storedProc kind); no write surfaces. A value object → MODEL only. An
  *   abstract object / a TPH subtype yields no instance artifacts.
  * - **Templates** (`template.output` only): each → PAYLOAD / RENDER / OUTPUT_PARSER, plus PROMPT +
  *   EXTRACTOR when `@format` is json/xml — each gated by the matching generator's applies-predicate.
@@ -61,11 +63,16 @@ class KotlinApiModelBuilder {
     fun build(loader: MetaDataLoader, project: String): KotlinApiModel {
         val units = mutableListOf<ApiUnit>()
 
-        // Objects: one unit per object.entity / object.value (entity vs value drives which symbol
-        // categories the gates let through). object.projection is left to the cross-port builders'
-        // current scope (the shared manifest fixture carries entities + a value object + a template).
+        // Objects: one unit per object.entity / object.value / object.projection (the subtype +
+        // each generator's gate drive which symbol categories are let through — a projection is a
+        // read-only model, documented as MODEL + its read-only data-access surface only).
         for (obj in loader.metaObjects) {
-            if (obj.subType != MetaObject.SUBTYPE_ENTITY && obj.subType != MetaObject.SUBTYPE_VALUE) continue
+            if (obj.subType != MetaObject.SUBTYPE_ENTITY &&
+                obj.subType != MetaObject.SUBTYPE_VALUE &&
+                obj.subType != MetaObject.SUBTYPE_PROJECTION
+            ) {
+                continue
+            }
             val unit = buildObjectUnit(obj, loader)
             if (unit != null) units.add(unit)
         }
@@ -85,13 +92,19 @@ class KotlinApiModelBuilder {
     private fun buildObjectUnit(obj: MetaObject, loader: MetaDataLoader): ApiUnit? {
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
         val entity = obj.subType == MetaObject.SUBTYPE_ENTITY
-        val unitKind = if (entity) "entity" else "value"
+        val projection = obj.subType == MetaObject.SUBTYPE_PROJECTION
+        val unitKind = when {
+            entity -> "entity"
+            projection -> "projection"
+            else -> "value"
+        }
 
         val symbols = mutableListOf<ApiSymbol>()
 
         // MODEL — documented only for concrete objects. An abstract object cannot be instantiated,
         // so we do not document a MODEL symbol for it (documented ⊆ generated). A concrete value
-        // object → MODEL only. The data class is the @Serializable model AND the controller body.
+        // object / projection → MODEL only (plus a read-only data-access surface for a projection,
+        // below). The data class is the @Serializable model AND (for an entity) the controller body.
         if (!KotlinGenUtil.isAbstractEntity(obj)) {
             symbols.add(
                 ApiSymbol(
@@ -99,10 +112,20 @@ class KotlinApiModelBuilder {
                     kind = ApiSymbolKind.MODEL,
                     importLine = importLine(pkg, shortName),
                     signature = "data class $shortName",
-                    usage = if (entity) "the @Serializable entity model (also the controller request/response body)"
-                    else "the @Serializable value-object model",
+                    usage = when {
+                        entity -> "the @Serializable entity model (also the controller request/response body)"
+                        projection -> "the @Serializable read-model (read-only projection of query results)"
+                        else -> "the @Serializable value-object model"
+                    },
                 )
             )
+        }
+
+        // A read-only projection has no write surface (no controller/filter/validation). Its data-
+        // access surface IS what codegen-kotlin emits for its source @kind: a read-only Exposed
+        // Table object (view / materializedView) or a stored-proc callable object (storedProc).
+        if (projection && !KotlinGenUtil.isAbstractEntity(obj)) {
+            projectionDataAccess(obj)?.let { symbols.add(it) }
         }
 
         if (entity && isWritableTableEntity(obj, loader)) {
@@ -166,6 +189,48 @@ class KotlinApiModelBuilder {
         if (KotlinTphPlan.isTphSubtype(obj)) return false
         val src = obj.children.filterIsInstance<RdbSource>().firstOrNull() ?: return false
         return src.effectiveKind == MetaSource.KIND_TABLE
+    }
+
+    /**
+     * The single DATA_ACCESS symbol codegen-kotlin emits for a read-only [projection][obj], keyed off
+     * its `source.rdb @kind` exactly as the generators gate:
+     * - view / materializedView (and table, defensively) → the read-only Exposed `Table` object
+     *   ([KotlinExposedTableGenerator] emits it for an entity OR projection of a table/view kind);
+     * - storedProc → the `<Name>Proc` callable object ([KotlinStoredProcGenerator]).
+     *
+     * Returns null for a tableFunction-kind source (no dedicated generator yet) or no `source.rdb`,
+     * so the projection is documented as MODEL only — never a data-access surface that isn't emitted.
+     */
+    private fun projectionDataAccess(obj: MetaObject): ApiSymbol? {
+        val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
+        val src = obj.children.filterIsInstance<RdbSource>().firstOrNull() ?: return null
+        return when (src.effectiveKind) {
+            MetaSource.KIND_TABLE, MetaSource.KIND_VIEW, MetaSource.KIND_MATERIALIZED_VIEW -> {
+                val table = KotlinNaming.tableObjectName(shortName)
+                ApiSymbol(
+                    name = table,
+                    kind = ApiSymbolKind.DATA_ACCESS,
+                    importLine = importLine(pkg, table),
+                    signature = "object $table : Table",
+                    usage = "data access — the read-only Exposed table object (typed columns; query via transaction { })",
+                    returns = "Exposed Query / ResultRow",
+                )
+            }
+
+            MetaSource.KIND_STORED_PROC -> {
+                val proc = KotlinNaming.procObjectName(shortName)
+                ApiSymbol(
+                    name = proc,
+                    kind = ApiSymbolKind.DATA_ACCESS,
+                    importLine = importLine(pkg, proc),
+                    signature = "object $proc",
+                    usage = "data access — the stored-procedure callable (SELECT * FROM <proc>(...) via transaction { })",
+                    returns = "List<$shortName>",
+                )
+            }
+
+            else -> null
+        }
     }
 
     private fun addRestSymbols(

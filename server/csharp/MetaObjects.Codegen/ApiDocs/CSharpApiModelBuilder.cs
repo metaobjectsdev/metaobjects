@@ -10,7 +10,9 @@
 // Per-category enumeration (mirrors the Java JavaApiModelBuilder, C#/EF-flavored):
 //   • Objects (root.Objects()): each concrete object → a MODEL symbol. Entities add
 //     DATA_ACCESS / REST / VALIDATION / FILTER, each gated by the matching generator's
-//     AppliesTo. A value object → MODEL only.
+//     AppliesTo. A read-only projection (object.projection) adds a read-only DbSet +
+//     read routes only (the write surfaces gate on a writable entity). A value object
+//     → MODEL only.
 //   • Templates (root.RootTemplates()): each template.output → PAYLOAD / RENDER /
 //     PROMPT / OUTPUT_PARSER, gated by the matching generator's AppliesTo.
 //
@@ -61,65 +63,74 @@ public sealed class CSharpApiModelBuilder
     private ApiUnit? BuildObjectUnit(MetaObject obj, MetaRoot root)
     {
         var entity = obj.IsEntity();
+        var projection = obj.IsProjection();
         var ns = ResolveNamespace(obj);
-        var unitKind = entity ? "entity" : "value";
+        var unitKind = entity ? "entity" : projection ? "projection" : "value";
 
         var symbols = new List<ApiSymbol>();
 
         // MODEL — only for concrete objects. An abstract object cannot be instantiated,
         // so we document no MODEL for it (documented ⊆ generated). A concrete value
-        // object → MODEL only. A TPH subtype is model-only (routes/dbcontext suppress it).
+        // object / projection → MODEL only (plus a read-only DbSet + read routes for a
+        // projection, below). A TPH subtype is model-only (routes/dbcontext suppress it).
         if (!InstanceArtifacts.IsAbstract(obj))
         {
             var model = CSharpNaming.ModelClassName(obj);
             symbols.Add(new ApiSymbol(
                 model, ApiSymbolKind.Model, ns,
                 $"class {model}",
-                entity ? "the EF Core entity / in-memory model object" : "the value-object POCO"));
+                entity ? "the EF Core entity / in-memory model object"
+                    : projection ? "the EF Core read-model / read-only projection POCO"
+                    : "the value-object POCO"));
         }
 
-        if (entity)
+        // DATA_ACCESS / VALIDATION / REST / FILTER are gated PURELY by each generator's
+        // AppliesTo so documented == generated. A read-only projection (object.projection,
+        // view-kind source → DbView != null) gets a read-only DbSet + read routes; the
+        // write surfaces (VALIDATION / write REST verbs / FILTER) gate on a writable entity
+        // and skip it. A value object passes none of the AppliesTo predicates → MODEL only.
+
+        // DATA_ACCESS — the DbSet on the generated AppDbContext (entity OR projection).
+        if (DbContextGenerator.AppliesTo(obj, root))
         {
-            // DATA_ACCESS — the DbSet on the generated AppDbContext (entity persisted).
-            if (DbContextGenerator.AppliesTo(obj, root))
-            {
-                var dbSet = CSharpNaming.DbSetName(obj);
-                symbols.Add(new ApiSymbol(
-                    dbSet, ApiSymbolKind.DataAccess, ns,
-                    $"DbSet<{CSharpNaming.ModelClassName(obj)}> AppDbContext.{dbSet}",
-                    "data access — the EF Core DbSet on the generated AppDbContext",
-                    $"DbSet<{CSharpNaming.ModelClassName(obj)}>"));
-            }
+            var dbSet = CSharpNaming.DbSetName(obj);
+            symbols.Add(new ApiSymbol(
+                dbSet, ApiSymbolKind.DataAccess, ns,
+                $"DbSet<{CSharpNaming.ModelClassName(obj)}> AppDbContext.{dbSet}",
+                "data access — the EF Core DbSet on the generated AppDbContext",
+                $"DbSet<{CSharpNaming.ModelClassName(obj)}>"));
+        }
 
-            // VALIDATION — the DataAnnotations constraints carried on the create/update
-            // shape (required / max-length / range / regex). Only a WRITABLE entity has a
-            // create/update shape: a read-only projection (source.rdb @kind=view, no
-            // writable source) gets a read-only DbSet but no write shape, so documenting
-            // "validation on the create/update shape" for it would over-claim. This matches
-            // the Python builder's writable-table gate (read-only projections excluded).
-            if (DbContextGenerator.AppliesTo(obj, root) && !obj.IsReadOnlyProjection())
-            {
-                var cls = CSharpNaming.ModelClassName(obj);
-                symbols.Add(new ApiSymbol(
-                    cls, ApiSymbolKind.Validation, ns,
-                    $"class {cls}",
-                    "DataAnnotations validation on the create/update shape",
-                    Fields: DtoFields(obj)));
-            }
+        // VALIDATION — the DataAnnotations constraints carried on the create/update
+        // shape (required / max-length / range / regex). Only a WRITABLE entity has a
+        // create/update shape: a read-only projection (source.rdb @kind=view, no
+        // writable source) gets a read-only DbSet but no write shape, so documenting
+        // "validation on the create/update shape" for it would over-claim. This matches
+        // the Python builder's writable-table gate (read-only projections excluded).
+        if (DbContextGenerator.AppliesTo(obj, root) && !obj.IsReadOnlyProjection())
+        {
+            var cls = CSharpNaming.ModelClassName(obj);
+            symbols.Add(new ApiSymbol(
+                cls, ApiSymbolKind.Validation, ns,
+                $"class {cls}",
+                "DataAnnotations validation on the create/update shape",
+                Fields: DtoFields(obj)));
+        }
 
-            // REST — one symbol per verb+path the routes generator registers.
-            if (RoutesGenerator.AppliesTo(obj, root))
-                AddRestSymbols(symbols, obj, ns, root);
+        // REST — one symbol per verb+path the routes generator registers. AddRestSymbols
+        // itself emits only the read verbs (GET list / GET by id) for a read-only
+        // projection (its `writable` gate), so the documented routes match generation.
+        if (RoutesGenerator.AppliesTo(obj, root))
+            AddRestSymbols(symbols, obj, ns, root);
 
-            // FILTER — the per-entity sort/filter allowlist.
-            if (FilterAllowlistGenerator.AppliesTo(obj))
-            {
-                var filter = CSharpNaming.FilterAllowlistName(obj);
-                symbols.Add(new ApiSymbol(
-                    filter, ApiSymbolKind.Filter, ns,
-                    $"static class {filter}",
-                    "the filterable-field + filter-operator allowlist"));
-            }
+        // FILTER — the per-entity sort/filter allowlist (writable entity only).
+        if (FilterAllowlistGenerator.AppliesTo(obj))
+        {
+            var filter = CSharpNaming.FilterAllowlistName(obj);
+            symbols.Add(new ApiSymbol(
+                filter, ApiSymbolKind.Filter, ns,
+                $"static class {filter}",
+                "the filterable-field + filter-operator allowlist"));
         }
 
         // No symbols (e.g. an abstract object) → no unit at all (never an empty unit).
