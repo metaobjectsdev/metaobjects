@@ -73,7 +73,9 @@ export function perEntity(
   };
 }
 
-/** Called once with all matching entities. Use for barrels and cross-entity files. */
+/** Called once with all matching entities. Use for barrels and cross-entity files.
+ *  @deprecated Use {@link perModel} — "run" is ambiguous under multi-target output
+ *  (it reads as "per target"); `perModel` names the data scope (the whole model). */
 export function oncePerRun(
   fn: (entities: MetaObject[], ctx: GenContext) =>
     | EmittedFile
@@ -84,5 +86,37 @@ export function oncePerRun(
     const matched = ctx.entities.filter(ctx.matches);
     const result = await fn(matched, ctx);
     return Array.isArray(result) ? result : [result];
+  };
+}
+
+/** App-scope convenience — run `fn` once over the whole model (all matched
+ *  entities). The canonical name for the one-shot scope (replaces `oncePerRun`). */
+export const perModel = oncePerRun;
+
+/** One-file-per-package convenience. Groups matched entities by `package`, runs
+ *  `fn` once per package — packages ascending, entities keeping `ctx.entities`
+ *  order. The package scope from codegen-concepts §10 (object + model already
+ *  exist via perEntity + perModel). */
+export function perPackage(
+  fn: (pkg: string, entities: MetaObject[], ctx: GenContext) =>
+    | EmittedFile
+    | EmittedFile[]
+    | Promise<EmittedFile | EmittedFile[]>,
+): (ctx: GenContext) => Promise<EmittedFile[]> {
+  return async (ctx) => {
+    const matched = ctx.entities.filter(ctx.matches);
+    const byPkg = new Map<string, MetaObject[]>();
+    for (const e of matched) {
+      const pkg = e.package ?? "";
+      let bucket = byPkg.get(pkg);
+      if (bucket === undefined) { bucket = []; byPkg.set(pkg, bucket); }
+      bucket.push(e);
+    }
+    const out: EmittedFile[] = [];
+    for (const pkg of [...byPkg.keys()].sort()) {
+      const r = await fn(pkg, byPkg.get(pkg)!, ctx);
+      out.push(...(Array.isArray(r) ? r : [r]));
+    }
+    return out;
   };
 }
