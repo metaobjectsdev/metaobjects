@@ -2396,9 +2396,17 @@ public class MetaDataRegistry {
 
 
     /**
-     * Add a constraint to the registry with context-aware duplicate detection
+     * Add a constraint to the registry with context-aware duplicate detection.
+     * <p>
+     * Re-adding an <em>identical</em> constraint (same id, same constraint class,
+     * same description) is idempotent — a no-op rather than an error — so a
+     * registry re-init that replays provider constraint registration (e.g. after
+     * {@code clear()}) does not fail. A genuine conflict (same id but a different
+     * constraint class or description) still throws when strict detection is
+     * enabled, preserving ADR-0023 strict provenance.
      * @param constraint The constraint to add
-     * @throws MetaDataException if a constraint with the same ID already exists and strict detection is enabled
+     * @throws MetaDataException if a constraint with the same ID but a conflicting
+     *         definition already exists and strict detection is enabled
      */
     public void addConstraint(Constraint constraint) {
         if (constraint == null) {
