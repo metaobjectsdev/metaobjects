@@ -193,14 +193,16 @@ grammar are gated byte-identical against the same
 renders identically on either side. This is where **Kotlin** gains a template
 generator (it reuses the shared JVM engine — no KotlinPoet involvement).
 
-The **CLI-port surface** (Python today; C# follows) exposes the same declarative
+The **CLI-port surface** (Python and C#) exposes the same declarative
 walk through a JSON **template-spec** instead of code/XML wiring — the cross-port
 contract shape (`{"generators": [{ name, template, scope, outputPattern, format? }]}`,
 JSON-schema'd beside the TS port at
 `codegen-ts/src/template-codegen/template-spec.schema.json`). Pass it on `gen`:
-`metaobjects gen <metadataDir> --out <dir> --template-spec spec.json --templates <dir>`.
+`metaobjects gen <metadataDir> --out <dir> --template-spec spec.json --templates <dir>`
+(Python), or `dotnet meta gen <metadataDir> --out <dir> --template-spec spec.json --template-root <dir>` (C#).
 The named generators are appended to the default suite, resolving template refs
-under `--templates` (default `templates`). `scope` must be one of
+under the templates root (`--templates` in Python, `--template-root` in C#; default
+`templates`). `scope` must be one of
 `perEntity`/`perPackage`/`perModel` and `format` (when present) one of the
 registered escaper formats; a `target` field is **rejected** (the CLI ports have no
 output-target concept). The same neutral data dict, output-pattern grammar, and

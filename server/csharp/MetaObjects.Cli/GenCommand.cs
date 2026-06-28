@@ -4,9 +4,13 @@
 // files under the @generated-header guard. Generated today: EF Core entity
 // classes + a DbContext. Routes / projections / migrations layer on next.
 
+using System.IO;
+using System.Text.Json;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
+using MetaObjects.Codegen.TemplateCodegen;
 using MetaObjects.Loader;
+using MetaObjects.Render;
 
 namespace MetaObjects.Cli;
 
@@ -53,10 +57,17 @@ public static class GenCommand
     /// (back-compat). An unknown name (or a render-helper selected without a
     /// <paramref name="templateRoot"/>) surfaces as a load-style error in the
     /// returned <see cref="Outcome"/> rather than throwing.
+    ///
+    /// <para>SP-1: <paramref name="templateSpecPath"/> points at a JSON template-spec
+    /// (the cross-port declarative Mustache surface). Its generators are appended to
+    /// the suite, resolving templates under <paramref name="templateRoot"/>. NOTE:
+    /// template output participates in the standard <c>@generated</c>-marker overwrite
+    /// policy — to be regenerable on a second run, a template should emit the
+    /// <c>@generated</c> header itself (the template author's responsibility).</para>
     /// </summary>
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
-        IReadOnlyList<string>? generatorNames, string? templateRoot)
+        IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null)
     {
         var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
@@ -64,18 +75,41 @@ public static class GenCommand
             return new Outcome(loadErrors, null);
 
         var names = generatorNames is { Count: > 0 } ? generatorNames : DefaultGeneratorNames;
-        IReadOnlyList<IGenerator> generators;
+        List<IGenerator> generators;
         try
         {
-            generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(templateRoot));
+            generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(templateRoot)).ToList();
+            if (!string.IsNullOrEmpty(templateSpecPath))
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(templateSpecPath));
+                var spec = TemplateSpec.Parse(doc.RootElement);
+                var provider = new FilesystemProvider(templateRoot ?? "templates");
+                generators.AddRange(TemplateSpec.ToGenerators(spec, provider));
+            }
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
         {
             return new Outcome([ex.Message], null);
         }
 
         var config = new GenConfig { OutDir = outDir, Namespace = ns, EmitAbstractShapes = emitAbstractShapes };
-        var result = CodegenRunner.Run(config, load.Root, generators);
+        CodegenRunner.RunResult result;
+        try
+        {
+            result = CodegenRunner.Run(config, load.Root, generators);
+        }
+        catch (RenderException ex)
+        {
+            // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
+            return new Outcome([$"template render failed: {ex.Message}"], null);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            // An output-pattern error (unknown placeholder, or {name}/{Name} under a
+            // perPackage/perModel scope) or a duplicate output-path collision surfaces
+            // lazily during the walk — a clean error, not a stack trace.
+            return new Outcome([$"codegen failed: {ex.Message}"], null);
+        }
         return new Outcome(loadErrors, result);
     }
 

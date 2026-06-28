@@ -50,6 +50,7 @@ static int RunGen(string[] rest)
     bool list = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
+    string? templateSpecPath = null;
     for (int i = 0; i < rest.Length; i++)
     {
         if (rest[i] == "--list") list = true;
@@ -57,6 +58,7 @@ static int RunGen(string[] rest)
         else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
         else if (rest[i] == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
         else if (rest[i] == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
+        else if (rest[i] == "--template-spec" && i + 1 < rest.Length) templateSpecPath = rest[++i];
         else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
@@ -71,7 +73,7 @@ static int RunGen(string[] rest)
 
     if (metadataDir is null || outDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes]");
+        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes]");
         Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
@@ -83,7 +85,7 @@ static int RunGen(string[] rest)
     var generatorNames = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes, generatorNames, templateRoot);
+    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
