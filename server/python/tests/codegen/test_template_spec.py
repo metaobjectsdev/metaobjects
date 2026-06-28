@@ -42,6 +42,13 @@ def test_rejects_bad_format() -> None:
              "outputPattern": "x", "format": "xml-typo"}]})
 
 
+def test_rejects_target_field() -> None:
+    with pytest.raises(ValueError, match="target is not supported"):
+        parse_template_spec({"generators": [
+            {"name": "x", "template": "t", "scope": "perModel",
+             "outputPattern": "x", "target": "db"}]})
+
+
 def test_rejects_non_dict() -> None:
     with pytest.raises(ValueError):
         parse_template_spec(None)

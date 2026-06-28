@@ -607,7 +607,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "path to a JSON template-spec ({\"generators\":[{name,template,scope,"
             "outputPattern,format?}]}) — declarative Mustache generators appended "
-            "to the suite (SP-1). Templates resolve under --templates."
+            "to the suite (SP-1). Templates resolve under --templates. For output "
+            "to be regenerable, the template must emit the @generated header itself "
+            "(the codegen write path refuses to overwrite files lacking it)."
         ),
     )
     gen.add_argument(

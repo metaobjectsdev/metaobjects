@@ -3,6 +3,18 @@
 The JSON shape is the cross-port contract (SP-1 §4) — a JSON Schema sits beside
 the TS port at codegen-ts/src/template-codegen/template-spec.schema.json. This
 module validates + maps it to runnable Generators.
+
+Regenerability note: ``--template-spec`` output flows through the standard codegen
+write path, which refuses to overwrite a file that lacks the ``@generated`` marker
+(the hand-edit guard the rest of codegen and the TS port share). For a template's
+output to be safely regenerable, the **template author** must emit the
+``@generated`` header in the template body itself — the same author responsibility
+the rest of the codegen pipeline relies on.
+
+The Python port has no output-*target* concept (the codegen pipeline writes every
+``EmittedFile`` relative to a single ``out_dir``). A per-generator ``target`` field
+is therefore REJECTED rather than silently dropped, so a cross-port spec authored
+with ``target`` fails loudly here instead of producing a different layout than TS.
 """
 
 from __future__ import annotations
@@ -14,15 +26,7 @@ from metaobjects.codegen.generators.template_generator import SCOPES, template_g
 from metaobjects.render import escapers
 from metaobjects.render.verify import Provider
 
-_FORMATS = (
-    escapers.FORMAT_TEXT,
-    escapers.FORMAT_HTML,
-    escapers.FORMAT_XML,
-    escapers.FORMAT_CSV,
-    escapers.FORMAT_JSON,
-    escapers.FORMAT_MARKDOWN,
-    escapers.FORMAT_SPREADSHEET,
-)
+_FORMATS = escapers.FORMATS
 
 _REQUIRED_STR = ("name", "template", "scope", "outputPattern")
 
@@ -59,8 +63,11 @@ def parse_template_spec(obj: object) -> dict[str, Any]:
                     f"{' | '.join(_FORMATS)}, got {raw['format']!r}"
                 )
             entry["format"] = raw["format"]
-        if isinstance(raw.get("target"), str):
-            entry["target"] = raw["target"]
+        if "target" in raw:
+            raise ValueError(
+                f"template-spec generators[{i}]: target is not supported by the "
+                "Python port — it has no output-target concept"
+            )
         generators.append(entry)
     return {"generators": generators}
 

@@ -9,17 +9,22 @@ section gates identically to TS.
 Own-vs-effective discipline (matching the TS ``ownAttr`` semantics, per the JVM
 review): ``is_abstract`` per-node; ``@required`` attr + ``maxLength`` read from
 ``own_attrs()`` (own-only); the required-*validator* branch effective; enum
-``values`` from ``attrs()`` (effective).
+``values`` from ``attrs()`` (effective); effective package derived from
+``resolution_key()`` (matching the TS ``effectivePackage``).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from metaobjects.shared.base_types import (
+    TYPE_IDENTITY,
+    TYPE_RELATIONSHIP,
+    TYPE_VALIDATOR,
+)
+from metaobjects.shared.separators import PACKAGE_SEP
+
 _SUBTYPE_ENUM = "enum"
-_TYPE_VALIDATOR = "validator"
-_TYPE_IDENTITY = "identity"
-_TYPE_RELATIONSHIP = "relationship"
 _VALIDATOR_REQUIRED = "required"
 
 
@@ -29,8 +34,17 @@ def bare_name(o: Any) -> str:
 
 
 def package_of(o: Any) -> str:
-    """Effective package: own ``package`` or the file-default; "" when neither."""
-    return o.package or getattr(o, "file_default_package", None) or ""
+    """Effective package, matching the TS ``effectivePackage(resolutionKey)``.
+
+    Derived from ``resolution_key()`` (own ``package`` → ``file_default_package`` →
+    nearest ancestor's ``package``) by stripping the trailing ``::<name>`` suffix —
+    so programmatically-built / plugin trees (no ``file_default_package``, package
+    only on an ancestor) resolve the ancestor package like TS does. "" when the
+    resolution key carries no package segment.
+    """
+    key = o.resolution_key()
+    idx = key.rfind(PACKAGE_SEP)
+    return key[:idx] if idx >= 0 else ""
 
 
 def is_concrete(o: Any) -> bool:
@@ -41,7 +55,7 @@ def _is_required(f: Any) -> bool:
     if f.own_attrs().get(_VALIDATOR_REQUIRED) is True:
         return True
     return any(
-        c.type == _TYPE_VALIDATOR and c.sub_type == _VALIDATOR_REQUIRED
+        c.type == TYPE_VALIDATOR and c.sub_type == _VALIDATOR_REQUIRED
         for c in f.children()
     )
 
@@ -68,9 +82,9 @@ def build_entity_template_data(o: Any) -> dict[str, Any]:
     identities: list[dict[str, Any]] = []
     relationships: list[dict[str, Any]] = []
     for c in o.children():
-        if c.type == _TYPE_IDENTITY:
+        if c.type == TYPE_IDENTITY:
             identities.append({"kind": c.sub_type, "fields": list(c.attrs().get("fields", []))})
-        elif c.type == _TYPE_RELATIONSHIP:
+        elif c.type == TYPE_RELATIONSHIP:
             relationships.append(
                 {
                     "name": c.name,
