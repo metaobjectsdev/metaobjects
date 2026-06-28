@@ -409,7 +409,11 @@ importBase?, outputLayout?, dbImport? }`.
 ```ts
 // metaobjects.config.ts (multi-target)
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -579,7 +583,11 @@ Metadata (same `Author` entity as the React examples above):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 import {
   angularServiceFile,
   angularFormFile,

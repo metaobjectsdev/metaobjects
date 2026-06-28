@@ -267,7 +267,10 @@ Then wire it into `metaobjects.config.ts`:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { barrel } from "./codegen/generators/barrel";
 import { honoRoutesFile } from "./metaobjects-routes-hono";
 
 export default defineConfig({

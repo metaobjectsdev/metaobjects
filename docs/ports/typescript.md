@@ -26,18 +26,20 @@ Two config files, by design:
 - **`.metaobjects/config.json`** — JSON, static project state, parseable by
   non-TS tooling.
 
-`meta init` scaffolds both, the `metaobjects/` source directory, and the
-`.gitignore` entries for `.metaobjects/.gen-state/`.
+`meta init` scaffolds both, the `metaobjects/` source directory, the owned
+codegen generators at `codegen/generators/{entity,queries,routes,barrel}.ts`
+(ADR-0034 scaffold-and-own — copied from the reference templates, yours to edit),
+and the `.gitignore` entries for `.metaobjects/.gen-state/`. The scaffolded config
+imports those local copies; `meta gen` runs from them, not from the package.
 
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` — yours to edit (ADR-0034).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -150,12 +152,12 @@ difference is the framework adapter the emitted code talks to.
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFileHono,
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { barrel } from "./codegen/generators/barrel";
+// Hono routes have no reference template yet — still imported from the package.
+import { routesFileHono } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",

@@ -8,6 +8,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Added
+- **cli — `meta init` scaffolds owned codegen generators (ADR-0034 scaffold-and-own, step 2):**
+  `meta init` now copies the four codegen reference templates (step 1) into the
+  consumer repo at `codegen/generators/{entity,queries,routes,barrel}.ts` and
+  scaffolds `metaobjects.config.ts` to import those **local** copies, so `meta gen`
+  runs from generators the consumer owns and edits — not from the package. Each
+  generator is written only if absent, so re-running `meta init --force` never
+  clobbers a hand-edited generator (mirrors the existing config.ts preservation).
+  codegen-ts gains a small reference-template reader the CLI uses to read the
+  shipped assets (`resolveReferenceRoot` / `readReferenceTemplate` /
+  `REFERENCE_GENERATOR_NAMES`, exported from `@metaobjectsdev/codegen-ts`).
 - **codegen-ts — reference template library (ADR-0034 scaffold-and-own, step 1):**
   new in-repo, copyable reference generators under `src/reference/`
   (`entity` / `queries` / `routes` / `barrel`) — self-contained starting points a
@@ -22,6 +32,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   renderers (`renderFindByIdFn`, `renderListFn`, `renderCreateFn`,
   `renderUpdateFn`, `renderDeleteByIdFn`, `getPkInfo`). (`meta init` scaffolding,
   generator-export deprecation, and the guidance rewrite are later steps.)
+
+### Deprecated
+- **codegen-ts — `@metaobjectsdev/codegen-ts/generators` factory re-exports
+  (ADR-0034 scaffold-and-own, step 2):** importing `entityFile` / `queriesFile` /
+  `routesFile` / `barrel` from the package `/generators` export is deprecated in
+  favor of the owned local copies `meta init` scaffolds. The export still works
+  (pre-GA latitude) but will be removed in a future major — own a copy instead.
 
 ### Fixed
 - **cli — `meta init` gitignore hardening:** the scaffolded

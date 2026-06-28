@@ -144,7 +144,11 @@ A user's `metaobjects.config.ts`:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -259,13 +263,17 @@ interface Generator {
 
 Helpers `perEntity()` and `oncePerRun()` cover the common "file per entity" / "one-shot" cases.
 
-**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel` — re-exported from `@metaobjectsdev/codegen-ts/generators`.
+**Built-in factories**: `entityFile`, `queriesFile`, `routesFile`, `formFile`, `barrel`. Per ADR-0034 (scaffold-and-own), `meta init` copies the `entityFile`/`queriesFile`/`routesFile`/`barrel` reference templates into the consumer repo at `codegen/generators/*.ts` and the scaffolded config imports those owned local copies; importing them from `@metaobjectsdev/codegen-ts/generators` still works but is **deprecated** (removal in a future major).
 
 **User wiring** (`metaobjects.config.ts`):
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -480,7 +488,7 @@ These are the load-bearing principles that have emerged through implementation. 
 ## Useful commands
 
 ```
-meta init                             # scaffold metaobjects/, .metaobjects/, metaobjects.config.ts, .gitignore
+meta init                             # scaffold metaobjects/, .metaobjects/, codegen/generators/, metaobjects.config.ts, .gitignore
 meta gen [<entity>...]                # codegen: render templates → format → three-way merge → write
 meta gen --dry-run                    # preview without writing
 meta gen --watch                      # re-run on metadata file changes
