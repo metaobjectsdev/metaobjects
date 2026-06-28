@@ -51,7 +51,7 @@ Each surface accepts the same conceptual inputs (name, template ref, walk functi
 
 - **Replacing native codegen for Code outputs.** The `forge/` design doc (2026-05-28) locked in the split: hand-coded generators for `.ts` / `.cs` / `.java` source emission (each port's idiomatic AST builder — ts-poet, KotlinPoet, etc.), `templateGenerator()` for Documents (docs, OpenAPI, Mermaid, HTML doc sites, ADRs, etc.). Cross-porting the factory does not mean migrating any existing entity/repo/route generator off its current AST builder.
 - **Mustache dialect features.** The render layer already locks the dialect — bring the factory; don't expand Mustache.
-- **Kotlin parity.** Kotlin's codegen layer (`codegen-kotlin`) is KotlinPoet-only by design — it's a Code-emission port, no Document layer. Add the factory only if Kotlin grows a Documents need. Defer until then.
+- **Kotlin parity.** Kotlin's codegen layer (`codegen-kotlin`) is KotlinPoet-only by design — it's a Code-emission port, no Document layer. Add the factory only if Kotlin grows a Documents need. Defer until then. _(Superseded 2026-06-28 by SP-1b: Kotlin gained a declarative template generator via the shared JVM `TemplateScopeGenerator` — no KotlinPoet involvement. See `docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md`.)_
 - **Project scaffolding / template marketplace.** Out of scope. The factory is the integration primitive; sharing templates between adopters is a separate concern (and may never need to exist as a packaged feature — git is a fine distribution mechanism).
 
 ## Architecture
@@ -139,7 +139,7 @@ Java's existing `com.metaobjects.generator.Generator` interface has `void execut
 
 The Java factory's root parameter is generic (`<R>`) instead of typed as `MetaRoot` — this keeps the render module's dependency graph free of the metadata package. The walk callback knows the actual root type at the call site.
 
-**Deferred for Java:** Maven plugin surface (`mvn meta:generate` integration). Adopters who want it can wrap the factory in their own legacy-`Generator`-conformant glue. Track via a follow-up if/when a Java adopter has the need.
+**Deferred for Java:** Maven plugin surface (`mvn meta:generate` integration). Adopters who want it can wrap the factory in their own legacy-`Generator`-conformant glue. Track via a follow-up if/when a Java adopter has the need. _(Resolved 2026-06-28 by SP-1b: `com.metaobjects.generator.template.TemplateScopeGenerator` is a `GeneratorBase` subclass wirable as a standard `<generator>` in `pom.xml` — adopters no longer hand-write glue. See `docs/superpowers/specs/2026-06-28-mustache-codegen-parity-design.md`.)_
 
 ## Open questions
 
@@ -150,7 +150,7 @@ The Java factory's root parameter is generic (`<R>`) instead of typed as `MetaRo
 
 ## Decisions
 
-- **Kotlin port is out of scope for this design** (KotlinPoet-only, no Documents layer today). Revisit only when Kotlin grows a Documents codegen need.
+- **Kotlin port is out of scope for this design** (KotlinPoet-only, no Documents layer today). Revisit only when Kotlin grows a Documents codegen need. _(Revisited + superseded 2026-06-28 by SP-1b — Kotlin now ships a declarative template generator via the shared JVM engine.)_
 - **No changes to the TS factory contract as part of this work.** TS is the reference; other ports adapt to it. Any contract change requires a separate design doc and a TS-side bump.
 - **Conformance via shared declarative fixtures** (not per-port test code). Locks the byte-equivalence guarantee at the contract level.
 - **Activation gated on adopter pull, not calendar.** This doc plus the conformance design is enough to start work the moment the trigger fires; nothing is gained by starting earlier.

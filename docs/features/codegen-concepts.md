@@ -181,3 +181,14 @@ templateGenerator({
   template: "entity-doc",
 });
 ```
+
+The same declarative surface is available on the **JVM (Java + Kotlin)** via
+`TemplateScopeGenerator` (`com.metaobjects.generator.template`), a Maven-wirable
+generator over the byte-equivalent render engine. Wire it as a standard
+`<generator>` in `pom.xml` with `<template>`, `<scope>`, `<outputPattern>`,
+optional `<format>` (default `text`), and `<templatesDir>` args — no hand-written
+walk class. The three scope walks, the neutral data dict, and the output-pattern
+grammar are gated byte-identical against the same
+`fixtures/template-codegen-conformance/` corpus the TS port passes, so a template
+renders identically on either side. This is where **Kotlin** gains a template
+generator (it reuses the shared JVM engine — no KotlinPoet involvement).
