@@ -106,6 +106,14 @@ These types and their builders (`buildEntityTemplateData`,
 the JSON template-spec parser (`parseTemplateSpec`, `templateSpecToGenerators`).
 Abstract objects are excluded from every scope (they emit no instance artifact).
 
+The Python port mirrors this contract dict (plain `dict`/`list`) under
+`metaobjects.codegen.template_codegen`: `build_entity_template_data` /
+`build_package_template_data` / `build_model_template_data` (in `template_data`),
+`expand_output_pattern` (in `output_pattern`), and the JSON template-spec parser
+`parse_template_spec` / `template_spec_to_generators` (in `template_spec`). Optional
+keys (`maxLength`, `enumValues`) are omitted when absent so a `{{#maxLength}}`
+section gates identically to TS.
+
 ### Section-presence flags (`hasX`)
 
 Mustache cleanly iterates an array (`{{#identities}}...{{/identities}}`) but

@@ -3,9 +3,13 @@
 Two subcommands:
 
   metaobjects gen    <metadataDir> --out <dir> [--package <pkg>]
+                     [--template-spec <json> [--templates <dir>]]
       Load metadata, run the Python codegen generator suite, and write files
       under ``--out`` (guarded by the @generated header). Prints each written
-      file. Non-zero exit on a load error.
+      file. Non-zero exit on a load error. ``--template-spec`` appends the
+      declarative Mustache template generators (scope perEntity/perPackage/
+      perModel + outputPattern) described by a JSON spec, resolving template
+      refs under ``--templates`` (default ``templates``).
 
   metaobjects verify <metadataDir> [--codegen] [--templates] [--db URL] ...
       Drift gate with explicit subverbs (ADR-0021 D2 — one verify vocabulary

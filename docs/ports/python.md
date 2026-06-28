@@ -144,6 +144,41 @@ app.include_router(author_router)
 app.dependency_overrides[get_repository] = lambda: SqlAlchemyAuthorRepository(session)
 ```
 
+### Declarative template-codegen (`--template-spec`)
+
+Beyond the built-in Pydantic/FastAPI suite, the `metaobjects gen` console-script
+runs **declarative Mustache template generators** from a JSON template-spec — the
+cross-port contract shared with the C# port (see
+[`docs/features/codegen-concepts.md`](../features/codegen-concepts.md#declarative-template-scopes)
+and the neutral data dict in
+[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
+
+```bash
+metaobjects gen ./metadata --out ./generated \
+  --template-spec ./template-spec.json --templates ./templates
+```
+
+```jsonc
+// template-spec.json — the cross-port shape
+{ "generators": [
+    { "name": "entity-doc",
+      "scope": "perEntity",            // perEntity | perPackage | perModel
+      "outputPattern": "{package}/{Name}.md",
+      "template": "entity-doc",          // resolved under --templates
+      "format": "markdown" }            // optional; a registered escaper format
+]}
+```
+
+Each spec entry derives the neutral template data dict for its scope and names
+each file via the `outputPattern` placeholders (`{name}`, `{Name}`, `{package}`).
+The named generators are **appended** to the default suite and gated byte-identical
+against the shared `fixtures/template-codegen-conformance/` corpus. Output is
+format-agnostic (text/markdown/csv/json/xml/html), so the template-spec pass emits
+no `__init__.py` into its tree. A `target` field is rejected (the Python port has
+no output-target concept); for output to be regenerable, the **template** must emit
+the `@generated` header itself (the write path refuses to overwrite files lacking
+it).
+
 ### Universal browser-client hookup (React / Angular 18)
 
 The router conforms to the same URL grammar as every other backend port,
@@ -291,6 +326,7 @@ import lines are stable.
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
 | Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, origin-aware) |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the payload class from the sibling payload module) |
+| Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
 | Runtime metadata | Loader API + render engine; SQLAlchemy ObjectManager-equivalent on the roadmap |
