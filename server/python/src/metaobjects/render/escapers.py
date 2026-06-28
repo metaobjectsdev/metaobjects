@@ -100,6 +100,10 @@ _REGISTRY = {
     FORMAT_JSON: _escape_json,
 }
 
+FORMATS = tuple(_REGISTRY)
+"""The registered escaper formats — the single source of truth for the allowed
+``format`` set (mirrors the TS port's ``Object.keys(ESCAPERS)``)."""
+
 
 def escape(format_: str, value: str) -> str:
     """Escape *value* per *format_*. Unknown formats raise ``ValueError``."""

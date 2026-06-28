@@ -3,9 +3,13 @@
 Two subcommands:
 
   metaobjects gen    <metadataDir> --out <dir> [--package <pkg>]
+                     [--template-spec <json> [--templates <dir>]]
       Load metadata, run the Python codegen generator suite, and write files
       under ``--out`` (guarded by the @generated header). Prints each written
-      file. Non-zero exit on a load error.
+      file. Non-zero exit on a load error. ``--template-spec`` appends the
+      declarative Mustache template generators (scope perEntity/perPackage/
+      perModel + outputPattern) described by a JSON spec, resolving template
+      refs under ``--templates`` (default ``templates``).
 
   metaobjects verify <metadataDir> [--codegen] [--templates] [--db URL] ...
       Drift gate with explicit subverbs (ADR-0021 D2 — one verify vocabulary
@@ -138,11 +142,38 @@ def _parse_entities(value: str | None) -> list[str] | None:
     return names or None
 
 
+def _run_suite(
+    root: MetaData,
+    out_dir: str,
+    generators: list[Generator] | None = None,
+    entity_filter: list[str] | None = None,
+    emit_package_init: bool = True,
+) -> list[str]:
+    """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
+
+    Split out from :func:`_generate` so a single gen invocation can load the
+    metadata once and run multiple passes against it (the default Python suite +
+    the ``--template-spec`` pass). See :func:`_generate` for the parameter
+    semantics. Returns the written paths.
+
+    NOTE: ``run_gen``'s output-path collision guard is per-pass — a
+    ``--template-spec`` ``outputPattern`` that collides with a default-suite path
+    is not flagged across the two passes (it would overwrite, since default files
+    carry the ``@generated`` header). Accepted marginal limitation (requires user
+    misconfiguration).
+    """
+    config = GenConfig(out_dir=out_dir, emit_package_init=emit_package_init)
+    suite = generators if generators is not None else _default_generators()
+    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
+    return [path for path, status in result.files if status != "refused"]
+
+
 def _generate(
     metadata_dir: str,
     out_dir: str,
     generators: list[Generator] | None = None,
     entity_filter: list[str] | None = None,
+    emit_package_init: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
@@ -150,18 +181,17 @@ def _generate(
     resolved subset for ``--generators``. ``entity_filter`` (the ``--entities``
     allowlist) restricts which entities are EMITTED while the WHOLE model is still
     loaded, so cross-entity references (``extends`` bases, ``@objectRef`` VOs)
-    resolve — emit a subset without splitting the metadata. Returns
+    resolve — emit a subset without splitting the metadata. ``emit_package_init``
+    is ``False`` for the format-agnostic ``--template-spec`` generators (whose
+    output is text/markdown/csv/json/xml/html, never a Python package) so no
+    spurious ``__init__.py`` is scattered through their output tree. Returns
     ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
     files are written.
     """
     root, errors = _load_root(metadata_dir)
     if root is None:
         return [], errors
-    config = GenConfig(out_dir=out_dir)
-    suite = generators if generators is not None else _default_generators()
-    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
-    written = [path for path, status in result.files if status != "refused"]
-    return written, []
+    return _run_suite(root, out_dir, generators, entity_filter, emit_package_init), []
 
 
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
@@ -293,13 +323,54 @@ def _cmd_gen(args: argparse.Namespace) -> int:
                 print(f"  {msg}", file=sys.stderr)
             return 1
 
+    # SP-1: declarative Mustache generators from a JSON template-spec. Their output
+    # is format-agnostic (text/markdown/csv/json/xml/html), so they run as a SECOND,
+    # SEPARATE pass with emit_package_init=False — no Python __init__.py is injected
+    # into their (possibly non-Python) output tree. Templates resolve under
+    # --templates via a FilesystemProvider.
+    spec_gens: list[Generator] = []
+    if getattr(args, "template_spec", None):
+        from metaobjects.codegen.template_codegen.template_spec import (
+            parse_template_spec,
+            template_spec_to_generators,
+        )
+
+        try:
+            spec = parse_template_spec(json.loads(Path(args.template_spec).read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            print(f"error: invalid --template-spec: {exc}", file=sys.stderr)
+            return 1
+        provider = FilesystemProvider(args.templates)
+        spec_gens = template_spec_to_generators(spec, provider)
+
     entities = _parse_entities(getattr(args, "entities", None))
-    written, errors = _generate(args.metadata_dir, args.out, generators, entities)
-    if errors:
+    # Load the metadata ONCE; both the default suite and the (optional)
+    # --template-spec pass run against this single loaded root.
+    root, load_errors = _load_root(args.metadata_dir)
+    if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
-        for msg in errors:
+        for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+    written = _run_suite(root, args.out, generators, entities)
+    if spec_gens:
+        # The template-spec pass renders user-supplied templates: a bad ref or a
+        # wrong --templates dir raises RenderError (not OSError/ValueError, so it
+        # escapes the parse-time guard above). Report it as a clean error.
+        from metaobjects.render.renderer import RenderError
+
+        try:
+            spec_written = _run_suite(
+                root, args.out, spec_gens, entities, emit_package_init=False
+            )
+        except RenderError as exc:
+            print(
+                f"error: --template-spec render failed (check the template refs and "
+                f"--templates dir {args.templates!r}): {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        written = list(written) + spec_written
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
@@ -580,6 +651,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list",
         action="store_true",
         help="list registered generators (stable name + description) and exit",
+    )
+    gen.add_argument(
+        "--template-spec",
+        dest="template_spec",
+        default=None,
+        help=(
+            "path to a JSON template-spec ({\"generators\":[{name,template,scope,"
+            "outputPattern,format?}]}) — declarative Mustache generators appended "
+            "to the suite (SP-1). Templates resolve under --templates. For output "
+            "to be regenerable, the template must emit the @generated header itself "
+            "(the codegen write path refuses to overwrite files lacking it)."
+        ),
+    )
+    gen.add_argument(
+        "--templates",
+        default="templates",
+        help="templates root for --template-spec (default: templates)",
     )
     gen.add_argument(
         "--package",

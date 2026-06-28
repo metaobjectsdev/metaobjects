@@ -97,6 +97,63 @@ def test_gen_load_error_returns_nonzero(tmp_path: Path) -> None:
     assert main(["gen", str(bad), "--out", str(out)]) != 0
 
 
+_TEMPLATE_CORPUS = Path(__file__).parents[4] / "fixtures" / "template-codegen-conformance"
+
+
+def test_template_spec_output_gets_no_package_init(tmp_path: Path) -> None:
+    # The format-agnostic --template-spec generators run as a separate pass with
+    # emit_package_init=False: no Python __init__.py is injected next to their
+    # (possibly non-Python) output, while the default Python suite still gets its
+    # own __init__.py.
+    out = tmp_path / "out"
+    rc = main(
+        [
+            "gen",
+            str(_TEMPLATE_CORPUS / "metadata"),
+            "--out",
+            str(out),
+            "--template-spec",
+            str(_TEMPLATE_CORPUS / "spec.json"),
+            "--templates",
+            str(_TEMPLATE_CORPUS / "templates"),
+        ]
+    )
+    assert rc == 0
+    # Template output landed (a .txt in a subdir of its own) ...
+    assert (out / "shop" / "_package.txt").exists()
+    # ... with NO spurious __init__.py scattered through the template subtree.
+    assert not (out / "shop" / "__init__.py").exists()
+    # The default Python suite still imports as a package.
+    assert (out / "__init__.py").exists()
+
+
+def test_template_spec_bad_ref_clean_error(tmp_path: Path, capsys) -> None:
+    # An unresolvable template ref raises RenderError (not OSError/ValueError);
+    # the CLI must surface it as a clean `error:` + nonzero exit, not a traceback.
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        '{"generators": [{"name": "bad", "template": "does-not-exist", '
+        '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
+    )
+    out = tmp_path / "out"
+    rc = main(
+        [
+            "gen",
+            str(_TEMPLATE_CORPUS / "metadata"),
+            "--out",
+            str(out),
+            "--template-spec",
+            str(spec),
+            "--templates",
+            str(_TEMPLATE_CORPUS / "templates"),
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "error:" in err
+    assert "template-spec" in err
+
+
 def test_no_migrate_subcommand(tmp_path: Path) -> None:
     # Schema is owned by the Node `meta` CLI (ADR-0015); Python must not ship it.
     import pytest
