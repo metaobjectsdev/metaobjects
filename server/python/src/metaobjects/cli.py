@@ -293,6 +293,25 @@ def _cmd_gen(args: argparse.Namespace) -> int:
                 print(f"  {msg}", file=sys.stderr)
             return 1
 
+    # SP-1: declarative Mustache generators from a JSON template-spec, appended to
+    # the suite. Templates resolve under --templates via a FilesystemProvider.
+    if getattr(args, "template_spec", None):
+        from metaobjects.codegen.template_codegen.template_spec import (
+            parse_template_spec,
+            template_spec_to_generators,
+        )
+
+        try:
+            spec = parse_template_spec(json.loads(Path(args.template_spec).read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            print(f"error: invalid --template-spec: {exc}", file=sys.stderr)
+            return 1
+        provider = FilesystemProvider(args.templates)
+        spec_gens = template_spec_to_generators(spec, provider)
+        # The default suite still runs unless --generators narrowed it; append.
+        base = generators if generators is not None else _default_generators()
+        generators = list(base) + spec_gens
+
     entities = _parse_entities(getattr(args, "entities", None))
     written, errors = _generate(args.metadata_dir, args.out, generators, entities)
     if errors:
@@ -580,6 +599,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list",
         action="store_true",
         help="list registered generators (stable name + description) and exit",
+    )
+    gen.add_argument(
+        "--template-spec",
+        dest="template_spec",
+        default=None,
+        help=(
+            "path to a JSON template-spec ({\"generators\":[{name,template,scope,"
+            "outputPattern,format?}]}) — declarative Mustache generators appended "
+            "to the suite (SP-1). Templates resolve under --templates."
+        ),
+    )
+    gen.add_argument(
+        "--templates",
+        default="templates",
+        help="templates root for --template-spec (default: templates)",
     )
     gen.add_argument(
         "--package",
