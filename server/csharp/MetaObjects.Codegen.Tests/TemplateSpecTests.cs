@@ -66,7 +66,8 @@ public class TemplateSpecTests
     {
         var provider = new InMemoryProvider(new System.Collections.Generic.Dictionary<string, string>
         {
-            ["service/entity"] = "", ["app/registry"] = "",
+            ["service/entity"] = "",
+            ["app/registry"] = "",
         });
         var gens = TemplateSpec.ToGenerators(TemplateSpec.Parse(Json(Valid)), provider);
         Assert.Equal(new[] { "svc", "reg" }, gens.Select(g => g.Name));
