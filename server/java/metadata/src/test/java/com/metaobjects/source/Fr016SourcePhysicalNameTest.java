@@ -66,11 +66,23 @@ public class Fr016SourcePhysicalNameTest extends SharedRegistryTestBase {
 
     /** Build a one-entity model whose source.rdb body is the given JSON snippet. */
     private String oneSourceEntity(String entityName, String sourceBodyJson) {
+        // FR-024 B4b: a read-only-kind primary source makes the object a projection,
+        // not an entity (an entity's primary source must be writable). The object
+        // subtype is irrelevant to the source physical-name resolution under test;
+        // a projection carries no non-extending identity, so it is omitted.
+        String kinds = sourceBodyJson.replaceAll("\\s+", "");
+        boolean readOnly = kinds.contains("\"@kind\":\"view\"")
+            || kinds.contains("\"@kind\":\"materializedView\"")
+            || kinds.contains("\"@kind\":\"storedProc\"")
+            || kinds.contains("\"@kind\":\"tableFunction\"");
+        String subtype = readOnly ? "object.projection" : "object.entity";
+        String identityChild = readOnly ? ""
+            : ",    { \"identity.primary\": { \"@fields\": \"id\" } }";
         return "{ \"metadata.root\": { \"package\": \"demo\", \"children\": [" +
-               "  { \"object.entity\": { \"name\": \"" + entityName + "\", \"children\": [" +
+               "  { \"" + subtype + "\": { \"name\": \"" + entityName + "\", \"children\": [" +
                "    { \"source.rdb\": " + sourceBodyJson + " }," +
-               "    { \"field.long\": { \"name\": \"id\" } }," +
-               "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+               "    { \"field.long\": { \"name\": \"id\" } }" +
+               identityChild +
                "  ] } }" +
                "] } }";
     }

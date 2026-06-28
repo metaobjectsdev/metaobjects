@@ -2,7 +2,7 @@
   "metadata.root": {
     "package": "acme::ops",
     "children": [
-      { "object.entity": { "name": "OrderReport", "children": [
+      { "object.projection": { "name": "OrderReport", "children": [
           { "field.long":   { "name": "orderId", "@param": true } },
           { "field.string": { "name": "status", "@maxLength": 50 } },
           { "field.long":   { "name": "totalCents" } },

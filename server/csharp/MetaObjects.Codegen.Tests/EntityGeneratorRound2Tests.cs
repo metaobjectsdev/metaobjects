@@ -146,11 +146,10 @@ public class EntityGeneratorRound2Tests
           { "object.value": { "name": "ReportArgs", "children": [
             { "field.long": { "name": "year", "@required": true } }
           ]}},
-          { "object.entity": { "name": "ReportRow", "children": [
+          { "object.projection": { "name": "ReportRow", "children": [
             { "source.rdb": { "@table": "fn_report", "@kind": "storedProc", "@parameterRef": "ReportArgs" } },
             { "field.long":   { "name": "id" } },
-            { "field.string": { "name": "label" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "field.string": { "name": "label" } }
           ]}}
         ]}}
         """;

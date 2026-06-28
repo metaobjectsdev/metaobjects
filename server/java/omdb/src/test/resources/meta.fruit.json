@@ -42,15 +42,41 @@
         }
       },
       {
-        "object.entity": {
+        "object.projection": {
           "name": "FullBasketView",
-          "extends": "container::Basket",
           "@object": "com.metaobjects.object.value.ValueObject",
           "children": [
             {
               "source.rdb": {
                 "@table": "FULL_BASKET_VIEW",
                 "@kind": "view"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id",
+                "extends": "container::Basket.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "apples",
+                "@column": "apples",
+                "extends": "container::Basket.apples"
+              }
+            },
+            {
+              "field.int": {
+                "name": "oranges",
+                "@column": "oranges",
+                "extends": "container::Basket.oranges"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "primary",
+                "extends": "container::Basket.primary"
               }
             }
           ]

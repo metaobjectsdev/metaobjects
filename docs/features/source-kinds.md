@@ -10,11 +10,19 @@ dispatch.
 | `table` | No | Yes (when `@kind` omitted) | Persisted entity |
 | `view` | Yes | – | Projection — read-only Zod, read-only routes, read-only finders |
 | `materializedView` | Yes | – | Same as `view`, refresh discipline is host-app's concern |
-| `storedProc` | Yes | – | Read-only entity backed by a stored procedure |
-| `tableFunction` | Yes | – | Read-only entity backed by a parameterized table-valued function |
+| `storedProc` | Yes | – | Read-only projection backed by a stored procedure |
+| `tableFunction` | Yes | – | Read-only projection backed by a parameterized table-valued function |
 
-Read-only-ness drives the codegen dispatch: a `view` entity emits read-only Zod, no
-mutation routes, and read-only finders. A `table` emits the full CRUD surface.
+Read-only-ness drives the codegen dispatch: a `view`-kind projection emits read-only
+Zod, no mutation routes, and read-only finders. A `table` emits the full CRUD surface.
+
+A read-only `@kind` (`view` / `materializedView` / `storedProc` / `tableFunction`) may
+only be an object's **primary** source on an `object.projection` — a derived, read-only
+representation (see [ADR-0028](../../spec/decisions/ADR-0028-object-taxonomy-projection-value-purity.md)).
+An `object.entity`'s primary source must be a writable `@kind` (`table`); declaring an
+entity over a read-only primary source is a load error
+(`ERR_ENTITY_PRIMARY_SOURCE_READONLY`). A read-only source may still appear on an entity
+in a non-primary read `@role`.
 
 ## Authoring
 
@@ -39,9 +47,14 @@ mutation routes, and read-only finders. A `table` emits the full CRUD surface.
 
 ### View — projection over an existing entity
 
+A read-only view is declared as an `object.projection`, not an `object.entity` (an
+entity's primary source must be writable). A projection's identity is optional and, when
+present, MUST extend an entity identity; the example below omits it (a keyless read
+model).
+
 ```json
 {
-  "object.entity": {
+  "object.projection": {
     "name": "AuthorView",
     "children": [
       { "source.rdb": { "@kind": "view", "@table": "v_author" } },
@@ -51,8 +64,7 @@ mutation routes, and read-only finders. A `table` emits the full CRUD surface.
         "children": [ { "origin.passthrough": { "@from": "Author.name" } } ] } },
       { "field.long":   { "name": "postCount",
         "children": [ { "origin.aggregate": {
-          "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } } ] } },
-      { "identity.primary": { "@fields": "id" } }
+          "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } } ] } }
     ]
   }
 }
@@ -66,13 +78,12 @@ vocabulary (`passthrough`, `aggregate`, `collection`).
 
 ```json
 {
-  "object.entity": {
+  "object.projection": {
     "name": "AuthorStats",
     "children": [
       { "source.rdb": { "@kind": "storedProc", "@table": "sp_author_stats" } },
       { "field.long":   { "name": "authorId" } },
-      { "field.long":   { "name": "publishedCount" } },
-      { "identity.primary": { "@fields": "authorId" } }
+      { "field.long":   { "name": "publishedCount" } }
     ]
   }
 }
@@ -139,8 +150,8 @@ non-null.
 
 ### Java
 
-OMDB resolves the physical name via `@table`; `@kind: "view"` flips the entity to
-read-only at the ObjectManager layer (mutating ops throw). The `CREATE VIEW` body
+OMDB resolves the physical name via `@table`; a `@kind: "view"` source on an
+`object.projection` is read-only at the ObjectManager layer (mutating ops throw). The `CREATE VIEW` body
 is emitted by the TS toolchain (`meta migrate`) from the `origin.*` aggregate /
 passthrough metadata; the `meta:migrate` Maven goal was removed.
 
@@ -172,7 +183,7 @@ object AuthorViewTable : Table("v_author") {
 
 `MetaObjects.Codegen` emits `OwnsOne` / `DbSet` wiring as appropriate; for `@kind:
 "view"` the generated `AppDbContext` calls `entity.ToView("v_author")`. The
-`meta migrate` command emits a `CREATE VIEW` body for projection entities.
+`meta migrate` command emits a `CREATE VIEW` body for projections.
 
 ```csharp
 // generated/AppDbContext.cs (excerpt) — view registration

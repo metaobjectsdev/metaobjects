@@ -35,6 +35,13 @@
           { "field.string": { "name": "zip" } }
       ] } },
 
+      { "object.projection": { "name": "AuthorSummary", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "name" } },
+          { "field.long":   { "name": "tagCount" } },
+          { "source.rdb":   { "@table": "v_author_summary", "@kind": "view" } }
+      ] } },
+
       { "object.entity": { "name": "BaseNode", "abstract": true, "children": [
           { "field.long": { "name": "id" } }
       ] } },

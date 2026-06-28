@@ -28,6 +28,9 @@ object KotlinNaming {
     /** [KotlinExposedTableGenerator]: `shortName + "Table"`. */
     fun tableObjectName(shortName: String): String = shortName + "Table"
 
+    /** [KotlinStoredProcGenerator]: `shortName + "Proc"` — the stored-proc callable object. */
+    fun procObjectName(shortName: String): String = shortName + "Proc"
+
     /**
      * Exposed `Table` (via `ColumnSet` / `FieldSet`) declares its own `val` members
      * (`source`, `columns`, `fields`, `index`, …). A generated column `val` of the same

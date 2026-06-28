@@ -135,11 +135,10 @@ class KotlinFilterAllowlistGeneratorTest {
         // (controller is also skipped — keeping the two generators aligned).
         val viewFixture = """{
           "metadata.root": { "package": "acme::report", "children": [
-            { "object.entity": { "name": "SalesReport", "children": [
+            { "object.projection": { "name": "SalesReport", "children": [
                 { "field.long":   { "name": "id", "@filterable": true } },
                 { "field.string": { "name": "regionName", "@maxLength": 100, "@filterable": true } },
-                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } },
-                { "identity.primary": { "@fields": "id" } }
+                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
             ] } }
           ] }
         }""".trimIndent()

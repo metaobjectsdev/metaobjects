@@ -100,10 +100,9 @@ public class SourceV2Tests
     {
         const string json = """
         { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "ProductView", "children": [
+          { "object.projection": { "name": "ProductView", "children": [
             { "source.rdb": { "@table": "v_products", "@kind": "view" } },
-            { "field.long": { "name": "id" } },
-            { "identity.primary": { "@fields": "id" } }
+            { "field.long": { "name": "id" } }
           ]}}
         ]}}
         """;

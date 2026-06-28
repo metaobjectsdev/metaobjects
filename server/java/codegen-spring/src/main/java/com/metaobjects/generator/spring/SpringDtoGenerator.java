@@ -79,7 +79,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         emitSharedEnums(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject entity : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) continue;
+            // FR-024: a (read) DTO is emitted for concrete entities AND any
+            // object.projection (read-only-kind source) — the read model. A proc/
+            // tableFunction-backed projection DTO may include input @param fields as
+            // components (matching the pre-B4b entity behavior). Abstract shapes fall
+            // through below.
+            if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())
+                    && !MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType())) continue;
             if (GeneratorUtil.isAbstract(entity)) {
                 if (emitAbstractShapes) emitAbstractShape(entity, outRoot);
                 continue;
@@ -102,7 +108,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * Extracted verbatim from the {@link #execute(MetaDataLoader)} concrete-emit guard.
      */
     public static boolean appliesTo(MetaObject entity) {
-        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return false;
+        // FR-024: emit a read DTO for any concrete entity OR any object.projection
+        // (read-only-kind source) — a projection is a read-only wire model; the write
+        // surfaces skip it. A proc/tableFunction-backed projection DTO may include
+        // input @param fields as components (matching the pre-B4b entity behavior).
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())
+                && !MetaObject.SUBTYPE_PROJECTION.equals(entity.getSubType())) return false;
         return !GeneratorUtil.isAbstract(entity);
     }
 

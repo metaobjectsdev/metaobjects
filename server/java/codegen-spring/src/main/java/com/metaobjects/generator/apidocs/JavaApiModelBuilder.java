@@ -38,8 +38,11 @@ import java.util.List;
  * <ul>
  *   <li><b>Objects</b> (iterated via {@link MetaDataLoader#getMetaObjects()}):
  *       each object yields a {@link ApiSymbolKind#MODEL} symbol. Entities
- *       ({@code object.entity}) additionally yield DTO / DATA_ACCESS / REST /
- *       FILTER / TRACE symbols gated by the matching {@code appliesTo}. A value
+ *       ({@code object.entity}) additionally yield DTO / VALIDATION / DATA_ACCESS /
+ *       REST / FILTER / TRACE symbols gated by the matching {@code appliesTo}. A
+ *       projection ({@code object.projection}) is a read-only model and yields a
+ *       read DTO only (no VALIDATION / DATA_ACCESS / REST / FILTER — those
+ *       generators gate on a writable table entity and skip a projection). A value
  *       object ({@code object.value}) yields MODEL only.</li>
  *   <li><b>Templates</b> (iterated via {@code loader.getRoot().getChildren()}
  *       filtered to {@link MetaTemplate}): each template yields PAYLOAD / RENDER /
@@ -103,76 +106,90 @@ public final class JavaApiModelBuilder {
         String javaPkg = SpringNaming.toJavaPackage(split[0]);
         String shortName = split[1];
         boolean entity = MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType());
-        String unitKind = entity ? "entity" : "value";
+        boolean projection = MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType());
+        String unitKind = entity ? "entity" : projection ? "projection" : "value";
 
         List<ApiSymbol> symbols = new ArrayList<>();
 
         // MODEL — documented only for concrete objects. Abstract objects cannot be
         // instantiated, so we do not document a MODEL symbol for them (documented is a
-        // subset of generated). A concrete value object → MODEL only.
+        // subset of generated). A concrete value object / projection → MODEL only (plus
+        // a read DTO for a projection, below).
         if (!IOUtil.isAbstract(obj)) {
             symbols.add(symbol(
                 shortName, ApiSymbolKind.MODEL, fqn(javaPkg, shortName),
                 "class " + shortName,
-                entity ? "the in-memory model object" : "the in-memory value object"));
+                entity ? "the in-memory model object"
+                    : projection ? "the in-memory read model (read-only projection)"
+                    : "the in-memory value object"));
         }
 
-        if (entity) {
-            // DTO — the wire shape.
-            if (SpringDtoGenerator.appliesTo(obj)) {
-                String dto = SpringNaming.dtoName(shortName);
-                List<FieldShape> dtoFields = JavaFieldShapes.dtoFields(obj);
-                symbols.add(symbolWithFields(
-                    dto, ApiSymbolKind.DTO, fqn(javaPkg, dto),
-                    "record " + dto,
-                    "the wire / serialization shape", dtoFields));
+        // DTO — the wire shape. Emitted for any concrete object.entity OR concrete
+        // object.projection (a projection is a read-only wire model). The inclusion
+        // decision is delegated to the generator's appliesTo so documented == generated.
+        if (SpringDtoGenerator.appliesTo(obj)) {
+            String dto = SpringNaming.dtoName(shortName);
+            List<FieldShape> dtoFields = JavaFieldShapes.dtoFields(obj);
+            symbols.add(symbolWithFields(
+                dto, ApiSymbolKind.DTO, fqn(javaPkg, dto),
+                "record " + dto,
+                projection ? "the read-only wire / serialization shape"
+                    : "the wire / serialization shape",
+                dtoFields));
 
-                // VALIDATION — the validated create/update payload shape. The
-                // Jakarta constraints live on the SAME DTO record's components,
-                // so the validation symbol names the DTO record and carries the
-                // same required/optional field shape derived from the DTO.
+            // VALIDATION — the validated create/update payload shape. Documented only
+            // for an entity: a projection is read-only and is never a create/update
+            // body, so no write-validation surface is documented for it. The Jakarta
+            // constraints live on the SAME DTO record's components, so the validation
+            // symbol names the DTO record and carries the same required/optional shape.
+            if (entity) {
                 symbols.add(symbolWithFields(
                     dto, ApiSymbolKind.VALIDATION, fqn(javaPkg, dto),
                     "record " + dto,
                     "Bean-validation (Jakarta) constraints on the create/update payload",
                     dtoFields));
             }
+        }
 
-            // DATA_ACCESS — one repository interface symbol; signature lists the
-            // CRUD methods plus one find<Rel> per resolved M:N.
-            if (SpringRepositoryGenerator.appliesTo(obj)) {
-                String repo = SpringNaming.repositoryName(shortName);
-                String dto = SpringNaming.dtoName(shortName);
-                symbols.add(symbol(
-                    repo, ApiSymbolKind.DATA_ACCESS, fqn(javaPkg, repo),
-                    repositorySignature(repo, dto, obj, loader),
-                    "data access — consumer implements this interface",
-                    "Optional<" + dto + "> / List<" + dto + "> / boolean"));
-            }
+        // DATA_ACCESS / REST / FILTER / TRACE — the write + queryable surfaces. Each
+        // generator's appliesTo gates on a writable table entity and returns false for a
+        // projection (and for a value object), so a projection is documented as read DTO
+        // only, never a repository / controller / filter / trace surface.
 
-            // REST — one symbol per verb+path the controller registers.
-            if (SpringControllerGenerator.appliesTo(obj)) {
-                addRestSymbols(symbols, obj, javaPkg, shortName, loader);
-            }
+        // DATA_ACCESS — one repository interface symbol; signature lists the
+        // CRUD methods plus one find<Rel> per resolved M:N.
+        if (SpringRepositoryGenerator.appliesTo(obj)) {
+            String repo = SpringNaming.repositoryName(shortName);
+            String dto = SpringNaming.dtoName(shortName);
+            symbols.add(symbol(
+                repo, ApiSymbolKind.DATA_ACCESS, fqn(javaPkg, repo),
+                repositorySignature(repo, dto, obj, loader),
+                "data access — consumer implements this interface",
+                "Optional<" + dto + "> / List<" + dto + "> / boolean"));
+        }
 
-            // FILTER — the per-entity sort/filter allowlist.
-            if (SpringFilterAllowlistGenerator.appliesTo(obj)) {
-                String filter = SpringNaming.filterAllowlistName(shortName);
-                symbols.add(symbol(
-                    filter, ApiSymbolKind.FILTER, fqn(javaPkg, filter),
-                    "final class " + filter,
-                    "the sortable-field + filter-operator allowlist"));
-            }
+        // REST — one symbol per verb+path the controller registers.
+        if (SpringControllerGenerator.appliesTo(obj)) {
+            addRestSymbols(symbols, obj, javaPkg, shortName, loader);
+        }
 
-            // TRACE — the LLM-trace persistence helper (only when a prompt with
-            // @responseRef is present, per the generator's appliesTo).
-            if (LlmTraceHelperGenerator.appliesTo(obj)) {
-                String trace = SpringNaming.traceHelperName(shortName);
-                symbols.add(symbol(
-                    trace, ApiSymbolKind.TRACE, fqn(javaPkg, trace),
-                    "final class " + trace,
-                    "persists an LLM call trace as a typed object"));
-            }
+        // FILTER — the per-entity sort/filter allowlist.
+        if (SpringFilterAllowlistGenerator.appliesTo(obj)) {
+            String filter = SpringNaming.filterAllowlistName(shortName);
+            symbols.add(symbol(
+                filter, ApiSymbolKind.FILTER, fqn(javaPkg, filter),
+                "final class " + filter,
+                "the sortable-field + filter-operator allowlist"));
+        }
+
+        // TRACE — the LLM-trace persistence helper (only when a prompt with
+        // @responseRef is present, per the generator's appliesTo).
+        if (LlmTraceHelperGenerator.appliesTo(obj)) {
+            String trace = SpringNaming.traceHelperName(shortName);
+            symbols.add(symbol(
+                trace, ApiSymbolKind.TRACE, fqn(javaPkg, trace),
+                "final class " + trace,
+                "persists an LLM call trace as a typed object"));
         }
 
         // An object that yields no symbols (e.g. an abstract object: no MODEL, and

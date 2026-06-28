@@ -202,12 +202,11 @@ class KotlinSpringControllerGeneratorTest {
         // SalesReport has @kind="view" — must NOT produce a controller (read-only).
         val viewFixture = """{
           "metadata.root": { "package": "acme::report", "children": [
-            { "object.entity": { "name": "SalesReport", "children": [
+            { "object.projection": { "name": "SalesReport", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "regionName", "@maxLength": 100 } },
                 { "field.long":   { "name": "totalCents" } },
-                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } },
-                { "identity.primary": { "@fields": "id" } }
+                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
             ] } }
           ] }
         }""".trimIndent()

@@ -13,11 +13,10 @@ class KotlinStoredProcGeneratorTest {
         // a no-arg `call(): List<MyProc>` function (not the documented stub).
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "MyProc", "children": [
+            { "object.projection": { "name": "MyProc", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "label", "@required": true } },
-                { "source.rdb":   { "@kind": "storedProc", "@procName": "get_data" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@kind": "storedProc", "@procName": "get_data" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -54,10 +53,9 @@ class KotlinStoredProcGeneratorTest {
     @Test fun procNameDefaultsToTableAttr() {
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "MyProc", "children": [
+            { "object.projection": { "name": "MyProc", "children": [
                 { "field.long":   { "name": "id" } },
-                { "source.rdb":   { "@kind": "storedProc", "@table": "get_orders" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@kind": "storedProc", "@table": "get_orders" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -81,10 +79,9 @@ class KotlinStoredProcGeneratorTest {
     @Test fun procNameFallsBackToEntityShortName() {
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "MyProc", "children": [
+            { "object.projection": { "name": "MyProc", "children": [
                 { "field.long":   { "name": "id" } },
-                { "source.rdb":   { "@kind": "storedProc" } },
-                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+                { "source.rdb":   { "@kind": "storedProc" } }
             ] } }
           ] }
         }""".trimIndent()
@@ -136,7 +133,7 @@ class KotlinStoredProcGeneratorTest {
         // OrderReport: orderId (@param, Long) + status (result, String) + total (result, Long)
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "OrderReport", "children": [
+            { "object.projection": { "name": "OrderReport", "children": [
                 { "field.long":   { "name": "orderId", "@param": true } },
                 { "field.string": { "name": "status" } },
                 { "field.long":   { "name": "total" } },
@@ -175,7 +172,7 @@ class KotlinStoredProcGeneratorTest {
         // GetAllProducts: no params, result fields name + price.
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "GetAllProducts", "children": [
+            { "object.projection": { "name": "GetAllProducts", "children": [
                 { "field.string": { "name": "name" } },
                 { "field.long":   { "name": "price" } },
                 { "source.rdb":   { "@kind": "storedProc", "@procName": "get_all_products" } }
@@ -213,7 +210,7 @@ class KotlinStoredProcGeneratorTest {
         // Result fields: total (Long).
         val fixture = """{
           "metadata.root": { "package": "acme::demo", "children": [
-            { "object.entity": { "name": "GetReport", "children": [
+            { "object.projection": { "name": "GetReport", "children": [
                 { "field.int":    { "name": "year",   "@param": true } },
                 { "field.string": { "name": "region", "@param": "in" } },
                 { "field.long":   { "name": "total" } },

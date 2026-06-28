@@ -17,11 +17,17 @@ public class ProjectionTests
     // TagCount: keyless projection (dbView, no identity).
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "ProgramSummary", "children": [
-        { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+      { "object.entity": { "name": "Program", "children": [
+        { "source.rdb": { "@kind": "table", "@table": "programs" } },
         { "field.long": { "name": "id" } },
         { "field.int":  { "name": "weekCount" } },
-        { "identity.primary": { "@fields": "id" } }
+        { "identity.primary": { "name": "pk", "@fields": "id" } }
+      ]}},
+      { "object.projection": { "name": "ProgramSummary", "children": [
+        { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+        { "field.long": { "name": "id", "extends": "Program.id" } },
+        { "field.int":  { "name": "weekCount" } },
+        { "identity.primary": { "name": "pk", "extends": "Program.pk" } }
       ]}},
       { "object.projection": { "name": "TagCount", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_tag_count" } },

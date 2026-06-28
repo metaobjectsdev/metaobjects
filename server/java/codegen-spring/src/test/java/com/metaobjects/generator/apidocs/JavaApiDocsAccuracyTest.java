@@ -276,6 +276,30 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void projectionIsDocumentedAsReadModelAndReadDtoOnly() {
+        // A concrete object.projection (read-only-kind source) → MODEL + DTO only.
+        // SpringDtoGenerator.appliesTo emits a read DTO for a projection; the write +
+        // queryable surfaces (controller/repository/filter/trace) gate on a writable
+        // table entity and skip it — so NO VALIDATION/DATA_ACCESS/REST/FILTER/TRACE.
+        ApiUnit summary = unit("AuthorSummary");
+        assertEquals("object.projection AuthorSummary → projection unit kind",
+            "projection", summary.kind());
+        assertEquals("object.projection AuthorSummary → MODEL + read DTO only",
+            EnumSet.of(ApiSymbolKind.MODEL, ApiSymbolKind.DTO), kinds(summary));
+
+        // Forward-confirm the documented read DTO is really generated...
+        assertTrue("documented AuthorSummaryDto must appear in generated Java",
+            containsIdentifier(allGenerated, "AuthorSummaryDto"));
+        // ...and the skipped write/query surfaces are NOT generated for a projection.
+        assertFalse("no AuthorSummaryController should be generated",
+            containsIdentifier(allGenerated, "AuthorSummaryController"));
+        assertFalse("no AuthorSummaryRepository should be generated",
+            containsIdentifier(allGenerated, "AuthorSummaryRepository"));
+        assertFalse("no AuthorSummaryFilter should be generated",
+            containsIdentifier(allGenerated, "AuthorSummaryFilter"));
+    }
+
+    @Test
     public void abstractObjectIsNotDocumented() {
         // An abstract entity cannot be instantiated, so the builder documents no MODEL
         // for it; combined with every entity generator's appliesTo skipping abstracts,

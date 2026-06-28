@@ -44,12 +44,11 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
     private static final String VIEW_FIXTURE = """
         {
           "metadata.root": { "package": "acme::report", "children": [
-            { "object.entity": { "name": "SalesReport", "children": [
+            { "object.projection": { "name": "SalesReport", "children": [
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "regionName", "@maxLength": 100 } },
                 { "field.long":   { "name": "totalCents" } },
-                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } },
-                { "identity.primary": { "@fields": "id" } }
+                { "source.rdb":   { "@table": "v_sales_report", "@kind": "view" } }
             ] } }
           ] }
         }

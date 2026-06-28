@@ -3,7 +3,7 @@
 The MetaObjects metamodel is built from 11 base types:
 
 - `metadata` — root wrapper (subtype: `root`)
-- `object` — typed entity (subtypes: `base`, `entity`, `value`)
+- `object` — typed entity (subtypes: `base`, `entity`, `value`, `projection`)
 - `field` — entity field (subtypes: `string`, `int`, `long`, `boolean`, `date`, `currency`, etc.)
 - `attr` — named attribute (subtypes by value type)
 - `validator` — field-level validation rules (subtypes: `required`, `length`, `regex`, etc.)
@@ -22,7 +22,7 @@ Every metadata node is a one-key map of the shape `{ "<type>.<subType>": <body> 
 wrapper key fuses type and subType; there is no separate `subType` body key. Examples:
 
 - `metadata.root` — the root wrapper
-- `object.entity`, `object.value`, `object.base`
+- `object.entity`, `object.value`, `object.projection`, `object.base`
 - `field.string`, `field.long`, `field.currency`
 - `identity.primary`, `identity.secondary`
 - `relationship.association`

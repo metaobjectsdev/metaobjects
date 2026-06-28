@@ -15,7 +15,7 @@
 //       array string "tags"   (isArray)  → .PrimitiveCollection()
 //       field.object homeAddress @storage flattened → OwnsOne(...) per-property column names
 //       field.object config (default storage)       → OwnsOne(...).ToJson(...)
-//   - object.entity ProgramSummary with source.dbView → .ToView(...) (no HasNoKey — keyed)
+//   - object.projection ProgramSummary (view-kind source, keyless) → .ToView(...).HasNoKey()
 //
 // The test DOES NOT include RoutesGenerator output: routes import ASP.NET Core
 // shared-framework types that are not available in the TRUSTED_PLATFORM_ASSEMBLIES
@@ -51,11 +51,10 @@ public class DbContextCompileTests
         { "field.object": { "name": "config",      "@objectRef": "Address" } },
         { "identity.primary": { "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "ProgramSummary", "children": [
+      { "object.projection": { "name": "ProgramSummary", "children": [
         { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "field.long": { "name": "id" } },
-        { "field.int":  { "name": "weekCount" } },
-        { "identity.primary": { "@fields": "id" } }
+        { "field.int":  { "name": "weekCount" } }
       ]}}
     ]}}
     """;
