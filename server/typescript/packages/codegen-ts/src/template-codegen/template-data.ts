@@ -5,6 +5,14 @@
 // spec (and the conformance corpus).
 import type { MetaObject, MetaRoot, MetaField } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM } from "@metaobjectsdev/metadata";
+import { effectivePackage } from "../docs-paths.js";
+
+/** The effective package of an object — its own package OR the file-default
+ *  folded into `resolutionKey()`. `entity.package` alone is usually undefined
+ *  (object fqn() stays bare), so all package reads go through here. */
+export function packageOf(entity: MetaObject): string {
+  return effectivePackage(entity) ?? "";
+}
 
 export interface FieldTemplateData {
   name: string;
@@ -46,7 +54,7 @@ function fieldData(field: MetaField): FieldTemplateData {
 export function buildEntityTemplateData(entity: MetaObject): EntityTemplateData {
   return {
     name: entity.name,
-    package: entity.package ?? "",
+    package: packageOf(entity),
     fields: entity.fields().map(fieldData),
     identities: entity.identities().map((i) => ({ kind: i.subType, fields: [...i.fields] })),
     relationships: entity.relationships().map((r) => ({
@@ -68,7 +76,7 @@ export function buildModelTemplateData(root: MetaRoot): ModelTemplateData {
   const concrete = root.objects().filter((o) => o.isAbstract !== true);
   const byPkg = new Map<string, MetaObject[]>();
   for (const o of concrete) {
-    const pkg = o.package ?? "";
+    const pkg = packageOf(o);
     let bucket = byPkg.get(pkg);
     if (bucket === undefined) { bucket = []; byPkg.set(pkg, bucket); }
     bucket.push(o);

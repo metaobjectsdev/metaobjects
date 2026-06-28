@@ -22,6 +22,7 @@ import {
   buildEntityTemplateData,
   buildPackageTemplateData,
   buildModelTemplateData,
+  packageOf,
 } from "../template-codegen/template-data.js";
 
 /** The three built-in walk scopes (SP-1 §3.1). Same vocabulary as the engine
@@ -87,13 +88,13 @@ function scopeWalk(
     if (scope === "perEntity") {
       return concrete.map((e) => ({
         data: buildEntityTemplateData(e),
-        outputPath: expandOutputPattern(pattern, { name: e.name, package: e.package ?? "" }),
+        outputPath: expandOutputPattern(pattern, { name: e.name, package: packageOf(e) }),
       }));
     }
     if (scope === "perPackage") {
       const byPkg = new Map<string, MetaObject[]>();
       for (const o of concrete) {
-        const pkg = o.package ?? "";
+        const pkg = packageOf(o);
         let bucket = byPkg.get(pkg);
         if (bucket === undefined) { bucket = []; byPkg.set(pkg, bucket); }
         bucket.push(o);

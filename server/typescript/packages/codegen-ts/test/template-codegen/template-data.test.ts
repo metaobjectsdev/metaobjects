@@ -17,7 +17,9 @@ describe("buildEntityTemplateData", () => {
     const entity = root.objects()[0]!;
     const data = buildEntityTemplateData(entity);
     expect(data.name).toBe(entity.name);
-    expect(data.package).toBe(entity.package ?? "");
+    // single-entity.json declares package "demo" on the root; the effective
+    // package must resolve (entity.package alone is undefined — object fqn stays bare).
+    expect(data.package).toBe("demo");
     expect(Array.isArray(data.fields)).toBe(true);
     for (const f of data.fields) {
       expect(typeof f.type).toBe("string");
