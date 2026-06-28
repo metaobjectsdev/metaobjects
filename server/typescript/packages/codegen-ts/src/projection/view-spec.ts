@@ -30,6 +30,16 @@ export interface JoinTree {
   readonly joins: readonly JoinNode[];
 }
 
+/**
+ * A resolved filter clause scoping an aggregate to a subset of related rows. Column
+ * refs are already resolved to `alias.column` (naming-strategy applied), so the
+ * emitter is a pure renderer. Mirrors the canonical attr.filter shape.
+ */
+export type ViewFilterClause =
+  | { readonly kind: "cmp"; readonly ref: string; readonly op: string; readonly value: unknown }
+  | { readonly kind: "and"; readonly clauses: readonly ViewFilterClause[] }
+  | { readonly kind: "or"; readonly clauses: readonly ViewFilterClause[] };
+
 /** One column of the SELECT list. */
 export type SelectColumn =
   | {
@@ -46,6 +56,8 @@ export type SelectColumn =
       readonly agg: AggregateFunction;
       readonly sourceAlias: string;
       readonly sourceColumn: string;
+      /** Optional scoping filter (origin.aggregate @filter) → SQL aggregate FILTER (WHERE …). */
+      readonly filter?: ViewFilterClause;
     };
 
 export interface SelectSpec {

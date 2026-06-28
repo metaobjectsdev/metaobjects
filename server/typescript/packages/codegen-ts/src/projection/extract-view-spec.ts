@@ -26,8 +26,66 @@ import {
 } from "../naming.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type {
-  JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec,
+  JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
 } from "./view-spec.js";
+
+/** The optional scoping-filter attr on origin.aggregate (`@filter`). Not part of the
+ *  metamodel registry vocabulary (kept here, codegen-local, to avoid a cross-port
+ *  metamodel change); the loader stores it as a plain attr and codegen desugars it. */
+const ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
+/** Compose keys in the attr.filter shape. */
+const FILTER_AND = "and";
+const FILTER_OR = "or";
+
+/**
+ * Desugar a single field clause to the canonical `{ op: value }` form (scalar→eq,
+ * array→in, null→isNull, object→as-is). Mirrors metadata's attr.filter desugar so an
+ * aggregate `@filter` works whether or not it was pre-desugared by the loader.
+ */
+function desugarClause(raw: unknown): Record<string, unknown> {
+  if (raw === null) return { isNull: true };
+  if (Array.isArray(raw)) return { in: raw };
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  return { eq: raw };
+}
+
+/**
+ * Resolve an aggregate `@filter` (`{ field: value | { op: value }, and?, or? }`) into
+ * a {@link ViewFilterClause} with column refs resolved to `alias.column` on the
+ * aggregated entity. Multiple fields at one level compose with AND. Unknown fields are
+ * skipped (defensive — the loader validates field existence elsewhere).
+ */
+function resolveAggregateFilter(
+  filter: unknown,
+  entity: MetaObject,
+  alias: string,
+  ctx: ExtractContext,
+): ViewFilterClause | undefined {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return undefined;
+  const clauses: ViewFilterClause[] = [];
+  for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
+    if (key === FILTER_AND || key === FILTER_OR) {
+      const subs = (Array.isArray(val) ? val : [])
+        .map((s) => resolveAggregateFilter(s, entity, alias, ctx))
+        .filter((c): c is ViewFilterClause => c !== undefined);
+      if (subs.length > 0) clauses.push({ kind: key === FILTER_AND ? "and" : "or", clauses: subs });
+      continue;
+    }
+    const field = entity.fields().find((f) => f.name === key);
+    if (!field) continue;
+    const opObj = desugarClause(val);
+    const op = Object.keys(opObj)[0];
+    if (!op) continue;
+    clauses.push({
+      kind: "cmp",
+      ref: `${alias}.${sourceColumnNameFor(field, ctx)}`,
+      op,
+      value: opObj[op],
+    });
+  }
+  if (clauses.length === 0) return undefined;
+  return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
+}
 
 // ---------------------------------------------------------------------------
 // Public context type
@@ -382,6 +440,12 @@ function buildSelectSpec(
       if (!targetEntity || sourceAlias === undefined) continue;
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;
+      // Optional scoping filter — resolved against the aggregated entity (the @of
+      // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
+      const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
+      const filter = filterAttr !== undefined
+        ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)
+        : undefined;
       columns.push({
         kind: "aggregate",
         fieldName: field.name,
@@ -389,6 +453,7 @@ function buildSelectSpec(
         agg,
         sourceAlias,
         sourceColumn: sourceColumnNameFor(targetField, ctx),
+        ...(filter !== undefined ? { filter } : {}),
       });
     }
   }
