@@ -54,12 +54,13 @@ public static class TemplateSpec
                     $"template-spec generators[{i}]: scope must be one of {string.Join(" | ", ScopeWalk.Scopes)}, got '{scope}'");
 
             string? format = null;
-            if (entry.TryGetProperty("format", out var f) && f.ValueKind == JsonValueKind.String)
+            if (entry.TryGetProperty("format", out var f))
             {
-                format = f.GetString();
-                if (!ValidFormats.Contains(format!))
+                if (f.ValueKind != JsonValueKind.String || f.GetString() is not { Length: > 0 } fs
+                    || !ValidFormats.Contains(fs))
                     throw new ArgumentException(
-                        $"template-spec generators[{i}]: format must be one of {string.Join(" | ", ValidFormats)}, got '{format}'");
+                        $"template-spec generators[{i}]: format must be one of {string.Join(" | ", ValidFormats)}, got '{f}'");
+                format = fs;
             }
 
             // `target` (output routing) is not supported by the C# port — EmittedFile.Path is

@@ -81,13 +81,13 @@ public static class GenCommand
             generators = GeneratorRegistry.Resolve(names, new GeneratorBuildContext(templateRoot)).ToList();
             if (!string.IsNullOrEmpty(templateSpecPath))
             {
-                var spec = TemplateSpec.Parse(
-                    JsonDocument.Parse(File.ReadAllText(templateSpecPath)).RootElement);
+                using var doc = JsonDocument.Parse(File.ReadAllText(templateSpecPath));
+                var spec = TemplateSpec.Parse(doc.RootElement);
                 var provider = new FilesystemProvider(templateRoot ?? "templates");
                 generators.AddRange(TemplateSpec.ToGenerators(spec, provider));
             }
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or JsonException)
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
         {
             return new Outcome([ex.Message], null);
         }

@@ -43,6 +43,16 @@ public class TemplateSpecTests
             """{ "generators": [ { "name": "x", "template": "t", "scope": "perModel", "outputPattern": "x", "format": "xml-typo" } ] }""")));
 
     [Fact]
+    public void RejectsNonStringFormat() =>
+        Assert.Throws<ArgumentException>(() => TemplateSpec.Parse(Json(
+            """{ "generators": [ { "name": "x", "template": "t", "scope": "perModel", "outputPattern": "x", "format": 123 } ] }""")));
+
+    [Fact]
+    public void RejectsNullFormat() =>
+        Assert.Throws<ArgumentException>(() => TemplateSpec.Parse(Json(
+            """{ "generators": [ { "name": "x", "template": "t", "scope": "perModel", "outputPattern": "x", "format": null } ] }""")));
+
+    [Fact]
     public void RejectsTarget() =>
         Assert.Throws<ArgumentException>(() => TemplateSpec.Parse(Json(
             """{ "generators": [ { "name": "x", "template": "t", "scope": "perModel", "outputPattern": "x", "target": "web" } ] }""")));

@@ -38,8 +38,8 @@ public class TemplateCodegenConformanceTests
     public void CorpusMatchesExpectedByteForByte()
     {
         var corpus = Corpus();
-        var spec = TemplateSpec.Parse(
-            JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "spec.json"))).RootElement);
+        using var specDoc = JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "spec.json")));
+        var spec = TemplateSpec.Parse(specDoc.RootElement);
         var root = MetaDataLoader.FromDirectory(Path.Combine(corpus, "metadata")).Root;
         var provider = new FilesystemProvider(Path.Combine(corpus, "templates"));
 
