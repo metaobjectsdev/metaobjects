@@ -71,6 +71,25 @@ public sealed class GenTemplateSpecTests : IDisposable
     }
 
     [Fact]
+    public void TemplateSpec_bad_output_pattern_yields_clean_error_not_exception()
+    {
+        File.WriteAllText(Path.Combine(TemplateRoot, "summary.mustache"), "x\n");
+        // {name} under perModel: ScopeWalk passes a null name, so OutputPattern.Expand
+        // throws ArgumentException lazily during the walk inside CodegenRunner.Run.
+        File.WriteAllText(SpecPath, """
+        { "generators": [
+          { "name": "bad", "template": "summary", "scope": "perModel", "outputPattern": "{name}.txt" }
+        ] }
+        """);
+
+        var outcome = GenCommand.Run(MetaDir, OutDir, "Acme.Generated",
+            emitAbstractShapes: false, generatorNames: null, templateRoot: TemplateRoot, templateSpecPath: SpecPath);
+
+        Assert.False(outcome.Ok);
+        Assert.Contains(outcome.LoadErrors, e => e.Contains("codegen failed"));
+    }
+
+    [Fact]
     public void TemplateSpec_with_target_is_rejected()
     {
         File.WriteAllText(SpecPath, """

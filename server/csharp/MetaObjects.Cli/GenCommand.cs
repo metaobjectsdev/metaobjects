@@ -103,6 +103,13 @@ public static class GenCommand
             // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
             return new Outcome([$"template render failed: {ex.Message}"], null);
         }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            // An output-pattern error (unknown placeholder, or {name}/{Name} under a
+            // perPackage/perModel scope) or a duplicate output-path collision surfaces
+            // lazily during the walk — a clean error, not a stack trace.
+            return new Outcome([$"codegen failed: {ex.Message}"], null);
+        }
         return new Outcome(loadErrors, result);
     }
 
