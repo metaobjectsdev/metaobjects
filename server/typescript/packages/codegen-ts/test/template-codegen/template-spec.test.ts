@@ -27,6 +27,19 @@ describe("parseTemplateSpec", () => {
   test("rejects a non-object", () => {
     expect(() => parseTemplateSpec(null)).toThrow();
   });
+  test("rejects an unknown format", () => {
+    expect(() => parseTemplateSpec({
+      generators: [{ name: "x", template: "t", scope: "perModel", outputPattern: "x", format: "xml-typo" }],
+    })).toThrow(/format/i);
+  });
+  test("accepts every schema-enumerated format", () => {
+    for (const fmt of ["text", "html", "xml", "csv", "json", "markdown", "spreadsheet"] as const) {
+      const spec = parseTemplateSpec({
+        generators: [{ name: "x", template: "t", scope: "perModel", outputPattern: "x", format: fmt }],
+      });
+      expect(spec.generators[0]!.format).toBe(fmt);
+    }
+  });
 });
 
 describe("templateSpecToGenerators", () => {
@@ -41,5 +54,14 @@ describe("schema ↔ parser drift", () => {
     const scopeEnum = (schema as { properties: { generators: { items: { properties: { scope: { enum: string[] } } } } } })
       .properties.generators.items.properties.scope.enum;
     expect(scopeEnum).toEqual(["perEntity", "perPackage", "perModel"]);
+  });
+  test("schema enumerates the same formats the parser accepts", () => {
+    const formatEnum = (schema as { properties: { generators: { items: { properties: { format: { enum: string[] } } } } } })
+      .properties.generators.items.properties.format.enum;
+    for (const fmt of formatEnum) {
+      expect(() => parseTemplateSpec({
+        generators: [{ name: "x", template: "t", scope: "perModel", outputPattern: "x", format: fmt }],
+      })).not.toThrow();
+    }
   });
 });

@@ -1,6 +1,7 @@
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "./render-context.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
+import { effectivePackage } from "./docs-paths.js";
 
 export interface EmittedFile {
   /** Path relative to ResolvedGenConfig.outDir. */
@@ -107,7 +108,7 @@ export function perPackage(
     const matched = ctx.entities.filter(ctx.matches);
     const byPkg = new Map<string, MetaObject[]>();
     for (const e of matched) {
-      const pkg = e.package ?? "";
+      const pkg = effectivePackage(e) ?? "";
       let bucket = byPkg.get(pkg);
       if (bucket === undefined) { bucket = []; byPkg.set(pkg, bucket); }
       bucket.push(e);

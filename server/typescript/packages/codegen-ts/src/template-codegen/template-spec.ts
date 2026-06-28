@@ -1,11 +1,12 @@
 // The declarative JSON template-spec the CLI ports (C#/Python) consume, and TS
 // can spread into `generators`. The JSON shape is the cross-port contract
 // (SP-1 §4); a JSON Schema (template-spec.schema.json) sits beside it.
-import type { RenderFormat } from "@metaobjectsdev/render";
+import { ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
 import type { Generator } from "../generator.js";
 import { templateGenerator, type TemplateScope } from "../generators/template-generator.js";
 
 const SCOPES = ["perEntity", "perPackage", "perModel"] as const satisfies readonly TemplateScope[];
+const FORMATS = Object.keys(ESCAPERS) as readonly RenderFormat[];
 
 export interface TemplateSpecEntry {
   name: string;
@@ -45,7 +46,14 @@ export function parseTemplateSpec(json: unknown): TemplateSpecFile {
       scope: raw.scope as TemplateScope,
       outputPattern: raw.outputPattern as string,
     };
-    if (typeof raw.format === "string") entry.format = raw.format as RenderFormat;
+    if (raw.format !== undefined) {
+      if (typeof raw.format !== "string" || !FORMATS.includes(raw.format as RenderFormat)) {
+        throw new Error(
+          `template-spec generators[${i}]: format must be one of ${FORMATS.join(" | ")}, got '${String(raw.format)}'`,
+        );
+      }
+      entry.format = raw.format as RenderFormat;
+    }
     if (typeof raw.target === "string") entry.target = raw.target;
     return entry;
   });

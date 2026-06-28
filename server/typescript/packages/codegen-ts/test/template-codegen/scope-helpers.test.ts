@@ -27,9 +27,9 @@ describe("perPackage", () => {
       return { path: `${pkg || "_"}/out.txt`, content: `${ents.length}` } as EmittedFile;
     });
     const files = await gen(ctx);
-    const pkgs = [...new Set(ctx.entities.map((e) => e.package ?? ""))].sort();
-    expect(seen).toEqual(pkgs);
-    expect(files.length).toBe(pkgs.length);
+    expect(seen).toEqual(["demo"]);
+    expect(files.length).toBe(1);
+    expect(ctx.entities.every((e) => e.package == null)).toBe(true);
   });
 });
 
