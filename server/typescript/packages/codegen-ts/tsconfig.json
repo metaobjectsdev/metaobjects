@@ -5,5 +5,6 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "test", "node_modules"]
+  "// src/reference": "ADR-0034 copyable reference templates — scaffold ASSETS, not package source. They import '@metaobjectsdev/codegen-ts' (the consumer's view), so they are excluded from the package build and verified separately against the built public API.",
+  "exclude": ["dist", "test", "node_modules", "src/reference"]
 }

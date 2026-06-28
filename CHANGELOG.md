@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- **codegen-ts — reference template library (ADR-0034 scaffold-and-own, step 1):**
+  new in-repo, copyable reference generators under `src/reference/`
+  (`entity` / `queries` / `routes` / `barrel`) — self-contained starting points a
+  consumer copies into their repo and owns, importing only the public engine
+  (`@metaobjectsdev/codegen-ts`) plus `ts-poet` and `@metaobjectsdev/metadata`.
+  Each carries a `use-when / emits / customize / composes-with` header. Purely
+  additive — no existing generator or export was removed; the templates are
+  scaffold assets excluded from the package build. To keep a copied generator on
+  public imports only, the engine now also re-exports the assembly helpers those
+  templates use: `renderTphDiscriminatorUnion`, `hasWritableRdbSource`,
+  `renderSharedEnumsFile` / `SHARED_ENUMS_BASENAME`, and the queries CRUD-block
+  renderers (`renderFindByIdFn`, `renderListFn`, `renderCreateFn`,
+  `renderUpdateFn`, `renderDeleteByIdFn`, `getPkInfo`). (`meta init` scaffolding,
+  generator-export deprecation, and the guidance rewrite are later steps.)
+
 ### Fixed
 - **cli — `meta init` gitignore hardening:** the scaffolded
   `.metaobjects/.gitignore` previously ignored only `.gen-state/`, so a
