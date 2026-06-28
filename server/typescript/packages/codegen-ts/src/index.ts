@@ -68,6 +68,23 @@ export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, t
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
 export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js";
 
+// ADR-0034 reference-template composition helpers. Promoted to the public engine
+// surface so a COPIED reference generator (src/reference/*.ts → consumer's
+// codegen/generators/*.ts) imports only `@metaobjectsdev/codegen-ts`, never a
+// package-internal relative path. These are the assembly pieces the built-in
+// entity/queries composers use; the reference templates relocate that assembly.
+export { renderTphDiscriminatorUnion } from "./templates/tph-discriminator.js";
+export { hasWritableRdbSource } from "./source-detect.js";
+export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
+export {
+  renderFindByIdFn,
+  renderListFn,
+  renderCreateFn,
+  renderUpdateFn,
+  renderDeleteByIdFn,
+  getPkInfo,
+} from "./templates/queries.js";
+
 // Built-in template render functions — the composition seam for adopters who
 // want to call a built-in template, then post-process / append to its output
 // from their own Generator (added to `generators: [...]`) WITHOUT forking the
