@@ -127,6 +127,33 @@ def test_template_spec_output_gets_no_package_init(tmp_path: Path) -> None:
     assert (out / "__init__.py").exists()
 
 
+def test_template_spec_bad_ref_clean_error(tmp_path: Path, capsys) -> None:
+    # An unresolvable template ref raises RenderError (not OSError/ValueError);
+    # the CLI must surface it as a clean `error:` + nonzero exit, not a traceback.
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        '{"generators": [{"name": "bad", "template": "does-not-exist", '
+        '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
+    )
+    out = tmp_path / "out"
+    rc = main(
+        [
+            "gen",
+            str(_TEMPLATE_CORPUS / "metadata"),
+            "--out",
+            str(out),
+            "--template-spec",
+            str(spec),
+            "--templates",
+            str(_TEMPLATE_CORPUS / "templates"),
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "error:" in err
+    assert "template-spec" in err
+
+
 def test_no_migrate_subcommand(tmp_path: Path) -> None:
     # Schema is owned by the Node `meta` CLI (ADR-0015); Python must not ship it.
     import pytest

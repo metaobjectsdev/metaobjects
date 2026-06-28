@@ -138,6 +138,32 @@ def _parse_entities(value: str | None) -> list[str] | None:
     return names or None
 
 
+def _run_suite(
+    root: MetaData,
+    out_dir: str,
+    generators: list[Generator] | None = None,
+    entity_filter: list[str] | None = None,
+    emit_package_init: bool = True,
+) -> list[str]:
+    """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
+
+    Split out from :func:`_generate` so a single gen invocation can load the
+    metadata once and run multiple passes against it (the default Python suite +
+    the ``--template-spec`` pass). See :func:`_generate` for the parameter
+    semantics. Returns the written paths.
+
+    NOTE: ``run_gen``'s output-path collision guard is per-pass — a
+    ``--template-spec`` ``outputPattern`` that collides with a default-suite path
+    is not flagged across the two passes (it would overwrite, since default files
+    carry the ``@generated`` header). Accepted marginal limitation (requires user
+    misconfiguration).
+    """
+    config = GenConfig(out_dir=out_dir, emit_package_init=emit_package_init)
+    suite = generators if generators is not None else _default_generators()
+    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
+    return [path for path, status in result.files if status != "refused"]
+
+
 def _generate(
     metadata_dir: str,
     out_dir: str,
@@ -161,11 +187,7 @@ def _generate(
     root, errors = _load_root(metadata_dir)
     if root is None:
         return [], errors
-    config = GenConfig(out_dir=out_dir, emit_package_init=emit_package_init)
-    suite = generators if generators is not None else _default_generators()
-    result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
-    written = [path for path, status in result.files if status != "refused"]
-    return written, []
+    return _run_suite(root, out_dir, generators, entity_filter, emit_package_init), []
 
 
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
@@ -318,20 +340,31 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         spec_gens = template_spec_to_generators(spec, provider)
 
     entities = _parse_entities(getattr(args, "entities", None))
-    written, errors = _generate(args.metadata_dir, args.out, generators, entities)
-    if errors:
+    # Load the metadata ONCE; both the default suite and the (optional)
+    # --template-spec pass run against this single loaded root.
+    root, load_errors = _load_root(args.metadata_dir)
+    if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
-        for msg in errors:
+        for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
+    written = _run_suite(root, args.out, generators, entities)
     if spec_gens:
-        spec_written, spec_errors = _generate(
-            args.metadata_dir, args.out, spec_gens, entities, emit_package_init=False
-        )
-        if spec_errors:
-            print("error: failed to load metadata:", file=sys.stderr)
-            for msg in spec_errors:
-                print(f"  {msg}", file=sys.stderr)
+        # The template-spec pass renders user-supplied templates: a bad ref or a
+        # wrong --templates dir raises RenderError (not OSError/ValueError, so it
+        # escapes the parse-time guard above). Report it as a clean error.
+        from metaobjects.render.renderer import RenderError
+
+        try:
+            spec_written = _run_suite(
+                root, args.out, spec_gens, entities, emit_package_init=False
+            )
+        except RenderError as exc:
+            print(
+                f"error: --template-spec render failed (check the template refs and "
+                f"--templates dir {args.templates!r}): {exc}",
+                file=sys.stderr,
+            )
             return 1
         written = list(written) + spec_written
     for path in written:
