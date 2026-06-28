@@ -62,3 +62,48 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(existsSync(join(tmp, "forge.config.ts"))).toBe(false);
   });
 });
+
+// ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
+// the consumer repo (codegen/generators/*.ts), and the scaffolded config imports those
+// OWNED local copies instead of the deprecated package `/generators` export.
+describe("meta init scaffolds OWNED codegen generators (ADR-0034)", () => {
+  const GENERATORS = ["entity", "queries", "routes", "barrel"] as const;
+
+  test("writes codegen/generators/{entity,queries,routes,barrel}.ts", async () => {
+    const result = await init({ cwd: tmp, quiet: true });
+    for (const name of GENERATORS) {
+      const rel = `codegen/generators/${name}.ts`;
+      expect(existsSync(join(tmp, rel))).toBe(true);
+      expect(result.created).toContain(rel);
+    }
+  });
+
+  test("owned generators are the copyable reference templates (REFERENCE TEMPLATE header)", async () => {
+    await init({ cwd: tmp, quiet: true });
+    const entity = readFileSync(join(tmp, "codegen/generators/entity.ts"), "utf-8");
+    expect(entity).toContain("REFERENCE TEMPLATE");
+    // They import the stable engine, never the deprecated `/generators` export.
+    expect(entity).toContain('from "@metaobjectsdev/codegen-ts"');
+    expect(entity).not.toContain("@metaobjectsdev/codegen-ts/generators");
+  });
+
+  test("the scaffolded config imports each owned generator locally", async () => {
+    await init({ cwd: tmp, quiet: true });
+    const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
+    expect(body).toContain('import { entityFile } from "./codegen/generators/entity"');
+    expect(body).toContain('import { queriesFile } from "./codegen/generators/queries"');
+    expect(body).toContain('import { routesFile } from "./codegen/generators/routes"');
+    expect(body).toContain('import { barrel } from "./codegen/generators/barrel"');
+    expect(body).not.toContain("@metaobjectsdev/codegen-ts/generators");
+  });
+
+  test("re-init with --force preserves a hand-edited owned generator", async () => {
+    await init({ cwd: tmp, quiet: true });
+    const entityPath = join(tmp, "codegen/generators/entity.ts");
+    const edited = readFileSync(entityPath, "utf-8") + "\n// HAND-EDIT-SENTINEL\n";
+    writeFileSync(entityPath, edited);
+    const result = await init({ cwd: tmp, quiet: true, force: true });
+    expect(readFileSync(entityPath, "utf-8")).toContain("HAND-EDIT-SENTINEL");
+    expect(result.preserved).toContain("codegen/generators/entity.ts");
+  });
+});

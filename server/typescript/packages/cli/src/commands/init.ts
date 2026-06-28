@@ -12,6 +12,11 @@ import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { cliVersion } from "../lib/version.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
+import { readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "@metaobjectsdev/codegen-ts";
+
+// ADR-0034 scaffold-and-own — `meta init` copies the codegen reference templates into
+// the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
+const OWNED_GENERATORS_DIR = "codegen/generators";
 
 const META_COMMON_JSON = JSON.stringify(
   {
@@ -46,13 +51,14 @@ const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
 
 function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
   return `import { defineConfig } from "@metaobjectsdev/cli";
-import {
-  entityFile,
-  queriesFile,
-  routesFile,
-  // formFile,        // opt-in: emit React form components
-  barrel,
-} from "@metaobjectsdev/codegen-ts/generators";
+// Owned codegen generators (ADR-0034 scaffold-and-own). \`meta init\` copied these
+// reference templates into ./codegen/generators/ — they are YOURS to edit, and
+// \`meta gen\` runs from these local copies, not from the package. Read each file's
+// header doc-block for what it emits and how to customize it.
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { routesFile } from "./codegen/generators/routes";
+import { barrel } from "./codegen/generators/barrel";
 
 export default defineConfig({
   outDir:    "src/generated",
@@ -77,6 +83,7 @@ export default defineConfig({
 
 const NEXT_STEPS = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
+Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
 
 Next steps (when later sub-projects ship):
   meta ingest        # propose entities from your existing TS code
@@ -212,6 +219,27 @@ async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
   }
 }
 
+/**
+ * ADR-0034 — copy the codegen reference templates into the consumer's repo at
+ * `codegen/generators/<name>.ts` so they own them. Each file is written only if absent,
+ * so a re-run with --force never clobbers a hand-edited generator. The scaffolded
+ * metaobjects.config.ts imports these local copies (not the package `/generators` export).
+ */
+async function writeOwnedGenerators(opts: InitOptions, result: InitResult): Promise<void> {
+  const dir = join(opts.cwd, OWNED_GENERATORS_DIR);
+  await mkdir(dir, { recursive: true });
+  for (const name of REFERENCE_GENERATOR_NAMES) {
+    const rel = `${OWNED_GENERATORS_DIR}/${name}.ts`;
+    const abs = join(dir, `${name}.ts`);
+    if (await fileExists(abs)) {
+      result.preserved.push(rel);
+      continue;
+    }
+    await writeFile(abs, readReferenceTemplate(name), "utf8");
+    result.created.push(rel);
+  }
+}
+
 export async function init(opts: InitOptions): Promise<InitResult> {
   const result: InitResult = { created: [], preserved: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
@@ -254,6 +282,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
       `.metaobjects/${PACKAGE_MANIFEST_FILE}`,
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
+    for (const name of REFERENCE_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
     result.created.push("metaobjects.config.ts");
     return result;
   }
@@ -333,6 +362,10 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   await writeAgentContext(opts, result);
+
+  // ADR-0034 — scaffold the OWNED codegen generators that metaobjects.config.ts imports
+  // locally. Done before the config so the import targets exist on first `meta gen`.
+  await writeOwnedGenerators(opts, result);
 
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
