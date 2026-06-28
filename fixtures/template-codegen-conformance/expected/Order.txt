@@ -1,0 +1,4 @@
+// Order (shop)
+- id: long
+- productId: long
+rel product -> Product (one)
