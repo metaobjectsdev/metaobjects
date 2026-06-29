@@ -144,9 +144,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
-        // surface on the Exposed Table; @storage controls a separate column shape).
+        // surface on the Exposed Table; @storage controls a separate column shape) and the
+        // `field.string @dbColumnType=jsonb` open bag — a JSONB value is not a scalar sort
+        // target (its in-process type is a kotlinx JsonElement, not a comparable scalar).
         val sortFields = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField }
+            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { it.name }
 
         // Per-field dispatch map (filter dispatch); only used inside the generated
@@ -154,8 +156,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // shape + value-coercion path) and the Exposed column's element Kotlin type
         // (drives the eq/ne/in value cast — Exposed's typed `Column<T>.eq` rejects a bare
         // `Any?`, so each predicate value is cast to the column's element type).
+        // The `field.string @dbColumnType=jsonb` open bag is excluded: it is not @filterable
+        // (so the FilterAllowlist omits it) AND its column element type is a kotlinx
+        // JsonElement — emitting a filter-dispatch arm (`p.value as JsonElement`) would
+        // reference an un-imported type and produce a controller that does not compile.
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField }
+            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
@@ -407,15 +413,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // Union scalar fields (base own + subtype-only), in the data class / table order.
         val scalarFields = (base.metaFields.filterNot { it is ObjectField || it is MapField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
-        val sortFields = base.metaFields.filterNot { it is ObjectField || it is MapField }.map { it.name }
+        val sortFields = base.metaFields
+            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
         val allowlistName = "${shortName}FilterAllowlist"
         // Union filter-dispatch specs (base + subtype columns) for the FR-009 pipeline — EXCLUDING the
-        // discriminator (route-addressable; enum column) and decimal columns (outside the cross-port
-        // HTTP filter contract). Mirrors the allowlist's exclusions, so the dispatch never references
-        // an enum/BigDecimal cast the generic pipeline can't coerce.
+        // discriminator (route-addressable; enum column), decimal columns (outside the cross-port
+        // HTTP filter contract) and the `field.string @dbColumnType=jsonb` open bag (a JSONB value is
+        // not a scalar filter target; its element type is an un-imported kotlinx JsonElement). Mirrors
+        // the allowlist's exclusions, so the dispatch never references a cast the generic pipeline
+        // can't coerce. (scalarFields itself is left intact — rowTo<Base> reuses it to map every column.)
         val filterSpecs = scalarFields
-            .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField }
+            .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField &&
+                !KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
         // Non-discriminator, non-PK columns the create/update handlers write from the body.
         val writableFields = scalarFields.map { it.name }
