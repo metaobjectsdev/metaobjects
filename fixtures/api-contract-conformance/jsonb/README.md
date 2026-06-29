@@ -87,10 +87,13 @@ booted over HTTP) are wired and green for:
   The generated lane locks the #105 codegen: the `payload` property is typed
   `System.Text.Json.JsonDocument` (Npgsql ↔ jsonb native), so a posted object
   binds with no string validator and round-trips parsed.
+- **Java** — reference (`JsonbReferenceServer`: JDK `HttpServer` + Postgres
+  testcontainer) + generated (`GeneratedJsonbControllerHarness`: codegen-spring
+  `DocumentController`/`DocumentDto` compiled and booted over MockMvc behind the
+  in-memory repo seam). The generated DTO types the bag as `Object` (#103). The
+  runtime/OMDB write half is gated separately by
+  `integration-tests/.../OpenJsonbWriteRoundtripTest` (writes the open bag
+  through `ObjectManagerDB.createObject` and reads it back parsed).
 
-Deferred (corpus is ready; follow-up): **Java**. Its api-contract harness binds
-the per-entity DTO shape statically (the JVM generated harness reflects a fixed
-`Author` constructor arity + ships a hand-written in-memory repo source), so
-adding the `Document` entity means a new reference server + generated harness
-(mirroring its `m2m/` and `tph/` sub-corpus harnesses) rather than a focused
-fixture edit. Tracked in #98.
+All five ports are now wired and green — both lanes each. The jsonb open-bag
+parsed-value contract is locked cross-port at the api-contract boundary.
