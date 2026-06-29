@@ -147,3 +147,56 @@ describe("buildProjectionViews — scoped aggregate (origin.aggregate @filter)",
     expect(v!.sql).not.toContain("FILTER (WHERE");
   });
 });
+
+describe("buildProjectionViews — package-qualified relationship @objectRef", () => {
+  // A relationship's @objectRef is package-qualified ("acme::Week") — the shape the
+  // directory loader produces for a same-package objectRef authored bare. The join
+  // resolver keyed findObject on the RAW objectRef while findObject keys on the BARE
+  // name, so the join (and every aggregate that traverses it) was silently dropped —
+  // the view degraded to PK + passthroughs only. Must stripPackage before findObject,
+  // exactly as the @via/@of/@from paths already do.
+  const model = [
+    {
+      "object.entity": {
+        name: "Program",
+        children: [
+          { "source.rdb": { "@table": "programs" } },
+          { "field.int": { name: "id" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+          { "relationship.composition": { name: "weeks", "@objectRef": "acme::Week", "@cardinality": "many" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Week",
+        children: [
+          { "source.rdb": { "@table": "weeks" } },
+          { "field.int": { name: "id" } },
+          { "field.int": { name: "programId" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+          { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "ProgramSummary",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+          { "field.int": { name: "id", extends: "acme::Program.id" } },
+          { "field.int": { name: "weekCount", children: [{ "origin.aggregate": { "@agg": "count", "@of": "acme::Week.id", "@via": "Program.weeks" } }] } },
+          { "identity.primary": { name: "id", extends: "acme::Program.id" } },
+        ],
+      },
+    },
+  ];
+
+  test("qualified @objectRef still resolves the inverse-FK join + aggregate", async () => {
+    const root = await load(model);
+    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    expect(v!.sql).toContain("LEFT OUTER JOIN weeks"); // join present, not dropped
+    expect(v!.sql).toContain("COUNT(DISTINCT");        // aggregate emitted, not degraded away
+    expect(v!.sql).toMatch(/COUNT\(DISTINCT [a-z0-9]+\.id\) AS week_count/);
+  });
+});

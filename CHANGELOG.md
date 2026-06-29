@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **codegen-ts — package-qualified relationship `@objectRef` dropped projection
+  joins.** When a projection's aggregate traversed a relationship whose `@objectRef`
+  was package-qualified (`pkg::Entity`) — the shape the directory loader produces for
+  a same-package objectRef even when authored bare — the join resolver looked the
+  target up by the raw qualified name while `findObject` keys on the bare name, so the
+  join silently failed to resolve and **every aggregate traversing it was dropped**:
+  the view degraded to PK + passthrough columns only. `extract-view-spec` now
+  `stripPackage`s the `@objectRef` before `findObject`, matching the `@via` / `@of` /
+  `@from` paths. Surfaced by a directory-loaded consumer whose `count`/filtered-`max`
+  aggregate columns vanished from a generated view while the string-loaded test fixture
+  (bare objectRef) passed.
+
 ## [0.14.0] — 2026-06-29
 
 _npm / PyPI / NuGet `0.14.0` · Maven Central `7.6.0`. A coordinated **minor** with
