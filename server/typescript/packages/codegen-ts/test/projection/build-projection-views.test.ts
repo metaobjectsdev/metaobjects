@@ -75,3 +75,75 @@ describe("buildProjectionViews — package-qualified @from + inherited source fi
     expect(v.sql).toContain("FROM programs");
   });
 });
+
+describe("buildProjectionViews — scoped aggregate (origin.aggregate @filter)", () => {
+  // Program 1→many Week (FK on Week). A projection counts all weeks and takes the
+  // max ordinal over only the 'active' weeks — the filtered-scalar pattern that a
+  // plain aggregate can't express.
+  const model = (filter: unknown) => [
+    {
+      "object.entity": {
+        name: "Program",
+        children: [
+          { "source.rdb": { "@table": "programs" } },
+          { "field.int": { name: "id" } },
+          { "field.string": { name: "title" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+          { "relationship.association": { name: "weeks", "@objectRef": "Week", "@cardinality": "many" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Week",
+        children: [
+          { "source.rdb": { "@table": "weeks" } },
+          { "field.int": { name: "id" } },
+          { "field.int": { name: "programId" } },
+          { "field.int": { name: "ordinal" } },
+          { "field.string": { name: "status" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+          { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "ProgramSummary",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+          { "field.int": { name: "id", extends: "Program.id" } },
+          { "field.int": { name: "weekCount", children: [{ "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } }] } },
+          {
+            "field.int": {
+              name: "activeMax",
+              children: [{ "origin.aggregate": { "@agg": "max", "@of": "Week.ordinal", "@via": "Program.weeks", "@filter": filter } }],
+            },
+          },
+          { "identity.primary": { name: "id", extends: "Program.id" } },
+        ],
+      },
+    },
+  ];
+
+  test("postgres: filtered max renders FILTER (WHERE …); plain count unaffected", async () => {
+    const root = await load(model({ status: { eq: "active" } }));
+    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    expect(v!.sql).toContain("COUNT(DISTINCT");          // plain count still emits
+    expect(v!.sql).toMatch(/MAX\([a-z0-9]+\.ordinal\) FILTER \(WHERE [a-z0-9]+\.status = 'active'\) AS active_max/);
+    expect(v!.sql).toContain("LEFT OUTER JOIN weeks");   // inverse-FK join present
+  });
+
+  test("scalar filter desugars to eq (status: 'active')", async () => {
+    const root = await load(model({ status: "active" }));
+    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    expect(v!.sql).toMatch(/FILTER \(WHERE [a-z0-9]+\.status = 'active'\)/);
+  });
+
+  test("sqlite: filtered max renders the portable CASE WHEN form", async () => {
+    const root = await load(model({ status: { eq: "active" } }));
+    const [v] = buildProjectionViews(root, { dialect: "sqlite", columnNamingStrategy: "snake_case" });
+    expect(v!.sql).toMatch(/MAX\(CASE WHEN [a-z0-9]+\.status = 'active' THEN [a-z0-9]+\.ordinal END\) AS active_max/);
+    expect(v!.sql).not.toContain("FILTER (WHERE");
+  });
+});

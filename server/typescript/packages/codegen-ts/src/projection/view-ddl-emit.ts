@@ -1,4 +1,4 @@
-import type { JoinNode, ViewSpec } from "./view-spec.js";
+import type { JoinNode, ViewSpec, ViewFilterClause } from "./view-spec.js";
 
 // Quote an identifier only when it isn't a plain lowercase snake identifier —
 // exactly postgres's own rule. This keeps snake_case output unquoted (the common
@@ -32,17 +32,56 @@ export interface EmitOptions {
   readonly bodyOnly?: boolean;
 }
 
-function renderColumn(c: import("./view-spec.js").SelectColumn): string {
+/** SQL literal for a filter value, dialect-aware for booleans. */
+function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") {
+    return dialect === "sqlite" ? (value ? "1" : "0") : (value ? "TRUE" : "FALSE");
+  }
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+const FILTER_OP_SQL: Readonly<Record<string, string>> = {
+  eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
+};
+
+/** Render a resolved {@link ViewFilterClause} to a SQL boolean expression. */
+function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialect"]): string {
+  if (clause.kind === "and" || clause.kind === "or") {
+    const joined = clause.clauses.map((c) => renderFilterCond(c, dialect)).join(clause.kind === "and" ? " AND " : " OR ");
+    return `(${joined})`;
+  }
+  const ref = quoteRef(clause.ref);
+  if (clause.op === "isNull") return clause.value === false ? `${ref} IS NOT NULL` : `${ref} IS NULL`;
+  if (clause.op === "in") {
+    const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => sqlLiteral(v, dialect));
+    return `${ref} IN (${vals.join(", ")})`;
+  }
+  const op = FILTER_OP_SQL[clause.op];
+  if (!op) throw new Error(`view-ddl-emit: unsupported aggregate filter operator "${clause.op}".`);
+  return `${ref} ${op} ${sqlLiteral(clause.value, dialect)}`;
+}
+
+function renderColumn(c: import("./view-spec.js").SelectColumn, dialect: EmitOptions["dialect"]): string {
   const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
   const alias = quoteIfNeeded(c.dbColAlias);
   if (c.kind === "passthrough") {
     return `${src} AS ${alias}`;
   }
   // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
+  // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
+  // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
+  const cond = c.filter ? renderFilterCond(c.filter, dialect) : undefined;
   if (c.agg === "count") {
+    if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
+    if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
     return `COUNT(DISTINCT ${src}) AS ${alias}`;
   }
-  return `${c.agg.toUpperCase()}(${src}) AS ${alias}`;
+  const fn = c.agg.toUpperCase();
+  if (cond && dialect === "sqlite") return `${fn}(CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
+  if (cond) return `${fn}(${src}) FILTER (WHERE ${cond}) AS ${alias}`;
+  return `${fn}(${src}) AS ${alias}`;
 }
 
 function renderJoin(
@@ -76,7 +115,7 @@ function renderJoin(
 
 export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
-    .map((c) => "    " + renderColumn(c))
+    .map((c) => "    " + renderColumn(c, options.dialect))
     .join(",\n");
   const fromClause = `  FROM ${quoteIfNeeded(options.baseTableName)} ${spec.joinTree.baseAlias}`;
   const joinsClause = spec.joinTree.joins
