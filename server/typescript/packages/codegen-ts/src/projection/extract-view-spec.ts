@@ -277,7 +277,11 @@ function buildJoinTree(
         const rel = findRelationship(currentObj, relName);
         if (!rel) break;
         const targetName = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-        const target = targetName ? root.findObject(targetName) : undefined;
+        // @objectRef may be package-qualified ("pkg::Entity") — the directory loader
+        // qualifies a same-package objectRef even when authored bare — but findObject
+        // keys on the BARE name (like the @via/@of/@from paths above). Strip first, or
+        // the join (and every aggregate traversing it) is silently dropped.
+        const target = targetName ? root.findObject(stripPackage(targetName)) : undefined;
         if (!target || !targetName) break;
 
         const cardAttr = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
