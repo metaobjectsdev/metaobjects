@@ -11,6 +11,7 @@
 // Scalars / temporal / Guid / enum pass straight through to Normalization.
 
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace MetaObjects.IntegrationTests.Runner;
@@ -41,6 +42,10 @@ public static class EntityRow
         var t = value.GetType();
         if (t.IsPrimitive || value is string or decimal or DateTime or DateOnly or TimeOnly or Guid or Enum)
             return value;
+        // A @dbColumnType:jsonb open-bag surfaces as JsonDocument/JsonElement (issue #98) —
+        // pass it through so Normalization re-serializes the parsed value with sorted keys,
+        // exactly as a string-typed jsonb column does. NOT a POCO to reflect over.
+        if (value is JsonDocument or JsonElement) return value;
         // A nested owned POCO → field-keyed JSON string (Normalization sorts the keys).
         return PocoToJsonNode(value).ToJsonString();
     }
