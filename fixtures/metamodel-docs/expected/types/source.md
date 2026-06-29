@@ -32,6 +32,8 @@ The relational-database paradigm source (ADR-0007): binds an object to a physica
 
 **Rules:** ADR-0007: source declares where an object's data lives; rdb is the relational paradigm subtype. An object may declare multiple sources, distinguished by @role, with exactly ONE @role: "primary" per object (write-through CQRS: a writable table for writes plus a read-only view for reads). The physical name is the @table attr (or the @kind-matching alias), never the structural `name`. Read-only-ness is derived from @kind (table → writable; view / materializedView / storedProc / tableFunction → read-only). The pre-v2 dbTable / dbView subtypes are retired.
 
+**When to use:** The entity is backed by a relational table or view. Set @table/@kind — the default persistence source for any entity.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |

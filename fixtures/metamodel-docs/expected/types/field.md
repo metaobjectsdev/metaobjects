@@ -46,6 +46,8 @@ True/false flag. Binds to the native boolean type; DB column is BOOLEAN.
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** A true/false flag.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -78,6 +80,8 @@ Stores money as integer minor units (cents). Binds to long; the client formats v
 
 **Rules:** Storage is integer minor units (cents for USD, yen for JPY) — the wire form is unchanged from long. The server never formats currency; all formatting is client-side via Intl.NumberFormat using @currency (ISO 4217) and @locale (BCP 47). Float arithmetic for money is forbidden.
 
+**When to use:** A column holds money. Use currency so it stores integer minor-units and the client formats it — never floats or hand-rolled cents math.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -108,6 +112,8 @@ Stores money as integer minor units (cents). Binds to long; the client formats v
 Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** A column is a calendar date with no time-of-day. Use date instead of a string.
 
 **Attributes**
 
@@ -142,6 +148,8 @@ Precision-exact decimal (use @precision/@scale). Native TS binding is string (lo
 
 **Rules:** The wire and native-TS form is a STRING to stay precision-exact end-to-end (Drizzle pg numeric infers as string; SP-H/ADR-0019). Set @precision (total significant digits) and @scale (digits right of the point) to drive NUMERIC(p,s).
 
+**When to use:** A value needs exact precision (money amounts, rates, quantities). Use decimal with @precision/@scale — never double, which loses precision.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -174,6 +182,8 @@ Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/nu
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** An approximate floating-point number where exactness is not required. For money/precision use decimal.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -205,6 +215,8 @@ String-backed enumeration constrained to a closed set of member symbols (@values
 **Owning provider:** metaobjects-core-types
 
 **Rules:** Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).
+
+**When to use:** A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.
 
 **Attributes**
 
@@ -272,6 +284,8 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** A whole number within +/-2^31. Use long instead if values can exceed that.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -301,6 +315,8 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** A whole number that may exceed 32 bits (ids, counters, epoch millis).
 
 **Attributes**
 
@@ -333,6 +349,8 @@ An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb colu
 **Owning provider:** metaobjects-core-types
 
 **Rules:** Keys are always strings. Set exactly one of @valueType (a scalar value subtype: string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid) or @objectRef (a value-object name or FQN). Stored as a single jsonb column holding the JSON object — never a native array; isArray does not apply.
+
+**When to use:** A field is an open-keyed map of values (Record<string,V>). Use it for dynamic keys instead of an untyped jsonb string.
 
 **Attributes**
 
@@ -368,6 +386,8 @@ A nested structured value (set @objectRef to the target object). Storage is gove
 
 **Rules:** Set @objectRef to the nested object's name (or FQN). @storage selects physical layout — flattened expands into prefixed parent columns (isArray must be false), jsonb stores the structured value (or array when isArray=true) in one jsonb column, subdocument emits no Postgres column. Defaults to single-jsonb-column when @storage is absent.
 
+**When to use:** A field holds a nested structured value (or an array of them). Set @objectRef + @storage so the shape is typed and persisted (flattened/jsonb) instead of an untyped blob.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -399,6 +419,8 @@ A nested structured value (set @objectRef to the target object). Storage is gove
 Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** Plain variable-length text. Set @maxLength to size the column. The default for textual data.
 
 **Attributes**
 
@@ -462,6 +484,8 @@ Date + time-of-day instant (optionally with timezone). Binds to the native date/
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** A column records an instant (created/updated at). Use timestamp so it serializes ISO-8601 with timezone consistently.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -492,6 +516,8 @@ Date + time-of-day instant (optionally with timezone). Binds to the native date/
 Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string.
 
 **Attributes**
 

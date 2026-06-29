@@ -36,6 +36,8 @@ An object that owns its data: own identity, writable sources, and lifecycle. The
 
 **Rules:** object.entity owns data — it declares its own identity, its primary source must be a writable @kind (read-only kinds may appear only in a read role), and it carries lifecycle. A field carrying origin.* is derived ⇒ read-only wherever it lives, including on an entity. Templates (template.*) may be nested so a prompt can be co-located with its owning entity. See ADR-0028 (object taxonomy).
 
+**When to use:** The thing owns its own data and lifecycle — a table you create/read/update/delete. The default for any persisted resource.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -61,6 +63,8 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 
 **Rules:** object.projection is a derived read-only representation: every field is extends-bound, origin-derived, or self-declared-under-external-assembly, and all are read-only at the subtype level. Identity is optional and, when present, MUST extend an entity identity. Sources are restricted to read-only @kinds. The declared field set IS the exposure — an inclusive list, fail-closed. A projection NEVER declares relationships (derivation is expressed via @via, not a relationship child) and NEVER co-locates templates — hence its child set omits both relationship and template. See ADR-0028 (object taxonomy, projection).
 
+**When to use:** You need a derived, read-only view over entities — a report, summary, or joined/aggregated read model. Declare it (with origin.* children) instead of hand-writing the SELECT/joins; it stays read-only and regenerates.
+
 **Attributes**
 
 _No subtype-specific attributes._
@@ -80,6 +84,8 @@ A value object — pure shape with NO identity and NO source, ever. Constructed 
 **Owning provider:** metaobjects-core-types
 
 **Rules:** object.value is pure shape: it NEVER declares an identity and NEVER declares a source, in any role. It is constructed — by a caller, by assembly, or by embedding — and is never populated from a backing store. It may `extends` an entity's fields to reuse their shape. @normalize is the object-level default ASCII normalization mode applied to this value's enum fields' tolerant extract (each field may still override per-field). See ADR-0028 (object taxonomy, value purity).
+
+**When to use:** You need a reusable typed shape with NO identity and NO table — an embedded value, a DTO, a prompt/response payload. Constructed in memory, never persisted on its own.
 
 **Attributes**
 

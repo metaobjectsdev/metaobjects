@@ -34,6 +34,8 @@ An output / serialization template (FR-004): every rendered artifact other than 
 
 **Rules:** output is either a document (@kind="document" or absent → renders @textRef in @format to one string) or an email (@kind="email" → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments.
 
+**When to use:** You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -62,6 +64,8 @@ An LLM-targeted renderable prompt template (FR-004). Carries the generic referen
 **Owning provider:** metaobjects-core-types
 
 **Rules:** prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation.
+
+**When to use:** You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable — instead of string-building it in code.
 
 **Attributes**
 

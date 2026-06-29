@@ -18,6 +18,8 @@ A shared/independent containment — the parent groups the target but does not o
 
 **Rules:** M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Aggregation is shared/independent — the target outlives the parent (default @onDelete set-null).
 
+**When to use:** One entity groups others it does NOT own (children outlive the parent; delete sets the FK null). Use instead of composition when there is no ownership.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -41,6 +43,8 @@ A plain reference to another entity — no ownership; the target has an independ
 **Owning provider:** metaobjects-core-types
 
 **Rules:** M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Association is a plain reference — the target's lifecycle is independent (default @onDelete restrict).
+
+**When to use:** A plain directed reference to another entity, no ownership or cascade. The lightest link — when you just need to point at another entity.
 
 **Attributes**
 
@@ -89,6 +93,8 @@ An owned containment — the parent owns the target's lifecycle; deleting the pa
 **Owning provider:** metaobjects-core-types
 
 **Rules:** M:N is expressed by @cardinality:'many' + @objectRef + @through: @through names a junction entity that MUST declare two identity.reference children (one per FK side), and the relationship's FK fields are DERIVED from those references — never restated. @sourceRefField disambiguates a DIRECTED self-join by naming the source-side FK field on the junction; @symmetric marks an UNDIRECTED self-join (union-on-read) valid only when @objectRef == the declaring entity; the two are mutually exclusive. Composition is owned lifecycle — the children do not outlive the parent (default @onDelete cascade).
+
+**When to use:** You need a parent that OWNS a child collection (one-to-many, cascade on delete). Declare it to generate the FK + typed navigation instead of a bare FK field + hand-written joins.
 
 **Attributes**
 
