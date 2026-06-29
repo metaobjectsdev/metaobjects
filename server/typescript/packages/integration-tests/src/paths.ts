@@ -28,5 +28,11 @@ export const API_CONTRACT_M2M_SCENARIOS_DIR = resolve(API_CONTRACT_M2M_DIR, "sce
 export const API_CONTRACT_TPH_DIR = resolve(API_CONTRACT_DIR, "tph");
 export const API_CONTRACT_TPH_SCENARIOS_DIR = resolve(API_CONTRACT_TPH_DIR, "scenarios");
 
+// fixtures/api-contract-conformance/jsonb/ — `field.string @dbColumnType:jsonb`
+// open-bag parsed-value corpus (POST a JSON object, read it back as an object —
+// never a JSON-encoded string), both lanes.
+export const API_CONTRACT_JSONB_DIR = resolve(API_CONTRACT_DIR, "jsonb");
+export const API_CONTRACT_JSONB_SCENARIOS_DIR = resolve(API_CONTRACT_JSONB_DIR, "scenarios");
+
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

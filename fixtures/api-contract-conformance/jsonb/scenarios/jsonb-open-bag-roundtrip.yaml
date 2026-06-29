@@ -1,0 +1,79 @@
+name: jsonb-open-bag-roundtrip
+description: >
+  The `field.string @dbColumnType:jsonb` open-JSON-bag contract over HTTP: a
+  client POSTs a record whose jsonb field holds a JSON OBJECT and reads it back
+  as the same OBJECT — NOT a JSON-encoded string. This pins the API-boundary
+  half of the contract that the per-port fixes establish (TS `z.unknown()`,
+  Python `Any`, Java `Object`, Kotlin `JsonElement`, C# `JsonDocument`): the
+  generated DTO/validator must accept a posted object and the read path must
+  surface a parsed value, not a stringified `"{\"k\":\"v\"}"`.
+
+  Two seed rows (ids 1, 2) carry jsonb objects (read path); the next implicit-id
+  POST lands at id 3, the one after at id 4 (the seed runner advances the
+  sequence past max(id), mirroring the create-201 contract). Coverage:
+    - r1: GET a SEEDED row → jsonb object read back as an object.
+    - r2/r3: POST a nested object + GET it back → object on both write-echo and
+             persisted read.
+    - r4/r5: POST an object whose values include an ARRAY (jsonb holds any JSON)
+             + GET it back → structure preserved, parsed (never a string).
+requests:
+  - id: r1
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          title: "alpha"
+          payload: { seeded: true, n: 1 }
+
+  - id: r2
+    method: POST
+    path: /api/documents
+    body:
+      title: "gamma"
+      payload: { k: "v", n: 1, nested: { deep: true }, list: [1, 2, 3] }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          title: "gamma"
+          payload: { k: "v", n: 1, nested: { deep: true }, list: [1, 2, 3] }
+
+  - id: r3
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          title: "gamma"
+          payload: { k: "v", n: 1, nested: { deep: true }, list: [1, 2, 3] }
+
+  - id: r4
+    method: POST
+    path: /api/documents
+    body:
+      title: "delta"
+      payload: { items: [{ x: 1 }, { y: 2 }], flag: false }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          title: "delta"
+          payload: { items: [{ x: 1 }, { y: 2 }], flag: false }
+
+  - id: r5
+    method: GET
+    path: /api/documents/4
+    expect:
+      status: 200
+      body:
+        row:
+          id: 4
+          title: "delta"
+          payload: { items: [{ x: 1 }, { y: 2 }], flag: false }
