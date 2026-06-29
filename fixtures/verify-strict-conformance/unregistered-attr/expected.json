@@ -1,0 +1,10 @@
+{
+  "description": "The `verify` CLI command is strict-by-default (ADR-0023, issue #96). The input declares a registered field.string carrying one undeclared own @attr (@madeUpAttr). Strict verify must reject it; --lax must accept it.",
+  "strict": {
+    "exitNonZero": true,
+    "errorCode": "ERR_UNKNOWN_ATTR"
+  },
+  "lax": {
+    "exitZero": true
+  }
+}

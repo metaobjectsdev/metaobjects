@@ -5,7 +5,6 @@
       {
         "object.entity": {
           "name": "User",
-          "@dbTable": "users",
           "@forgeConfidence": 0.95,
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/users.schema.ts",
@@ -69,7 +68,6 @@
       {
         "object.entity": {
           "name": "Post",
-          "@dbTable": "posts",
           "@forgeConfidence": 0.95,
           "@forgeSource": "human",
           "@forgePrimaryLocation": "src/db/posts.schema.ts",
@@ -146,7 +144,6 @@
       {
         "object.entity": {
           "name": "Tag",
-          "@dbTable": "tags",
           "@forgeConfidence": 0.9,
           "@forgeSource": "human",
           "children": [

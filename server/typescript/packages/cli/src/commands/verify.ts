@@ -35,6 +35,11 @@ import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metao
 
 const DEFAULT_PROMPTS_DIR = "prompts";
 
+// Loader error code (from @metaobjectsdev/metadata's ERROR_CODES) raised by the
+// ADR-0023 strict-attr check for an undeclared/typo'd own @attr. Not individually
+// exported by the package, so named here to avoid an inline literal at the use site.
+const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
+
 /** Coerce a string-array attr (array, or a single string) into a string[]. */
 function attrAsStringArray(attr: unknown): string[] {
   if (Array.isArray(attr)) return attr.filter((s): s is string => typeof s === "string");
@@ -84,10 +89,13 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   }
   const configProviders = forgeConfig?.providers;
 
+  // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
+  // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
   let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
     root = await loadMemory(cwd, {
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
+      strict: !flags.lax,
     });
   } catch (err) {
     const msg = (err as Error).message;
@@ -96,6 +104,17 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
       return 2;
     }
     log.error(`failed to load metadata: ${msg}`);
+    // Strict-load rejection (ADR-0023): give the author the three exits — register
+    // the attr on a provider, stash it in the `attr.properties` bag, or pass --lax.
+    const code = (err as { code?: string }).code;
+    if (code === ERR_UNKNOWN_ATTR || msg.includes("Unknown attribute")) {
+      log.error(
+        "meta verify is strict (ADR-0023): every authored @attr must be declared. " +
+          "Fix: register the attr on a metadata provider, OR move arbitrary " +
+          "author-supplied properties into an `attr.properties` bag, OR re-run " +
+          "with `meta verify --lax` to keep the legacy open-attr load.",
+      );
+    }
     return 1;
   }
 

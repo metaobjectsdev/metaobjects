@@ -194,6 +194,12 @@ export interface VerifyFlags {
   anyExplicit: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
+  /**
+   * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
+   * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
+   * restores the legacy open-attr load (today's behavior). Default false (strict).
+   */
+  lax: boolean;
 }
 
 export function parseVerifyArgs(argv: string[]): VerifyFlags {
@@ -208,6 +214,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       templates: { type: "boolean", default: false },
       codegen: { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
+      lax: { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -246,6 +253,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     codegen,
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
+    lax: !!values.lax,
   };
 }
 

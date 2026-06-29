@@ -103,13 +103,31 @@ def _default_generators() -> list[Generator]:
     ]
 
 
-def _load_root(metadata_dir: str) -> tuple[MetaData | None, list[str]]:
-    """Load metadata; return ``(root, error_messages)``. ``root`` is None on error."""
-    result = MetaDataLoader.from_directory(metadata_dir)
+def _load_root(
+    metadata_dir: str, strict: bool = False
+) -> tuple[MetaData | None, list[str]]:
+    """Load metadata; return ``(root, error_messages)``. ``root`` is None on error.
+
+    ``strict`` (ADR-0023, #96) — when True, an undeclared own ``@attr`` →
+    ``ERR_UNKNOWN_ATTR``. Defaults False so ``gen`` / ``docs`` keep the legacy
+    open-attr load; only ``verify`` opts in (strict-by-default with a ``--lax``
+    escape).
+    """
+    result = MetaDataLoader.from_directory(metadata_dir, strict=strict)
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
     return result.root, []
+
+
+def _strict_load_hint() -> str:
+    """Actionable next-steps when strict verify rejects an undeclared @attr."""
+    return (
+        "verify is strict (ADR-0023): every authored @attr must be declared. Fix: "
+        "register the attr on a metadata provider, OR move arbitrary author-supplied "
+        "properties into an `attr.properties` bag, OR re-run with `--lax` to keep the "
+        "legacy open-attr load."
+    )
 
 
 def _resolve_generators(names: str) -> tuple[list[Generator], list[str]]:
@@ -174,6 +192,7 @@ def _generate(
     generators: list[Generator] | None = None,
     entity_filter: list[str] | None = None,
     emit_package_init: bool = True,
+    strict: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
@@ -186,9 +205,10 @@ def _generate(
     output is text/markdown/csv/json/xml/html, never a Python package) so no
     spurious ``__init__.py`` is scattered through their output tree. Returns
     ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
-    files are written.
+    files are written. ``strict`` (ADR-0023, #96) is threaded to the load — the
+    ``verify --codegen`` caller passes True; ``gen`` keeps the default False.
     """
-    root, errors = _load_root(metadata_dir)
+    root, errors = _load_root(metadata_dir, strict=strict)
     if root is None:
         return [], errors
     return _run_suite(root, out_dir, generators, entity_filter, emit_package_init), []
@@ -408,13 +428,20 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     # Reuse the exact gen code path — regenerate into a throwaway temp dir. The
     # --entities filter must match the `gen` that produced --out, or the diff
     # reports the un-emitted entities as spurious drift.
+    # ADR-0023 strict-by-default (#96): verify loads strict unless --lax is given,
+    # so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
+    strict = not getattr(args, "lax", False)
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
-        written, errors = _generate(args.metadata_dir, tmp, None, entities)
+        written, errors = _generate(
+            args.metadata_dir, tmp, None, entities, strict=strict
+        )
         if errors:
             print("error: failed to load metadata:", file=sys.stderr)
             for msg in errors:
                 print(f"  {msg}", file=sys.stderr)
+            if strict and any("ERR_UNKNOWN_ATTR" in m for m in errors):
+                print(_strict_load_hint(), file=sys.stderr)
             return 1
 
         expected = _relative_set(Path(tmp))
@@ -478,11 +505,16 @@ def _verify_templates(args: argparse.Namespace) -> int:
         )
         return 2
 
-    root, errors = _load_root(args.metadata_dir)
+    # ADR-0023 strict-by-default (#96) — same as --codegen: an undeclared @attr
+    # fails verify unless --lax is passed.
+    strict = not getattr(args, "lax", False)
+    root, errors = _load_root(args.metadata_dir, strict=strict)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
             print(f"  {msg}", file=sys.stderr)
+        if strict and any("ERR_UNKNOWN_ATTR" in m for m in errors):
+            print(_strict_load_hint(), file=sys.stderr)
         return 1
 
     provider = FilesystemProvider(template_root)
@@ -759,6 +791,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--entities",
         default=None,
         help="comma-separated entity allowlist for --codegen drift (match `gen --entities`)",
+    )
+    verify.add_argument(
+        "--lax",
+        action="store_true",
+        help=(
+            "opt out of strict-attr load (ADR-0023, #96): verify is strict by "
+            "default — an undeclared/typo'd @attr fails. --lax restores the legacy "
+            "open-attr load."
+        ),
     )
     verify.set_defaults(func=_cmd_verify)
 
