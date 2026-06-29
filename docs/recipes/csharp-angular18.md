@@ -263,8 +263,8 @@ For codegen on metadata change:
 # C# half (one-shot)
 cd backend && dotnet run --project ../tools/MetaObjects.Cli -- gen
 
-# TS / Angular half (one-shot or --watch)
-cd frontend && npx meta gen --watch
+# TS / Angular half (one-shot; re-run on metadata change)
+cd frontend && npx meta gen
 ```
 
 ## 7. Production deploy notes
