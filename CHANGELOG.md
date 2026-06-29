@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.14.1] — 2026-06-29
+
+_npm `0.14.1` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 - **codegen-ts — package-qualified relationship `@objectRef` dropped projection
   joins.** When a projection's aggregate traversed a relationship whose `@objectRef`
