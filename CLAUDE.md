@@ -19,7 +19,7 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 _Last refreshed 2026-06-22._
 
-**TypeScript reference implementation** is **published to npm at `0.12.4`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# at `0.12.0` (NuGet); Python at `0.12.1` (PyPI); Java / Kotlin at `7.4.3` (Maven Central). 2500+ tests passing across the workspace. (FR-024 Phase E — projection/value validation parity + B4b cutover + projection codegen — shipped to Java/Kotlin, C#, and Python in these releases; TS already had it.)
+**TypeScript reference implementation** is **published to npm at `0.13.0`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# at `0.13.0` (NuGet); Python at `0.13.0` (PyPI); Java / Kotlin at `7.5.0` (Maven Central). 2500+ tests passing across the workspace. (The `0.13.0` / `7.5.0` line adds **declarative Mustache template-codegen** on all five ports — `scope` [perEntity/perPackage/perModel] + `outputPattern`, byte-gated cross-port — plus TS **scaffold-and-own** [ADR-0034]: `meta init` copies owned codegen generators into the consumer repo.)
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 
@@ -38,7 +38,7 @@ _Last refreshed 2026-06-22._
 
 **Key cross-language features shipped:** FR5 family (a/b/c/d/e + WARN envelope-shape — actionable loader errors per ADR-0009); FR-003 (Java RDB runtime persistence + projections; schema migrations are TS-only — the Java migration engine was removed); FR-006 (template.output parser-on-receipt codegen per ADR-0010 in all 5 ports); FR-008 + FR-009 (cross-port REST API contract + 10 filter operators); FR-018 (M:N relationship codegen in all 5 ports — entity navigation + idiomatic ORM wiring [Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic+route as the SQLAlchemy-secondary equivalent] + REST traversal `GET /<source-plural>/{id}/<relation>` + Tier-2 docs, gated by the shared api-contract m2m corpus in both lanes + persistence-conformance; the TanStack M:N client hook is a deferred client-ergonomics follow-up); SP-H (field-subtype end-to-end hardening: every concrete `field.*` subtype write+read round-trips cross-port via the persistence `op: roundtrip` gate; cut `field.byte`/`field.short`/`field.class` non-functional stubs; cross-port filter-op reconciliation for uuid/currency); source v2 paradigm (ADR-0007); metadata-ktx Kotlin facade; per-target output directories (TS codegen).
 
-**Current release line.** `0.11.x` (npm / NuGet / PyPI) · `7.4.x` (Maven Central). The latest releases add semantic cross-field validators, expression/functional indexes, metadata reference enforcement, and the `field.map` subtype (open-keyed maps → a single `jsonb` column). See `CHANGELOG.md` for the per-version detail. GA promotion is the next release move.
+**Current release line.** `0.13.x` (npm / NuGet / PyPI) · `7.5.x` (Maven Central). The `0.13.0` / `7.5.0` release adds **declarative Mustache template-codegen** on all five ports (a generator can take its walk declaratively via `scope` + `outputPattern` instead of hand-written code; the CLI ports expose a JSON `--template-spec` surface), the `perPackage` engine scope, and TS **scaffold-and-own** (ADR-0034 — `meta init` copies owned codegen generators into the consumer repo). See `CHANGELOG.md` for the per-version detail. GA promotion is the next release move.
 
 See `spec/roadmap.md` for the active + planned work picture.
 
