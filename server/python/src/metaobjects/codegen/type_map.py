@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.shared.structural import KEY_IS_ARRAY
 
 
@@ -94,6 +95,17 @@ def py_type_for(field: MetaField) -> PyType:
             base = PyType(f"Literal[{members}]", ("from typing import Literal",))
         else:
             base = PyType("str")
+    elif (
+        field.sub_type == fc.FIELD_SUBTYPE_STRING
+        and field.attrs().get(dbc.FIELD_ATTR_DB_COLUMN_TYPE) == dbc.DB_COLUMN_TYPE_JSONB
+    ):
+        # Issue #98 — a field.string carrying @dbColumnType:jsonb is the escape hatch
+        # for a genuinely-open JSON column (ADR-0013). pg8000 auto-decodes a jsonb
+        # column to a native Python object (dict/list/scalar) at read time, so a `str`
+        # annotation is a type lie. Bind ``Any`` — the Python analogue of TS's
+        # z.unknown() (#97) — since jsonb can hold any JSON value. (Other ports whose
+        # drivers return jsonb as raw text correctly keep their string type.)
+        base = PyType("Any", ("from typing import Any",))
     else:
         base = _SCALAR.get(field.sub_type, PyType("str"))
     if field_is_array(field):

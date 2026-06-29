@@ -102,3 +102,17 @@ def test_dbcolumntype_uuid_string_stays_str() -> None:
     f = _field(fc.FIELD_SUBTYPE_STRING)
     f.set_attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE, dbc.DB_COLUMN_TYPE_UUID)
     assert py_type_for(f).expr == "str"
+
+
+def test_dbcolumntype_jsonb_string_becomes_any() -> None:
+    # Issue #98 — a field.string carrying @dbColumnType:jsonb stores genuinely-open
+    # JSON; pg8000 auto-decodes a jsonb column to a native Python object (dict/list/
+    # scalar), so `str` is a type lie. Emit `Any` (the Python analogue of TS's
+    # z.unknown(), #97), threading `from typing import Any` into the module imports.
+    from metaobjects.meta.persistence.db import db_constants as dbc
+
+    f = _field(fc.FIELD_SUBTYPE_STRING)
+    f.set_attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE, dbc.DB_COLUMN_TYPE_JSONB)
+    t = py_type_for(f)
+    assert t.expr == "Any"
+    assert "from typing import Any" in t.imports
