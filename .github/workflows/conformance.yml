@@ -1,5 +1,17 @@
 name: conformance
-on: [push, pull_request]
+
+# COST: the cross-port conformance matrix + full Java reactor + drift/mutation gates
+# are heavy, so they NO LONGER run on every push/PR — release gate (tag `v*`) +
+# on-demand (workflow_dispatch) only. Run them LOCALLY before opening/merging a PR:
+#   scripts/ci-local.sh            # full parity (this + integration suite + drift)
+#   scripts/ci-local.sh --quick    # everything except the docker integration suite
+# The .githooks/pre-push hook also runs the TS build+typecheck gate locally, and the
+# cheap public-repo SECURITY gate (hygiene / leak-scan) still runs on every PR.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   fixture-lint:

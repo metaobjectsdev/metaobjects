@@ -316,7 +316,18 @@ maintainer's GPG key.
 
 ## Procedure
 
-1. **Bump** the version in all poms (parent + modules): `grep -rl 7.4.0 --include=pom.xml server/java | xargs sed -i 's/7\.4\.0/7.4.1/g'` (verify every `<version>7.4.0</version>` is the project version, not a third-party dep).
+1. **Bump** the version in **all** poms — parent + reactor modules **and the two
+   reactor-EXCLUDED integration-test modules** (`server/java/integration-tests/pom.xml`,
+   `server/java/integration-tests-kotlin/pom.xml`). Use the tree-wide `grep`, NOT
+   `mvn versions:set`: `versions:set` only walks the reactor and silently leaves the
+   excluded modules behind, so their `<parent><version>` lags and the next tag fails
+   `release-gate (java|kotlin)` with "Non-resolvable parent POM".
+   ```bash
+   grep -rl 7.4.0 --include=pom.xml server/java | xargs sed -i 's/7\.4\.0/7.4.1/g'
+   ```
+   (Verify every `<version>7.4.0</version>` is the project version, not a third-party dep.)
+   Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
+   (also enforced on every push by `.githooks/pre-push` and by `scripts/ci-local.sh`).
 2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
 3. **Deploy:** `mvn -Prelease deploy` from `server/java`. The `central-publishing-maven-plugin`
    (`<publishingServerId>central</publishingServerId>`, `<autoPublish>true</autoPublish>`) uploads
