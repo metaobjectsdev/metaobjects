@@ -17,11 +17,23 @@
 // object metadata. Default off. Most projects don't need stock forms.
 
 import { code, imp } from "ts-poet";
-import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import { MetaField, MetaObject, stripPackage } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
+  FIELD_SUBTYPE_OBJECT,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_LONG,
+  FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_CURRENCY,
+  FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIME,
+  FIELD_SUBTYPE_TIMESTAMP,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
 
@@ -49,18 +61,196 @@ function isAutoManaged(field: MetaField): boolean {
 /** Visible form fields = all fields minus PK, DB-auto-defaulted, and (for a TPH
  *  subtype) the discriminator — which is implicit (the form is subtype-specific)
  *  and injected server-side, never rendered. */
-function visibleFields(entity: MetaObject, discField?: string): string[] {
+function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
   const pkNames = primaryFieldNames(entity);
-  const names: string[] = [];
+  const out: MetaField[] = [];
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
   for (const child of entity.fields()) {
     if (child.ownAttr("formExclude") === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     if (discField !== undefined && child.name === discField) continue;
-    names.push(child.name);
+    out.push(child);
   }
-  return names;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Nested value-object sub-forms (issue #95)
+// ---------------------------------------------------------------------------
+
+/** Max recursion depth for nested value objects — a backstop alongside the
+ *  per-branch visited-set cycle guard. */
+const MAX_VO_DEPTH = 5;
+
+/** Resolve a `field.object`'s `@objectRef` to the referenced value object from
+ *  the loaded root. Mirrors the resolution the Zod / inferred-type templates use
+ *  (read `@objectRef`, strip the package, look the bare name up on the root). */
+function resolveValueObject(field: MetaField, ctx: RenderContext): MetaObject | undefined {
+  if (field.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+  if (typeof ref !== "string" || ref.length === 0) return undefined;
+  const base = stripPackage(ref);
+  return ctx.loadedRoot.objects().find((o) => o.name === base) as MetaObject | undefined;
+}
+
+/** camelCase / PascalCase → human label ("llmConfig" → "Llm Config"). */
+function humanize(s: string): string {
+  return s
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+/** A real HTML <input type=...> for a scalar field subtype, or undefined (text). */
+function htmlTypeForSubType(subType: string): string | undefined {
+  switch (subType) {
+    case FIELD_SUBTYPE_INT:
+    case FIELD_SUBTYPE_LONG:
+    case FIELD_SUBTYPE_DOUBLE:
+    case FIELD_SUBTYPE_FLOAT:
+    case FIELD_SUBTYPE_DECIMAL:
+    case FIELD_SUBTYPE_CURRENCY:
+      return "number";
+    case FIELD_SUBTYPE_BOOLEAN:
+      return "checkbox";
+    case FIELD_SUBTYPE_DATE:
+      return "date";
+    case FIELD_SUBTYPE_TIME:
+      return "time";
+    case FIELD_SUBTYPE_TIMESTAMP:
+      return "datetime-local";
+    default:
+      return undefined;
+  }
+}
+
+/** The react-hook-form `register(...)` argument for a nested field path. A
+ *  static path is a plain string literal; a path threaded through an array
+ *  element carries a runtime `${index}` and must be a template literal. */
+function registerArg(path: string, dynamic: boolean): string {
+  return dynamic ? `\`${path}\`` : JSON.stringify(path);
+}
+
+/** A stable, identifier-safe useFieldArray hook variable for a static path. */
+function arrayHookVar(path: string): string {
+  return `${path.replace(/[^A-Za-z0-9]+/g, "_")}Array`;
+}
+
+interface FieldRender {
+  jsx: string;
+  /** useFieldArray declarations to hoist to the top of the component. */
+  hooks: string[];
+}
+
+/**
+ * Render one NESTED field inside a value-object sub-form. Dispatches on subtype:
+ *  - a resolvable `field.object` (single) → a nested <fieldset> recursing into
+ *    the value object's fields;
+ *  - a resolvable `field.object` array → a useFieldArray repeatable group (when
+ *    the path is static) or a degraded element-shape fieldset + TODO (when the
+ *    path is already inside an array element, i.e. dynamic);
+ *  - anything else → a single <input> bound via a nested react-hook-form path.
+ */
+function renderNestedField(
+  field: MetaField,
+  path: string,
+  dynamic: boolean,
+  ctx: RenderContext,
+  visited: Set<string>,
+  depth: number,
+): FieldRender {
+  const vo = resolveValueObject(field, ctx);
+  if (vo === undefined) {
+    // Scalar / enum / unresolved object → a single bound input.
+    const htmlType = htmlTypeForSubType(field.subType);
+    const typeAttr = htmlType !== undefined ? ` type=${JSON.stringify(htmlType)}` : "";
+    return {
+      jsx: `<div className="metaobjects-field" key=${JSON.stringify(path)}>
+  <label className="metaobjects-field-label">${humanize(field.name)}</label>
+  <input className="metaobjects-field-input"${typeAttr} {...form.register(${registerArg(path, dynamic)})} />
+</div>`,
+      hooks: [],
+    };
+  }
+
+  const voKey = vo.fqn();
+  if (visited.has(voKey) || depth >= MAX_VO_DEPTH) {
+    // Cycle or too deep — emit a labeled shell + TODO instead of a flat input.
+    return {
+      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
+  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
+  {/* TODO(#95): nested value object ${vo.name} not expanded (recursion guard). Author this sub-form by hand. */}
+</fieldset>`,
+      hooks: [],
+    };
+  }
+  const nextVisited = new Set(visited);
+  nextVisited.add(voKey);
+
+  if (!field.isArray) {
+    // Single nested value object → a fieldset recursing into its fields.
+    const inner: string[] = [];
+    const hooks: string[] = [];
+    for (const sub of vo.fields()) {
+      const r = renderNestedField(sub, `${path}.${sub.name}`, dynamic, ctx, nextVisited, depth + 1);
+      inner.push(r.jsx);
+      hooks.push(...r.hooks);
+    }
+    return {
+      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
+  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
+${inner.join("\n")}
+</fieldset>`,
+      hooks,
+    };
+  }
+
+  // Array of value objects.
+  if (dynamic) {
+    // Already inside an array element — a static useFieldArray name is impossible.
+    // Degrade to the element shape + a single clear TODO (never a flat input).
+    return {
+      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
+  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
+  {/* TODO(#95): arrays of value objects nested inside another array are not auto-wired
+      (the react-hook-form path is dynamic). Render this repeatable group by hand. */}
+</fieldset>`,
+      hooks: [],
+    };
+  }
+
+  // Static path → a useFieldArray-based repeatable group.
+  const hookVar = arrayHookVar(path);
+  const elementPath = `${path}.\${index}`;
+  const inner: string[] = [];
+  const hooks: string[] = [`const ${hookVar} = useFieldArray({ control: form.control, name: ${JSON.stringify(path)} as never });`];
+  for (const sub of vo.fields()) {
+    const r = renderNestedField(sub, `${elementPath}.${sub.name}`, true, ctx, nextVisited, depth + 1);
+    inner.push(r.jsx);
+    hooks.push(...r.hooks);
+  }
+  const label = humanize(field.name);
+  const itemLabel = humanize(vo.name);
+  return {
+    jsx: `<div className="metaobjects-field-array" key=${JSON.stringify(path)}>
+  <span className="metaobjects-field-array-label">${label}</span>
+  {${hookVar}.fields.map((item, index) => (
+    <fieldset className="metaobjects-fieldset" key={item.id}>
+      <legend className="metaobjects-fieldset-legend">${itemLabel} {index + 1}</legend>
+${inner.join("\n")}
+      <button type="button" className="metaobjects-field-array-remove" onClick={() => ${hookVar}.remove(index)}>
+        Remove
+      </button>
+    </fieldset>
+  ))}
+  <button type="button" className="metaobjects-field-array-add" onClick={() => ${hookVar}.append({} as never)}>
+    Add ${itemLabel}
+  </button>
+</div>`,
+    hooks,
+  };
 }
 
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
@@ -88,11 +278,9 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
   const useEntityFormSym = imp("useEntityForm@@metaobjectsdev/react");
 
-  // For each visible field, emit a label + input + error block.
-  // The input gets every metadata-derived attr via {...form.input.<field>}.
-  const fieldBlocks = fields
-    .map(
-      (f) => `        <div className="metaobjects-field" key=${JSON.stringify(f)}>
+  // The flat scalar block: a label + pre-bound input + error span, driven
+  // entirely by the entity constants via `form.input.<field>`. Unchanged.
+  const scalarBlock = (f: string) => `        <div className="metaobjects-field" key=${JSON.stringify(f)}>
           <label className="metaobjects-field-label" htmlFor={${entityName}.${f}.name}>
             {${entityName}.${f}.label}
           </label>
@@ -102,9 +290,30 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
               {String(form.formState.errors.${f}?.message ?? '')}
             </span>
           )}
-        </div>`,
-    )
-    .join("\n");
+        </div>`;
+
+  // For each visible field: scalars keep the flat `form.input.<field>` block; a
+  // `field.object` with a resolvable `@objectRef` recurses into the referenced
+  // value object as a nested <fieldset> sub-form (issue #95). useFieldArray
+  // declarations for array-of-value-object fields hoist to the component top.
+  const blocks: string[] = [];
+  const fieldArrayHooks: string[] = [];
+  for (const f of fields) {
+    if (resolveValueObject(f, ctx) === undefined) {
+      blocks.push(scalarBlock(f.name));
+      continue;
+    }
+    const r = renderNestedField(f, f.name, false, ctx, new Set<string>(), 0);
+    blocks.push(r.jsx);
+    fieldArrayHooks.push(...r.hooks);
+  }
+  const fieldBlocks = blocks.join("\n");
+  const hookSection =
+    fieldArrayHooks.length > 0 ? `\n  ${fieldArrayHooks.join("\n  ")}` : "";
+
+  // Only pull in useFieldArray when an array-of-value-object field needs it.
+  const useFieldArrayImport =
+    fieldArrayHooks.length > 0 ? `import { useFieldArray } from "react-hook-form";\n` : "";
 
   const literalImports = code`
 import {
@@ -112,7 +321,7 @@ import {
   ${entityName}InsertSchema,
 } from ${JSON.stringify(entityFileSpec)};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
-`;
+${useFieldArrayImport}`;
 
   const body = code`
 export interface ${entityName}FormProps {
@@ -137,7 +346,7 @@ export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElement
     ${entityName},
     ${formSchema},
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
-  );
+  );${hookSection}
   return (
     <form
       className={props.className ?? 'metaobjects-form'}
