@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "lax::demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "name", "@isJson": true } },
+            { "identity.primary": { "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -18,6 +18,10 @@
                 <groupId>com.metaobjects</groupId>
                 <artifactId>metaobjects-maven-plugin</artifactId>
                 <configuration>
+                    <!-- #96: the shared fixture carries a custom @simple::fruitbasket::isKey
+                         attribute (declared by no registered provider); this docs test is
+                         provenance-agnostic, so it loads with the meta.lax opt-out. -->
+                    <lax>true</lax>
                     <loader>
                         <classname>com.metaobjects.loader.MetaDataLoader</classname>
                         <name>docs-mojo-test-pom</name>

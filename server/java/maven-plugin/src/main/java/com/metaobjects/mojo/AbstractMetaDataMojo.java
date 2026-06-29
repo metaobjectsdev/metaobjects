@@ -2,10 +2,12 @@ package com.metaobjects.mojo;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.loader.LoaderConfigurable;
+import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugin.AbstractMojo;
@@ -73,6 +75,30 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
     public void setGenerators(List<GeneratorParam> generators) {
         this.generators = generators;
+    }
+
+    /**
+     * Strict-provenance opt-out for the {@code metaobjects:generate} /
+     * {@code metaobjects:verify} goals (#96, ADR-0023).
+     *
+     * <p>By default ({@code false}) the loader runs strict: an own {@code @}-attribute
+     * declared by no registered metamodel provider is {@link ErrorCode#ERR_UNKNOWN_ATTR}
+     * and fails the build. Setting {@code -Dmeta.lax=true} loads non-strict so a downstream
+     * adopter mid-migration — who still carries unregistered attributes (real cases:
+     * {@code @isJson}, {@code @dataflow*}) — can BUILD and verify while reconciling the
+     * metadata. The flag flows to the loader's {@link LoaderOptions#isStrict()} and is
+     * shared by both goals (this Mojo is the common base).</p>
+     *
+     * <p>Mirrors the TS / Python {@code verify --lax} opt-out (#101). Default keeps today's
+     * strict behavior.</p>
+     */
+    @Parameter(property = "meta.lax", defaultValue = "false")
+    private boolean lax;
+    public boolean isLax() {
+        return lax;
+    }
+    public void setLax(boolean lax) {
+        this.lax = lax;
     }
 
     public void execute() throws MojoExecutionException, MojoFailureException
@@ -208,11 +234,17 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         String loaderClass = loaderConfig.getClassname();
         String loaderName = loaderConfig.getName();
 
+        // ADR-0023 strict provenance with a #96 opt-out: lax=false (default) → strict load,
+        // lax=true (-Dmeta.lax=true) → non-strict. The flag flows to BOTH loader-creation
+        // paths — the LoaderOptions on the manual path, and the 'strict' loader argument
+        // (honored by MetaDataLoader.processArguments) on the configured-class path.
+        boolean strict = !lax;
+
         if (loaderClass != null) {
             configurable = getConfiguredLoader(projectClassLoader, loaderClass, loaderName);
         } else {
             configurable = new MetaDataLoader(
-                    LoaderOptions.create(false, false, true),
+                    LoaderOptions.create(false, false, strict),
                     MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         }
 
@@ -223,14 +255,67 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             sourceDir = loaderConfig.getSourceDir();
         }
 
-        MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader, 
-                                         loaderConfig.getSources(), getGlobals());
+        MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader,
+                                         loaderConfig.getSources(), loaderArgs(strict));
 
         MetaDataLoader loader = configurable.getLoader();
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 
+        // Strict provenance is RECORD-not-throw at the loader (ADR-0023): drain the
+        // recorded errors here and fail the goal with an actionable hint. Skipped under
+        // lax (where nothing is recorded). This is the shared reporting site for both the
+        // generate and verify goals.
+        failOnLoaderErrors(loader);
+
         return loader;
+    }
+
+    /**
+     * Build the loader-argument map passed to {@link MavenLoaderConfiguration#configure}.
+     * Carries the {@code globals} verbatim and injects the {@code strict} flag (from
+     * {@code -Dmeta.lax}) so the configured-class loader path honors it via
+     * {@link MetaDataLoader#processArguments}. An explicit {@code strict} in {@code globals}
+     * wins (advanced override). Kept separate from {@link #mergeAndOverwriteArgs} so the
+     * injected flag never pollutes generator args.
+     */
+    private Map<String, String> loaderArgs(boolean strict) {
+        Map<String, String> args = new HashMap<>();
+        if (globals != null) args.putAll(globals);
+        args.putIfAbsent(LoaderConfigurationConstants.ARG_STRICT, String.valueOf(strict));
+        return args;
+    }
+
+    /**
+     * Fail the goal when a strict load RECORDED provenance errors (ADR-0023 records, it
+     * does not throw). The loader's own error messages are reproduced verbatim (the loader
+     * error code/text is unchanged); when an {@link ErrorCode#ERR_UNKNOWN_ATTR} is present
+     * an actionable resolution hint — register a provider / use {@code attr.properties} /
+     * {@code -Dmeta.lax=true} — is appended. No-op when there are no recorded errors (the
+     * lax path, and every clean strict load).
+     */
+    private void failOnLoaderErrors(MetaDataLoader loader) {
+        List<MetaDataException> errors = loader.getErrors();
+        if (errors == null || errors.isEmpty()) return;
+
+        boolean unknownAttr = errors.stream().anyMatch(
+                e -> e.getCode().map(c -> c == ErrorCode.ERR_UNKNOWN_ATTR).orElse(false));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("MetaData loading failed under strict provenance (")
+                .append(errors.size()).append(" error(s)):");
+        for (MetaDataException e : errors) {
+            sb.append("\n  - ").append(e.getMessage());
+        }
+        if (unknownAttr) {
+            sb.append("\n\nAn @attribute is not declared by any registered metamodel provider. To resolve:")
+                    .append("\n  • register the attribute via a metamodel provider (preferred — gates it cross-port); or")
+                    .append("\n  • if it is arbitrary author-supplied data, carry it in the registered attr.properties bag; or")
+                    .append("\n  • run with -Dmeta.lax=true to opt out of strict provenance (e.g. mid-migration, to")
+                    .append("\n    inventory breakage before reconciling the metadata).");
+        }
+        throw new MetaDataException(sb.toString(),
+                unknownAttr ? ErrorCode.ERR_UNKNOWN_ATTR : null);
     }
 
     private LoaderConfigurable getConfiguredLoader(ClassLoader projectClassLoader, String loaderClass, String loaderName) {

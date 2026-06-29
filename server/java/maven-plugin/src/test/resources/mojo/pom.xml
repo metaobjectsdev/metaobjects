@@ -19,6 +19,10 @@
                 <artifactId>metaobjects-maven-plugin</artifactId>
                 <configuration>
                     <!-- Specify the Mojo parameter -->
+                    <!-- #96: the fixture carries a custom @simple::fruitbasket::isKey
+                         attribute (declared by no registered provider); this gen test is
+                         provenance-agnostic, so it loads with the meta.lax opt-out. -->
+                    <lax>true</lax>
                     <loader>
                         <classname>com.metaobjects.loader.MetaDataLoader</classname>
                         <name>mojo-test-pom</name>
