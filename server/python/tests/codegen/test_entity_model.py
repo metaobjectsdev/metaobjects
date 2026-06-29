@@ -175,3 +175,17 @@ def test_field_default_is_emitted_as_literal() -> None:
     assert "n: int = 1" in out
     assert "c: float = 0.5" in out
     assert "s: str = 'approx'" in out
+
+
+def test_dbcolumntype_jsonb_field_is_any_with_import() -> None:
+    """Issue #98 — a field.string @dbColumnType:jsonb stores genuinely-open JSON,
+    which pg8000 decodes to a native Python object at read time. The generated
+    Pydantic field is typed ``Any`` (not the lying ``str``) and the module threads
+    ``from typing import Any`` into its import block."""
+    from metaobjects.meta.persistence.db import db_constants as dbc
+
+    payload = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "payload")
+    payload.set_attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE, dbc.DB_COLUMN_TYPE_JSONB)
+    out = render_entity_model(_entity("Event", [payload], package="myapp::events"))
+    assert "from typing import Any" in out
+    assert "payload: Any | None = None" in out
