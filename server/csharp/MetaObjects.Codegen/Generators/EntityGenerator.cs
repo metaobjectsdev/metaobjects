@@ -119,6 +119,9 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
+        if (CSharpNaming.RequiresSystemTextJson(entity))
+            sb.AppendLine("using System.Text.Json;");
         // A composite PK emits a class-level [PrimaryKey(...)] which lives in the
         // Microsoft.EntityFrameworkCore namespace (not a DataAnnotations attribute) —
         // import it so the emitted class compiles standalone, without relying on the
@@ -475,6 +478,9 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
+        if (CSharpNaming.RequiresSystemTextJson(entity))
+            sb.AppendLine("using System.Text.Json;");
         // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
@@ -539,6 +545,9 @@ public class EntityGenerator : IGenerator
         // A value-object field with an explicit @column emits [Column(...)] — same as the entity
         // paths, so it needs the Schema namespace too (was omitted here → CS0246 on Column).
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
+        if (CSharpNaming.RequiresSystemTextJson(vo))
+            sb.AppendLine("using System.Text.Json;");
         // FR-021 — usings for OTHER packages this value-object references (object navs + super).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(vo, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
@@ -732,7 +741,11 @@ public class EntityGenerator : IGenerator
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
         string? baseTypeOverride = null)
     {
-        var baseType = baseTypeOverride ?? CSharpNaming.ScalarFor(field.SubType)!;
+        // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
+        // (JsonDocument) — issue #98 — taking precedence over the logical scalar. uuid/
+        // timestamp_with_tz overrides keep the logical CLR type (converted at the DB seam).
+        var baseType = CSharpNaming.DbColumnTypeClrOverride(field)
+            ?? baseTypeOverride ?? CSharpNaming.ScalarFor(field.SubType)!;
         var propName = PropertyName(field);
 
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]

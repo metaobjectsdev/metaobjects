@@ -41,8 +41,15 @@ public static class Normalization
         double d => CanonicalFloat(d),
         // NUMERIC / DECIMAL — canonical decimal string, no trailing zeros.
         decimal dec => CanonicalDecimal(dec),
-        // A jsonb/json column is read-as-string by Npgsql. Re-serialize with sorted
-        // keys per the cross-port contract (normalization.md: JSON/JSONB → sorted
+        // A @dbColumnType:jsonb open-bag is surfaced by the runtime as a PARSED JSON
+        // value — System.Text.Json.JsonDocument/JsonElement (issue #98) — not raw text.
+        // Route its raw JSON through the same jsonb path (sorted keys, leaf normalization)
+        // so the wire form is byte-identical to a string-typed jsonb read across ports.
+        JsonDocument doc => NormalizeValue(doc.RootElement.GetRawText()),
+        JsonElement el => NormalizeValue(el.GetRawText()),
+        // A jsonb/json value that reaches here as raw text (an owned-POCO jsonb field
+        // projected to a JSON string by EntityRow, or a driver returning text) — re-serialize
+        // with sorted keys per the cross-port contract (normalization.md: JSON/JSONB → sorted
         // keys), recursing through containers and normalizing each scalar leaf by its
         // JSON type. Leaves keep their JSON-native shape (matching the TS authority,
         // whose parsed-jsonb leaves stay JS numbers/booleans): integer numbers stay
@@ -59,10 +66,9 @@ public static class Normalization
         DateTimeOffset dto => dto.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffK", CultureInfo.InvariantCulture)
                                             .TrimEnd('0').TrimEnd('.') + "Z",
         Guid uuid => uuid.ToString("D").ToLowerInvariant(),
-        // JSON arrives from Npgsql as string for jsonb columns; canonicalize.
-        // (If a future driver returns a parsed JsonNode/JsonElement, the JsonNode
-        // branch picks it up.)
         byte[] bytes => Convert.ToBase64String(bytes),
+        // A pre-parsed JsonNode (assembled by a runner path) — sort keys.
+        // (JsonDocument/JsonElement from a @dbColumnType:jsonb column are handled above.)
         JsonNode node => SortKeys(node).ToJsonString(),
         // Enums — both EF Core HasConversion<string>() (which reads as string) and
         // a raw enum value need to surface as the symbol name.

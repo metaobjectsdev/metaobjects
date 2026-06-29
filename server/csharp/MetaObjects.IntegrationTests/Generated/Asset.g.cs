@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
@@ -19,7 +20,7 @@ public class Asset
     [Column("externalId")]
     public string? ExternalId { get; set; }
     [Column("payload")]
-    public string? Payload { get; set; }
+    public JsonDocument? Payload { get; set; }
     [Column("recordedAt")]
     public DateTime RecordedAt { get; set; }
     [Column("observedAt")]

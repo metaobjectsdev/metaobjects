@@ -10,15 +10,18 @@
 //   * Measurement.Id (BIGINT)         → long       (a native integer).
 //   * Measurement.PreciseKg (NUMERIC) → decimal    (exact native decimal).
 //   * Asset.RecordedAt (TIMESTAMPTZ)  → DateTime   (native temporal, NOT a string).
-//   * Asset.Payload (jsonb)           → string     (the generated entity models a
-//     jsonb open-JSON column as a string property; EF Core surfaces the raw JSON
-//     text. The parse-to-object/key-sort step is a harness concern, NOT baked into
+//   * Asset.Payload (jsonb)           → JsonDocument (issue #98 — the generated entity
+//     models a @dbColumnType:jsonb open-JSON column as a System.Text.Json.JsonDocument;
+//     EF Core + Npgsql materialize the PARSED JSON value, NOT raw text. This is the
+//     uniform "parsed JSON value at the wire boundary" contract — matching TS z.unknown()
+//     (#97) and Python Any (#99). The key-sort step is a harness concern, NOT baked into
 //     the runtime. We assert the runtime's genuine native return and document it).
 //
 // Per-port gate (native types differ per language), not a byte-identical
 // cross-port corpus. Catches the Python-outlier class of regression: a runtime
 // baking wire-strings into its query path.
 
+using System.Text.Json;
 using MetaObjects.IntegrationTests.Generated;
 using MetaObjects.IntegrationTests.Runner;
 using Microsoft.EntityFrameworkCore;
@@ -84,13 +87,18 @@ public sealed class RuntimeReturnTypeTests
             $"field.timestamp Asset.RecordedAt (TIMESTAMPTZ) must be a native DateTime, NOT a string. Got: {recordedAt.GetType()}");
         Assert.IsNotType<string>(recordedAt);
 
-        // jsonb: the generated entity models the open-JSON column as a string property;
-        // EF Core surfaces the raw JSON text. Parse-to-object/key-sort is a harness
-        // concern, not baked into the runtime — we assert what the runtime returns.
+        // jsonb: the generated entity models the open-JSON column as a JsonDocument
+        // (issue #98); EF Core + Npgsql materialize the PARSED JSON value, not raw text.
+        // We assert the runtime's genuine native return — a parsed JSON value, NOT a string.
         object? payload = asset.Payload;
         Assert.NotNull(payload);
-        Assert.True(payload is string,
-            $"Asset.Payload (jsonb) is surfaced by EF Core as raw JSON text; got: {payload!.GetType()}");
+        Assert.IsType<JsonDocument>(payload);
+        Assert.IsNotType<string>(payload);
+        // The parsed document exposes the seeded object {"b":2,"a":1} as real JSON members.
+        var root = ((JsonDocument)payload).RootElement;
+        Assert.Equal(JsonValueKind.Object, root.ValueKind);
+        Assert.Equal(1, root.GetProperty("a").GetInt32());
+        Assert.Equal(2, root.GetProperty("b").GetInt32());
     }
 
     private static async Task ExecuteAsync(string connString, string sql)

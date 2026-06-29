@@ -6,6 +6,7 @@
 // use the modern DateOnly/TimeOnly/DateTime trio.
 
 using MetaObjects.Meta;
+using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen;
@@ -58,6 +59,29 @@ public static class CSharpNaming
     /// <summary>The base C# scalar type for a field subtype (no nullability), or null for object fields.</summary>
     public static string? ScalarFor(string fieldSubType) =>
         ScalarType.GetValueOrDefault(fieldSubType);
+
+    /// <summary>
+    /// The System.Text.Json type that holds a parsed JSON value — the CLR property
+    /// type for a <c>@dbColumnType:jsonb</c> open-JSON bag. <c>JsonDocument</c> is
+    /// mapped to <c>jsonb</c> natively by Npgsql (no <c>EnableDynamicJson</c>), round-trips
+    /// an arbitrary JSON object, and is (de)serialized by System.Text.Json as a real
+    /// JSON value at the minimal-API boundary — not a double-encoded string (issue #98).
+    /// </summary>
+    public const string JsonbClrType = "JsonDocument";
+
+    /// <summary>
+    /// The CLR type override implied by a field's <c>@dbColumnType</c> physical override,
+    /// or null when the override does not change the CLR type. Only <c>jsonb</c> shifts
+    /// the CLR type (string → <see cref="JsonbClrType"/>, exposing the parsed JSON value);
+    /// <c>uuid</c> keeps the <c>string</c> property and converts at the DB seam (ADR-0013).
+    /// </summary>
+    public static string? DbColumnTypeClrOverride(MetaField field) =>
+        field.DbColumnType == DbConstants.DB_COLUMN_TYPE_JSONB ? JsonbClrType : null;
+
+    /// <summary>True when any of <paramref name="obj"/>'s own fields is a jsonb open-bag
+    /// (so the generated file needs <c>using System.Text.Json;</c> for the JsonDocument type).</summary>
+    public static bool RequiresSystemTextJson(MetaObject obj) =>
+        obj.Fields().Any(f => DbColumnTypeClrOverride(f) is not null);
 
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);
