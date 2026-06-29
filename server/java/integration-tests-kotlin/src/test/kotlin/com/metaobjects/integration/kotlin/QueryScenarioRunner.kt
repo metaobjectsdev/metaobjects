@@ -438,8 +438,11 @@ object QueryScenarioRunner {
             }
             type == "date" -> LocalDate.parse(raw.toString())
             type.contains("time") -> LocalTime.parse(raw.toString())
-            // jsonb raw-String column: serialize the authoring Map to a JSON string so the column
-            // writes a real Postgres JSONB value (a bare String bind would be rejected by jsonb).
+            // jsonb column: bind the authoring Map as a JSON string. Both jsonb codec styles in this
+            // module accept it via type erasure — the open-bag `Column<JsonElement>` encoder
+            // (`{ it.toString() }`) and the object/map `Column<String>` identity encoder (`{ it }`)
+            // both receive the String and write a real Postgres JSONB value (a bare String bind
+            // would be rejected by jsonb). Read-back (#98) parses it back per-column.
             type.contains("jsonb") -> if (raw is String) raw else JSON.writeValueAsString(raw)
             else -> raw
         }
@@ -641,12 +644,13 @@ object QueryScenarioRunner {
             // LocalDateTime so it lands on the no-`Z` branch. Instant (the TZ-aware shape) is left
             // as-is for Normalization's Instant branch.
             if (v is Timestamp) v = v.toLocalDateTime()
-            // `@dbColumnType:jsonb` open-JSON column round-trips as a raw JSON String
-            // (identity decode). Parse it to a Map so Normalization sorts the keys and
-            // the `expect` block (a YAML object) compares byte-equal. Detected by the
-            // column's SQL type (`jsonb`) so it stays generic across jsonb columns.
-            if (v is String && col.columnType.sqlType().lowercase().contains("jsonb")) {
-                v = JSON.readValue(v, Map::class.java)
+            // `@dbColumnType:jsonb` open-JSON column (#98) reads back as a parsed kotlinx
+            // JsonElement (or, for an object/map jsonb column, a raw JSON String). Convert
+            // whatever it is to a Map (via its JSON text — JsonElement.toString() is canonical
+            // JSON) so Normalization sorts the keys and the `expect` block (a YAML object) compares
+            // byte-equal. Detected by the column's SQL type (`jsonb`) so it stays generic.
+            if (v != null && col.columnType.sqlType().lowercase().contains("jsonb")) {
+                v = JSON.readValue(v.toString(), Map::class.java)
             }
             out[col.name] = v
         }

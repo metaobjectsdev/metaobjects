@@ -126,6 +126,42 @@ class KotlinEntityGeneratorTest {
         }
     }
 
+    @Test fun jsonbOpenBagEntityPropertyIsParsedJsonValue() {
+        // Issue #98: the `field.string @dbColumnType=jsonb` open bag is a PARSED JSON value
+        // (kotlinx `JsonElement`) on the entity data class too — not a (double-encoded) raw-JSON
+        // `String`. The entity data class is REUSED as the derived entity-CRUD request/response DTO,
+        // so this is the entity-CRUD REST contract reaching full parity with the payload surface
+        // (and with TS/Python/Java/C#). A sibling plain `field.string` stays `String`.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Rubric", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "weights", "@dbColumnType": "jsonb" } },
+                { "field.string": { "name": "label" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kgen-jsonb-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("jsonb", fx))
+
+            val src = Files.readString(outDir.resolve("acme/demo/Rubric.kt"))
+            // jsonb open bag → parsed JSON value, imported.
+            assertTrue("val weights: JsonElement" in src, "expected `val weights: JsonElement` in:\n$src")
+            assertTrue("import kotlinx.serialization.json.JsonElement" in src,
+                "expected JsonElement import in:\n$src")
+            // plain string stays String (no double-encoding concern).
+            assertTrue("val label: String" in src, "expected `val label: String` in:\n$src")
+            // must NOT regress to a raw-JSON String holder for the bag.
+            assertFalse("val weights: String" in src, "jsonb open bag must not be String:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     // === field.enum coverage ===============================================
 
     private val enumFixture = """{

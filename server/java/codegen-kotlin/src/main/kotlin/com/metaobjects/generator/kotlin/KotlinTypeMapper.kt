@@ -120,15 +120,19 @@ object KotlinTypeMapper {
 
     /**
      * The kotlinx-serialization JSON-value type a `field.string @dbColumnType=jsonb` open-bag is
-     * exposed as in the REST/serialization PAYLOAD (issue #98). `JsonElement` is the idiomatic
-     * "any JSON value" type for the `@Serializable` payload data classes [KotlinPayloadGenerator]
-     * emits (kotlinx is already this port's payload substrate — the same `Json` used by the
-     * `jsonb(...)` column codec for `field.map`), so a client sends/receives a real JSON object
-     * rather than a double-encoded string. The PERSISTENCE side is deliberately unaffected: the
-     * entity data-class property ([kotlinTypeName]) stays `String` (raw text from the JDBC driver)
-     * and the Exposed column ([exposedColumnSpec]) stays the identity-codec `jsonb(name,{it},{it})`.
+     * exposed as (issue #98). `JsonElement` is the idiomatic "any JSON value" type for the
+     * `@Serializable` data classes this port emits (kotlinx is already this port's payload
+     * substrate — the same `Json` used by the `jsonb(...)` column codec for `field.map`), so a
+     * client sends/receives a real JSON object rather than a double-encoded string.
+     *
+     * Used UNIFORMLY at every layer — the persistence holder ([kotlinTypeName], i.e. the entity
+     * data class reused as the entity-CRUD DTO), the REST payload ([payloadTypeName]), and the
+     * Exposed column codec ([exposedColumnSpec], which decodes the JSONB text to a `JsonElement`).
+     * Matching the maintainer decision on #98: uniform parsed value at the API boundary across all
+     * ports (TS `z.unknown()`, Python `Any`, C# `JsonDocument`). The wire/serialized form stays
+     * byte-identical to those ports (`{...}`); only the in-process Kotlin type is `JsonElement`.
      */
-    private val PAYLOAD_JSON_VALUE_TYPE = ClassName("kotlinx.serialization.json", "JsonElement")
+    private val JSON_VALUE_TYPE = ClassName("kotlinx.serialization.json", "JsonElement")
 
     /**
      * Name of the generated, file-local Exposed extension function emitted for a
@@ -210,10 +214,14 @@ object KotlinTypeMapper {
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
     fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
         // `@dbColumnType=uuid_array/text_array` makes a field.string a native SQL array,
-        // so the property is a List<UUID> / List<String>. Plain strings stay String.
+        // so the property is a List<UUID> / List<String>. `@dbColumnType=jsonb` is the open
+        // JSON bag — a parsed JSON value (kotlinx `JsonElement`, issue #98), uniform with the
+        // payload + Exposed column codec so the entity-CRUD DTO is never a double-encoded String.
+        // Plain strings stay String.
         is StringField    -> when (dbColumnType(field)) {
             DB_COLUMN_TYPE_UUID_ARRAY -> LIST.parameterizedBy(ClassName("java.util", "UUID"))
             DB_COLUMN_TYPE_TEXT_ARRAY -> LIST.parameterizedBy(STRING)
+            DB_COLUMN_TYPE_JSONB      -> JSON_VALUE_TYPE
             else -> STRING
         }
         is IntegerField   -> INT
@@ -277,17 +285,16 @@ object KotlinTypeMapper {
      * Map a MetaField to its KotlinPoet TypeName for a REST/serialization **payload** property
      * (the `@Serializable` projection data classes emitted by [KotlinPayloadGenerator]).
      *
-     * Identical to [kotlinTypeName] for every subtype EXCEPT the `field.string @dbColumnType=jsonb`
-     * open bag, which becomes the parsed JSON value [PAYLOAD_JSON_VALUE_TYPE] instead of `String`
-     * (issue #98). This is the deliberate payload/persistence split: the persistence holder
-     * ([kotlinTypeName]) and the Exposed column ([exposedColumnSpec]) keep the raw-text `String`
-     * contract; only the API/wire boundary exposes the bag as a real JSON value (matching the
-     * TS `unknown` / Python `Any` ports). Generators that drive PERSISTENCE (entity data class,
-     * Exposed table, the entity-CRUD controller DTO, which reuses the entity data class) must keep
-     * calling [kotlinTypeName], not this.
+     * For the `field.string @dbColumnType=jsonb` open bag this is the parsed JSON value
+     * [JSON_VALUE_TYPE] (issue #98). As of the #98 uniform-parsed-value cutover this now AGREES
+     * with [kotlinTypeName] at every subtype — the persistence holder (entity data class reused as
+     * the entity-CRUD DTO) and the Exposed column ([exposedColumnSpec]) ALSO expose the bag as a
+     * `JsonElement`, so there is no longer a payload/persistence split. Retained as a distinct,
+     * intention-revealing entry point for the payload generators (and to keep them robust if the
+     * two surfaces ever diverge again).
      */
     fun payloadTypeName(field: MetaField<*>): TypeName =
-        if (isJsonbOpenBag(field)) PAYLOAD_JSON_VALUE_TYPE else kotlinTypeName(field)
+        if (isJsonbOpenBag(field)) JSON_VALUE_TYPE else kotlinTypeName(field)
 
     /**
      * The Kotlin value TypeName for a scalar-valued [MapField] (the type named by its
@@ -391,7 +398,14 @@ object KotlinTypeMapper {
             // would never round-trip to JSONB through the introspection corpus.
             when (dbColumnType(field)) {
                 DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
-                DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it }, { it })"
+                // `@dbColumnType=jsonb` open bag (#98): decode the JSONB text to a kotlinx
+                // `JsonElement` (so the data-class property + CRUD DTO is a parsed JSON value, not
+                // a double-encoded String) and encode it back via `toString()` (a JsonElement's
+                // toString is canonical JSON). `Json.parseToJsonElement` returns a concrete
+                // `JsonElement`, which ANCHORS the Exposed column's generic to `Column<JsonElement>`
+                // (the `{ it }` identity codec would have left it `Column<String>`). The table file
+                // imports `kotlinx.serialization.json.Json` (see KotlinExposedTableGenerator).
+                DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it.toString() }, { Json.parseToJsonElement(it) })"
                 // Native SQL array columns via Exposed's `array<E>("col", columnType)` Table
                 // member. The element ColumnType is explicit (UUIDColumnType / TextColumnType)
                 // so emission never depends on Exposed's reified resolveColumnType picking

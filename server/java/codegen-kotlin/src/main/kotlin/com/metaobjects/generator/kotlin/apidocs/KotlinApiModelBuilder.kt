@@ -389,11 +389,11 @@ class KotlinApiModelBuilder {
     /**
      * The simple Kotlin type label for a documented field (enum → generated enum class name).
      *
-     * [forPayload] selects the payload type path ([KotlinTypeMapper.payloadTypeName]) so a
-     * `field.string @dbColumnType=jsonb` open bag is documented as the parsed JSON value
-     * (`JsonElement`) the payload data class actually emits (issue #98); the entity model field
-     * (forPayload = false) stays `String`, matching its data-class property. Keeps the documented
-     * type == the generated type on both surfaces.
+     * [forPayload] selects the payload type path ([KotlinTypeMapper.payloadTypeName]); the entity
+     * model field path uses [KotlinTypeMapper.kotlinTypeName]. As of the #98 uniform-parsed-value
+     * cutover BOTH surfaces document a `field.string @dbColumnType=jsonb` open bag as the parsed
+     * JSON value (`JsonElement`) — the payload data class and the entity data class (the reused
+     * entity-CRUD DTO) now agree. Keeps the documented type == the generated type on both surfaces.
      */
     private fun kotlinTypeLabel(field: MetaField<*>, owner: MetaObject, forPayload: Boolean = false): String {
         KotlinTypeMapper.enumTypeName(field, owner)?.let { enumType ->

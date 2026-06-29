@@ -219,40 +219,45 @@ class KotlinTypeMapperTest {
 
     @Test fun `string field with dbColumnType=jsonb emits real jsonb column not text`() {
         // R6 Plan 2b: `@dbColumnType=jsonb` on a `field.string` selects a native Postgres
-        // JSONB column (matching the other 4 ports). The Exposed column is the
-        // `jsonb(name, encoder, decoder)` extension with identity String functions (the
-        // property stays a raw-JSON `String`), NOT the old `text(...)` — a TEXT column
+        // JSONB column (matching the other 4 ports). NOT the old `text(...)` — a TEXT column
         // never round-trips to JSONB in the introspection corpus.
+        //
+        // Issue #98: the column codec now PARSES the JSONB text to a kotlinx `JsonElement`
+        // (decode `Json.parseToJsonElement`, encode `it.toString()`) instead of the old
+        // identity passthrough `{ it }, { it }`, so the entity data-class property is a parsed
+        // JSON value, not a raw-JSON `String`. The decode anchors the Exposed column's generic
+        // to `JsonElement`. It is STILL a real `jsonb(...)` column — only the codec/type changes.
         val f = StringField("rubricWeights")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
-        assertEquals("jsonb(\"rubric_weights\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
-        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals(
+            "jsonb(\"rubric_weights\", { it.toString() }, { Json.parseToJsonElement(it) })",
+            KotlinTypeMapper.exposedColumnSpec(f),
+        )
+        assertEquals(ClassName("kotlinx.serialization.json", "JsonElement"), KotlinTypeMapper.kotlinTypeName(f))
         // The column needs the exposed-json `jsonb` extension import.
         assertEquals("org.jetbrains.exposed.sql.json.jsonb", KotlinTypeMapper.exposedColumnImport(f))
     }
 
-    @Test fun `string field with dbColumnType=jsonb exposes a parsed JSON value in the REST payload`() {
+    @Test fun `string field with dbColumnType=jsonb exposes a parsed JSON value at every layer`() {
         // Issue #98 (cross-port jsonb open-bag REST contract). A `field.string @dbColumnType=jsonb`
         // is the sanctioned "open JSON bag": the physical column is JSONB but the LOGICAL subtype
-        // stays `string`. The two layers are deliberately split:
-        //   - PERSISTENCE (kotlinTypeName / exposedColumnSpec): the Exposed column stays the
-        //     identity-codec `jsonb(name, { it }, { it })` and the entity data-class property stays
-        //     `String` — the JDBC driver returns jsonb as raw text, so String is correct here.
-        //   - REST PAYLOAD (payloadTypeName): the typed projection exposes the bag as a PARSED JSON
-        //     value (kotlinx `JsonElement`) so a client sends/receives a real JSON object, never a
-        //     double-encoded string. Matches TS `z.unknown()` (#97) and Python `Any` (#99).
+        // stays `string`. Per the maintainer decision the bag is a PARSED JSON value (kotlinx
+        // `JsonElement`) UNIFORMLY at every layer — payload, entity data class (the reused CRUD DTO),
+        // and the Exposed column codec — so a client sends/receives a real JSON object, never a
+        // double-encoded string. Matches TS `z.unknown()` (#97), Python `Any` (#99), C# `JsonDocument`.
         val f = StringField("rubricWeights")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
 
-        // REST payload → parsed JSON value (the fix).
+        val jsonElement = ClassName("kotlinx.serialization.json", "JsonElement")
+        // REST payload → parsed JSON value.
+        assertEquals(jsonElement, KotlinTypeMapper.payloadTypeName(f))
+        // Entity data class / entity-CRUD DTO → parsed JSON value (now uniform with payload).
+        assertEquals(jsonElement, KotlinTypeMapper.kotlinTypeName(f))
+        // The Exposed column stays a real jsonb column but parses to JsonElement.
         assertEquals(
-            ClassName("kotlinx.serialization.json", "JsonElement"),
-            KotlinTypeMapper.payloadTypeName(f),
+            "jsonb(\"rubric_weights\", { it.toString() }, { Json.parseToJsonElement(it) })",
+            KotlinTypeMapper.exposedColumnSpec(f),
         )
-        // Persistence stays String — the entity data-class property is the raw-JSON holder for the
-        // identity-codec jsonb column. (This MUST NOT regress; the column assertion above gates it.)
-        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
-        assertEquals("jsonb(\"rubric_weights\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `plain string field payload stays String`() {
@@ -267,7 +272,10 @@ class KotlinTypeMapperTest {
         // `"JSONB"` and `"jsonb"` route to the JSONB branch.
         val f = StringField("featureFlags")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "JSONB"))
-        assertEquals("jsonb(\"feature_flags\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals(
+            "jsonb(\"feature_flags\", { it.toString() }, { Json.parseToJsonElement(it) })",
+            KotlinTypeMapper.exposedColumnSpec(f),
+        )
     }
 
     @Test fun `string field with dbColumnType=jsonb ignores maxLength`() {
@@ -276,7 +284,10 @@ class KotlinTypeMapperTest {
         val f = StringField("blob")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
         f.addMetaAttr(IntAttribute.create("maxLength", 64))
-        assertEquals("jsonb(\"blob\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals(
+            "jsonb(\"blob\", { it.toString() }, { Json.parseToJsonElement(it) })",
+            KotlinTypeMapper.exposedColumnSpec(f),
+        )
     }
 
     // === Currency / Enum / UUID coverage ===
