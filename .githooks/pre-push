@@ -19,6 +19,21 @@
 #
 set -uo pipefail
 
+# ── Always-run, toolchain-free guard (BEFORE the TS-skip below — unrelated gate).
+# Reactor-excluded Java/Kotlin integration-test poms must track the reactor
+# <version>. They are outside the reactor, so a release `versions:set` skips them;
+# the drift only surfaces as a red `release-gate (java|kotlin)` ("Non-resolvable
+# parent POM") on the next tag. Catch it here — it's just grep, no JVM/Maven.
+_HOOK_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+if [ -x "$_HOOK_ROOT/scripts/check-pom-versions.sh" ]; then
+  if ! "$_HOOK_ROOT/scripts/check-pom-versions.sh" >/tmp/metaobjects-prepush-pom.log 2>&1; then
+    echo "" >&2
+    echo "  ✖ pre-push BLOCKED: Java pom version drift —" >&2
+    sed 's/^/      /' /tmp/metaobjects-prepush-pom.log >&2
+    exit 1
+  fi
+fi
+
 if [ "${SKIP_TS_TYPECHECK:-}" = "1" ]; then
   echo "pre-push: SKIP_TS_TYPECHECK=1 set — skipping the TS typecheck gate (you asked for it)." >&2
   exit 0

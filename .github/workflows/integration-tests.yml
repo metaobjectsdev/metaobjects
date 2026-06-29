@@ -5,23 +5,19 @@ name: integration-tests
 # `bun test` path — against a real Postgres for all five ports. Per-language jobs
 # run in parallel; any port red blocks the gate.
 #
-# Triggers:
-#   - pull_request (any target branch) — gates every PR so persistence/api-contract
-#     drift can't merge green (these corpora are not covered by conformance.yml).
-#   - push to `main` — guards the default branch directly (e.g. forward-merges that
-#     land on main without going through a PR).
-#   - tag push matching v* (release gate, per docs/RELEASING.md).
+# COST: this 5-port Testcontainers matrix is EXPENSIVE, so it does NOT run on every
+# push/PR. Triggers:
+#   - tag push matching v* (the release gate, per docs/RELEASING.md).
 #   - manual dispatch (workflow_dispatch).
-# NOTE: this runs a 5-port Testcontainers matrix on every PR; if CI cost is too
-# high, narrow `pull_request.branches` or re-introduce an opt-in label.
+# Day-to-day, run these corpora LOCALLY before opening/merging a PR:
+#   scripts/ci-local.sh            # full local CI (this suite + conformance + drift)
+#   scripts/integration-test.sh <port>
+# The cheap public-repo SECURITY gate (hygiene / leak-scan) still runs on every PR.
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
-  pull_request:
   workflow_dispatch:
 
 jobs:

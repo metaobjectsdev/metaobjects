@@ -24,9 +24,15 @@ conformance corpora. This guide covers how to propose changes.
 
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
-3. Run the relevant test suite locally; make sure it's green.
+3. Run the gates locally with **`scripts/ci-local.sh`** (or `--quick` to skip the
+   docker integration suite) and make sure it's green. **This matters:** to keep CI
+   costs down, the heavy correctness gates (the cross-port conformance matrix, the
+   full Java reactor, the drift/mutation gates, and the integration-tests
+   testcontainers matrix) **no longer run automatically on PRs** — they are release
+   gate (`v*`) + on-demand only. Local CI is now the primary correctness gate.
 4. Open a **pull request** against `main` and fill out the PR template.
-5. CI must pass and a maintainer must approve before merge.
+5. The public-repo `leak-scan` gate still runs on every PR; a maintainer runs the
+   full gates (locally or via the on-demand workflow) and approves before merge.
 
 ## The cardinal rule: the metamodel is the spine
 
@@ -67,7 +73,24 @@ cd server/python     && pytest            # Python (in its .venv)
 ```
 
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
-`scripts/integration-test.sh` and in CI.
+`scripts/integration-test.sh`.
+
+### Local CI (run this before opening/merging a PR)
+
+Because the heavy gates no longer auto-run on PRs (cost), reproduce the full CI
+locally with one command:
+
+```bash
+scripts/ci-local.sh            # full parity: leak-scan, all-port conformance,
+                               # java reactor, drift/mutation gates, + docker
+                               # integration suite
+scripts/ci-local.sh --quick    # everything except the docker integration suite
+```
+
+It SKIPS (loudly, not silently) any port whose toolchain (bun/dotnet/uv/mvn) isn't
+installed. The `.githooks/pre-push` hook additionally runs the TS build+typecheck
+gate and a Java pom-version drift guard on every push (activate hooks once per
+clone: `git config core.hooksPath .githooks`).
 
 ## Releasing
 
