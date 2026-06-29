@@ -105,6 +105,34 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void stringFieldWithJsonbMapsToObject() {
+        // A `field.string @dbColumnType=jsonb` is an open JSON bag. At the REST/contract
+        // boundary it must surface as a PARSED JSON value, not a double-encoded String —
+        // so Jackson can bind a posted JSON object/array/scalar and serialise a stored bag
+        // as real JSON. We use Object (Jackson maps arbitrary JSON to Map/List/scalar);
+        // matches the TS `z.unknown()` (#97) and Python `Any` (#99) fixes. (#98)
+        StringField f = new StringField("payload");
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "jsonb"));
+        assertEquals("Object", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
+    public void stringFieldWithJsonbMapsToObjectCaseInsensitive() {
+        StringField f = new StringField("payload");
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "JSONB"));
+        assertEquals("Object", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
+    public void stringFieldWithUuidColumnTypeStaysString() {
+        // Only the jsonb open-bag escape hatch is a parsed value. Other @dbColumnType
+        // values on a string field (e.g. uuid → still string-backed on the wire) stay String.
+        StringField f = new StringField("externalRef");
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "uuid"));
+        assertEquals("String", SpringTypeMapper.javaTypeName(f));
+    }
+
+    @Test
     public void uuidFieldMapsToUUID() {
         // R6 Plan 2a: field.uuid is a first-class subtype (UuidField) with a native
         // java.util.UUID binding (parallel of KotlinTypeMapperTest's `uuid` arm).

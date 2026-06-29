@@ -69,7 +69,16 @@ public final class SpringTypeMapper {
      * non-payload use of the mapper are preserved.</p>
      */
     public static String javaTypeName(MetaField<?> field) {
-        if (field instanceof StringField) return "String";
+        if (field instanceof StringField) {
+            // A `field.string @dbColumnType=jsonb` is an OPEN JSON bag (the only legal
+            // jsonb pairing — ValidationPhase enforces jsonb→field.string). At the
+            // REST/contract boundary it must surface as a PARSED JSON value, not a
+            // double-encoded String: Jackson can then bind a posted JSON object/array/
+            // scalar and serialise a stored bag as real JSON. We use `Object`
+            // (dependency-free; Jackson maps arbitrary JSON to Map/List/scalar). Mirrors
+            // the TS `z.unknown()` (#97) and Python `Any` (#99) cross-port fixes (#98).
+            return jsonbOptIn(field) ? "Object" : "String";
+        }
         if (field instanceof IntegerField) return "Integer";
         if (field instanceof LongField) return "Long";
         if (field instanceof DoubleField) return "Double";
@@ -120,6 +129,19 @@ public final class SpringTypeMapper {
         Object raw = field.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue();
         return raw != null
             && CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equalsIgnoreCase(String.valueOf(raw).trim());
+    }
+
+    /**
+     * True iff {@code field} carries {@code @dbColumnType=jsonb} (case-insensitive) —
+     * the open-JSON-bag escape hatch. The only legal jsonb pairing is jsonb→{@link StringField}
+     * (validated at the loader, {@code ValidationPhase}), so this guard is safe to read on any
+     * string field. Own-only read; absent / non-attribute → {@code false} (plain string).
+     */
+    private static boolean jsonbOptIn(MetaField<?> field) {
+        if (!field.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)) return false;
+        Object raw = field.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue();
+        return raw != null
+            && CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equalsIgnoreCase(String.valueOf(raw).trim());
     }
 
     // =========================================================================
