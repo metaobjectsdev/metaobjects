@@ -17,13 +17,15 @@ if (args.Length == 0)
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
         "                                                     generate EF Core code from metadata\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
-        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]\n" +
+        "    verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
         "                                                       --templates  template/prompt drift (default)\n" +
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
+        "                                                       --lax        load lax (legacy); strict-by-default\n" +
+        "                                                                    rejects an unregistered @attr (ADR-0023)\n" +
         "    docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]\n" +
         "                                                     emit the generated C# SDK api reference\n" +
         "                                                     (the api/csharp surface: one page per\n" +
@@ -173,7 +175,7 @@ static int RunVerify(string[] rest)
     bool nsExplicit = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
-    bool templates = false, codegen = false, db = false;
+    bool templates = false, codegen = false, db = false, lax = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -186,6 +188,9 @@ static int RunVerify(string[] rest)
         }
         else if (a == "--codegen") codegen = true;
         else if (a == "--db") db = true;
+        // --lax (#96 / ADR-0023): restore the legacy open-attr load. verify is
+        // strict-by-default — an undeclared/typo'd own @attr is ERR_UNKNOWN_ATTR.
+        else if (a == "--lax") lax = true;
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
@@ -193,7 +198,7 @@ static int RunVerify(string[] rest)
         else if (a.StartsWith('-'))
         {
             Console.Error.WriteLine($"dotnet meta verify: unknown option \"{a}\"");
-            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
+            Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]");
             return 2;
         }
         else if (metadataDir is null) metadataDir = a;
@@ -239,11 +244,22 @@ static int RunVerify(string[] rest)
         Templates = templates,
         Codegen = codegen,
         Db = db,
+        // #96 / ADR-0023: verify is strict-by-default; --lax restores the legacy load.
+        Strict = !lax,
     };
 
     var result = VerifyCommand.RunSubverbs(opts);
 
     if (result.EmittedDefaultNote) Console.WriteLine(VerifyCommand.SUBVERB_NOTE);
+
+    // #96 — when a strict load surfaced an unregistered @attr, print the actionable
+    // three-exit hint once (register / attr.properties bag / --lax). Suppressed in
+    // lax mode (the user already opted out of strict).
+    var unknownAttr = MetaObjects.ErrorCode.ERR_UNKNOWN_ATTR.ToString();
+    bool sawUnknownAttr =
+        (result.Templates?.LoadErrors.Contains(unknownAttr) ?? false) ||
+        (result.Codegen?.Error?.Contains(unknownAttr) ?? false);
+    if (sawUnknownAttr && !lax) Console.Error.WriteLine($"  hint: {VerifyCommand.UNKNOWN_ATTR_HINT}");
 
     // -- templates gate output --
     if (result.RanTemplates && result.Templates is { } t)

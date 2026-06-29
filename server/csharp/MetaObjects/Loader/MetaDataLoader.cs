@@ -87,10 +87,12 @@ public class MetaDataLoader
 
     /// <summary>
     /// Convenience: build a <see cref="DirectorySource"/> for <paramref name="directory"/>
-    /// and load all discovered files in deterministic order.
+    /// and load all discovered files in deterministic order. <paramref name="strict"/>
+    /// (default false / lax) makes an undeclared own <c>@attr</c> an
+    /// <c>ERR_UNKNOWN_ATTR</c> load error (ADR-0023) — <c>verify</c> opts into strict.
     /// </summary>
-    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null)
-        => FromDirectory(directory, DefaultRegistry(), opts);
+    public static LoadResult FromDirectory(string directory, DirectorySource.Options? opts = null, bool strict = false)
+        => FromDirectory(directory, DefaultRegistry(), opts, strict);
 
     /// <summary>
     /// Registry-aware overload: build a <see cref="DirectorySource"/> and load

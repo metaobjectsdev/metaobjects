@@ -57,6 +57,16 @@ public static class VerifyCommand
         "migrate engine (the TypeScript `meta verify --db`). Use 'dotnet meta verify --codegen' " +
         "for generated-output drift, or '--templates' for template/prompt drift.";
 
+    /// <summary>
+    /// Actionable hint (#96 / ADR-0023) printed when a strict load rejects an
+    /// undeclared own <c>@attr</c> (<c>ERR_UNKNOWN_ATTR</c>) — names the three exits.
+    /// </summary>
+    public const string UNKNOWN_ATTR_HINT =
+        "verify loads strict by default (ADR-0023): an unregistered or typo'd @attr is " +
+        "ERR_UNKNOWN_ATTR. To fix: register the attr on a metadata provider, OR move " +
+        "arbitrary author-supplied properties into an `attr.properties` bag, OR run " +
+        "'dotnet meta verify --lax' to keep the legacy open-attr load.";
+
     /// <summary>The one-line note bare <c>verify</c> prints advertising the subverbs.</summary>
     public const string SUBVERB_NOTE =
         "dotnet meta verify — running --templates (default). Explicit subverbs: " +
@@ -89,6 +99,15 @@ public static class VerifyCommand
         public bool Codegen { get; init; }
         /// <summary><c>--db</c> requested (rejected in C#).</summary>
         public bool Db { get; init; }
+
+        /// <summary>
+        /// Strict metadata load (ADR-0023 / #96). Default <c>true</c>: an undeclared or
+        /// typo'd own <c>@attr</c> is <c>ERR_UNKNOWN_ATTR</c> and verify fails — matching
+        /// Java's force-strict Maven goal and the strict TS/Python verify CLIs. <c>--lax</c>
+        /// sets this <c>false</c> to restore the legacy open-attr load. Only <c>verify</c>
+        /// defaults strict; <c>gen</c>/<c>docs</c>/<c>agent-docs</c> stay lax.
+        /// </summary>
+        public bool Strict { get; init; } = true;
 
         /// <summary>True when no explicit subverb flag was passed (bare verify).</summary>
         public bool NoExplicitSubverb => !Templates && !Codegen && !Db;
@@ -133,7 +152,7 @@ public static class VerifyCommand
         Outcome? templatesOutcome = null;
         if (runTemplates)
         {
-            templatesOutcome = Run(opts.MetadataDir, opts.TemplatesRoot ?? "");
+            templatesOutcome = Run(opts.MetadataDir, opts.TemplatesRoot ?? "", opts.Strict);
             if (!templatesOutcome.Ok) exit = Math.Max(exit, 1);
         }
 
@@ -181,7 +200,7 @@ public static class VerifyCommand
                         "generated output to diff against.",
             };
 
-        var load = MetaDataLoader.FromDirectory(opts.MetadataDir);
+        var load = MetaDataLoader.FromDirectory(opts.MetadataDir, strict: opts.Strict);
         if (load.Errors.Count > 0)
             return new Codegen.CodegenDrift.Result
             {
@@ -225,9 +244,9 @@ public static class VerifyCommand
         _ => [],
     };
 
-    public static Outcome Run(string metadataDir, string templatesRoot)
+    public static Outcome Run(string metadataDir, string templatesRoot, bool strict = true)
     {
-        var load = MetaDataLoader.FromDirectory(metadataDir);
+        var load = MetaDataLoader.FromDirectory(metadataDir, strict: strict);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
 
         var provider = new FilesystemProvider(templatesRoot);
