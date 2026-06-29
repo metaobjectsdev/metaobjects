@@ -8,17 +8,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ## [Unreleased]
 
 ### Changed
-- **BREAKING — `meta verify` is strict-by-default (ADR-0023).** `meta verify` (TS)
-  and `metaobjects verify` (Python) now load metadata **strict**: an undeclared or
-  typo'd own `@attr` is `ERR_UNKNOWN_ATTR` and verify exits non-zero. This closes the
-  cross-port gap where such an attr silently passed verify in TS/Python but was
-  rejected by Java's Maven `metaobjects:verify` goal (which already forces strict).
-  A new **`--lax`** flag restores the previous open-attr load. **Scope:** only
-  `verify` defaults strict — `gen` / `docs` / `agent-docs` keep loading lax.
-  **Migration:** if verify now flags an attr you rely on, either register it on a
-  metadata provider, move arbitrary author-supplied properties into an
-  `attr.properties` bag, or pass `meta verify --lax`. The failure message names all
-  three exits. (#96)
+- **BREAKING — `verify` is strict-by-default across all CLI ports (ADR-0023).** An
+  undeclared or typo'd own `@attr` is now `ERR_UNKNOWN_ATTR` and the gate exits
+  non-zero. This closes a real cross-port hole: the original assumption was "Java
+  enforces strict, TS/Python are lax", but Java was in fact **not enforcing either**
+  — its loader *records* `ERR_UNKNOWN_ATTR` (record-not-throw) and the Maven mojo
+  never drained `getErrors()`, so `metaobjects:generate`/`:verify` silently passed.
+  All four CLI ports now genuinely enforce strict and ship an escape:
+  - **TS** `meta verify` + **Python** `metaobjects verify` → `--lax` (#101)
+  - **C#** `dotnet meta verify` → `--lax` (#107)
+  - **Java/Kotlin** Maven goals → `-Dmeta.lax=true`, and the goals now **fail the
+    build on a recorded loader error** instead of silently passing (#108)
+
+  **Scope:** only `verify` defaults strict on the Node/C# CLIs (`gen`/`docs`/`agent-docs`
+  stay lax); the Java goals gate at generate-time too. **Migration:** if the gate now
+  flags an attr you rely on, register it on a metadata provider, move arbitrary
+  author-supplied properties into an `attr.properties` bag, or pass `--lax` /
+  `-Dmeta.lax=true`. The failure message names all three exits. (#96)
+- **CHANGED — a jsonb open-bag is now a parsed JSON value at the API boundary
+  (all five ports).** A `field.string` + `@dbColumnType: jsonb` (the sanctioned
+  untyped-JSON escape hatch) was generated as a *string* in the validator/DTO while
+  the column returns a parsed object — so a client could not POST/receive a real JSON
+  object (it had to double-encode). Now the generated contract types it as a JSON
+  value, wire form unchanged: TS `z.unknown()` (#97), Python `Any` (#99), Java
+  `Object` (#103), Kotlin `kotlinx JsonElement` at every layer (#104), C#
+  `System.Text.Json.JsonDocument` (#105). Adopters who hand-handled the field as a
+  raw string may need to adjust. (#98)
+
+### Added
+- **codegen-ts-react — nested value-object sub-forms in `formFile`.** A
+  `field.object` with an `@objectRef` to a value object now renders as a nested
+  `<fieldset>` sub-form (react-hook-form nested paths; arrays via `useFieldArray`)
+  instead of a single text `<input>` bound to a JSON object. Recurses one+ levels
+  with cycle/depth guards. (#95)
 
 ### Fixed
 - **sdk — Meta Forge descriptive layer is now strict-clean.** `loadMemory` bundles
