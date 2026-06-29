@@ -231,6 +231,37 @@ class KotlinTypeMapperTest {
         assertEquals("org.jetbrains.exposed.sql.json.jsonb", KotlinTypeMapper.exposedColumnImport(f))
     }
 
+    @Test fun `string field with dbColumnType=jsonb exposes a parsed JSON value in the REST payload`() {
+        // Issue #98 (cross-port jsonb open-bag REST contract). A `field.string @dbColumnType=jsonb`
+        // is the sanctioned "open JSON bag": the physical column is JSONB but the LOGICAL subtype
+        // stays `string`. The two layers are deliberately split:
+        //   - PERSISTENCE (kotlinTypeName / exposedColumnSpec): the Exposed column stays the
+        //     identity-codec `jsonb(name, { it }, { it })` and the entity data-class property stays
+        //     `String` — the JDBC driver returns jsonb as raw text, so String is correct here.
+        //   - REST PAYLOAD (payloadTypeName): the typed projection exposes the bag as a PARSED JSON
+        //     value (kotlinx `JsonElement`) so a client sends/receives a real JSON object, never a
+        //     double-encoded string. Matches TS `z.unknown()` (#97) and Python `Any` (#99).
+        val f = StringField("rubricWeights")
+        f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
+
+        // REST payload → parsed JSON value (the fix).
+        assertEquals(
+            ClassName("kotlinx.serialization.json", "JsonElement"),
+            KotlinTypeMapper.payloadTypeName(f),
+        )
+        // Persistence stays String — the entity data-class property is the raw-JSON holder for the
+        // identity-codec jsonb column. (This MUST NOT regress; the column assertion above gates it.)
+        assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals("jsonb(\"rubric_weights\", { it }, { it })", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `plain string field payload stays String`() {
+        // payloadTypeName only diverges from kotlinTypeName for the jsonb open-bag; a plain
+        // `field.string` payload property is still `String` (no double-encoding concern).
+        val f = StringField("name")
+        assertEquals(STRING, KotlinTypeMapper.payloadTypeName(f))
+    }
+
     @Test fun `string field with dbColumnType=jsonb is case-insensitive`() {
         // `@dbColumnType` lookup case-folds (see `KotlinTypeMapper.dbColumnType`); both
         // `"JSONB"` and `"jsonb"` route to the JSONB branch.

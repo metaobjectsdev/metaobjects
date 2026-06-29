@@ -311,6 +311,14 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             else "m.$name!!.filterNotNull().map { $conv }"
         }
 
+        // jsonb open bag (`field.string @dbColumnType=jsonb`): the strict payload types this as a
+        // parsed JSON value (kotlinx `JsonElement`, via KotlinTypeMapper.payloadTypeName — issue #98)
+        // while the lenient mirror leaf stays `String` (the LLM emits text). Bridge String → JsonElement
+        // by parsing. FQN-qualified so the emitted code resolves without an import (as elsewhere here).
+        if (KotlinTypeMapper.isJsonbOpenBag(field)) {
+            return "kotlinx.serialization.json.Json.parseToJsonElement(m.$name!!)"
+        }
+
         // Scalar (single): mirror is T?, strict is T — null-assert.
         return "m.$name!!"
     }
@@ -331,6 +339,13 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * FAILS LOUD at codegen time ([GeneratorException]) rather than emitting non-compiling code.</p>
      */
     private fun scalarArrayElementConversion(field: MetaField<*>): String? {
+        // jsonb open bag element (`field.string @dbColumnType=jsonb` + isArray): the strict payload
+        // element is a parsed JSON value (kotlinx `JsonElement`, via payloadTypeName — issue #98);
+        // the mirror element stays `String`. Parse each element. Checked first because the generic
+        // dispatch below keys on kotlinTypeName, which (correctly, for persistence) reports `String`.
+        if (KotlinTypeMapper.isJsonbOpenBag(field)) {
+            return "kotlinx.serialization.json.Json.parseToJsonElement(it)"
+        }
         // Same path the payload generator wraps in List<…> for a scalar-array element.
         val elementType = KotlinTypeMapper.kotlinTypeName(field)
         return when (elementType) {

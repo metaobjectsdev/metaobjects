@@ -43,7 +43,9 @@ import java.nio.file.Paths
  *       (@agg sum/min/max) — type of the referenced `@of` field.</li>
  *   <li>{@code origin.collection} (@via "Parent.rel") — {@code List<TargetPayload>}, and the
  *       nested payload class is recursively emitted alongside (deduped per execute() run).</li>
- *   <li>No origin child — fall back to {@link KotlinTypeMapper#kotlinTypeName(MetaField)}.</li>
+ *   <li>No origin child — fall back to {@link KotlinTypeMapper#payloadTypeName(MetaField)}
+ *       (parsed JSON value for a `field.string @dbColumnType=jsonb` open bag; otherwise the
+ *       same mapping as {@code kotlinTypeName}).</li>
  * </ul>
  */
 open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
@@ -133,8 +135,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /**
      * Resolve the Kotlin TypeName of a single payload-VO field, honoring any
-     * `origin.*` child. Falls back to [KotlinTypeMapper.kotlinTypeName] when no
-     * origin is present.
+     * `origin.*` child. Falls back to [KotlinTypeMapper.payloadTypeName] when no
+     * origin is present (parsed JSON value for a `field.string @dbColumnType=jsonb` open
+     * bag, otherwise identical to `kotlinTypeName`).
      */
     protected open fun resolveFieldType(
         field: MetaField<*>,
@@ -154,7 +157,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 is CollectionOrigin -> resolveCollectionType(
                     origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field
                 )
-                else -> KotlinTypeMapper.kotlinTypeName(field)
+                else -> KotlinTypeMapper.payloadTypeName(field)
             }
         }
 
@@ -185,7 +188,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Scalar array (`isArray: true` on a non-object field): model as List<ElementType> in the
         // strict payload (matching the cross-port payload shape). Without this, `kotlinTypeName`
         // returns the bare element type and the array semantics are lost.
-        val scalarType = KotlinTypeMapper.kotlinTypeName(field)
+        val scalarType = KotlinTypeMapper.payloadTypeName(field)
         if (field.isArrayType()) {
             return ClassName("kotlin.collections", "List").parameterizedBy(scalarType)
         }
@@ -207,7 +210,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
     ): TypeName {
-        val fallbackType = { KotlinTypeMapper.kotlinTypeName(field) }
+        val fallbackType = { KotlinTypeMapper.payloadTypeName(field) }
         val target = try {
             field.objectRef
         } catch (e: RuntimeException) {
@@ -248,10 +251,10 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         loader: MetaDataLoader,
         fallbackField: MetaField<*>,
     ): TypeName {
-        val from = origin.from ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
+        val from = origin.from ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
         val sourceField = resolveDottedFieldRef(loader, from)
-            ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-        return KotlinTypeMapper.kotlinTypeName(sourceField)
+            ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
+        return KotlinTypeMapper.payloadTypeName(sourceField)
     }
 
     /**
@@ -269,12 +272,12 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             MetaOrigin.AGG_COUNT -> LONG
             MetaOrigin.AGG_AVG -> DOUBLE
             MetaOrigin.AGG_SUM, MetaOrigin.AGG_MIN, MetaOrigin.AGG_MAX -> {
-                val of = origin.of ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
+                val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
                 val sourceField = resolveDottedFieldRef(loader, of)
-                    ?: return KotlinTypeMapper.kotlinTypeName(fallbackField)
-                KotlinTypeMapper.kotlinTypeName(sourceField)
+                    ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
+                KotlinTypeMapper.payloadTypeName(sourceField)
             }
-            else -> KotlinTypeMapper.kotlinTypeName(fallbackField)
+            else -> KotlinTypeMapper.payloadTypeName(fallbackField)
         }
     }
 
@@ -293,7 +296,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedEnumFqns: MutableSet<String>,
         fallbackField: MetaField<*>,
     ): TypeName {
-        val fallbackType = { KotlinTypeMapper.kotlinTypeName(fallbackField) }
+        val fallbackType = { KotlinTypeMapper.payloadTypeName(fallbackField) }
         val via = origin.via ?: return fallbackType()
         val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return fallbackType()
         val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return fallbackType()

@@ -119,6 +119,18 @@ object KotlinTypeMapper {
     private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
 
     /**
+     * The kotlinx-serialization JSON-value type a `field.string @dbColumnType=jsonb` open-bag is
+     * exposed as in the REST/serialization PAYLOAD (issue #98). `JsonElement` is the idiomatic
+     * "any JSON value" type for the `@Serializable` payload data classes [KotlinPayloadGenerator]
+     * emits (kotlinx is already this port's payload substrate — the same `Json` used by the
+     * `jsonb(...)` column codec for `field.map`), so a client sends/receives a real JSON object
+     * rather than a double-encoded string. The PERSISTENCE side is deliberately unaffected: the
+     * entity data-class property ([kotlinTypeName]) stays `String` (raw text from the JDBC driver)
+     * and the Exposed column ([exposedColumnSpec]) stays the identity-codec `jsonb(name,{it},{it})`.
+     */
+    private val PAYLOAD_JSON_VALUE_TYPE = ClassName("kotlinx.serialization.json", "JsonElement")
+
+    /**
      * Name of the generated, file-local Exposed extension function emitted for a
      * `@dbColumnType=timestamp_with_tz` [TimestampField]. It returns a
      * `Column<java.time.Instant>` whose `sqlType()` is `TIMESTAMP WITH TIME ZONE` — so the
@@ -249,6 +261,33 @@ object KotlinTypeMapper {
             "unsupported Kotlin type mapping for ${field::class.simpleName} '${field.name}'"
         )
     }
+
+    /**
+     * True iff [field] is the `field.string @dbColumnType=jsonb` open JSON bag — the sanctioned
+     * "arbitrary JSON value" pattern whose physical column is JSONB while its logical subtype stays
+     * `string`. The single source of truth both the payload type ([payloadTypeName]) and the
+     * extract-mapper bridge ([KotlinExtractorGenerator]) dispatch on, so the two sites stay in
+     * lockstep. Resolved THROUGH the `extends` chain (same as [dbColumnType]) so a projection field
+     * that binds a base-entity jsonb column via `extends:` inherits the open-bag treatment.
+     */
+    fun isJsonbOpenBag(field: MetaField<*>): Boolean =
+        field is StringField && dbColumnType(field) == DB_COLUMN_TYPE_JSONB
+
+    /**
+     * Map a MetaField to its KotlinPoet TypeName for a REST/serialization **payload** property
+     * (the `@Serializable` projection data classes emitted by [KotlinPayloadGenerator]).
+     *
+     * Identical to [kotlinTypeName] for every subtype EXCEPT the `field.string @dbColumnType=jsonb`
+     * open bag, which becomes the parsed JSON value [PAYLOAD_JSON_VALUE_TYPE] instead of `String`
+     * (issue #98). This is the deliberate payload/persistence split: the persistence holder
+     * ([kotlinTypeName]) and the Exposed column ([exposedColumnSpec]) keep the raw-text `String`
+     * contract; only the API/wire boundary exposes the bag as a real JSON value (matching the
+     * TS `unknown` / Python `Any` ports). Generators that drive PERSISTENCE (entity data class,
+     * Exposed table, the entity-CRUD controller DTO, which reuses the entity data class) must keep
+     * calling [kotlinTypeName], not this.
+     */
+    fun payloadTypeName(field: MetaField<*>): TypeName =
+        if (isJsonbOpenBag(field)) PAYLOAD_JSON_VALUE_TYPE else kotlinTypeName(field)
 
     /**
      * The Kotlin value TypeName for a scalar-valued [MapField] (the type named by its
