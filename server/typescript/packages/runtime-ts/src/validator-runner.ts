@@ -9,6 +9,7 @@ import {
   FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
@@ -72,6 +73,16 @@ export function runValidators(
     }
 
     if (value === undefined || value === null) continue;
+
+    // Open-bag jsonb column (`field.string @dbColumnType: jsonb`) holds ANY JSON
+    // value, not a string. The write-side coercer (`serializeJsonbColumns`)
+    // already expects an object/array here and JSON.stringifies it, so the
+    // string type-check + length checks must NOT fire — they would reject the
+    // very value the column is declared to hold. Required-ness (above) still
+    // applies; everything else is unconstrained for the open bag.
+    if (field.subType === FIELD_SUBTYPE_STRING && field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+      continue;
+    }
 
     const typeError = checkType(field.subType, value);
     if (typeError !== null) {
