@@ -69,6 +69,36 @@ public class JsonbColumnCodegenTests
     }
 
     [Fact]
+    public void Jsonb_field_carries_no_string_validation_attributes()
+    {
+        // Runtime-write verification (#98): C# has no ObjectManager runtime tier —
+        // EF Core IS the runtime, and the generated minimal-API create route binds the
+        // POST body straight onto the entity. Because the jsonb open-bag property is
+        // typed JsonDocument (not string), the generator must NOT decorate it with any
+        // string type/length validator ([MaxLength]/[StringLength]/[Required]) that would
+        // reject a posted JSON object on write. Assert the emitted Payload property block
+        // carries only [Column("payload")] — no string-validation annotation.
+        var ctx = Ctx(Load(Model));
+        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+
+        var lines = src.Split('\n');
+        int idx = Array.FindIndex(lines, l => l.Contains("public JsonDocument? Payload"));
+        Assert.True(idx >= 0, "generated source must declare the JsonDocument Payload property");
+
+        // Walk back over the attribute lines immediately preceding the property and
+        // confirm none is a string validator. [Column("payload")] is expected + allowed.
+        for (int i = idx - 1; i >= 0; i--)
+        {
+            string t = lines[i].Trim();
+            if (t.Length == 0) break;
+            if (!t.StartsWith("[")) break;            // reached the prior property body
+            Assert.False(t.StartsWith("[MaxLength"),  "jsonb Payload must not carry [MaxLength] (would reject an object on write)");
+            Assert.False(t.StartsWith("[StringLength"), "jsonb Payload must not carry [StringLength]");
+            Assert.False(t.StartsWith("[Required"),   "jsonb Payload (not @required) must not carry [Required]");
+        }
+    }
+
+    [Fact]
     public void Uuid_override_field_stays_string()
     {
         var ctx = Ctx(Load(Model));
