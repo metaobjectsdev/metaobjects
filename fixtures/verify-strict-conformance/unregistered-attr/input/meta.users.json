@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::users",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "@madeUpAttr": "nope" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

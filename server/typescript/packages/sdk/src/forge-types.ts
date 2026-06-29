@@ -103,6 +103,7 @@ export type ForgeAttr = (typeof FORGE_ATTRS)[number];
 // ---------------------------------------------------------------------------
 
 import {
+  type AttrSchema,
   type ChildRule,
   type MetaDataTypeProvider,
   type TypeDefinition,
@@ -110,6 +111,8 @@ import {
   TypeRegistry,
   MetaData,
   TYPE_ATTR,
+  TYPE_METADATA,
+  SUBTYPE_ROOT,
   CHILD_RULE_WILDCARD,
 } from "@metaobjectsdev/metadata";
 
@@ -123,6 +126,20 @@ function wildcardOf(childType: string): ChildRule {
     childName: CHILD_RULE_WILDCARD,
   };
 }
+
+// Every @forge* attr, declared (untyped, optional) as a COMMON attr — admissible
+// on ANY node, exactly like the documentation provenance attrs (@description /
+// @notes / @deprecated). Forge records are DESCRIPTIVE memory, not the
+// prescriptive metamodel: the @forge* provenance attrs annotate both forge nodes
+// AND real entities (e.g. @forgePrimaryLocation on an object.entity). Declaring
+// the NAMES — without value-type coercion — is what makes a forge-annotated node
+// strict-clean (ADR-0023 Check 0 keys off the attr NAME), so `meta verify`
+// (strict-by-default, #96) admits them instead of ERR_UNKNOWN_ATTR.
+const FORGE_ATTR_SCHEMAS: AttrSchema[] = FORGE_ATTRS.map((name) => ({
+  name,
+  required: false,
+  description: `Meta Forge provenance attr @${name} (descriptive memory).`,
+}));
 
 function def(
   type: string,
@@ -170,6 +187,19 @@ export const forgeTypesProvider: MetaDataTypeProvider = {
     for (const subType of FORGE_FAILURE_SUBTYPES) {
       registry.register(def(FORGE_TYPE_FAILURE, subType, `Forge failure record (${subType})`, forgeChildRules));
     }
+
+    // #96 — the @forge* provenance attrs are common (admissible on any node).
+    registry.registerCommonAttrs([...FORGE_ATTR_SCHEMAS]);
+
+    // FR-033 / #96 — admit the forge descriptive types as top-level children of
+    // metadata.root. Core (fail-closed) admits only object/field/validator/
+    // template there, so under strict load a real decision/principle/… record
+    // would otherwise be ERR_CHILD_NOT_ALLOWED. `loadMemory` bundles these types
+    // precisely so mixed prescriptive+descriptive content loads; wiring the
+    // childRule makes that hold under strict (`meta verify` strict-by-default) too.
+    registry.extend(TYPE_METADATA, SUBTYPE_ROOT, {
+      childRules: FORGE_TYPES.map((t) => wildcardOf(t)),
+    });
   },
 };
 

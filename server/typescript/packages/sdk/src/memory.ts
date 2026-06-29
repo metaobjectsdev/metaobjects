@@ -43,6 +43,13 @@ export interface LoadMemoryOptions {
    * Throws if `providers` is absent or empty.
    */
   replaceDefaults?: boolean;
+  /**
+   * ADR-0023 strict-attr load. When `true`, an authored own `@-attr` matching
+   * no registered per-type schema and no commonAttr is `ERR_UNKNOWN_ATTR`.
+   * Defaults `false` (legacy open-attr policy) so a downstream app loads lax;
+   * the `meta verify` command opts in to `true` (strict-by-default, #96).
+   */
+  strict?: boolean;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -99,6 +106,7 @@ export async function loadMemory(
 
   const loader = new MetaDataLoader({
     registry,
+    ...(options?.strict === true ? { strict: true } : {}),
   });
   const result = await loader.load(paths.map((p) => new FileSource(p)));
 

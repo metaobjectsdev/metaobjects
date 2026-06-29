@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING — `meta verify` is strict-by-default (ADR-0023).** `meta verify` (TS)
+  and `metaobjects verify` (Python) now load metadata **strict**: an undeclared or
+  typo'd own `@attr` is `ERR_UNKNOWN_ATTR` and verify exits non-zero. This closes the
+  cross-port gap where such an attr silently passed verify in TS/Python but was
+  rejected by Java's Maven `metaobjects:verify` goal (which already forces strict).
+  A new **`--lax`** flag restores the previous open-attr load. **Scope:** only
+  `verify` defaults strict — `gen` / `docs` / `agent-docs` keep loading lax.
+  **Migration:** if verify now flags an attr you rely on, either register it on a
+  metadata provider, move arbitrary author-supplied properties into an
+  `attr.properties` bag, or pass `meta verify --lax`. The failure message names all
+  three exits. (#96)
+
+### Fixed
+- **sdk — Meta Forge descriptive layer is now strict-clean.** `loadMemory` bundles
+  the Meta Forge descriptive types (`decision`/`principle`/…) and their `@forge*`
+  provenance attrs so mixed prescriptive+descriptive content loads. Under the new
+  strict `verify`, those were rejected (`ERR_CHILD_NOT_ALLOWED` / `ERR_UNKNOWN_ATTR`);
+  the forge provider now admits its types under `metadata.root` and registers the
+  `@forge*` attrs as common attrs, so a real memory record verifies clean. (#96)
+
 ## [0.13.1] — 2026-06-28
 
 _npm `0.13.1` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
