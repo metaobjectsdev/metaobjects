@@ -7,13 +7,14 @@ describe("agent-context types", () => {
     expect([...CLIENT_FRAMEWORKS]).toEqual(["react", "tanstack", "angular"]);
     expect(MIGRATION_TOKEN).toBe("migration");
   });
-  test("the five skills are named and ordered", () => {
+  test("the six skills are named and ordered", () => {
     expect(SKILL_NAMES).toEqual([
       "metaobjects-authoring",
       "metaobjects-codegen",
       "metaobjects-runtime-ui",
       "metaobjects-prompts",
       "metaobjects-verify",
+      "metaobjects-audit",
     ]);
   });
 });
