@@ -16,6 +16,8 @@ Bounds the element count of an array-valued field via @min/@max.
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** Bound the element count of an array field. Use @min/@max instead of a hand-written length check.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -34,6 +36,8 @@ Cardinality of presence: at least one of the named fields (@fields) must be pres
 **Owning provider:** metaobjects-core-types
 
 **Rules:** @fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.
+
+**When to use:** At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.
 
 **Attributes**
 
@@ -70,6 +74,8 @@ Cross-field ordering: requires two sibling fields of the owning entity stand in 
 
 **Rules:** @left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend's relational operator is (SQL: a NULL operand yields no violation).
 
+**When to use:** Two sibling fields must stand in an order (start <= end, currentHp <= maxHp). Declare it instead of hand-writing the cross-field assertion.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -88,6 +94,8 @@ Bounds string length / collection size via @min/@max.
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -104,6 +112,8 @@ _No structural children._
 Bounds a numeric value's magnitude via @min/@max.
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** Bound a number's magnitude. Use @min/@max instead of hand-written range checks.
 
 **Attributes**
 
@@ -124,6 +134,8 @@ Biconditional presence: the target field (@field) is present (NOT NULL) if and o
 
 **Rules:** @field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.
 
+**When to use:** A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -141,6 +153,8 @@ _No structural children._
 Requires the value match a regular expression (@pattern).
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.
 
 **Attributes**
 
@@ -160,6 +174,8 @@ Fails when the value is null/empty (NOT NULL). Equivalent to @required on the ow
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check.
+
 **Attributes**
 
 _No subtype-specific attributes._
@@ -175,6 +191,8 @@ One-directional conditional presence: when the gating field (@when) equals @equa
 **Owning provider:** metaobjects-core-types
 
 **Rules:** @field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).
+
+**When to use:** A field becomes required only when another field has a given value. Declare it instead of conditional validation code.
 
 **Attributes**
 

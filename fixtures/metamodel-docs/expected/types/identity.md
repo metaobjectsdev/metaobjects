@@ -16,6 +16,8 @@ The primary key — one per entity; @fields names its column(s), @generation the
 
 **Owning provider:** metaobjects-core-types
 
+**When to use:** Every entity needs exactly one — names the primary-key field(s) and how the value is generated. Always declare it.
+
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
@@ -32,6 +34,8 @@ _No structural children._
 A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** This entity holds a foreign key to another. Declare it to generate the FK constraint + typed navigation, instead of a loose id field you join on by hand.
 
 **Attributes**
 
@@ -51,6 +55,8 @@ _No structural children._
 A secondary index (unique by default via @unique).
 
 **Owning provider:** metaobjects-core-types
+
+**When to use:** A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.
 
 **Attributes**
 
