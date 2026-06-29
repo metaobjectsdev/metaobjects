@@ -64,6 +64,51 @@ class KotlinSpringControllerGeneratorTest {
         }
     }
 
+    /**
+     * Issue #98 — a `field.string @dbColumnType=jsonb` open bag (whose in-process Kotlin type
+     * is a kotlinx `JsonElement`) must NOT appear in the controller's FR-009 filter dispatch or
+     * its sort allowlist: it is not a scalar SQL filter/sort target, and emitting a dispatch arm
+     * (`p.value as JsonElement`) would reference an un-imported type → a controller that does not
+     * compile. (Caught by the Kotlin jsonb api-contract generated lane.)
+     */
+    @Test fun jsonbOpenBagFieldIsNotAFilterOrSortTarget() {
+        val fixture = """{
+          "metadata.root": { "package": "acme::store", "children": [
+            { "object.entity": { "name": "Document", "children": [
+                { "field.long":   { "name": "id", "@filterable": true, "@sortable": true } },
+                { "field.string": { "name": "title", "@maxLength": 200, "@required": true, "@filterable": true, "@sortable": true } },
+                { "field.string": { "name": "payload", "@dbColumnType": "jsonb" } },
+                { "source.rdb":   { "@table": "documents" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kctrl-jsonb-")
+        try {
+            val gen = KotlinSpringControllerGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("ctrl-jsonb", fixture))
+
+            val src = Files.readString(outDir.resolve("acme/store/DocumentController.kt"))
+
+            // No reference to the un-imported kotlinx JsonElement type (the compile-break).
+            assertTrue("JsonElement" !in src,
+                "jsonb open bag must not surface JsonElement in the controller (un-imported → no compile); saw:\n$src")
+            // The open bag is not a filter-dispatch arm.
+            assertTrue("\"payload\" -> when (p.op)" !in src,
+                "jsonb open bag must not get a filter-dispatch arm; saw:\n$src")
+            // The open bag is not in the sort allowlist; the genuinely-sortable fields still are.
+            val sortBlock = src.substringAfter("SortAllowlist").substringBefore(")")
+            assertTrue("\"payload\"" !in sortBlock,
+                "jsonb open bag must not be in the sort allowlist; saw:\n$src")
+            assertTrue("\"title\"" in sortBlock,
+                "genuinely-sortable fields must remain in the sort allowlist; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun pathHonorsApiPrefixAndEntityPlural() {
         val outDir = Files.createTempDirectory("kctrl-path-")
         try {

@@ -68,11 +68,24 @@ booted over HTTP) are wired and green for:
   emitted `Document.routes.ts` over Postgres testcontainer).
 - **Python** — reference (FastAPI + pg8000 over Postgres testcontainer) +
   generated (`render_router` emitted router + in-memory seam).
+- **Kotlin** — reference (`DocumentApiServer`, Exposed `jsonb` column over a
+  Postgres testcontainer) + generated (`KotlinSpringControllerGenerator` →
+  emitted `DocumentController` hosted on MockMvc over a Postgres testcontainer).
+  The generated lane caught + fixed a real codegen bug — a `field.string
+  @dbColumnType=jsonb` field produced a controller that referenced the kotlinx
+  `JsonElement` cast in its (dead) filter dispatch without importing it, so the
+  controller did not compile; the open bag is now excluded from the controller's
+  filter dispatch + sort allowlist (it is neither). Serialization seam: a
+  `JsonElement` is a sealed polymorphic type that neither Spring JSON converter
+  handles by default (vanilla Jackson can't construct it; the built-in kotlinx
+  converter refuses polymorphic bodies → HTTP 415), so the Kotlin generated lane
+  wires a small Jackson `JsonElement` codec module (the consumer's serialization
+  wiring).
 
-Deferred (corpus is ready; follow-up): **Java**, **Kotlin**, **C#**. Their
-api-contract harnesses bind the per-entity DTO shape statically (the JVM
-generated harness reflects a fixed `Author` constructor arity + ships a
-hand-written in-memory repo source; the C# generated lane is full-stack EF +
-Kestrel), so adding the `Document` entity means a new reference server +
-generated harness per port (mirroring their `m2m/` and `tph/` sub-corpus
-harnesses) rather than a focused fixture edit. Tracked in #98.
+Deferred (corpus is ready; follow-up): **Java**, **C#**. Their api-contract
+harnesses bind the per-entity DTO shape statically (the JVM generated harness
+reflects a fixed `Author` constructor arity + ships a hand-written in-memory repo
+source; the C# generated lane is full-stack EF + Kestrel), so adding the
+`Document` entity means a new reference server + generated harness per port
+(mirroring their `m2m/` and `tph/` sub-corpus harnesses) rather than a focused
+fixture edit. Tracked in #98.
