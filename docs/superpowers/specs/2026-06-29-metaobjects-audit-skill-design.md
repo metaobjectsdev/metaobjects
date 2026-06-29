@@ -93,16 +93,49 @@ No census/leverage (nothing generated yet). Instead:
   (high) and "has view + route + UI" (often = 1) is the headline lopsidedness.
 - **Phase 3 — Surface review (axes; independently runnable).** Each axis produces a
   classification table; synthesize, then **verify the top findings by reading the code**
-  (grep finds candidates, not conclusions). Axes:
-  - **A. API/server routes** — catalog + classify every handler.
-  - **B. Web/client** — every page + its data layer (hooks + central fetch module).
-  - **C. Validation, mappers, runtime models** — the drift hotspot; highest value.
-  - **D. Prompts** — every LLM prompt-construction site (§5).
-  - **E. Owned generators** (new) — the `codegen/generators/*` files themselves (§6).
+  (grep finds candidates, not conclusions). Eight axes spanning **all four pillars +
+  authoring-correctness** — the audit is not just "find codegen candidates", it checks
+  the project *uses each pillar's safeguards*. Every axis works the **complete capability
+  checklist** (§4b) so coverage is exhaustive, and respects the **calibration warnings**
+  (§10b) so it never flags a per-port gap as the adopter's fault:
+  - **A. Codegen candidates — API/server routes** — catalog + classify every handler.
+  - **B. Codegen candidates — web/client** — every page + its data layer (hooks + central
+    fetch module); grids/forms/filters vs `layout.dataGrid`/`formFile`/filter-allowlist.
+  - **C. Drift hotspot — validation, mappers, runtime models** — hand-written validators/
+    DTO-mappers/dataclasses shadowing a generated shape (§5); highest value.
+  - **D. Prompt pillar** — every LLM prompt-construction site (§7).
+  - **E. Owned generators & scaffold-and-own** — the `codegen/generators/*` files + config
+    (§6).
+  - **F. Drift-gate adoption (the most-missed pillar).** Is `meta verify` wired into CI
+    and/or pre-commit AT ALL? `--codegen` (committed-output drift) + `--templates`
+    (prompt↔payload) + `--db` (schema, Node-only) gates present? committed-codegen
+    `git diff --exit-code` freshness gate? anti-pattern advisories heeded (not
+    `--no-antipatterns`-suppressed)? routine `--no-verify` bypass? loader `ERR_*`/warnings
+    addressed (parse the stable `code`, not message text, ADR-0009)?
+  - **G. Runtime-contract anti-patterns.** Is metadata actually *loaded* at runtime, or
+    frozen into hand-code? Hunt: module-global `db` instead of context-as-parameter
+    (ADR-0008); wire-canonicalization (decimal/bigint→string) inside the query path
+    instead of native in-process return types (ADR-0019); runtime reflection to resolve a
+    type from its FQN instead of generated static imports / the FQN registry
+    (ADR-0001/0017); a process-global registry instead of per-loader (ADR-0014); any
+    code that **mutates the loaded metadata tree** (the spine is read-only); a JVM/Kotlin
+    app missing the startup validator; writes not routed to the `@role: primary` source.
+  - **H. Authoring-correctness / ADR-conformance** (deep adoption). Is the *metadata
+    itself* authored correctly? Hunt: invented/unregistered `@`-attrs or post-bootstrap
+    registration (strict provenance, ADR-0023 — custom attrs belong in a registered
+    provider or the `attr.properties` bag); retired source-v2 forms (`source.dbTable`/
+    `@name`/`@dbColumn`) instead of `source.rdb`+`@kind`+`@table`/`@column`+`@role`
+    (ADR-0007/0018); taxonomy impurity (an entity over a read-only primary source; a read
+    model that should be `object.projection`; a `value` carrying identity/source;
+    ADR-0028); copy-pasted base-field blocks instead of an abstract + `extends`;
+    `@`-prefixed YAML keys / unquoted coercible scalars (ADR-0006); relative refs in
+    committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (`field.timestamptz`,
+    raw `@dbType`; ADR-0013); a per-port migration engine where schema is Node-`meta`-owned
+    for every backend (ADR-0015).
   These axes are described as parallelizable (fan out one sub-agent per axis where the
   harness supports it; otherwise sequential) — **no mandated orchestration tool**, since
   the skill ships to varied adopter harnesses.
-- **Phase 4 — Synthesize** into the tiered roadmap (§7 report).
+- **Phase 4 — Synthesize** into the tiered roadmap (§9 report).
 
 **Verification discipline (hard rule).** Before declaring code dead/duplicated/bespoke,
 read it. When something looks dead, check whether it *should* be called. When a validator
@@ -149,6 +182,65 @@ when the page isn't.
 **Stub trap.** A route/page returning hardcoded/demo data (not DB-backed) looks like a
 candidate but has nothing to replace — classify "candidate (future) — not DB-backed";
 don't count its LOC as a win.
+
+## 4b. Complete capability coverage (the exhaustive checklist)
+
+The §5 drift signatures are the *high-value patterns*; they are NOT the full surface. To
+guarantee the audit misses nothing, the skill ships a **`references/capability-checklist.md`**
+fragment enumerating **every modelable MetaObjects capability** (the registry vocabulary +
+the four pillars + the ADR contracts), each with its one-line audit hunt — derived
+verbatim from the registry-conformance manifest (`fixtures/registry-conformance/expected-registry.json`)
+so it can't drift from the real vocabulary. The agent works this checklist on every axis.
+The capability families it covers (each is a hunt for "a hand-written shape the metadata
+already describes"):
+
+- **Object** — `entity` (hand-written entity/DTO/repository), `value` (hand request/command
+  VOs), `projection` (hand read-model DTOs + their SQL views), `@discriminator`/
+  `@discriminatorValue` (hand-rolled STI/TPH polymorphism).
+- **Field** — every concrete subtype: `string @maxLength`, `int/long/double/float`,
+  `decimal @precision/@scale` (lossy-float money/quantity), `boolean`, `currency @currency`
+  (+`view.currency @locale`; float money / hand `*100` / `Intl.NumberFormat`), `date/time/
+  timestamp` (+`@autoSet` hand-stamped created/updated), `enum @values` (hand union/enum/
+  `CHECK IN`), `uuid` (string IDs), `object @objectRef/@storage` (hand-flattened/jsonb),
+  `map @valueType` (ad-hoc key/value jsonb); common attrs `@column/@default/@required/
+  @unique/@readOnly/@filterable/@sortable/@db.indexed/@dbColumnType/@example/@instruction/
+  @xmlText`. (Cut subtypes `byte/short/class` — **do NOT audit for them**, §10b.)
+- **Source** — `rdb @table/@schema` (default-naming divergence), `@kind=view/materializedView`
+  (hand SQL views vs authored projection sources), `@kind=storedProc/tableFunction +
+  @parameterRef` (hand-called procs vs modeled callables), `@role=primary` (manual
+  write-through CQRS).
+- **Relationship** — 1:N/N:1 (`@cardinality/@objectRef`: hand FK joins/finders), M:N
+  `@through` (hand junction queries vs generated traversal), `@symmetric/@sourceRefField`
+  (hand self-join/graph queries), `@onDelete/@onUpdate` (app-code cascades), `association/
+  aggregation/composition` ownership semantics.
+- **Identity** — `primary @generation` (hand-assigned PKs), `secondary @unique/@where/@expr`
+  (raw-SQL partial/functional indexes), `reference @references/@enforce` (hand FK
+  constraints).
+- **Origin** (projection-field derivation) — `aggregate @agg/@of/@via` (hand COUNT/SUM/AVG
+  subqueries or in-app rollups), `passthrough @from/@via` (denormalized-by-hand fields),
+  `collection @via` (hand-assembled child collections).
+- **Validator** — `required/length/numeric/array/regex` (hand field validation) AND the
+  **cross-field** subtypes `comparison/atLeastOne/requiredWhen/presentIff` (hand-coded
+  "end ≥ start", "one-of", conditional-required — these ARE modelable; §8 governs whether
+  the constraint belongs in shared metadata).
+- **View / Layout** — `view.currency @locale`; the **TS-only** `view.*` widget subtypes
+  (text/dropdown/checkbox/password/…) for web consumers; `layout.dataGrid` (hand grid
+  columns + hooks).
+- **Template (prompt pillar)** — `prompt @payloadRef/@textRef/@responseRef/@requiredSlots/
+  @maxTokens/@maxChars/@format/@model`, `output @kind=document|email + @subjectRef/
+  @htmlBodyRef/@textBodyRef + parser`, `toolcall @toolName/@payloadRef` (§7).
+- **Attr** — `attr.properties` (the sanctioned author key/value escape hatch — ad-hoc
+  metadata stuffed in code/comments could ride it), `attr.filter/class` (preset filters /
+  binding facets).
+- **Common doc attrs** — `description/title/summary/notes/deprecated/replacedBy/seeAlso/
+  aliases` (weak generated docs; deprecation modeled vs code-comment).
+- **Cross-cutting** — `extends` (any depth, cross-package `::`) vs copy-pasted base blocks;
+  the filter-operator + sort + pagination + `withCount` REST layer; `apiPrefix` /
+  `columnNamingStrategy` single-source config; per-target output dirs.
+
+The checklist also carries the §10b calibration flags inline (per-port codegen gaps, cut
+subtypes, planned-not-shipped surfaces) so a check is never run where the capability
+doesn't exist for that port.
 
 ## 5. Drift signatures (the highest-value findings; grep-then-verify)
 
@@ -227,17 +319,34 @@ prefixes don't break) + a declared **output contract with a generated parser** +
 Hunt these anti-patterns per prompt-construction site:
 
 - **Inline prompt strings** (triple-quoted / template-literal constants in service code).
-- **Untyped payloads** (`str.format(**dict)` / f-strings / `.format()` over an ad-hoc dict).
+- **Untyped payloads** (`str.format(**dict)` / f-strings / `.format()` over an ad-hoc dict)
+  — the payload should be an `object.value` projection whose fields declare `origin.*`
+  (`passthrough` / `aggregate` / **`collection`** for nested child lists).
 - **The silent-degradation hack** (`try/except KeyError` or `?? ''` around prompt
   formatting that degrades when a key is missing — the motivating failure the pillar
   prevents; flag every instance).
 - **Hand-rolled output parsing** (regex / XML / ad-hoc JSON extraction instead of a
-  declared `template.output` + generated parser).
-- **No prompt↔payload drift gate.**
+  declared `template.output` + generated `parse*`/`safeParse*`/`extract*` parser). NOTE:
+  parser codegen ships TS/C#/Python/Kotlin; **Java hand-writes the Jackson one-liner** —
+  don't flag that as a defect (§10b).
+- **Engine-side formatting / whitespace** that breaks byte-identical render (locale/number/
+  date formatting in the engine; missing `@format` escaper; no CSV/spreadsheet-injection
+  guard for exports) — pre-format on the payload; prompt-cache exact-prefix hits depend on
+  byte-stability.
+- **`template.toolcall`** — LLM tool schemas hand-defined / re-registered per call instead
+  of a modeled `toolcall @toolName/@payloadRef` (vendor identity stays in a provider, not
+  the subtype; ADR-0011).
+- **`@responseRef` + AI-trace** — hand-parsed LLM responses with no typed response shape;
+  a trace store whose `voRequest`/`voResponse` jsonb columns are *authored* `field.object`
+  (never loader-derived — the loader must not mutate the tree), with the vendor SDK client
+  + pricing BYO (ADR-0024).
+- **No prompt↔payload drift gate** (`meta verify --templates` not run) and **no `@maxChars`/
+  `@maxTokens` budget** declared (size enforced ad-hoc).
 
 Classify each prompt: fully-modeled / partial (text external, payload untyped) / fully
-inline. Recommend the migration (typed payload VO → external template → render → output
-parser → verify), and note cross-consumer prompt-sharing opportunities.
+inline. Recommend the migration (typed payload VO → external provider-resolved text →
+deterministic render → output parser → `verify --templates` gate), and note cross-consumer
+prompt-sharing opportunities.
 
 ## 8. Semantic-constraint ratification (prevents over-modeling)
 
@@ -249,12 +358,18 @@ metadata attributes** — per-constraint human judgment:
 > preference stays in a **thin local refinement layer** wrapping the generated schema in
 > exactly one place.
 
+Cross-field rules **are** modelable — the validator vocabulary includes `comparison` /
+`atLeastOne` / `requiredWhen` / `presentIff` — so a hand-coded cross-field check IS a
+candidate. The ratification decides *which* belong in **shared** metadata, not whether
+cross-field validation can be modeled at all.
+
 Heuristics: distinguish **`required` from has-a-safe-default** (hand code conflates them;
 the truer model is often `@default`, which *fixes* the over-requiring bug); check the
 attr actually **generates in every layer** before modeling it (some don't render into the
 validation schema, only the DB column); model **universal numeric/format invariants**
 (non-negative count, positive rate, 0–23 hour, closed enum) — they generate + enforce
-everywhere; **resist non-universal cross-field rules** ("start < end" when the window can
+everywhere; model a **universal** cross-field invariant ("a discount can't exceed the
+price") but **resist non-universal ones** ("start < end" when the window can legitimately
 wrap); remember **a core metamodel attr ripples cross-port** (all ports' conformance +
 drift gates) — for a one-consumer need, read the attr codegen-locally instead.
 
@@ -275,10 +390,18 @@ A single written report file with these sections:
    generated-equivalent? → fix.
 5. **Owned-codegen & generator gaps** — owned-generator drift; what's missing/broken in
    the toolchain that blocks candidates; own-vs-template-spec-vs-upstream-vs-stopgap per
-   gap; version-skew warnings.
-6. **Semantic-constraint ratification table** — the per-constraint decisions to approve.
-7. **Prompt-pillar assessment** — per prompt: modeled / partial / inline; the migration.
-8. **Prioritized roadmap**, tiered:
+   gap; **intra-port** version-skew warnings (never cross-port, §10b).
+6. **Drift-gate adoption** (axis F) — is `verify` wired into CI/pre-commit? which subverbs
+   (`--codegen`/`--templates`/`--db`); committed-codegen freshness gate; advisories
+   suppressed?; `--no-verify` bypass; unaddressed loader `ERR_*`/warnings.
+7. **Runtime-contract & authoring-correctness findings** (axes G + H) — runtime
+   anti-patterns (module-global `db`, wire-canonicalize in the query path, runtime
+   reflection, global registry, metadata-tree mutation, missing startup validator) and
+   metadata-authoring defects (invented attrs, retired source-v2 forms, taxonomy impurity,
+   copy-paste vs `extends`, YAML coercion, relative canonical refs, per-port migrate engine).
+8. **Semantic-constraint ratification table** — the per-constraint decisions to approve.
+9. **Prompt-pillar assessment** — per prompt: modeled / partial / inline; the migration.
+10. **Prioritized roadmap**, tiered:
    - **Tier 1 — drift kill (no new tooling):** retire divergent validators/mappers/
      serializers. Removes active bug classes. Smallest blast radius. First.
    - **Tier 2 — clear wins with existing/owned generators:** surfaces that fit today once a
@@ -316,27 +439,77 @@ Quantify total retirable LOC and the new durable spine (generators + views) it c
   the custom action hand-written alongside.
 - **Stub surfaces are not wins** — demo-data routes/pages have nothing to replace.
 
+## 10b. Calibration — port gaps & non-defects (do NOT score these as adopter fault)
+
+A correct audit *never flags a capability that doesn't exist for the project's port/stack.*
+These guards live in SKILL.md and (per-port) in the references; the agent consults them
+before raising a finding. Mis-flagging a by-design gap is the audit's worst failure mode.
+
+- **Per-port codegen gaps** (hand-code there is expected, not a defect):
+  - **Filter-operator route codegen** is full only in **TS**; Java/Kotlin/C#/Python generate
+    pagination/sort/`withCount` but **defer filter ops** — don't flag hand-added filter
+    handling in those ports.
+  - **Output-parser codegen** ships TS/C#/Python/Kotlin; **Java hand-writes** the Jackson
+    parse — acceptable.
+  - **Python** still hand-wires the FastAPI router (and the repository impl) around a
+    generated `APIRouter`; relationship / non-`table` source-kind / `field.object flattened`
+    codegen is partial.
+  - **C#** has **no ObjectManager runtime tier** (EF Core *is* the runtime) — hand services
+    over the generated `DbContext` are expected; NuGet may be consumed from source.
+- **Cut subtypes** — `field.byte` / `field.short` / `field.class` are non-functional stubs,
+  **removed**; never recommend them.
+- **TS/web-only** — the `view.*` widget subtypes (text/textarea/dropdown/checkbox/password/…)
+  exist only for TS/web consumers; scope those checks to TS adopters (only `view.base` /
+  `view.currency` are cross-port-gated).
+- **Planned, not shipped** — `api.*` / `operation.*` / `binding.*` (declared-API, FR-024) and
+  **MCP exposure** of declared prompts/tools are NOT yet in the registry; their absence is
+  not an adopter defect.
+- **Cross-port version skew is by design** — TS/C#/Python on the `0.x` line vs Java/Kotlin
+  on the `7.x` Maven line is correct; **never flag it**. (Flag only *intra-port* version
+  drift — mixed `@metaobjectsdev/*` / `com.metaobjects:*` / `MetaObjects.*` versions within
+  one port, or a runtime package in `devDependencies`.) The cross-port coordination point is
+  the conformance CAPABILITIES manifest, not a shared number.
+- **Stale upstream prose** — the README's "hand-write the Spring controller" note for
+  Java/Kotlin is **out of date** (controllers ARE generated); trust the port docs +
+  `meta gen --list`, not stale prose.
+
 ## 11. File structure & build
 
 - **`agent-context/skills/metaobjects-audit/SKILL.md`** — port-agnostic spine: purpose +
-  thesis (§1), the triage + phased **checklist** (the agent makes todos from it; §2),
-  classification scheme (§3) + candidacy heuristics (§4), drift signatures (§5) +
-  owned-codegen assessment (§6) + prompt anti-patterns (§7) as grep-then-**verify** hunts,
-  the semantic principle (§8), the **report template** (§9, the deliverable), guardrails
-  (§10). SKILL.md points to the per-port references.
+  thesis (§1), the triage + phased **checklist** with the 8 axes (the agent makes todos
+  from it; §2), classification scheme (§3) + candidacy heuristics (§4), drift signatures
+  (§5) + owned-codegen assessment (§6) + prompt anti-patterns (§7) as grep-then-**verify**
+  hunts, the semantic principle (§8), the **report template** (§9, the deliverable),
+  guardrails (§10) + the **calibration / non-defect guards** (§10b). SKILL.md points to the
+  capability checklist + per-port references, and **maps each recommended cutover to the
+  right sibling skill** — author metadata → `metaobjects-authoring`; generate/own
+  generators → `metaobjects-codegen`; routes/runtime/web → `metaobjects-runtime-ui`;
+  prompts → `metaobjects-prompts`; wire drift gates + migrations → `metaobjects-verify`.
+- **`agent-context/skills/metaobjects-audit/references/capability-checklist.md`** —
+  port-agnostic: the **exhaustive** modelable-capability checklist (§4b) derived from the
+  registry-conformance manifest, with each capability's audit hunt + its inline calibration
+  flag. The completeness backbone; always installed (no stack gate).
 - **`agent-context/skills/metaobjects-audit/references/{typescript,csharp,java,kotlin,python}.md`**
   — per-port specifics, stack-gated install (like the other skills): how to find generated
   dirs + run gen/verify in that port; the per-language drift signatures (`model_dump`/Zod/
-  records/etc.); the **owned-generators** location + the deprecated-export name to grep;
-  the version-skew check for that ecosystem (resolved CLI deps).
+  records/etc.); the **owned-generators** location + the deprecated-export name to grep; the
+  version-skew check for that ecosystem (resolved CLI deps); and **that port's calibration
+  gaps** (§10b — e.g. Java hand-writes the output parser; Python hand-wires the router; C#
+  has no ObjectManager; non-TS ports defer filter-op codegen) so the audit doesn't
+  mis-flag them.
 - **Register** `metaobjects-audit` in `server/typescript/packages/sdk/src/agent-context/types.ts`
-  `SKILL_NAMES`; **regenerate** the 4 agent-context conformance fixtures
+  `SKILL_NAMES`; confirm `assemble.ts` emits the new SKILL.md + all references (deploy-all);
+  **regenerate** the 4 agent-context conformance fixtures
   (`bun scripts/regen-agent-context-conformance.ts`); verify **native per-port emit** (the
   Python/JVM/C# `agent-docs` paths bundle the same `agent-context/` tree — gated by
-  `fixtures/agent-context-conformance/`).
+  `fixtures/agent-context-conformance/`). The always-on `AGENTS.md`/`CLAUDE.md` template
+  lists the `metaobjects-*` skills — confirm the audit skill appears.
 - **Content review** (the agent-context P0 lesson): the skill must cite only **real** APIs
-  / commands / generator names per port — no invented `meta` flags or generator names.
-  Cross-check against the live codegen/verify/authoring skills + the CLI surface.
+  / commands / generator names / metamodel attrs per port — no invented `meta` flags,
+  generator names, or attrs. The capability checklist is **generated from / diffed against**
+  `fixtures/registry-conformance/expected-registry.json` so it can't claim a vocabulary the
+  registry doesn't have. Cross-check commands against the live codegen/verify/authoring/
+  prompts/runtime-ui skills + the CLI surface.
 
 ## 12. Out of scope
 
