@@ -40,11 +40,8 @@ both are SPI-discovered by the `metaobjects-maven-plugin`. Schema migration + li
 drift run through the **Node `meta` CLI** regardless of server language — see the
 migration reference.
 
-To see which generators are active:
-
-```bash
-mvn metaobjects:generate -Dmeta.gen.list=true
-```
+The active generator list is declared in `pom.xml` under the plugin `<configuration>`
+`<generators>` block — that is the source of truth for which generators run.
 
 ---
 

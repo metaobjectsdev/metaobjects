@@ -37,11 +37,7 @@ server language — see the migration reference. `mvn metaobjects:verify -Dmeta.
 is rejected (exit 2).
 
 The generator list and the `<sourceDir>` are both declared in `pom.xml` under the
-plugin `<configuration>`. To see which generators are active:
-
-```bash
-mvn metaobjects:generate -Dmeta.gen.list=true
-```
+plugin `<configuration>` — that is the source of truth for which generators run.
 
 ---
 
@@ -50,7 +46,7 @@ mvn metaobjects:generate -Dmeta.gen.list=true
 | Signature | What it means |
 |---|---|
 | Hand-written `record` with same fields as a modeled entity | `SpringDtoGenerator` should own this (`<Entity>Dto.java`) |
-| Hand-written `@RestController` on a CRUD entity | `SpringControllerGenerator` should own this; trust `mvn metaobjects:generate -Dmeta.gen.list=true`, not stale docs |
+| Hand-written `@RestController` on a CRUD entity | `SpringControllerGenerator` should own this; trust the `pom.xml` `<generators>` configuration, not stale docs |
 | `interface <Entity>Repository` with no `@generated` comment | `SpringRepositoryGenerator` emits the stub; compare field by field |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `ObjectMapper.readValue(` outside a `*Parser.java` file | check if a `template.output` node exists — output-parser codegen ships in Java |

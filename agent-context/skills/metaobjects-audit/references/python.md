@@ -61,9 +61,12 @@ Python does not scaffold-and-own generators — they are provided by the `metaob
 package and selected by stable name via `--generators`. There is no analog to the
 TS `codegen/generators/*.ts` pattern here.
 
-`metaobjects agent-docs --server python` (re)scaffolds the slim always-on Markdown +
-the `metaobjects-*` skills into the project using the agent-context bundled inside
-the Python package — no Node `meta` is required for this on the Python side.
+To re-scaffold the agent-context into a Python project, use the Node `meta` CLI (the
+single agent-docs assembler per ADR-0033):
+
+```bash
+npx meta agent-docs --server python [--out <dir>]
+```
 
 ---
 
