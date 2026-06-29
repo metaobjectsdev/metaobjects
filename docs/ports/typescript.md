@@ -111,7 +111,7 @@ Drop your metadata under `metaobjects/`:
 ```bash
 meta gen                  # codegen → format → 3-way merge → write
 meta gen --dry-run        # preview without writing
-meta gen --watch          # re-run on metadata file change
+meta gen Author Post      # scope to named entities
 
 meta migrate              # diff vs DB → emit migration SQL
 meta migrate --dialect d1 # Cloudflare D1 dialect

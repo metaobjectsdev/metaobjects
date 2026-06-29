@@ -1,0 +1,262 @@
+---
+name: metaobjects-audit
+description: Use when assessing how well a project has adopted MetaObjects — greenfield first-pass or deep double-check; produces a scored, prioritized adoption-audit report covering codegen, runtime, drift-gates, and prompts.
+---
+
+# MetaObjects adoption audit
+
+**Thesis.** Typed metadata is the durable spine; generated code is the disposable
+artifact. Hand-writing a layer the metadata could own creates a second source of
+truth for one fact — it will drift. This audit hunts those second sources of truth
+and proposes folding them into the spine.
+
+**Boundary — read-only.** Deliverables: `.metaobjects/adoption-audit.json` (machine-readable
+findings) + a rendered Markdown report. The audit **never edits code, never authors
+metadata** — `metadata_sketch` per finding is a read-only proposal for human review.
+Actual cutovers run through the existing skills mapped per finding tier (§ Bridge).
+
+---
+
+## Phase 0 — Triage (fast, mechanical)
+
+- [ ] MetaObjects present? (`metaobjects/` dir, metadata sources, `@metaobjectsdev/*` /
+  `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` deps).
+- [ ] Count metadata source lines + all `@generated` / `DO NOT EDIT` files repo-wide.
+- [ ] **Owned-generators check:** does the project own generators at `codegen/generators/*`
+  (scaffold-and-own via `meta init`), or still import the **deprecated** package export
+  (`@metaobjectsdev/codegen-ts/generators`)? Not owning is itself a finding.
+- [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
+
+---
+
+## Phase 1a — Greenfield path
+
+- [ ] **Shape inventory.** Catalog modelable shapes: entities/tables, DTOs, validation
+  schemas, routes, UI lists/forms, prompt sites.
+- [ ] **Pick wedge:** one real entity (single-column PK, standard CRUD) to model first.
+- [ ] **From-zero roadmap:** `meta init` → model the wedge → `meta gen` the data layer →
+  author a projection view → expand to routes/UI → add prompt pillar where LLM calls exist.
+  Owning the generators from day 1 is part of the roadmap.
+
+## Phase 1b — Partial / Deep path
+
+**Census:** generated output line/file counts + metadata/owned-generator lines.
+Compute **leverage ratio** = `generated_lines / (metadata_lines + generator_lines)`;
+healthy = multi-× (example: ~4.7k spine → ~15.7k generated ≈ 3.3×).
+
+**Coverage matrix:** per entity/projection/value — query helpers? view? routes? UI?
+The gap between "modeled + query helpers" and "has view + route + UI" is the headline
+lopsidedness.
+
+**Surface review — 8 axes (independently runnable).**
+Work the full `references/capability-checklist.md` on every axis. Check calibration
+guards (§ Calibration) before raising a finding. **Verify, don't assume** — read the
+code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
+
+- [ ] **A. Codegen candidates — API / server routes.** Catalog + classify every handler.
+- [ ] **B. Codegen candidates — web / client.** Pages, data layer (hooks, central fetch),
+  grids/forms/filters vs `layout.dataGrid` / form generators / filter-allowlist.
+- [ ] **C. Drift hotspot — validators, mappers, runtime models.** Hand validators / DTO-mappers /
+  dataclasses shadowing a generated shape. Diff field-by-field; the divergence is the bug.
+- [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see § Prompt anti-patterns).
+- [ ] **E. Owned generators & scaffold-and-own** (see § Owned-codegen assessment).
+- [ ] **F. Drift-gate adoption.** Is `meta verify` wired into CI / pre-commit? Which
+  subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
+  Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?
+  Parse the stable `code` field, not message text (ADR-0009).
+- [ ] **G. Runtime-contract anti-patterns.** Module-global `db` vs context-as-parameter
+  (ADR-0008); wire-canonicalization in the query path vs native in-process return types
+  (ADR-0019); runtime reflection to resolve a type from FQN vs generated static imports /
+  FQN registry (ADR-0001 / 0017); process-global registry vs per-loader (ADR-0014); code
+  that **mutates the loaded metadata tree** (read-only after load); JVM/Kotlin missing
+  startup validator; writes not routed to the `@role: primary` source.
+- [ ] **H. Authoring-correctness / ADR-conformance (deep).** Invented/unregistered
+  `@`-attrs or post-bootstrap registration (ADR-0023 — custom attrs belong in a registered
+  provider or `attr.properties`); retired source-v2 forms (`source.dbTable` / `@name` /
+  `@dbColumn` → use `source.rdb` + `@kind` + `@table` / `@column` + `@role`, ADR-0007/0018);
+  taxonomy impurity (entity over read-only primary source; read model that should be
+  `object.projection`; `value` carrying identity/source, ADR-0028); copy-pasted base-field
+  blocks instead of abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); relative refs
+  in committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (ADR-0013); per-port
+  migration engine where schema is Node-`meta`-owned (ADR-0015).
+
+**Phase 4 — Synthesize** into the tiered roadmap and populate both artifacts.
+
+---
+
+## Classification scheme (every surface; classify on codegen AND runtime)
+
+| Class | Meaning | Action |
+|---|---|---|
+| **GENERATED** | Driven by metadata (regenerable). | Confirm it regenerates clean. |
+| **OWNED-GENERATOR** | `codegen/generators/*` file the project owns. | Confirm clean regen; flag drift from reference template. |
+| **CODEGEN CANDIDATE (high)** | Standard CRUD/list/form over a modeled or modelable entity. | Author the view + generate; parity-gate. |
+| **CODEGEN CANDIDATE (partial)** | Generatable data layer, bespoke presentation. | Generate data layer; keep viz hand-written. |
+| **DYNAMIC-RUNTIME CANDIDATE** | Behavior that could be metadata-driven at runtime. | Assess runtime-metadata feasibility. |
+| **BESPOKE (keep)** | Genuine custom: aggregations, graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
+
+**Gold-standard exception.** A hand-written component that *derives* from generated metadata
+cannot drift — flag as good. A "bespoke" component hardcoding a shape metadata knows is a
+hidden candidate. **Stub trap:** demo-data routes have nothing to replace — classify
+"candidate (future) — not DB-backed".
+
+---
+
+## Drift signatures (highest-value; grep-then-verify)
+
+Per finding: `file:line` → what → generated-equivalent exists? → recommendation.
+
+1. **Hand validators shadowing a generated schema** — diff field-by-field; divergence is the bug.
+2. **Field-by-field serialize / deserialize / DTO↔model / row mappers** — silently drops a field when metadata grows one.
+3. **camelCase↔snake_case / body↔column maps** maintained beside a generated view that already renames.
+4. **Drift-admitting comments** — grep: `"keep in sync with"` / `"mirrors the"` / `"matching the"`.
+5. **Runtime schema patching** (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, `_ensure_schema()`) — N schema owners.
+6. **N declarations of one shape** — same entity as Drizzle table + Zod schema + Pydantic model + hand dataclass; target is 1 + N generated.
+
+---
+
+## Owned-codegen & scaffold-and-own assessment
+
+- If config imports deprecated `@metaobjectsdev/codegen-ts/generators` instead of
+  owned `codegen/generators/*`, recommend the scaffold-and-own migration (`meta init`).
+- Audit owned generators: (a) regenerate clean? (b) drifted from reference templates —
+  intentional (good) vs stale/accidental (missed upstream fix)? (c) hand-rolling a walk
+  that a declarative `scope` + `outputPattern` could replace? (d) bespoke shape better as
+  a `templateGenerator` than a forked generator?
+- **Authoring ladder:** built-in fits → use it · close → **own + customize** (the default)
+  · new shape → **author a declarative template-spec / custom generator from the metadata**
+  · genuinely un-modelable → hand-write (still import the generated types).
+- **Generator-gap check:** missing generators that block the biggest wins? Recommend per gap:
+  own + customize / author a template-spec / fix upstream / stopgap.
+- **Verify the DB artifact, not just the types** — computed view columns may appear in the
+  contract but be dropped from the view DDL; the contract may lie.
+- **Version skew:** check *actually-resolved* package versions, not declared; consuming a fix
+  requires a coordinated lockstep bump, not a source-file copy.
+
+---
+
+## Prompt anti-patterns (hunt per site; classify: fully-modeled / partial / fully-inline)
+
+- Inline prompt strings (triple-quoted / template-literal constants in service code).
+- Untyped payloads (`str.format(**dict)` / f-strings / ad-hoc dicts) — payload should be an
+  `object.value` with `origin.*` (`passthrough` / `aggregate` / `collection`) fields.
+- Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
+- Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs declared `template.output` +
+  generated `parse*` / `safeParse*` / `extract*` parser. **Java hand-writes the Jackson
+  one-liner — do NOT flag it** (§ Calibration).
+- Engine-side formatting breaking byte-identical render (prompt-cache exact-prefix hits
+  depend on byte-stability).
+- `template.toolcall` candidates: LLM tool schemas hand-defined per call vs modeled
+  `toolcall @toolName/@payloadRef`.
+- `@responseRef` + AI-trace: hand-parsed responses with no typed response shape; note that
+  `voRequest` / `voResponse` jsonb columns must be authored `field.object` — the loader
+  must not mutate the tree; vendor SDK client + pricing are BYO (ADR-0024).
+- No `meta verify --templates` gate; no declared `@maxChars` / `@maxTokens` budget.
+
+---
+
+## Semantic-constraint ratification (prevents over-modeling)
+
+When folding hand validators into metadata, apply human judgment per constraint.
+A constraint enters **shared metadata** only if it is a **true cross-language domain
+invariant**; a one-consumer preference stays in a thin local refinement layer.
+
+Cross-field rules **are** modelable (`comparison` / `atLeastOne` / `requiredWhen` /
+`presentIff`); ratification decides *which* belong in shared metadata. Output a
+**ratification table**: KEEP-IN-METADATA / LOCAL-REFINEMENT / DROP + rationale —
+human-approved, never applied silently. Distinguish `required` from has-a-safe-default
+(`@default` often fixes the over-requiring bug). A core attr ripples cross-port; for a
+one-consumer need, read it codegen-locally.
+
+---
+
+## Scoring & maturity model — three surfaces (no single global score; bands not decimals)
+
+1. **Headline MATURITY TIER** — Greenfield → Partial → Deep → Exemplary; worst-of with
+   prerequisite gating (a missing pillar can't be averaged away); rendered with **the single
+   next unmet check** ("you're Partial; the next rung needs `verify` in CI").
+2. **Per-pillar breakdown (never rolled into one number)** — `pillar | tier | top gap` over
+   codegen / runtime / drift-gate / prompts. This is the core deliverable.
+3. **Binary CI drift gate** — prominent and separate: **"Is `meta verify` drift detection
+   wired into CI?"** It is binary because the risk is binary.
+
+Coarse bands only (none / some / most / all). Worst-of within a pillar. On re-run, grade
+the delta. Lead with gaps, not the grade.
+
+---
+
+## Report
+
+**Two artifacts:** `.metaobjects/adoption-audit.json` + rendered Markdown.
+
+**Markdown sections (lead with Scorecard):** 0. Scorecard (tier + pillar table + CI gate) ·
+1. Triage + census · 2. Coverage matrix · 3. Per-surface classification tables · 4. Drift
+findings (active bugs first) · 5. Owned-codegen + generator gaps · 6. Drift-gate adoption ·
+7. Runtime-contract + authoring-correctness (axes G+H) · 8. Semantic-constraint ratification ·
+9. Prompt-pillar assessment · 10. Prioritized roadmap: Tier 1 drift kill → Tier 2 existing
+generators → Tier 3 new generators/projections → Tier 4 dynamic-runtime/prompts/cross-port.
+Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand-written code**.
+
+**Each finding in `.metaobjects/adoption-audit.json`:**
+
+| Field | Content |
+|---|---|
+| `id` | stable kebab id (e.g. `handwritten-crud-route`, `manual-zod-validator`) |
+| `title` | "you hand-wrote X that metadata can generate / model" |
+| `pillar` | `codegen` / `runtime` / `drift` / `prompt` |
+| `surface` | `entity` / `route` / `validator` / `repository` / `dto` / `hooks` / `prompt` / `migration` |
+| `capability` | the capability-checklist capability this maps to (e.g. `field.currency`, `relationship.@through`) |
+| `locations[]` | exact `file:line` spans |
+| `impact` | LOC eliminated + N call-sites + drift-risk (high/med/low) |
+| `effort` | `trivial` / `small` / `medium` / `large` |
+| `confidence` | bias to under-flagging (false-positive rate >15% is a kill criterion) |
+| `metadata_sketch` | metadata you'd author to replace it — **read-only proposal only; never applied** |
+| `next_command` | the exact command / skill that performs the cutover (see bridge below) |
+| `parity_gate` | the specific check proving behavior-equivalence |
+| `tier` | 1–4 |
+
+Within each tier, sort by impact ÷ effort (quick wins first). Tier 1 leads.
+
+### Audit → action bridge
+
+The audit never edits code. Pattern: **dry-run → review the diff → apply**.
+
+- Propose metadata → `metaobjects-authoring` + brainstorming flow (human reviews).
+- Generate → `meta gen`; **`meta gen --dry-run`** is the review-the-diff step → skill:
+  `metaobjects-codegen`.
+- Prove parity → **`meta verify --codegen`** is the drift gate → skill: `metaobjects-verify`.
+- Routes / runtime / web → skill: `metaobjects-runtime-ui`.
+- Prompts → skill: `metaobjects-prompts`.
+- Cut over **one surface at a time, one commit each**.
+- A separate guided-cutover skill (not this one) reads `adoption-audit.json` and walks
+  findings one tier/surface at a time with human approval at each step.
+
+---
+
+## Guardrails
+
+- **Parity-gate every cutover** — prove behavior-equivalent before deleting hand-written code; generated schemas are often looser.
+- **Verify, don't assume** — read the code behind a grep hit.
+- **Verify the DB artifact, not just the types** — the contract may claim a column the view DDL dropped.
+- **Don't let one bespoke action block generating the entity** — generate CRUD; mount the custom action alongside.
+- **Consumption ≠ a dist copy across versions** — bump + rebuild lockstep and install.
+
+---
+
+## Calibration — port gaps & non-defects (do NOT flag these as adopter fault)
+
+- **Filter-operator route codegen** is full only in **TS**; Java/Kotlin/C#/Python generate
+  pagination/sort/`withCount` but defer filter ops — do not flag hand-added filter handling.
+- **Output-parser codegen** ships TS/C#/Python/Kotlin; **Java hand-writes the Jackson parse** — not a defect.
+- **Python** still hand-wires the FastAPI router + repository impl around a generated
+  `APIRouter`; relationship / non-`table` source-kind / `field.object flattened` codegen is partial.
+- **C#** has no ObjectManager runtime tier (EF Core is the runtime) — hand services over the generated `DbContext` are expected.
+- **Cut subtypes** — `field.byte` / `field.short` / `field.class` are removed; never recommend them.
+- **TS/web-only** — `view.*` widget subtypes exist only for TS/web consumers; only `view.base` / `view.currency` are cross-port-gated.
+- **Planned, not shipped** — `api.*` / `operation.*` / `binding.*` (FR-024) and MCP exposure of declared prompts/tools are not yet in the registry; their absence is not an adopter defect.
+- **Cross-port version skew is by design** — TS/C#/Python `0.x` vs Java/Kotlin `7.x` Maven is correct; never flag it. Flag only *intra-port* drift (mixed versions within one port, or a runtime package in `devDependencies`).
+- **Stale upstream prose** — "hand-write the Spring controller" (Java/Kotlin) is out of date; trust `meta gen --list`, not stale prose.
+
+---
+
+For this project's port specifics and the exhaustive capability checklist, read every `references/*.md` in this skill's directory.

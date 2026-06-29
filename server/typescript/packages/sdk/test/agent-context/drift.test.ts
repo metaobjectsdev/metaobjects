@@ -16,7 +16,16 @@ function allMarkdown(dir: string, acc: string[] = []): string[] {
 }
 
 describe("agent-context vocabulary drift", () => {
-  const files = allMarkdown(CONTENT_ROOT);
+  // The `metaobjects-audit` skill is exempt from this drift scan by design: unlike the
+  // teaching skills (which only ever name CORRECT vocabulary), the audit skill's job is to
+  // recognize anti-patterns — so it deliberately names retired forms it hunts for
+  // (`source.dbTable`, `@dbColumn`) and the cut stubs it warns against
+  // (`field.byte`/`short`/`class`, flagged "do NOT audit for them"). Its real-vocabulary
+  // claims are instead gated by the stricter, registry-grounded
+  // `agent-context-capability-grounding.test.ts`, which validates every token in
+  // SKILL.md + references/*.md (including capability-checklist.md) against
+  // `expected-registry.json` with principled retired/cut/TS-only/planned exemptions.
+  const files = allMarkdown(CONTENT_ROOT).filter((f) => !f.includes("/skills/metaobjects-audit/"));
   const corpus = files.map((f) => ({ f, text: readFileSync(f, "utf8") }));
 
   test("there is content to check", () => {

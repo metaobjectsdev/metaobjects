@@ -2,7 +2,7 @@
 
 This tree is the single source the assembler (`@metaobjectsdev/sdk`,
 `src/agent-context/`) turns into the files scaffolded into a consumer project:
-the slim always-on Markdown (`.metaobjects/AGENTS.md` + `CLAUDE.md`) and the five
+the slim always-on Markdown (`.metaobjects/AGENTS.md` + `CLAUDE.md`) and the six
 `metaobjects-*` Claude skills (each a universal `SKILL.md` plus the
 `references/<token>.md` fragments matching the project's resolved stack).
 

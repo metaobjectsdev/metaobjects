@@ -13,6 +13,7 @@ export const SKILL_NAMES = [
   "metaobjects-runtime-ui",
   "metaobjects-prompts",
   "metaobjects-verify",
+  "metaobjects-audit",
 ] as const;
 export type SkillName = (typeof SKILL_NAMES)[number];
 

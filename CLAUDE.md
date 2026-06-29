@@ -491,7 +491,6 @@ These are the load-bearing principles that have emerged through implementation. 
 meta init                             # scaffold metaobjects/, .metaobjects/, codegen/generators/, metaobjects.config.ts, .gitignore
 meta gen [<entity>...]                # codegen: render templates → format → three-way merge → write
 meta gen --dry-run                    # preview without writing
-meta gen --watch                      # re-run on metadata file changes
 meta migrate                          # diff metadata vs DB schema; emit migration SQL
 meta migrate --dry-run                # preview without writing migration file
 ```
