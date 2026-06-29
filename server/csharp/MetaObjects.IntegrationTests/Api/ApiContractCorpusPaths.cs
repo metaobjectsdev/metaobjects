@@ -32,4 +32,13 @@ internal static class ApiContractCorpusPaths
     public static readonly string TphScenariosDir = Path.Combine(TphDir, "scenarios");
     public static readonly string TphSeedFile = Path.Combine(TphDir, "seed.json");
     public static readonly string TphMetaJson = Path.Combine(TphDir, "meta.json");
+
+    // #98 jsonb open-bag corpus — a single Document entity with one
+    // `field.string @dbColumnType:jsonb` open-JSON column, under jsonb/. The
+    // contract: a posted JSON OBJECT round-trips as an OBJECT (not a stringified
+    // `"{\"k\":\"v\"}"`).
+    public static readonly string JsonbDir = Path.Combine(Corpus, "jsonb");
+    public static readonly string JsonbScenariosDir = Path.Combine(JsonbDir, "scenarios");
+    public static readonly string JsonbSeedFile = Path.Combine(JsonbDir, "seed.json");
+    public static readonly string JsonbMetaJson = Path.Combine(JsonbDir, "meta.json");
 }

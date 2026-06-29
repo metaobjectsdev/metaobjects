@@ -81,11 +81,16 @@ booted over HTTP) are wired and green for:
   converter refuses polymorphic bodies → HTTP 415), so the Kotlin generated lane
   wires a small Jackson `JsonElement` codec module (the consumer's serialization
   wiring).
+- **C#** — reference (hand-rolled `HttpListener` over Postgres testcontainer) +
+  generated (the real `MetaObjects.Codegen` `DocumentRoutes` + `AppDbContext`
+  Roslyn-compiled and booted full-stack on Kestrel over Postgres testcontainer).
+  The generated lane locks the #105 codegen: the `payload` property is typed
+  `System.Text.Json.JsonDocument` (Npgsql ↔ jsonb native), so a posted object
+  binds with no string validator and round-trips parsed.
 
-Deferred (corpus is ready; follow-up): **Java**, **C#**. Their api-contract
-harnesses bind the per-entity DTO shape statically (the JVM generated harness
-reflects a fixed `Author` constructor arity + ships a hand-written in-memory repo
-source; the C# generated lane is full-stack EF + Kestrel), so adding the
-`Document` entity means a new reference server + generated harness per port
-(mirroring their `m2m/` and `tph/` sub-corpus harnesses) rather than a focused
+Deferred (corpus is ready; follow-up): **Java**. Its api-contract harness binds
+the per-entity DTO shape statically (the JVM generated harness reflects a fixed
+`Author` constructor arity + ships a hand-written in-memory repo source), so
+adding the `Document` entity means a new reference server + generated harness
+(mirroring its `m2m/` and `tph/` sub-corpus harnesses) rather than a focused
 fixture edit. Tracked in #98.
