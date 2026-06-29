@@ -210,7 +210,20 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val uuidGeneratedPk = primary?.isUuid == true && !isView && singlePrimaryFieldName != null
 
         val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
-        val needsJsonbImport = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
+        // A `field.string @dbColumnType=jsonb` open bag now decodes to a kotlinx `JsonElement`
+        // (issue #98) via `{ Json.parseToJsonElement(it) }`, so its table file needs the
+        // `kotlinx.serialization.json.Json` import too (same import block as the object/map jsonb
+        // columns below). Detect it on direct fields AND flattened object sub-fields — the same two
+        // surfaces that contribute columns / imports. Folding it into `needsJsonbImport` (rather
+        // than `columnFunctionImports`) keeps the `jsonb` extension import emitted exactly once.
+        val hasStringJsonbOpenBag = entity.metaFields.any { KotlinTypeMapper.isJsonbOpenBag(it) } ||
+            entity.metaFields.any { f ->
+                f is ObjectField && readStorage(f) == STORAGE_FLATTENED &&
+                    (readObjectRef(f)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                        ?.metaFields?.any { KotlinTypeMapper.isJsonbOpenBag(it) } ?: false)
+            }
+        val needsJsonbImport =
+            objectColumns.any { it.kind == ObjectColumnKind.JSONB } || hasStringJsonbOpenBag
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
 
         // Does any column on this table use the TZ-aware `@dbColumnType=timestamp_with_tz`
@@ -252,6 +265,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // of what the type-mapper would return for a bare column emission — skip it
             // here so it doesn't accidentally drag in a non-applicable import.
             if (field is EnumField) continue
+            // The `field.string @dbColumnType=jsonb` open bag's `jsonb` extension import is
+            // emitted via needsJsonbImport (alongside the `Json` import its codec needs) — skip
+            // here so the `import ...json.jsonb` line isn't emitted twice.
+            if (KotlinTypeMapper.isJsonbOpenBag(field)) continue
             KotlinTypeMapper.exposedColumnImport(field)?.let { columnFunctionImports += it }
         }
         // Flattened object sub-columns also contribute column functions (and thus
@@ -264,6 +281,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
             for (subField in target.metaFields) {
                 if (subField is EnumField) continue
+                // jsonb open bag → its `jsonb`/`Json` imports come via needsJsonbImport (skip here).
+                if (KotlinTypeMapper.isJsonbOpenBag(subField)) continue
                 KotlinTypeMapper.exposedColumnImport(subField)?.let { columnFunctionImports += it }
             }
         }

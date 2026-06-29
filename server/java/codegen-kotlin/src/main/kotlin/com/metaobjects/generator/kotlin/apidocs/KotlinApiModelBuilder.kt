@@ -381,18 +381,26 @@ class KotlinApiModelBuilder {
         val rows = mutableListOf<FieldShape>()
         for (f in vo.metaFields) {
             if (f is ObjectField) continue
-            rows.add(FieldShape(f.name, kotlinTypeLabel(f, vo), optional = !KotlinGenUtil.isRequiredField(f)))
+            rows.add(FieldShape(f.name, kotlinTypeLabel(f, vo, forPayload = true), optional = !KotlinGenUtil.isRequiredField(f)))
         }
         return rows
     }
 
-    /** The simple Kotlin type label for a documented field (enum → generated enum class name). */
-    private fun kotlinTypeLabel(field: MetaField<*>, owner: MetaObject): String {
+    /**
+     * The simple Kotlin type label for a documented field (enum → generated enum class name).
+     *
+     * [forPayload] selects the payload type path ([KotlinTypeMapper.payloadTypeName]); the entity
+     * model field path uses [KotlinTypeMapper.kotlinTypeName]. As of the #98 uniform-parsed-value
+     * cutover BOTH surfaces document a `field.string @dbColumnType=jsonb` open bag as the parsed
+     * JSON value (`JsonElement`) — the payload data class and the entity data class (the reused
+     * entity-CRUD DTO) now agree. Keeps the documented type == the generated type on both surfaces.
+     */
+    private fun kotlinTypeLabel(field: MetaField<*>, owner: MetaObject, forPayload: Boolean = false): String {
         KotlinTypeMapper.enumTypeName(field, owner)?.let { enumType ->
             val simple = enumType.simpleName
             return if (field.isArrayType) "List<$simple>" else simple
         }
-        val tn = KotlinTypeMapper.kotlinTypeName(field)
+        val tn = if (forPayload) KotlinTypeMapper.payloadTypeName(field) else KotlinTypeMapper.kotlinTypeName(field)
         val simple = (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
         return if (field.isArrayType) "List<$simple>" else simple
     }

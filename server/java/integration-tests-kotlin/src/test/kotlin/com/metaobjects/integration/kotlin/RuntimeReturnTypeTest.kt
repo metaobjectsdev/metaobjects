@@ -27,9 +27,9 @@ import kotlin.test.assertTrue
  *  - `Measurement.preciseKg` (NUMERIC)  → [BigDecimal]      (exact native decimal).
  *  - `Asset.recordedAt` (TIMESTAMPTZ)   → [Instant]         (native temporal, NOT a String —
  *    the metaobjects `instantWithTimeZone` Column<Instant> path matches the `Instant` data class).
- *  - `Asset.payload` (jsonb)            → [String]          (Exposed surfaces the open-JSON
- *    column via identity decode; the parse-to-Map step is a harness concern. We assert what
- *    the runtime genuinely returns — raw JSON text, not a pre-canonicalized/key-sorted string).
+ *  - `Asset.payload` (jsonb)            → [kotlinx.serialization.json.JsonElement] (#98: the
+ *    open-JSON column decodes to a parsed JSON value, uniform with the entity data class + REST
+ *    payload — NOT a raw-JSON String; the parse-to-Map key-sorting step is a harness concern).
  *
  * Per-port gate (native types differ per language), not a byte-identical
  * cross-port corpus. Catches the Python-outlier class of regression: a runtime
@@ -98,17 +98,16 @@ class RuntimeReturnTypeTest {
                 assertTrue(recordedAt is Temporal, "Asset.recordedAt must be a java.time temporal")
                 assertTrue(recordedAt !is String, "Asset.recordedAt must not be a wire-string")
 
-                // jsonb: Exposed surfaces the open-JSON column via identity decode → raw JSON
-                // text (String). The parse-to-Map (key-sorting) step is a harness concern
-                // (QueryScenarioRunner.rowToMap), NOT baked into the runtime. We assert the
-                // runtime's genuine native return and document that canonicalization happens
-                // at the boundary.
+                // jsonb (#98): the open-JSON column decodes to a parsed kotlinx `JsonElement`
+                // (NOT a raw-JSON String), uniform with the generated entity data-class property
+                // and the REST payload. The key-sorting parse-to-Map step is a harness concern
+                // (QueryScenarioRunner.rowToMap); here we assert the runtime's genuine native return.
                 val payload = a[AssetTable.payload]
                 assertNotNull(payload, "Asset.payload should be present")
                 assertTrue(
-                    payload is String,
-                    "Asset.payload (jsonb) is surfaced via Exposed identity decode as raw JSON " +
-                        "text; got: ${payload::class}",
+                    payload is kotlinx.serialization.json.JsonElement,
+                    "Asset.payload (jsonb) is surfaced as a parsed JsonElement (#98); " +
+                        "got: ${payload::class}",
                 )
             }
         }

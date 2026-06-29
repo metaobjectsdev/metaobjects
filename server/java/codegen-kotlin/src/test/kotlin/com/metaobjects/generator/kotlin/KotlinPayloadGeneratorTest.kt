@@ -40,6 +40,44 @@ class KotlinPayloadGeneratorTest {
         }
     }
 
+    @Test fun `jsonb open-bag field is a parsed JSON value in the payload, plain string stays String`() {
+        // Issue #98: a `field.string @dbColumnType=jsonb` payload property is exposed as a parsed
+        // JSON value (kotlinx `JsonElement`), NOT a (double-encoded) String. A sibling plain
+        // `field.string` on the same VO stays `String`, proving the divergence is scoped to the
+        // jsonb open-bag. The persistence side (Exposed column / entity data class) is unaffected —
+        // KotlinPayloadGenerator emits no table/row code.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.value": { "name": "Settings", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "config", "@dbColumnType": "jsonb" } },
+                { "field.string": { "name": "label" } }
+            ] } },
+            { "template.prompt": { "name": "SettingsPrompt",
+                "@payloadRef": "Settings", "@textRef": "demo/settings" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kpay-jsonb-")
+        try {
+            val gen = KotlinPayloadGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-jsonb", fx))
+
+            val emitted = outDir.resolve("acme/demo/prompts/SettingsPromptPayload.kt")
+            assertTrue(Files.exists(emitted),
+                "expected $emitted; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(emitted)
+            // The open-bag field → parsed JSON value.
+            assertTrue("val config: JsonElement" in src, src)
+            assertTrue("import kotlinx.serialization.json.JsonElement" in src, src)
+            // The plain string field → String (no double-encoding).
+            assertTrue("val label: String" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     // -----------------------------------------------------------------------
     // origin.* coverage — FR-004 payload-VO field-value provenance
     // -----------------------------------------------------------------------
