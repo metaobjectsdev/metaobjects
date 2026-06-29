@@ -121,7 +121,6 @@ for edge/worker consumers that don't mount server routes. Per-entity opt-out:
 ```bash
 npx meta gen                 # load metadata → render → 3-way merge → write
 npx meta gen --dry-run       # preview without writing
-npx meta gen --watch         # re-run on metadata file change
 npx meta gen Author Post     # scope to named entities
 ```
 

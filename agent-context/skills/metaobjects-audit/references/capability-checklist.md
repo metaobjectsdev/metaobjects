@@ -10,7 +10,7 @@ the **inline calibration flags** so a per-port gap is never scored as the adopte
 
 How to use a line: the capability is what the metamodel can express; the hunt is the
 hand-written second-source-of-truth that should have been derived from it. Found one →
-classify it (§3) and route the cutover to the right sibling skill.
+classify it (using the classification scheme in `SKILL.md`) and route the cutover to the right sibling skill.
 
 ---
 
@@ -112,8 +112,8 @@ classify it (§3) and route the cutover to the right sibling skill.
 - **Cross-field validators** — `validator.comparison` (`@left`/`@op`/`@right`, e.g.
   "end ≥ start"), `validator.atLeastOne` (one-of-N present), `validator.requiredWhen`
   (conditional-required), `validator.presentIff` (mutual presence). Hunt these as hand-coded
-  multi-field rules — they ARE modelable (§8 governs whether the constraint belongs in shared
-  metadata vs port-local).
+  multi-field rules — they ARE modelable (see the Semantic-constraint ratification section in
+  `SKILL.md` to decide what belongs in shared metadata vs port-local).
 - **`validator.base`** — abstract base.
 
 ## View / Layout — `view.*`, `layout.*`

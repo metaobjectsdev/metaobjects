@@ -27,7 +27,6 @@ the default single-target config, generated files land at the one configured
 ```bash
 meta gen                        # render → 3-way merge → write (overwrites @generated files only)
 meta gen --dry-run              # preview without writing
-meta gen --watch                # re-run on metadata file change
 meta gen Author Post            # scope to named entities
 meta verify --codegen           # regenerate to temp, diff vs committed output
 meta verify --templates         # check {{field}} refs vs payload VO (bare `meta verify` default)

@@ -22,8 +22,9 @@ describe("agent-context vocabulary drift", () => {
   // (`source.dbTable`, `@dbColumn`) and the cut stubs it warns against
   // (`field.byte`/`short`/`class`, flagged "do NOT audit for them"). Its real-vocabulary
   // claims are instead gated by the stricter, registry-grounded
-  // `agent-context-capability-grounding.test.ts`, which validates every token against
-  // `expected-registry.json` with principled cut/TS-only/planned exemptions.
+  // `agent-context-capability-grounding.test.ts`, which validates every token in
+  // SKILL.md + references/*.md (including capability-checklist.md) against
+  // `expected-registry.json` with principled retired/cut/TS-only/planned exemptions.
   const files = allMarkdown(CONTENT_ROOT).filter((f) => !f.includes("/skills/metaobjects-audit/"));
   const corpus = files.map((f) => ({ f, text: readFileSync(f, "utf8") }));
 

@@ -205,7 +205,7 @@ Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand
 | `title` | "you hand-wrote X that metadata can generate / model" |
 | `pillar` | `codegen` / `runtime` / `drift` / `prompt` |
 | `surface` | `entity` / `route` / `validator` / `repository` / `dto` / `hooks` / `prompt` / `migration` |
-| `capability` | the §4b capability this maps to (e.g. `field.currency`, `relationship.@through`) |
+| `capability` | the capability-checklist capability this maps to (e.g. `field.currency`, `relationship.@through`) |
 | `locations[]` | exact `file:line` spans |
 | `impact` | LOC eliminated + N call-sites + drift-risk (high/med/low) |
 | `effort` | `trivial` / `small` / `medium` / `large` |
