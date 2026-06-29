@@ -36,11 +36,14 @@ adopter repos via `meta init` / the per-port `agent-docs` goal, so any project c
 itself. Registered in `SKILL_NAMES`; byte-gated by the agent-context conformance corpus;
 native-emitted across all five ports.
 
-**Boundary — read-only assessment.** The skill's deliverable is a **written report file**
-(the prioritized roadmap a team executes against), never silent edits. The actual
-cutovers are a separate follow-on driven by the existing codegen / runtime-ui / authoring
-skills. The audit's job is the map + the prioritized plan + the human-approved
-ratification decisions.
+**Boundary — read-only assessment.** The skill's deliverables are a **machine-readable
+findings file** (`.metaobjects/adoption-audit.json`) + a **rendered Markdown report** (a
+scorecard-led, prioritized roadmap) — never silent edits, and **never authored metadata**
+(the audit *proposes* a metadata sketch per finding; a human reviews and authors it). The
+actual cutovers are a separate follow-on driven by the existing codegen / runtime-ui /
+authoring / prompts / verify skills (and an optional **guided-cutover** follow-on skill,
+§9b). The audit's job is the scored map (§8b) + the prioritized typed findings (§9b) + the
+human-approved ratification decisions.
 
 **Invoke when:** "how much more can we generate / model with metadata", "audit our
 codegen adoption", "find the drift", "where can MetaObjects reduce hand-written code",
@@ -376,12 +379,55 @@ drift gates) — for a one-consumer need, read the attr codegen-locally instead.
 Output a **ratification table** per constraint: KEEP-IN-METADATA / LOCAL-REFINEMENT / DROP,
 with rationale — explicitly **human-approved, not applied silently**.
 
+## 8b. Scoring & maturity model (researched 2026-06-29 against Lighthouse / SonarQube / CodeClimate / OpenSSF Scorecard / Backstage-Soundcheck / CNCF)
+
+The audit **deliberately refuses a single global score/grade.** Every respected
+assessment tool either keeps dimensions separate (Lighthouse), splits the gate from the
+rating (SonarQube), grades one explicit dimension (CodeClimate), or is criticized for its
+single aggregate (OpenSSF Scorecard — a repo with one *exploitable* hole can out-score one
+with nine harmless findings). For a multi-dimensional **adoption journey**, one averaged
+0–100/A–F number would be both the most gameable ("generate trivial entities to pad the
+%") and the most misleading (it hides a team with deep codegen but zero drift protection)
+artifact we could ship. Instead, **three surfaces**:
+
+1. **Headline MATURITY TIER (the motivator)** — one coarse, ordered, named tier:
+   **Greenfield → Partial → Deep → Exemplary** (extends the §2 triage with a top rung).
+   Assigned **worst-of with prerequisite gating** (Backstage-Soundcheck ladder): the
+   overall tier can't exceed the *lowest* pillar's tier — a missing pillar can't be
+   averaged away. Always rendered **with the single next unmet check** ("you're Partial;
+   the next rung needs `verify` wired into CI") so it answers "what do I do next?".
+2. **PER-PILLAR breakdown (the diagnostic; never rolled into one number)** — a small table
+   `pillar | tier | top gap` over the four pillars (**codegen / runtime / drift-gate /
+   prompts**), each with the 2–4 checks behind it. This is the core deliverable, more
+   useful than the headline (Lighthouse "keep categories separate" + CodeClimate "grade one
+   dimension explicitly").
+3. **A hard binary CI GATE (the decision)** — exactly one boolean, as prominent as the
+   tier: **"Is `meta verify` drift detection wired into CI?"** (optionally a second: "Does
+   CI fail on codegen drift?"). It's binary because the risk is binary — a team at 95%
+   codegen coverage with no CI drift gate is one edit from silent divergence. This is the
+   SonarQube Quality-Gate analog; never average it into anything.
+
+**Mechanics & guardrails:** coarse **bands, not decimals** (none / some / most / all — never
+"87.3%", which implies rigor the signal lacks); **worst-of within a pillar** for must-all-hold
+checks (averaging invites gaming); on a re-run, **grade the delta** ("drift-gate moved
+Partial → Deep since the last audit" — the SonarQube clean-as-you-code / type-coverage
+ratchet, which also defuses the demotivating "huge red number on day one" on a legacy
+codebase); and **always lead with the gaps, not the grade** — the tier is the hook, the
+per-pillar remediation list is the value.
+
 ## 9. The report (the deliverable)
 
-A single written report file with these sections:
+The audit emits **two artifacts** (the OpenRewrite data-table model: a machine-readable
+findings file + a human report): `.metaobjects/adoption-audit.json` (the durable,
+re-runnable, machine-readable findings — the handoff the eventual cutover consumes) and a
+rendered Markdown report (the human read). The Markdown report has these sections:
 
-1. **Triage + census** — maturity (greenfield/partial/deep), owned-generators posture, the
-   leverage numbers + ratio (partial/deep) or the shape inventory (greenfield).
+0. **Scorecard (lead with it)** — the three §8b surfaces: the headline **maturity tier**
+   (Greenfield/Partial/Deep/Exemplary) + its single next unmet check; the **per-pillar
+   table** (`pillar | tier | top gap` over codegen/runtime/drift-gate/prompts); the
+   **binary CI drift-gate** pass/fail. Plus the delta-since-last-audit when re-run.
+1. **Triage + census** — maturity rationale, owned-generators posture, the leverage numbers
+   + ratio (partial/deep) or the shape inventory (greenfield).
 2. **Coverage matrix** — entities modeled / with query helpers / view / route / UI;
    headline the lopsidedness.
 3. **Per-surface classification** — tables for routes, web, validators/mappers, prompts,
@@ -414,6 +460,68 @@ A single written report file with these sections:
    bump?), and "**parity-gate before deleting hand-written code**."
 
 Quantify total retirable LOC and the new durable spine (generators + views) it costs.
+
+## 9b. Findings as typed records + the audit→action bridge
+
+Every mature assessment tool (SonarQube issues, Lighthouse audits, OpenRewrite data tables,
+Snyk findings) emits **structured, machine-readable findings — not prose** — each naming its
+specific fix. For a metadata-driven product this is doubly natural: the audit's output is
+itself data.
+
+**Each finding is a typed record** in `.metaobjects/adoption-audit.json` (and a rendered
+row in the report):
+
+| Field | Content |
+|---|---|
+| `id` | stable kebab id (e.g. `handwritten-crud-route`, `manual-zod-validator`, `hand-rolled-fk-finder`) |
+| `title` | one line: "you hand-wrote X that metadata can generate/model" |
+| `pillar` | `codegen` / `runtime` / `drift` / `prompt` |
+| `surface` | `entity` / `route` / `validator` / `repository` / `dto` / `hooks` / `prompt` / `migration` |
+| `capability` | the §4b capability this maps to (e.g. `field.currency`, `relationship.@through`) |
+| `locations[]` | exact `file:line` spans of the hand-written code |
+| `impact` | LOC eliminated + N call-sites + **drift-risk** (does this already diverge from a sibling/the generated shape? high/med/low) |
+| `effort` | `trivial` / `small` / `medium` / `large` (drives quick-wins ordering) |
+| `confidence` | how sure this is genuinely codegen-derivable vs real business logic — **bias to under-flagging** (a false-positive rate >15% is a kill criterion per CLAUDE.md) |
+| `metadata_sketch` | the metadata you'd author to replace it (the `object.entity`/`field.*`/`source.rdb` skeleton) — a **read-only PROPOSAL in the report only; never authored, never applied** (Claude proposes metadata, humans review; the loader never mutates the tree) |
+| `next_command` | the exact command/skill that performs the cutover (below) |
+| `parity_gate` | the specific characterization check proving the cutover is behavior-preserving |
+| `tier` | 1–4 (§9 roadmap) |
+
+**Prioritization:** tier is the primary axis (Backstage-Soundcheck ordered tiers); **within
+each tier, sort by impact ÷ effort** (quick-wins first, the SonarQube low-debt-minute
+surfacing). Drift-kill (Tier 1) leads because it's the highest-risk, already-diverging code
+— the SonarQube "new code first" analog.
+
+**The bridge (read-only audit → eventual action).** The audit never edits code; it hands
+off. The universal pattern across OpenRewrite / every codemod / Renovate's dashboard is
+**dry-run → review the diff → apply**, which maps exactly onto the MetaObjects toolchain:
+
+1. **Per finding, `next_command` routes to an existing skill** (don't build a new cutover
+   engine): author/propose metadata → the `metaobjects-authoring` + brainstorming flow (the
+   human reviews the proposal); generate → `meta gen` (and **`meta gen --dry-run` is the
+   review-the-diff step**); prove parity → **`meta verify --codegen` is the drift gate** (the
+   OpenRewrite `failOnDryRunResults` analog).
+2. **Per finding, `parity_gate`** is the test-before-cutover contract — e.g. "snapshot the
+   hand-written route's HTTP responses; regenerate; assert behavior-identical via the
+   api-contract corpus pattern." Cut over **one surface at a time, one commit each** (the
+   `ng update --create-commits` pattern); never big-bang.
+3. **Optional "guided cutover" follow-on** (a SEPARATE skill, explicitly out of this
+   read-only audit): reads `adoption-audit.json` and walks findings one tier / one surface
+   at a time — propose metadata → human approves → `meta gen --dry-run` → human reviews diff
+   → `meta gen` → `meta verify` → commit. The Renovate-dashboard-checkbox / Batch-Changes-
+   preview model: the human ticks each item; the machine never auto-applies. For Tier-3
+   "mostly-generatable but carries custom SQL" surfaces, generate the skeleton and leave a
+   typed **`// METAOBJECTS-FIXME`** marker on the part needing hand-finishing (the ts-migrate
+   `@ts-expect-error` breadcrumb pattern) so the build stays honest.
+4. **Future auto-fix recipes — only the mechanical half.** The *deletion/call-site* cutover
+   (remove the now-redundant hand-written route, rewrite imports to the generated module) is
+   a genuine OpenRewrite/ts-morph job — deterministic, diff-reviewable, idempotent, gateable.
+   The *authoring* half is NOT — proposing metadata stays human-reviewed (product principle:
+   Claude proposes, humans review; never mutate loaded metadata). So if/when codemods are
+   built, they mechanize only the dead-code/import rewrite, after the read-only audit +
+   guided-cutover prove which surfaces recur often enough to mechanize (the same
+   catalog-then-automate sequencing OpenRewrite followed). This is a deferred direction, not
+   part of this skill.
 
 ## 10. Guardrails (gotchas, as warnings in the skill)
 
@@ -479,7 +587,8 @@ before raising a finding. Mis-flagging a by-design gap is the audit's worst fail
   thesis (§1), the triage + phased **checklist** with the 8 axes (the agent makes todos
   from it; §2), classification scheme (§3) + candidacy heuristics (§4), drift signatures
   (§5) + owned-codegen assessment (§6) + prompt anti-patterns (§7) as grep-then-**verify**
-  hunts, the semantic principle (§8), the **report template** (§9, the deliverable),
+  hunts, the semantic principle (§8), the **scoring / maturity model** (§8b), the **report
+  template + typed-finding record + audit→action bridge** (§9/§9b, the deliverables),
   guardrails (§10) + the **calibration / non-defect guards** (§10b). SKILL.md points to the
   capability checklist + per-port references, and **maps each recommended cutover to the
   right sibling skill** — author metadata → `metaobjects-authoring`; generate/own
@@ -511,10 +620,17 @@ before raising a finding. Mis-flagging a by-design gap is the audit's worst fail
   registry doesn't have. Cross-check commands against the live codegen/verify/authoring/
   prompts/runtime-ui skills + the CLI surface.
 
-## 12. Out of scope
+## 12. Out of scope (this skill) — and the deferred follow-ons
 
-- The cutovers themselves (separate follow-on; the audit is read-only map + plan).
-- A new CLI command (`meta audit`) — the skill is methodology + report, not tooling; a
-  CLI surface could be a later enhancement if demand appears.
-- Auto-applying semantic-constraint or drift fixes — all are human-approved.
+- **The cutovers themselves** — the audit is the read-only scored map + plan; execution runs
+  through the existing skills.
+- **The guided-cutover follow-on skill** (§9b step 3) — reads `adoption-audit.json` and walks
+  findings one surface at a time with human approval at each step. A *separate* skill; designed
+  here so the audit's output feeds it, but not built as part of this skill.
+- **Auto-fix codemod recipes** (§9b step 4) — only the mechanical dead-code/import-rewrite half
+  is ever a candidate; metadata authoring stays human-reviewed. Deferred until the audit +
+  guided-cutover prove which surfaces recur enough to mechanize.
+- **A new CLI command (`meta audit`)** — the skill is methodology + report; a CLI surface could
+  follow if demand appears.
+- **Auto-applying** semantic-constraint or drift fixes — all human-approved.
 - The optional Changesets/automation improvements to the skill's own delivery.
