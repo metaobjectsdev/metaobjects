@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-06-28
+
+_npm `0.13.1` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+### Fixed
+- **codegen-ts — `origin.aggregate` `@filter` in projection view DDL.** A scoped
+  aggregate (e.g. `max(version) where status='active'`) declared via the aggregate's
+  optional `@filter` generated into the TS contract but was dropped from the generated
+  `CREATE VIEW` — the emitter rendered the aggregate with no `FILTER` clause, so it
+  computed over all related rows. `extract-view-spec` now reads + desugars the filter
+  and `view-ddl-emit` renders postgres `AGG(src) FILTER (WHERE …)` (and the portable
+  `AGG(CASE WHEN … THEN src END)` form on sqlite). (#90)
+
 ## [0.13.0] — 2026-06-28
 
 ### Added
