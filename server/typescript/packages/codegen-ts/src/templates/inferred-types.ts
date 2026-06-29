@@ -28,6 +28,8 @@ import {
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_VALUE_TYPE,
+  FIELD_ATTR_DB_COLUMN_TYPE,
+  DB_COLUMN_TYPE_JSONB,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
@@ -178,6 +180,12 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
  *  • scalar       → SCALAR_TS_BY_SUBTYPE (else `unknown`), `[]` when an array.
  */
 export function fieldTsTypeString(ownerName: string, field: MetaField): string {
+  // `@dbColumnType: jsonb` (open JSON bag, legal only on field.string) → `unknown`:
+  // the column is a bare `jsonb()` returning any parsed JSON value, so the TS type
+  // stays in lock-step with the `z.unknown()` Zod emission (NOT `string`).
+  if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+    return field.isArray ? "unknown[]" : "unknown";
+  }
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
@@ -208,6 +216,11 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
  * ts-poet `imp(...)` — matching how the Zod emitter hoists `<Ref>InsertSchema`.
  */
 function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: RenderContext): Code {
+  // `@dbColumnType: jsonb` (open JSON bag) → `unknown`, in lock-step with
+  // fieldTsTypeString above and the `z.unknown()` Zod emission.
+  if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+    return field.isArray ? code`unknown[]` : code`unknown`;
+  }
   // field.object: import the referenced TS interface from its sibling module
   // so ts-poet hoists the import. Mirrors zod-validators.ts's `<Ref>InsertSchema`
   // import strategy, just for the type alias instead of the schema constant.

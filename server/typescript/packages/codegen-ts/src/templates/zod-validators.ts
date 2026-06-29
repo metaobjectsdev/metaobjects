@@ -21,6 +21,7 @@ import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE, FIELD_ATTR_READ_ONLY,
+  FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
@@ -330,6 +331,21 @@ function zodScalarFor(subType: string): string {
 }
 
 function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
+  // `@dbColumnType: jsonb` on a scalar (legal only on field.string) is the
+  // sanctioned "open JSON bag" escape hatch — a genuinely untyped JSON column
+  // with no value-object to reference. Its Drizzle column is a bare `jsonb()`,
+  // which node-postgres returns as a PARSED JS value (object/array/scalar), not
+  // a string. Emitting `z.string()` here would 400-reject the real value on
+  // insert and fail the same schema on read-back, contradicting the column type
+  // AND the native-object runtime-return contract (ADR-0019). Emit `z.unknown()`
+  // (jsonb holds any JSON value — same treatment as an objectRef-less
+  // field.object below).
+  if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+    let base: Code = code`z.unknown()`;
+    if (field.isArray) base = code`z.array(${base})`;
+    return appendValidatorChain(base, field);
+  }
+
   // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
   // via an imp() so ts-poet hoists the cross-module import. Without this the
   // field used to collapse to z.string() / z.array(z.string()) and downstream
