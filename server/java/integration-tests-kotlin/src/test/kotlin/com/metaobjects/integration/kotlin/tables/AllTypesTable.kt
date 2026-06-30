@@ -64,6 +64,14 @@ object AllTypesTable : Table("all_types") {
     val moneyVal = long("moneyVal")
     val enumVal = varchar("enumVal", 64)
     val uuidVal = uuid("uuidVal")
+    // `field.uri` → plain `text` column carrying the verbatim URI string (Postgres has no uri
+    // type). See [MetaUriColumnType] — round-trips the URI unchanged.
+    val uriVal = uriColumn("uriVal")
+    // `field.inet` (IPv4 + IPv6) → Postgres-native `inet` columns. [MetaInetStringColumnType]
+    // reads the driver's native inet wire string (bare host, NO `::text` cast → no /32|/128 mask;
+    // canonical COMPRESSED IPv6) and binds the bare address on write.
+    val inetVal = inetColumn("inetVal")
+    val inet6Val = inetColumn("inet6Val")
     // `@storage:jsonb` typed owned-object column. Raw-JSON-String identity encode/decode keeps
     // the JSON text; the runner serializes the authoring map on write and parses it back to a
     // Map on read so it re-serializes with sorted keys per the normalization contract. Nullable

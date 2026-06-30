@@ -10,6 +10,7 @@
 // column — keeping the wire form identical across read/write and across ports.
 // Scalars / temporal / Guid / enum pass straight through to Normalization.
 
+using System.Net;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -45,6 +46,12 @@ public static class EntityRow
         // UTC wire string + "Z"), NOT into PocoToJsonNode's reflection path.
         if (t.IsPrimitive || value is string or decimal or DateTime or DateTimeOffset or DateOnly or TimeOnly or Guid or Enum)
             return value;
+        // ADR-0036 Wave 3 — a field.uri materializes as System.Uri (EF HasConversion) and a
+        // field.inet as System.Net.IPAddress (Npgsql inet). Both are reference types, so pass
+        // them straight to Normalization (which renders the wire string) rather than into
+        // PocoToJsonNode's reflection path. IPAddress.ToString() yields the bare, compressed
+        // address — matching Postgres's inet read form (no ::text cast → no /32, /128 mask).
+        if (value is Uri or IPAddress) return value;
         // A @dbColumnType:jsonb open-bag surfaces as JsonDocument/JsonElement (issue #98) —
         // pass it through so Normalization re-serializes the parsed value with sorted keys,
         // exactly as a string-typed jsonb column does. NOT a POCO to reflect over.

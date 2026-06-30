@@ -5,6 +5,7 @@
 // scenario's `expect:` block can be authored once and validated everywhere.
 
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -69,6 +70,12 @@ public static class Normalization
         // back byte-identical to the other ports' canonicalTimestamptz wire form.
         DateTimeOffset dto => FormatDateTime(dto.UtcDateTime),
         Guid uuid => uuid.ToString("D").ToLowerInvariant(),
+        // ADR-0036 Wave 3 — field.uri (System.Uri) round-trips verbatim via its absolute
+        // string; field.inet (System.Net.IPAddress) renders the bare address — IPAddress.ToString()
+        // emits no CIDR mask and the COMPRESSED IPv6 form (Postgres compresses inet on read,
+        // e.g. 2001:0db8:..:8a2e:0370:7334 → 2001:db8::8a2e:370:7334), matching the wire contract.
+        Uri uri => uri.ToString(),
+        IPAddress ip => ip.ToString(),
         byte[] bytes => Convert.ToBase64String(bytes),
         // A pre-parsed JsonNode (assembled by a runner path) — sort keys.
         // (JsonDocument/JsonElement from a @dbColumnType:jsonb column are handled above.)

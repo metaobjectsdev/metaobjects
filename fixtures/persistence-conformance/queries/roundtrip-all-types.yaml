@@ -15,7 +15,7 @@ description: |
 
     string / int / long / double / float / decimal / boolean /
     date / time / timestamp / timestamp(tz) / currency / enum / uuid /
-    object(@objectRef, jsonb storage)
+    uri / inet (IPv4 + IPv6) / object(@objectRef, jsonb storage)
 
   Tricky wire cases asserted here:
     - decimal: exact, canonical (no trailing zeros) → "123.456".
@@ -37,6 +37,15 @@ description: |
       renders the identical minimal plain-decimal string (see normalization.md).
     - object: a typed @objectRef value-object stored as JSONB → re-serialized
       with sorted keys.
+    - uri: field.uri → TEXT column; round-trips as the verbatim URI string
+      (no normalization — the port stores/returns it unchanged).
+    - inet: field.inet → Postgres-native INET column. A HOST address (no CIDR
+      prefix) round-trips WITHOUT a mask: Postgres's wire text format for inet
+      omits the /32 (IPv4) or /128 (IPv6) when no prefix was supplied on insert,
+      so the read-back equals the bare address. (NOTE: an explicit `::text` cast
+      WOULD append /32 — ports must read the inet column directly, not cast to
+      text. IPv6 also round-trips in its canonical compressed form, e.g.
+      `2001:db8::1`.)
 
 queries:
   - name: write-all-subtypes-then-read-back
@@ -59,6 +68,9 @@ queries:
       moneyVal: 199900
       enumVal: "MEDIUM"
       uuidVal: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+      uriVal: "https://example.com/a/b?q=1"
+      inetVal: "192.168.1.1"
+      inet6Val: "2001:db8::1"
       settings: { theme: "dark", notify: true, retries: 3 }
     expect:
       sVal: "hello"
@@ -75,6 +87,9 @@ queries:
       moneyVal: "199900"
       enumVal: "MEDIUM"
       uuidVal: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      uriVal: "https://example.com/a/b?q=1"
+      inetVal: "192.168.1.1"
+      inet6Val: "2001:db8::1"
       settings: { notify: true, retries: 3, theme: "dark" }
 
   - name: write-whole-second-temporal-then-read-back
@@ -95,6 +110,9 @@ queries:
       moneyVal: 0
       enumVal: "LOW"
       uuidVal: "11111111-1111-4111-8111-111111111111"
+      uriVal: "urn:isbn:0451450523"
+      inetVal: "10.0.0.5"
+      inet6Val: "fe80::1"
       settings: { theme: "light", notify: false, retries: 0 }
     expect:
       sVal: "second row"
@@ -111,6 +129,9 @@ queries:
       moneyVal: "0"
       enumVal: "LOW"
       uuidVal: "11111111-1111-4111-8111-111111111111"
+      uriVal: "urn:isbn:0451450523"
+      inetVal: "10.0.0.5"
+      inet6Val: "fe80::1"
       settings: { notify: false, retries: 0, theme: "light" }
 
   - name: write-full-int64-then-read-back
@@ -143,6 +164,11 @@ queries:
       moneyVal: "9223372036854775807"
       enumVal: "HIGH"
       uuidVal: "ffffffff-ffff-4fff-bfff-ffffffffffff"
+      uriVal: "https://example.org/path#frag"
+      inetVal: "255.255.255.255"
+      # Authored in the long (uncompressed) form; Postgres returns the canonical
+      # compressed form, so the expected read-back is `2001:db8::8a2e:370:7334`.
+      inet6Val: "2001:0db8:0000:0000:0000:8a2e:0370:7334"
       settings: { theme: "dark", notify: true, retries: 9 }
     expect:
       sVal: "int64 row"
@@ -159,4 +185,7 @@ queries:
       moneyVal: "9223372036854775807"
       enumVal: "HIGH"
       uuidVal: "ffffffff-ffff-4fff-bfff-ffffffffffff"
+      uriVal: "https://example.org/path#frag"
+      inetVal: "255.255.255.255"
+      inet6Val: "2001:db8::8a2e:370:7334"
       settings: { notify: true, retries: 9, theme: "dark" }

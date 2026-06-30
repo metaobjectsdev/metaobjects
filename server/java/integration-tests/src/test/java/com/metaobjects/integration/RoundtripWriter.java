@@ -7,6 +7,7 @@ import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
+import com.metaobjects.field.InetField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
@@ -14,6 +15,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.UriField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.manager.ObjectConnection;
@@ -151,6 +153,13 @@ final class RoundtripWriter {
         if (raw == null) { vo.setObject(name, null); return; }
 
         if (mf instanceof StringField || mf instanceof EnumField) {
+            vo.setString(name, raw.toString());
+        } else if (mf instanceof UriField || mf instanceof InetField) {
+            // field.uri / field.inet are String-backed scalars (DataTypes.STRING). Author the URI /
+            // IP string verbatim; OMDB's StringCodec (uri → text column) / InetCodec (inet →
+            // setObject(.., Types.OTHER)) handles the bind, and InetCodec's rs.getString reads the
+            // inet column's NATIVE wire form on read-back (bare address, no ::text cast → no /32|/128
+            // mask, and Postgres returns the compressed canonical IPv6).
             vo.setString(name, raw.toString());
         } else if (mf instanceof UuidField) {
             // Author the upper-case UUID string; the write codec binds a java.util.UUID and the

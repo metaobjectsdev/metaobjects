@@ -512,6 +512,8 @@ added without a write-round-trip is visible:
 | currency  | ✅ | ✅ | ✅ |
 | enum      | ✅ | ✅ | ✅ |
 | uuid      | ✅ | ✅ | ✅ |
+| uri       | ✅ | ✅ | ✅ |
+| inet      | ✅ | ✅ | ✅ |
 | object    | ✅ | ✅ | ✅ |
 
 - **persistence write-round-trip** = the `op: roundtrip` scenario type in
