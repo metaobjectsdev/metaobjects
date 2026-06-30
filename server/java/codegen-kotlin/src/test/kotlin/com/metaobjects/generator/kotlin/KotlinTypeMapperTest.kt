@@ -103,11 +103,12 @@ class KotlinTypeMapperTest {
         assertEquals("Instant", tn.simpleName)
     }
 
-    @Test fun `string field maps to varchar exposed column`() {
+    @Test fun `string field with no maxLength maps to text exposed column`() {
+        // Phase 1 (dbColumnType slim-and-derive): a no-`@maxLength` string is unbounded text,
+        // so it derives to Exposed `text(name)` — matching the canonical TS Postgres DDL
+        // (`text`), NOT the old `varchar(255)` default.
         val f = StringField("name")
-        val spec = KotlinTypeMapper.exposedColumnSpec(f)
-        assertTrue(spec.contains("varchar"), "expected varchar in: $spec")
-        assertTrue(spec.contains("\"name\""), "expected column name in: $spec")
+        assertEquals("text(\"name\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun `long field maps to long exposed column`() {
@@ -116,17 +117,26 @@ class KotlinTypeMapperTest {
         assertEquals("long(\"id\")", spec)
     }
 
-    @Test fun `string field with dbColumnType=uuid_array maps to List of UUID + Exposed array column`() {
-        val f = StringField("memberIds")
-        f.addMetaAttr(StringAttribute.create("dbColumnType", "uuid_array"))
-        assertEquals("kotlin.collections.List<java.util.UUID>", KotlinTypeMapper.kotlinTypeName(f).toString())
+    @Test fun `uuid field with isArray derives native uuid array column`() {
+        // Phase 1 (dbColumnType slim-and-derive): native arrays are now the DEFAULT, derived
+        // from `field.uuid` + `isArray:true` — no `@dbColumnType=uuid_array` attribute. The
+        // (now-removed) override hack used to be the ONLY path; a bare `field.uuid` isArray used
+        // to fall through to the scalar `uuid()` column. Element ColumnType is UUIDColumnType so
+        // Postgres gets a native `uuid[]`. `kotlinTypeName` stays the SCALAR element (UUID) —
+        // the `List<…>` wrapping is applied by the entity/payload generators per `isArray`.
+        val f = UuidField("memberIds")
+        f.setArray(true)
+        assertEquals("java.util.UUID", KotlinTypeMapper.kotlinTypeName(f).toString())
         assertEquals("array<java.util.UUID>(\"member_ids\", org.jetbrains.exposed.sql.UUIDColumnType())", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
-    @Test fun `string field with dbColumnType=text_array maps to List of String + Exposed array column`() {
+    @Test fun `string field with isArray derives native text array column`() {
+        // Phase 1 (dbColumnType slim-and-derive): `field.string` + `isArray:true` derives a
+        // native Postgres `text[]` (TextColumnType element) — no `@dbColumnType=text_array`.
+        // `kotlinTypeName` stays the SCALAR element (String); `List<…>` wrapping is the caller's.
         val f = StringField("tags")
-        f.addMetaAttr(StringAttribute.create("dbColumnType", "text_array"))
-        assertEquals("kotlin.collections.List<kotlin.String>", KotlinTypeMapper.kotlinTypeName(f).toString())
+        f.setArray(true)
+        assertEquals("kotlin.String", KotlinTypeMapper.kotlinTypeName(f).toString())
         assertEquals("array<String>(\"tags\", org.jetbrains.exposed.sql.TextColumnType())", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
@@ -334,12 +344,9 @@ class KotlinTypeMapperTest {
     }
 
     // === Long-text dispatch (varchar vs text) ===
-
-    @Test fun `string with kind text maps to text column`() {
-        val f = StringField("body")
-        f.addMetaAttr(StringAttribute.create("kind", "text"))
-        assertEquals("text(\"body\")", KotlinTypeMapper.exposedColumnSpec(f))
-    }
+    // Phase 1: the `@kind:text` hack is gone — `text` is the default for a no-`@maxLength`
+    // string (see `string field with no maxLength maps to text exposed column` above), so the
+    // unregistered `@kind` escape hatch is no longer needed.
 
     @Test fun `string with maxLength over threshold maps to text column`() {
         val f = StringField("description")

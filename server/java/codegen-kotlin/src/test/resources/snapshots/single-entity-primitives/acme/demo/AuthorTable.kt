@@ -8,7 +8,7 @@ import org.jetbrains.exposed.sql.javatime.datetime
 object AuthorTable : Table("authors") {
     val id = long("id").autoIncrement()
     val name = varchar("name", 100)
-    val bio = varchar("bio", 255).nullable()
+    val bio = text("bio").nullable()
     val age = integer("age").nullable()
     val active = bool("active").nullable()
     val ratio = double("ratio").nullable()
