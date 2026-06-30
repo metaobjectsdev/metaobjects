@@ -2,7 +2,7 @@
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
 import { code, imp, type Code } from "ts-poet";
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import { type MetaObject, stripPackage } from "@metaobjectsdev/metadata";
 import { IDENTITY_ATTR_FIELDS } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import {
@@ -11,7 +11,18 @@ import {
   createFnName,
   updateFnName,
   deleteByIdFnName,
+  reverseFinderFnName,
+  reverseFinderInFnName,
 } from "../naming.js";
+
+/** Map a field subType to the generated TS scalar type for keys/values. */
+function subTypeToTsType(subType: string): "number" | "boolean" | "string" {
+  return subType === "long" || subType === "int" || subType === "short" || subType === "byte"
+    ? "number"
+    : subType === "boolean"
+      ? "boolean"
+      : "string";
+}
 
 /** Get the PK field name and its TS type for a given entity. */
 export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
@@ -22,13 +33,7 @@ export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: 
   const pkFieldName = fields?.[0] ?? "id";
   const pkInfo = ctx.pkMap.get(entity.name);
   const subType = pkInfo?.fieldSubType ?? "long";
-  const tsType =
-    subType === "long" || subType === "int" || subType === "short" || subType === "byte"
-      ? "number"
-      : subType === "boolean"
-        ? "boolean"
-        : "string";
-  return { fieldName: pkFieldName, tsType };
+  return { fieldName: pkFieldName, tsType: subTypeToTsType(subType) };
 }
 
 export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
@@ -111,6 +116,61 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<boolean>
   // and Postgres. Result is an array of deleted rows; presence implies success.
   const deleted = await db.delete(${varName}).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();
   return deleted.length > 0;
+}
+`;
+}
+
+/**
+ * One reverse FK finder pair (ADR-0038): the entity holding this FK (`E`) gains
+ * `find<EPlural>By<FkField>(value)` (single, `WHERE fk = ?`) and
+ * `find<EPlural>By<FkField>In(values)` (batched, `WHERE fk IN (…)`, anti-N+1) so
+ * the referenced entity `T` can navigate to its referencing `E` rows by calling
+ * the finder with a `T` id. Both are plain, framework-free, single-query reads.
+ */
+interface ReverseFk {
+  /** FK FIELD name on this entity (logical), e.g. `currentSceneId`. */
+  fkField: string;
+  /** Target entity (the `T` referenced), e.g. `Scene`. Drives the value TS type. */
+  targetEntity: string;
+}
+
+/** Collect this entity's OWN reverse FK targets, in declaration order. */
+export function reverseFksFor(entity: MetaObject): ReverseFk[] {
+  const out: ReverseFk[] = [];
+  for (const ref of entity.referenceIdentities()) {
+    const fkField = ref.fields[0];
+    const target = ref.targetEntity;
+    if (!fkField || !target) continue;
+    out.push({ fkField, targetEntity: stripPackage(target) });
+  }
+  return out;
+}
+
+/** Render the single + batched reverse finders for one FK on `entity`. */
+export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: RenderContext): Code {
+  const varName = ctx.collectionName(entity.name);
+  const entityName = entity.name;
+  // The Drizzle table object is keyed by the LOGICAL field name (the DB column
+  // name is the argument to integer()/text()), so column access uses fk.fkField.
+  // The FK value type is the target entity's PK type (the FK references it). Fall
+  // back to the FK field's own subType, then to number (long-shaped key default).
+  const targetPk = ctx.pkMap.get(fk.targetEntity);
+  const ownField = entity.findField(fk.fkField);
+  const valueType = subTypeToTsType(targetPk?.fieldSubType ?? ownField?.subType ?? "long");
+
+  const singleName = reverseFinderFnName(entityName, fk.fkField);
+  const batchName = reverseFinderInFnName(entityName, fk.fkField);
+  const eqSym = imp("eq@drizzle-orm");
+  const inArraySym = imp("inArray@drizzle-orm");
+
+  return code`
+export async function ${singleName}(db: Db, ${fk.fkField}: ${valueType}): Promise<${entityName}[]> {
+  return db.select().from(${varName}).where(${eqSym}(${varName}.${fk.fkField}, ${fk.fkField}));
+}
+
+export async function ${batchName}(db: Db, ${fk.fkField}s: ${valueType}[]): Promise<${entityName}[]> {
+  if (${fk.fkField}s.length === 0) return [];
+  return db.select().from(${varName}).where(${inArraySym}(${varName}.${fk.fkField}, ${fk.fkField}s));
 }
 `;
 }

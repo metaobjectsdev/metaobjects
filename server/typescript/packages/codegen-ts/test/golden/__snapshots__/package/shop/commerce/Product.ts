@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { tags } from "../../Tag";
-import { orders } from "./Order";
 
 export const products = sqliteTable("products", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -19,8 +18,7 @@ export const products = sqliteTable("products", {
     .notNull()
     .references((): AnySQLiteColumn => tags.id),
 });
-export const productsRelations = relations(products, ({ one, many }) => ({
-  orders: many(orders),
+export const productsRelations = relations(products, ({ one }) => ({
   tag: one(tags, { fields: [products.tagId], references: [tags.id] }),
 }));
 export type Product = InferSelectModel<typeof products>;

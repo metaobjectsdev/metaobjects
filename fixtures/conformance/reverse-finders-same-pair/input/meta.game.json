@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "game",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Scene",
+          "children": [
+            { "source.rdb": { "@table": "scenes" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Player",
+          "children": [
+            { "source.rdb": { "@table": "players" } },
+            { "field.string": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "assigned" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "GameSession",
+          "children": [
+            { "source.rdb": { "@table": "game_sessions" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "currentSceneId" } },
+            { "field.long": { "name": "lastOpeningNarrativeSceneId" } },
+            { "field.long": { "name": "transitioningFromSceneId" } },
+            { "field.string": { "name": "playerId" } },
+            { "relationship.association": { "name": "currentScene", "@cardinality": "one", "@objectRef": "Scene" } },
+            { "relationship.association": { "name": "player", "@cardinality": "one", "@objectRef": "Player" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { "name": "fkCurrentScene", "@fields": "currentSceneId", "@references": "Scene" } },
+            { "identity.reference": { "name": "fkLastOpeningNarrativeScene", "@fields": "lastOpeningNarrativeSceneId", "@references": "Scene" } },
+            { "identity.reference": { "name": "fkTransitioningFromScene", "@fields": "transitioningFromSceneId", "@references": "Scene" } },
+            { "identity.reference": { "name": "fkPlayer", "@fields": "playerId", "@references": "Player" } }
+          ]
+        }
+      }
+    ]
+  }
+}

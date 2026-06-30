@@ -27,6 +27,8 @@ import {
   renderCreateFn,
   renderUpdateFn,
   renderDeleteByIdFn,
+  renderReverseFinderFns,
+  reverseFksFor,
   isTphDiscriminatorBase,
   isProjection,
   isTphSubtype,
@@ -79,6 +81,13 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
     renderUpdateFn(obj, ctx),
     renderDeleteByIdFn(obj, ctx),
   ];
+
+  // ADR-0038 — reverse-relationship navigation as explicit FK finders. One
+  // find<Plural>By<FkField> (+ batched …In) per FK this entity holds. OWNED:
+  // drop this loop if you don't want reverse finders.
+  for (const fk of reverseFksFor(obj)) {
+    sections.push(renderReverseFinderFns(obj, fk, ctx));
+  }
 
   const body = joinCode(sections, { on: "\n" }).toString();
   const header =

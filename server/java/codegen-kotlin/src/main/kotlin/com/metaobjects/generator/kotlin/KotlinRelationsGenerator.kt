@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
+import com.metaobjects.identity.ReferenceIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
@@ -78,9 +79,12 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             // FR-018: M:N navs (any subtype, @cardinality:"many" + @through). Derived
             // junction FK fields via the cross-port SSOT (KotlinM2mSupport → M2MFields).
             val m2mNavs = KotlinM2mSupport.resolve(entity, loader)
-            if (manyRels.isEmpty() && m2mNavs.isEmpty()) continue
+            // ADR-0038: reverse navigation — one finder pair per FK this entity holds
+            // (each single-field identity.reference).
+            val reverseFks = reverseFksFor(entity)
+            if (manyRels.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) continue
 
-            emit(entity, manyRels, m2mNavs, outRoot, loader)
+            emit(entity, manyRels, m2mNavs, reverseFks, outRoot, loader)
         }
     }
 
@@ -88,6 +92,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         entity: MetaObject,
         manyRels: List<MetaRelationship>,
         m2mNavs: List<KotlinM2mSupport.M2mNav>,
+        reverseFks: List<ReverseFk>,
         outRoot: Path,
         loader: MetaDataLoader,
     ) {
@@ -110,7 +115,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             val relShort = rel.shortName ?: rel.name
             Helper(relShort, targetShort + "Table")
         }
-        if (helpers.isEmpty() && m2mNavs.isEmpty()) return
+        if (helpers.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) return
 
         val source = buildString {
             if (pkg.isNotEmpty()) {
@@ -180,11 +185,67 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                     append("        .where { ${nav.junctionTableObj}.${nav.sourceField} eq sourceId }\n")
                 }
             }
+
+            // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
+            // (each single-field identity.reference). The referenced entity T navigates to
+            // its referencing E rows by calling these with a T id. The fn name derives from
+            // the FK FIELD (PascalCased, trailing `Id` dropped), unique within E by
+            // construction — so same-pair FKs (GameSession → Scene ×3) yield DISTINCT finders
+            // (findByCurrentScene / findByLastOpeningNarrativeScene /
+            // findByTransitioningFromScene), never colliding, with no @reverseName vocabulary.
+            // NOT a lazy Exposed `referrersOn` reverse collection (N+1 + needs an open
+            // transaction): each is a plain single indexed query (WHERE fk = ?), with a
+            // batched variant (WHERE fk IN (…)) for anti-N+1 loading of many parents. The
+            // returned Query stays compositional (chain .orderBy/.limit before materialising).
+            for (fk in reverseFks) {
+                if (!first) append("\n")
+                first = false
+                val col = KotlinNaming.safeColumnProperty(fk.fkField)
+                val single = KotlinNaming.reverseFinderName(fk.fkField)
+                val batched = KotlinNaming.reverseFinderInName(fk.fkField)
+                append("/** Reverse nav: the $ownerShort rows whose `${fk.fkField}` FK points at the given ${fk.targetShortName} id (single indexed query). */\n")
+                append("fun $ownerTable.$single(${fk.fkField}: ${fk.valueType}): Query =\n")
+                append("    $ownerTable.selectAll().where { $ownerTable.$col eq ${fk.fkField} }\n")
+                append("\n")
+                append("/** Reverse nav (batched, anti-N+1): the $ownerShort rows whose `${fk.fkField}` FK is IN the given ${fk.targetShortName} ids. */\n")
+                append("fun $ownerTable.$batched(${fk.fkField}s: List<${fk.valueType}>): Query =\n")
+                append("    $ownerTable.selectAll().where { $ownerTable.$col inList ${fk.fkField}s }\n")
+            }
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(ownerShort + "Relations.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, source)
+    }
+
+    /**
+     * One reverse FK an entity holds (ADR-0038), derived from an `identity.reference`:
+     * the FK field name, the target entity short name, and the Kotlin value type of the
+     * FK (the type a `findBy<FkField>` arg / element takes — the FK column's own Kotlin type).
+     */
+    protected data class ReverseFk(val fkField: String, val targetShortName: String, val valueType: String)
+
+    /**
+     * Collect every reverse FK [entity] declares, in declaration order — one per
+     * single-field [ReferenceIdentity] child. Compound references (multi-field FKs) are
+     * skipped (no single-column finder shape). The value type is the FK field's own Kotlin
+     * simple type via [KotlinTypeMapper.kotlinTypeName], falling back to `Long`.
+     */
+    protected open fun reverseFksFor(entity: MetaObject): List<ReverseFk> {
+        val out = mutableListOf<ReverseFk>()
+        for (child in entity.children) {
+            if (child !is ReferenceIdentity) continue
+            val fields = child.fields
+            if (fields.size != 1) continue // single-column FKs only
+            val fkField = fields.first()
+            val targetShort = child.targetEntity?.let { PackageMapping.splitFqn(it).second } ?: ""
+            val valueType = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
+                runCatching { KotlinTypeMapper.kotlinTypeName(f).toString().substringAfterLast('.') }
+                    .getOrDefault("Long")
+            } ?: "Long"
+            out.add(ReverseFk(fkField, targetShort, valueType))
+        }
+        return out
     }
 
     /**

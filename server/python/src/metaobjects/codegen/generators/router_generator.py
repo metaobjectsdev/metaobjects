@@ -32,7 +32,10 @@ pick their preferred persistence layer.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from metaobjects.apidocs.naming import plural_lowercase as _plural_lowercase
+from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
@@ -46,10 +49,15 @@ from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
+    IDENTITY_SUBTYPE_REFERENCE,
+)
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
-from metaobjects.shared.base_types import TYPE_SOURCE
+from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 
@@ -75,6 +83,43 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
 
 
+@dataclass(frozen=True)
+class ReverseFk:
+    """One FK an entity ``E`` holds (ADR-0038): the FK FIELD name on ``E`` and the
+    bare target entity (``T``) it references. Drives the reverse finder pair on
+    ``E``'s repository so ``T`` can navigate to its referencing ``E`` rows."""
+
+    fk_field: str
+    target_entity: str
+
+
+def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
+    """The entity's OWN ``identity.reference`` FKs, in declaration order — the
+    cross-port-canonical source for the reverse-finder pair (mirrors the TS
+    ``reverseFksFor``). Each reference contributes one FK field + target entity;
+    malformed references (no ``@fields`` / no ``@references``) are skipped."""
+    out: list[ReverseFk] = []
+    for c in entity.own_children():
+        if c.type != TYPE_IDENTITY or c.sub_type != IDENTITY_SUBTYPE_REFERENCE:
+            continue
+        fields = c.attr(IDENTITY_ATTR_FIELDS)
+        fk_field: str | None = None
+        if isinstance(fields, (list, tuple)) and fields and isinstance(fields[0], str):
+            fk_field = fields[0]
+        elif isinstance(fields, str) and fields:
+            fk_field = fields.split(",")[0].strip() or None
+        references = c.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+        target = (
+            references[references.rfind(PACKAGE_SEP) + len(PACKAGE_SEP):]
+            if isinstance(references, str) and PACKAGE_SEP in references
+            else references
+        )
+        if not fk_field or not isinstance(target, str) or not target:
+            continue
+        out.append(ReverseFk(fk_field=fk_field, target_entity=target))
+    return out
+
+
 class RouterGenerator:
     """``object.entity`` + ``source.rdb @kind="table"`` → one
     ``<entity_snake>_router.py`` per writable entity (FastAPI ``APIRouter``).
@@ -88,6 +133,8 @@ class RouterGenerator:
 
     * ``_emit_repository_protocol(repo_class, m2m)`` — the consumer-implemented
       ``Repository`` ``Protocol`` block (CRUD finders + M:N ``find_related_*``).
+    * ``_emit_reverse_finders(entity)`` — the ADR-0038 reverse-FK finder pair
+      (``find_<e_plural>_by_<fk_segment>`` + ``…_in``) appended to the ``Protocol``.
     * ``_emit_route_handler(name, ...)`` — the CRUD route handlers (list / get /
       create / update / delete), keyed by ``name``.
     * ``_emit_m2m_route(d, snake, pk_param, repo_class)`` — one M:N traversal route.
@@ -124,6 +171,28 @@ class RouterGenerator:
         for d in m2m:
             lines.append(
                 f"    def find_related_{d.relation_name}(self, id: int) -> list[Any]: ..."
+            )
+        return lines
+
+    def _emit_reverse_finders(self, entity: MetaObject) -> list[str]:
+        """ADR-0038 reverse-relationship finders for the repository ``Protocol`` — for
+        each FK this entity (``E``) holds (``identity.reference``), a single-value
+        ``find_<e_plural>_by_<fk_segment>`` + a batched (anti-N+1) ``…_in`` finder.
+
+        Each is a framework-free single query (``WHERE <fk> = ?`` / ``WHERE <fk> IN (…)``)
+        returning ``list[Any]`` (the ``E`` rows matching a given target id) — NOT a lazy
+        ORM collection (ADR-0038). The name derives from the FK FIELD (unique within the
+        entity), so same-pair FKs yield distinct finders with no collision. Returns
+        ``Protocol``-body lines (each already 4-space indented). Override to customize."""
+        lines: list[str] = []
+        entity_name = entity.name
+        for rfk in reverse_fks_for(entity):
+            single = reverse_finder_fn(entity_name, rfk.fk_field)
+            batched = reverse_finder_in_fn(entity_name, rfk.fk_field)
+            arg = _snake_case(rfk.fk_field)
+            lines.append(f"    def {single}(self, {arg}: Any) -> list[Any]: ...")
+            lines.append(
+                f"    def {batched}(self, {arg}_values: list[Any]) -> list[Any]: ..."
             )
         return lines
 
@@ -538,7 +607,9 @@ class RouterGenerator:
         parts.append("    return _SortClause(field=parts[0], direction=direction)")
         parts.append("")
         parts.append("")
-        parts.extend(self._emit_repository_protocol(repo_class, m2m))
+        proto_lines = self._emit_repository_protocol(repo_class, m2m)
+        proto_lines.extend(self._emit_reverse_finders(entity))
+        parts.extend(proto_lines)
         parts.append("")
         parts.append("")
         parts.append(f"def get_repository() -> {repo_class}:")

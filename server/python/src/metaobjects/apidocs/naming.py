@@ -39,6 +39,9 @@ __all__ = [
     "output_prompt_fn",
     "output_parser_fn",
     "extractor_fn",
+    "reverse_finder_fk_segment",
+    "reverse_finder_fn",
+    "reverse_finder_in_fn",
 ]
 
 
@@ -121,3 +124,75 @@ def output_parser_fn(template_name: str) -> str:
 def extractor_fn(template_name: str) -> str:
     """``OrderSummary`` → ``extract_order_summary`` (the strict extractor fn)."""
     return f"extract_{snake_case(template_name)}"
+
+
+# ---------------------------------------------------------------------------
+# ADR-0038 — reverse-relationship navigation as explicit FK finders.
+#
+# For each FK an entity ``E`` holds (an ``identity.reference`` over an FK field
+# referencing entity ``T``), ``E``'s repository surface gains a finder returning
+# the ``E`` rows matching a given ``T`` id — so ``T`` navigates to its referencing
+# ``E`` rows by calling the finder with a ``T`` id. Two variants: a single-value
+# finder and a batched (anti-N+1) ``…_in`` finder. Both are plain, framework-free
+# single queries (``WHERE <fk> = ?`` / ``WHERE <fk> IN (…)``) — NOT lazy ORM
+# collections (ADR-0038: lazy collections are impossible framework-free and are
+# the canonical N+1 anti-pattern).
+#
+# CANONICAL NAMING (the cross-port contract — idiomatic Python snake_case spelling
+# of the cross-port shape ``find<EPlural>By<FkField>`` / ``…In``):
+#
+#   find_<e_plural>_by_<fk_segment>(value)     → SELECT … FROM E WHERE <fk> = ?
+#   find_<e_plural>_by_<fk_segment>_in(values) → SELECT … FROM E WHERE <fk> IN (…)
+#
+# where:
+#   - <e_plural>   is the source entity name pluralized then snake_cased
+#     (``GameSession`` → ``game_sessions``).
+#   - <fk_segment> is the FK FIELD name (NOT the relationship/navigation name and
+#     NOT the raw column), snake_cased, with a single trailing ``_id`` dropped if
+#     present. The FK field name is unique within an entity, so the finder name is
+#     unique by construction — this dissolves the same-pair collision and removes
+#     any need for a naming attribute.
+#
+# SAME-PAIR EXAMPLE (``GameSession`` has THREE FKs to ``Scene``):
+#   FK field ``currentSceneId``               → find_game_sessions_by_current_scene
+#   FK field ``lastOpeningNarrativeSceneId``  → find_game_sessions_by_last_opening_narrative_scene
+#   FK field ``transitioningFromSceneId``     → find_game_sessions_by_transitioning_from_scene
+# Three distinct finders — no collision.
+# ---------------------------------------------------------------------------
+
+
+def _pluralize(name: str) -> str:
+    """Trivial cross-port pluralization (matches the TS ``pluralize`` /
+    ``MetaSource._pluralize``), applied to a PascalCase entity name BEFORE
+    snake-casing (``GameSession`` → ``GameSessions``)."""
+    if not name:
+        return name
+    lower = name.lower()
+    if lower.endswith(("s", "x", "z", "ch", "sh")):
+        return name + "es"
+    if len(name) >= 2 and lower[-1] == "y" and lower[-2] not in "aeiou":
+        return name[:-1] + "ies"
+    return name + "s"
+
+
+def reverse_finder_fk_segment(fk_field_name: str) -> str:
+    """Lower an FK field name to the ``<fk_segment>`` of a reverse finder name:
+    snake_case the field, then drop a single trailing ``_id`` if present.
+    E.g. ``currentSceneId`` → ``current_scene``, ``authorId`` → ``author``,
+    ``scene`` → ``scene``."""
+    snake = snake_case(fk_field_name)
+    # Drop a single trailing "_id" (but not a bare "id" — that would yield "").
+    if len(snake) > 3 and snake.endswith("_id"):
+        return snake[:-3]
+    return snake
+
+
+def reverse_finder_fn(source_entity_name: str, fk_field_name: str) -> str:
+    """Reverse single-value finder name: ``find_<e_plural>_by_<fk_segment>``."""
+    e_plural = snake_case(_pluralize(source_entity_name))
+    return f"find_{e_plural}_by_{reverse_finder_fk_segment(fk_field_name)}"
+
+
+def reverse_finder_in_fn(source_entity_name: str, fk_field_name: str) -> str:
+    """Reverse batched finder name: ``find_<e_plural>_by_<fk_segment>_in``."""
+    return f"{reverse_finder_fn(source_entity_name, fk_field_name)}_in"

@@ -98,6 +98,21 @@ public class EntityGenerator : IGenerator
         }
         foreach (var vo in valueObjects)
             files.Add(EmitValueObjectPoco(vo, ctx));
+
+        // ADR-0038 — reverse-relationship navigation as explicit FK finders. For each
+        // concrete, table-mapped entity holding ≥1 FK (identity.reference), emit a
+        // <Entity>Queries static class with a single + batched finder per FK over the
+        // generated DbSet (framework-free, single-query LINQ). NOT a lazy collection.
+        // TPH subtypes are folded into the base's DbSet, so finders hang off the base
+        // entity's set — skip subtype-level emission (the base carries the FKs it owns).
+        foreach (var e in mapped)
+        {
+            if (InstanceArtifacts.IsAbstract(e)) continue;
+            if (TphPlanBuilder.IsTphSubtype(e, ctx.Root)) continue;
+            if (e.IsReadOnlyProjection()) continue;            // projections are read-only views; no FK finders
+            if (ReverseFinderBuilder.Generate(e, ctx) is { } queries)
+                files.Add(queries);
+        }
         return files;
     }
 

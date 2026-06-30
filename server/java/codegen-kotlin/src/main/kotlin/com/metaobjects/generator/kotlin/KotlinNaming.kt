@@ -91,4 +91,33 @@ object KotlinNaming {
 
     /** [KotlinExtractorGenerator]: `templateShort + "Extractor"`. */
     fun extractorName(templateShort: String): String = templateShort + "Extractor"
+
+    // ---------------------------------------------------------------------
+    // ADR-0038 — reverse-relationship navigation via explicit FK finders.
+    //
+    // For each FK an entity `E` holds (an `identity.reference`), `E`'s relations
+    // file gains an Exposed query function returning the `E` rows matching a given
+    // target id. The CROSS-PORT INVARIANT is the FK-FIELD DERIVATION (PascalCase,
+    // drop a single trailing `Id`) — unique within an entity by construction, so
+    // same-pair FKs (GameSession → Scene ×3) yield three DISTINCT finders, never
+    // colliding, with no `@reverseName` vocabulary. The function name is idiomatic
+    // (`findBy<FkField>` — the entity is the receiver table, so it is implied).
+    // ---------------------------------------------------------------------
+
+    /**
+     * The reverse-finder disambiguator segment derived from an FK field name:
+     * PascalCase, dropping a single trailing `Id` (but never reducing a bare
+     * `id`/`Id` to the empty string). E.g. `currentSceneId` → `CurrentScene`;
+     * `playerId` → `Player`; `id` → `Id`.
+     */
+    fun reverseFinderFkSegment(fkFieldName: String): String {
+        val pascal = capitalizeFirst(fkFieldName)
+        return if (pascal.length > 2 && pascal.endsWith("Id")) pascal.dropLast(2) else pascal
+    }
+
+    /** [KotlinRelationsGenerator]: reverse single-value finder name `findBy<FkField>`. */
+    fun reverseFinderName(fkFieldName: String): String = "findBy" + reverseFinderFkSegment(fkFieldName)
+
+    /** [KotlinRelationsGenerator]: reverse batched finder name `findBy<FkField>In`. */
+    fun reverseFinderInName(fkFieldName: String): String = reverseFinderName(fkFieldName) + "In"
 }

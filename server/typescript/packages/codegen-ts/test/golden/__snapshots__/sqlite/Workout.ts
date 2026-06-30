@@ -9,9 +9,7 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
-import { exercises } from "./Exercise";
 import { weeks } from "./Week";
-import { workoutEvents } from "./WorkoutEvent";
 
 export const workouts = sqliteTable("workouts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -22,10 +20,8 @@ export const workouts = sqliteTable("workouts", {
   orderIndex: integer("order_index").notNull(),
   durationMinutes: integer("duration_minutes"),
 });
-export const workoutsRelations = relations(workouts, ({ one, many }) => ({
+export const workoutsRelations = relations(workouts, ({ one }) => ({
   week: one(weeks, { fields: [workouts.weekId], references: [weeks.id] }),
-  exercises: many(exercises),
-  workoutEvents: many(workoutEvents),
 }));
 export type Workout = InferSelectModel<typeof workouts>;
 export type WorkoutInsert = InferInsertModel<typeof workouts>;
