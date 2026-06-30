@@ -23,6 +23,18 @@ FIELD_SUBTYPE_ENUM = "enum"
 # (Python uuid.UUID) is a build-time codegen concern. A bare scalar like
 # field.long: no required attrs, no loader value-validation.
 FIELD_SUBTYPE_UUID = "uuid"
+# ADR-0036/0037 Wave 3 — field.uri: a URI/URL string. A concept WITH a native
+# type + behavior → a subtype (NOT a @stringFormat). String-backed on the wire;
+# the idiomatic native binding (Python urllib.parse / a URL-validated str) is a
+# build-time codegen concern. DB column is text (Postgres has no uri type). Ships
+# WITHOUT @kind in v1 (the native type subsumes url/urn). Mirrors TS FIELD_SUBTYPE_URI.
+FIELD_SUBTYPE_URI = "uri"
+# ADR-0036/0037 Wave 3 — field.inet: an IP-address string (IPv4 or IPv6). A
+# concept WITH a native type + behavior → a subtype. String-backed on the wire;
+# the idiomatic native binding (Python ipaddress / an IP-validated str) is a
+# build-time codegen concern. DB column is the Postgres-native inet type. Ships
+# WITHOUT @kind in v1 (the native type subsumes ipv4/ipv6). Mirrors TS FIELD_SUBTYPE_INET.
+FIELD_SUBTYPE_INET = "inet"
 
 FIELD_SUBTYPES = (
     SUBTYPE_BASE,
@@ -40,6 +52,8 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_MAP,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_UUID,
+    FIELD_SUBTYPE_URI,
+    FIELD_SUBTYPE_INET,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
     # separately in core_types.py with its dedicated @values AttrSchema.
 )
@@ -104,6 +118,19 @@ FIELD_ATTR_STORAGE = "storage"
 STORAGE_VALUES = ("flattened", "jsonb", "subdocument")
 # Physical column name override (cross-port; renamed from @dbColumn).
 FIELD_ATTR_COLUMN = "column"
+
+# ADR-0036/0037 Wave 3 — @stringFormat: a closed validation format for a plain
+# field.string that has NO native type or behavior of its own (email | hostname).
+# The field stays a plain string (native binding + DB column unchanged); codegen
+# emits the matching validator (the canonical matcher per format lives in each
+# port's codegen, NOT author validator.regex — cross-language regex engines
+# diverge). Named @stringFormat (not @format) to avoid colliding with template.*
+# @format. Concepts WITH a native type/behavior are subtypes instead (uuid →
+# field.uuid, url/uri → field.uri, ip → field.inet). Mirrors TS FIELD_ATTR_STRING_FORMAT.
+FIELD_ATTR_STRING_FORMAT = "stringFormat"
+STRING_FORMAT_EMAIL = "email"
+STRING_FORMAT_HOSTNAME = "hostname"
+STRING_FORMAT_VALUES = (STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME)
 
 # @autoSet allowed values (cross-port).
 AUTO_SET_ON_CREATE = "onCreate"

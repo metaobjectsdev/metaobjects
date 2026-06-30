@@ -25,6 +25,11 @@ _FIELD_DATA_TYPE = {
     # R6 Plan 2a — field.uuid is string-backed on the wire; the native uuid.UUID
     # binding is surfaced at codegen time (see codegen/type_map.py).
     fc.FIELD_SUBTYPE_UUID: DataType.STRING,
+    # ADR-0036/0037 Wave 3 — field.uri / field.inet are string-backed on the wire
+    # (same as field.uuid); the idiomatic native bindings (urllib.parse / ipaddress)
+    # are surfaced at codegen time (see codegen/type_map.py).
+    fc.FIELD_SUBTYPE_URI: DataType.STRING,
+    fc.FIELD_SUBTYPE_INET: DataType.STRING,
 }
 
 
