@@ -135,6 +135,26 @@ public class R6Plan2LoaderTests
     }
 
     // ------------------------------------------------------------------------
+    // Phase 1 slim-and-derive: uuid_array + text_array are removed values.
+    // They now fall through Rule 1 (unknown value) → ERR_BAD_ATTR_VALUE.
+    // Array-ness is derived from field.uuid/field.string isArray:true instead.
+    // ------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("uuid_array")]
+    [InlineData("text_array")]
+    public void DbColumnType_removed_array_values_are_ERR_BAD_ATTR_VALUE(string removedValue)
+    {
+        var json = Pairing(FIELD_SUBTYPE_STRING, removedValue);
+        var res = LoadJson(json);
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("dbColumnType"));
+        Assert.NotNull(err);
+        Assert.Contains(removedValue, err!.Message);
+        Assert.Contains("allowed", err.Message);
+    }
+
+    // ------------------------------------------------------------------------
     // Plan 2b — own-only: an INHERITED @dbColumnType is not re-validated against
     // the inheriting field's subtype (mirrors the field.enum own-only policy).
     // ------------------------------------------------------------------------
