@@ -67,15 +67,20 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final String DB_COLUMN_TYPE_JSONB = "jsonb";
     /** {@code @dbColumnType} value → {@code timestamp with time zone} column (on {@code field.timestamp}). */
     public static final String DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz";
-    /** {@code @dbColumnType} value → native Postgres {@code uuid[]} array column (on {@code field.string}). */
-    public static final String DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array";
-    /** {@code @dbColumnType} value → native Postgres {@code text[]} array column (on {@code field.string}). */
-    public static final String DB_COLUMN_TYPE_TEXT_ARRAY = "text_array";
 
-    /** The closed set of legal {@code @dbColumnType} values. */
+    /**
+     * The closed set of legal {@code @dbColumnType} values.
+     *
+     * <p><b>dbColumnType slim-and-derive — Phase 1.</b> The native-array values
+     * {@code uuid_array} / {@code text_array} were removed: a Postgres {@code uuid[]} /
+     * {@code text[]} column is now <em>derived</em> from {@code field.uuid} / {@code field.string}
+     * + {@code isArray:true} (the metadata already says it — ADR-0023), never declared. The
+     * vestigial {@code text} value was never carried here (a no-{@code maxLength}
+     * {@code field.string} already defaults to a {@code text} column). This value-set is shared
+     * with the Kotlin port via this JVM provider.</p>
+     */
     public static final java.util.List<String> VALID_DB_COLUMN_TYPES = java.util.List.of(
-        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, DB_COLUMN_TYPE_TIMESTAMP_TZ,
-        DB_COLUMN_TYPE_UUID_ARRAY, DB_COLUMN_TYPE_TEXT_ARRAY);
+        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, DB_COLUMN_TYPE_TIMESTAMP_TZ);
 
     @Override
     public String getProviderId() {

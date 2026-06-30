@@ -141,6 +141,27 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void stringArrayFieldDtoComponentIsListOfString() {
+        // dbColumnType slim-and-derive (Phase 1): a `field.string isArray:true` maps to a
+        // native text[] column whose DTO component is List<String> (the array-ness is
+        // DERIVED from isArray, never declared via @dbColumnType:text_array).
+        StringField f = new StringField("tags");
+        f.setArray(true);
+        assertEquals("java.util.List<String>", SpringDtoGenerator.componentType(f, null));
+    }
+
+    @Test
+    public void uuidArrayFieldDtoComponentIsListOfUUID() {
+        // dbColumnType slim-and-derive (Phase 1): a `field.uuid isArray:true` maps to a
+        // native uuid[] column whose DTO component is List<java.util.UUID> (DERIVED from
+        // isArray — the removed @dbColumnType:uuid_array). Previously the uuid-array arm
+        // was unwired; this pins the cross-port List<UUID> shape.
+        com.metaobjects.field.UuidField f = new com.metaobjects.field.UuidField("refs");
+        f.setArray(true);
+        assertEquals("java.util.List<java.util.UUID>", SpringDtoGenerator.componentType(f, null));
+    }
+
+    @Test
     public void unsupportedFieldThrowsIllegalArgumentException() {
         // ObjectField is intentionally not in the mapper (deferred — see SpringDtoGenerator
         // javadoc). The mapper must throw a clear IllegalArgumentException naming both
