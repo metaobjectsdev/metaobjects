@@ -113,6 +113,9 @@ CREATE TABLE "all_types" (
   "moneyVal" BIGINT NOT NULL,
   "enumVal" TEXT NOT NULL,
   "uuidVal" UUID NOT NULL,
+  "uriVal" TEXT NOT NULL,
+  "inetVal" INET NOT NULL,
+  "inet6Val" INET NOT NULL,
   "settings" JSONB,
   CONSTRAINT "all_types_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "all_types_enumVal_chk" CHECK ("enumVal" IN ('LOW', 'MEDIUM', 'HIGH'))

@@ -234,6 +234,9 @@
           { "field.currency":  { "name": "moneyVal", "@required": true, "@currency": "USD" } },
           { "field.enum":      { "name": "enumVal", "@required": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
           { "field.uuid":      { "name": "uuidVal", "@required": true } },
+          { "field.uri":       { "name": "uriVal",   "@required": true } },
+          { "field.inet":      { "name": "inetVal",  "@required": true } },
+          { "field.inet":      { "name": "inet6Val", "@required": true } },
           { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
         ]
