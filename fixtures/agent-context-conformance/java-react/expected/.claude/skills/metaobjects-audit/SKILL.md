@@ -114,21 +114,27 @@ such, surfaced in the roadmap, but **non-failing** (the code works; the form is 
   birthday-with-time, a recurring local schedule) → recommend **`@localTime: true`** (naive
   `timestamp without time zone`), or confirm it is genuinely meant to be an instant. Default
   `field.timestamp` is an instant; only flag when the field's meaning is clearly wall-clock.
+- A `validator.regex` (or a plain `field.string`) validating an **email** shape → recommend
+  **`@stringFormat: email`** on the `field.string` (ADR-0036 Wave 3). The native type stays
+  `string`; the per-port codegen emits the idiomatic email check — don't hand-roll the regex.
+- A `field.string` that **holds a URL / URI** → recommend **`field.uri`** (native `URI`/`Uri`,
+  URL validation) — a distinct native type + behavior is a subtype, not a validated string.
+- A `field.string` that **holds an IP address** → recommend **`field.inet`** (native IP type;
+  Postgres `inet` column).
 
 **Custom-provider vocabulary (adopters who register their own types/attrs):** check
 new/custom vocab against the ADR-0037 procedure (advisory) — e.g. *a custom subtype
 that differs from an existing one only by a property should be an attribute, not a
-subtype*; a string-shape validation (email/url) is an attribute (native type unchanged),
-not a subtype. Recommend re-shaping against the ordered test.
+subtype*; an email/hostname string-validation is an **attribute** (`@stringFormat`,
+native type unchanged), while a URL or IP is a **native type** (`field.uri` /
+`field.inet`, a subtype). Recommend re-shaping against the ordered test.
 
-**TODO — Wave-3 checks to add when the conventions merge (NOT yet active — these
-tokens are pending ADR-0036 Wave 3 and not yet registered; do NOT flag adopters for
-them until merged):**
-
-- An author-supplied regex validating email / url shape → flag for the forthcoming
-  `@format` string-format attribute — *pending Wave 3, not yet active*.
-- A same-pair relationship needing a stable navigation name → flag for the forthcoming
-  `@relationName` attribute — *pending Wave 3, not yet active*.
+**TODO — Wave 4 (reverse-navigation derivation), pending — not yet active.** When
+codegen derives the reverse accessor for a relationship, an adopter who hand-maintains
+a same-pair / back-reference navigation name becomes a modernization candidate. The
+reverse accessor is **derived automatically**; the override is the *optional* attribute
+**`@reverseName`** (NOT required, and NOT the old @relationName). This token is not yet
+registered — do NOT flag adopters for it until Wave 4 merges.
 
 ---
 
