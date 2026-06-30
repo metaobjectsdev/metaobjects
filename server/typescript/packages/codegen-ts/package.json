@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/codegen-ts",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "TypeScript codegen engine for MetaObjects — emits Drizzle, Zod, and Fastify artifacts.",
   "type": "module",
   "main": "./dist/index.js",

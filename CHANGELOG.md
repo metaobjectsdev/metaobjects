@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-06-29
+
+_npm `0.14.2` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 - **codegen-ts — required jsonb open-bag generated an uncompilable `z.unknown().min(1)`.**
   The 0.14.0 jsonb open-bag change (`field.string` + `@dbColumnType: jsonb` → `z.unknown()`)
