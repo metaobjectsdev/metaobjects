@@ -100,6 +100,10 @@ public static class CoreTypes
         // R6 Plan 2a — field.uuid is string-backed on the wire (lowercase-canonical
         // UUID string); the native System.Guid binding is a build-time codegen concern.
         [FIELD_SUBTYPE_UUID]      = DataType.String,
+        // ADR-0036 Wave 3 — field.uri / field.inet are string-backed on the wire; the
+        // native System.Uri / System.Net.IPAddress bindings are build-time codegen concerns.
+        [FIELD_SUBTYPE_URI]       = DataType.String,
+        [FIELD_SUBTYPE_INET]      = DataType.String,
         [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
         [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
         [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
@@ -266,6 +270,10 @@ public static class CoreTypes
         {
             List<AttrSchema> fieldAttrs = subType switch
             {
+                // ADR-0036 Wave 3: @stringFormat (email|hostname) is scoped to field.string.
+                // Strict attr scoping (from spec field.json's field.string allow-list) keeps it
+                // here and prunes it everywhere else.
+                FIELD_SUBTYPE_STRING   => [.. FieldSchema.CommonFieldAttrs, FieldSchema.StringFormatAttr],
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
                 // field.map — the open-keyed map. @objectRef is already in CommonFieldAttrs;
                 // @valueType is map-specific. Strict attr scoping (from spec field.json's

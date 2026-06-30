@@ -137,8 +137,10 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// <summary>Operator set for <paramref name="subType"/>, or empty for unsupported subtypes.</summary>
     internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch
     {
-        FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM => OpsString,
-        FIELD_SUBTYPE_UUID => OpsUuid,
+        // ADR-0036 Wave 3 — field.uri is string-like (eq/ne/in/like/isNull); field.inet is
+        // uuid-like (eq/ne/in/isNull — no like / ordering on an opaque address value).
+        FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM or FIELD_SUBTYPE_URI => OpsString,
+        FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_INET => OpsUuid,
         FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_DECIMAL
             or FIELD_SUBTYPE_CURRENCY

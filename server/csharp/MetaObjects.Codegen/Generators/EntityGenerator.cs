@@ -122,6 +122,9 @@ public class EntityGenerator : IGenerator
         // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
         if (CSharpNaming.RequiresSystemTextJson(entity))
             sb.AppendLine("using System.Text.Json;");
+        // ADR-0036 Wave 3 — a field.inet surfaces as System.Net.IPAddress.
+        if (CSharpNaming.RequiresSystemNet(entity))
+            sb.AppendLine("using System.Net;");
         // A composite PK emits a class-level [PrimaryKey(...)] which lives in the
         // Microsoft.EntityFrameworkCore namespace (not a DataAnnotations attribute) —
         // import it so the emitted class compiles standalone, without relying on the
@@ -482,6 +485,9 @@ public class EntityGenerator : IGenerator
         // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
         if (CSharpNaming.RequiresSystemTextJson(entity))
             sb.AppendLine("using System.Text.Json;");
+        // ADR-0036 Wave 3 — a field.inet surfaces as System.Net.IPAddress.
+        if (CSharpNaming.RequiresSystemNet(entity))
+            sb.AppendLine("using System.Net;");
         // FR-021 — usings for OTHER packages this entity references (object navs + TPH base).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(entity, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
@@ -549,6 +555,9 @@ public class EntityGenerator : IGenerator
         // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
         if (CSharpNaming.RequiresSystemTextJson(vo))
             sb.AppendLine("using System.Text.Json;");
+        // ADR-0036 Wave 3 — a field.inet surfaces as System.Net.IPAddress.
+        if (CSharpNaming.RequiresSystemNet(vo))
+            sb.AppendLine("using System.Net;");
         // FR-021 — usings for OTHER packages this value-object references (object navs + super).
         foreach (var ns in PackageBindingResolver.CrossPackageReferencedNamespaces(vo, ctx.Root, ctx.Config))
             sb.AppendLine($"using {ns};");
@@ -809,6 +818,20 @@ public class EntityGenerator : IGenerator
     // → [MaxLength] (preserving the existing @maxLength semantics).
     protected static void AppendStringValidatorAttributes(StringBuilder sb, MetaField field)
     {
+        // ADR-0036 Wave 3 — @stringFormat narrows a plain string to a closed validated
+        // format. The canonical matcher per format lives HERE (codegen), never author
+        // validator.regex (cross-language regex engines diverge). The field stays a plain
+        // string: email → [EmailAddress]; hostname → the canonical RFC-1123 [RegularExpression].
+        switch (field.OwnAttr(FIELD_ATTR_STRING_FORMAT) as string)
+        {
+            case STRING_FORMAT_EMAIL:
+                sb.AppendLine("    [EmailAddress]");
+                break;
+            case STRING_FORMAT_HOSTNAME:
+                sb.AppendLine($"    [RegularExpression(@\"{CSharpNaming.HostnameRegex}\")]");
+                break;
+        }
+
         long? min = null;
         long? max = field.MaxLength;
         foreach (var v in field.Validators())

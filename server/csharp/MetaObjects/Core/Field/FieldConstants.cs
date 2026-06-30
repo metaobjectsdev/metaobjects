@@ -42,6 +42,24 @@ public static class FieldConstants
     /// </summary>
     public const string FIELD_SUBTYPE_UUID      = "uuid";
 
+    /// <summary>
+    /// ADR-0036 Wave 3 — <c>field.uri</c>: a URI/URL string. A concept with a native type +
+    /// behavior, so a subtype (not a <c>@stringFormat</c>). String-backed on the wire (like
+    /// <see cref="FIELD_SUBTYPE_STRING"/>); native binding is <c>System.Uri</c> in entity
+    /// codegen and a Postgres <c>text</c> column (Postgres has no uri type). A bare scalar:
+    /// no required attrs and no loader value-validation. Ships WITHOUT @kind in v1.
+    /// </summary>
+    public const string FIELD_SUBTYPE_URI       = "uri";
+
+    /// <summary>
+    /// ADR-0036 Wave 3 — <c>field.inet</c>: an IP-address string (IPv4 or IPv6). A concept
+    /// with a native type + behavior, so a subtype (not a <c>@stringFormat</c>). String-backed
+    /// on the wire (like <see cref="FIELD_SUBTYPE_STRING"/>); native binding is
+    /// <c>System.Net.IPAddress</c> in entity codegen and a Postgres-native <c>inet</c> column.
+    /// A bare scalar: no required attrs and no loader value-validation. Ships WITHOUT @kind in v1.
+    /// </summary>
+    public const string FIELD_SUBTYPE_INET      = "inet";
+
     public static readonly string[] FIELD_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,
@@ -60,6 +78,8 @@ public static class FieldConstants
         FIELD_SUBTYPE_CURRENCY,
         FIELD_SUBTYPE_ENUM,
         FIELD_SUBTYPE_UUID,
+        FIELD_SUBTYPE_URI,
+        FIELD_SUBTYPE_INET,
     ];
 
     // -----------------------------------------------------------------------
@@ -68,6 +88,25 @@ public static class FieldConstants
 
     public const string FIELD_ATTR_REQUIRED              = "required";
     public const string FIELD_ATTR_UNIQUE                = "unique";
+
+    /// <summary>
+    /// ADR-0036 Wave 3 — <c>@stringFormat</c> on <c>field.string</c>: a closed validation
+    /// format (email | hostname) for a plain string field that has NO native type or
+    /// behavior of its own. The field stays a plain string (native binding + DB column
+    /// unchanged); codegen emits the matching validator. The canonical matcher per format
+    /// lives in each port's codegen, NOT author validator.regex. Named @stringFormat (not
+    /// @format) to avoid colliding with template.* @format.
+    /// </summary>
+    public const string FIELD_ATTR_STRING_FORMAT        = "stringFormat";
+
+    /// <summary>@stringFormat "email" — an RFC-5322-ish email address.</summary>
+    public const string STRING_FORMAT_EMAIL             = "email";
+
+    /// <summary>@stringFormat "hostname" — a DNS hostname (RFC-1123 label rules).</summary>
+    public const string STRING_FORMAT_HOSTNAME          = "hostname";
+
+    /// <summary>The closed @stringFormat value set.</summary>
+    public static readonly string[] STRING_FORMAT_VALUES = [STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME];
     /// <summary>
     /// FR-013: when true, the field is read-only — codegen emits no setter, the
     /// persistence layer skips the column on INSERT/UPDATE, and input schemas mark
