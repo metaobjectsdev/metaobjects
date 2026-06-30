@@ -31,7 +31,8 @@ import static org.junit.Assert.fail;
  * Tests for {@link ValidationPhase#validateDbColumnType} (R6 Plan 2b). The
  * {@code @dbColumnType} physical attribute is validated own-only against:
  * <ol>
- *   <li>a closed value set ({@code uuid|jsonb|timestamp_with_tz}); and</li>
+ *   <li>a closed value set ({@code uuid|jsonb} — {@code timestamp_with_tz} was retired
+ *       in ADR-0036 Wave 2); and</li>
  *   <li>the legal (logical-subtype × value) pairing.</li>
  * </ol>
  * Both violations surface {@link ErrorCode#ERR_BAD_ATTR_VALUE}, mirroring the
@@ -85,7 +86,11 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void timestampTzOnTimestampIsLegal() {
+    public void retiredTimestampTzValueIsRejected() {
+        // ADR-0036 Wave 2: timestamp_with_tz is a RETIRED @dbColumnType value (the legal set
+        // shrank to {uuid, jsonb}). It no longer loads on field.timestamp — it trips Rule 1
+        // (unrecognized value) → ERR_BAD_ATTR_VALUE. Timezone-awareness now lives in
+        // field.timestamp (instant by default) + @localTime (the naive opt-out).
         String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }," +
@@ -93,14 +98,31 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
             "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
             "  ] } }" +
             "] } }";
-        loadThrough(canonical, "timestamptz-on-timestamp-ok.json"); // must not throw
+        assertBadAttrValue(canonical, "retired-timestamptz-rejected.json");
+    }
+
+    @Test
+    public void localTimeBooleanOnTimestampIsLegal() {
+        // ADR-0036 Wave 2: @localTime (boolean) is the naive wall-clock opt-out on
+        // field.timestamp — registered, so it loads cleanly (strict-provenance friendly).
+        String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"field.timestamp\": { \"name\": \"observedAt\", \"@localTime\": true } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+        loadThrough(canonical, "localtime-on-timestamp-ok.json"); // must not throw
     }
 
     // ---- Illegal pairings + unknown value → ERR_BAD_ATTR_VALUE -----------
 
     @Test
-    public void timestampTzOnStringIsIllegalPairing() {
+    public void timestampTzOnStringIsRejected() {
         // The shared error-dbcolumntype-illegal-pairing fixture exercises this exact shape.
+        // Post ADR-0036 Wave 2 the trigger shifted from an illegal pairing (Rule 2) to an
+        // unrecognized value (Rule 1 — timestamp_with_tz is retired), but it is still
+        // ERR_BAD_ATTR_VALUE either way (the shared fixture asserts only the code).
         String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }," +
@@ -211,10 +233,12 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
 
     @Test
     public void errorMessageNamesFieldValueAndLegalSet() {
+        // A genuine illegal pairing (Rule 2): uuid is legal only on field.string, so on
+        // field.timestamp the message names the field, the value, and the required subtype.
         String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
             "    { \"field.long\": { \"name\": \"id\" } }," +
-            "    { \"field.string\": { \"name\": \"recordedAt\", \"@dbColumnType\": \"timestamp_with_tz\" } }," +
+            "    { \"field.timestamp\": { \"name\": \"recordedAt\", \"@dbColumnType\": \"uuid\" } }," +
             "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
             "  ] } }" +
             "] } }";
@@ -224,9 +248,9 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
         } catch (MetaDataException e) {
             String msg = e.getMessage();
             assertTrue("message should name the field: " + msg, msg.contains("recordedAt"));
-            assertTrue("message should name the value: " + msg, msg.contains("timestamp_with_tz"));
+            assertTrue("message should name the value: " + msg, msg.contains("uuid"));
             assertTrue("message should name the required subtype: " + msg,
-                msg.contains("field.timestamp"));
+                msg.contains("field.string"));
         }
     }
 }

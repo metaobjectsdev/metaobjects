@@ -91,16 +91,16 @@ public final class SpringTypeMapper {
         // KotlinTypeMapper's `time` arm; previously absent, so any time-bearing entity
         // hit the unsupported-type throw (SP-H Unit 5 fix).
         if (field instanceof TimeField) return "java.time.LocalTime";
-        // Timestamp wire contract (normalization.md): plain `field.timestamp` is
-        // "timestamp WITHOUT time zone" → wall-clock ISO string with NO `Z`
-        // (e.g. "2026-01-01T10:00:00"), which round-trips as java.time.LocalDateTime.
-        // The `@dbColumnType=timestamp_with_tz` opt-in is "timestamp WITH time zone"
-        // → UTC `Z` form, which is java.time.Instant. Using Instant for the default
-        // (no-tz) case is wrong: Instant can neither parse nor emit a zone-less string,
-        // so the DTO can't accept the cross-port `createdAt` wire value. Mirrors
-        // KotlinTypeMapper's timestamp/timestampWithTimeZone split.
+        // Timestamp wire contract (normalization.md, ADR-0036 Wave 2): plain
+        // `field.timestamp` is an absolute INSTANT (timestamp WITH time zone → UTC
+        // `Z` wire form, e.g. "2026-01-01T10:00:00Z"), which round-trips as
+        // java.time.Instant — the default. The `@localTime:true` opt-out is a naive
+        // wall-clock value (timestamp WITHOUT time zone → zone-less ISO with NO `Z`,
+        // e.g. "2026-01-01T10:00:00"), which is java.time.LocalDateTime: Instant can
+        // neither parse nor emit a zone-less string. Mirrors KotlinTypeMapper's
+        // timestampWithTimeZone/datetime split.
         if (field instanceof TimestampField) {
-            return timestampWithTzOptIn(field) ? "java.time.Instant" : "java.time.LocalDateTime";
+            return localTimeOptIn(field) ? "java.time.LocalDateTime" : "java.time.Instant";
         }
         // Currency wire/JVM type: Long (integer minor units cross-port invariant).
         if (field instanceof CurrencyField) return "Long";
@@ -118,17 +118,16 @@ public final class SpringTypeMapper {
     }
 
     /**
-     * True iff {@code field} carries {@code @dbColumnType=timestamp_with_tz}
-     * (case-insensitive) — the opt-in to "timestamp WITH time zone" (UTC `Z`
-     * wire form → {@code java.time.Instant}). Mirrors
-     * {@code KotlinTypeMapper.timestampWithTzOptIn}. Own-only read; absent /
-     * non-attribute → {@code false} (plain no-tz timestamp).
+     * True iff {@code field} carries {@code @localTime=true} (ADR-0036 Wave 2) — the
+     * naive wall-clock opt-out ("timestamp WITHOUT time zone" → zone-less wire form →
+     * {@code java.time.LocalDateTime}). Absent/false (the default) = an absolute
+     * instant ({@code java.time.Instant}). Mirrors {@code KotlinTypeMapper.localTimeOptIn}.
+     * Own-only read; absent / non-attribute → {@code false} (the instant default).
      */
-    private static boolean timestampWithTzOptIn(MetaField<?> field) {
-        if (!field.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)) return false;
-        Object raw = field.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue();
-        return raw != null
-            && CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equalsIgnoreCase(String.valueOf(raw).trim());
+    private static boolean localTimeOptIn(MetaField<?> field) {
+        if (!field.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME)) return false;
+        Object raw = field.getMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME).getValue();
+        return raw != null && Boolean.parseBoolean(String.valueOf(raw).trim());
     }
 
     /**

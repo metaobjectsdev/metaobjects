@@ -90,7 +90,7 @@ class RuntimeReturnTypeTest {
                 assertNotNull(recordedAt, "Asset.recordedAt should be present")
                 assertTrue(
                     recordedAt is Instant,
-                    "field.timestamp Asset.recordedAt (TIMESTAMPTZ via @dbColumnType:timestamp_with_tz) " +
+                    "field.timestamp Asset.recordedAt (TIMESTAMPTZ — instant by default, ADR-0036 Wave 2) " +
                         "must be a native java.time.Instant — the metaobjects `instantWithTimeZone` " +
                         "Column<Instant> path matches the Instant data class (NOT OffsetDateTime, NOT a " +
                         "String). Got: ${recordedAt::class}",

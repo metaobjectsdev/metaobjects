@@ -69,10 +69,10 @@ public class SpringDtoGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected `Long id` component; saw:\n" + src, src.contains("Long id"));
         assertTrue("expected `String name` component; saw:\n" + src, src.contains("String name"));
         assertTrue("expected `String bio` component; saw:\n" + src, src.contains("String bio"));
-        // Plain field.timestamp → LocalDateTime (no-tz wall-clock wire contract; see
-        // SpringTypeMapper). Was Instant; Instant can't carry the zone-less `createdAt`.
-        assertTrue("expected `java.time.LocalDateTime createdAt` component; saw:\n" + src,
-            src.contains("java.time.LocalDateTime createdAt"));
+        // Plain field.timestamp → Instant (ADR-0036 Wave 2: instant/tz-aware by default;
+        // the naive LocalDateTime shape is now the @localTime opt-out). See SpringTypeMapper.
+        assertTrue("expected `java.time.Instant createdAt` component; saw:\n" + src,
+            src.contains("java.time.Instant createdAt"));
     }
 
     @Test

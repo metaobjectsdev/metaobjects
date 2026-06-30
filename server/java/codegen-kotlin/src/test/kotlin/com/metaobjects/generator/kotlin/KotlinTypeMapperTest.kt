@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.attr.BooleanAttribute
 import com.metaobjects.attr.IntAttribute
 import com.metaobjects.attr.StringAttribute
 import com.metaobjects.field.BooleanField
@@ -85,22 +86,24 @@ class KotlinTypeMapperTest {
         assertEquals("LocalTime", tn.simpleName)
     }
 
-    @Test fun `timestamp field defaults to java time LocalDateTime`() {
-        // Default for field.timestamp is zone-less LocalDateTime (Postgres `timestamp
-        // without time zone`) — the cross-port wire value is zone-less (no `Z`), which an
-        // Instant cannot carry. Opt in to Instant via @dbColumnType=timestamp_with_tz.
+    @Test fun `timestamp field defaults to java time Instant`() {
+        // ADR-0036 Wave 2: field.timestamp is an absolute Instant by DEFAULT (Postgres
+        // `timestamp with time zone`, UTC `Z` wire form). The naive zone-less LocalDateTime
+        // shape is now the @localTime opt-out.
         val f = TimestampField("createdAt")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
-        assertEquals("java.time", tn.packageName)
-        assertEquals("LocalDateTime", tn.simpleName)
-    }
-
-    @Test fun `timestamp field with dbColumnType=timestamp_with_tz maps to java time Instant`() {
-        val f = TimestampField("createdAt")
-        f.addMetaAttr(StringAttribute.create("dbColumnType", "timestamp_with_tz"))
         val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("Instant", tn.simpleName)
+    }
+
+    @Test fun `timestamp field with localTime=true maps to java time LocalDateTime`() {
+        // The rare @localTime:true naive opt-out is the zone-less wall-clock shape (Postgres
+        // `timestamp without time zone`, no `Z`), which an Instant cannot carry.
+        val f = TimestampField("observedAt")
+        f.addMetaAttr(BooleanAttribute.create("localTime", true))
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.time", tn.packageName)
+        assertEquals("LocalDateTime", tn.simpleName)
     }
 
     @Test fun `string field with no maxLength maps to text exposed column`() {
@@ -181,38 +184,49 @@ class KotlinTypeMapperTest {
         )
     }
 
-    @Test fun `timestamp field defaults to datetime exposed column with snake_case column name`() {
-        // Default for field.timestamp is `datetime(...)` (Postgres `timestamp without time
-        // zone`, java.time.LocalDateTime — the zone-less wall-clock wire shape). Column name
-        // is snake_case-d.
-        val f = TimestampField("createdAt")
-        assertEquals("datetime(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
-    }
-
-    @Test fun `timestamp field with dbColumnType=timestamp_with_tz emits instantWithTimeZone`() {
-        // Opt-in: `@dbColumnType=timestamp_with_tz` selects a `Column<Instant>` column whose
+    @Test fun `timestamp field defaults to instantWithTimeZone exposed column`() {
+        // ADR-0036 Wave 2: a plain field.timestamp DEFAULTS to a `Column<Instant>` column whose
         // Postgres DDL is `timestamp with time zone`. The emitted column function is the
         // file-local `instantWithTimeZone(...)` extension (a custom ColumnType<Instant>), NOT
         // Exposed's native `timestampWithTimeZone(...)` — that one is Column<OffsetDateTime>
         // and would MISMATCH the `Instant` data-class property, forcing Instant↔OffsetDateTime
-        // coercion at every callsite.
+        // coercion at every callsite. Column name is snake_case-d.
         val f = TimestampField("createdAt")
-        f.addMetaAttr(StringAttribute.create("dbColumnType", "timestamp_with_tz"))
         assertEquals("instantWithTimeZone(\"created_at\")", KotlinTypeMapper.exposedColumnSpec(f))
         // The helper is emitted into the table's own file by KotlinExposedTableGenerator, so the
-        // column function needs NO external import (the javatime import is gone).
+        // column function needs NO external import.
         assertEquals(null, KotlinTypeMapper.exposedColumnImport(f))
-        // The data-class property type stays Instant (unchanged — the wire/DTO contract is correct).
+        // The data-class property type is Instant (the wire/DTO contract).
         assertEquals(ClassName("java.time", "Instant"), KotlinTypeMapper.kotlinTypeName(f))
         // And the table generator is told this field needs the file-local support helper.
         assertEquals(true, KotlinTypeMapper.usesInstantWithTimeZone(f))
     }
 
-    @Test fun `timestamp field default import is javatime datetime`() {
+    @Test fun `timestamp field with localTime=true emits datetime exposed column`() {
+        // The rare @localTime:true naive opt-out selects `datetime(...)` (Postgres `timestamp
+        // without time zone`, java.time.LocalDateTime — the zone-less wall-clock wire shape).
+        val f = TimestampField("observedAt")
+        f.addMetaAttr(BooleanAttribute.create("localTime", true))
+        assertEquals("datetime(\"observed_at\")", KotlinTypeMapper.exposedColumnSpec(f))
+        // The javatime `datetime` import is required for the naive opt-out.
+        assertEquals("org.jetbrains.exposed.sql.javatime.datetime", KotlinTypeMapper.exposedColumnImport(f))
+        // The data-class property type is LocalDateTime.
+        assertEquals(ClassName("java.time", "LocalDateTime"), KotlinTypeMapper.kotlinTypeName(f))
+        // A naive timestamp does NOT need the instantWithTimeZone support helper.
+        assertEquals(false, KotlinTypeMapper.usesInstantWithTimeZone(f))
+    }
+
+    @Test fun `timestamp field default import is null (file-local instantWithTimeZone helper)`() {
+        // ADR-0036 Wave 2: a default field.timestamp emits the file-local instantWithTimeZone
+        // extension (same-package, no external import). The naive @localTime opt-out needs the
+        // javatime datetime import instead.
         val f = TimestampField("createdAt")
+        assertEquals(null, KotlinTypeMapper.exposedColumnImport(f))
+        val naive = TimestampField("observedAt")
+        naive.addMetaAttr(BooleanAttribute.create("localTime", true))
         assertEquals(
             "org.jetbrains.exposed.sql.javatime.datetime",
-            KotlinTypeMapper.exposedColumnImport(f),
+            KotlinTypeMapper.exposedColumnImport(naive),
         )
     }
 

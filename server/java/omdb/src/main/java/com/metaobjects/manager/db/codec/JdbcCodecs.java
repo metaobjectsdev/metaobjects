@@ -299,61 +299,66 @@ public final class JdbcCodecs {
      * <p><b>The write hazard this codec closes.</b> Before SP-H Unit 5 TimestampField had no
      * codec and fell to the generic {@link ObjectCodec}, whose {@code setObject(java.util.Date)}
      * is rejected by pgjdbc ("Can't infer the SQL type to use for an instance of
-     * java.util.Date") — the INSERT threw at runtime. We bind an explicit
-     * {@link java.sql.Timestamp} (plain) or a UTC {@link OffsetDateTime} (tz-aware) instead.
+     * java.util.Date") — the INSERT threw at runtime. We bind an explicit UTC
+     * {@link OffsetDateTime} (instant default) or a {@link java.sql.Timestamp}
+     * ({@code @localTime} naive) instead.
+     *
+     * <p><b>ADR-0036 Wave 2.</b> A plain {@code field.timestamp} is now an absolute
+     * INSTANT (timestamptz) by DEFAULT; the naive wall-clock form is the rare
+     * {@code @localTime:true} opt-out (timestamp without time zone). This inverts the
+     * pre-Wave-2 default (which was naive, with tz the {@code @dbColumnType:
+     * timestamp_with_tz} opt-in).
      *
      * <ul>
-     *   <li><b>Plain TIMESTAMP</b> (no {@code @dbColumnType}): bind/read the UTC wall clock through
-     *       the {@code Calendar(UTC)} overloads of {@code setTimestamp}/{@code getTimestamp}. The
-     *       previous codec used the no-Calendar overloads, which convert the instant through the JVM
-     *       default zone — a symmetric round-trip on the SAME zone preserves the value (so a
-     *       UTC-pinned test passed) but the corpus asserts the <em>UTC wall clock</em>, so under a
-     *       non-UTC default zone the stored/read wall-clock shifted. Pinning a UTC Calendar makes the
-     *       wall clock stored and read verbatim regardless of the JVM zone (no {@code Z} on the wire).
-     *       The read value is re-based via {@code Timestamp.valueOf(utcLocalDateTime)} so the wire
-     *       normalizer's {@code Timestamp.toLocalDateTime()} returns that UTC wall clock unshifted.</li>
-     *   <li><b>TIMESTAMPTZ</b> ({@code @dbColumnType: timestamp_with_tz}): bind a UTC
+     *   <li><b>TIMESTAMPTZ</b> (default — no {@code @localTime}): bind a UTC
      *       {@link OffsetDateTime} via {@code setObject(.., TIMESTAMP_WITH_TIMEZONE)} so pgjdbc
      *       targets the {@code timestamptz} column correctly (a bare {@code setTimestamp} on a
      *       tz column would be interpreted in the session zone). Read stays {@code getTimestamp}
      *       (→ java.util.Date); {@code ObjectManagerDbAdapter.coerceWireType} lifts a tz-flagged
      *       value to an {@link OffsetDateTime} so {@code Normalization} appends the {@code Z}.</li>
+     *   <li><b>Plain TIMESTAMP</b> ({@code @localTime:true}): bind/read the UTC wall clock through
+     *       the {@code Calendar(UTC)} overloads of {@code setTimestamp}/{@code getTimestamp}. The
+     *       no-Calendar overloads convert the instant through the JVM default zone — a symmetric
+     *       round-trip on the SAME zone preserves the value (so a UTC-pinned test passed) but the
+     *       corpus asserts the <em>UTC wall clock</em>, so under a non-UTC default zone the
+     *       stored/read wall-clock shifted. Pinning a UTC Calendar makes the wall clock stored and
+     *       read verbatim regardless of the JVM zone (no {@code Z} on the wire).</li>
      * </ul>
      */
     static final class TimestampCodec implements JdbcFieldCodec {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            if (isTimestampTz(f)) {
-                // tz-aware: keep the java.sql.Timestamp the read path expects (the adapter lifts a
-                // tz-flagged value to an OffsetDateTime so Normalization appends the Z).
+            if (!isLocalTime(f)) {
+                // tz-aware (DEFAULT): keep the java.sql.Timestamp the read path expects (the adapter
+                // lifts a tz-flagged value to an OffsetDateTime so Normalization appends the Z).
                 Timestamp tv = rs.getTimestamp(j);
                 f.setDate(o, rs.wasNull() ? null : tv);
                 return;
             }
-            // Plain TIMESTAMP: read the stored wall clock zone-free via getTimestamp(UTC), which
-            // pins the wall-clock→instant interpretation to UTC regardless of the JVM default zone.
-            // The returned java.sql.Timestamp's INSTANT (getTime()/toInstant()) is the stored wall
-            // clock anchored at UTC, so the wire normalizer recovers the wall clock zone-free as
+            // @localTime naive TIMESTAMP: read the stored wall clock zone-free via getTimestamp(UTC),
+            // which pins the wall-clock→instant interpretation to UTC regardless of the JVM default
+            // zone. The returned java.sql.Timestamp's INSTANT (getTime()/toInstant()) is the stored
+            // wall clock anchored at UTC, so the wire normalizer recovers the wall clock zone-free as
             // `ts.toInstant().atZone(UTC)` — it does NOT use the default-zone toLocalDateTime().
             // TimestampField is backed by DataTypes.DATE, so setDate accepts the Timestamp.
             Timestamp tv = rs.getTimestamp(j, utcCalendar());
             f.setDate(o, (rs.wasNull() || tv == null) ? null : tv);
         }
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
-            boolean tz = isTimestampTz(f);
+            boolean naive = isLocalTime(f);
             if (v == null) {
-                s.setNull(j, tz ? Types.TIMESTAMP_WITH_TIMEZONE : Types.TIMESTAMP);
+                s.setNull(j, naive ? Types.TIMESTAMP : Types.TIMESTAMP_WITH_TIMEZONE);
                 return;
             }
-            if (tz) {
-                // tz-aware column: bind an absolute instant as a UTC OffsetDateTime so pgjdbc
-                // routes it to the timestamptz column without a session-zone reinterpretation.
+            if (!naive) {
+                // tz-aware column (DEFAULT): bind an absolute instant as a UTC OffsetDateTime so
+                // pgjdbc routes it to the timestamptz column without a session-zone reinterpretation.
                 long millis = (v instanceof java.util.Date d) ? d.getTime() : Long.parseLong(v.toString());
                 OffsetDateTime odt = java.time.Instant.ofEpochMilli(millis).atOffset(ZoneOffset.UTC);
                 s.setObject(j, odt, Types.TIMESTAMP_WITH_TIMEZONE);
                 return;
             }
-            // Plain TIMESTAMP: store the UTC wall clock of the instant zone-free. The field's
-            // value carries an instant (java.util.Date epoch millis); its UTC wall clock is
+            // @localTime naive TIMESTAMP: store the UTC wall clock of the instant zone-free. The
+            // field's value carries an instant (java.util.Date epoch millis); its UTC wall clock is
             // Instant.ofEpochMilli(millis) @ UTC. Binding a Timestamp whose getTime() IS that
             // instant, with a UTC Calendar, tells the driver to store exactly that wall clock —
             // no JVM-default-zone reinterpretation. A LocalDateTime value is first re-anchored to
@@ -436,12 +441,16 @@ public final class JdbcCodecs {
         }
     }
 
-    /** True for a {@code field.timestamp} carrying {@code @dbColumnType: timestamp_with_tz}. */
-    private static boolean isTimestampTz(MetaField f) {
+    /**
+     * True for a {@code field.timestamp} carrying {@code @localTime: true} — the naive
+     * wall-clock opt-out (ADR-0036 Wave 2). Absent/false (the default) = an absolute
+     * instant (timestamptz).
+     */
+    private static boolean isLocalTime(MetaField f) {
         try {
-            return f.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE)
-                && CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equalsIgnoreCase(
-                    String.valueOf(f.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValue()).trim());
+            return f.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME)
+                && Boolean.parseBoolean(
+                    String.valueOf(f.getMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME).getValue()).trim());
         } catch (Exception e) {
             return false;
         }
