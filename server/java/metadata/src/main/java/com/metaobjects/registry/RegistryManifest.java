@@ -60,8 +60,14 @@ import java.util.TreeSet;
  *
  * <p>EXCLUDED from v1 (per-port-physical or not-universally-tracked-on-the-
  * registry): factories / {@code Class} bindings; declared parent
- * ({@code inheritsFrom}); {@code allowedValues} / per-attr default;
- * {@code childRules}.</p>
+ * ({@code inheritsFrom}); per-attr default; {@code childRules}.</p>
+ *
+ * <p>ADR-0036 Wave 1 (decision 5) ADDS {@code allowedValues} — an attr's closed
+ * value-set, emitted between {@code required} and {@code description} ONLY when the
+ * attr declares a non-empty set (OMITTED for open / format-validated attrs like
+ * {@code @currency}/{@code @locale}), in declaration order (load-bearing — sourced
+ * from {@code spec/metamodel/*.json}). This byte-gates closed vocabularies
+ * cross-port.</p>
  */
 public final class RegistryManifest {
 
@@ -335,6 +341,7 @@ public final class RegistryManifest {
      * {@code rules}/{@code example}/{@code whenToUse} doc facets (null = omitted).
      */
     private record ManifestAttr(String name, String valueType, boolean isArray, boolean required,
+                                List<String> allowedValues,
                                 String description, String rules, String example, String whenToUse) {}
 
     /**
@@ -409,10 +416,17 @@ public final class RegistryManifest {
             String description = (docDescription != null && !docDescription.isEmpty())
                     ? docDescription
                     : (existing != null ? existing.description() : "");
+            // ADR-0036 Wave 1 (decision 5) — the closed value-set, sourced onto the
+            // requirement from spec/metamodel/*.json (null when the attr declares no
+            // closed set); preserve the prior copy on the de-dupe collapse.
+            List<String> allowedValues = req.getAllowedValues();
+            if (allowedValues == null && existing != null) {
+                allowedValues = existing.allowedValues();
+            }
             // rules/example/whenToUse have no Java attr-level source today → null
             // (omitted by the serializer). Sub-step B may source them.
-            byName.put(name, new ManifestAttr(name, valueType, isArray, required, description,
-                    null, null, null));
+            byName.put(name, new ManifestAttr(name, valueType, isArray, required, allowedValues,
+                    description, null, null, null));
         }
 
         List<ManifestAttr> attrs = new ArrayList<>(byName.values());
@@ -598,8 +612,10 @@ public final class RegistryManifest {
         // applied onto each CommonAttributeDef at composition time (pre-seal).
         List<ManifestAttr> commonAttrs = new ArrayList<>();
         for (CommonAttributeDef def : registry.getCommonAttributes()) {
+            // ADR-0036 Wave 1 — no common attr declares a closed value-set today
+            // (null → the allowedValues key is omitted by the serializer).
             commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false,
-                def.description() != null ? def.description() : "", null, null, null));
+                null, def.description() != null ? def.description() : "", null, null, null));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 
@@ -715,6 +731,14 @@ public final class RegistryManifest {
               .append(a.valueType() == null ? "null" : jsonString(a.valueType())).append(",\n");
             sb.append(fieldIndent).append("\"isArray\": ").append(a.isArray() ? "true" : "false").append(",\n");
             sb.append(fieldIndent).append("\"required\": ").append(a.required() ? "true" : "false").append(",\n");
+            // ADR-0036 Wave 1 (decision 5): the closed value-set, emitted ONLY when
+            // the attr declares a non-empty set (OMITTED for open / format-validated
+            // attrs), in fixed order between `required` and `description`.
+            if (a.allowedValues() != null && !a.allowedValues().isEmpty()) {
+                sb.append(fieldIndent).append("\"allowedValues\": ");
+                appendStringArray(sb, a.allowedValues(), fieldIndent);
+                sb.append(",\n");
+            }
             // FR-033: `description` (required) follows `required`; the optional
             // `rules`/`example`/`whenToUse` follow, emitted ONLY when present.
             sb.append(fieldIndent).append("\"description\": ").append(jsonString(a.description()));

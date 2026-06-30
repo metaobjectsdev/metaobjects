@@ -871,6 +871,11 @@ public class MetaDataRegistry {
                     if (attrDoc != null && attrDoc.description() != null) {
                         rebuilt = req.withDocDescription(attrDoc.description());
                     }
+                    // ADR-0036 Wave 1 (decision 5) — thread the attr's closed
+                    // value-set onto the requirement so the manifest can emit it.
+                    if (attrDoc != null && attrDoc.allowedValues() != null) {
+                        rebuilt = rebuilt.withAllowedValues(attrDoc.allowedValues());
+                    }
                 }
                 String key = rebuilt.getName();
                 if (key == null || "*".equals(key)) {
@@ -1145,9 +1150,25 @@ public class MetaDataRegistry {
             }
             com.metaobjects.registry.spec.SpecMetamodelReader.AttrEntry doc =
                     reader.attrDoc(def.getType(), def.getSubType(), req.getName());
-            if (doc != null && doc.description() != null
-                    && !doc.description().equals(req.getDocDescription())) {
-                redescribed.put(e.getKey(), req.withDocDescription(doc.description()));
+            if (doc == null) {
+                continue;
+            }
+            ChildRequirement rebuilt = req;
+            boolean reqChanged = false;
+            if (doc.description() != null && !doc.description().equals(req.getDocDescription())) {
+                rebuilt = rebuilt.withDocDescription(doc.description());
+                reqChanged = true;
+            }
+            // ADR-0036 Wave 1 (decision 5) — thread the inherited attr's closed
+            // value-set onto its per-subtype copy (e.g. @dbColumnType /
+            // @sortableDefaultOrder inherited from field.base onto every field
+            // subtype) so the manifest emits it on every subtype the golden carries.
+            if (doc.allowedValues() != null && !doc.allowedValues().equals(req.getAllowedValues())) {
+                rebuilt = rebuilt.withAllowedValues(doc.allowedValues());
+                reqChanged = true;
+            }
+            if (reqChanged) {
+                redescribed.put(e.getKey(), rebuilt);
                 changed = true;
             }
         }
