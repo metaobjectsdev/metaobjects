@@ -20,6 +20,7 @@
 // caught by that scenario's per-subtype re-encode assertions.
 
 using System.Globalization;
+using System.Net;
 using System.Reflection;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -58,6 +59,11 @@ public static class WriteCoercion
 
         if (underlying.IsEnum)   return Enum.Parse(underlying, raw, ignoreCase: false);
         if (underlying == typeof(Guid))    return Guid.Parse(raw);
+        // ADR-0036 Wave 3 — field.uri → System.Uri (EF's HasConversion stores v.ToString()
+        // to the text column); field.inet → System.Net.IPAddress (Npgsql binds IPAddress↔inet
+        // natively, no CIDR mask on a HOST address).
+        if (underlying == typeof(Uri))       return new Uri(raw);
+        if (underlying == typeof(IPAddress)) return IPAddress.Parse(raw);
         if (underlying == typeof(bool))    return ParseBool(raw);
         if (underlying == typeof(string))  return raw;
         if (underlying == typeof(int))     return int.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);

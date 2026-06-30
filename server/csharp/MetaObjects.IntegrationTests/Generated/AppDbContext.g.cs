@@ -35,6 +35,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<AllTypes>().Property(x => x.UriVal).HasColumnType("text").HasConversion(v => v!.ToString(), v => new Uri(v));
+        modelBuilder.Entity<AllTypes>().Property(x => x.InetVal).HasColumnType("inet");
+        modelBuilder.Entity<AllTypes>().Property(x => x.Inet6Val).HasColumnType("inet");
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => Guid.Parse(v!), g => g.ToString("D"));

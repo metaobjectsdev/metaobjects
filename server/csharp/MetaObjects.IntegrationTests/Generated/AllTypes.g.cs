@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Net;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
@@ -45,5 +46,14 @@ public class AllTypes
     public AllTypesEnumVal EnumVal { get; set; }
     [Column("uuidVal")]
     public Guid UuidVal { get; set; }
+    [Column("uriVal")]
+    [Required]
+    public Uri UriVal { get; set; } = default!;
+    [Column("inetVal")]
+    [Required]
+    public IPAddress InetVal { get; set; } = default!;
+    [Column("inet6Val")]
+    [Required]
+    public IPAddress Inet6Val { get; set; } = default!;
     public Settings? Settings { get; set; }
 }
