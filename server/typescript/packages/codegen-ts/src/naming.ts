@@ -121,6 +121,57 @@ export function deleteByIdFnName(entityName: string): string {
   return `delete${entityName}ById`;
 }
 
+// ---------------------------------------------------------------------------
+// ADR-0038 — reverse-relationship navigation as explicit FK finders.
+//
+// For each FK relationship (entity `E` references entity `T` via an
+// `identity.reference` FK field), `E`'s query surface gains a finder returning
+// the `E` rows matching a given `T` id. Two variants: a single-value finder and
+// a batched (anti-N+1) `…In` finder.
+//
+// CANONICAL NAMING CONVENTION (the cross-port contract — every port replicates
+// this spelling exactly):
+//
+//   find<EPlural>By<FkField>(value)      → SELECT … FROM E WHERE <fkColumn> = ?
+//   find<EPlural>By<FkField>In(values)   → SELECT … FROM E WHERE <fkColumn> IN (…)
+//
+// where:
+//   - <EPlural>  is the source entity name pluralized, PascalCase
+//     (`GameSession` → `GameSessions`) — the same spelling `list<Plural>` uses.
+//   - <FkField>  is the FK FIELD name (NOT the relationship/navigation name and
+//     NOT the raw column), PascalCased, with a single trailing `Id` dropped if
+//     present. The FK field name is unique within an entity, so the finder name
+//     is unique by construction — this is what dissolves the same-pair collision
+//     and removes any need for a naming attribute.
+//
+// SAME-PAIR EXAMPLE (GameSession has THREE FKs to Scene):
+//   FK field `currentSceneId`           → findGameSessionsByCurrentScene
+//   FK field `lastOpeningNarrativeSceneId` → findGameSessionsByLastOpeningNarrativeScene
+//   FK field `transitioningFromSceneId` → findGameSessionsByTransitioningFromScene
+// Three distinct finders — no collision.
+// ---------------------------------------------------------------------------
+
+/**
+ * Lower an FK field name to the `<FkField>` segment of a reverse finder name:
+ * PascalCase the field, then drop a single trailing `Id` if present.
+ * E.g. `currentSceneId` → `CurrentScene`, `authorId` → `Author`, `scene` → `Scene`.
+ */
+export function reverseFinderFkSegment(fkFieldName: string): string {
+  const pascal = toPascalCase(toCamelCase(fkFieldName));
+  // Drop a single trailing "Id" (but not a bare "Id" — that would yield "").
+  return pascal.length > 2 && pascal.endsWith("Id") ? pascal.slice(0, -2) : pascal;
+}
+
+/** Generated reverse single-value finder name: `find<EPlural>By<FkField>`. */
+export function reverseFinderFnName(sourceEntityName: string, fkFieldName: string): string {
+  return `find${pluralize(sourceEntityName)}By${reverseFinderFkSegment(fkFieldName)}`;
+}
+
+/** Generated reverse batched finder name: `find<EPlural>By<FkField>In`. */
+export function reverseFinderInFnName(sourceEntityName: string, fkFieldName: string): string {
+  return `${reverseFinderFnName(sourceEntityName, fkFieldName)}In`;
+}
+
 /**
  * Generated Fastify route-registrar name: camelCase `<entity>Routes`. The routes
  * generator (templates/routes-file.ts) emits a single exported

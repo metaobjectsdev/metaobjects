@@ -121,7 +121,12 @@ describe("renderDrizzleSchema — SQLite", () => {
     expect(out).toContain("one(users");
   });
 
-  test("inverse side (User) gets many() block", () => {
+  test("inverse side (User) gets NO lazy many() block (ADR-0038)", () => {
+    // ADR-0038: reverse 1:N navigation is no longer a lazy Drizzle many() entry
+    // (framework-bound + N+1-prone + same-pair collision). It is now an explicit
+    // FK finder in the FK-holder's (Post's) queries module. So User's relations
+    // block does NOT gain a `many(posts)` entry. A User with no FKs of its own
+    // emits no relations() block at all.
     const user = makeUser();
     const post = makePostWithAuthor();
     const root = makeRoot([user, post]);
@@ -134,8 +139,7 @@ describe("renderDrizzleSchema — SQLite", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderDrizzleSchema(root.findObject("User")!, ctx).toString();
-    expect(out).toContain("usersRelations");
-    expect(out).toContain("many(posts");
+    expect(out).not.toContain("many(posts");
   });
 
   test("@default 'now' timestamp emits sql import in SQLite output", () => {

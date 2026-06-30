@@ -15,6 +15,8 @@ import {
   renderCreateFn,
   renderUpdateFn,
   renderDeleteByIdFn,
+  renderReverseFinderFns,
+  reverseFksFor,
   getPkInfo,
 } from "./queries.js";
 import { pluralize, findByIdFnName, listFnName } from "../naming.js";
@@ -89,6 +91,16 @@ import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON
     renderUpdateFn(obj, ctx),
     renderDeleteByIdFn(obj, ctx),
   ];
+
+  // ADR-0038 — reverse-relationship navigation via explicit FK finders. Each FK
+  // this entity holds (`identity.reference`) gets `find<Plural>By<FkField>` +
+  // its batched `…In` sibling, so the referenced entity can navigate back to its
+  // referencing rows with a plain, single-query, framework-free read. FK field
+  // names are unique within the entity, so the finder names never collide — the
+  // same-pair case (3 FKs to one target) yields 3 distinct finders.
+  for (const fk of reverseFksFor(obj)) {
+    sections.push(renderReverseFinderFns(obj, fk, ctx));
+  }
 
   // Render ts-poet body first, then prepend the @generated header so it lands
   // at line 1 ahead of any imports.

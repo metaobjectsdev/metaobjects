@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import { programs } from "./Program";
-import { workouts } from "./Workout";
 
 export const weeks = sqliteTable("weeks", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -20,12 +19,11 @@ export const weeks = sqliteTable("weeks", {
   weekNumber: integer("week_number").notNull(),
   title: text("title").notNull(),
 });
-export const weeksRelations = relations(weeks, ({ one, many }) => ({
+export const weeksRelations = relations(weeks, ({ one }) => ({
   program: one(programs, {
     fields: [weeks.programId],
     references: [programs.id],
   }),
-  workouts: many(workouts),
 }));
 export type Week = InferSelectModel<typeof weeks>;
 export type WeekInsert = InferInsertModel<typeof weeks>;

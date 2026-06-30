@@ -9,7 +9,6 @@ import {
   text,
 } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
-import { products } from "./shop/commerce/Product";
 import { customers } from "./shop/users/Customer";
 
 export const tags = sqliteTable("tags", {
@@ -19,8 +18,7 @@ export const tags = sqliteTable("tags", {
     .notNull()
     .references((): AnySQLiteColumn => customers.id),
 });
-export const tagsRelations = relations(tags, ({ one, many }) => ({
-  products: many(products),
+export const tagsRelations = relations(tags, ({ one }) => ({
   customer: one(customers, {
     fields: [tags.customerId],
     references: [customers.id],

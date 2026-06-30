@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { programs } from "./Program";
-import { workouts } from "./Workout";
 
 export const weeks = pgTable("weeks", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -22,12 +21,11 @@ export const weeks = pgTable("weeks", {
   weekNumber: integer("week_number").notNull(),
   title: varchar("title", { length: 200 }).notNull(),
 });
-export const weeksRelations = relations(weeks, ({ one, many }) => ({
+export const weeksRelations = relations(weeks, ({ one }) => ({
   program: one(programs, {
     fields: [weeks.programId],
     references: [programs.id],
   }),
-  workouts: many(workouts),
 }));
 export type Week = InferSelectModel<typeof weeks>;
 export type WeekInsert = InferInsertModel<typeof weeks>;

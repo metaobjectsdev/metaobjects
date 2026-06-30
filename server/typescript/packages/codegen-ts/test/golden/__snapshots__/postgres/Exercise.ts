@@ -12,7 +12,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { videos } from "./Video";
 import { workouts } from "./Workout";
 
 export const exercises = pgTable("exercises", {
@@ -25,12 +24,11 @@ export const exercises = pgTable("exercises", {
   reps: integer("reps"),
   notes: text("notes"),
 });
-export const exercisesRelations = relations(exercises, ({ one, many }) => ({
+export const exercisesRelations = relations(exercises, ({ one }) => ({
   workout: one(workouts, {
     fields: [exercises.workoutId],
     references: [workouts.id],
   }),
-  videos: many(videos),
 }));
 export type Exercise = InferSelectModel<typeof exercises>;
 export type ExerciseInsert = InferInsertModel<typeof exercises>;

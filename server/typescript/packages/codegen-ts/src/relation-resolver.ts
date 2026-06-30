@@ -104,11 +104,14 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
         fkField,
         targetPkField: "id",
       });
-      ensure(targetEntity).push({
-        name: variableNameFromEntity(obj.name),
-        cardinality: "many",
-        targetEntity: obj.name,
-      });
+      // ADR-0038: do NOT register a reverse lazy `many()` on the target. Those
+      // entries were named after the SOURCE entity (`variableNameFromEntity(obj)`),
+      // so two relationships from the same source to the same target produced
+      // duplicate object-literal keys and silently overwrote each other (the
+      // same-pair collision). Reverse 1:N navigation is now provided as explicit,
+      // unique-by-FK-field finders in the source's queries module
+      // (find<SourcePlural>By<FkField>), which are framework-free and non-N+1.
+      // The forward one() relation above stays.
     }
   }
 

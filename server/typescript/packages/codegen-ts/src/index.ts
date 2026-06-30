@@ -108,6 +108,8 @@ export {
   renderCreateFn,
   renderUpdateFn,
   renderDeleteByIdFn,
+  renderReverseFinderFns,
+  reverseFksFor,
   getPkInfo,
 } from "./templates/queries.js";
 

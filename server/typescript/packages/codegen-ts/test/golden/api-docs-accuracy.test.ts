@@ -947,13 +947,17 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
     expect(tagsNav.type).toContain("Tag");
   });
 
-  test("RELATIONS: User inverse many(posts) is documented (inverse side registered)", () => {
+  test("RELATIONS: User carries NO lazy inverse many(posts) relation (ADR-0038)", () => {
+    // ADR-0038: reverse 1:N navigation is no longer a lazy Drizzle many() entry on
+    // the referenced side — it is an explicit FK finder in the FK holder's (Post's)
+    // queries module. User declares no FK of its own, so it has no relations() block
+    // and the api-docs builder documents no relation symbol (and no `posts` nav) for it.
     const userUnit = model.units.find((u) => u.node === "User")!;
     const rel = userUnit.symbols.find((s) => s.kind === "relation");
-    expect(rel, "User carries the inverse relation").toBeDefined();
-    expect(rel!.name).toBe(`${variableNameFromEntity("User")}Relations`); // userRelations
-    const navNames = (rel!.fields ?? []).map((x) => x.name);
-    expect(navNames).toContain("posts");
+    const f = fileFor(entityFiles, "User.ts")!;
+    const hasBlock = hasExportedDecl(f.content, `${variableNameFromEntity("User")}Relations`);
+    expect(hasBlock).toBe(false);
+    expect(rel).toBeUndefined();
   });
 
   test("RELATIONS inverse: an entity with no relations carries no relation symbol", () => {
