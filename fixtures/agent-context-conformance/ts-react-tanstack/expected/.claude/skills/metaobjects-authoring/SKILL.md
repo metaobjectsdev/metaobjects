@@ -161,6 +161,42 @@ name   package   extends   abstract   overlay   isArray   children   value
 Common field attributes: `@required`, `@maxLength`, `@column` (physical column
 name), `@default`, `@filterable`, `@sortable`.
 
+### Choosing the right field shape
+
+When a need doesn't obviously map to a subtype, run this ordered test (ADR-0037) —
+**the first that matches decides:**
+
+1. **Derivable from what you already have?** → derive it, declare NOTHING new. An
+   array is `isArray: true` (never an array column type); a bounded string is
+   `@maxLength`; FK columns come from `identity.reference`. Don't add vocabulary for
+   something the metadata already implies.
+2. **Pure physical-DB detail, native type unchanged?** → the narrow `@dbColumnType`
+   escape hatch (e.g. an open JSON bag). Used sparingly; not a logical type.
+3. **Logical concept** — a *different kind* of value (its own native type, e.g.
+   UUID, money) → a **subtype**; the *same kind* with a modifier (still a string/
+   decimal, just constrained) → an **attribute** (`@maxLength`, `@precision`).
+
+Canonical form for common needs — reach for these before inventing anything:
+
+| Need | Author it as | Note |
+|---|---|---|
+| IDs / unique keys | `field.uuid` | native UUID; use `@dbColumnType: uuid` only to force a string-typed value over a uuid column on purpose |
+| Money | `field.currency` | integer minor units; never a float |
+| Closed set of symbols | `field.enum` | `@values` required |
+| Instant / timestamp | `field.timestamp` | ISO 8601 with timezone on the wire |
+| A list of anything | `isArray: true` | on the base subtype (e.g. `field.string` + `isArray`) — there is **no** array `@dbColumnType` (retired) |
+| Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
+| Nested structured value | `field.object` | `@objectRef` + `@storage` |
+| Open JSON bag (no fixed shape) | `field.string` + `@dbColumnType: jsonb` | logical type stays string; column is jsonb |
+
+<!-- TODO(ADR-0036 Wave 2/3): add @localTime / @format / @relationName guidance when merged -->
+
+**Extending the metamodel (custom providers):** the same ordered test governs new
+vocabulary you register. A would-be subtype that differs from an existing one only
+by a property is an **attribute**, not a subtype; a string-shape validation
+(email/url) is an attribute, not a subtype (its native type is still `string`).
+Apply ADR-0037 before registering anything.
+
 ### Currency
 
 `field.currency` stores money as **integer minor units** (cents for USD, yen for

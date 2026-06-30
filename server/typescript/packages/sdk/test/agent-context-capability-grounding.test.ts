@@ -33,6 +33,11 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   // retired @attrs (pre-v2 renamed forms; the audit skill names them as what to grep for)
   "@dbColumn",  // renamed to @column (ADR-0007)
   "@name",      // pre-v2 source physical name; now @table on source.rdb
+  // PLANNED, not-yet-registered Wave-2/3 attrs (ADR-0036): the vocabulary-hygiene
+  // axis names them in its forward-looking TODO list, explicitly flagged "pending
+  // Wave 2/3, not yet active." They are NOT in the cross-port registry yet.
+  "@localTime",
+  "@relationName",
 ]);
 
 // Code-level identifiers that the @attr regex (`@word`) extracts from the audit skill's
