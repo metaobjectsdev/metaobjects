@@ -78,8 +78,16 @@ describe("db provider (data-driven) — attr placement", () => {
     }
   });
 
-  test("@dbColumnType description renders the legal-value list", () => {
+  test("@dbColumnType description renders the legal-value list (uuid | jsonb — timestamp_with_tz retired)", () => {
     const attr = registry.find(TYPE_FIELD, "string")!.attributes.find((a) => a.name === "dbColumnType")!;
-    expect(attr.description).toContain("uuid | jsonb | timestamp_with_tz");
+    expect(attr.description).toContain("uuid | jsonb");
+  });
+
+  test("@localTime is on field.timestamp ONLY (ADR-0036 Wave 2)", () => {
+    expect(attrNames(TYPE_FIELD, FIELD_SUBTYPE_TIMESTAMP)).toContain("localTime");
+    for (const subType of FIELD_SUBTYPES) {
+      if (subType === FIELD_SUBTYPE_TIMESTAMP) continue;
+      expect(attrNames(TYPE_FIELD, subType)).not.toContain("localTime");
+    }
   });
 });

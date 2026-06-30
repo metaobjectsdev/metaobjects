@@ -59,7 +59,12 @@ async function applyRaw(kysely: Kysely<Record<string, unknown>>, sqlText: string
 describe("SQLite round-trip — trainer-website fixture", () => {
   test("create from empty: apply → re-diff yields no changes", async () => {
     const metadata = await loadFixture("trainer-website-entities");
-    const expected = buildExpectedSchema(metadata);
+    // dialect:"sqlite" normalizes SqlTypes to what SQLite introspection sees
+    // (boolean→integer, timestamp/date/time→text, etc.). Required since ADR-0036
+    // Wave 2 made field.timestamp tz-aware by default: SQLite has no tz concept,
+    // so without this the expected `timestamp{withTimezone:true}` could never
+    // equal the introspected `timestamp{withTimezone:false}`.
+    const expected = buildExpectedSchema(metadata, { dialect: "sqlite" });
     const actual0 = await introspectSqlite(k);
     const initial = await diff(expected, actual0);
     expect(initial.blocked).toEqual([]);
@@ -82,7 +87,7 @@ describe("SQLite round-trip — trainer-website fixture", () => {
 
   test("add a field → migration applies → re-diff yields no changes", async () => {
     const metadata1 = await loadFixture("trainer-website-entities");
-    const expected1 = buildExpectedSchema(metadata1);
+    const expected1 = buildExpectedSchema(metadata1, { dialect: "sqlite" });
     {
       const initial = await diff(expected1, await introspectSqlite(k));
       const { up } = emit(initial.changes, { dialect: "sqlite", expectedSchema: expected1 });
@@ -98,7 +103,7 @@ describe("SQLite round-trip — trainer-website fixture", () => {
     )["object.entity"];
     subscriber.children.push({ "field.string": { name: "phone" } });
     const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
-    const expected2 = buildExpectedSchema(metadata2);
+    const expected2 = buildExpectedSchema(metadata2, { dialect: "sqlite" });
 
     const second = await diff(expected2, await introspectSqlite(k));
     expect(second.blocked).toEqual([]);

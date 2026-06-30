@@ -23,7 +23,7 @@ export const purchases = pgTable("purchases", {
     .notNull()
     .references((): AnyPgColumn => programs.id),
   amountCents: integer("amount_cents").notNull(),
-  purchasedAt: timestamp("purchased_at", { mode: "string" })
+  purchasedAt: timestamp("purchased_at", { mode: "string", withTimezone: true })
     .notNull()
     .defaultNow(),
 });

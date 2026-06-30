@@ -22,7 +22,7 @@ export const workoutEvents = pgTable("workout_events", {
   workoutId: bigint("workout_id", { mode: "number" })
     .notNull()
     .references((): AnyPgColumn => workouts.id),
-  completedAt: timestamp("completed_at", { mode: "string" })
+  completedAt: timestamp("completed_at", { mode: "string", withTimezone: true })
     .notNull()
     .defaultNow(),
   durationMinutes: integer("duration_minutes"),

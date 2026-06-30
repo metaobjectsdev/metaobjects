@@ -47,7 +47,7 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
-  DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
+  FIELD_ATTR_LOCAL_TIME,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
@@ -729,13 +729,14 @@ function subtypeToSqlType(field: MetaData): SqlType {
   // (subtype × value) pairing, so an unrecognized value never reaches here).
   // dbColumnType slim-and-derive Phase 1: the array overrides (uuid_array /
   // text_array) are RETIRED — native text[]/uuid[] are derived from `isArray`
-  // below, not declared here.
+  // below, not declared here. ADR-0036 Wave 2: `timestamp_with_tz` is RETIRED
+  // too — field.timestamp is tz-aware by default + @localTime opts into naive
+  // (handled in the subtype switch below), not via this physical escape hatch.
   const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType === "string") {
     switch (dbColumnType) {
-      case DB_COLUMN_TYPE_UUID:              return { kind: "uuid" };
-      case DB_COLUMN_TYPE_JSONB:             return { kind: "json" };
-      case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ: return { kind: "timestamp", withTimezone: true };
+      case DB_COLUMN_TYPE_UUID:  return { kind: "uuid" };
+      case DB_COLUMN_TYPE_JSONB: return { kind: "json" };
     }
   }
 
@@ -777,7 +778,10 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
     case FIELD_SUBTYPE_DATE:      return { kind: "date" };
     case FIELD_SUBTYPE_TIME:      return { kind: "time" }; // Postgres native TIME (whole-second wire form)
-    case FIELD_SUBTYPE_TIMESTAMP: return { kind: "timestamp", withTimezone: false };
+    case FIELD_SUBTYPE_TIMESTAMP:
+      // ADR-0036 Wave 2: instant / tz-aware BY DEFAULT (→ timestamptz). A naive
+      // wall-clock value opts out with @localTime:true (→ TIMESTAMP, no tz).
+      return { kind: "timestamp", withTimezone: field.ownAttr(FIELD_ATTR_LOCAL_TIME) !== true };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:       return { kind: "json" }; // field.map → single jsonb (pg) / text-json (sqlite) column
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid

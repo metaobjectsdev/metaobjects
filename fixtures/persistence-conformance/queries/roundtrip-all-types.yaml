@@ -29,7 +29,8 @@ description: |
     - id (uuid PK): NOT supplied on insert; gen_random_uuid() fills it, the
       runtime returns it, and the read-back is by that generated PK — so a
       server-generated PK is exercised on the write path too.
-    - temporal: tsVal (TIMESTAMP, no Z) + tsTzVal (TIMESTAMPTZ, always Z) +
+    - temporal: tsVal (field.timestamp @localTime → TIMESTAMP, no Z) + tsTzVal
+      (plain field.timestamp → TIMESTAMPTZ, tz-aware by default, always Z) +
       timeVal (TIME) carry millisecond components; the whole-second omit-the-dot
       rule is proven by the second query (a row with no sub-second part).
     - float/double: in-band dyadic non-integers (1.5 / 0.125) so every port

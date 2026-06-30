@@ -109,6 +109,10 @@ const STORAGE_EXTRA: Record<string, AttrExp> = {
 const AUTO_SET_EXTRA: Record<string, AttrExp> = {
   autoSet: { valueType: "string", required: false },
 };
+// ADR-0036 Wave 2 — @localTime (the naive opt-out) on field.timestamp ONLY.
+const LOCAL_TIME_EXTRA: Record<string, AttrExp> = {
+  localTime: { valueType: "boolean", required: false },
+};
 const ENUM_PROMPT_EXTRA: Record<string, AttrExp> = {
   enumAlias: { valueType: "properties", required: false },
   enumDoc: { valueType: "properties", required: false },
@@ -150,6 +154,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
   if (subType === FIELD_SUBTYPE_CURRENCY) Object.assign(exp, CURRENCY_EXTRA);
   if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA);
   if (TEMPORAL.has(subType)) Object.assign(exp, AUTO_SET_EXTRA);
+  if (subType === FIELD_SUBTYPE_TIMESTAMP) Object.assign(exp, LOCAL_TIME_EXTRA);
   return exp;
 }
 

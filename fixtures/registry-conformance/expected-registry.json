@@ -89,10 +89,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -220,10 +219,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -359,10 +357,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -501,10 +498,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -633,10 +629,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -778,10 +773,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -917,10 +911,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1087,10 +1080,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1218,10 +1210,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1349,10 +1340,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1481,10 +1471,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1627,10 +1616,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1777,10 +1765,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1925,10 +1912,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2067,10 +2053,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2099,6 +2084,13 @@
           "isArray": false,
           "required": false,
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
+        },
+        {
+          "name": "localTime",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the timestamp is a naive wall-clock value with no timezone (Postgres `timestamp without time zone`); absent/false (the default) = an absolute instant (`timestamptz`). ADR-0036 Wave 2 — replaces the retired @dbColumnType: timestamp_with_tz escape hatch."
         },
         {
           "name": "readOnly",
@@ -2198,10 +2190,9 @@
           "required": false,
           "allowedValues": [
             "uuid",
-            "jsonb",
-            "timestamp_with_tz"
+            "jsonb"
           ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",

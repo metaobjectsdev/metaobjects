@@ -539,22 +539,23 @@ describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R
     expect(errors).toHaveLength(0);
   });
 
-  it("accepts @dbColumnType:timestamp_with_tz on field.timestamp", async () => {
+  it("accepts @localTime:true on field.timestamp (ADR-0036 Wave 2 naive opt-out)", async () => {
     const { errors } = await load(
-      entityWith({ "field.timestamp": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } }),
+      entityWith({ "field.timestamp": { name: "wallClockAt", "@localTime": true } }),
     );
     expect(errors).toHaveLength(0);
   });
 
-  it("rejects @dbColumnType:timestamp_with_tz on field.string (illegal pairing) → ERR_BAD_ATTR_VALUE", async () => {
+  it("rejects the retired @dbColumnType:timestamp_with_tz value (anywhere) → ERR_BAD_ATTR_VALUE", async () => {
+    // ADR-0036 Wave 2 retired timestamp_with_tz entirely; it is now an
+    // unrecognized @dbColumnType value (not in the legal set { uuid, jsonb }).
     const { errors } = await load(
-      entityWith({ "field.string": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } }),
+      entityWith({ "field.timestamp": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } }),
     );
     const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
     expect(bad).toHaveLength(1);
     expect(bad[0]!.message).toContain("dbColumnType");
     expect(bad[0]!.message).toContain("timestamp_with_tz");
-    expect(bad[0]!.message).toContain("field.string");
   });
 
   it("rejects @dbColumnType:uuid on field.timestamp (illegal pairing) → ERR_BAD_ATTR_VALUE", async () => {
