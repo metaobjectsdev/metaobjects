@@ -161,22 +161,66 @@ name   package   extends   abstract   overlay   isArray   children   value
 Common field attributes: `@required`, `@maxLength`, `@column` (physical column
 name), `@default`, `@filterable`, `@sortable`.
 
-### Choosing the right field shape
+### Choosing the right shape — the general decision procedure (ADR-0037)
 
-When a need doesn't obviously map to a subtype, run this ordered test (ADR-0037) —
-**the first that matches decides:**
+This procedure decides the shape of **any** concept entering the metamodel — a
+field need today, or new vocabulary you register as a custom provider. It is not a
+lookup table of specific answers; it is the routing an LLM re-derives on its own
+for a concept it has never seen.
 
-1. **Derivable from what you already have?** → derive it, declare NOTHING new. An
-   array is `isArray: true` (never an array column type); a bounded string is
-   `@maxLength`; FK columns come from `identity.reference`. Don't add vocabulary for
-   something the metadata already implies.
-2. **Pure physical-DB detail, native type unchanged?** → the narrow `@dbColumnType`
-   escape hatch (e.g. an open JSON bag). Used sparingly; not a logical type.
-3. **Logical concept** — a *different kind* of value (its own native type, e.g.
-   UUID, money) → a **subtype**; the *same kind* with a modifier (still a string/
-   decimal, just constrained) → an **attribute** (`@maxLength`, `@precision`).
+**Ask what the concept *does*, never how it stores.** The guiding question is
+**semantic behavior, not surface storage**: never ask *"is X a string / a number /
+a date?"* — ask *"what does X **do**? Does it have its own native type, behavior,
+or attributes (a **thing** → subtype)? Is it a structural variant of an existing
+thing (a **kind**)? Or does it just modify, validate, or configure an existing type
+(an **attribute**)?"* Shape follows behavior. Don't be misled by tools (JSON
+Schema, Zod) that call everything a "string format" — they only do so because
+JS/JSON has no native types; MetaObjects binds metadata→native types across five
+languages, so the call is behavioral.
 
-Canonical form for common needs — reach for these before inventing anything:
+Run the steps **in order; the first that matches decides:**
+
+| # | Test | If yes → | Examples (existing vocab) |
+|---|---|---|---|
+| 0 | **Derivable** from the existing subtype + attrs (`isArray`, `@maxLength`) + structure (`identity.reference`, relationships) + naming? | **derive it in codegen — add NOTHING** | `text[]` ← `field.string` + `isArray`; `varchar(n)` ← `@maxLength`; FK columns ← `identity.reference` |
+| 1 | **Physical-only** — pure DB-storage detail, native type *and* meaning unchanged? | narrow **`@dbColumnType`** escape hatch (sparingly; not a logical type) | open JSON bag → `field.string` + `@dbColumnType: jsonb` |
+| 2a | Its **own thing** — has its own native type, **or** its own behavior, **or** its own attributes? | **SUBTYPE** (the extension point — owns custom codegen, validation, child attrs) | `field.uuid` (native UUID), `field.currency` (minor-unit money behavior), `field.decimal` (exact) |
+| 2b | A **structural variant within** a subtype that already earned 2a — same native type/behavior, different generated *shape*? | **`@kind`** (the one chartered structural-variant axis) | `source.rdb @kind`: table/view/materializedView/storedProc/tableFunction; `template.output @kind`: document/email |
+| 2c | Otherwise it **modifies / validates / configures** an existing type | **ATTRIBUTE** (boolean flag · closed enum · validation · config) | `@localTime` (boolean exception-flag); `@maxLength`/`@precision`/`@scale` (config) |
+
+**Reading step 2 (the load-bearing split):**
+- **2a — subtype** is the metamodel's *extension point*: the only shape that owns
+  custom logic. Litmus: *"would I plausibly want to attach behavior or extra
+  attributes to this later?"* If yes → subtype. A value that merely *serializes* as
+  a string is still a subtype if the **concept** has a native type or behavior of
+  its own. (General rule, stated abstractly so it survives un-built vocab: *a
+  concept with a native type or its own behavior becomes a subtype; a plain string
+  that just needs validating becomes a validation attribute.*)
+- **2b — `@kind`** is reserved for variants *inside* a subtype that earned its place
+  by 2a. `@kind` on a plain `field.string` is wrong: a plain string isn't a
+  behavioral subtype, so there's nothing for the kinds to be *kinds of*. Never let
+  `@kind` become a catch-all discriminator.
+- **2c — attribute** shape follows what it is: a **boolean exception-flag** whose
+  common case is *absent* (`@localTime` — never a default-true opt-out); a **closed
+  set** → enum attr with `allowedValues`; a **validation constraint** that narrows a
+  value without changing its type (the thing stays a plain `<base>`, there's no
+  behavior to own — else it would be 2a); a **config value** (sizing, precision,
+  locale) → a typed attr (`@precision`/`@scale`).
+
+**Two corollaries that break ties:**
+- **Self-documentation over economy.** Prefer a specific named attribute
+  (`@localTime`, `@unique`) over folding several concerns into one generic attr. A
+  name should tell you what it does without a per-type lookup. The *primary*
+  universal discriminator is already `type.subType` — don't invent a second one.
+- **Same concept → same attr name; never same-name / different meaning.** If an attr
+  name already means something else on another type, give the new one a distinct
+  name rather than overload it.
+
+This procedure is authority-backed: **ADR-0037** is the source of truth, sequencing
+ADR-0013 (physical vs logical), ADR-0023 (derive, don't invent), and ADR-0001
+(build-time native binding).
+
+Canonical form for common field needs — reach for these before inventing anything:
 
 | Need | Author it as | Note |
 |---|---|---|
@@ -205,11 +249,17 @@ lives in `field.timestamp` (instant by default) + the `@localTime` naive opt-out
 
 <!-- TODO(ADR-0036 Wave 3): add @format (string-shape email/url) / @relationName guidance when merged -->
 
-**Extending the metamodel (custom providers):** the same ordered test governs new
-vocabulary you register. A would-be subtype that differs from an existing one only
-by a property is an **attribute**, not a subtype; a string-shape validation
-(email/url) is an attribute, not a subtype (its native type is still `string`).
-Apply ADR-0037 before registering anything.
+**Extending the metamodel (custom providers):** the same ordered procedure above
+governs new vocabulary you register — apply it mechanically before registering
+anything. A would-be subtype that differs from an existing one only by a *property*
+is an **attribute**, not a subtype (a "short string" isn't a new field subtype —
+that is `@maxLength`); a plain string that merely needs validating is a **validation
+attribute**, not a subtype (its native type is still `string`, and there's no
+behavior to own); a concept with its own native type or behavior is a **subtype**,
+and structural variants *within* such a subtype are `@kind`. Every new first-class
+element also requires a registered provider + a `registry-conformance` fixture
+(ADR-0023 strict provenance), and closed enums (including any `@kind` value-set)
+carry `allowedValues` in the gate (ADR-0036). ADR-0037 is the authority.
 
 ### Currency
 
