@@ -91,7 +91,8 @@ public final class SpecMetamodelReader {
      */
     public record AttrEntry(String name, String subType, boolean isArray,
                             Integer min, Integer max, boolean maxIsNull,
-                            String description, String rules, String example, String whenToUse) {
+                            String description, String rules, String example, String whenToUse,
+                            java.util.List<String> allowedValues) {
     }
 
     /**
@@ -288,7 +289,8 @@ public final class SpecMetamodelReader {
             out.add(new AttrEntry(
                     str(c, "name"), nullable(c, "subType"), isArray, min, max, maxIsNull,
                     nullable(c, "description"), nullable(c, "rules"),
-                    nullable(c, "example"), nullable(c, "whenToUse")));
+                    nullable(c, "example"), nullable(c, "whenToUse"),
+                    parseAllowedValues(c)));
         }
         return out;
     }
@@ -493,5 +495,25 @@ public final class SpecMetamodelReader {
 
     private static String nullable(JsonObject o, String k) {
         return str(o, k);
+    }
+
+    /**
+     * ADR-0036 Wave 1 (decision 5) — parse an attr's closed value-set
+     * ({@code allowedValues}) preserving the JSON declaration order, or {@code null}
+     * when the attr declares no closed set (open / format-validated attrs like
+     * {@code @currency}/{@code @locale} carry none). The order is load-bearing: the
+     * registry manifest emits it verbatim and byte-gates it cross-port.
+     */
+    private static List<String> parseAllowedValues(JsonObject o) {
+        JsonElement e = o.get("allowedValues");
+        if (e == null || e.isJsonNull() || !e.isJsonArray()) {
+            return null;
+        }
+        JsonArray arr = e.getAsJsonArray();
+        List<String> out = new ArrayList<>(arr.size());
+        for (JsonElement v : arr) {
+            out.add(v.getAsString());
+        }
+        return out;
     }
 }

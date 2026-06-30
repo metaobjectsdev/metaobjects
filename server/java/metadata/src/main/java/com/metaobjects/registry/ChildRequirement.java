@@ -59,6 +59,16 @@ public class ChildRequirement {
     private final Boolean named;
 
     /**
+     * ADR-0036 Wave 1 (decision 5) — the closed value-set of a closed-enum attr
+     * requirement, in JSON declaration order (load-bearing — the registry manifest
+     * emits it verbatim and byte-gates it cross-port). Null when this attr declares
+     * no closed set (open / format-validated attrs like {@code @currency}/{@code @locale}
+     * carry none, and so do non-attr requirements). Sourced from
+     * {@code spec/metamodel/*.json} via {@link MetaDataRegistry#applySpecDescriptions}.
+     */
+    private final java.util.List<String> allowedValues;
+
+    /**
      * Create a basic child requirement with pattern matching only
      *
      * @param name Expected child name or "*" for any name
@@ -139,6 +149,38 @@ public class ChildRequirement {
                           BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription,
                           String docDescription,
                           Integer min, Integer max, boolean maxIsNull, Boolean named) {
+        this(name, expectedType, expectedSubType, required, parentMatcher, childMatcher,
+             valueValidator, constraintId, validationDescription, docDescription,
+             min, max, maxIsNull, named, null);
+    }
+
+    /**
+     * Create an enhanced child requirement carrying the FR-033 cardinality AND the
+     * ADR-0036 Wave 1 closed value-set ({@code allowedValues}). The widest
+     * constructor — all others delegate here with {@code allowedValues} absent.
+     *
+     * @param name Expected child name or "*" for any name
+     * @param expectedType Expected child type or "*" for any type
+     * @param expectedSubType Expected child subType or "*" for any subType
+     * @param required Whether this child is required (true) or optional (false)
+     * @param parentMatcher Custom predicate for parent validation (null for none)
+     * @param childMatcher Custom predicate for child validation (null for none)
+     * @param valueValidator Custom value validation logic (null for none)
+     * @param constraintId Unique constraint identifier (null for none)
+     * @param validationDescription Human-readable validation description (null for none)
+     * @param docDescription FR-033 human/AI-facing documentation description (null for none)
+     * @param min FR-033 strict minimum cardinality (null when absent)
+     * @param max FR-033 strict maximum cardinality (null when absent or unbounded)
+     * @param maxIsNull FR-033 true when {@code max} was declared {@code null} (unbounded)
+     * @param named FR-033 named-placement flag (null when absent)
+     * @param allowedValues ADR-0036 Wave 1 closed value-set in declaration order (null when absent)
+     */
+    public ChildRequirement(String name, String expectedType, String expectedSubType, boolean required,
+                          Predicate<MetaData> parentMatcher, Predicate<MetaData> childMatcher,
+                          BiPredicate<MetaData, Object> valueValidator, String constraintId, String validationDescription,
+                          String docDescription,
+                          Integer min, Integer max, boolean maxIsNull, Boolean named,
+                          java.util.List<String> allowedValues) {
         this.name = name != null ? name : "*";
         // Types are stored verbatim; matching is case-sensitive against the canonical vocabulary
         this.expectedType = expectedType != null ? expectedType : "*";
@@ -154,6 +196,8 @@ public class ChildRequirement {
         this.max = max;
         this.maxIsNull = maxIsNull;
         this.named = named;
+        this.allowedValues = (allowedValues == null) ? null
+                : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(allowedValues));
     }
 
     /**
@@ -405,7 +449,34 @@ public class ChildRequirement {
     public ChildRequirement withDocDescription(String docDescription) {
         return new ChildRequirement(name, expectedType, expectedSubType, required,
                 parentMatcher, childMatcher, valueValidator, constraintId, validationDescription,
-                docDescription, min, max, maxIsNull, named);
+                docDescription, min, max, maxIsNull, named, allowedValues);
+    }
+
+    /**
+     * ADR-0036 Wave 1 — a copy of this requirement carrying the given closed
+     * value-set ({@code allowedValues}), with every other facet preserved. Used by
+     * {@link MetaDataRegistry#applySpecDescriptions} to thread the
+     * {@code spec/metamodel/*.json} attr's closed value-set onto an already-registered
+     * requirement without disturbing its placement/validation behavior.
+     *
+     * @param allowedValues the closed value-set in declaration order (null clears it)
+     * @return a new ChildRequirement identical apart from the closed value-set
+     */
+    public ChildRequirement withAllowedValues(java.util.List<String> allowedValues) {
+        return new ChildRequirement(name, expectedType, expectedSubType, required,
+                parentMatcher, childMatcher, valueValidator, constraintId, validationDescription,
+                docDescription, min, max, maxIsNull, named, allowedValues);
+    }
+
+    /**
+     * ADR-0036 Wave 1 (decision 5) — the closed value-set of this attr requirement,
+     * in declaration order, or {@code null} when this requirement declares no closed
+     * set (open / format-validated / non-attr requirements).
+     *
+     * @return the closed value-set, or null
+     */
+    public java.util.List<String> getAllowedValues() {
+        return allowedValues;
     }
 
     /**
