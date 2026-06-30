@@ -40,25 +40,14 @@ export const DB_COLUMN_TYPE_UUID = "uuid";
 export const DB_COLUMN_TYPE_JSONB = "jsonb";
 /** `@dbColumnType: timestamp_with_tz` — `timestamp with time zone` (legal on field.timestamp). */
 export const DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz";
-/**
- * `@dbColumnType: uuid_array` — RETIRED (dbColumnType slim-and-derive Phase 1).
- * Native `uuid[]` is now DERIVED from `field.uuid` + `isArray`, not declared via an
- * escape hatch. The constant is retained (so any remaining reference still resolves)
- * but is no longer a legal value — the loader rejects it (ERR_BAD_ATTR_VALUE).
- */
-export const DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array";
-/**
- * `@dbColumnType: text_array` — RETIRED (dbColumnType slim-and-derive Phase 1).
- * Native `text[]` is now DERIVED from `field.string` + `isArray`. Retained constant,
- * no longer a legal value (loader rejects → ERR_BAD_ATTR_VALUE).
- */
-export const DB_COLUMN_TYPE_TEXT_ARRAY = "text_array";
 
 /**
  * The closed set of legal `@dbColumnType` values (raw-dialect passthrough deferred).
- * dbColumnType slim-and-derive Phase 1: `uuid_array`/`text_array` are removed — native
- * arrays are derived from `isArray`. `timestamp_with_tz` stays in Phase 1 (its default
- * flip is Phase 2).
+ * dbColumnType slim-and-derive (ADR-0036 Wave 1, decision 4): the native-array
+ * overrides `uuid_array`/`text_array` are fully removed — native `uuid[]`/`text[]`
+ * are DERIVED from a field subtype + `isArray`, never declared via an escape hatch.
+ * `uuid` and `jsonb` stay on field.string; `timestamp_with_tz` stays on
+ * field.timestamp (its instant-default flip is Wave 2).
  */
 export const DB_COLUMN_TYPE_VALUES = [
   DB_COLUMN_TYPE_UUID,

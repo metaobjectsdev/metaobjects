@@ -87,7 +87,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -143,6 +148,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -209,7 +218,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -265,6 +279,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -339,7 +357,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -395,6 +418,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -447,6 +474,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "onCreate",
+            "onUpdate"
+          ],
           "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
@@ -468,7 +499,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -524,6 +560,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -591,7 +631,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -661,6 +706,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -727,7 +776,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -783,6 +837,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -857,7 +915,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -906,6 +969,11 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "none",
+            "collapse",
+            "strip"
+          ],
           "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
         },
         {
@@ -941,6 +1009,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1013,7 +1085,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1069,6 +1146,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1135,7 +1216,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1191,6 +1277,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1257,7 +1347,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1313,6 +1408,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1380,7 +1479,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1443,6 +1547,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1517,7 +1625,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1580,6 +1693,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1587,6 +1704,11 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "flattened",
+            "jsonb",
+            "subdocument"
+          ],
           "description": "Storage strategy for an object-typed field (set with @objectRef). \"flattened\" expands the nested value into prefixed columns on the parent table. \"jsonb\" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). \"subdocument\" is a hint for document-store codegen targets and emits no Postgres column."
         },
         {
@@ -1653,7 +1775,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1716,6 +1843,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1767,6 +1898,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "onCreate",
+            "onUpdate"
+          ],
           "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
@@ -1788,7 +1923,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1844,6 +1984,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -1896,6 +2040,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "onCreate",
+            "onUpdate"
+          ],
           "description": "Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write."
         },
         {
@@ -1917,7 +2065,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -1973,6 +2126,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -2039,7 +2196,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz | uuid_array | text_array, each legal only on a specific logical field subtype (uuid/jsonb/uuid_array/text_array on field.string, timestamp_with_tz on field.timestamp). uuid_array/text_array emit native SQL arrays (uuid[]/text[]). The logical field type and its native binding are unchanged."
+          "allowedValues": [
+            "uuid",
+            "jsonb",
+            "timestamp_with_tz"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb | timestamp_with_tz, each legal only on a specific logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1)."
         },
         {
           "name": "default",
@@ -2095,6 +2257,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Default sort direction applied when this field is the default sort field."
         },
         {
@@ -2154,6 +2320,11 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "increment",
+            "uuid",
+            "assigned"
+          ],
           "description": "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied)."
         }
       ],
@@ -2221,6 +2392,10 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Physical index-key sort direction, positional to @fields ('asc' | 'desc'). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider, not core identity."
         },
         {
@@ -2278,6 +2453,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
           "description": "Initial sort direction for the default sort field: 'asc' or 'desc'."
         },
         {
@@ -2506,6 +2685,11 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "none",
+            "collapse",
+            "strip"
+          ],
           "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
         }
       ],
@@ -2566,6 +2750,13 @@
           "valueType": "string",
           "isArray": false,
           "required": true,
+          "allowedValues": [
+            "count",
+            "sum",
+            "avg",
+            "min",
+            "max"
+          ],
           "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max."
         },
         {
@@ -2657,6 +2848,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
@@ -2664,6 +2861,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on key update. Default cascade."
         },
         {
@@ -2716,6 +2919,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
@@ -2723,6 +2932,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on key update. Default cascade."
         },
         {
@@ -2774,6 +2989,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
@@ -2781,6 +3002,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on key update. Default cascade."
         },
         {
@@ -2833,6 +3060,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on parent delete. Default derives from subtype (composition→cascade, aggregation→set-null, association→restrict)."
         },
         {
@@ -2840,6 +3073,12 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "cascade",
+            "set-null",
+            "restrict",
+            "no-action"
+          ],
           "description": "Referential action on key update. Default cascade."
         },
         {
@@ -2892,6 +3131,13 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "table",
+            "view",
+            "materializedView",
+            "storedProc",
+            "tableFunction"
+          ],
           "description": "The kind of database object this source represents: table (default, writable), view, materializedView, storedProc, or tableFunction. Non-table kinds are read-only."
         },
         {
@@ -2920,6 +3166,14 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "primary",
+            "replica",
+            "index",
+            "cache",
+            "publish",
+            "mirror"
+          ],
           "description": "Role this source plays when an object has multiple sources: primary (default, system of record), replica, index, cache, publish, or mirror."
         },
         {
@@ -2966,6 +3220,15 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "text",
+            "html",
+            "xml",
+            "csv",
+            "json",
+            "markdown",
+            "spreadsheet"
+          ],
           "description": "Output format; drives the render engine's escaping/whitespace behavior."
         },
         {
@@ -2980,6 +3243,10 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "document",
+            "email"
+          ],
           "description": "Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument)."
         },
         {
@@ -3008,6 +3275,11 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "guide",
+            "inline",
+            "exampleOnly"
+          ],
           "description": "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments."
         },
         {
@@ -3060,6 +3332,15 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
+          "allowedValues": [
+            "text",
+            "html",
+            "xml",
+            "csv",
+            "json",
+            "markdown",
+            "spreadsheet"
+          ],
           "description": "Output format; drives the render engine's escaping/whitespace behavior."
         },
         {
@@ -3253,6 +3534,14 @@
           "valueType": "string",
           "isArray": false,
           "required": true,
+          "allowedValues": [
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "ne",
+            "eq"
+          ],
           "description": "Relational operator: gt (>), gte (>=), lt (<), lte (<=), ne (<>), eq (=)."
         },
         {
