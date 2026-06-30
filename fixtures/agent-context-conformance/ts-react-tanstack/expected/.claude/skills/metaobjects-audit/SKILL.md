@@ -107,6 +107,13 @@ such, surfaced in the roadmap, but **non-failing** (the code works; the form is 
 - `@dbColumnType: uuid` where a native UUID type is actually wanted → **`field.uuid`**
   (a distinct native type is a subtype, not a physical override). Keep `@dbColumnType:
   uuid` ONLY for the deliberate string-over-uuid-column case.
+- `@dbColumnType: timestamp_with_tz` (ADR-0036 Wave 2) → **drop it.** `field.timestamp` is
+  instant / timezone-aware **by default** now; the `timestamp_with_tz` column-type override
+  is **retired**. Timezone-awareness lives in `field.timestamp` + the `@localTime` opt-out.
+- A bare `field.timestamp` that is **semantically a wall-clock value** (a store-open time, a
+  birthday-with-time, a recurring local schedule) → recommend **`@localTime: true`** (naive
+  `timestamp without time zone`), or confirm it is genuinely meant to be an instant. Default
+  `field.timestamp` is an instant; only flag when the field's meaning is clearly wall-clock.
 
 **Custom-provider vocabulary (adopters who register their own types/attrs):** check
 new/custom vocab against the ADR-0037 procedure (advisory) — e.g. *a custom subtype
@@ -114,16 +121,14 @@ that differs from an existing one only by a property should be an attribute, not
 subtype*; a string-shape validation (email/url) is an attribute (native type unchanged),
 not a subtype. Recommend re-shaping against the ordered test.
 
-**TODO — Wave-2/3 checks to add when the conventions merge (NOT yet active — these
-tokens are pending ADR-0036 Wave 2/3 and not yet registered; do NOT flag adopters for
+**TODO — Wave-3 checks to add when the conventions merge (NOT yet active — these
+tokens are pending ADR-0036 Wave 3 and not yet registered; do NOT flag adopters for
 them until merged):**
 
-- `@dbColumnType: timestamp_with_tz` → **drop it** (timezone-aware is the
-  `field.timestamp` default) — *pending Wave 2/3*.
-- A bare wall-clock `field.timestamp` meaning naive/local time → flag for the
-  forthcoming `@localTime` zone-flag attribute — *pending Wave 2/3, not yet active*.
 - An author-supplied regex validating email / url shape → flag for the forthcoming
-  `@format` string-format attribute — *pending Wave 2/3, not yet active*.
+  `@format` string-format attribute — *pending Wave 3, not yet active*.
+- A same-pair relationship needing a stable navigation name → flag for the forthcoming
+  `@relationName` attribute — *pending Wave 3, not yet active*.
 
 ---
 
