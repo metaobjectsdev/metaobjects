@@ -40,18 +40,30 @@ export const DB_COLUMN_TYPE_UUID = "uuid";
 export const DB_COLUMN_TYPE_JSONB = "jsonb";
 /** `@dbColumnType: timestamp_with_tz` — `timestamp with time zone` (legal on field.timestamp). */
 export const DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = "timestamp_with_tz";
-/** `@dbColumnType: uuid_array` — native Postgres `uuid[]` column (legal on field.string). */
+/**
+ * `@dbColumnType: uuid_array` — RETIRED (dbColumnType slim-and-derive Phase 1).
+ * Native `uuid[]` is now DERIVED from `field.uuid` + `isArray`, not declared via an
+ * escape hatch. The constant is retained (so any remaining reference still resolves)
+ * but is no longer a legal value — the loader rejects it (ERR_BAD_ATTR_VALUE).
+ */
 export const DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array";
-/** `@dbColumnType: text_array` — native Postgres `text[]` column (legal on field.string). */
+/**
+ * `@dbColumnType: text_array` — RETIRED (dbColumnType slim-and-derive Phase 1).
+ * Native `text[]` is now DERIVED from `field.string` + `isArray`. Retained constant,
+ * no longer a legal value (loader rejects → ERR_BAD_ATTR_VALUE).
+ */
 export const DB_COLUMN_TYPE_TEXT_ARRAY = "text_array";
 
-/** The closed set of legal `@dbColumnType` values (raw-dialect passthrough deferred). */
+/**
+ * The closed set of legal `@dbColumnType` values (raw-dialect passthrough deferred).
+ * dbColumnType slim-and-derive Phase 1: `uuid_array`/`text_array` are removed — native
+ * arrays are derived from `isArray`. `timestamp_with_tz` stays in Phase 1 (its default
+ * flip is Phase 2).
+ */
 export const DB_COLUMN_TYPE_VALUES = [
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
-  DB_COLUMN_TYPE_UUID_ARRAY,
-  DB_COLUMN_TYPE_TEXT_ARRAY,
 ] as const;
 export type DbColumnTypeValue = (typeof DB_COLUMN_TYPE_VALUES)[number];
 
@@ -65,6 +77,4 @@ export const DB_COLUMN_TYPE_LEGAL_SUBTYPES: Readonly<Record<DbColumnTypeValue, r
   [DB_COLUMN_TYPE_UUID]: [FIELD_SUBTYPE_STRING],
   [DB_COLUMN_TYPE_JSONB]: [FIELD_SUBTYPE_STRING],
   [DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ]: [FIELD_SUBTYPE_TIMESTAMP],
-  [DB_COLUMN_TYPE_UUID_ARRAY]: [FIELD_SUBTYPE_STRING],
-  [DB_COLUMN_TYPE_TEXT_ARRAY]: [FIELD_SUBTYPE_STRING],
 } as const;

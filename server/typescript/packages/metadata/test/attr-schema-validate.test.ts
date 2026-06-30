@@ -574,6 +574,21 @@ describe("attr-schema validation — @dbColumnType (subtype × value) pairing (R
     expect(bad[0]!.message).toContain("tsvector");
   });
 
+  // dbColumnType slim-and-derive Phase 1: the array values are REMOVED — native
+  // text[]/uuid[] are derived from `isArray` on field.string/field.uuid, never
+  // declared via an escape hatch. Both now fail the loader.
+  it.each(["uuid_array", "text_array"])(
+    "rejects removed @dbColumnType:%s → ERR_BAD_ATTR_VALUE (derive from isArray instead)",
+    async (removed) => {
+      const { errors } = await load(
+        entityWith({ "field.string": { name: "members", "@dbColumnType": removed } }),
+      );
+      const bad = errors.filter((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE");
+      expect(bad).toHaveLength(1);
+      expect(bad[0]!.message).toContain(removed);
+    },
+  );
+
   it("does NOT re-flag a concrete field that inherits @dbColumnType from an abstract super (own-only check)", async () => {
     // The (subtype × value) pairing check is own-only (reads node.ownAttrs()):
     // the attr is validated on the declaring (abstract) node, so a concrete field
