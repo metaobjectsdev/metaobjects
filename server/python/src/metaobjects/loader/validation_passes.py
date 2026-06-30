@@ -42,10 +42,8 @@ from ..meta.core.field.field_constants import (
 )
 from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_JSONB,
-    DB_COLUMN_TYPE_TEXT_ARRAY,
     DB_COLUMN_TYPE_TIMESTAMP_TZ,
     DB_COLUMN_TYPE_UUID,
-    DB_COLUMN_TYPE_UUID_ARRAY,
     FIELD_ATTR_DB_COLUMN_TYPE,
     VALID_DB_COLUMN_TYPES,
 )
@@ -665,13 +663,12 @@ def _validate_field_defaults(root: MetaData, errors: list[MetaError]) -> None:
 # attr is never inherited via extends:). Cross-port: TS/C#/Java run the identical
 # own-only check.
 
-# value → the field subtype it is legal on.
+# value → the field subtype it is legal on (Phase 1: three surviving values).
+# uuid_array / text_array are REMOVED — derive from field.uuid/field.string + isArray.
 _DB_COLUMN_TYPE_REQUIRED_SUBTYPE: dict[str, str] = {
     DB_COLUMN_TYPE_UUID: FIELD_SUBTYPE_STRING,
     DB_COLUMN_TYPE_JSONB: FIELD_SUBTYPE_STRING,
     DB_COLUMN_TYPE_TIMESTAMP_TZ: FIELD_SUBTYPE_TIMESTAMP,
-    DB_COLUMN_TYPE_UUID_ARRAY: FIELD_SUBTYPE_STRING,
-    DB_COLUMN_TYPE_TEXT_ARRAY: FIELD_SUBTYPE_STRING,
 }
 
 

@@ -140,3 +140,78 @@ def test_dbcolumntype_unknown_value_rejected() -> None:
         {"field.string": {"name": "x", "@dbColumnType": "tsvector"}},
     ))
     assert codes == ["ERR_BAD_ATTR_VALUE"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — uuid_array / text_array are REMOVED from the closed set.
+# Derive native text[]/uuid[] from field.string/field.uuid + isArray instead.
+# ---------------------------------------------------------------------------
+
+
+def test_dbcolumntype_uuid_array_rejected() -> None:
+    # uuid_array is no longer a valid @dbColumnType value (Phase 1 removal).
+    # Derive native uuid[] from field.uuid isArray:true instead.
+    codes, _ = _load(_entity(
+        {"field.long": {"name": "id"}},
+        {"field.string": {"name": "refs", "@dbColumnType": "uuid_array"}},
+    ))
+    assert codes == ["ERR_BAD_ATTR_VALUE"]
+
+
+def test_dbcolumntype_text_array_rejected() -> None:
+    # text_array is no longer a valid @dbColumnType value (Phase 1 removal).
+    # Derive native text[] from field.string isArray:true instead.
+    codes, _ = _load(_entity(
+        {"field.long": {"name": "id"}},
+        {"field.string": {"name": "tags", "@dbColumnType": "text_array"}},
+    ))
+    assert codes == ["ERR_BAD_ATTR_VALUE"]
+
+
+def test_dbcolumntype_uuid_array_error_message_names_valid_set() -> None:
+    # The error message should name only the surviving legal values in the
+    # "allowed:" section — uuid_array must NOT appear there.
+    from metaobjects import MetaDataLoader
+    from metaobjects.core_types import core_provider
+    import tempfile, os
+    from pathlib import Path
+    doc = _entity(
+        {"field.long": {"name": "id"}},
+        {"field.string": {"name": "refs", "@dbColumnType": "uuid_array"}},
+    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "meta.test.json")
+        Path(path).write_text(json.dumps(doc))
+        result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider])
+        assert len(result.errors) == 1
+        msg = result.errors[0].message
+        # The "allowed:" section must list only the three surviving legal values.
+        allowed_idx = msg.index("allowed:")
+        allowed_section = msg[allowed_idx:]
+        assert "uuid" in allowed_section
+        assert "jsonb" in allowed_section
+        assert "timestamp_with_tz" in allowed_section
+        # uuid_array and text_array must NOT appear in the allowed section.
+        assert "uuid_array" not in allowed_section
+        assert "text_array" not in allowed_section
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — field.uuid isArray → list[uuid.UUID] (already works via type_map;
+# ensure the loader accepts it cleanly)
+# ---------------------------------------------------------------------------
+
+
+def test_field_uuid_is_array_loads_clean() -> None:
+    codes, _ = _load(_entity(
+        {"field.uuid": {"name": "ids", "isArray": True}},
+    ))
+    assert codes == []
+
+
+def test_field_string_is_array_loads_clean() -> None:
+    codes, _ = _load(_entity(
+        {"field.long": {"name": "id"}},
+        {"field.string": {"name": "tags", "isArray": True}},
+    ))
+    assert codes == []
