@@ -504,12 +504,19 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
     }
   }
 
+  // A `field.string` + `@dbColumnType: jsonb` open bag has a `z.unknown()` base, so
+  // the string character-count validators (.min/.max/.regex) do NOT apply — chaining
+  // `.min(1)` for a required bag yields `z.unknown().min(1)`, a TS compile error.
+  // "Required" for an open bag means non-optional only (handled by the optional()
+  // logic below). A jsonb ARRAY still gets element-count bounds via the array branch.
+  const isJsonbBag = field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB;
+
   let chain: Code = base;
   // Array element-count bounds apply to the z.array(...) wrapper regardless of element type.
   if (field.isArray) {
     if (arrMin !== undefined) chain = code`${chain}.min(${arrMin})`;
     if (arrMax !== undefined) chain = code`${chain}.max(${arrMax})`;
-  } else if (field.subType === FIELD_SUBTYPE_STRING) {
+  } else if (field.subType === FIELD_SUBTYPE_STRING && !isJsonbBag) {
     if (minLen !== undefined) chain = code`${chain}.min(${minLen})`;
     else if (isRequired) chain = code`${chain}.min(1)`;
     if (maxLen !== undefined) chain = code`${chain}.max(${maxLen})`;

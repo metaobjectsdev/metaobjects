@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **codegen-ts — required jsonb open-bag generated an uncompilable `z.unknown().min(1)`.**
+  The 0.14.0 jsonb open-bag change (`field.string` + `@dbColumnType: jsonb` → `z.unknown()`)
+  left the string character-count validators attached: a **required** jsonb field still got
+  the required-non-empty `.min(1)` chained onto its `z.unknown()` base, emitting
+  `z.unknown().min(1)` — a TS compile error (`ZodUnknown` has no `.min`). The validator
+  chain now skips the string `.min`/`.max`/`.regex` for a jsonb open bag (a jsonb array
+  still gets element-count bounds); "required" for an open bag means non-optional only.
+  Surfaced by an adopter whose generated schema stopped compiling after 0.14.0.
+
 ## [0.14.1] — 2026-06-29
 
 _npm `0.14.1` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

@@ -29,6 +29,7 @@ const YAML = `metadata:
       - source.rdb: { table: doc }
       - field.long: { name: id }
       - field.string: { name: payload, dbColumnType: jsonb }
+      - field.string: { name: config, dbColumnType: jsonb, required: true }
       - field.string: { name: title }
       - identity.primary: { fields: [id], generation: increment }
 `;
@@ -66,6 +67,20 @@ describe("field.string + @dbColumnType: jsonb → Zod z.unknown() (open JSON bag
   test("a plain field.string (no jsonb override) is unaffected — still z.string()", async () => {
     const out = await loadDoc();
     expect(out).toContain("title: z.string()");
+  });
+
+  // A REQUIRED jsonb open-bag must NOT get the string `.min(1)` (required-non-empty)
+  // chained onto z.unknown() — `z.unknown().min(1)` is a TS compile error (ZodUnknown
+  // has no .min). "Required" for an open bag means non-optional, full stop. Regression
+  // for the jsonb→z.unknown() change that left the string validators attached.
+  test("a REQUIRED jsonb field is z.unknown() with NO .min/.max chained", async () => {
+    const out = await loadDoc();
+    // Insert schema: required jsonb bag = bare z.unknown() (no .min, no .optional).
+    expect(out).toContain("config: z.unknown(),");
+    expect(out).not.toContain("config: z.unknown().min");
+    expect(out).not.toContain("config: z.unknown().max");
+    // Update schema still relaxes every field to optional — that's expected.
+    expect(out).toContain("config: z.unknown().optional()");
   });
 
   // The TS-type emitter must stay in lock-step with the Zod emitter (the
