@@ -40,8 +40,7 @@ final class InMemoryAuthorRepositorySource {
 
         import com.metaobjects.generator.spring.runtime.FilterPredicate;
 
-        import java.time.LocalDateTime;
-        import java.time.format.DateTimeFormatter;
+        import java.time.Instant;
         import java.util.ArrayList;
         import java.util.Comparator;
         import java.util.List;
@@ -55,10 +54,10 @@ final class InMemoryAuthorRepositorySource {
          */
         public final class InMemoryAuthorRepository implements AuthorRepository {
 
-            // Corpus wire timestamps are zone-less wall-clock (yyyy-MM-ddTHH:mm:ss); the DTO
-            // types field.timestamp as LocalDateTime (no-tz wire contract).
-            private static final DateTimeFormatter WALL =
-                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+            // ADR-0036 Wave 2: createdAt is a bare field.timestamp → instant/tz-aware, so the
+            // generated AuthorDto.createdAt is a java.time.Instant (tz-aware instant contract).
+            // Corpus filter operands are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss); an
+            // offset-less value is interpreted as UTC before Instant.parse.
 
             private final List<AuthorDto> rows = new ArrayList<>();
             private final AtomicLong nextId = new AtomicLong(1);
@@ -185,9 +184,15 @@ final class InMemoryAuthorRepositorySource {
             private static int compare(Object col, String field, String raw) {
                 return switch (field) {
                     case "id"        -> Long.compare((Long) col, Long.parseLong(raw));
-                    case "createdAt" -> ((LocalDateTime) col).compareTo(LocalDateTime.parse(raw, WALL));
+                    case "createdAt" -> ((Instant) col).compareTo(parseInstant(raw));
                     default          -> String.valueOf(col).compareTo(raw); // name / bio
                 };
+            }
+
+            /** Offset-less corpus operands are interpreted as UTC instants (append Z). */
+            private static Instant parseInstant(String raw) {
+                String s = (raw.endsWith("Z") || raw.contains("+")) ? raw : raw + "Z";
+                return Instant.parse(s);
             }
 
             /** SQL LIKE with `%` (any run) and `_` (any single char), anchored full-string match. */

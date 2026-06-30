@@ -15,13 +15,14 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.javatime.datetime
+import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.net.InetSocketAddress
 import java.sql.DriverManager
-import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
@@ -235,8 +236,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             "id" to row[AuthorTable.id],
             "name" to row[AuthorTable.name],
             "bio" to row[AuthorTable.bio],
-            // Normalize to ISO-8601 without zone (matches the seed/wire format).
-            "createdAt" to ts.format(TIMESTAMP_FMT),
+            // ADR-0036 Wave 2: createdAt is an absolute instant — normalize to the UTC wire
+            // form yyyy-MM-ddTHH:mm:ssZ.
+            "createdAt" to formatInstant(ts),
         )
     }
 
@@ -286,10 +288,15 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         return ValidSort(field, dir)
     }
 
-    private fun parseTimestamp(s: String): LocalDateTime {
-        // The corpus uses `yyyy-MM-ddTHH:mm:ss` (no zone) for wall-clock times.
-        return LocalDateTime.parse(s, TIMESTAMP_FMT)
+    private fun parseTimestamp(s: String): Instant {
+        // Corpus values are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss); per the instant
+        // wire contract an offset-less value is interpreted as UTC (append Z).
+        val withZone = if (s.endsWith("Z") || s.contains("+")) s else s + "Z"
+        return Instant.parse(withZone)
     }
+
+    private fun formatInstant(instant: Instant): String =
+        TIMESTAMP_FMT.format(instant.atOffset(ZoneOffset.UTC)) + "Z"
 
     private object InvalidSort
     private data class ValidSort(val field: String, val dir: SortOrder)
@@ -369,7 +376,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     /** Coerce a single non-list, non-isNull value into the per-subtype Kotlin type. */
     private fun coerceScalar(raw: String, subType: String): Any? = when (subType) {
         "string" -> raw
-        "datetime" -> runCatching { LocalDateTime.parse(raw, TIMESTAMP_FMT) }.getOrNull()
+        "datetime" -> runCatching { parseTimestamp(raw) }.getOrNull()
         "number" -> raw.toLongOrNull()
         "boolean" -> when (raw) { "true" -> true; "false" -> false; else -> null }
         else -> null
@@ -436,15 +443,15 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         }
 
     @Suppress("UNCHECKED_CAST")
-    private fun SqlExpressionBuilder.datetimeColOp(col: Column<LocalDateTime>, p: FilterPredicate): Op<Boolean> =
+    private fun SqlExpressionBuilder.datetimeColOp(col: Column<Instant>, p: FilterPredicate): Op<Boolean> =
         when (p.op) {
-            "eq" -> col eq (p.value as LocalDateTime)
-            "ne" -> col neq (p.value as LocalDateTime)
-            "gt" -> col greater (p.value as LocalDateTime)
-            "gte" -> col greaterEq (p.value as LocalDateTime)
-            "lt" -> col less (p.value as LocalDateTime)
-            "lte" -> col lessEq (p.value as LocalDateTime)
-            "in" -> col inList (p.value as List<LocalDateTime>)
+            "eq" -> col eq (p.value as Instant)
+            "ne" -> col neq (p.value as Instant)
+            "gt" -> col greater (p.value as Instant)
+            "gte" -> col greaterEq (p.value as Instant)
+            "lt" -> col less (p.value as Instant)
+            "lte" -> col lessEq (p.value as Instant)
+            "in" -> col inList (p.value as List<Instant>)
             "isNull" -> if (p.value as Boolean) col.isNull() else col.isNotNull()
             else -> throw IllegalStateException("unsupported op for datetime col: ${p.op}")
         }
@@ -479,7 +486,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val id = long("id").autoIncrement()
         val name = varchar("name", 100)
         val bio = varchar("bio", 1000).nullable()
-        val createdAt = datetime("createdAt")
+        val createdAt = timestamp("createdAt")
 
         override val primaryKey = PrimaryKey(id)
     }

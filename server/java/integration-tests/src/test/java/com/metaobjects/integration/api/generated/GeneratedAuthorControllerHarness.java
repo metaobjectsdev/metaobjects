@@ -1,7 +1,11 @@
 package com.metaobjects.integration.api.generated;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -30,8 +34,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -79,15 +82,17 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
     private static final String DTO_FQCN = ENTITY_PKG + ".AuthorDto";
     private static final String REPO_FQCN = ENTITY_PKG + ".AuthorRepository";
 
-    // Corpus wire timestamps are zone-less wall-clock (yyyy-MM-ddTHH:mm:ss).
-    private static final DateTimeFormatter WALL =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    // ADR-0036 Wave 2: createdAt is a bare field.timestamp → instant/tz-aware, so the
+    // generated AuthorDto.createdAt is a java.time.Instant. The corpus seed strings are
+    // offset-less wall-clock (yyyy-MM-ddTHH:mm:ss); an offset-less instant body is
+    // interpreted as UTC (the cross-port instant wire contract — mirrors the C# lane).
+    private static final String UTC_SUFFIX = "Z";
 
     /** Jackson mapper used both by MockMvc's converter and to (de)serialize bodies. */
     private final ObjectMapper mapper;
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
-    private final Constructor<?> dtoCtor;       // (Long id, String name, String bio, LocalDateTime createdAt)
+    private final Constructor<?> dtoCtor;       // (Long id, String name, String bio, Instant createdAt)
     private final Constructor<?> controllerCtor;
     private final Constructor<?> repoCtor;       // (List<AuthorDto> seed)
     private final List<Map<String, Object>> seedRows;
@@ -106,8 +111,24 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
     public GeneratedAuthorControllerHarness(Path corpusRoot, Path genDir, List<Map<String, Object>> seedRows)
             throws Exception {
         this.seedRows = seedRows;
+        // ADR-0036 Wave 2: createdAt deserializes into java.time.Instant. The corpus
+        // scenario/seed bodies are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss), which
+        // Jackson's default Instant deserializer rejects. Register an Instant deserializer
+        // that interprets an offset-less value as UTC (the instant wire contract — mirrors
+        // the C# lane's UtcDateTimeOffsetConverter).
+        SimpleModule utcInstant = new SimpleModule()
+            .addDeserializer(Instant.class, new JsonDeserializer<Instant>() {
+                @Override
+                public Instant deserialize(JsonParser p, DeserializationContext ctx)
+                        throws java.io.IOException {
+                    String raw = p.getValueAsString();
+                    if (raw == null || raw.isEmpty()) return null;
+                    return parseInstant(raw);
+                }
+            });
         this.mapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
+            .registerModule(utcInstant)
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         Path srcDir = genDir.resolve("src");
@@ -139,7 +160,7 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
         this.dtoClass = classLoader.loadClass(DTO_FQCN);
         this.dtoCtor = dtoClass.getDeclaredConstructor(
-            Long.class, String.class, String.class, LocalDateTime.class);
+            Long.class, String.class, String.class, Instant.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
         this.controllerCtor = controllerClass.getDeclaredConstructor(repoInterface);
@@ -265,9 +286,18 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
         String name = (String) row.get("name");
         String bio = (String) row.get("bio");
         Object createdRaw = row.get("createdAt");
-        LocalDateTime createdAt = createdRaw == null
-            ? null
-            : LocalDateTime.parse(String.valueOf(createdRaw), WALL);
+        Instant createdAt = createdRaw == null ? null : parseInstant(String.valueOf(createdRaw));
         return dtoCtor.newInstance(id, name, bio, createdAt);
+    }
+
+    /**
+     * Parse a corpus createdAt string into an {@link Instant}. Corpus values are
+     * offset-less wall-clock (yyyy-MM-ddTHH:mm:ss); per the instant wire contract an
+     * offset-less value is interpreted as UTC, so we append {@code Z} when no zone is
+     * present before {@code Instant.parse} (ISO-8601 with {@code Z}).
+     */
+    private static Instant parseInstant(String raw) {
+        String s = (raw.endsWith(UTC_SUFFIX) || raw.contains("+")) ? raw : raw + UTC_SUFFIX;
+        return Instant.parse(s);
     }
 }

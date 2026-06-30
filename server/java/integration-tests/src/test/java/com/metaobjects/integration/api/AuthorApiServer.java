@@ -17,8 +17,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,7 +44,10 @@ import java.util.Set;
  * JDBC because they include {@code RESTART IDENTITY}.</p>
  */
 final class AuthorApiServer implements AutoCloseable {
-    private static final DateTimeFormatter TIMESTAMP_FMT =
+    // ADR-0036 Wave 2: createdAt is a bare field.timestamp → instant/tz-aware. The wire
+    // form is an absolute instant (yyyy-MM-ddTHH:mm:ss[.fff]Z). Corpus seed/body strings
+    // are offset-less wall-clock; an offset-less value is interpreted as UTC.
+    private static final DateTimeFormatter INSTANT_FMT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
     // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "name", "createdAt");
@@ -84,7 +88,7 @@ final class AuthorApiServer implements AutoCloseable {
                         id BIGSERIAL PRIMARY KEY,
                         name VARCHAR(100) NOT NULL,
                         bio VARCHAR(1000),
-                        "createdAt" TIMESTAMP NOT NULL
+                        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL
                     )""");
             }
             this.httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -123,7 +127,7 @@ final class AuthorApiServer implements AutoCloseable {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, (String) r.get("name"));
                     ps.setString(3, (String) r.get("bio"));
-                    ps.setTimestamp(4, Timestamp.valueOf(parseTimestamp((String) r.get("createdAt"))));
+                    ps.setObject(4, parseInstant((String) r.get("createdAt")));
                     ps.executeUpdate();
                 }
             }
@@ -324,7 +328,7 @@ final class AuthorApiServer implements AutoCloseable {
         switch (subType) {
             case "string": return raw;
             case "datetime":
-                try { return Timestamp.valueOf(parseTimestamp(raw)); }
+                try { return parseInstant(raw); }
                 catch (Exception e) { return INVALID_VALUE; }
             case "boolean":
                 if (raw.equals("true")) return Boolean.TRUE;
@@ -412,7 +416,7 @@ final class AuthorApiServer implements AutoCloseable {
                  "INSERT INTO \"authors\" (name, bio, \"createdAt\") VALUES (?, ?, ?) RETURNING id")) {
             ps.setString(1, (String) body.get("name"));
             ps.setString(2, (String) body.get("bio"));
-            ps.setTimestamp(3, Timestamp.valueOf(parseTimestamp((String) body.get("createdAt"))));
+            ps.setObject(3, parseInstant((String) body.get("createdAt")));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 newId = rs.getLong(1);
@@ -443,7 +447,7 @@ final class AuthorApiServer implements AutoCloseable {
         if (body.containsKey("bio")) { setClauses.add("bio = ?"); values.add(body.get("bio")); }
         if (body.get("createdAt") instanceof String cAt) {
             setClauses.add("\"createdAt\" = ?");
-            values.add(Timestamp.valueOf(parseTimestamp(cAt)));
+            values.add(parseInstant(cAt));
         }
         if (setClauses.isEmpty()) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
 
@@ -497,9 +501,9 @@ final class AuthorApiServer implements AutoCloseable {
         row.put("id", rs.getLong("id"));
         row.put("name", rs.getString("name"));
         row.put("bio", rs.getString("bio"));
-        Timestamp ts = rs.getTimestamp("createdAt");
-        // Normalize to ISO-8601 without zone (matches the seed/wire format).
-        row.put("createdAt", ts == null ? null : ts.toLocalDateTime().format(TIMESTAMP_FMT));
+        OffsetDateTime ts = rs.getObject("createdAt", OffsetDateTime.class);
+        // Normalize to a UTC instant on the wire: yyyy-MM-ddTHH:mm:ssZ (instant contract).
+        row.put("createdAt", ts == null ? null : formatInstant(ts.toInstant()));
         return row;
     }
 
@@ -536,9 +540,22 @@ final class AuthorApiServer implements AutoCloseable {
         return out;
     }
 
-    private static LocalDateTime parseTimestamp(String s) {
-        // The corpus uses `yyyy-MM-ddTHH:mm:ss` (no zone) for wall-clock times.
-        return LocalDateTime.parse(s, TIMESTAMP_FMT);
+    /**
+     * Parse a corpus createdAt string into a UTC {@link OffsetDateTime} (JDBC-bindable
+     * to {@code timestamp with time zone}). Corpus values are offset-less wall-clock
+     * (yyyy-MM-ddTHH:mm:ss); per the instant wire contract an offset-less value is
+     * interpreted as UTC, so we append {@code Z} when no zone is present.
+     */
+    private static OffsetDateTime parseInstant(String s) {
+        if (s.endsWith("Z") || s.contains("+")) {
+            return OffsetDateTime.parse(s).withOffsetSameInstant(ZoneOffset.UTC);
+        }
+        return OffsetDateTime.parse(s + "Z");
+    }
+
+    /** Format an instant as the UTC wire form yyyy-MM-ddTHH:mm:ssZ. */
+    private static String formatInstant(Instant instant) {
+        return INSTANT_FMT.format(instant.atOffset(ZoneOffset.UTC)) + "Z";
     }
 
     private static Integer parseIntOrNull(String s) {

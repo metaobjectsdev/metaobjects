@@ -197,6 +197,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import java.net.URLDecoder\n")
             append("import java.nio.charset.StandardCharsets\n")
             append("import java.sql.Timestamp\n")
+            // ADR-0036 Wave 2: a default field.timestamp column maps to java.time.Instant
+            // (the WHERE-arm casts `p.value as Instant`); import it only when such a column
+            // is present so entities without one stay byte-identical.
+            if (scalarFields.any { it.elementType == "Instant" }) {
+                append("import java.time.Instant\n")
+            }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
             append("import java.time.LocalTime\n")
@@ -459,6 +465,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import java.net.URLDecoder\n")
             append("import java.nio.charset.StandardCharsets\n")
             append("import java.sql.Timestamp\n")
+            // ADR-0036 Wave 2: import java.time.Instant only when a default field.timestamp
+            // column (→ Instant) is in the filter surface — keeps Instant-free entities
+            // byte-identical.
+            if (filterSpecs.any { it.elementType == "Instant" }) {
+                append("import java.time.Instant\n")
+            }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
             append("import java.time.LocalTime\n")
@@ -743,12 +755,30 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         emitTypedCoercer(out, shortName, "Double", "java.lang.Double.parseDouble")
         emitTypedCoercer(out, shortName, "Date", "LocalDate.parse")
         emitTypedCoercer(out, shortName, "Time", "LocalTime.parse")
-        // Timestamp needs a per-entity formatter (the cross-port wire form is
-        // 'yyyy-MM-dd\'T\'HH:mm:ss' without a zone), so it can't share the simple
-        // single-arg parse-fn path of emitTypedCoercer.
+        // Timestamp coercer. ADR-0036 Wave 2: a default `field.timestamp` column is an
+        // absolute `java.time.Instant` (its WHERE-arm casts `p.value as Instant`), so the
+        // coerced value MUST be an Instant — coercing into LocalDateTime would ClassCastException
+        // at the dispatch cast. The cross-port wire form is offset-less wall-clock
+        // ('yyyy-MM-dd'T'HH:mm:ss', no zone); an offset-less value is interpreted as UTC
+        // (append `Z`) before Instant.parse. The `@localTime:true` opt-out column is a naive
+        // `LocalDateTime` and uses the zone-less formatter directly.
+        // No timestamp field present → the coercer is dead scaffolding; keep its historical
+        // LocalDateTime shape so Instant-free entities stay byte-identical (and don't
+        // reference the un-imported Instant).
+        val timestampElementType = scalarFields
+            .firstOrNull { it.subType == TimestampField.SUBTYPE_TIMESTAMP }
+            ?.elementType
+            ?: "LocalDateTime"
         out.append("private val ${shortName}TimestampFmt: DateTimeFormatter = DateTimeFormatter.ofPattern(\"yyyy-MM-dd'T'HH:mm:ss\")\n\n")
         out.append("private fun coerce${shortName}Timestamp(op: String, raw: String): ${shortName}CoercedValue? {\n")
-        out.append("    val parse: (String) -> LocalDateTime? = { s -> runCatching { LocalDateTime.parse(s, ${shortName}TimestampFmt) }.getOrNull() }\n")
+        if (timestampElementType == "Instant") {
+            out.append("    val parse: (String) -> Instant? = { s ->\n")
+            out.append("        val withZone = if (s.endsWith(\"Z\") || s.contains(\"+\")) s else s + \"Z\"\n")
+            out.append("        runCatching { Instant.parse(withZone) }.getOrNull()\n")
+            out.append("    }\n")
+        } else {
+            out.append("    val parse: (String) -> LocalDateTime? = { s -> runCatching { LocalDateTime.parse(s, ${shortName}TimestampFmt) }.getOrNull() }\n")
+        }
         out.append("    if (op == \"in\") {\n")
         out.append("        val parts = raw.split(\",\").map { it.trim() }\n")
         out.append("        val list = parts.map { parse(it) ?: return null }\n")
