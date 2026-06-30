@@ -90,10 +90,22 @@ def test_dbcolumntype_jsonb_on_string_ok() -> None:
     assert codes == []
 
 
-def test_dbcolumntype_timestamptz_on_timestamp_ok() -> None:
+def test_dbcolumntype_timestamptz_retired_on_timestamp_error() -> None:
+    # ADR-0036 Wave 2: @dbColumnType:timestamp_with_tz is RETIRED — it is no longer
+    # a recognized value, so even on field.timestamp it is now ERR_BAD_ATTR_VALUE
+    # (unknown value). Timezone-awareness moved to @localTime (instant by default).
     codes, _ = _load(_entity(
         {"field.long": {"name": "id"}},
         {"field.timestamp": {"name": "at", "@dbColumnType": "timestamp_with_tz"}},
+    ))
+    assert codes == ["ERR_BAD_ATTR_VALUE"]
+
+
+def test_local_time_attr_on_timestamp_ok() -> None:
+    # ADR-0036 Wave 2: @localTime is a valid boolean opt-out on field.timestamp.
+    codes, _ = _load(_entity(
+        {"field.long": {"name": "id"}},
+        {"field.timestamp": {"name": "at", "@localTime": True}},
     ))
     assert codes == []
 
@@ -104,6 +116,7 @@ def test_dbcolumntype_timestamptz_on_timestamp_ok() -> None:
 
 
 def test_dbcolumntype_timestamptz_on_string_illegal() -> None:
+    # ADR-0036 Wave 2: timestamp_with_tz is retired → unknown value on any subtype.
     codes, _ = _load(_entity(
         {"field.long": {"name": "id"}},
         {"field.string": {"name": "at", "@dbColumnType": "timestamp_with_tz"}},
@@ -185,13 +198,14 @@ def test_dbcolumntype_uuid_array_error_message_names_valid_set() -> None:
         result = MetaDataLoader.from_directory(tmpdir, providers=[core_provider])
         assert len(result.errors) == 1
         msg = result.errors[0].message
-        # The "allowed:" section must list only the three surviving legal values.
+        # The "allowed:" section must list only the two surviving legal values
+        # (ADR-0036 Wave 2 retired timestamp_with_tz → { uuid, jsonb }).
         allowed_idx = msg.index("allowed:")
         allowed_section = msg[allowed_idx:]
         assert "uuid" in allowed_section
         assert "jsonb" in allowed_section
-        assert "timestamp_with_tz" in allowed_section
-        # uuid_array and text_array must NOT appear in the allowed section.
+        # timestamp_with_tz (retired), uuid_array, text_array must NOT appear.
+        assert "timestamp_with_tz" not in allowed_section
         assert "uuid_array" not in allowed_section
         assert "text_array" not in allowed_section
 
