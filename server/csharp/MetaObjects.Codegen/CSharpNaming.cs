@@ -185,6 +185,31 @@ public static class CSharpNaming
     /// <summary>The extractor class name for a payload value-object: <c>&lt;PayloadRef&gt;Extractor</c>.</summary>
     public static string ExtractorClassName(string payloadRef) => payloadRef + "Extractor";
 
+    /// <summary>The reverse-finder static query class name for an entity: <c>&lt;EntityPascal&gt;Queries</c>.</summary>
+    public static string QueriesClassName(MetaObject entity) => Pascal(entity.Name) + "Queries";
+
+    /// <summary>
+    /// ADR-0038 — the cross-port FK-field disambiguator for a reverse finder: the
+    /// PascalCased FK field name with a single trailing <c>Id</c> dropped (but never a
+    /// bare <c>Id</c> → <c>""</c>). <c>currentSceneId</c> → <c>CurrentScene</c>. This is
+    /// the SSOT that makes same-pair FKs (3× GameSession→Scene) yield distinct finders.
+    /// </summary>
+    public static string ReverseFinderFkSegment(string fkFieldName)
+    {
+        var pascal = Pascal(fkFieldName);
+        return pascal.Length > 2 && pascal.EndsWith("Id", StringComparison.Ordinal)
+            ? pascal[..^2]
+            : pascal;
+    }
+
+    /// <summary>ADR-0038 — the single-value reverse finder name: <c>Find&lt;EPlural&gt;By&lt;FkField&gt;</c>.</summary>
+    public static string ReverseFinderName(MetaObject entity, string fkFieldName) =>
+        $"Find{Pluralize(Pascal(entity.Name))}By{ReverseFinderFkSegment(fkFieldName)}";
+
+    /// <summary>ADR-0038 — the batched (anti-N+1) reverse finder name: <c>Find&lt;EPlural&gt;By&lt;FkField&gt;In</c>.</summary>
+    public static string ReverseFinderInName(MetaObject entity, string fkFieldName) =>
+        ReverseFinderName(entity, fkFieldName) + "In";
+
     /// <summary>
     /// The DB table name for an entity: the <c>dbTable</c> source override, else the
     /// raw object name. Shared so the schema DDL and the [Table] annotation agree.
