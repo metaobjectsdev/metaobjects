@@ -63,6 +63,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // redeclare the top-level support class/extension and fail to compile.
         val packagesNeedingInstantTzHelper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a `field.uri` or `field.inet`
+        // column (ADR-0036/0037 Wave 3). Each such package gets ONE shared
+        // `MetaInetUriColumnType.kt` support file (the custom `Column<URI>`/`Column<InetAddress>`
+        // column types + the `uriColumn(...)`/`inetColumn(...)` builder extensions), emitted in
+        // pass 3 — same multi-table-per-package sharing rationale as the instant-tz helper.
+        val packagesNeedingInetUriHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
@@ -100,6 +107,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (usedInstantTzHelper) {
                 packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
             }
+            // ADR-0036/0037 Wave 3: does this table carry a `field.uri`/`field.inet` column?
+            // Walk direct fields AND flattened object sub-fields — the same two surfaces that
+            // contribute columns (mirrors the instant-tz detection inside emit()).
+            if (entityNeedsInetUriHelper(entity, loader)) {
+                packagesNeedingInetUriHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -110,6 +123,55 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         for (pkg in packagesNeedingInstantTzHelper) {
             emitInstantTzSupportFile(pkg, outRoot)
         }
+
+        // Pass 3b (ADR-0036/0037 Wave 3): emit ONE shared `MetaInetUriColumnType.kt` per
+        // package that has at least one `field.uri`/`field.inet` column. Same `internal`
+        // per-package sharing rationale as the instant-tz helper above.
+        for (pkg in packagesNeedingInetUriHelper) {
+            emitInetUriSupportFile(pkg, outRoot)
+        }
+    }
+
+    /**
+     * True iff [entity] carries at least one `field.uri`/`field.inet` column — on a direct
+     * field OR a flattened `object.value` sub-field. Mirrors the instant-tz detection inside
+     * [emit] (which walks the same two surfaces).
+     */
+    private fun entityNeedsInetUriHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesInetUriHelper(it) }) {
+            return true
+        }
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesInetUriHelper(it) }) return true
+        }
+        return false
+    }
+
+    /**
+     * Emit the per-package `MetaInetUriColumnType.kt` support file (ADR-0036/0037 Wave 3):
+     * `internal` custom Exposed column types for `field.uri` (a `Column<java.net.URI>` over
+     * plain `text`) and `field.inet` (a `Column<java.net.InetAddress>` over the Postgres-native
+     * `inet` type), plus the `Table.uriColumn(name)` / `Table.inetColumn(name)` column-builder
+     * extensions the generated tables call. `internal` keeps it package+module-private while
+     * every `*Table.kt` in the package shares the one declaration.
+     */
+    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
+        val body = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            append(INET_URI_SUPPORT_FILE_IMPORTS)
+            append("\n")
+            append(INET_URI_SUPPORT_BLOCK)
+            append("\n")
+        }
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$INET_URI_SUPPORT_FILE_NAME.kt")
+        outFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(outFile, body)
     }
 
     /**
@@ -626,6 +688,87 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             | */
             |internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
             |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
+            |""".trimMargin()
+
+        /**
+         * File name (sans `.kt`) of the per-package support file emitted for `field.uri` /
+         * `field.inet` columns (ADR-0036/0037 Wave 3). One per package that has ≥1 such column.
+         */
+        const val INET_URI_SUPPORT_FILE_NAME = "MetaInetUriColumnType"
+
+        /** Imports for the per-package [INET_URI_SUPPORT_BLOCK] support file. */
+        val INET_URI_SUPPORT_FILE_IMPORTS: String = """
+            |import java.net.InetAddress
+            |import java.net.URI
+            |import org.jetbrains.exposed.sql.Column
+            |import org.jetbrains.exposed.sql.ColumnType
+            |import org.jetbrains.exposed.sql.Table
+            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+            |import org.jetbrains.exposed.sql.vendors.currentDialect
+            |""".trimMargin()
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [INET_URI_SUPPORT_FILE_NAME].kt)
+         * for any package with at least one `field.uri` / `field.inet` column. Defines two
+         * `internal` custom column types + their `Table` column-builder extensions:
+         *
+         *  - `MetaUriColumnType` — a `ColumnType<java.net.URI>` over plain `text` (Postgres has
+         *    no uri type). Reads the JDBC string and parses it to a `URI`; writes the `URI`'s
+         *    string form. Yields `Column<URI>` so the column matches the data-class property.
+         *  - `MetaInetColumnType` — a `ColumnType<java.net.InetAddress>` over the Postgres-native
+         *    `inet` type. Reads the JDBC string and resolves it to an `InetAddress`; binds the
+         *    address' host-literal string (`getHostAddress`) so the JDBC driver routes it to the
+         *    native `inet` column.
+         *
+         * Both are `internal` so every `*Table.kt` in the package shares the one declaration.
+         * The `$` lines below carry no Kotlin string templates — emitted verbatim.
+         */
+        val INET_URI_SUPPORT_BLOCK: String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.uri`: a `Column<java.net.URI>` whose SQL DDL
+            | * is plain `text` (Postgres has no uri type). The native URI binding matches the data
+            | * class property; the value persists as its string form.
+            | */
+            |internal class MetaUriColumnType : ColumnType<URI>() {
+            |    override fun sqlType(): String = currentDialect.dataTypeProvider.textType()
+            |    override fun valueFromDB(value: Any): URI = when (value) {
+            |        is URI -> value
+            |        else -> URI.create(value.toString())
+            |    }
+            |    override fun notNullValueToDB(value: URI): Any = value.toString()
+            |    override fun nonNullValueToString(value: URI): String = "'${'$'}value'"
+            |}
+            |
+            |/** Column builder for `field.uri`: a `Column<java.net.URI>` over a `text` column. */
+            |internal fun Table.uriColumn(name: String): Column<URI> =
+            |    registerColumn(name, MetaUriColumnType())
+            |
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Custom Exposed column type for `field.inet`: a `Column<java.net.InetAddress>` whose
+            | * SQL DDL is the Postgres-native `inet`. The native InetAddress binding matches the data
+            | * class property; the value binds/reads as its host-literal string.
+            | */
+            |internal class MetaInetColumnType : ColumnType<InetAddress>() {
+            |    override fun sqlType(): String = "inet"
+            |    override fun valueFromDB(value: Any): InetAddress = when (value) {
+            |        is InetAddress -> value
+            |        else -> InetAddress.getByName(value.toString())
+            |    }
+            |    override fun notNullValueToDB(value: InetAddress): Any = value.hostAddress
+            |    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+            |        // Bind as a string and let the Postgres JDBC driver coerce it to the native
+            |        // `inet` column.
+            |        val v = if (value is InetAddress) value.hostAddress else value
+            |        stmt[index] = v
+            |    }
+            |}
+            |
+            |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
+            |internal fun Table.inetColumn(name: String): Column<InetAddress> =
+            |    registerColumn(name, MetaInetColumnType())
             |""".trimMargin()
     }
 

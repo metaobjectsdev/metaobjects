@@ -18,6 +18,8 @@ import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
+import com.metaobjects.field.UriField
+import com.metaobjects.field.InetField
 import com.metaobjects.metadata.ktx.loadString
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
@@ -131,6 +133,28 @@ class KotlinTypeMapperTest {
         f.setArray(true)
         assertEquals("java.util.UUID", KotlinTypeMapper.kotlinTypeName(f).toString())
         assertEquals("array<java.util.UUID>(\"member_ids\", org.jetbrains.exposed.sql.UUIDColumnType())", KotlinTypeMapper.exposedColumnSpec(f))
+    }
+
+    @Test fun `uri field maps to java net URI and a file-local uriColumn`() {
+        // ADR-0036/0037 Wave 3: native java.net.URI property; the Exposed column is the
+        // file-local `uriColumn(...)` extension (Column<URI> over a plain text column).
+        val f = UriField("webhookUrl")
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.net", tn.packageName)
+        assertEquals("URI", tn.simpleName)
+        assertEquals("uriColumn(\"webhook_url\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertTrue(KotlinTypeMapper.usesInetUriHelper(f))
+    }
+
+    @Test fun `inet field maps to java net InetAddress and a file-local inetColumn`() {
+        // ADR-0036/0037 Wave 3: native java.net.InetAddress property; the Exposed column is the
+        // file-local `inetColumn(...)` extension (Column<InetAddress> over native inet).
+        val f = InetField("sourceIp")
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.net", tn.packageName)
+        assertEquals("InetAddress", tn.simpleName)
+        assertEquals("inetColumn(\"source_ip\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertTrue(KotlinTypeMapper.usesInetUriHelper(f))
     }
 
     @Test fun `string field with isArray derives native text array column`() {

@@ -47,6 +47,19 @@ public class StringField extends PrimitiveField<String> {
     /** Minimum length attribute for string fields */
     public static final String ATTR_MIN_LENGTH = "minLength";
 
+    /**
+     * Closed validation-format attribute (ADR-0036/0037 Wave 3). Values: email | hostname.
+     * The field stays a plain string; codegen owns the canonical matcher per format. The
+     * value-set + cross-port description are sourced from {@code spec/metamodel/field.json}.
+     */
+    public static final String ATTR_STRING_FORMAT = "stringFormat";
+
+    /** {@code @stringFormat} value — RFC 5322 email validation. */
+    public static final String STRING_FORMAT_EMAIL = "email";
+
+    /** {@code @stringFormat} value — DNS hostname validation. */
+    public static final String STRING_FORMAT_HOSTNAME = "hostname";
+
     public StringField( String name ) {
         super( SUBTYPE_STRING, name, DataTypes.STRING );
     }
@@ -76,6 +89,15 @@ public class StringField extends PrimitiveField<String> {
                 // from validator children per the SP-C validator-parity work).
                 def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)
                    .ofType(IntAttribute.SUBTYPE_INT)
+                   .asSingle();
+
+                // ADR-0036/0037 Wave 3 — @stringFormat: a closed validation format
+                // (email | hostname) for a plain string field. The field stays a plain
+                // string (native binding + DB column unchanged); codegen owns the
+                // canonical matcher. The closed value-set + description are sourced from
+                // spec/metamodel/field.json by applySpecDescriptions.
+                def.optionalAttributeWithConstraints(ATTR_STRING_FORMAT)
+                   .ofType(StringAttribute.SUBTYPE_STRING)
                    .asSingle();
             });
 

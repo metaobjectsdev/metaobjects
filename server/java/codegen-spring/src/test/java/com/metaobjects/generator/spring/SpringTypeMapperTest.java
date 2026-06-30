@@ -141,6 +141,40 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void uriFieldMapsToJavaNetURI() {
+        // ADR-0036/0037 Wave 3: field.uri binds to the native java.net.URI type.
+        assertEquals("java.net.URI",
+            SpringTypeMapper.javaTypeName(new com.metaobjects.field.UriField("webhookUrl")));
+    }
+
+    @Test
+    public void inetFieldMapsToJavaNetInetAddress() {
+        // ADR-0036/0037 Wave 3: field.inet binds to the native java.net.InetAddress type.
+        assertEquals("java.net.InetAddress",
+            SpringTypeMapper.javaTypeName(new com.metaobjects.field.InetField("sourceIp")));
+    }
+
+    @Test
+    public void stringFormatEmailEmitsJakartaEmail() {
+        // ADR-0036/0037 Wave 3: @stringFormat:email → Jakarta @Email (codegen-owned matcher).
+        StringField f = new StringField("contactEmail");
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
+            StringField.ATTR_STRING_FORMAT, StringField.STRING_FORMAT_EMAIL));
+        assertEquals("@Email", SpringDtoGenerator.validationAnnotations(f));
+    }
+
+    @Test
+    public void stringFormatHostnameEmitsCanonicalPattern() {
+        // ADR-0036/0037 Wave 3: @stringFormat:hostname → codegen-owned @Pattern hostname check.
+        StringField f = new StringField("host");
+        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create(
+            StringField.ATTR_STRING_FORMAT, StringField.STRING_FORMAT_HOSTNAME));
+        String ann = SpringDtoGenerator.validationAnnotations(f);
+        assertEquals(true, ann.startsWith("@Pattern(regexp = "));
+        assertEquals(true, ann.contains("[A-Za-z0-9]"));
+    }
+
+    @Test
     public void stringArrayFieldDtoComponentIsListOfString() {
         // dbColumnType slim-and-derive (Phase 1): a `field.string isArray:true` maps to a
         // native text[] column whose DTO component is List<String> (the array-ness is

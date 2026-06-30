@@ -327,6 +327,22 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             if (min != null || max != null) out.add(sizeAnnotation(min, max))
         }
 
+        // ADR-0036/0037 Wave 3 — @stringFormat on a plain string field. The canonical
+        // matcher per format lives HERE in codegen (NOT author validator.regex), since
+        // cross-language regex engines diverge. email → @field:Email; hostname → a
+        // canonical DNS-hostname @field:Pattern check.
+        if (isString && !isArray && field.hasMetaAttr(StringField.ATTR_STRING_FORMAT)) {
+            when (field.getMetaAttr(StringField.ATTR_STRING_FORMAT).value?.toString()?.trim()) {
+                StringField.STRING_FORMAT_EMAIL -> out.add(constraint(EMAIL))
+                StringField.STRING_FORMAT_HOSTNAME -> out.add(
+                    AnnotationSpec.builder(PATTERN)
+                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+                        .addMember("regexp = %S", HOSTNAME_REGEX)
+                        .build()
+                )
+            }
+        }
+
         return out
     }
 
@@ -382,6 +398,16 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val PATTERN = ClassName(JAKARTA_CONSTRAINTS, "Pattern")
         val MIN = ClassName(JAKARTA_CONSTRAINTS, "Min")
         val MAX = ClassName(JAKARTA_CONSTRAINTS, "Max")
+        val EMAIL = ClassName(JAKARTA_CONSTRAINTS, "Email")
+
+        /**
+         * Canonical DNS-hostname matcher for `@stringFormat: hostname` (ADR-0036/0037 Wave 3).
+         * Codegen-owned (NOT author `validator.regex`) — one or more dot-separated labels, each
+         * 1–63 chars of alphanumerics/hyphens not starting/ending with a hyphen. Byte-identical
+         * to the Spring port's `SpringDtoGenerator.HOSTNAME_REGEX`.
+         */
+        const val HOSTNAME_REGEX =
+            "^(?=.{1,253}\$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\$"
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
