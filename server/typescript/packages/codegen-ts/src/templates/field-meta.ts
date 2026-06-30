@@ -18,6 +18,11 @@ import {
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
+  FIELD_ATTR_STRING_FORMAT,
+  STRING_FORMAT_EMAIL,
+  STRING_FORMAT_HOSTNAME,
   VIEW_SUBTYPE_TEXT,
   VIEW_SUBTYPE_DATE,
   VIEW_SUBTYPE_NUMBER,
@@ -76,9 +81,24 @@ function defaultViewForSubType(subType: string): string {
  */
 export function zodTypeFor(field: MetaField): string {
   switch (field.subType) {
-    case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_STRING: {
+      // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string. Codegen owns
+      // the canonical matcher (mirrors zod-validators.ts).
+      const fmt = field.attr(FIELD_ATTR_STRING_FORMAT);
+      if (fmt === STRING_FORMAT_EMAIL) return "z.string().email()";
+      if (fmt === STRING_FORMAT_HOSTNAME) {
+        return "z.string().regex(/^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/)";
+      }
+      return "z.string()";
+    }
     case FIELD_SUBTYPE_UUID:
       return "z.string()";
+    case FIELD_SUBTYPE_URI:
+      // ADR-0036/0037 Wave 3: a URI string — codegen owns the URL matcher.
+      return "z.string().url()";
+    case FIELD_SUBTYPE_INET:
+      // ADR-0036/0037 Wave 3: an IP string — codegen owns the IP matcher (v4+v6).
+      return "z.string().ip()";
     case FIELD_SUBTYPE_BOOLEAN:
       return "z.boolean()";
     case FIELD_SUBTYPE_DATE:

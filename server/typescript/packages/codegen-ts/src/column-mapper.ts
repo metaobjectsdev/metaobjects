@@ -18,6 +18,8 @@ import {
   FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -276,7 +278,9 @@ export function mapColumnType(
         case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_UUID:
-          // SQLite has no native uuid type; store as TEXT (string native binding).
+        case FIELD_SUBTYPE_URI:
+        case FIELD_SUBTYPE_INET:
+          // SQLite has no native uuid/inet type; store as TEXT (string native binding).
           fnName = "text";
           break;
         default:
@@ -340,6 +344,17 @@ export function mapColumnType(
         case FIELD_SUBTYPE_UUID:
           // Postgres native uuid column; native TS binding stays `string`.
           fnName = "uuid";
+          break;
+        case FIELD_SUBTYPE_URI:
+          // ADR-0036/0037 Wave 3: Postgres has no uri type → text. Native TS
+          // binding stays `string` (validated as a URL via Zod .url()).
+          fnName = "text";
+          break;
+        case FIELD_SUBTYPE_INET:
+          // ADR-0036/0037 Wave 3: Postgres-native `inet` column (Drizzle's
+          // pg-core `inet()` infers as `string`). Native TS binding stays
+          // `string` (validated as an IP via Zod .ip()).
+          fnName = "inet";
           break;
         case FIELD_SUBTYPE_DECIMAL: {
           // Drizzle pg `numeric` infers as a TS `string` (precision-exact); the

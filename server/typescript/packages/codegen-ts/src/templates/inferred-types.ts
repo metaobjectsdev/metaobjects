@@ -25,6 +25,8 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_VALUE_TYPE,
@@ -149,6 +151,10 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
 const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   [FIELD_SUBTYPE_STRING]: "string",
   [FIELD_SUBTYPE_UUID]: "string",
+  // ADR-0036/0037 Wave 3: uri/inet bind to TS `string` (TS has no native URI/IP
+  // type, same as uuid). Other ports bind to their native URI/IP type.
+  [FIELD_SUBTYPE_URI]: "string",
+  [FIELD_SUBTYPE_INET]: "string",
   [FIELD_SUBTYPE_INT]: "number",
   [FIELD_SUBTYPE_LONG]: "number",
   [FIELD_SUBTYPE_DOUBLE]: "number",

@@ -202,6 +202,7 @@ function pgType(t: SqlType): string {
     case "json":      return "JSONB";
     case "blob":      return "BYTEA";
     case "uuid":      return "UUID";
+    case "inet":      return "INET";
     case "array":     return `${pgType(t.element)}[]`;
   }
 }

@@ -24,6 +24,16 @@ export const FIELD_SUBTYPE_ENUM = "enum";
  *  loader value-validation) — like field.long; native binding is forced to TS
  *  `string` (TS has no native UUID type). DB column is Postgres-native `uuid`. */
 export const FIELD_SUBTYPE_UUID = "uuid";
+/** ADR-0036/0037 Wave 3: a URI/URL string. Concept with a native type + behavior
+ *  → a subtype (not a @stringFormat). TS binds to `string` (no native URI type,
+ *  same as uuid); other ports bind to native URI (java.net.URI / System.Uri /
+ *  urllib). DB column is `text`. Codegen emits URL validation (Zod .url()). */
+export const FIELD_SUBTYPE_URI = "uri";
+/** ADR-0036/0037 Wave 3: an IP-address string (v4 or v6). Concept with a native
+ *  type + behavior → a subtype. TS binds to `string`; other ports bind to native
+ *  IP (InetAddress / IPAddress / ipaddress). DB column is Postgres-native `inet`.
+ *  Codegen emits IP validation accepting v4+v6 (Zod .ip()). */
+export const FIELD_SUBTYPE_INET = "inet";
 
 export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
@@ -42,6 +52,8 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
 ] as const;
 export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 
@@ -59,6 +71,28 @@ export const FIELD_ATTR_UNIQUE = "unique";
 export const FIELD_ATTR_READ_ONLY = "readOnly";
 export const FIELD_ATTR_DEFAULT = "default";
 export const FIELD_ATTR_MAX_LENGTH = "maxLength";
+
+/** ADR-0036/0037 Wave 3: a closed validation format for a plain `field.string`
+ *  that has no native type or behavior of its own. Closed set: email | hostname.
+ *  The field stays a plain string; codegen emits the matching validator. Named
+ *  @stringFormat (NOT @format) to avoid colliding with the existing template.*
+ *  @format (output/serialization format). Only on field.string. */
+export const FIELD_ATTR_STRING_FORMAT = "stringFormat";
+
+/** @stringFormat: a plain string validated as an email address. Codegen emits
+ *  Zod z.string().email() (TS); other ports emit the idiomatic email validator. */
+export const STRING_FORMAT_EMAIL = "email";
+
+/** @stringFormat: a plain string validated as a DNS hostname. Codegen emits a
+ *  hostname check (the canonical matcher lives in codegen, not author regex). */
+export const STRING_FORMAT_HOSTNAME = "hostname";
+
+/** Closed value-set for @stringFormat (byte-gated via allowedValues in the registry). */
+export const STRING_FORMAT_VALUES = [
+  STRING_FORMAT_EMAIL,
+  STRING_FORMAT_HOSTNAME,
+] as const;
+export type StringFormatValue = (typeof STRING_FORMAT_VALUES)[number];
 export const FIELD_ATTR_PRECISION = "precision";
 export const FIELD_ATTR_SCALE = "scale";
 export const FIELD_ATTR_FILTERABLE = "filterable";

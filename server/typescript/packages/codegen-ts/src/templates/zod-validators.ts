@@ -16,9 +16,11 @@ import {
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
+  FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE, FIELD_ATTR_READ_ONLY,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
@@ -322,6 +324,17 @@ ${joinCode(updateFieldLines, { on: ",\n" })}
 `;
 }
 
+/**
+ * ADR-0036/0037 Wave 3 — the CANONICAL hostname matcher for @stringFormat:
+ * hostname, emitted as a Zod `.regex(...)` literal. The matcher lives in codegen
+ * (NOT author validator.regex) so every port can replicate the SAME canonical
+ * form — cross-language regex engines diverge, so the byte-identical source of
+ * truth is this one expression. RFC 1123 labels: 1–63 chars each, alphanumeric
+ * + internal hyphens, dot-separated; total form anchored.
+ */
+const HOSTNAME_REGEX_LITERAL =
+  "/^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/";
+
 /** Zod expression for a scalar value subtype (used for a field.map's @valueType). */
 function zodScalarFor(subType: string): string {
   if (subType === FIELD_SUBTYPE_INT || subType === FIELD_SUBTYPE_LONG || subType === FIELD_SUBTYPE_CURRENCY) return "z.number().int()";
@@ -434,7 +447,30 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       baseStr = zodEnumExpr(values);
       break;
     }
-    case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_URI:
+      // ADR-0036/0037 Wave 3: a URI/URL string — codegen owns the canonical
+      // URL matcher (Zod .url()), never author regex.
+      baseStr = "z.string().url()";
+      break;
+    case FIELD_SUBTYPE_INET:
+      // ADR-0036/0037 Wave 3: an IP-address string (v4 or v6) — codegen owns
+      // the canonical IP matcher (Zod .ip() accepts both versions).
+      baseStr = "z.string().ip()";
+      break;
+    case FIELD_SUBTYPE_STRING: {
+      // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string to a closed
+      // validated format. The canonical matcher per format lives HERE (codegen),
+      // not author validator.regex. The field stays a plain string.
+      const fmt = field.attr(FIELD_ATTR_STRING_FORMAT);
+      if (fmt === STRING_FORMAT_EMAIL) {
+        baseStr = "z.string().email()";
+      } else if (fmt === STRING_FORMAT_HOSTNAME) {
+        baseStr = `z.string().regex(${HOSTNAME_REGEX_LITERAL})`;
+      } else {
+        baseStr = "z.string()";
+      }
+      break;
+    }
     case FIELD_SUBTYPE_UUID:
     default:
       baseStr = "z.string()";

@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.filter`, `attr.int`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
 
 **Contributes attributes:**
 
@@ -23,7 +23,7 @@ Core metaobjects metamodel types and subtypes.
 - `field.enum`: `@provided`, `@values`
 - `field.map`: `@objectRef`, `@valueType`
 - `field.object`: `@objectRef`
-- `field.string`: `@maxLength`
+- `field.string`: `@maxLength`, `@stringFormat`
 - `identity.primary`: `@fields`, `@generation`
 - `identity.reference`: `@enforce`, `@fields`, `@references`
 - `identity.secondary`: `@fields`, `@unique`
@@ -59,6 +59,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.double`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.enum`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.float`: `@column`, `@db.indexed`, `@dbColumnType`
+- `field.inet`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.long`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.map`: `@column`, `@db.indexed`, `@dbColumnType`
@@ -66,6 +67,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.string`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`
+- `field.uri`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
 - `identity.reference`: `@constraintName`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
@@ -91,6 +93,7 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.double`: `@example`, `@instruction`, `@xmlText`
 - `field.enum`: `@coerceDefault`, `@enumAlias`, `@enumDoc`, `@example`, `@instruction`, `@normalize`, `@xmlText`
 - `field.float`: `@example`, `@instruction`, `@xmlText`
+- `field.inet`: `@example`, `@instruction`, `@xmlText`
 - `field.int`: `@example`, `@instruction`, `@xmlText`
 - `field.long`: `@example`, `@instruction`, `@xmlText`
 - `field.map`: `@example`, `@instruction`, `@xmlText`
@@ -98,6 +101,7 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.string`: `@example`, `@instruction`, `@xmlText`
 - `field.time`: `@example`, `@instruction`, `@xmlText`
 - `field.timestamp`: `@example`, `@instruction`, `@xmlText`
+- `field.uri`: `@example`, `@instruction`, `@xmlText`
 - `field.uuid`: `@example`, `@instruction`, `@xmlText`
 - `object.value`: `@normalize`
 - `template.output`: `@format`, `@htmlBodyRef`, `@kind`, `@maxChars`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredTags`, `@since`, `@subjectRef`, `@textBodyRef`, `@textRef`
@@ -118,6 +122,7 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 - `field.double`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.enum`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.float`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
+- `field.inet`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.int`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.long`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.map`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
@@ -125,6 +130,7 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 - `field.string`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.time`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.timestamp`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
+- `field.uri`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `field.uuid`: `@filterable`, `@sortable`, `@sortableDefaultOrder`
 - `layout.dataGrid`: `@columns`, `@defaultSortField`, `@defaultSortOrder`, `@filter`, `@filterable`, `@pageSize`
 - `view.currency`: `@locale`

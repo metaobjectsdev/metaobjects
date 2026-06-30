@@ -278,6 +278,38 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 - `validator.*` — 0..*
 - `view.*` — 0..*
 
+### field.inet
+
+An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IP validator accepting both v4 and v6 (TS Zod z.string().ip()). v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** A field holds an IPv4 or IPv6 address. Use it for a native Postgres inet column + IP validation instead of a plain string.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
+| `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
+| `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
+| `@example` | string | no |  |  | metaobjects-prompt | FR-010: an example value for this field, shown in the generated output-format prompt fragment. |
+| `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer). |
+| `@instruction` | string | no |  |  | metaobjects-prompt | FR-010: a short instruction for this field, shown in the generated output-format prompt fragment. |
+| `@readOnly` | boolean | no |  |  | metaobjects-core-types | FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. |
+| `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. |
+| `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
+| `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
+| `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+
+**Allowed children**
+
+- `origin.*` — 0..*
+- `validator.*` — 0..*
+- `view.*` — 0..*
+
 ### field.int
 
 32-bit signed integer. Binds to the native int type; DB column is INTEGER.
@@ -438,6 +470,7 @@ Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT
 | `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. |
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
+| `@stringFormat` | string | no |  | `email`, `hostname` | metaobjects-core-types | ADR-0036/0037: a closed validation format for a plain string field that has NO native type or behavior of its own — email \| hostname. The field stays a plain string (native binding + DB column unchanged); codegen emits the matching validator (Zod z.email() / a hostname check; PG CHECK where appropriate). The canonical matcher per format lives in each port's codegen, NOT author validator.regex (cross-language regex engines diverge). Named @stringFormat (not @format) to avoid colliding with template.* @format (output format). Concepts WITH a native type or behavior are subtypes instead (uuid → field.uuid, url/uri → field.uri, ip → field.inet). |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
 | `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
 
@@ -499,6 +532,38 @@ Date + time-of-day instant (optionally with timezone). Binds to the native date/
 | `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer). |
 | `@instruction` | string | no |  |  | metaobjects-prompt | FR-010: a short instruction for this field, shown in the generated output-format prompt fragment. |
 | `@localTime` | boolean | no |  |  | metaobjects-db | When true, the timestamp is a naive wall-clock value with no timezone (Postgres `timestamp without time zone`); absent/false (the default) = an absolute instant (`timestamptz`). ADR-0036 Wave 2 — replaces the retired @dbColumnType: timestamp_with_tz escape hatch. |
+| `@readOnly` | boolean | no |  |  | metaobjects-core-types | FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. |
+| `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. |
+| `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
+| `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
+| `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+
+**Allowed children**
+
+- `origin.*` — 0..*
+- `validator.*` — 0..*
+- `view.*` — 0..*
+
+### field.uri
+
+A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url|urn value-constraint.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** A field holds a URL or URI. Use it for a typed URI column + URL validation instead of a plain string.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
+| `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
+| `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
+| `@example` | string | no |  |  | metaobjects-prompt | FR-010: an example value for this field, shown in the generated output-format prompt fragment. |
+| `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer). |
+| `@instruction` | string | no |  |  | metaobjects-prompt | FR-010: a short instruction for this field, shown in the generated output-format prompt fragment. |
 | `@readOnly` | boolean | no |  |  | metaobjects-core-types | FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. |
 | `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. |
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |

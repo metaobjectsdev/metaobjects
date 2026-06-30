@@ -148,6 +148,9 @@ export function pgTypeToSqlType(dataType: string, maxLength?: number | null, udt
   // UUID
   if (dt === "uuid") return { kind: "uuid" };
 
+  // INET (ADR-0036/0037 Wave 3 — field.inet)
+  if (dt === "inet") return { kind: "inet" };
+
   // Unknown types (user-defined enums, citext, ltree, etc.) fall back to text
   // so we don't blow up on unrecognised types.
   return { kind: "text" };
