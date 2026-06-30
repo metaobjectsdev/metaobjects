@@ -14,6 +14,8 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.field.UriField;
+import com.metaobjects.field.InetField;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.object.MetaObject;
 
@@ -112,6 +114,12 @@ public final class SpringTypeMapper {
         if (field instanceof EnumField) return "String";
         // UUID — native java.util.UUID binding (R6 Plan 2a).
         if (field instanceof UuidField) return "java.util.UUID";
+        // URI — native java.net.URI binding (ADR-0036/0037 Wave 3). Wire/storage stays
+        // a String; the DB column is plain text (Postgres has no uri type).
+        if (field instanceof UriField) return "java.net.URI";
+        // inet — native java.net.InetAddress binding (ADR-0036/0037 Wave 3). Wire/storage
+        // stays a String; the DB column is the Postgres-native inet type.
+        if (field instanceof InetField) return "java.net.InetAddress";
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");

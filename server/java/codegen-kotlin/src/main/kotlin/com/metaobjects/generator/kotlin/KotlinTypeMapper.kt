@@ -16,6 +16,8 @@ import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
+import com.metaobjects.field.UriField
+import com.metaobjects.field.InetField
 import com.metaobjects.`object`.MetaObject
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.BOOLEAN
@@ -135,6 +137,26 @@ object KotlinTypeMapper {
     const val EXPOSED_INSTANT_TZ_FN = "instantWithTimeZone"
 
     /**
+     * Name of the generated, file-local Exposed extension function emitted for a
+     * [UriField] (ADR-0036/0037 Wave 3). Returns a `Column<java.net.URI>` whose
+     * `sqlType()` is `text` (Postgres has no uri type), so the column type MATCHES the
+     * `java.net.URI` data-class property while persisting plain text.
+     * [KotlinExposedTableGenerator] emits the supporting `ColumnType<URI>` + this extension
+     * into the package-shared [MetaInetUriColumnType] support file.
+     */
+    const val EXPOSED_URI_FN = "uriColumn"
+
+    /**
+     * Name of the generated, file-local Exposed extension function emitted for an
+     * [InetField] (ADR-0036/0037 Wave 3). Returns a `Column<java.net.InetAddress>` whose
+     * `sqlType()` is the Postgres-native `inet`, so the column type MATCHES the
+     * `java.net.InetAddress` data-class property while using the native inet column.
+     * [KotlinExposedTableGenerator] emits the supporting `ColumnType<InetAddress>` + this
+     * extension into the package-shared [MetaInetUriColumnType] support file.
+     */
+    const val EXPOSED_INET_FN = "inetColumn"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -245,6 +267,14 @@ object KotlinTypeMapper {
         // field.string is the separate physical escape hatch and keeps the String property —
         // handled by the StringField arm, not here.
         is UuidField      -> ClassName("java.util", "UUID")
+        // field.uri → native java.net.URI property (ADR-0036/0037 Wave 3). The DB column is
+        // plain text (Postgres has no uri type); the file-local `uriColumn(...)` extension
+        // gives a `Column<URI>` so the property and column types match.
+        is UriField       -> ClassName("java.net", "URI")
+        // field.inet → native java.net.InetAddress property (ADR-0036/0037 Wave 3). The DB
+        // column is the Postgres-native inet type; the file-local `inetColumn(...)` extension
+        // gives a `Column<InetAddress>`.
+        is InetField      -> ClassName("java.net", "InetAddress")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
         // Keys are always String. The value type is the scalar named by @valueType,
         // or (for an @objectRef map) the referenced VO — which needs the loader to
@@ -453,6 +483,14 @@ object KotlinTypeMapper {
         is UuidField      ->
             if (isArrayResolved(field)) "array<java.util.UUID>(\"$colName\", org.jetbrains.exposed.sql.UUIDColumnType())"
             else "uuid(\"$colName\")"
+        // field.uri → file-local `uriColumn(...)` extension: a `Column<java.net.URI>` whose
+        // DDL is plain `text` (Postgres has no uri type). The helper lives in the package-shared
+        // MetaInetUriColumnType.kt support file (emitted once per package).
+        is UriField       -> "$EXPOSED_URI_FN(\"$colName\")"
+        // field.inet → file-local `inetColumn(...)` extension: a `Column<java.net.InetAddress>`
+        // whose DDL is the Postgres-native `inet`. The helper lives in the package-shared
+        // MetaInetUriColumnType.kt support file (emitted once per package).
+        is InetField      -> "$EXPOSED_INET_FN(\"$colName\")"
         // field.map → a single Postgres `JSONB` column holding the JSON object. Same
         // emission as a `field.object` jsonb column (the typed-object JSONB path) — the
         // Exposed `jsonb(name, encoder, decoder)` extension with kotlinx.serialization
@@ -518,6 +556,16 @@ object KotlinTypeMapper {
      */
     fun usesInstantWithTimeZone(field: MetaField<*>): Boolean =
         field is TimestampField && !localTimeOptIn(field)
+
+    /**
+     * True iff [field] needs the package-shared `MetaInetUriColumnType.kt` support file —
+     * i.e. it is a [UriField] (custom `Column<URI>` over `text`) or an [InetField] (custom
+     * `Column<InetAddress>` over the Postgres-native `inet` type). ADR-0036/0037 Wave 3.
+     * [KotlinExposedTableGenerator] uses this to decide whether a package needs the support
+     * file (one `uriColumn`/`inetColumn` extension declaration shared across its tables).
+     */
+    fun usesInetUriHelper(field: MetaField<*>): Boolean =
+        field is UriField || field is InetField
 
     /**
      * Best-effort read of a named boolean attribute on [field], resolved THROUGH the `extends`
