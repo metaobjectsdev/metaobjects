@@ -1854,8 +1854,7 @@ public static class ValidationPasses
                 // Rule 2: legal (subtype × value) pairing.
                 var requiredSubType = value switch
                 {
-                    DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB
-                        or DB_COLUMN_TYPE_UUID_ARRAY or DB_COLUMN_TYPE_TEXT_ARRAY => FIELD_SUBTYPE_STRING,
+                    DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB => FIELD_SUBTYPE_STRING,
                     DB_COLUMN_TYPE_TIMESTAMP_TZ => FIELD_SUBTYPE_TIMESTAMP,
                     _ => null, // unreachable (Rule 1)
                 };
