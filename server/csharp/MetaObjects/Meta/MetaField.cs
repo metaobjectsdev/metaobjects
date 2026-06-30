@@ -65,7 +65,7 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
 
     /// <summary>
     /// R6 Plan 2b — physical DB column-type override (own-only <c>@dbColumnType</c>):
-    /// <c>uuid</c> / <c>jsonb</c> / <c>timestamp_with_tz</c>, or null when absent. Own-only
+    /// <c>uuid</c> / <c>jsonb</c>, or null when absent. Own-only
     /// (a physical attr is never inherited via <c>extends:</c>), matching the loader's
     /// pairing-validation policy. The logical subtype and its native binding are unaffected.
     /// </summary>

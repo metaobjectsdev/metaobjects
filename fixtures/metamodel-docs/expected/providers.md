@@ -65,7 +65,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@storage`
 - `field.string`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
-- `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
+- `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
 - `identity.reference`: `@constraintName`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`

@@ -12,7 +12,7 @@ import org.jetbrains.exposed.sql.vendors.currentDialect
 /**
  * Reference copy of the support helper that
  * [com.metaobjects.generator.kotlin.KotlinExposedTableGenerator] emits (file-locally) into a
- * generated table that has a `@dbColumnType=timestamp_with_tz` column. Kept here as a sibling
+ * generated table that has a default (instant/TZ-aware) timestamp column. Kept here as a sibling
  * (mirroring [PreciseLocalTimeColumnType]) so the reference [AssetTable] compiles + runs against
  * real Exposed 0.55 — proving the generated helper is well-formed.
  *

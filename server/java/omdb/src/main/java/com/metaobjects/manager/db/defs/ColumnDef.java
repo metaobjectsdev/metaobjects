@@ -27,8 +27,9 @@ public class ColumnDef extends BaseArgDef {
 	public final static String COLTYPE_UUID = "uuid";
 	/** Hint: native JSONB column ({@code @dbColumnType: jsonb}, genuinely-open JSON). */
 	public final static String COLTYPE_JSONB = "jsonb";
-	/** Hint: TIMESTAMP WITH TIME ZONE column ({@code @dbColumnType: timestamp_with_tz}). */
-	public final static String COLTYPE_TIMESTAMP_TZ = "timestamp_with_tz";
+	// COLTYPE_TIMESTAMP_TZ retired (ADR-0036 Wave 2): timestamp timezone-awareness is
+	// no longer a @dbColumnType hint — field.timestamp is timestamptz by default and
+	// @localTime is the naive opt-out, read off the field by the timestamp codec.
 
 	private int length = DEFAULT_LENGTH;
 	private boolean isPrimaryKey = false;
@@ -105,8 +106,8 @@ public class ColumnDef extends BaseArgDef {
 
 	/**
 	 * The dialect-neutral physical column-type hint (one of {@link #COLTYPE_UUID} /
-	 * {@link #COLTYPE_JSONB} / {@link #COLTYPE_TIMESTAMP_TZ}), or {@code null} to use
-	 * the {@link #getSQLType() SQLType} default. R6 Plan 2a/2b.
+	 * {@link #COLTYPE_JSONB}), or {@code null} to use the {@link #getSQLType() SQLType}
+	 * default. R6 Plan 2a/2b.
 	 */
 	public String getDbColumnType() {
 		return dbColumnType;

@@ -145,7 +145,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			// Create the column definition
 			ColumnDef colDef = new ColumnDef( col, getSQLType( mf ));
 
-			// R6 Plan 2a/2b: physical column-type hint (native uuid/jsonb/timestamptz).
+			// R6 Plan 2a/2b: physical column-type hint (native uuid/jsonb).
 			// Drives the driver's native-column emission; the SQLType above still
 			// drives JDBC get/set so the field round-trips as its logical value.
 			colDef.setDbColumnType( resolveDbColumnType( mf ));
@@ -229,9 +229,15 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	 * <ol>
 	 *   <li>{@code field.uuid} (logical subtype) → native {@code uuid} column.</li>
 	 *   <li>{@code @dbColumnType} physical attr → the mapped hint
-	 *       ({@code uuid} / {@code jsonb} / {@code timestamp_with_tz}). The loader has
-	 *       already validated the (subtype × value) pairing, so no re-check here.</li>
+	 *       ({@code uuid} / {@code jsonb}). The loader has already validated the
+	 *       (subtype × value) pairing, so no re-check here.</li>
 	 * </ol>
+	 *
+	 * <p>Timestamp timezone-awareness is NOT a {@code @dbColumnType} hint anymore
+	 * (ADR-0036 Wave 2): {@code field.timestamp} is an instant ({@code timestamptz})
+	 * by default and {@code @localTime:true} is the naive opt-out — the
+	 * {@link com.metaobjects.manager.db.codec.JdbcCodecs.TimestampCodec} reads that
+	 * flag off the field directly.</p>
 	 */
 	protected String resolveDbColumnType(MetaField mf) {
 		if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(mf.getSubType())) {
@@ -241,7 +247,6 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			String value = mf.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE).getValueAsString();
 			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID.equals(value)) return ColumnDef.COLTYPE_UUID;
 			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(value)) return ColumnDef.COLTYPE_JSONB;
-			if (CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ.equals(value)) return ColumnDef.COLTYPE_TIMESTAMP_TZ;
 		}
 		return null;
 	}

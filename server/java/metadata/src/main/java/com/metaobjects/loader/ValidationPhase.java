@@ -666,12 +666,12 @@ public final class ValidationPhase {
     // Own-only: validates the @dbColumnType attribute declared on THIS field node
     // (not inherited), mirroring the field.enum @values pass. Two rules:
     //
-    //   1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz
-    //      → ERR_BAD_ATTR_VALUE otherwise.
+    //   1. The value must be one of the closed set uuid|jsonb
+    //      → ERR_BAD_ATTR_VALUE otherwise. (The timestamp_with_tz value was retired
+    //        in ADR-0036 Wave 2 — it now trips Rule 1 as an unrecognized value.)
     //   2. The value's legal (subtype × dbColumnType) pairing must hold:
-    //        uuid              → field.string
-    //        jsonb             → field.string
-    //        timestamp_with_tz → field.timestamp
+    //        uuid  → field.string
+    //        jsonb → field.string
     //      → ERR_BAD_ATTR_VALUE on an illegal pairing.
     //
     // The error message names the field, the value, and the legal set — matching
@@ -717,7 +717,6 @@ public final class ValidationPhase {
         String requiredSubType = switch (value) {
             case CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID,
                  CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB -> StringField.SUBTYPE_STRING;
-            case CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ -> TimestampField.SUBTYPE_TIMESTAMP;
             default -> null; // unreachable — Rule 1 already rejected unknown values
         };
         if (requiredSubType != null && !requiredSubType.equals(subType)) {
@@ -727,8 +726,7 @@ public final class ValidationPhase {
                     + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
                     + "' is not valid on field." + subType
                     + " (requires field." + requiredSubType + "); allowed pairings: "
-                    + "uuid→field.string, jsonb→field.string, "
-                    + "timestamp_with_tz→field.timestamp",
+                    + "uuid→field.string, jsonb→field.string",
                 ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
         }
     }

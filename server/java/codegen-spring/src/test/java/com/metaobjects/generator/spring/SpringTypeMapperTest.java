@@ -57,27 +57,27 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void timestampFieldMapsToLocalDateTime() {
-        // Plain `field.timestamp` is "timestamp WITHOUT time zone" — the wire form is a
-        // zone-less wall-clock ISO string with NO `Z` (normalization.md). java.time.Instant
-        // would force a UTC `Z` and can't even parse a zone-less string, so the no-tz default
-        // maps to java.time.LocalDateTime (matches KotlinTypeMapper's plain `timestamp(...)`).
-        assertEquals("java.time.LocalDateTime", SpringTypeMapper.javaTypeName(new TimestampField("createdAt")));
+    public void timestampFieldMapsToInstant() {
+        // ADR-0036 Wave 2: a plain `field.timestamp` is an absolute INSTANT by DEFAULT —
+        // "timestamp WITH time zone", UTC `Z` wire form → java.time.Instant.
+        assertEquals("java.time.Instant", SpringTypeMapper.javaTypeName(new TimestampField("createdAt")));
     }
 
     @Test
-    public void timestampFieldWithTzOptInMapsToInstant() {
-        // Opt-in `@dbColumnType=timestamp_with_tz` is "timestamp WITH time zone" — the wire
-        // form is the UTC `Z` instant, i.e. java.time.Instant.
-        TimestampField f = new TimestampField("createdAt");
-        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "timestamp_with_tz"));
-        assertEquals("java.time.Instant", SpringTypeMapper.javaTypeName(f));
+    public void timestampFieldWithLocalTimeOptOutMapsToLocalDateTime() {
+        // The rare `@localTime:true` naive opt-out is "timestamp WITHOUT time zone" — the wire
+        // form is a zone-less wall-clock ISO string with NO `Z`, i.e. java.time.LocalDateTime
+        // (an Instant can't parse a zone-less string). Matches KotlinTypeMapper's `datetime(...)`.
+        TimestampField f = new TimestampField("observedAt");
+        f.addMetaAttr(com.metaobjects.attr.BooleanAttribute.create("localTime", true));
+        assertEquals("java.time.LocalDateTime", SpringTypeMapper.javaTypeName(f));
     }
 
     @Test
-    public void timestampFieldTzOptInIsCaseInsensitive() {
+    public void timestampFieldLocalTimeFalseMapsToInstant() {
+        // @localTime:false is the explicit form of the instant default → java.time.Instant.
         TimestampField f = new TimestampField("createdAt");
-        f.addMetaAttr(com.metaobjects.attr.StringAttribute.create("dbColumnType", "TIMESTAMP_WITH_TZ"));
+        f.addMetaAttr(com.metaobjects.attr.BooleanAttribute.create("localTime", false));
         assertEquals("java.time.Instant", SpringTypeMapper.javaTypeName(f));
     }
 

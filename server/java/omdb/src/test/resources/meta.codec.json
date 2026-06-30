@@ -77,7 +77,8 @@
             {
               "field.timestamp": {
                 "name": "tsVal",
-                "@column": "tsVal"
+                "@column": "tsVal",
+                "@localTime": true
               }
             },
             {

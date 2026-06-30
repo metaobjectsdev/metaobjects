@@ -230,8 +230,7 @@
             {
               "field.timestamp": {
                 "name": "updatedAt",
-                "@autoSet": "onUpdate",
-                "@dbColumnType": "timestamp_with_tz"
+                "@autoSet": "onUpdate"
               }
             },
             {

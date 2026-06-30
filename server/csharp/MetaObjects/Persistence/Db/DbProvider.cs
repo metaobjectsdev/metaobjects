@@ -42,6 +42,15 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
                 attributes: [DbSchema.ColumnSchema, DbSchema.DbIndexedSchema, DbSchema.DbColumnTypeSchema]);
         }
 
+        // ADR-0036 Wave 2 — @localTime (the naive-timestamp opt-out) is field.timestamp-ONLY
+        // (it has no meaning on any other subtype), mirroring db.json's field.timestamp extends
+        // block. Default field.timestamp is an absolute instant (timestamptz / DateTimeOffset);
+        // @localTime:true opts into a naive wall-clock value (timestamp / DateTime).
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_FIELD,
+            FieldConstants.FIELD_SUBTYPE_TIMESTAMP,
+            attributes: [DbSchema.LocalTimeSchema]);
+
         // Physical RDB index/constraint attrs on identity subtypes — DB-domain
         // concerns (index ordering / partial predicate / FK constraint naming),
         // NOT core identity. Mirror the TS db.json identity extends.

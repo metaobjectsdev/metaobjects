@@ -38,7 +38,7 @@ public class AllTypes
     [Column("tsVal")]
     public DateTime TsVal { get; set; }
     [Column("tsTzVal")]
-    public DateTime TsTzVal { get; set; }
+    public DateTimeOffset TsTzVal { get; set; }
     [Column("moneyVal")]
     public long MoneyVal { get; set; }
     [Column("enumVal")]

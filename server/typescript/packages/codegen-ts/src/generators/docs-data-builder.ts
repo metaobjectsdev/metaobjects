@@ -160,7 +160,7 @@ function neutralTypeCell(field: MetaField): string {
 
 /** Neutral PHYSICAL type cell for the Storage table. Metadata-driven, no DDL
  *  re-derivation (ADR-0020): if the field declares a `@dbColumnType` physical
- *  override (e.g. `uuid`, `jsonb`, `timestamp_with_tz`) show it UPPERCASED;
+ *  override (e.g. `uuid`, `jsonb`) show it UPPERCASED;
  *  otherwise fall back to the same neutral LOGICAL type the Constraints table
  *  uses. Deliberately does NOT derive ANSI/ORM SQL so it can't drift vs the
  *  migrate engine or re-introduce language-specific DDL. Wrapped in backticks. */

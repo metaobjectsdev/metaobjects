@@ -200,6 +200,7 @@
       "untestedAttrs": [
         "column",
         "db.indexed",
+        "dbColumnType",
         "default",
         "example",
         "instruction",

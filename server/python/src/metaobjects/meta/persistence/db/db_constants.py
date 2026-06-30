@@ -18,8 +18,16 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 # Physical DB column-type override on a field (@dbColumnType). Closed value set:
-# DB_COLUMN_TYPE_UUID / DB_COLUMN_TYPE_JSONB / DB_COLUMN_TYPE_TIMESTAMP_TZ.
+# DB_COLUMN_TYPE_UUID / DB_COLUMN_TYPE_JSONB.
 FIELD_ATTR_DB_COLUMN_TYPE = "dbColumnType"
+
+# ADR-0036 Wave 2: @localTime — a boolean flag on field.timestamp marking the rare
+# naive / wall-clock case. When true the column is Postgres `timestamp without time
+# zone`; absent/false (the default) is an absolute instant → `timestamptz`. This
+# replaces the retired @dbColumnType: timestamp_with_tz escape hatch — timezone-
+# awareness now lives in the logical field type (instant-by-default) + this opt-out,
+# not in a physical column-type string.
+FIELD_ATTR_LOCAL_TIME = "localTime"
 
 # @db.indexed — boolean DB-domain attr on every field subtype. Suppresses the
 # @filterable-without-index warning by declaring an explicit index intent.
@@ -30,8 +38,12 @@ FIELD_ATTR_DB_INDEXED = "db.indexed"
 DB_COLUMN_TYPE_UUID = "uuid"
 # @dbColumnType: jsonb — genuinely-open JSON column (legal on field.string).
 DB_COLUMN_TYPE_JSONB = "jsonb"
-# @dbColumnType: timestamp_with_tz — timestamp with time zone (legal on field.timestamp).
-DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"
+
+# ADR-0036 Wave 2 removal: timestamp_with_tz is no longer a valid @dbColumnType
+# value. field.timestamp is instant / tz-aware BY DEFAULT and @localTime opts into
+# the naive wall-clock case — timezone-awareness moved out of @dbColumnType. The
+# constant is kept as a tombstone so any straggling caller gets a clear NameError.
+# DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"  # REMOVED — use @localTime opt-out
 
 # Phase 1 removal: uuid_array / text_array are no longer valid @dbColumnType values.
 # Derive native uuid[]/text[] from field.uuid/field.string + isArray=true instead.
@@ -40,11 +52,11 @@ DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"
 # DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array"  # REMOVED — use field.uuid isArray:true
 # DB_COLUMN_TYPE_TEXT_ARRAY = "text_array"  # REMOVED — use field.string isArray:true
 
-# The closed set of legal @dbColumnType values (Phase 1: uuid | jsonb | timestamp_with_tz).
+# The closed set of legal @dbColumnType values. ADR-0036 Wave 2 retires
+# timestamp_with_tz — the legal set is now just { uuid, jsonb }, both on field.string.
 VALID_DB_COLUMN_TYPES = (
     DB_COLUMN_TYPE_UUID,
     DB_COLUMN_TYPE_JSONB,
-    DB_COLUMN_TYPE_TIMESTAMP_TZ,
 )
 
 # ---------------------------------------------------------------------------

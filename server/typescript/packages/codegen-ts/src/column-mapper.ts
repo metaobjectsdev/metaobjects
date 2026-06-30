@@ -34,7 +34,7 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
-  DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
+  FIELD_ATTR_LOCAL_TIME,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
@@ -160,11 +160,15 @@ export interface ColumnSpec {
  * migrate-ts/src/expected-schema.ts (override checked first, wins over the
  * subtype default), so codegen and DDL agree.
  *
- * Postgres-only: uuid/jsonb/timestamptz are Postgres physical column types with
- * no native SQLite analogue, so on SQLite the attribute is ignored (the caller
- * falls through to the subtype default). The native TS binding is keyed on
+ * Postgres-only: uuid/jsonb are Postgres physical column types with no native
+ * SQLite analogue, so on SQLite the attribute is ignored (the caller falls
+ * through to the subtype default). The native TS binding is keyed on
  * field.subType elsewhere and is unaffected — a `field.string @dbColumnType:uuid`
  * field stays a TS `string`; only the Drizzle column function changes.
+ *
+ * ADR-0036 Wave 2: the `timestamp_with_tz` value is retired — `field.timestamp`
+ * is now instant/tz-aware BY DEFAULT (handled in the subtype switch below), and
+ * the naive opt-out is the `@localTime` boolean, not a physical override.
  *
  * The loader has already validated the (subtype × value) pairing, so an
  * unrecognized value never reaches here; an unknown value returns undefined
@@ -172,7 +176,6 @@ export interface ColumnSpec {
  */
 function pgColumnTypeOverride(
   field: MetaField,
-  timestampMode: "date" | "string" = "string",
 ): { fnName: string; fnOptions?: Record<string, unknown> } | undefined {
   const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType !== "string") return undefined;
@@ -181,12 +184,6 @@ function pgColumnTypeOverride(
       return { fnName: "uuid" };
     case DB_COLUMN_TYPE_JSONB:
       return { fnName: "jsonb" };
-    case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ:
-      // Drizzle pg-core: timestamp(col, { withTimezone: true }) → timestamptz.
-      // mode defaults to "string" (ISO-8601 wire contract, matching the generated
-      // Zod); a consumer can opt into "date" (drizzle's native mode) via
-      // codegen.timestampMode when its hand-written code works with JS Dates.
-      return { fnName: "timestamp", fnOptions: { mode: timestampMode, withTimezone: true } };
     default:
       return undefined;
   }
@@ -291,7 +288,7 @@ export function mapColumnType(
     // A physical @dbColumnType override wins over the subtype default (Postgres
     // only; SQLite has no native analogue and falls through above). Resolved
     // first so the override-precedence matches migrate-ts's expected-schema.
-    const override = pgColumnTypeOverride(field, timestampMode);
+    const override = pgColumnTypeOverride(field);
     if (override !== undefined) {
       // Override fully determines the physical type; skip the subtype switch.
       fnName = override.fnName;
@@ -322,6 +319,11 @@ export function mapColumnType(
           fnName = "time";
           break;
         case FIELD_SUBTYPE_TIMESTAMP:
+          // ADR-0036 Wave 2: field.timestamp is instant / tz-aware BY DEFAULT →
+          // timestamp({ withTimezone: true }) = timestamptz. A naive wall-clock
+          // value opts out with @localTime:true → timestamp({ withTimezone:
+          // false }) = `timestamp without time zone`.
+          //
           // mode:"string" so the column round-trips ISO-8601 strings — the
           // generated Zod schema validates timestamp fields as z.string() and
           // the cross-port wire format carries timestamps as JSON strings.
@@ -330,7 +332,10 @@ export function mapColumnType(
           // inconsistent with the string-typed schema + wire contract and
           // throws on a string write. See SP-B api-contract-generated lane.
           fnName = "timestamp";
-          fnOptions = { mode: timestampMode };
+          fnOptions = {
+            mode: timestampMode,
+            withTimezone: field.attr(FIELD_ATTR_LOCAL_TIME) !== true,
+          };
           break;
         case FIELD_SUBTYPE_UUID:
           // Postgres native uuid column; native TS binding stays `string`.

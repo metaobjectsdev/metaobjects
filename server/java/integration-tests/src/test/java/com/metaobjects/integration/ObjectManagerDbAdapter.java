@@ -458,11 +458,11 @@ final class ObjectManagerDbAdapter {
      *       INTEGER → JSON <em>number</em>, BIGINT → JSON <em>string</em>. OMDB reads
      *       both as {@link Long}; narrow to {@link Integer} when the catalog reports
      *       an INTEGER/SMALLINT column so {@link Normalization} emits a number.</li>
-     *   <li><b>TIMESTAMPTZ.</b> A {@code field.timestamp} flagged
-     *       {@code @dbColumnType: timestamp_with_tz} is an absolute instant whose wire
-     *       form carries a {@code Z}; surface it as an {@link java.time.OffsetDateTime}
-     *       in UTC so {@link Normalization} appends the suffix (a plain TIMESTAMP stays
-     *       a {@link java.sql.Timestamp} and renders with no {@code Z}).</li>
+     *   <li><b>TIMESTAMPTZ.</b> A {@code field.timestamp} is an absolute instant by
+     *       DEFAULT (ADR-0036 Wave 2) whose wire form carries a {@code Z}; surface it
+     *       as an {@link java.time.OffsetDateTime} in UTC so {@link Normalization}
+     *       appends the suffix. The rare {@code @localTime:true} naive opt-out stays a
+     *       {@link java.sql.Timestamp} and renders with no {@code Z}.</li>
      * </ul>
      *
      * <p>NUMERIC/DECIMAL needs no fix-up here: as of SP-D Unit 2 {@code DecimalField}
@@ -475,6 +475,8 @@ final class ObjectManagerDbAdapter {
         if (isTimestampTzField(mf) && value instanceof java.util.Date d) {
             return d.toInstant().atOffset(ZoneOffset.UTC);
         }
+        // (note: @localTime naive timestamps fall through and render as a zone-less
+        //  java.sql.Timestamp with no Z.)
         if (value instanceof Long l) {
             Integer sqlType = columnSqlTypes.get(mf.getName());
             if (sqlType != null && (sqlType == Types.INTEGER || sqlType == Types.SMALLINT || sqlType == Types.TINYINT)) {
@@ -484,9 +486,25 @@ final class ObjectManagerDbAdapter {
         return value;
     }
 
-    /** True for a {@code field.timestamp} carrying {@code @dbColumnType: timestamp_with_tz}. */
+    /**
+     * True for a {@code field.timestamp} that is timezone-aware — i.e. the instant
+     * DEFAULT (ADR-0036 Wave 2), which is every {@code field.timestamp} NOT flagged
+     * {@code @localTime:true} (the naive wall-clock opt-out).
+     */
     private static boolean isTimestampTzField(MetaField<?> mf) {
-        return hasDbColumnType(mf, CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ);
+        return com.metaobjects.field.TimestampField.SUBTYPE_TIMESTAMP.equals(mf.getSubType())
+            && !isLocalTimeField(mf);
+    }
+
+    /** True for a {@code field.timestamp} carrying {@code @localTime: true} (naive opt-out). */
+    private static boolean isLocalTimeField(MetaField<?> mf) {
+        try {
+            return mf.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME)
+                && Boolean.parseBoolean(
+                    String.valueOf(mf.getMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME).getValue()).trim());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** True when {@code mf} carries {@code @dbColumnType: <expected>} (false on any read error). */

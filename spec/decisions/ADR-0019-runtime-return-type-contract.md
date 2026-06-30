@@ -24,7 +24,7 @@ Per-concept native return type:
 | `field.long` | native 64-bit integer (TS: `number`; the BIGINT-as-number caveat for values > 2^53 is documented per-port) |
 | `field.decimal` | native **exact** decimal — Java/Kotlin `BigDecimal`, C# `decimal`, Python `Decimal`; **TS `string`** (TS has no native exact-decimal type; `string` preserves precision — see the SP-A type-fidelity design) |
 | `field.double` / `field.float` | native float/double |
-| `field.timestamp` / `date` / `time` | native temporal type; a **timezone-aware** value denotes `TIMESTAMPTZ`, a **naive** value denotes `TIMESTAMP` (this is how the boundary canonicalizer distinguishes them without column OIDs) |
+| `field.timestamp` / `date` / `time` | native temporal type. **`field.timestamp` is instant / timezone-aware BY DEFAULT (ADR-0036 Wave 2)** → `TIMESTAMPTZ`; native `Instant` (Java/Kotlin) / `DateTimeOffset` (C#) / aware `datetime` (Python) / ISO-8601 string with `Z` (TS). **`@localTime:true` is the naive opt-out** → `TIMESTAMP`; native `LocalDateTime` / `DateTime(Unspecified)` / naive `datetime` / string. The boundary canonicalizer still distinguishes the two by the value's tz-awareness (a **timezone-aware** value → `TIMESTAMPTZ`, a **naive** value → `TIMESTAMP`, without column OIDs) — only the DEFAULT moved from naive to tz-aware. |
 | `field.uuid` | native uuid type, or string where idiomatic for the port |
 | `field.string` / `field.enum` | native string |
 | `field.object` (structured jsonb) | native map / dict / object |

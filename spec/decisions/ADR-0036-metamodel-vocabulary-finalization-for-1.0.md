@@ -23,15 +23,15 @@ The throughline (confirmed by a cross-framework study of 11 ORMs/IDLs): **base t
 
 ## Decision
 
-### 1. Timestamp → instant-by-default, as a subtype split
+### 1. Timestamp → instant-by-default, naive via the `@localTime` attribute
 
-`@dbColumnType: timestamp_with_tz` fails the physical test — timezone-awareness changes the native type in every port (`Instant`/`DateTimeOffset`/aware `datetime` vs `LocalDateTime`/`DateTime`/naive). So model it as distinct subtypes, with **instant as the default**:
+`@dbColumnType: timestamp_with_tz` fails the physical test — timezone-awareness changes the native type in every port (`Instant`/`DateTimeOffset`/aware `datetime` vs `LocalDateTime`/`DateTime`/naive). It is logical vocabulary, not a physical knob. But it is the **same kind** of value (a date+time) with one orthogonal property (does it carry a zone), so by [ADR-0037](ADR-0037-metamodel-vocabulary-expansion-decision-framework.md) it is an **attribute, not a subtype**:
 
 - **`field.timestamp` = instant / tz-aware** — the default and common case → `timestamptz`; native `Instant` (Java/Kotlin) / `DateTimeOffset` (C#) / aware `datetime` (Python) / ISO-8601 string with `Z` (TS).
-- **`field.localDateTime` = naive wall-clock** — the narrow exception → `timestamp without time zone`; native `LocalDateTime` / `DateTime(Unspecified)` / naive `datetime` / string.
-- **`@dbColumnType: timestamp_with_tz` is retired** — the ~180 adopter annotations simply drop (a bare `field.timestamp` is now what they wanted); only genuinely-naive fields become `field.localDateTime` (many of those are latent bugs the flip fixes).
+- **`@localTime: true`** on `field.timestamp` = naive wall-clock — the narrow exception → `timestamp without time zone`; native `LocalDateTime` / `DateTime(Unspecified)` / naive `datetime` / string. A boolean attribute, default false/absent (so the common case needs nothing).
+- **`@dbColumnType: timestamp_with_tz` is retired** — the ~180 adopter annotations simply drop (a bare `field.timestamp` is now what they wanted); only genuinely-naive fields gain `@localTime: true` (many bare timestamps that were naive-by-accident are latent bugs the flip fixes).
 
-Rationale: the type-system/IDL layer (Protobuf, GraphQL, Ecto, and the Java/.NET/Python native types the ports already bind to) models this as a *distinct type*, not a flag; the modifier-flag form is the SQL-ORM-builder idiom. Aware-by-default is the unanimous best-practice (Postgres "Don't Do This", Ecto, Django 5.0). `timetz` is discouraged and `date` is inherently naive, so the split applies only to `timestamp` — no family explosion. Subtype over attribute because the adopter migration cost is identical either way (so decide on merit) and the subtype gives cleaner per-port native binding.
+Rationale: aware-by-default is the unanimous best-practice (Postgres "Don't Do This", Ecto, Django 5.0). `timetz` is discouraged and `date` is inherently naive, so the distinction applies only to `timestamp`. The attribute is the right shape (not a subtype) because timezone-awareness is an orthogonal modifier of one base type — the same shape as `@maxLength` on a string — not a different *kind* of value the way `field.uuid` is (ADR-0037, step 2). _Earlier drafts proposed a `field.localDateTime` subtype; that was corrected to the attribute under the ADR-0037 framework — the per-port native-binding conditional already exists, and a subtype would over-weight a rare modifier into a sibling type._
 
 ### 2. Semantic string `@format` — a closed-set attribute on `field.string`
 
@@ -56,7 +56,7 @@ The earlier "slim-and-derive" landed the *derive* half (native `text[]`/`uuid[]`
 
 - Decisions 1 and 4 are **breaking** and must land inside the consolidation window; 2, 3, 5 are additive (3 adds a build-time error only for already-ambiguous models).
 - Each ships cross-port with a `registry-conformance` fixture (ADR-0023 strict provenance).
-- Adopters migrate once, to the final shapes: drop ~180 `timestamp_with_tz` annotations, convert genuinely-naive timestamps to `field.localDateTime`, move 5 array fields to `isArray`, and name same-pair relationships. `@dbColumnType:uuid` and `@dbColumnType:jsonb` continue working unchanged.
+- Adopters migrate once, to the final shapes: drop ~180 `timestamp_with_tz` annotations, add `@localTime: true` to genuinely-naive timestamps, move 5 array fields to `isArray`, and name same-pair relationships. `@dbColumnType:uuid` and `@dbColumnType:jsonb` continue working unchanged.
 
 ## Deferred to a later wave (recorded so they are reservations, not gaps)
 

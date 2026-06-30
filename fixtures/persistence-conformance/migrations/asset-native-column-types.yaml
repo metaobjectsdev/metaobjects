@@ -8,8 +8,8 @@ description: |
     ownerId     uuid                         (field.uuid, non-key)
     externalId  uuid                         (field.string + @dbColumnType: uuid)
     payload     jsonb                        (field.string + @dbColumnType: jsonb, genuinely-open JSON)
-    recordedAt  timestamp with time zone     (field.timestamp + @dbColumnType: timestamp_with_tz)
-    observedAt  timestamp without time zone  (field.timestamp → TIMESTAMP)
+    recordedAt  timestamp with time zone     (field.timestamp → TIMESTAMPTZ, tz-aware by default)
+    observedAt  timestamp without time zone  (field.timestamp + @localTime: true → TIMESTAMP)
     asOfDate    date                         (field.date → DATE)
     atTime      time without time zone       (field.time → TIME)
 

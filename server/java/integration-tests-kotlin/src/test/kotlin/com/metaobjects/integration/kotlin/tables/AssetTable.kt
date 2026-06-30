@@ -18,7 +18,7 @@ import kotlinx.serialization.json.Json
  *   - `field.uuid` (non-key, @required)              → `uuid("ownerId")` (Postgres native uuid)
  *   - `field.string` + `@dbColumnType:uuid`          → `uuid("externalId")` (native uuid column; generated DATA-CLASS property stays String)
  *   - `field.string` + `@dbColumnType:jsonb`         → `jsonb("payload", …)` (real Postgres JSONB; parsed to kotlinx JsonElement, issue #98)
- *   - `field.timestamp` + `@dbColumnType:timestamp_with_tz` → `instantWithTimeZone("recordedAt")`
+ *   - default `field.timestamp` (instant/TZ-aware, ADR-0036 Wave 2) → `instantWithTimeZone("recordedAt")`
  *     (a `Column<java.time.Instant>` whose DDL is `TIMESTAMP WITH TIME ZONE` — matches the
  *     `Instant` data-class property with zero coercion; see [instantWithTimeZone])
  *

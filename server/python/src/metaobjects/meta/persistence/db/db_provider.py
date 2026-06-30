@@ -16,7 +16,7 @@ legality is still owned by the loader pass, mirroring the field.enum ``@values``
 """
 from __future__ import annotations
 
-from ...core.attr.attr_constants import ATTR_SUBTYPE_STRING
+from ...core.attr.attr_constants import ATTR_SUBTYPE_BOOLEAN, ATTR_SUBTYPE_STRING
 from ...core.field import field_constants as fc
 from ...core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
@@ -27,6 +27,7 @@ from ....registry import AttrSchema, TypeRegistry
 from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY
 from .db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
+    FIELD_ATTR_LOCAL_TIME,
     IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME,
     IDENTITY_SECONDARY_ATTR_ORDERS,
     IDENTITY_SECONDARY_ATTR_WHERE,
@@ -46,19 +47,28 @@ _DB_FIELD_SUBTYPES: tuple[str, ...] = (*fc.FIELD_SUBTYPES, fc.FIELD_SUBTYPE_ENUM
 _COLUMN_SCHEMA = AttrSchema(name=fc.FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False)
 
 # @dbColumnType — physical column-type override on a field. Carries the closed
-# value-set (uuid | jsonb | timestamp_with_tz) PURELY so it surfaces in the
-# registry manifest (ADR-0036 Wave 1, decision 5 — closed-value-set conformance
-# gate). Its REAL constraint is the (subtype × value) pairing enforced by the
-# loader's _validate_db_column_type pass, which emits the single ERR_BAD_ATTR_VALUE
-# for both an unrecognized value and an illegal pairing; that pass is the sole
-# enforcer, so @dbColumnType is EXEMPT from the generic flat allowed_values
-# membership check (Check 3 in validation_passes) to avoid double-reporting —
-# matching the TS reference.
+# value-set (uuid | jsonb) PURELY so it surfaces in the registry manifest (ADR-0036
+# Wave 1, decision 5 — closed-value-set conformance gate). Its REAL constraint is
+# the (subtype × value) pairing enforced by the loader's _validate_db_column_type
+# pass, which emits the single ERR_BAD_ATTR_VALUE for both an unrecognized value and
+# an illegal pairing; that pass is the sole enforcer, so @dbColumnType is EXEMPT from
+# the generic flat allowed_values membership check (Check 3 in validation_passes) to
+# avoid double-reporting — matching the TS reference.
 _DB_COLUMN_TYPE_SCHEMA = AttrSchema(
     name=FIELD_ATTR_DB_COLUMN_TYPE,
     value_type=ATTR_SUBTYPE_STRING,
     required=False,
     allowed_values=VALID_DB_COLUMN_TYPES,
+)
+
+# @localTime — boolean opt-out into a naive / wall-clock timestamp (ADR-0036 Wave
+# 2). Registered on field.timestamp only; the description is sourced from the
+# embedded spec/metamodel/db.json by apply_spec_descriptions (single-source). NO
+# allowed_values — it's an open boolean, not a closed-enum attr.
+_LOCAL_TIME_SCHEMA = AttrSchema(
+    name=FIELD_ATTR_LOCAL_TIME,
+    value_type=ATTR_SUBTYPE_BOOLEAN,
+    required=False,
 )
 
 # DB-domain physical attrs EXTENDING identity subtypes — RDB index / FK-constraint
@@ -129,6 +139,13 @@ def _register(registry: TypeRegistry) -> None:
             sub_type,
             attributes=[_COLUMN_SCHEMA, _DB_COLUMN_TYPE_SCHEMA],
         )
+    # ADR-0036 Wave 2: @localTime is a field.timestamp-only opt-out (instant by
+    # default → naive). Registered on the timestamp subtype only.
+    registry.extend(
+        TYPE_FIELD,
+        fc.FIELD_SUBTYPE_TIMESTAMP,
+        attributes=[_LOCAL_TIME_SCHEMA],
+    )
     registry.extend(
         TYPE_IDENTITY,
         IDENTITY_SUBTYPE_SECONDARY,

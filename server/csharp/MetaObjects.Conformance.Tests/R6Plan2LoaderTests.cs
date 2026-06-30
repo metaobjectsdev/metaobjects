@@ -84,7 +84,8 @@ public class R6Plan2LoaderTests
     [Theory]
     [InlineData(FIELD_SUBTYPE_STRING, DB_COLUMN_TYPE_UUID)]
     [InlineData(FIELD_SUBTYPE_STRING, DB_COLUMN_TYPE_JSONB)]
-    [InlineData(FIELD_SUBTYPE_TIMESTAMP, DB_COLUMN_TYPE_TIMESTAMP_TZ)]
+    // ADR-0036 Wave 2 — timestamp_with_tz retired; the only legal pairings are uuid/jsonb
+    // on field.string (timezone-awareness now lives in field.timestamp + @localTime).
     public void DbColumnType_legal_pairing_loads_clean(string fieldSubtype, string dbColumnType)
     {
         var res = LoadJson(Pairing(fieldSubtype, dbColumnType));
@@ -97,8 +98,10 @@ public class R6Plan2LoaderTests
     // ------------------------------------------------------------------------
 
     [Theory]
-    // timestamp_with_tz illegal on field.string (requires field.timestamp).
-    [InlineData(FIELD_SUBTYPE_STRING, DB_COLUMN_TYPE_TIMESTAMP_TZ)]
+    // ADR-0036 Wave 2 — the retired timestamp_with_tz value is now an UNKNOWN value
+    // (Rule 1), still ERR_BAD_ATTR_VALUE with the value named in the message.
+    [InlineData(FIELD_SUBTYPE_TIMESTAMP, "timestamp_with_tz")]
+    [InlineData(FIELD_SUBTYPE_STRING, "timestamp_with_tz")]
     // uuid illegal on field.timestamp (requires field.string).
     [InlineData(FIELD_SUBTYPE_TIMESTAMP, DB_COLUMN_TYPE_UUID)]
     // jsonb illegal on field.long (requires field.string).

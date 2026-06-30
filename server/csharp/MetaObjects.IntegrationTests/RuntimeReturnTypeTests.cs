@@ -82,9 +82,12 @@ public sealed class RuntimeReturnTypeTests
         var assetId = Guid.Parse("11111111-1111-4111-8111-111111111111");
         var asset = await db.Assets.AsNoTracking().SingleAsync(a => a.Id == assetId);
 
+        // ADR-0036 Wave 2 — a default field.timestamp is an absolute instant: a native
+        // DateTimeOffset over a `timestamp with time zone` (timestamptz) column, NOT a string.
+        // (A naive field.timestamp @localTime:true would surface as a native DateTime.)
         object recordedAt = asset.RecordedAt;
-        Assert.True(recordedAt is DateTime,
-            $"field.timestamp Asset.RecordedAt (TIMESTAMPTZ) must be a native DateTime, NOT a string. Got: {recordedAt.GetType()}");
+        Assert.True(recordedAt is DateTimeOffset,
+            $"field.timestamp Asset.RecordedAt (TIMESTAMPTZ) must be a native DateTimeOffset, NOT a string. Got: {recordedAt.GetType()}");
         Assert.IsNotType<string>(recordedAt);
 
         // jsonb: the generated entity models the open-JSON column as a JsonDocument

@@ -321,6 +321,11 @@ public class JdbcCodecRoundTripTest {
         com.metaobjects.field.TimestampField tsField = new com.metaobjects.field.TimestampField("tsVal") {
             @Override public void setDate(Object obj, Date value) { store.put("v", value); }
         };
+        // @localTime:true selects the naive ("timestamp WITHOUT time zone") codec path — the only
+        // one Derby's plain TIMESTAMP column supports. The instant/tz default (no @localTime) binds
+        // via setObject(TIMESTAMP_WITH_TIMEZONE), gated against real Postgres in persistence-conformance.
+        tsField.addMetaAttr(com.metaobjects.attr.BooleanAttribute.create(
+                com.metaobjects.database.CoreDBMetaDataProvider.LOCAL_TIME, true));
         JdbcCodecs.TimestampCodec codec = new JdbcCodecs.TimestampCodec();
 
         // The UTC wall clock the corpus asserts (no zone).

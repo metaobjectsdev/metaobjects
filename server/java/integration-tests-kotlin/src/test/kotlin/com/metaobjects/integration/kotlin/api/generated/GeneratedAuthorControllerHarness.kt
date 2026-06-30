@@ -1,7 +1,11 @@
 package com.metaobjects.integration.kotlin.api.generated
 
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.DeserializationContext
+import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
@@ -26,6 +30,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
@@ -73,10 +78,27 @@ class GeneratedAuthorControllerHarness(
     private val seedRows: List<Map<String, Any?>>,
 ) : AutoCloseable {
 
-    /** Jackson mapper used by MockMvc's converter and to (de)serialize bodies. */
+    /**
+     * Jackson mapper used by MockMvc's converter and to (de)serialize bodies.
+     *
+     * ADR-0036 Wave 2: the generated `Author.createdAt` is a `java.time.Instant`. Corpus
+     * scenario/seed bodies are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss), which Jackson's
+     * default Instant deserializer rejects — so register an Instant deserializer that
+     * interprets an offset-less value as UTC (the instant wire contract; mirrors the C# lane).
+     */
     private val mapper: ObjectMapper = ObjectMapper()
         .registerKotlinModule()
         .registerModule(JavaTimeModule())
+        .registerModule(
+            SimpleModule().addDeserializer(Instant::class.java, object : JsonDeserializer<Instant?>() {
+                override fun deserialize(p: JsonParser, ctx: DeserializationContext): Instant? {
+                    val raw = p.valueAsString
+                    if (raw.isNullOrEmpty()) return null
+                    val s = if (raw.endsWith("Z") || raw.contains("+")) raw else raw + "Z"
+                    return Instant.parse(s)
+                }
+            })
+        )
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
     private val classLoader: ClassLoader

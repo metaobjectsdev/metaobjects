@@ -464,7 +464,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
     expect(cols.find((c) => c.name === "tools")?.sqlType).toEqual({ kind: "json" });
   });
 
-  test("@dbColumnType:timestamp_with_tz on field.timestamp → SqlType.timestamp{withTimezone:true}", async () => {
+  test("a plain field.timestamp is instant / tz-aware by default → SqlType.timestamp{withTimezone:true} (ADR-0036 Wave 2)", async () => {
     const root = await loadInline([
       {
         "object.entity": {
@@ -472,7 +472,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
           children: [
             { "source.rdb": { "@table": "a" } },
             { "field.long":      { name: "id" } },
-            { "field.timestamp": { name: "recordedAt", "@dbColumnType": "timestamp_with_tz" } },
+            { "field.timestamp": { name: "recordedAt" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },
@@ -483,7 +483,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
     expect(col?.sqlType).toEqual({ kind: "timestamp", withTimezone: true });
   });
 
-  test("a plain field.timestamp (no @dbColumnType) stays withTimezone:false", async () => {
+  test("field.timestamp @localTime:true opts into naive → withTimezone:false", async () => {
     const root = await loadInline([
       {
         "object.entity": {
@@ -491,7 +491,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
           children: [
             { "source.rdb": { "@table": "a" } },
             { "field.long":      { name: "id" } },
-            { "field.timestamp": { name: "createdAt" } },
+            { "field.timestamp": { name: "createdAt", "@localTime": true } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
           ],
         },

@@ -674,8 +674,9 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
         return value if isinstance(value, _uuid.UUID) else _uuid.UUID(str(value))
 
     # temporal: parse the authoring string to the native type, with tz-awareness
-    # driven by the field (TIMESTAMP → naive, TIMESTAMPTZ → aware) so the driver
-    # binds the correct physical type.
+    # driven by the field so the driver binds the correct physical type. ADR-0036
+    # Wave 2: field.timestamp is instant / tz-aware BY DEFAULT (→ timestamptz); the
+    # rare naive wall-clock case opts out with @localTime:true (→ plain timestamp).
     if sub == fc.FIELD_SUBTYPE_DATE:
         return value if isinstance(value, _dt.date) else _dt.date.fromisoformat(str(value))
     if sub == fc.FIELD_SUBTYPE_TIME:
@@ -683,7 +684,7 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     if sub == fc.FIELD_SUBTYPE_TIMESTAMP:
         if isinstance(value, _dt.datetime):
             return value
-        is_tz = col_type == dbc.DB_COLUMN_TYPE_TIMESTAMP_TZ
+        is_tz = field.attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True
         return _parse_datetime(str(value), tz_aware=is_tz)
 
     # field.object (jsonb storage): a dict/list passes through — pg8000 binds it

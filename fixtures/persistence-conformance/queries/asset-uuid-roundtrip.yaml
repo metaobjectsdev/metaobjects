@@ -13,9 +13,10 @@ description: |
   payload is a @dbColumnType:jsonb open-JSON column; jsonb re-serializes with
   sorted keys per the normalization contract.
 
-  recordedAt is a @dbColumnType:timestamp_with_tz column (TIMESTAMPTZ). Its
-  native physical type (`timestamp with time zone`) is asserted port-
-  independently in migrations/asset-native-column-types.yaml. Here it is seeded
+  recordedAt is a plain field.timestamp column — instant / tz-aware BY DEFAULT
+  (ADR-0036 Wave 2), so it is TIMESTAMPTZ. Its native physical type (`timestamp
+  with time zone`) is asserted port-independently in
+  migrations/asset-native-column-types.yaml. Here it is seeded
   at exact-UTC instants and asserted in the canonical UTC Z form per
   normalization.md. observedAt/asOfDate/atTime are the @required temporal
   columns on Asset (full wire-type coverage lives in normalization-wire-types.yaml).
