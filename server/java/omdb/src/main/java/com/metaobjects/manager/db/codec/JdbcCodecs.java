@@ -42,6 +42,8 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.field.UriField;
+import com.metaobjects.field.InetField;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -93,6 +95,14 @@ public final class JdbcCodecs {
         register(CurrencyField.class, new CurrencyCodec());
         register(EnumField.class, new EnumCodec());
         register(UuidField.class, new UuidCodec());
+        // ADR-0036/0037 Wave 3: field.uri ⇄ a plain text column — String-backed wire value,
+        // so bind/read as a String exactly like StringField/EnumField.
+        register(UriField.class, new StringCodec());
+        // field.inet ⇄ a native Postgres inet column — String-backed wire value, bound via
+        // setObject(.., Types.OTHER) so the driver routes the string into the native inet
+        // type (a plain setString fails "operator does not exist: inet = varchar"), mirroring
+        // the UuidCodec native-column pattern.
+        register(InetField.class, new InetCodec());
         register(ObjectField.class, DEFAULT);  // identity with the fallback codec
     }
 
@@ -438,6 +448,27 @@ public final class JdbcCodecs {
                 UUID uuid = (v instanceof UUID u) ? u : UUID.fromString(v.toString());
                 s.setObject(j, uuid, Types.OTHER);
             }
+        }
+    }
+
+    /**
+     * {@code field.inet} ⇄ a native Postgres {@code inet} column (ADR-0036/0037 Wave 3).
+     * InetField is backed by {@code DataTypes.STRING} (the wire form is the IP host-literal
+     * string), but a native {@code inet} column rejects a {@code setString} ("operator does
+     * not exist: inet = varchar" without {@code stringtype=unspecified}). Bind the string via
+     * {@code setObject(.., Types.OTHER)} — the driver coerces it to {@code inet} — and read
+     * back the column as its string form. Mirrors {@link UuidCodec}'s native-column pattern.
+     * On a portable dialect with no native inet type the column is plain text and the
+     * string round-trips unchanged.
+     */
+    static final class InetCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            String v = rs.getString(j);
+            f.setString(o, (v == null || rs.wasNull()) ? null : v);
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.OTHER);
+            else s.setObject(j, v.toString(), Types.OTHER);
         }
     }
 

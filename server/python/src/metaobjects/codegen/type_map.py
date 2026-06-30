@@ -30,6 +30,15 @@ _SCALAR: dict[str, PyType] = {
     # R6 Plan 2a — field.uuid binds the idiomatic native uuid.UUID (ADR-0001),
     # surfaced at build time. Wire/storage form stays a lowercase-canonical string.
     fc.FIELD_SUBTYPE_UUID: PyType("uuid.UUID", ("import uuid",)),
+    # ADR-0036/0037 Wave 3 — field.uri binds Pydantic's AnyUrl (the idiomatic
+    # native URL type; parses + validates scheme/authority/path — the Python
+    # analogue of TS Zod z.string().url()). Wire/storage form stays a string;
+    # DB column is text.
+    fc.FIELD_SUBTYPE_URI: PyType("AnyUrl", ("from pydantic import AnyUrl",)),
+    # ADR-0036/0037 Wave 3 — field.inet binds Pydantic's IPvAnyAddress (accepts
+    # IPv4 + IPv6 — the Python analogue of TS Zod z.string().ip()). Wire/storage
+    # form stays a string; DB column is the Postgres-native inet type.
+    fc.FIELD_SUBTYPE_INET: PyType("IPvAnyAddress", ("from pydantic import IPvAnyAddress",)),
 }
 
 

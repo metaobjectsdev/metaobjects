@@ -1,0 +1,49 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Endpoint",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.uri": {
+                "name": "webhookUrl"
+              }
+            },
+            {
+              "field.inet": {
+                "name": "sourceIp"
+              }
+            },
+            {
+              "field.string": {
+                "name": "contactEmail",
+                "@stringFormat": "email"
+              }
+            },
+            {
+              "field.string": {
+                "name": "host",
+                "@stringFormat": "hostname"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

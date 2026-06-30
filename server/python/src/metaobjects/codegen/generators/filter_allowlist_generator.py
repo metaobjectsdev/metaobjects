@@ -91,7 +91,11 @@ def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
         return ()
     if sub_type in (fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_ENUM):
         return _OPS_STRING
-    if sub_type == fc.FIELD_SUBTYPE_UUID:
+    # ADR-0036/0037 Wave 3 — field.uri is string-like (substring searchable);
+    # field.inet is uuid-like (identity value, no substring search, no ordering).
+    if sub_type == fc.FIELD_SUBTYPE_URI:
+        return _OPS_STRING
+    if sub_type in (fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_INET):
         return _OPS_UUID
     if sub_type in (
         fc.FIELD_SUBTYPE_INT,

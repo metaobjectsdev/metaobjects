@@ -134,6 +134,23 @@ public static class FieldSchema
             "(string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). " +
             "Mutually exclusive with @objectRef; exactly one of the two must be set.");
 
+    /// <summary>
+    /// ADR-0036 Wave 3 — the @stringFormat attr — only on field.string. Closed value set
+    /// {email | hostname}. The field stays a plain string; codegen owns the canonical
+    /// matcher per format. The allowed-values set is the Wave-1 gate mechanism (emitted to
+    /// the registry manifest as allowedValues).
+    /// </summary>
+    public static readonly AttrSchema StringFormatAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_STRING_FORMAT,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        AllowedValues: [.. FieldConstants.STRING_FORMAT_VALUES],
+        Description:
+            "ADR-0036/0037: a closed validation format for a plain string field that has NO " +
+            "native type or behavior of its own — email | hostname. The field stays a plain " +
+            "string (native binding + DB column unchanged); codegen emits the matching validator. " +
+            "The canonical matcher per format lives in each port's codegen, NOT author validator.regex.");
+
     /// <summary>The @currency attr — only on field.currency.</summary>
     public static readonly AttrSchema CurrencyFieldAttr = new AttrSchema(
         Name: FieldConstants.FIELD_ATTR_CURRENCY,

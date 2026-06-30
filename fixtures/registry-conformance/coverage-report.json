@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 61,
-  "exercisedSubTypeCount": 39,
+  "registeredSubTypeCount": 63,
+  "exercisedSubTypeCount": 41,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -131,6 +131,24 @@
       ]
     },
     {
+      "key": "field.inet",
+      "untestedAttrs": [
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "readOnly",
+        "required",
+        "sortable",
+        "sortableDefaultOrder",
+        "unique",
+        "xmlText"
+      ]
+    },
+    {
       "key": "field.int",
       "untestedAttrs": [
         "column",
@@ -204,6 +222,24 @@
         "default",
         "example",
         "instruction",
+        "sortableDefaultOrder",
+        "unique",
+        "xmlText"
+      ]
+    },
+    {
+      "key": "field.uri",
+      "untestedAttrs": [
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "readOnly",
+        "required",
+        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"

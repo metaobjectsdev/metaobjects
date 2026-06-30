@@ -422,8 +422,31 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             }
         }
 
+        // ADR-0036/0037 Wave 3 — @stringFormat on a plain string field. The canonical
+        // matcher per format lives HERE in codegen (NOT author validator.regex), since
+        // cross-language regex engines diverge. email → Jakarta @Email; hostname → a
+        // canonical DNS-hostname @Pattern check.
+        if (isString && !isArray && field.hasMetaAttr(StringField.ATTR_STRING_FORMAT)) {
+            String format = String.valueOf(
+                field.getMetaAttr(StringField.ATTR_STRING_FORMAT).getValue()).trim();
+            if (StringField.STRING_FORMAT_EMAIL.equals(format)) {
+                out.add("@Email");
+            } else if (StringField.STRING_FORMAT_HOSTNAME.equals(format)) {
+                out.add("@Pattern(regexp = \"" + escapeJavaString(HOSTNAME_REGEX) + "\")");
+            }
+        }
+
         return String.join(" ", out);
     }
+
+    /**
+     * Canonical DNS-hostname matcher for {@code @stringFormat: hostname} (ADR-0036/0037
+     * Wave 3). Codegen-owned — one or more dot-separated labels, each 1–63 chars of
+     * alphanumerics/hyphens not starting or ending with a hyphen. Mirrors the cross-port
+     * hostname matcher (TS Zod hostname check).
+     */
+    static final String HOSTNAME_REGEX =
+        "^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$";
 
     protected static String sizeAnnotation(Integer min, Integer max) {
         StringBuilder b = new StringBuilder("@Size(");

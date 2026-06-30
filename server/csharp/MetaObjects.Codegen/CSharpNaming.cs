@@ -54,11 +54,26 @@ public static class CSharpNaming
             // (ADR-0001), independent of its string wire form. The native uuid DB
             // column is a separate migrate-engine concern (SubtypeToSqlType).
             [FIELD_SUBTYPE_UUID]      = "Guid",
+            // ADR-0036 Wave 3 — field.uri binds to the native System.Uri reference type
+            // (DB column is text); field.inet binds to System.Net.IPAddress (DB column is
+            // the Postgres-native inet type). Both are string-backed on the wire.
+            [FIELD_SUBTYPE_URI]       = "Uri",
+            [FIELD_SUBTYPE_INET]      = "IPAddress",
         };
 
     /// <summary>Value types that take a <c>?</c> suffix when nullable (vs. reference types).</summary>
     private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
         { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "DateTimeOffset", "Guid" };
+
+    /// <summary>
+    /// ADR-0036 Wave 3 — the CANONICAL hostname matcher for <c>@stringFormat: hostname</c>,
+    /// emitted into a <c>[RegularExpression(@"...")]</c> verbatim string literal. The matcher
+    /// lives in codegen (NOT author <c>validator.regex</c>) so every port replicates the SAME
+    /// canonical form. RFC-1123 labels: 1–63 chars each, alphanumeric + internal hyphens,
+    /// dot-separated; total ≤253, anchored. Byte-identical to the TS Zod <c>.regex(...)</c> source.
+    /// </summary>
+    public const string HostnameRegex =
+        @"^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$";
 
     /// <summary>The base C# scalar type for a field subtype (no nullability), or null for object fields.</summary>
     public static string? ScalarFor(string fieldSubType) =>
@@ -107,6 +122,12 @@ public static class CSharpNaming
     /// (so the generated file needs <c>using System.Text.Json;</c> for the JsonDocument type).</summary>
     public static bool RequiresSystemTextJson(MetaObject obj) =>
         obj.Fields().Any(f => DbColumnTypeClrOverride(f) is not null);
+
+    /// <summary>ADR-0036 Wave 3 — true when any of <paramref name="obj"/>'s own fields is a
+    /// <c>field.inet</c> (so the generated file needs <c>using System.Net;</c> for the
+    /// <c>IPAddress</c> type). <c>field.uri</c> needs only <c>System</c> (always imported).</summary>
+    public static bool RequiresSystemNet(MetaObject obj) =>
+        obj.Fields().Any(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_INET);
 
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);

@@ -43,6 +43,46 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    @Test fun `field uri and field inet emit custom columns and the shared support file`() {
+        // ADR-0036/0037 Wave 3: a `field.uri` → `uriColumn(...)` (Column<URI> over text);
+        // a `field.inet` → `inetColumn(...)` (Column<InetAddress> over native inet); both
+        // backed by the package-shared MetaInetUriColumnType.kt support file.
+        val fixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Endpoint", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.uri":    { "name": "webhookUrl" } },
+                { "field.inet":   { "name": "sourceIp" } },
+                { "source.rdb":   { "@table": "endpoints" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-ineturi-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", fixture))
+
+            val table = outDir.resolve("acme/demo/EndpointTable.kt")
+            assertTrue(Files.exists(table), "expected $table")
+            val src = Files.readString(table)
+            assertTrue("val webhookUrl = uriColumn(\"webhook_url\")" in src, src)
+            assertTrue("val sourceIp = inetColumn(\"source_ip\")" in src, src)
+
+            val support = outDir.resolve("acme/demo/MetaInetUriColumnType.kt")
+            assertTrue(Files.exists(support), "expected shared support file $support")
+            val sup = Files.readString(support)
+            assertTrue("internal class MetaUriColumnType : ColumnType<URI>()" in sup, sup)
+            assertTrue("internal class MetaInetColumnType : ColumnType<InetAddress>()" in sup, sup)
+            assertTrue("override fun sqlType(): String = \"inet\"" in sup, sup)
+            assertTrue("internal fun Table.uriColumn(name: String): Column<URI>" in sup, sup)
+            assertTrue("internal fun Table.inetColumn(name: String): Column<InetAddress>" in sup, sup)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `skips entities without source rdb child`() {
         val noSource = """{
           "metadata.root": { "package": "x", "children": [

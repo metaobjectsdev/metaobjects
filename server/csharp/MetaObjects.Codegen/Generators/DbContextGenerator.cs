@@ -126,6 +126,26 @@ public class DbContextGenerator : IGenerator
                     : "timestamp with time zone";
                 modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
             }
+            // ADR-0036 Wave 3 — field.uri / field.inet native CLR bindings.
+            //   • field.uri → CLR System.Uri over a `text` column. EF has no built-in
+            //     Uri↔column mapping, so a HasConversion(Uri↔string) + HasColumnType("text")
+            //     stores the absolute URI string and the model agrees with the TS-owned DDL.
+            //   • field.inet → CLR System.Net.IPAddress over the Postgres-native `inet`
+            //     column. Npgsql maps IPAddress↔inet natively; the explicit HasColumnType
+            //     keeps the model and the TS-owned schema DDL in lockstep.
+            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_URI))
+            {
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add(
+                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new Uri(v));");
+            }
+            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_INET))
+            {
+                var prop = CSharpNaming.Pascal(f.Name);
+                modelLines.Add(
+                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
+            }
+
             // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
             // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
             // told the provider column type (and, for uuid, a string↔Guid value converter)

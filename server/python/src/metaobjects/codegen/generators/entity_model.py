@@ -48,6 +48,18 @@ def _is_sql_expr_default(value: object) -> bool:
     return isinstance(value, str) and any(p.search(value) for p in _SQL_EXPR_DEFAULT_PATTERNS)
 
 
+# ADR-0036/0037 Wave 3 — the CANONICAL hostname matcher for @stringFormat: hostname.
+# The matcher lives in codegen (NOT author validator.regex) so every port replicates
+# the SAME canonical form — cross-language regex engines diverge, so this one
+# expression is the byte-identical source of truth. RFC 1123 labels: 1–63 chars each,
+# alphanumeric + internal hyphens, dot-separated; total length 1–253; anchored.
+# Byte-identical to the TS zod-validators HOSTNAME_REGEX_LITERAL body.
+_HOSTNAME_REGEX = (
+    r"^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)"
+    r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+)
+
+
 def _validators(field: MetaField, sub_type: str) -> list[MetaField]:
     """The field's own ``validator.<sub_type>`` children (effective, supers included)."""
     return [
@@ -111,6 +123,13 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
             kwargs["pattern"] = pattern
             break
 
+    # ADR-0036/0037 Wave 3 — @stringFormat: hostname -> a codegen-owned canonical
+    # hostname pattern= (the matcher lives HERE, never author validator.regex, so
+    # every port replicates the byte-identical form). @stringFormat: email is bound
+    # as EmailStr in _field_line (a type, not a pattern), so it is not handled here.
+    if field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_HOSTNAME:
+        kwargs["pattern"] = _HOSTNAME_REGEX
+
     return kwargs
 
 
@@ -132,6 +151,17 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
         pt = py_type_for(field)
         imports.update(pt.imports)
         type_expr = pt.expr
+    # ADR-0036/0037 Wave 3 — @stringFormat: email narrows a plain string to a
+    # validated email. Bind Pydantic's idiomatic EmailStr (the Python analogue of
+    # Zod .email()); hostname stays a plain str with a codegen-owned canonical
+    # pattern= (handled in _validator_constraints). The field stays a string.
+    if (
+        field.sub_type == fc.FIELD_SUBTYPE_STRING
+        and field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_EMAIL
+    ):
+        base_expr = "EmailStr"
+        imports.add("from pydantic import EmailStr")
+        type_expr = f"list[{base_expr}]" if field_is_array(field) else base_expr
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO])
         # both reference a value-object by name; import it so the annotation

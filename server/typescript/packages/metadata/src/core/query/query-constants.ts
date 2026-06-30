@@ -1,4 +1,4 @@
-import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM } from "../field/field-constants.js";
+import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET } from "../field/field-constants.js";
 
 // Query concern constants — filter operators, sort order values.
 //
@@ -55,6 +55,12 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
   // uuid: identity-comparison ops only — no `like` (not free-text) and no
   // ordering (`gt`/`lt` are meaningless on a UUID).
   [FIELD_SUBTYPE_UUID]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  // uri: a URI string — free-text-comparable. Same op band as string (prefix
+  // matching with `like` is meaningful for URLs).
+  [FIELD_SUBTYPE_URI]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_LIKE, FILTER_OP_IS_NULL],
+  // inet: an IP address — identity-comparison ops only (no `like`; ordering
+  // gt/lt is not exposed). Same op band as uuid.
+  [FIELD_SUBTYPE_INET]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

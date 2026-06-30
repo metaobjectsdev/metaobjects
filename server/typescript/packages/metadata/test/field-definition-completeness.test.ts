@@ -80,6 +80,8 @@ const UNIVERSAL: Record<string, AttrExp> = {
 /** Subtype-specific core attrs (from field.json). */
 const STRING_EXTRA: Record<string, AttrExp> = {
   maxLength: { valueType: "int", required: false },
+  // ADR-0036/0037 Wave 3 — @stringFormat (email|hostname) on field.string ONLY.
+  stringFormat: { valueType: "string", required: false },
 };
 const DECIMAL_EXTRA: Record<string, AttrExp> = {
   precision: { valueType: "int", required: false },
@@ -143,6 +145,9 @@ const EXPECTED_DATA_TYPE: Record<string, string> = {
   currency: "long",
   enum: "string",
   uuid: "string",
+  // ADR-0036/0037 Wave 3 — uri/inet bind to TS string.
+  uri: "string",
+  inet: "string",
 };
 
 function expectedAttrsFor(subType: string): Record<string, AttrExp> {
@@ -159,7 +164,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
 }
 
 describe("field provider externalization — strict per-subtype completeness", () => {
-  test("registers all 16 field subtypes", () => {
+  test("registers all 18 field subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_FIELD).sort();
     expect(registered).toEqual([...FIELD_SUBTYPES].sort());
   });

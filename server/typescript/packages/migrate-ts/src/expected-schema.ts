@@ -40,6 +40,8 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
   FIELD_ATTR_OBJECT_REF,
@@ -785,6 +787,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:       return { kind: "json" }; // field.map → single jsonb (pg) / text-json (sqlite) column
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid
+    case FIELD_SUBTYPE_URI:       return { kind: "text" }; // ADR-0036/0037 Wave 3 — no Postgres uri type → text
+    case FIELD_SUBTYPE_INET:      return { kind: "inet" }; // ADR-0036/0037 Wave 3 — Postgres-native inet
     default:                      return { kind: "text" }; // unknown → text fallback
   }
 }

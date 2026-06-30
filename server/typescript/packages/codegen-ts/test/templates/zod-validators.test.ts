@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT,
+         FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+         FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX,
          MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -241,5 +243,45 @@ describe("renderZodValidators", () => {
     expect(out).toContain("export const CustomerUpdateSchema");
     // FR-013: read-only field appears nowhere in Insert / Update schemas.
     expect(out).not.toContain("lifetimeValue");
+  });
+
+  // ADR-0036/0037 Wave 3 — field.uri / field.inet subtypes + @stringFormat.
+  test("field.uri → z.string().url(); field.inet → z.string().ip()", () => {
+    const ep = metaObject(OBJECT_SUBTYPE_ENTITY, "Endpoint");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    ep.addChild(id);
+    ep.addChild(metaField(FIELD_SUBTYPE_URI, "webhookUrl"));
+    ep.addChild(metaField(FIELD_SUBTYPE_INET, "sourceIp"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    ep.addChild(primary);
+
+    const out = renderZodValidators(ep).toString();
+    expect(out).toContain("z.string().url()");
+    expect(out).toContain("z.string().ip()");
+  });
+
+  test("field.string @stringFormat: email → z.string().email(); hostname → z.string().regex(...)", () => {
+    const ep = metaObject(OBJECT_SUBTYPE_ENTITY, "Contact");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    ep.addChild(id);
+    const email = metaField(FIELD_SUBTYPE_STRING, "contactEmail");
+    email.setAttr(FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL);
+    ep.addChild(email);
+    const host = metaField(FIELD_SUBTYPE_STRING, "host");
+    host.setAttr(FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_HOSTNAME);
+    ep.addChild(host);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    ep.addChild(primary);
+
+    const out = renderZodValidators(ep).toString();
+    expect(out).toContain("z.string().email()");
+    // hostname uses the canonical codegen-owned regex matcher, not author regex
+    // (the long literal may be wrapped across lines by the formatter).
+    expect(out).toContain("z.string().regex(");
+    expect(out.replace(/\s+/g, "")).toContain("z.string().regex(/^(?=.{1,253}$)");
   });
 });

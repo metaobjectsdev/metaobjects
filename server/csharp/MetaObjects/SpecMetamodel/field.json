@@ -24,7 +24,8 @@
       "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
       "whenToUse": "Plain variable-length text. Set @maxLength to size the column. The default for textual data.",
       "children": [
-        { "type": "attr", "subType": "int", "name": "maxLength", "min": 0, "max": 1, "description": "Maximum character length for string-typed fields (drives VARCHAR(n))." }
+        { "type": "attr", "subType": "int", "name": "maxLength", "min": 0, "max": 1, "description": "Maximum character length for string-typed fields (drives VARCHAR(n))." },
+        { "type": "attr", "subType": "string", "name": "stringFormat", "min": 0, "max": 1, "allowedValues": ["email", "hostname"], "description": "ADR-0036/0037: a closed validation format for a plain string field that has NO native type or behavior of its own — email | hostname. The field stays a plain string (native binding + DB column unchanged); codegen emits the matching validator (Zod z.email() / a hostname check; PG CHECK where appropriate). The canonical matcher per format lives in each port's codegen, NOT author validator.regex (cross-language regex engines diverge). Named @stringFormat (not @format) to avoid colliding with template.* @format (output format). Concepts WITH a native type or behavior are subtypes instead (uuid → field.uuid, url/uri → field.uri, ip → field.inet)." }
       ]
     },
     {
@@ -159,6 +160,22 @@
       "extendsBase": true,
       "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
       "whenToUse": "A key or external identifier is a UUID. Use it for a typed UUID column instead of a plain string."
+    },
+    {
+      "type": "field",
+      "subType": "uri",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url|urn value-constraint.",
+      "whenToUse": "A field holds a URL or URI. Use it for a typed URI column + URL validation instead of a plain string."
+    },
+    {
+      "type": "field",
+      "subType": "inet",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IP validator accepting both v4 and v6 (TS Zod z.string().ip()). v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.",
+      "whenToUse": "A field holds an IPv4 or IPv6 address. Use it for a native Postgres inet column + IP validation instead of a plain string."
     }
   ]
 }

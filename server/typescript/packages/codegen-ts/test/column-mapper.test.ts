@@ -10,6 +10,8 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_URI,
+  FIELD_SUBTYPE_INET,
 } from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
 import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
@@ -221,6 +223,22 @@ describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
   test("SQLite: uuid → text (no native uuid type)", () => {
     const spec = mapColumnType(metaField(FIELD_SUBTYPE_UUID, "id"), "sqlite");
     expect(spec.fnName).toBe("text");
+  });
+
+  // ADR-0036/0037 Wave 3 — field.uri / field.inet.
+  test("Postgres: uri → text (Postgres has no uri type)", () => {
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_URI, "webhookUrl"), "postgres");
+    expect(spec.fnName).toBe("text");
+  });
+
+  test("Postgres: inet → native inet() column", () => {
+    const spec = mapColumnType(metaField(FIELD_SUBTYPE_INET, "sourceIp"), "postgres");
+    expect(spec.fnName).toBe("inet");
+  });
+
+  test("SQLite: uri/inet → text (no native types)", () => {
+    expect(mapColumnType(metaField(FIELD_SUBTYPE_URI, "u"), "sqlite").fnName).toBe("text");
+    expect(mapColumnType(metaField(FIELD_SUBTYPE_INET, "ip"), "sqlite").fnName).toBe("text");
   });
 
   // Native arrays are DERIVED from isArray (dbColumnType slim-and-derive Phase 1):
