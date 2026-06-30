@@ -37,15 +37,19 @@ Rationale: aware-by-default is the unanimous best-practice (Postgres "Don't Do T
 
 The "string formats" set does not survive the [ADR-0037](ADR-0037-metamodel-vocabulary-expansion-decision-framework.md) behavioral test (own native type / behavior → subtype; plain validated string → attribute), so it splits three ways:
 
-- **`field.uri` subtype** — `url`/`uri` have a native type (`URI`/`Uri`/`urllib`) and behavior (scheme/authority/path, absolute-vs-relative), so they are a subtype, with **`@kind` = `url` | `urn`** distinguishing the structural variants (a URL locates, a URN names). Native binding + parse behavior per port.
-- **`field.inet` subtype** — `ipv4`/`ipv6` have a native type (`InetAddress`/`IPAddress`/`ipaddress`) and a Postgres-native `inet`/`cidr` column, so they are a subtype, with **`@kind` = `ipv4` | `ipv6`**.
+- **`field.uri` subtype** — `url`/`uri` have a native type (`URI`/`Uri`/`urllib`) and behavior (scheme/authority/path, absolute-vs-relative), so they are a subtype. Native binding + parse behavior per port; `text` column + URI validation. Ships **without `@kind` in v1** — the native type subsumes url/urn; `@kind = url | urn` is *reserved* (the charter example in ADR-0037) for when a value-constraint is actually needed.
+- **`field.inet` subtype** — `ipv4`/`ipv6` have a native type (`InetAddress`/`IPAddress`/`ipaddress`) and a Postgres-native `inet` column, so they are a subtype. Ships **without `@kind` in v1** — a single `inet` accepts both versions and the version is a property of the *value*, not the schema; `@kind = ipv4 | ipv6` is *reserved* for constraining a column to one version.
 - **`@stringFormat` attribute** on `field.string` — only the genuinely behavior-less, native-type-less validated strings: **`email | hostname`** (additive — more can be added later). The canonical matcher per format lives in each port (conformance-gated), *not* author `validator.regex` (cross-language regex engines diverge and break byte-identity). Named `@stringFormat` (not `@format`) to avoid colliding with the existing `template.* @format` (output format) — ADR-0037's no-overload corollary. Codegens idiomatically (Zod `z.email()`, Jakarta `@Email`, PG `CHECK`/`citext`).
 
 `uuid` is **not** in this set — it is already the `field.uuid` subtype (native UUID type), the original instance of this same rule.
 
-### 3. Multi-edge-same-pair navigation → `@relationName`, fail-closed
+### 3. Reverse-navigation naming → **derive** it; `@reverseName` optional (deferred to Wave 4)
 
-When an entity declares two relationships to the same target (the same-pair case — e.g. `sender` + `recipient` both → `User`), generated navigation names collide. Add a **`@relationName`** attribute on `relationship.*` that names the navigation/inverse explicitly. **1.0 codegen errors (`ERR_AMBIGUOUS_RELATION`) on unnamed same-pair edges** rather than silently colliding — a later rename of generated nav properties would be breaking in adopters' repos, so the ambiguity must be surfaced at build time now. (Confirmed live: one adopter has 8 such entities.)
+_Revised after research._ The original plan (a required `@relationName`, fail-closed on same-pair) rested on two premises that didn't survive investigation:
+- **The collision is not cross-port.** Reverse 1:N navigation is generated **only by TS today** (and there it's a *bug* — the second relationship silently overwrites the first under `User.messages`); Java/Spring emits none, and Kotlin/C#/Python emit reverse only for M:N, named from the (distinct) relationship name. So the same-pair collision is TS-only, not a frozen cross-port contract — and the Python and JVM adopters never hit it.
+- **A unique reverse name is always derivable.** Relationship names are unique within their source entity, so `(source entity + relationship name)` is a guaranteed-unique key. Unlike Django (`<model>_set`, model-name only → collides) we fold the relationship name into the derivation: no collision → `User.messages`; collision → `User.senderMessages` / `User.recipientMessages`. No author input required.
+
+So the decision is **derive, don't require**: codegen derives the reverse accessor (pretty `<sourcePlural>` by default; qualified with the relationship name on collision), and **`@reverseName` is an *optional* override** for aesthetics or to pin a stable name — *not* `@relationName` (that imports Prisma's *pairing* concept, redundant since MetaObjects already pairs sides structurally via `@objectRef`/`@through`/`identity.reference`). The known cost (adding a colliding relationship re-derives the names) is acceptable for regen-able generated code. **Deferred to Wave 4** with the TS reverse-nav bugfix; `@reverseName` is reserved-and-optional, never a required 1.0 attr.
 
 ### 4. Finish the `@dbColumnType` slim — keep `uuid`
 
@@ -60,9 +64,9 @@ The earlier "slim-and-derive" landed the *derive* half (native `text[]`/`uuid[]`
 
 ## Consequences
 
-- Decisions 1 and 4 are **breaking** and must land inside the consolidation window; 2, 3, 5 are additive (3 adds a build-time error only for already-ambiguous models).
+- Decision 1 is **breaking** and lands inside the consolidation window; 2 is additive (new subtypes/attr); 3 is a codegen-derivation change (no required vocab); 4 (the slim) was already complete from Phase 1; 5 (the gate) is mechanism.
 - Each ships cross-port with a `registry-conformance` fixture (ADR-0023 strict provenance).
-- Adopters migrate once, to the final shapes: drop ~180 `timestamp_with_tz` annotations, add `@localTime: true` to genuinely-naive timestamps, move 5 array fields to `isArray`, and name same-pair relationships. `@dbColumnType:uuid` and `@dbColumnType:jsonb` continue working unchanged.
+- Adopters migrate once, to the final shapes: drop ~180 `timestamp_with_tz` annotations, add `@localTime: true` to genuinely-naive timestamps, move 5 array fields to `isArray`. Reverse-nav names become deterministic (derived) — no annotation needed. `@dbColumnType:uuid` and `@dbColumnType:jsonb` continue working unchanged.
 
 ## Deferred to a later wave (recorded so they are reservations, not gaps)
 
@@ -70,6 +74,7 @@ The earlier "slim-and-derive" landed the *derive* half (native `text[]`/`uuid[]`
 
 ## Implementation waves
 
-1. **Wave 1 — gate + slim** (decisions 5 + 4): lower-risk, mechanical; the gate enforces the slim.
-2. **Wave 2 — timestamp** (decision 1): the native-type-changing split; shared persistence/api fixtures + ADR-0019 temporal clause updated.
-3. **Wave 3 — `@format` + `@relationName`** (decisions 2 + 3): additive, each gated.
+1. **Wave 1 — gate + slim** (decisions 5 + 4): lower-risk, mechanical; the gate enforces the slim. ✅ merged.
+2. **Wave 2 — timestamp** (decision 1): the native-type-changing split (`field.timestamp` instant-default + `@localTime`); shared persistence/api fixtures + ADR-0019 updated. ✅ merged.
+3. **Wave 3 — `field.uri` + `field.inet` subtypes + `@stringFormat`** (decision 2, post-split): additive, each gated. The "string formats" set resolved by behavior per ADR-0037 (url/ip → subtypes; email/hostname → `@stringFormat`).
+4. **Wave 4 — reverse-navigation derivation** (decision 3): fix the TS reverse-nav collision bug (derive a unique name, qualifying with the relationship name on collision); reserve `@reverseName` as an optional override. Not a required-vocab change.
