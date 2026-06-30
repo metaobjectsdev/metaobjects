@@ -42,7 +42,6 @@ from ..meta.core.field.field_constants import (
 )
 from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_JSONB,
-    DB_COLUMN_TYPE_TIMESTAMP_TZ,
     DB_COLUMN_TYPE_UUID,
     FIELD_ATTR_DB_COLUMN_TYPE,
     VALID_DB_COLUMN_TYPES,
@@ -662,25 +661,27 @@ def _validate_field_defaults(root: MetaData, errors: list[MetaError]) -> None:
 # Own-only validation of the @dbColumnType physical column-type attribute,
 # mirroring the field.enum @values precedent. Two rules, both → ERR_BAD_ATTR_VALUE:
 #
-#   1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz.
+#   1. The value must be one of the closed set uuid|jsonb.
 #      (@dbColumnType is registered as a bare string attr — no allowed_values — so
 #      this pass is the SOLE enforcer of the closed set: an unknown value fires
 #      exactly one ERR_BAD_ATTR_VALUE, matching TS/Java/C#.)
 #   2. The (logical subtype × value) pairing must be legal:
-#        uuid              → field.string
-#        jsonb             → field.string
-#        timestamp_with_tz → field.timestamp
+#        uuid  → field.string
+#        jsonb → field.string
+#
+# ADR-0036 Wave 2: timestamp_with_tz is RETIRED — timezone-awareness moved to
+# field.timestamp (instant by default) + @localTime (the naive opt-out), so it is
+# no longer a legal @dbColumnType value or pairing.
 #
 # Own-only: only @dbColumnType declared on THIS node is validated (a physical
 # attr is never inherited via extends:). Cross-port: TS/C#/Java run the identical
 # own-only check.
 
-# value → the field subtype it is legal on (Phase 1: three surviving values).
+# value → the field subtype it is legal on (uuid/jsonb on field.string).
 # uuid_array / text_array are REMOVED — derive from field.uuid/field.string + isArray.
 _DB_COLUMN_TYPE_REQUIRED_SUBTYPE: dict[str, str] = {
     DB_COLUMN_TYPE_UUID: FIELD_SUBTYPE_STRING,
     DB_COLUMN_TYPE_JSONB: FIELD_SUBTYPE_STRING,
-    DB_COLUMN_TYPE_TIMESTAMP_TZ: FIELD_SUBTYPE_TIMESTAMP,
 }
 
 
