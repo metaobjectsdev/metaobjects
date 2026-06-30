@@ -151,7 +151,7 @@ name   package   extends   abstract   overlay   isArray   children   value
 | `field.double` | float | |
 | `field.boolean` | true/false | |
 | `field.date` | calendar date | ISO 8601 `YYYY-MM-DD` on the wire |
-| `field.timestamp` | instant | ISO 8601 with timezone on the wire |
+| `field.timestamp` | instant (tz-aware) | ISO 8601 with timezone on the wire; `@localTime: true` for a naive wall-clock value |
 | `field.decimal` | exact decimal | `@precision` / `@scale`; lossless money/quantity |
 | `field.currency` | integer minor units | see Currency below |
 | `field.enum` | string member | `@values` required; see Enum below |
@@ -183,13 +183,27 @@ Canonical form for common needs — reach for these before inventing anything:
 | IDs / unique keys | `field.uuid` | native UUID; use `@dbColumnType: uuid` only to force a string-typed value over a uuid column on purpose |
 | Money | `field.currency` | integer minor units; never a float |
 | Closed set of symbols | `field.enum` | `@values` required |
-| Instant / timestamp | `field.timestamp` | ISO 8601 with timezone on the wire |
+| Instant / event time (created/updated) | `field.timestamp` | instant / tz-aware by default (Postgres `timestamptz`; native `Instant`/`DateTimeOffset`/aware `datetime`) |
+| Naive wall-clock value (store-open time, birthday-with-time) | `field.timestamp` + `@localTime: true` | `timestamp without time zone` — opt out of zone-awareness only for a genuine wall-clock value |
 | A list of anything | `isArray: true` | on the base subtype (e.g. `field.string` + `isArray`) — there is **no** array `@dbColumnType` (retired) |
 | Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
 | Nested structured value | `field.object` | `@objectRef` + `@storage` |
 | Open JSON bag (no fixed shape) | `field.string` + `@dbColumnType: jsonb` | logical type stays string; column is jsonb |
 
-<!-- TODO(ADR-0036 Wave 2/3): add @localTime / @format / @relationName guidance when merged -->
+**Timestamps — instant by default, `@localTime` for naive wall-clock (ADR-0036 Wave 2).**
+`field.timestamp` is **instant / timezone-aware by default** (Postgres `timestamptz`;
+native `Instant` / `DateTimeOffset` / aware `datetime`) — use it for created/updated/event
+times. Add **`@localTime: true`** only for a genuine naive wall-clock value (a store-open
+time, a birthday-with-time, a recurring local schedule) → `timestamp without time zone`.
+Never use `@dbColumnType: timestamp_with_tz` — it is **retired**; timezone-awareness now
+lives in `field.timestamp` (instant by default) + the `@localTime` naive opt-out.
+
+```json
+{ "field.timestamp": { "name": "createdAt", "@required": true } }
+{ "field.timestamp": { "name": "opensAt", "@localTime": true } }
+```
+
+<!-- TODO(ADR-0036 Wave 3): add @format (string-shape email/url) / @relationName guidance when merged -->
 
 **Extending the metamodel (custom providers):** the same ordered test governs new
 vocabulary you register. A would-be subtype that differs from an existing one only

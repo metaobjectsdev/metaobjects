@@ -33,10 +33,12 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   // retired @attrs (pre-v2 renamed forms; the audit skill names them as what to grep for)
   "@dbColumn",  // renamed to @column (ADR-0007)
   "@name",      // pre-v2 source physical name; now @table on source.rdb
-  // PLANNED, not-yet-registered Wave-2/3 attrs (ADR-0036): the vocabulary-hygiene
-  // axis names them in its forward-looking TODO list, explicitly flagged "pending
-  // Wave 2/3, not yet active." They are NOT in the cross-port registry yet.
-  "@localTime",
+  // PLANNED, not-yet-registered Wave-3 attr (ADR-0036): the vocabulary-hygiene
+  // axis names it in its forward-looking TODO list, explicitly flagged "pending
+  // Wave 3, not yet active." It is NOT in the cross-port registry yet.
+  // (@localTime is now REGISTERED on field.timestamp — ADR-0036 Wave 2 merged — so it
+  // is no longer exempted: the authoring skill names it and it passes grounding as a
+  // real attr against expected-registry.json.)
   "@relationName",
 ]);
 
