@@ -29,19 +29,21 @@ public static class DbSchema
 
     /// <summary>
     /// R6 Plan 2b: <c>@dbColumnType</c> — physical DB column-type override on every field
-    /// subtype. The legal value depends on the field's logical subtype, so the subtype × value
-    /// pairing is validated own-only by the loader (ValidateDbColumnType → ERR_BAD_ATTR_VALUE),
-    /// not by a flat AllowedValues set. The string ValueType keeps the schema's type check intact.
+    /// subtype. The closed value set (ADR-0036 Wave 1) is <see cref="DbConstants.VALID_DB_COLUMN_TYPES"/>
+    /// — surfaced as the manifest's <c>allowedValues</c>; the subtype × value pairing is
+    /// validated own-only by the loader (ValidateDbColumnType → ERR_BAD_ATTR_VALUE).
     /// </summary>
     public static readonly AttrSchema DbColumnTypeSchema = new AttrSchema(
         Name: DbConstants.FIELD_ATTR_DB_COLUMN_TYPE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
+        AllowedValues: [.. DbConstants.VALID_DB_COLUMN_TYPES],
         Description:
             "Physical DB column-type override (ADR-0013 escape hatch). Legal values are " +
             string.Join(" | ", DbConstants.VALID_DB_COLUMN_TYPES) + ", each legal only on a specific " +
             "logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
-            "The logical field type and its native binding are unchanged.");
+            "The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) " +
+            "are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1).");
 
     // --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
 

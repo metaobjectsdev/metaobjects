@@ -9,11 +9,13 @@ different required-ness — with every behavioral corpus still green).
 
 The IN/OUT boundary (the v1 logical subset emittable byte-identically by all
 five ports) is documented in ``fixtures/registry-conformance/README.md``. In
-short: ``type.subType`` + ``attrs[{name, valueType, required}]`` + ``commonAttrs``
-+ ``defaultSubTypes``. EXCLUDED from v1 (per-port-physical or
-not-universally-tracked-on-the-registry): factories/native bindings;
-``AttrSchema.default`` and ``allowed_values`` (Java's attr model carries
-neither); ``inheritsFrom``; ``child_rules``.
+short: ``type.subType`` + ``attrs[{name, valueType, required, allowedValues?}]`` +
+``commonAttrs`` + ``defaultSubTypes``. ``allowedValues`` (ADR-0036 Wave 1,
+decision 5) is the closed value-set of a closed-enum attr — emitted ONLY when the
+attr declares one, OMITTED for open / format-validated attrs (@currency, @locale).
+EXCLUDED from v1 (per-port-physical or not-universally-tracked-on-the-registry):
+factories/native bindings; ``AttrSchema.default``; ``inheritsFrom``;
+``child_rules``.
 
 The TS emitter (``server/typescript/packages/metadata/src/registry-manifest.ts``,
 ``emitRegistryManifest``) is the reference implementation; the canonical bytes
@@ -118,9 +120,10 @@ def _is_excluded_type_subtype(type_name: str, sub_type: str) -> bool:
 def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     """Normalize one AttrSchema to the manifest's logical attr shape.
 
-    Emits ``{name, valueType, isArray, required}`` — decomposing array-ness into
-    a scalar ``valueType`` + an orthogonal ``isArray`` flag (``allowed_values`` /
-    ``default`` are intentionally dropped, deferred per the v1 boundary).
+    Emits ``{name, valueType, isArray, required, allowedValues?}`` — decomposing
+    array-ness into a scalar ``valueType`` + an orthogonal ``isArray`` flag.
+    ``allowedValues`` is emitted only when the attr declares a non-empty closed
+    set (ADR-0036 Wave 1, decision 5); ``default`` is intentionally dropped.
     ``value_type`` is ``None`` for polymorphic/untyped attrs (e.g. ``@default``);
     the manifest renders that as an explicit JSON ``null``. A legacy
     ``stringarray`` value_type token is decomposed to
@@ -130,16 +133,26 @@ def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     is_legacy_string_array = attr.value_type == ATTR_SUBTYPE_STRINGARRAY
     is_array = attr.is_array or is_legacy_string_array
     value_type = ATTR_SUBTYPE_STRING if is_legacy_string_array else attr.value_type
-    # Fixed key order: name, valueType, isArray, required, description, then the
-    # optional rules/example/whenToUse (FR-033) — emitted ONLY when present so
-    # absent keys stay absent (dict insertion order → byte-stable).
+    # Fixed key order: name, valueType, isArray, required, allowedValues?,
+    # description, then the optional rules/example/whenToUse (FR-033) — emitted
+    # ONLY when present so absent keys stay absent (dict insertion order →
+    # byte-stable).
     out: dict[str, object] = {
         "name": attr.name,
         "valueType": value_type,
         "isArray": is_array,
         "required": attr.required,
-        "description": attr.description,
     }
+    # The closed value-set of a closed-enum attr (ADR-0036 Wave 1, decision 5).
+    # Emitted ONLY when the attr declares a non-empty allowed_values set; OMITTED
+    # for open / format-validated attrs (e.g. @currency ISO-4217, @locale BCP-47,
+    # @cardinality). Byte-gates closed-enum vocabularies cross-port. Inserted
+    # BEFORE description so the key order is name → valueType → isArray → required
+    # → (allowedValues?) → description → (rules?/example?/whenToUse?). Each member
+    # is stringified for a stable cross-port surface.
+    if attr.allowed_values is not None and len(attr.allowed_values) > 0:
+        out["allowedValues"] = [str(v) for v in attr.allowed_values]
+    out["description"] = attr.description
     if attr.rules is not None:
         out["rules"] = attr.rules
     if attr.example is not None:
@@ -308,7 +321,8 @@ def emit_registry_manifest(registry: TypeRegistry) -> str:
      - 2-space indentation.
      - Object keys in a fixed order (``types`` / ``commonAttrs`` /
        ``defaultSubTypes``; each type ``type`` / ``subType`` / ``attrs``; each
-       attr ``name`` / ``valueType`` / ``isArray`` / ``required``).
+       attr ``name`` / ``valueType`` / ``isArray`` / ``required`` /
+       optional ``allowedValues`` / ``description``).
      - All arrays sorted: ``types`` by ``"type.subType"``; each ``attrs`` by
        name; ``commonAttrs`` by name; ``defaultSubTypes`` keys sorted.
      - ``valueType: null`` literal for polymorphic/untyped attrs.

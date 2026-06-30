@@ -9,12 +9,15 @@
 //
 // The IN/OUT boundary is documented in fixtures/registry-conformance/README.md.
 // In short, the manifest emits: type.subType + per-type/per-attr `description`
-// (FR-033) + attrs[{name, valueType, isArray, required, description, rules?,
-// example?, whenToUse?}] + the structural constraint graph (children / parents /
-// cardinality, FR-033) + commonAttrs + defaultSubTypes. EXCLUDED (per-port-
-// physical or not-universally-tracked-on-the-registry): factories/native
-// bindings; AttrSchema.default and allowedValues (Java's attr model —
-// ChildRequirement — carries neither).
+// (FR-033) + attrs[{name, valueType, isArray, required, allowedValues?,
+// description, rules?, example?, whenToUse?}] + the structural constraint graph
+// (children / parents / cardinality, FR-033) + commonAttrs + defaultSubTypes.
+// `allowedValues` (ADR-0036 Wave 1, decision 5) is the closed value-set of a
+// closed-enum attr — emitted ONLY when the attr declares one, OMITTED for open /
+// format-validated attrs (@currency, @locale). It byte-gates closed vocabularies
+// cross-port (the gate that catches a value-set silently drifting between ports).
+// EXCLUDED (per-port-physical or not-universally-tracked-on-the-registry):
+// factories/native bindings; AttrSchema.default.
 //
 // FR-033 Task 5 GREW the manifest: it now also emits the documentation surface
 // (every type/attr carries a required, non-empty `description`; optional `rules`/
@@ -41,6 +44,14 @@ interface ManifestAttr {
   /** True for an array-valued attr (a list of the scalar `valueType`); the orthogonal array axis. */
   isArray: boolean;
   required: boolean;
+  /**
+   * The closed value-set of a closed-enum attr (ADR-0036 Wave 1, decision 5).
+   * Emitted ONLY when the attr declares a non-empty `allowedValues` set; OMITTED
+   * for open / format-validated attrs (e.g. @currency ISO-4217, @locale BCP-47).
+   * This byte-gates closed-enum vocabularies cross-port — the gate that catches a
+   * value-set drifting between ports (the failure mode the dbColumnType slim hit).
+   */
+  allowedValues?: readonly string[];
   /** FR-033 — human/AI-facing description of the attribute (required, non-empty). */
   description: string;
   /** FR-033 — prose documenting the complex rules enforced in code. Emitted only when present. */
@@ -119,11 +130,18 @@ function toManifestAttr(attr: AttrSchema): ManifestAttr {
   // FR-033: the documentation surface (`description` required + non-empty;
   // `rules`/`example`/`whenToUse` emitted ONLY when present) follows the
   // existing facets, preserving key order for byte-stability.
+  // The closed value-set, emitted only when present + non-empty (decision 5).
+  // AttrValue is string | number | boolean | array; a closed enum is always a set
+  // of scalar string members, so stringify each for a stable cross-port surface.
+  // Spread BEFORE `description` so the JSON key order is name → valueType →
+  // isArray → required → (allowedValues?) → description → (rules?/example?/whenToUse?).
+  const hasAllowed = attr.allowedValues !== undefined && attr.allowedValues.length > 0;
   const out: ManifestAttr = {
     name: attr.name,
     valueType,
     isArray,
     required: attr.required,
+    ...(hasAllowed ? { allowedValues: attr.allowedValues!.map((v) => String(v)) } : {}),
     description: attr.description,
   };
   if (attr.rules !== undefined) out.rules = attr.rules;
@@ -309,8 +327,10 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
  *  - 2-space indentation (JSON.stringify(_, _, 2)).
  *  - Object keys in a fixed order (JSON.stringify preserves insertion order):
  *    the manifest is built with `types`, `commonAttrs`, `defaultSubTypes`.
- *    - Each attr: `name`, `valueType`, `isArray`, `required`, `description`,
- *      then optional `rules`, `example`, `whenToUse` (each omitted when absent).
+ *    - Each attr: `name`, `valueType`, `isArray`, `required`, then optional
+ *      `allowedValues` (omitted unless the attr declares a non-empty closed set —
+ *      decision 5), then `description`, then optional `rules`, `example`,
+ *      `whenToUse` (each omitted when absent).
  *    - Each type: `type`, `subType`, `description`, then optional `rules`,
  *      `example`, `whenToUse` (omitted when absent), then `attrs`, `children`,
  *      then optional `parents` (omitted when absent/empty).

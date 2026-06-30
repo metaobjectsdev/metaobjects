@@ -32,6 +32,7 @@ from .db_constants import (
     IDENTITY_SECONDARY_ATTR_WHERE,
     IDENTITY_SECONDARY_ATTR_EXPR,
     IDENTITY_SECONDARY_ATTR_USING,
+    VALID_DB_COLUMN_TYPES,
 )
 
 # Every field subtype the DB-domain attrs apply to: the shared FIELD_SUBTYPES tuple
@@ -44,12 +45,20 @@ _DB_FIELD_SUBTYPES: tuple[str, ...] = (*fc.FIELD_SUBTYPES, fc.FIELD_SUBTYPE_ENUM
 # @column — physical column-name override on a field. Bare string attr.
 _COLUMN_SCHEMA = AttrSchema(name=fc.FIELD_ATTR_COLUMN, value_type=ATTR_SUBTYPE_STRING, required=False)
 
-# @dbColumnType — physical column-type override on a field. Registered as a bare string
-# attr (NO allowed_values) — matching Java/TS/C#, which register it unconstrained and let
-# ONLY the loader's _validate_db_column_type pass enforce the closed set (so an unknown
-# value fires exactly ONE ERR_BAD_ATTR_VALUE).
+# @dbColumnType — physical column-type override on a field. Carries the closed
+# value-set (uuid | jsonb | timestamp_with_tz) PURELY so it surfaces in the
+# registry manifest (ADR-0036 Wave 1, decision 5 — closed-value-set conformance
+# gate). Its REAL constraint is the (subtype × value) pairing enforced by the
+# loader's _validate_db_column_type pass, which emits the single ERR_BAD_ATTR_VALUE
+# for both an unrecognized value and an illegal pairing; that pass is the sole
+# enforcer, so @dbColumnType is EXEMPT from the generic flat allowed_values
+# membership check (Check 3 in validation_passes) to avoid double-reporting —
+# matching the TS reference.
 _DB_COLUMN_TYPE_SCHEMA = AttrSchema(
-    name=FIELD_ATTR_DB_COLUMN_TYPE, value_type=ATTR_SUBTYPE_STRING, required=False
+    name=FIELD_ATTR_DB_COLUMN_TYPE,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    allowed_values=VALID_DB_COLUMN_TYPES,
 )
 
 # DB-domain physical attrs EXTENDING identity subtypes — RDB index / FK-constraint

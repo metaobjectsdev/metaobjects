@@ -254,7 +254,17 @@ function validateNode(
     // Check 3: allowedValues membership. For an isArray attr the value is an array,
     // so each ELEMENT must be a member (not the array as a whole); a scalar attr
     // checks the value directly.
-    if (spec.allowedValues !== undefined && spec.allowedValues.length > 0) {
+    //
+    // @dbColumnType is exempt here: it carries `allowedValues` ONLY so the value-set
+    // surfaces in the registry manifest (ADR-0036 Wave 1, decision 5), but its real
+    // constraint is the (subtype × value) pairing enforced below in Check 6 — which
+    // emits the single ERR_BAD_ATTR_VALUE for both an unrecognized value and an
+    // illegal pairing. Running the flat membership check too would double-report.
+    if (
+      inst.name !== FIELD_ATTR_DB_COLUMN_TYPE &&
+      spec.allowedValues !== undefined &&
+      spec.allowedValues.length > 0
+    ) {
       const allowed = spec.allowedValues;
       const offenders = Array.isArray(value)
         ? value.filter((v) => !allowed.includes(v))
