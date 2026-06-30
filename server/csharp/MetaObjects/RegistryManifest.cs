@@ -165,6 +165,7 @@ public static class RegistryManifest
         string? ValueType,
         bool IsArray,
         bool Required,
+        IReadOnlyList<string>? AllowedValues,
         string Description,
         string? Rules,
         string? Example,
@@ -276,10 +277,18 @@ public static class RegistryManifest
         bool isLegacyStringArray = a.ValueType == AttrConstants.ATTR_SUBTYPE_STRINGARRAY;
         bool isArray = a.IsArray || isLegacyStringArray;
         string? valueType = isLegacyStringArray ? AttrConstants.ATTR_SUBTYPE_STRING : a.ValueType;
+        // ADR-0036 Wave 1 — the closed-value-set facet. Emitted (between `required`
+        // and `description`) ONLY when the attr declares a closed set; open /
+        // format-validated attrs carry NO allowedValues (the key is omitted, never
+        // `null`). Values come straight from the port's registered constants, in
+        // declaration order (NOT sorted — array order is part of the contract).
+        IReadOnlyList<string>? allowedValues = a.AllowedValues is { Count: > 0 } av
+            ? av.Select(v => v?.ToString() ?? string.Empty).ToList()
+            : null;
         // FR-033 — the documentation surface follows the existing facets, in fixed
-        // key order: name, valueType, isArray, required, description, then the
-        // optional rules/example/whenToUse (emitted only when present).
-        return new ManifestAttr(a.Name, valueType, isArray, a.Required, a.Description, a.Rules, a.Example, a.WhenToUse);
+        // key order: name, valueType, isArray, required, allowedValues?, description,
+        // then the optional rules/example/whenToUse (emitted only when present).
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, a.Description, a.Rules, a.Example, a.WhenToUse);
     }
 
     // ------------------------------------------------------------------
@@ -367,7 +376,8 @@ public static class RegistryManifest
     ///  - 2-space indentation.
     ///  - Object key order fixed by construction: <c>types</c>, <c>commonAttrs</c>,
     ///    <c>defaultSubTypes</c>; each type as <c>type</c>, <c>subType</c>, <c>attrs</c>;
-    ///    each attr as <c>name</c>, <c>valueType</c>, <c>isArray</c>, <c>required</c>.
+    ///    each attr as <c>name</c>, <c>valueType</c>, <c>isArray</c>, <c>required</c>,
+    ///    optional <c>allowedValues</c> (ADR-0036 Wave 1; only-when-closed), <c>description</c>.
     ///  - All arrays sorted (ordinal/ASCII): types by "type.subType"; attrs by name;
     ///    commonAttrs by name; defaultSubTypes keys sorted.
     ///  - <c>valueType: null</c> literal for polymorphic/untyped attrs.
@@ -473,6 +483,19 @@ public static class RegistryManifest
         }
         writer.WriteBoolean("isArray", a.IsArray);
         writer.WriteBoolean("required", a.Required);
+        // ADR-0036 Wave 1 — allowedValues (the closed-value-set facet) between
+        // `required` and `description`, ONLY when the attr declares a closed set
+        // (only-when-closed: the key is OMITTED, never emitted as `null`). Array
+        // order is the registered declaration order, NOT sorted.
+        if (a.AllowedValues is { Count: > 0 } allowed)
+        {
+            writer.WriteStartArray("allowedValues");
+            foreach (string value in allowed)
+            {
+                writer.WriteStringValue(value);
+            }
+            writer.WriteEndArray();
+        }
         // FR-033 — description (required) then the optional docs facets, each
         // emitted ONLY when present.
         writer.WriteString("description", a.Description);
