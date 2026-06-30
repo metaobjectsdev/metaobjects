@@ -129,12 +129,18 @@ subtype*; an email/hostname string-validation is an **attribute** (`@stringForma
 native type unchanged), while a URL or IP is a **native type** (`field.uri` /
 `field.inet`, a subtype). Recommend re-shaping against the ordered test.
 
-**TODO — Wave 4 (reverse-navigation derivation), pending — not yet active.** When
-codegen derives the reverse accessor for a relationship, an adopter who hand-maintains
-a same-pair / back-reference navigation name becomes a modernization candidate. The
-reverse accessor is **derived automatically**; the override is the *optional* attribute
-**`@reverseName`** (NOT required, and NOT the old @relationName). This token is not yet
-registered — do NOT flag adopters for it until Wave 4 merges.
+**Hand-rolled reverse-query repository methods (ADR-0038) → recommend the generated reverse
+FK finder.** Reverse navigation — *"find all the rows that reference this one"* — is now
+codegen. Flag a hand-written reverse-query method (a `findByParentId` / `findBy<Parent>`
+repository finder, or a manual `WHERE fk = ?` query helper — exactly what a JVM adopter
+hand-writes in its `SceneRepository`) and recommend the **generated reverse FK finder**
+instead: codegen now emits `find<Source>By<FkField>` plus a batched `…In(ids)` variant from
+the FK metadata, idiomatic per port (Spring repository finder / EF query method / Python or
+TS query function). It is **performant** (one indexed query, no N+1) and **framework-free**
+(no lazy collections / proxies). When an entity has two FKs to the same target, the codegen
+emits two distinct finders (named by the FK field) automatically — no annotation needed; the
+reverse finder is a **codegen feature, not an attribute** (there is no reverse-nav `@`-attr
+to author). Advisory severity — a modernization opportunity, not a failing finding.
 
 ---
 

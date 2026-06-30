@@ -33,14 +33,11 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   // retired @attrs (pre-v2 renamed forms; the audit skill names them as what to grep for)
   "@dbColumn",  // renamed to @column (ADR-0007)
   "@name",      // pre-v2 source physical name; now @table on source.rdb
-  // PLANNED, not-yet-registered Wave-4 attr (ADR-0036): the vocabulary-hygiene
-  // axis names it in its forward-looking TODO list, explicitly flagged "Wave 4,
-  // pending — not yet active." It is the OPTIONAL override of the derived reverse
-  // accessor name; it is NOT in the cross-port registry yet.
-  // (Wave 3 — @stringFormat + field.uri/field.inet — is now REGISTERED, so those tokens
-  // are no longer exempted: the skills name them and they pass grounding as real vocab
-  // against expected-registry.json. @localTime [Wave 2] likewise.)
-  "@reverseName",
+  // (Wave 4 — ADR-0038 reverse navigation — shipped as explicit generated FK finders with
+  // NO metamodel attribute: the finder name derives from source + FK field, unique by
+  // construction. The predicted-but-never-built @reverseName is therefore NOT named by the
+  // skills and needs no exemption. Wave 3 — @stringFormat + field.uri/field.inet — and
+  // Wave 2 — @localTime — are now REGISTERED, so those tokens pass grounding as real vocab.)
 ]);
 
 // Code-level identifiers that the @attr regex (`@word`) extracts from the audit skill's
