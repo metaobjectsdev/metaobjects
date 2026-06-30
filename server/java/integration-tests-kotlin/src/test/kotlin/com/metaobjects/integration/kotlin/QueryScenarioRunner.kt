@@ -34,6 +34,7 @@ import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.metaobjects.integration.kotlin.tables.AllTypesTable
 import java.math.BigDecimal
+import java.net.URI
 import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.Instant
@@ -444,6 +445,13 @@ object QueryScenarioRunner {
             // both receive the String and write a real Postgres JSONB value (a bare String bind
             // would be rejected by jsonb). Read-back (#98) parses it back per-column.
             type.contains("jsonb") -> if (raw is String) raw else JSON.writeValueAsString(raw)
+            // `field.uri` → a `Column<URI>` over `text`: construct a java.net.URI from the authoring
+            // string so Exposed's MetaUriColumnType binds it (the read-back URI.toString() is verbatim).
+            type.contains("text") -> if (raw is URI) raw else URI.create(raw.toString())
+            // `field.inet` → a `Column<String>` over the native `inet` type: bind the bare address
+            // string; the driver coerces it to inet, and the read-back is the native compressed wire
+            // string. (`else` already returns the String — listed explicitly for intent.)
+            type == "inet" -> raw.toString()
             else -> raw
         }
     }
