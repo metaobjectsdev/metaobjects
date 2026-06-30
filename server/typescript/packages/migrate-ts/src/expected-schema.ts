@@ -48,8 +48,6 @@ import {
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ,
-  DB_COLUMN_TYPE_UUID_ARRAY,
-  DB_COLUMN_TYPE_TEXT_ARRAY,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
@@ -708,19 +706,47 @@ function buildColumn(
   return col;
 }
 
+/**
+ * The native Postgres array ELEMENT SqlType for an `isArray` scalar field, or
+ * undefined when the subtype has no native-array form (object/map → single jsonb
+ * column; everything else falls through to the scalar subtype default).
+ *
+ * dbColumnType slim-and-derive Phase 1 wires the two derived cases the design calls
+ * out: `field.string` → `text[]`, `field.uuid` → `uuid[]`. This mirrors codegen-ts's
+ * column-mapper, which emits native `.array()` for the same scalar subtypes.
+ */
+function arrayElementSqlType(field: MetaData): SqlType | undefined {
+  switch (field.subType) {
+    case FIELD_SUBTYPE_STRING: return { kind: "text" };
+    case FIELD_SUBTYPE_UUID:   return { kind: "uuid" };
+    default:                   return undefined;
+  }
+}
+
 function subtypeToSqlType(field: MetaData): SqlType {
   // R6 Plan 2b: a physical @dbColumnType override selects the DB column type
   // instead of the subtype default (the loader has already validated the
   // (subtype × value) pairing, so an unrecognized value never reaches here).
+  // dbColumnType slim-and-derive Phase 1: the array overrides (uuid_array /
+  // text_array) are RETIRED — native text[]/uuid[] are derived from `isArray`
+  // below, not declared here.
   const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType === "string") {
     switch (dbColumnType) {
       case DB_COLUMN_TYPE_UUID:              return { kind: "uuid" };
       case DB_COLUMN_TYPE_JSONB:             return { kind: "json" };
       case DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ: return { kind: "timestamp", withTimezone: true };
-      case DB_COLUMN_TYPE_UUID_ARRAY:        return { kind: "array", element: { kind: "uuid" } };
-      case DB_COLUMN_TYPE_TEXT_ARRAY:        return { kind: "array", element: { kind: "text" } };
     }
+  }
+
+  // Native array columns are DERIVED from `isArray` (dbColumnType slim-and-derive
+  // Phase 1). Only scalar subtypes with a stable element SqlType get a native
+  // Postgres array (e.g. field.string → text[], field.uuid → uuid[]). field.object
+  // / field.map carry their array-ness inside a single jsonb column (no native
+  // array — handled by the subtype switch returning { kind: "json" }).
+  if (field.isArray) {
+    const element = arrayElementSqlType(field);
+    if (element !== undefined) return { kind: "array", element };
   }
 
   const subType = field.subType;

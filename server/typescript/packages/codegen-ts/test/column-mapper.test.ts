@@ -222,6 +222,28 @@ describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
     const spec = mapColumnType(metaField(FIELD_SUBTYPE_UUID, "id"), "sqlite");
     expect(spec.fnName).toBe("text");
   });
+
+  // Native arrays are DERIVED from isArray (dbColumnType slim-and-derive Phase 1):
+  // no @dbColumnType:uuid_array / text_array escape hatch — the array-ness lives on
+  // the field's isArray axis.
+  test("Postgres: field.uuid isArray → uuid() + .array() (= uuid[])", () => {
+    const f = metaField(FIELD_SUBTYPE_UUID, "memberIds");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("uuid");
+    expect(spec.modifiers).toContain(".array()");
+    // Drizzle's native .array() is already element-typed — no $type needed.
+    expect(spec.dollarTypeRef).toBeUndefined();
+  });
+
+  test("Postgres: field.string isArray → text() + .array() (= text[])", () => {
+    const f = metaField(FIELD_SUBTYPE_STRING, "tags");
+    f.setIsArray(true);
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.fnName).toBe("text");
+    expect(spec.modifiers).toContain(".array()");
+    expect(spec.dollarTypeRef).toBeUndefined();
+  });
 });
 
 describe("mapColumnType — @dbColumnType physical override (R6 Plan 2b)", () => {
