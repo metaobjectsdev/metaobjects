@@ -197,6 +197,25 @@ public class PostgresDriver extends GenericSQLDriver {
         return java.sql.Types.OTHER;
     }
 
+    /**
+     * dbColumnType slim-and-derive (Phase 1): Postgres has native array columns, so a
+     * {@code field.string isArray} → {@code text[]} and a {@code field.uuid isArray} →
+     * {@code uuid[]} (element type DERIVED from the field subtype — the removed
+     * {@code @dbColumnType:text_array}/{@code uuid_array} values). Returns {@code null} for a
+     * scalar field so the normal codec path applies. {@code field.string @dbColumnType:jsonb}
+     * is the open-bag escape hatch (handled separately) and never an array, even if {@code isArray}.
+     */
+    @Override
+    protected String nativeArrayElementType(com.metaobjects.field.MetaField f) {
+        if (!f.isArrayType()) return null;
+        if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(f.getSubType())) return "uuid";
+        if (com.metaobjects.field.StringField.SUBTYPE_STRING.equals(f.getSubType())
+                && !isOpenJsonbField(f)) {
+            return "text";
+        }
+        return null;
+    }
+
     @Override
     public String toString() {
         return "PostgreSQL Database Driver (Enhanced for PostgreSQL 14+)";

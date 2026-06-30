@@ -229,6 +229,78 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * dbColumnType slim-and-derive (Phase 1): the native SQL array element type for a
+     * field that maps to a Postgres array column, or {@code null} when the field is not a
+     * native array (the common case) OR the driver has no native-array support.
+     *
+     * <p>The array-ness is <em>derived</em> from the field subtype + {@code isArray:true}
+     * (the metadata already says it — ADR-0023; the removed {@code @dbColumnType:text_array}
+     * / {@code uuid_array} values are gone): {@code field.string isArray} → {@code "text"},
+     * {@code field.uuid isArray} → {@code "uuid"}. The element-type STRING is Postgres-native,
+     * so the base driver returns {@code null} (no native arrays — Derby et al. fall through to
+     * the scalar codec) and {@link PostgresDriver} overrides it.</p>
+     */
+    protected String nativeArrayElementType(MetaField f) {
+        return null;
+    }
+
+    /**
+     * Bind a {@code List} value to a native SQL array parameter ({@code text[]} / {@code uuid[]}).
+     * A {@code uuid[]} binds {@link java.util.UUID} elements (a String element would draw a
+     * varchar↔uuid mismatch, mirroring the scalar {@link #isUuidColumn} bind); a {@code text[]}
+     * binds the element {@code toString()}. A {@code null} list binds SQL NULL.
+     */
+    protected void bindNativeArrayParameter(PreparedStatement s, int index, String elementType, Object value)
+            throws SQLException {
+        if (value == null) {
+            s.setNull(index, Types.ARRAY);
+            return;
+        }
+        java.util.List<?> list = (value instanceof java.util.List<?> l)
+            ? l : java.util.List.of(value);
+        boolean uuid = "uuid".equalsIgnoreCase(elementType);
+        Object[] elements = new Object[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            Object e = list.get(i);
+            if (e == null) {
+                elements[i] = null;
+            } else if (uuid) {
+                elements[i] = (e instanceof java.util.UUID u) ? u : java.util.UUID.fromString(e.toString());
+            } else {
+                elements[i] = e.toString();
+            }
+        }
+        java.sql.Array arr = s.getConnection().createArrayOf(elementType, elements);
+        s.setArray(index, arr);
+    }
+
+    /**
+     * Read a native SQL array column ({@code text[]} / {@code uuid[]}) back into the field's
+     * {@code List} value via {@link ResultSet#getArray}. {@code uuid[]} elements are normalised
+     * lowercase-canonical (the cross-port wire contract, enforced in the PORT — dialect-independent,
+     * matching the scalar {@link #isUuidColumn} read); {@code text[]} elements are surfaced as
+     * Strings. A SQL NULL reads back as a {@code null} field value.
+     */
+    protected void readNativeArrayInto(Object o, MetaField f, String elementType, ResultSet rs, int j)
+            throws SQLException {
+        java.sql.Array sqlArr = rs.getArray(j);
+        if (sqlArr == null || rs.wasNull()) {
+            f.setObjectArray(o, null);
+            return;
+        }
+        Object raw = sqlArr.getArray();
+        boolean uuid = "uuid".equalsIgnoreCase(elementType);
+        java.util.List<Object> out = new ArrayList<>();
+        if (raw instanceof Object[] arr) {
+            for (Object e : arr) {
+                if (e == null) { out.add(null); continue; }
+                out.add(uuid ? e.toString().toLowerCase(java.util.Locale.ROOT) : e.toString());
+            }
+        }
+        f.setObjectArray(o, out);
+    }
+
+    /**
      * R6 Plan 2b: returns true if the field is a <em>genuinely-open</em> JSON column
      * declared via {@code @dbColumnType: jsonb} (as opposed to the typed
      * {@code @dbType=jsonb} + {@code @objectRef} owned-object path handled by
@@ -1330,6 +1402,16 @@ public class GenericSQLDriver implements DatabaseDriver {
             else bindJsonbParameter(s, index, serializeOpenJsonb(value));
             return;
         }
+        // Native array column (dbColumnType slim-and-derive, Phase 1): a `field.string`
+        // or `field.uuid` carrying `isArray:true` maps to a Postgres `text[]` / `uuid[]`
+        // column. The element type is DERIVED from the field subtype (never declared via
+        // the removed @dbColumnType:text_array/uuid_array). Bind a java.sql.Array built
+        // from the connection so pgjdbc routes the List to the array column.
+        String arrayElemType = nativeArrayElementType(f);
+        if (arrayElemType != null) {
+            bindNativeArrayParameter(s, index, arrayElemType, value);
+            return;
+        }
         // Native uuid column (field.uuid OR @dbColumnType: uuid): bind a java.util.UUID
         // (via Types.OTHER) so the value matches the column's uuid type instead of drawing
         // a varchar↔uuid operator-mismatch. Accepts a String or a UUID (insert + WHERE param).
@@ -1595,6 +1677,14 @@ public class GenericSQLDriver implements DatabaseDriver {
         // the StringCodec) keeps the path explicit alongside the write side.
         if (isOpenJsonbField(f)) {
             f.setObject(o, rs.getString(j));
+            return;
+        }
+        // Native array column (dbColumnType slim-and-derive, Phase 1): read a Postgres
+        // text[] / uuid[] back into the field's List value. Checked BEFORE the uuid-column
+        // branch below, since a `field.uuid isArray` matches isUuidColumn on subtype too.
+        String arrayElemType = nativeArrayElementType(f);
+        if (arrayElemType != null) {
+            readNativeArrayInto(o, f, arrayElemType, rs, j);
             return;
         }
         com.metaobjects.manager.db.codec.JdbcFieldCodec codec =

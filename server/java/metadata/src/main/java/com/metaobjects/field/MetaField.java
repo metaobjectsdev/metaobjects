@@ -659,9 +659,13 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      */
     protected void setObjectAttribute(Object obj, Object val) {
 
-        // Ensure the data types are accurate
-        if (val != null && !getValueClass().isInstance(val))
-            throw new InvalidValueException("Invalid value [" + val + "], expected class [" + getValueClass().getName() + "]");
+        // Ensure the data types are accurate. Array-aware: an `isArray:true` field holds a List,
+        // so validate against the EFFECTIVE value class (List for arrays, the base class for
+        // scalars) — otherwise a legitimate List value for a uuid[]/text[] field is rejected as
+        // "expected class [String]" (the dbColumnType slim-and-derive native-array read path).
+        Class<?> effectiveClass = getEffectiveValueClass();
+        if (val != null && !effectiveClass.isInstance(val))
+            throw new InvalidValueException("Invalid value [" + val + "], expected class [" + effectiveClass.getName() + "]");
 
         // Perform validation -- Disabled for performance reasons
         //performValidation( obj, val );
@@ -684,8 +688,15 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      */
     private Object getObjectValue(Object obj) {
         Object val = getDeclaringObject().getValue(this, obj);
-        if (!getValueClass().isInstance(val)) {
-            val = DataConverter.toType(dataType, val);
+        // Array-aware: an `isArray:true` field's value is a List, so coerce/check against the
+        // EFFECTIVE value class (List) + EFFECTIVE data type (the *_ARRAY variant). Using the
+        // scalar getValueClass()/dataType here silently comma-joined a List into a String (the
+        // dbColumnType slim-and-derive native-array bug — a uuid[] read back as a joined String).
+        // For a scalar field getEffectiveValueClass()/getEffectiveDataType() equal the base
+        // class/type, so non-array behavior is unchanged.
+        Class<?> effectiveClass = getEffectiveValueClass();
+        if (!effectiveClass.isInstance(val)) {
+            val = DataConverter.toType(getEffectiveDataType(), val);
         }
         return val;
     }

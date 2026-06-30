@@ -124,6 +124,48 @@ public class DbColumnTypeValidationTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void uuidArrayValueIsRejected() {
+        // dbColumnType:uuid_array was REMOVED (Phase 1, dbColumnType slim-and-derive):
+        // a native uuid[] column is now DERIVED from field.uuid + isArray:true, not declared.
+        String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"field.string\": { \"name\": \"tags\", \"@dbColumnType\": \"uuid_array\" } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+        assertBadAttrValue(canonical, "uuid-array-removed.json");
+    }
+
+    @Test
+    public void textArrayValueIsRejected() {
+        // dbColumnType:text_array was REMOVED (Phase 1): a native text[] column is now
+        // DERIVED from field.string + isArray:true, not declared.
+        String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"field.string\": { \"name\": \"tags\", \"@dbColumnType\": \"text_array\" } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+        assertBadAttrValue(canonical, "text-array-removed.json");
+    }
+
+    @Test
+    public void textValueIsRejected() {
+        // The vestigial dbColumnType:text value is REMOVED (Phase 1): a no-maxLength
+        // field.string already defaults to a text column — `text` is not an opt-in.
+        String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
+            "    { \"field.long\": { \"name\": \"id\" } }," +
+            "    { \"field.string\": { \"name\": \"body\", \"@dbColumnType\": \"text\" } }," +
+            "    { \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "  ] } }" +
+            "] } }";
+        assertBadAttrValue(canonical, "text-value-removed.json");
+    }
+
+    @Test
     public void unrecognizedValueIsRejected() {
         String canonical = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
             "  { \"object.entity\": { \"name\": \"Asset\", \"children\": [" +
