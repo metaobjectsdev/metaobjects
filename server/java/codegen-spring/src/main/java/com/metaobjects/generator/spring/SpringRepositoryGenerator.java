@@ -1,8 +1,10 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
+import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
@@ -16,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Generator: one hand-stubbed Java {@code interface} per writable
@@ -124,6 +127,32 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    List<").append(nav.targetDtoType()).append("> ")
                .append(m2mFinderName(nav.relationName())).append("(Long sourceId);\n");
         }
+
+        // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
+        // (each identity.reference). The referenced entity T navigates to its
+        // referencing E rows by calling these with a T id. The method name derives
+        // from the FK FIELD (PascalCased, trailing `Id` dropped) so same-pair FKs
+        // (e.g. GameSession → Scene ×3) yield DISTINCT finders, never colliding —
+        // and no @reverseName vocabulary is needed. NOT a lazy @OneToMany collection
+        // (N+1 anti-pattern + needs an open session): a single indexed query
+        // (WHERE fk = ?) plus a batched variant (WHERE fk IN (…)) for anti-N+1
+        // loading of many parents.
+        for (ReverseFk fk : reverseFksFor(entity)) {
+            src.append("\n    /** Reverse nav: the ").append(shortName)
+               .append(" rows whose ").append(fk.fkField())
+               .append(" FK points at the given ").append(fk.targetShortName())
+               .append(" id (single indexed query). */\n");
+            src.append("    List<").append(dtoName).append("> ")
+               .append(SpringNaming.reverseFinderName(fk.fkField()))
+               .append("(").append(fk.valueType()).append(" ").append(fk.fkField()).append(");\n");
+            src.append("    /** Reverse nav (batched, anti-N+1): the ").append(shortName)
+               .append(" rows whose ").append(fk.fkField())
+               .append(" FK is IN the given ").append(fk.targetShortName())
+               .append(" ids. */\n");
+            src.append("    List<").append(dtoName).append("> ")
+               .append(SpringNaming.reverseFinderInName(fk.fkField()))
+               .append("(List<").append(fk.valueType()).append("> ").append(fk.fkField()).append("s);\n");
+        }
         src.append("}\n");
 
         try {
@@ -193,6 +222,43 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
     public static String m2mFinderName(String relationName) {
         if (relationName.isEmpty()) return "find";
         return "find" + Character.toUpperCase(relationName.charAt(0)) + relationName.substring(1);
+    }
+
+    /**
+     * One reverse FK an entity holds (ADR-0038), derived from an {@code identity.reference}:
+     * the FK field name, the target entity short name, and the Java value type of the FK
+     * (the type a {@code findBy<FkField>} arg / element takes — the FK column's own Java type).
+     */
+    public record ReverseFk(String fkField, String targetShortName, String valueType) {}
+
+    /**
+     * Collect every reverse FK an entity declares, in declaration order — one per
+     * {@code identity.reference} child with a single FK field. Compound references
+     * (multi-field FKs) are skipped (no single-column finder shape). The value type
+     * is the FK field's own Java type via {@link SpringTypeMapper#javaTypeName}.
+     */
+    public static List<ReverseFk> reverseFksFor(MetaObject entity) {
+        List<ReverseFk> out = new java.util.ArrayList<>();
+        for (com.metaobjects.MetaData child : entity.getChildren()) {
+            if (!(child instanceof ReferenceIdentity ref)) continue;
+            List<String> fields = ref.getFields();
+            if (fields.size() != 1) continue; // single-column FKs only
+            String fkField = fields.get(0);
+            String target = ref.getTargetEntity();
+            String targetShort = target == null ? "" : stripPackage(target);
+            String valueType = "Long";
+            if (entity.hasMetaField(fkField)) {
+                MetaField<?> f = entity.getMetaField(fkField);
+                valueType = SpringTypeMapper.javaTypeName(f);
+            }
+            out.add(new ReverseFk(fkField, targetShort, valueType));
+        }
+        return out;
+    }
+
+    private static String stripPackage(String name) {
+        int idx = name.lastIndexOf("::");
+        return idx >= 0 ? name.substring(idx + 2) : name;
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
