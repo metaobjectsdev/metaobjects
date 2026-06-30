@@ -33,9 +33,15 @@ The throughline (confirmed by a cross-framework study of 11 ORMs/IDLs): **base t
 
 Rationale: aware-by-default is the unanimous best-practice (Postgres "Don't Do This", Ecto, Django 5.0). `timetz` is discouraged and `date` is inherently naive, so the distinction applies only to `timestamp`. The attribute is the right shape (not a subtype) because timezone-awareness is an orthogonal modifier of one base type — the same shape as `@maxLength` on a string — not a different *kind* of value the way `field.uuid` is (ADR-0037, step 2). _Earlier drafts proposed a `field.localDateTime` subtype; that was corrected to the attribute under the ADR-0037 framework — the per-port native-binding conditional already exists, and a subtype would over-weight a rare modifier into a sibling type._
 
-### 2. Semantic string `@format` — a closed-set attribute on `field.string`
+### 2. Semantic string formats — split by behavior (per ADR-0037)
 
-Add `@format` with the cross-framework intersection value set: **`email | url | uuid | hostname | ipv4 | ipv6`**. The canonical matcher for each format lives in each port (conformance-gated) — *not* author-supplied `validator.regex`, because cross-language regex engines diverge (lookahead, Unicode classes) and would break byte-identity. Modeled as an attribute on `field.string` (the JSON Schema `format` model), not as new subtypes: format is a string-shape constraint, not a distinct storage type. Codegens idiomatically per port (Zod `z.email()`, class-validator `@IsEmail`, Jakarta `@Email`, PG `CHECK`/`citext`).
+The "string formats" set does not survive the [ADR-0037](ADR-0037-metamodel-vocabulary-expansion-decision-framework.md) behavioral test (own native type / behavior → subtype; plain validated string → attribute), so it splits three ways:
+
+- **`field.uri` subtype** — `url`/`uri` have a native type (`URI`/`Uri`/`urllib`) and behavior (scheme/authority/path, absolute-vs-relative), so they are a subtype, with **`@kind` = `url` | `urn`** distinguishing the structural variants (a URL locates, a URN names). Native binding + parse behavior per port.
+- **`field.inet` subtype** — `ipv4`/`ipv6` have a native type (`InetAddress`/`IPAddress`/`ipaddress`) and a Postgres-native `inet`/`cidr` column, so they are a subtype, with **`@kind` = `ipv4` | `ipv6`**.
+- **`@stringFormat` attribute** on `field.string` — only the genuinely behavior-less, native-type-less validated strings: **`email | hostname`** (additive — more can be added later). The canonical matcher per format lives in each port (conformance-gated), *not* author `validator.regex` (cross-language regex engines diverge and break byte-identity). Named `@stringFormat` (not `@format`) to avoid colliding with the existing `template.* @format` (output format) — ADR-0037's no-overload corollary. Codegens idiomatically (Zod `z.email()`, Jakarta `@Email`, PG `CHECK`/`citext`).
+
+`uuid` is **not** in this set — it is already the `field.uuid` subtype (native UUID type), the original instance of this same rule.
 
 ### 3. Multi-edge-same-pair navigation → `@relationName`, fail-closed
 
