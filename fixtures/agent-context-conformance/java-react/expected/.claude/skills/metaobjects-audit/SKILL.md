@@ -80,7 +80,50 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   in committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (ADR-0013); per-port
   migration engine where schema is Node-`meta`-owned (ADR-0015).
 
+- [ ] **I. Vocabulary hygiene / modernization (ADVISORY).** Flag already-retired or
+  deprecated authoring patterns and recommend the canonical form (see § Vocabulary
+  hygiene). Advisory severity — scored as modernization opportunities, **never a
+  failing finding**.
+
 **Phase 4 — Synthesize** into the tiered roadmap and populate both artifacts.
+
+---
+
+## Vocabulary hygiene / modernization (axis I — ADVISORY)
+
+Per ADR-0037, vocabulary expansion follows ONE ordered test (derivable → derive;
+physical-only → `@dbColumnType`; logical: different native type → subtype, same kind +
+modifier → attribute). This axis surfaces authoring that predates or contradicts that
+framework. **All findings here are advisory** — modernization opportunities scored as
+such, surfaced in the roadmap, but **non-failing** (the code works; the form is dated).
+
+**Already-retired / deprecated forms → recommend the canonical form:**
+
+- `@dbColumnType: uuid_array` / `@dbColumnType: text_array` (a physical array column
+  type) → **`isArray: true`** on the base subtype. Array-ness is logical and derivable;
+  the array column type is retired.
+- The `@kind: text` hack (forcing text via a kind override) → **bare `field.string`**
+  (text is the default; no override needed).
+- `@dbColumnType: uuid` where a native UUID type is actually wanted → **`field.uuid`**
+  (a distinct native type is a subtype, not a physical override). Keep `@dbColumnType:
+  uuid` ONLY for the deliberate string-over-uuid-column case.
+
+**Custom-provider vocabulary (adopters who register their own types/attrs):** check
+new/custom vocab against the ADR-0037 procedure (advisory) — e.g. *a custom subtype
+that differs from an existing one only by a property should be an attribute, not a
+subtype*; a string-shape validation (email/url) is an attribute (native type unchanged),
+not a subtype. Recommend re-shaping against the ordered test.
+
+**TODO — Wave-2/3 checks to add when the conventions merge (NOT yet active — these
+tokens are pending ADR-0036 Wave 2/3 and not yet registered; do NOT flag adopters for
+them until merged):**
+
+- `@dbColumnType: timestamp_with_tz` → **drop it** (timezone-aware is the
+  `field.timestamp` default) — *pending Wave 2/3*.
+- A bare wall-clock `field.timestamp` meaning naive/local time → flag for the
+  forthcoming `@localTime` zone-flag attribute — *pending Wave 2/3, not yet active*.
+- An author-supplied regex validating email / url shape → flag for the forthcoming
+  `@format` string-format attribute — *pending Wave 2/3, not yet active*.
 
 ---
 
@@ -182,6 +225,10 @@ one-consumer need, read it codegen-locally.
 
 Coarse bands only (none / some / most / all). Worst-of within a pillar. On re-run, grade
 the delta. Lead with gaps, not the grade.
+
+**Vocabulary hygiene (axis I) is advisory** — it surfaces as modernization
+opportunities in the roadmap, scored as such, and **never gates a tier or fails the
+audit.** Dated-but-working vocabulary is a quality nudge, not a defect.
 
 ---
 
