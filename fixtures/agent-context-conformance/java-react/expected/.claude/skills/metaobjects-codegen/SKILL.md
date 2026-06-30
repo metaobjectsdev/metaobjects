@@ -159,12 +159,12 @@ Postgres, `field.enum` → `varchar` + `CHECK`, etc.).
 
 Codegen only ever maps the **shapes you authored** — so author them right. If you
 find the generator emitting the wrong column type, the fix is the field shape, not a
-template hack. See "Choosing the right field shape" in the **`metaobjects-authoring`**
-skill for the ordered subtype-vs-attribute-vs-`@dbColumnType` test (ADR-0037) — e.g.
-arrays are `isArray: true` (never an array column type) and a native UUID is
-`field.uuid` (not a string + `@dbColumnType`). When you register custom vocabulary
-for a custom generator, the same ADR-0037 procedure decides whether it's a subtype or
-an attribute.
+template hack. See "Choosing the right shape — the general decision procedure" in the
+**`metaobjects-authoring`** skill for the ordered derive→`@dbColumnType`→subtype/
+`@kind`/attribute routing (ADR-0037) — e.g. arrays are `isArray: true` (never an
+array column type) and a native UUID is `field.uuid` (not a string + `@dbColumnType`).
+When you register custom vocabulary for a custom generator, the same ADR-0037
+procedure decides whether it's a subtype, a `@kind` variant, or an attribute.
 
 ## Per-target output
 
