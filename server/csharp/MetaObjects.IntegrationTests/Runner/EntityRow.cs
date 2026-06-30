@@ -40,7 +40,10 @@ public static class EntityRow
     {
         if (value is null) return null;
         var t = value.GetType();
-        if (t.IsPrimitive || value is string or decimal or DateTime or DateOnly or TimeOnly or Guid or Enum)
+        // ADR-0036 Wave 2 — a default field.timestamp materializes as DateTimeOffset (an
+        // absolute instant); pass it straight through to Normalization (which renders the
+        // UTC wire string + "Z"), NOT into PocoToJsonNode's reflection path.
+        if (t.IsPrimitive || value is string or decimal or DateTime or DateTimeOffset or DateOnly or TimeOnly or Guid or Enum)
             return value;
         // A @dbColumnType:jsonb open-bag surfaces as JsonDocument/JsonElement (issue #98) —
         // pass it through so Normalization re-serializes the parsed value with sorted keys,

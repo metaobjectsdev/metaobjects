@@ -39,11 +39,27 @@ public static class DbSchema
         Required: false,
         AllowedValues: [.. DbConstants.VALID_DB_COLUMN_TYPES],
         Description:
-            "Physical DB column-type override (ADR-0013 escape hatch). Legal values are " +
-            string.Join(" | ", DbConstants.VALID_DB_COLUMN_TYPES) + ", each legal only on a specific " +
-            "logical field subtype (uuid/jsonb on field.string, timestamp_with_tz on field.timestamp). " +
-            "The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) " +
-            "are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1).");
+            "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, " +
+            "both on field.string (uuid = native Postgres uuid column over a string-typed field; " +
+            "jsonb = genuinely-open JSON column). The logical field type and its native binding are " +
+            "unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from " +
+            "a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — " +
+            "timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive " +
+            "opt-out), per ADR-0036 Wave 2.");
+
+    /// <summary>
+    /// ADR-0036 Wave 2: <c>@localTime</c> — the naive-timestamp opt-out on <c>field.timestamp</c>
+    /// (boolean, no allowedValues). Registered ONLY on field.timestamp by <see cref="DbMetaDataProvider"/>.
+    /// </summary>
+    public static readonly AttrSchema LocalTimeSchema = new AttrSchema(
+        Name: DbConstants.FIELD_ATTR_LOCAL_TIME,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description:
+            "When true, the timestamp is a naive wall-clock value with no timezone (Postgres " +
+            "`timestamp without time zone`); absent/false (the default) = an absolute instant " +
+            "(`timestamptz`). ADR-0036 Wave 2 — replaces the retired @dbColumnType: timestamp_with_tz " +
+            "escape hatch.");
 
     // --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
 

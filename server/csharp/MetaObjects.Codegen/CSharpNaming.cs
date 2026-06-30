@@ -45,7 +45,11 @@ public static class CSharpNaming
             [FIELD_SUBTYPE_BOOLEAN]   = "bool",
             [FIELD_SUBTYPE_DATE]      = "DateOnly",
             [FIELD_SUBTYPE_TIME]      = "TimeOnly",
-            [FIELD_SUBTYPE_TIMESTAMP] = "DateTime",
+            // ADR-0036 Wave 2 — field.timestamp's CLR type is CONDITIONAL on @localTime
+            // (see ScalarForField): default = DateTimeOffset (an absolute instant), and
+            // @localTime:true = DateTime (a naive wall-clock value). This subtype-keyed
+            // entry is the DEFAULT (no field in hand); the per-field overload overrides it.
+            [FIELD_SUBTYPE_TIMESTAMP] = "DateTimeOffset",
             // R6 Plan 2a — field.uuid binds to the native System.Guid value type
             // (ADR-0001), independent of its string wire form. The native uuid DB
             // column is a separate migrate-engine concern (SubtypeToSqlType).
@@ -54,11 +58,32 @@ public static class CSharpNaming
 
     /// <summary>Value types that take a <c>?</c> suffix when nullable (vs. reference types).</summary>
     private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
-        { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "Guid" };
+        { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "DateTimeOffset", "Guid" };
 
     /// <summary>The base C# scalar type for a field subtype (no nullability), or null for object fields.</summary>
     public static string? ScalarFor(string fieldSubType) =>
         ScalarType.GetValueOrDefault(fieldSubType);
+
+    /// <summary>
+    /// ADR-0036 Wave 2 — true when a <c>field.timestamp</c> opts OUT of instant
+    /// semantics via <c>@localTime: true</c> (a naive wall-clock value). Own-only,
+    /// matching the loader's physical-attr policy. Always false for non-timestamp fields.
+    /// </summary>
+    public static bool IsLocalTime(MetaField field) =>
+        field.SubType == FIELD_SUBTYPE_TIMESTAMP && field.OwnAttr(DbConstants.FIELD_ATTR_LOCAL_TIME) is true;
+
+    /// <summary>
+    /// The base C# scalar type for a field (no nullability), accounting for the
+    /// ADR-0036 Wave 2 conditional <c>field.timestamp</c> binding:
+    /// <list type="bullet">
+    ///   <item>default <c>field.timestamp</c> → <c>DateTimeOffset</c> (an absolute instant / <c>timestamptz</c>);</item>
+    ///   <item><c>field.timestamp @localTime:true</c> → <c>DateTime</c> (a naive wall-clock value / <c>timestamp</c>).</item>
+    /// </list>
+    /// Every other subtype delegates to the subtype-keyed <see cref="ScalarFor(string)"/>.
+    /// Returns null for object fields.
+    /// </summary>
+    public static string? ScalarForField(MetaField field) =>
+        IsLocalTime(field) ? "DateTime" : ScalarFor(field.SubType);
 
     /// <summary>
     /// The System.Text.Json type that holds a parsed JSON value — the CLR property

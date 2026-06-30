@@ -391,7 +391,8 @@ public class EntityGenerator : IGenerator
     // interfaces declare these members non-null. Arrays keep the List<T> shape.
     protected virtual string TphSubtypeScalarProperty(MetaObject entity, MetaField field, ColumnNamingStrategy strategy)
     {
-        var baseType = CSharpNaming.ScalarFor(field.SubType)!;
+        // ScalarForField resolves the ADR-0036 Wave 2 conditional field.timestamp binding.
+        var baseType = CSharpNaming.ScalarForField(field)!;
         var propName = PropertyName(field);
 
         if (field.IsArray)
@@ -742,10 +743,12 @@ public class EntityGenerator : IGenerator
         string? baseTypeOverride = null)
     {
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
-        // (JsonDocument) — issue #98 — taking precedence over the logical scalar. uuid/
-        // timestamp_with_tz overrides keep the logical CLR type (converted at the DB seam).
+        // (JsonDocument) — issue #98 — taking precedence over the logical scalar. A uuid
+        // override keeps the logical CLR type (converted at the DB seam). ScalarForField
+        // resolves the ADR-0036 Wave 2 conditional field.timestamp binding (default
+        // DateTimeOffset / @localTime:true DateTime).
         var baseType = CSharpNaming.DbColumnTypeClrOverride(field)
-            ?? baseTypeOverride ?? CSharpNaming.ScalarFor(field.SubType)!;
+            ?? baseTypeOverride ?? CSharpNaming.ScalarForField(field)!;
         var propName = PropertyName(field);
 
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]
@@ -968,7 +971,7 @@ public class EntityGenerator : IGenerator
         if (dot <= 0 || dot == of.Length - 1) return null;
         var sourceObj = ctx.Root.FindObject(CSharpNaming.StripPkg(of[..dot]));
         var sourceField = sourceObj?.FindField(of[(dot + 1)..]);
-        return sourceField is null ? null : CSharpNaming.ScalarFor(sourceField.SubType);
+        return sourceField is null ? null : CSharpNaming.ScalarForField(sourceField);
     }
 
     // True for the fields that reference a value-object by @objectRef and so contribute

@@ -82,7 +82,10 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
                     id BIGSERIAL PRIMARY KEY,
                     name VARCHAR(100) NOT NULL,
                     bio VARCHAR(1000),
-                    ""createdAt"" TIMESTAMP NOT NULL
+                    -- ADR-0036 Wave 2: a default field.timestamp is an absolute instant →
+                    -- the generated EF model binds CreatedAt to DateTimeOffset, which Npgsql
+                    -- reads from a `timestamp with time zone` (timestamptz) column.
+                    ""createdAt"" TIMESTAMPTZ NOT NULL
                 )";
             await cmd.ExecuteNonQueryAsync();
         }
@@ -100,6 +103,15 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         builder.WebHost.UseUrls(baseUrl);
         // Quiet the host (no console spew during the test run).
         builder.Logging.ClearProviders();
+
+        // ADR-0036 Wave 2 — a default field.timestamp binds to DateTimeOffset (timestamptz).
+        // The api-contract corpus authors an instant body field with NO offset
+        // ("2026-02-01T10:00:00"); System.Text.Json would attach the HOST machine's local
+        // offset, and Npgsql rejects a non-UTC DateTimeOffset on a timestamptz write. Interpret
+        // an offset-less instant as UTC (the cross-port wire contract for an instant field), so
+        // the generated EF write succeeds regardless of the CI host's timezone.
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(o =>
+            o.SerializerOptions.Converters.Add(new UtcDateTimeOffsetConverter()));
 
         // Register the GENERATED AppDbContext, pointed at the Testcontainers PG.
         // AddDbContext<TContext> needs the closed generic type at runtime, so
@@ -289,9 +301,14 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
 
     // ----- helpers -----
 
+    // ADR-0036 Wave 2 — the seed authors' createdAt instant is bound to the timestamptz
+    // column as a UTC DateTime (Kind=Utc), the Npgsql write form for `timestamp with time
+    // zone`. The naive seed strings (no offset) are interpreted as UTC instants.
     private static DateTime ParseTimestamp(string s) =>
-        DateTime.ParseExact(s, TimestampFmt, System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None);
+        DateTime.SpecifyKind(
+            DateTime.ParseExact(s, TimestampFmt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None),
+            DateTimeKind.Utc);
 
     private static int PickFreePort()
     {
@@ -301,4 +318,27 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         l.Stop();
         return port;
     }
+}
+
+/// <summary>
+/// ADR-0036 Wave 2 — deserializes an instant body field to a UTC <see cref="DateTimeOffset"/>.
+/// A no-offset ISO string ("2026-02-01T10:00:00") is read as UTC (the cross-port instant wire
+/// contract) rather than picking up the host machine's local offset, so the generated EF write
+/// onto a timestamptz column succeeds on any CI host. An explicit offset is honored then
+/// converted to UTC. Serialization stays the System.Text.Json default (round-trip "o" form).
+/// </summary>
+internal sealed class UtcDateTimeOffsetConverter : System.Text.Json.Serialization.JsonConverter<DateTimeOffset>
+{
+    public override DateTimeOffset Read(
+        ref System.Text.Json.Utf8JsonReader reader, Type typeToConvert, System.Text.Json.JsonSerializerOptions options)
+    {
+        string? raw = reader.GetString();
+        var dto = DateTimeOffset.Parse(raw!, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal);
+        return dto.ToUniversalTime();
+    }
+
+    public override void Write(
+        System.Text.Json.Utf8JsonWriter writer, DateTimeOffset value, System.Text.Json.JsonSerializerOptions options) =>
+        writer.WriteStringValue(value.ToUniversalTime().ToString("o", System.Globalization.CultureInfo.InvariantCulture));
 }

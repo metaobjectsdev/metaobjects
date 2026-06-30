@@ -20,6 +20,15 @@ public static class DbConstants
     /// <summary>When true, suppress the @filterable-without-index Loader warning (Project D drift check).</summary>
     public const string FIELD_ATTR_DB_INDEXED = "db.indexed";
 
+    /// <summary>
+    /// ADR-0036 Wave 2 — the naive-timestamp opt-out on <c>field.timestamp</c> (<c>@localTime</c>,
+    /// boolean). When true, the timestamp is a naive wall-clock value (<c>timestamp without time
+    /// zone</c> + CLR <c>DateTime</c>); absent/false (the default) = an absolute instant
+    /// (<c>timestamptz</c> + CLR <c>DateTimeOffset</c>). Replaces the retired
+    /// <c>@dbColumnType: timestamp_with_tz</c> escape hatch.
+    /// </summary>
+    public const string FIELD_ATTR_LOCAL_TIME = "localTime";
+
     // -----------------------------------------------------------------------
     // Physical RDB index/constraint attrs the db provider adds to identity.*
     // (TypeRegistry.Extend on identity subtypes) — pure physical-storage
@@ -49,10 +58,11 @@ public static class DbConstants
 
     /// <summary>
     /// Physical DB column-type override on a field (<c>@dbColumnType</c>). Closed value
-    /// set: <see cref="DB_COLUMN_TYPE_UUID"/> / <see cref="DB_COLUMN_TYPE_JSONB"/> /
-    /// <see cref="DB_COLUMN_TYPE_TIMESTAMP_TZ"/>.
+    /// set: <see cref="DB_COLUMN_TYPE_UUID"/> / <see cref="DB_COLUMN_TYPE_JSONB"/>.
     /// Array-ness is derived from <c>isArray: true</c> on the field, not from a separate
     /// <c>uuid_array</c>/<c>text_array</c> value (removed in Phase 1 of the slim-and-derive pass).
+    /// The retired <c>timestamp_with_tz</c> value is gone — timezone-awareness lives in
+    /// field.timestamp (instant by default) + <c>@localTime</c> per ADR-0036 Wave 2.
     /// </summary>
     public const string FIELD_ATTR_DB_COLUMN_TYPE = "dbColumnType";
 
@@ -60,14 +70,11 @@ public static class DbConstants
     public const string DB_COLUMN_TYPE_UUID         = "uuid";
     /// <summary><c>@dbColumnType: jsonb</c> — genuinely-open JSON column (legal on field.string).</summary>
     public const string DB_COLUMN_TYPE_JSONB        = "jsonb";
-    /// <summary><c>@dbColumnType: timestamp_with_tz</c> — <c>timestamp with time zone</c> column (legal on field.timestamp).</summary>
-    public const string DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz";
 
     /// <summary>The closed set of legal <c>@dbColumnType</c> values.</summary>
     public static readonly IReadOnlyList<string> VALID_DB_COLUMN_TYPES = new[]
     {
         DB_COLUMN_TYPE_UUID,
         DB_COLUMN_TYPE_JSONB,
-        DB_COLUMN_TYPE_TIMESTAMP_TZ,
     };
 }

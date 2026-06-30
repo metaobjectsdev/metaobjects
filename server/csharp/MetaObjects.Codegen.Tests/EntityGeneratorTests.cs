@@ -57,7 +57,8 @@ public class EntityGeneratorTests
         Assert.Contains("public string Email { get; set; } = default!;", src);
         // optional value types -> nullable
         Assert.Contains("public bool? Subscribed { get; set; }", src);
-        Assert.Contains("public DateTime? CreatedAt { get; set; }", src);
+        // ADR-0036 Wave 2 — default field.timestamp is an absolute instant → DateTimeOffset.
+        Assert.Contains("public DateTimeOffset? CreatedAt { get; set; }", src);
     }
 
     [Fact]

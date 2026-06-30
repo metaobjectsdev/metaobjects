@@ -68,6 +68,10 @@ public static class WriteCoercion
         if (underlying == typeof(DateOnly)) return DateOnly.ParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (underlying == typeof(TimeOnly)) return ParseTime(raw);
         if (underlying == typeof(DateTime)) return ParseDateTime(raw);
+        // ADR-0036 Wave 2 — a default field.timestamp binds to DateTimeOffset (an absolute
+        // instant over timestamptz). Parse the authoring instant to an offset-aware value;
+        // a trailing "Z" yields a UTC (+00:00) DateTimeOffset, the timestamptz write form.
+        if (underlying == typeof(DateTimeOffset)) return ParseDateTimeOffset(raw);
 
         throw new InvalidOperationException(
             $"no write coercion for '{prop.Name}' of CLR type {underlying.Name}");
@@ -98,6 +102,16 @@ public static class WriteCoercion
         }
         var local = DateTime.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None);
         return DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+    }
+
+    // ADR-0036 Wave 2 — a default field.timestamp instant → DateTimeOffset (timestamptz).
+    // A trailing "Z" (or any explicit offset) parses to the matching offset; convert to
+    // UTC so the write is offset-canonical (Npgsql maps a UTC DateTimeOffset to timestamptz).
+    private static DateTimeOffset ParseDateTimeOffset(string raw)
+    {
+        var dto = DateTimeOffset.Parse(raw, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        return dto.ToUniversalTime();
     }
 
     // Build an owned value-object POCO from a nested mapping, coercing each member to

@@ -1348,7 +1348,15 @@ public static class ValidationPasses
             }
 
             // Check 3: allowedValues membership.
-            if (spec.AllowedValues is { Count: > 0 } allowed)
+            //
+            // @dbColumnType is exempt here: it carries `allowedValues` ONLY so the
+            // value-set surfaces in the registry manifest (ADR-0036 Wave 1), but its
+            // real constraint — both an unrecognized value AND the (subtype × value)
+            // pairing — is enforced by ValidateDbColumnType, which emits the single
+            // ERR_BAD_ATTR_VALUE. Running the flat membership check too would
+            // double-report. Mirrors the TS Check-3 exemption.
+            if (attrName != FIELD_ATTR_DB_COLUMN_TYPE
+                && spec.AllowedValues is { Count: > 0 } allowed)
             {
                 if (!allowed.Any(av => Equals(av, value)))
                 {
@@ -1815,12 +1823,11 @@ public static class ValidationPasses
     //   Own-only validation of the @dbColumnType physical column-type attribute,
     //   mirroring the field.enum @values precedent. Two rules:
     //
-    //     1. The value must be one of the closed set uuid|jsonb|timestamp_with_tz
-    //        → ERR_BAD_ATTR_VALUE otherwise.
+    //     1. The value must be one of the closed set uuid|jsonb (ADR-0036 Wave 2:
+    //        timestamp_with_tz retired) → ERR_BAD_ATTR_VALUE otherwise.
     //     2. The (logical subtype × value) pairing must be legal:
-    //          uuid              → field.string
-    //          jsonb             → field.string
-    //          timestamp_with_tz → field.timestamp
+    //          uuid  → field.string
+    //          jsonb → field.string
     //        → ERR_BAD_ATTR_VALUE on an illegal pairing.
     //
     //   The error message names the field, the value, and the legal set — matching
@@ -1855,7 +1862,6 @@ public static class ValidationPasses
                 var requiredSubType = value switch
                 {
                     DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB => FIELD_SUBTYPE_STRING,
-                    DB_COLUMN_TYPE_TIMESTAMP_TZ => FIELD_SUBTYPE_TIMESTAMP,
                     _ => null, // unreachable (Rule 1)
                 };
                 if (requiredSubType is not null && field.SubType != requiredSubType)
@@ -1864,8 +1870,7 @@ public static class ValidationPasses
                         $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not valid on " +
                         $"field.{field.SubType} (requires field.{requiredSubType}); allowed pairings: " +
                         $"{DB_COLUMN_TYPE_UUID}→field.{FIELD_SUBTYPE_STRING}, " +
-                        $"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}, " +
-                        $"{DB_COLUMN_TYPE_TIMESTAMP_TZ}→field.{FIELD_SUBTYPE_TIMESTAMP}",
+                        $"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
                         Envelope: field.Source));
                 }

@@ -72,12 +72,13 @@ public class Fr013CodegenTests
         var root = Load();
         var doc = FileContent(new EntityGenerator().Generate(Ctx(root)), "Doc.g.cs");
 
-        // The read-only field gets a private setter.
-        Assert.Contains("public DateTime? CreatedAt { get; private set; }", doc);
+        // The read-only field gets a private setter. (ADR-0036 Wave 2: default
+        // field.timestamp is an absolute instant → DateTimeOffset.)
+        Assert.Contains("public DateTimeOffset? CreatedAt { get; private set; }", doc);
         // A normal field keeps its public setter.
         Assert.Contains("public string Name { get; set; }", doc);
         // And the read-only field is NOT emitted with a public set.
-        Assert.DoesNotContain("public DateTime? CreatedAt { get; set; }", doc);
+        Assert.DoesNotContain("public DateTimeOffset? CreatedAt { get; set; }", doc);
     }
 
     [Fact]

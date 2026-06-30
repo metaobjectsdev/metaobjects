@@ -63,8 +63,11 @@ public static class Normalization
         DateOnly date => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         TimeOnly time => FormatTimeOnly(time),
         DateTime dt => FormatDateTime(dt),
-        DateTimeOffset dto => dto.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffK", CultureInfo.InvariantCulture)
-                                            .TrimEnd('0').TrimEnd('.') + "Z",
+        // ADR-0036 Wave 2 — a default field.timestamp materializes as DateTimeOffset (an
+        // absolute instant). Normalize through the SAME UTC formatter as a Kind=Utc DateTime
+        // (ms-truncation + trailing-zero trim + single trailing "Z"), so a timestamptz reads
+        // back byte-identical to the other ports' canonicalTimestamptz wire form.
+        DateTimeOffset dto => FormatDateTime(dto.UtcDateTime),
         Guid uuid => uuid.ToString("D").ToLowerInvariant(),
         byte[] bytes => Convert.ToBase64String(bytes),
         // A pre-parsed JsonNode (assembled by a runner path) — sort keys.

@@ -107,24 +107,29 @@ public class DbContextGenerator : IGenerator
                     ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
                     : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
             }
-            // field.timestamp maps to a plain `timestamp without time zone` column
-            // (the cross-port contract: @dbColumnType:timestamp_with_tz opts INTO
-            // timestamptz). Npgsql's DbDateTime provider default is timestamptz, which
-            // rejects a Kind=Unspecified DateTime on WRITE — so without this explicit
-            // mapping a create/update over a `field.timestamp` column throws at runtime
-            // (DbUpdateException: "Cannot write DateTime with Kind=Unspecified to
-            // PostgreSQL type 'timestamp with time zone'"). The @dbColumnType path below
-            // owns the timestamptz opt-in, so only emit this for plain timestamps.
-            foreach (var f in e.Fields().Where(f =>
-                         !f.IsArray && f.SubType == FIELD_SUBTYPE_TIMESTAMP && f.DbColumnType is null))
+            // ADR-0036 Wave 2 — field.timestamp column type follows @localTime:
+            //   • default (no @localTime) → an absolute instant: CLR DateTimeOffset over a
+            //     `timestamp with time zone` (timestamptz) column. Npgsql maps DateTimeOffset
+            //     to timestamptz natively; the explicit HasColumnType keeps the model and the
+            //     TS-owned schema DDL in lockstep.
+            //   • @localTime:true → a naive wall-clock value: CLR DateTime (Kind=Unspecified)
+            //     over a `timestamp without time zone` column. Npgsql's provider default is
+            //     timestamptz, which rejects a Kind=Unspecified DateTime on WRITE, so this
+            //     explicit mapping is REQUIRED (else DbUpdateException at runtime: "Cannot
+            //     write DateTime with Kind=Unspecified to PostgreSQL type 'timestamp with
+            //     time zone'").
+            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"timestamp without time zone\");");
+                var colType = CSharpNaming.IsLocalTime(f)
+                    ? "timestamp without time zone"
+                    : "timestamp with time zone";
+                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
             }
             // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
             // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
             // told the provider column type (and, for uuid, a string↔Guid value converter)
-            // so the native uuid / jsonb / timestamptz column round-trips into that property.
+            // so the native uuid / jsonb column round-trips into that property.
             foreach (var f in e.Fields().Where(f => !f.IsArray && f.DbColumnType is not null))
                 if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
 
@@ -259,7 +264,8 @@ public class DbContextGenerator : IGenerator
     //                                            not assumed from the DB.
     //   jsonb             (on field.string)    → native `jsonb` column; Npgsql maps the
     //                                            raw JSON text ↔ string directly.
-    //   timestamp_with_tz (on field.timestamp) → `timestamp with time zone` column.
+    // (ADR-0036 Wave 2: the retired timestamp_with_tz override is gone — timezone-awareness
+    //  is the field.timestamp default, opted out of via @localTime; handled above.)
     private static string? DbColumnTypeConfig(string owner, MetaField f)
     {
         var prop = CSharpNaming.Pascal(f.Name);
@@ -273,8 +279,6 @@ public class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"uuid\").HasConversion(v => Guid.Parse(v!), g => g.ToString(\"D\"));",
             DbConstants.DB_COLUMN_TYPE_JSONB =>
                 lhs + ".HasColumnType(\"jsonb\");",
-            DbConstants.DB_COLUMN_TYPE_TIMESTAMP_TZ =>
-                lhs + ".HasColumnType(\"timestamp with time zone\");",
             _ => null,
         };
     }
