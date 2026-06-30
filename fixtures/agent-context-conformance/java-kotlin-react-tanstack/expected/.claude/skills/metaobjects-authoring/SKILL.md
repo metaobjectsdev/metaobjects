@@ -263,9 +263,25 @@ codegen emit the idiomatic check; don't hand-write a `validator.regex` for it.
 { "field.string": { "name": "email", "@stringFormat": "email", "@required": true } }
 ```
 
-<!-- TODO(ADR-0036 Wave 4 — reverse-navigation derivation): codegen derives the reverse
-     accessor automatically; @reverseName is the OPTIONAL override of that derived name
-     (not required, NOT @relationName). Add guidance when Wave 4 merges. -->
+**Reverse navigation is generated for you (ADR-0038) — don't hand-write reverse queries.**
+The natural question *"find all the rows that reference this one"* (every `Scene` a
+`GameSession` points at, every `Message` naming a `User`) is **codegen, not authoring**.
+For each FK, the *referenced* entity's query surface gains explicit finders derived from
+the relationship + `identity.reference` metadata — idiomatic per port (a Spring repository
+finder, an EF query method, a Python query function, a TS query function):
+
+- `find<Source>By<FkField>(id)` — one indexed `WHERE <fk> = ?` lookup.
+- `find<Source>By<FkField>In(ids)` — the batched variant, one `WHERE <fk> IN (…)` for the
+  many-parent case (no N+1).
+
+They are **performant by construction** (a single indexed query, no lazy collections /
+proxies / N+1 surprises) and **framework-free** (a plain function over the query layer —
+runs without MetaObjects). When an entity has **two FKs to the same target**, you get **two
+distinct finders** automatically — named by the FK field, unique by construction. There is
+**no attribute to author** for this — reverse navigation is a *codegen feature, not a
+metamodel attribute*: you declare the FK once via `identity.reference`, and the reverse
+finders fall out of codegen. So never hand-roll a `findByParentId` / `WHERE fk = ?` helper —
+consume the generated finder.
 
 **Extending the metamodel (custom providers):** the same ordered procedure above
 governs new vocabulary you register — apply it mechanically before registering
