@@ -149,4 +149,48 @@ public final class SpringNaming {
     public static String traceHelperName(String shortName) {
         return shortName + "TraceHelper";
     }
+
+    // ---------------------------------------------------------------------
+    // ADR-0038 — reverse-relationship navigation via explicit FK finders.
+    //
+    // For each FK relationship (entity {@code E} references {@code T} via an
+    // {@code identity.reference} FK field), {@code E}'s repository gains a finder
+    // returning the {@code E} rows matching a given {@code T} id. Two variants:
+    // a single-value finder and a batched (anti-N+1) {@code …In} finder.
+    //
+    // The CROSS-PORT INVARIANT is the FK-FIELD DERIVATION (not a verbatim
+    // cross-port method name): the disambiguator segment is the FK field name,
+    // PascalCased, with a single trailing {@code Id} dropped. Because FK field
+    // names are unique within an entity, the segment — and so the finder — is
+    // unique by construction. Three same-pair FKs (GameSession → Scene ×3) yield
+    // three distinct finders ({@code findByCurrentScene} /
+    // {@code findByLastOpeningNarrativeScene} / {@code findByTransitioningFromScene}),
+    // never colliding. The repository method name is idiomatic Spring Data
+    // ({@code findBy<FkField>} — the entity is implied by the repository), matching
+    // the shape a JVM adopter hand-writes; the TS port spells it
+    // {@code find<EPlural>By<FkField>} (the entity is NOT implied there).
+    // ---------------------------------------------------------------------
+
+    /**
+     * The reverse-finder disambiguator segment derived from an FK field name:
+     * PascalCase, dropping a single trailing {@code Id} (but never reducing a bare
+     * {@code "id"}/{@code "Id"} to the empty string). E.g. {@code currentSceneId} →
+     * {@code CurrentScene}; {@code playerId} → {@code Player}; {@code id} → {@code Id}.
+     */
+    public static String reverseFinderFkSegment(String fkFieldName) {
+        String pascal = capitalize(fkFieldName);
+        return pascal.length() > 2 && pascal.endsWith("Id")
+            ? pascal.substring(0, pascal.length() - 2)
+            : pascal;
+    }
+
+    /** {@code SpringRepositoryGenerator}: reverse single-value finder name {@code findBy<FkField>}. */
+    public static String reverseFinderName(String fkFieldName) {
+        return "findBy" + reverseFinderFkSegment(fkFieldName);
+    }
+
+    /** {@code SpringRepositoryGenerator}: reverse batched finder name {@code findBy<FkField>In}. */
+    public static String reverseFinderInName(String fkFieldName) {
+        return reverseFinderName(fkFieldName) + "In";
+    }
 }
