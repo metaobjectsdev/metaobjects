@@ -439,8 +439,20 @@ def _validate_attr_schema(
                     )
                     continue  # type wrong — skip allowed_values check
 
-            # Check 3: allowed_values membership
-            if schema.allowed_values is not None and len(schema.allowed_values) > 0:
+            # Check 3: allowed_values membership.
+            #
+            # @dbColumnType is EXEMPT: it carries allowed_values ONLY so the
+            # value-set surfaces in the registry manifest (ADR-0036 Wave 1,
+            # decision 5), but its real constraint is the (subtype × value)
+            # pairing enforced by _validate_db_column_type — which emits the single
+            # ERR_BAD_ATTR_VALUE for both an unrecognized value and an illegal
+            # pairing. Running the flat membership check too would double-report
+            # (tests assert exactly one error). Mirrors the TS reference.
+            if (
+                attr_node.name != FIELD_ATTR_DB_COLUMN_TYPE
+                and schema.allowed_values is not None
+                and len(schema.allowed_values) > 0
+            ):
                 if raw_value not in schema.allowed_values:
                     allowed_str = ", ".join(str(v) for v in schema.allowed_values)
                     errors.append(
