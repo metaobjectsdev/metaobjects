@@ -25,11 +25,13 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SCALE,
     FIELD_ATTR_STORAGE,
+    FIELD_ATTR_STRING_FORMAT,
     FIELD_ATTR_UNIQUE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
     FIELD_SUBTYPE_ENUM,
     STORAGE_VALUES,
+    STRING_FORMAT_VALUES,
 )
 from .meta.core.field.meta_field import MetaField
 from .meta.persistence.db.db_constants import (
@@ -333,6 +335,25 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
     if _def.type == TYPE_FIELD and _def.sub_type == fc.FIELD_SUBTYPE_CURRENCY:
         _def.attrs.append(
             AttrSchema(name=FIELD_ATTR_CURRENCY, value_type=ATTR_SUBTYPE_STRING, required=False)
+        )
+        break
+
+# field.string carries the @stringFormat attr (ADR-0036/0037 Wave 3 — a closed
+# validation format: email | hostname) IN ADDITION to the common field attrs. The
+# field stays a plain string (native binding + DB column unchanged); codegen owns
+# the canonical matcher per format. Append @stringFormat to the field.string def
+# registered by the bulk loop (mirrors TS, where field.string's attr set =
+# commonFieldAttrs + the @stringFormat closed-enum attr). The closed value-set
+# (allowed_values) gates the manifest's allowedValues + the loader value check.
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_FIELD and _def.sub_type == fc.FIELD_SUBTYPE_STRING:
+        _def.attrs.append(
+            AttrSchema(
+                name=FIELD_ATTR_STRING_FORMAT,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                allowed_values=STRING_FORMAT_VALUES,
+            )
         )
         break
 
