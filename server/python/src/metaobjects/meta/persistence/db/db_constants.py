@@ -32,18 +32,19 @@ DB_COLUMN_TYPE_UUID = "uuid"
 DB_COLUMN_TYPE_JSONB = "jsonb"
 # @dbColumnType: timestamp_with_tz — timestamp with time zone (legal on field.timestamp).
 DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz"
-# @dbColumnType: uuid_array — native Postgres uuid[] array column (legal on field.string).
-DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array"
-# @dbColumnType: text_array — native Postgres text[] array column (legal on field.string).
-DB_COLUMN_TYPE_TEXT_ARRAY = "text_array"
 
-# The closed set of legal @dbColumnType values.
+# Phase 1 removal: uuid_array / text_array are no longer valid @dbColumnType values.
+# Derive native uuid[]/text[] from field.uuid/field.string + isArray=true instead.
+# These constants are kept as tombstones so existing callers get a clear NameError
+# rather than a silent AttributeError — remove the tombstones in a future cleanup.
+# DB_COLUMN_TYPE_UUID_ARRAY = "uuid_array"  # REMOVED — use field.uuid isArray:true
+# DB_COLUMN_TYPE_TEXT_ARRAY = "text_array"  # REMOVED — use field.string isArray:true
+
+# The closed set of legal @dbColumnType values (Phase 1: uuid | jsonb | timestamp_with_tz).
 VALID_DB_COLUMN_TYPES = (
     DB_COLUMN_TYPE_UUID,
     DB_COLUMN_TYPE_JSONB,
     DB_COLUMN_TYPE_TIMESTAMP_TZ,
-    DB_COLUMN_TYPE_UUID_ARRAY,
-    DB_COLUMN_TYPE_TEXT_ARRAY,
 )
 
 # ---------------------------------------------------------------------------

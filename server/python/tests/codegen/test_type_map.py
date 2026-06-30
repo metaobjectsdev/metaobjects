@@ -116,3 +116,21 @@ def test_dbcolumntype_jsonb_string_becomes_any() -> None:
     t = py_type_for(f)
     assert t.expr == "Any"
     assert "from typing import Any" in t.imports
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — array binding derived from isArray (not @dbColumnType override)
+# ---------------------------------------------------------------------------
+
+
+def test_uuid_is_array_maps_to_list_uuid() -> None:
+    # field.uuid + isArray → list[uuid.UUID] (derived, no @dbColumnType needed).
+    t = py_type_for(_field(fc.FIELD_SUBTYPE_UUID, is_array=True))
+    assert t.expr == "list[uuid.UUID]"
+    assert "import uuid" in t.imports
+
+
+def test_string_is_array_maps_to_list_str() -> None:
+    # field.string + isArray → list[str] (derived; no text_array dbColumnType needed).
+    t = py_type_for(_field(fc.FIELD_SUBTYPE_STRING, is_array=True))
+    assert t.expr == "list[str]"
