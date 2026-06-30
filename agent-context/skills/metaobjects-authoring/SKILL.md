@@ -233,6 +233,9 @@ Canonical form for common field needs — reach for these before inventing anyth
 | Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
 | Nested structured value | `field.object` | `@objectRef` + `@storage` |
 | Open JSON bag (no fixed shape) | `field.string` + `@dbColumnType: jsonb` | logical type stays string; column is jsonb |
+| URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; URL validation — a real native type + behavior, so a subtype (not a validated string) |
+| IP address | `field.inet` | native IP type; Postgres `inet` column |
+| Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 **Timestamps — instant by default, `@localTime` for naive wall-clock (ADR-0036 Wave 2).**
 `field.timestamp` is **instant / timezone-aware by default** (Postgres `timestamptz`;
@@ -247,7 +250,22 @@ lives in `field.timestamp` (instant by default) + the `@localTime` naive opt-out
 { "field.timestamp": { "name": "opensAt", "@localTime": true } }
 ```
 
-<!-- TODO(ADR-0036 Wave 3): add @format (string-shape email/url) / @relationName guidance when merged -->
+**String-shaped natives & validated strings (ADR-0036 Wave 3).** A URL/URI is its own
+native type with URL behavior → **`field.uri`** (subtype, step 2a), not a validated
+string. An IP address likewise → **`field.inet`**. An email or hostname is a *plain
+string that just needs validating* (native type stays `string`) → **`field.string` +
+`@stringFormat: email`/`hostname`** (validation attribute, step 2c) — let the per-port
+codegen emit the idiomatic check; don't hand-write a `validator.regex` for it.
+
+```json
+{ "field.uri":    { "name": "homepage" } }
+{ "field.inet":   { "name": "lastLoginIp" } }
+{ "field.string": { "name": "email", "@stringFormat": "email", "@required": true } }
+```
+
+<!-- TODO(ADR-0036 Wave 4 — reverse-navigation derivation): codegen derives the reverse
+     accessor automatically; @reverseName is the OPTIONAL override of that derived name
+     (not required, NOT @relationName). Add guidance when Wave 4 merges. -->
 
 **Extending the metamodel (custom providers):** the same ordered procedure above
 governs new vocabulary you register — apply it mechanically before registering
