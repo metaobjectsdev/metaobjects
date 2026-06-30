@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * already inherits `@maxLength` — for:
  *
  *   - `@dbColumnType=uuid`            → `uuid("col")`            (NOT `varchar(col, 36)`)
- *   - `@dbColumnType=text_array`      → `array<String>(...)`    (NOT `varchar`)
+ *   - `isArray:true` (string)         → `array<String>(...)`    (NOT `varchar`/`text`)
  *   - `@dbColumnType=timestamp_with_tz` → `instantWithTimeZone(...)` (NOT `datetime`)
  *   - a `field.enum` super            → the projection's OWN `<View>Status` enum
  *     (`ProgramViewStatus`, self-contained, values inherited via `extends`), NOT a
@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
  */
 class KotlinProjectionExtendsInheritanceTest {
 
-    // Program (writable base) carries uuid / text_array / timestamp_with_tz / enum fields.
+    // Program (writable base) carries uuid / isArray-string / timestamp_with_tz / enum fields.
     // ProgramView projects them via `extends:` with NO own physical shaping — every
     // physical type below MUST be inherited from the base field.
     private val fixture = """{
@@ -45,7 +45,7 @@ class KotlinProjectionExtendsInheritanceTest {
             { "field.string":    { "name": "ownerId",     "@dbColumnType": "uuid" } },
             { "field.enum":      { "name": "status",      "@required": true,
                 "@values": ["DRAFT", "LIVE", "ARCHIVED"] } },
-            { "field.string":    { "name": "tags",        "@dbColumnType": "text_array" } },
+            { "field.string":    { "name": "tags",        "isArray": true } },
             { "field.timestamp": { "name": "publishedAt", "@dbColumnType": "timestamp_with_tz" } },
             { "source.rdb":      { "@table": "programs" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }

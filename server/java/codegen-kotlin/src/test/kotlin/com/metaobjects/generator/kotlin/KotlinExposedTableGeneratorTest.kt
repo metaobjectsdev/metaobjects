@@ -35,7 +35,8 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("object AuthorTable : Table(\"authors\")" in src, src)
             assertTrue("val id = long(\"id\").autoIncrement()" in src, src)
             assertTrue("val name = varchar(\"name\", 100)" in src, src)
-            assertTrue("val bio = varchar(\"bio\", 255).nullable()" in src, src)
+            // No `@maxLength` → derived `text(...)` (Phase 1), not the old varchar(255) default.
+            assertTrue("val bio = text(\"bio\").nullable()" in src, src)
             assertTrue("override val primaryKey = PrimaryKey(id)" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
@@ -198,13 +199,14 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(Files.exists(userTable),
                 "expected $userTable; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(userTable)
-            // Required sub-fields → no .nullable() on their columns.
-            assertTrue("val addressStreet = varchar(\"address_street\", 255)" in src,
+            // Required sub-fields → no .nullable() on their columns. No `@maxLength` on the
+            // Address sub-fields → derived `text(...)` (Phase 1), not the old varchar(255).
+            assertTrue("val addressStreet = text(\"address_street\")" in src,
                 "expected flattened addressStreet column; saw:\n$src")
-            assertTrue("val addressCity = varchar(\"address_city\", 255)" in src,
+            assertTrue("val addressCity = text(\"address_city\")" in src,
                 "expected flattened addressCity column; saw:\n$src")
             // zip is NOT @required on Address → its flattened column is nullable.
-            assertTrue("val addressZip = varchar(\"address_zip\", 255).nullable()" in src,
+            assertTrue("val addressZip = text(\"address_zip\").nullable()" in src,
                 "expected flattened nullable addressZip column; saw:\n$src")
             // No jsonb import expected for the flattened case.
             assertTrue("import org.jetbrains.exposed.sql.json.jsonb" !in src,
@@ -480,7 +482,8 @@ class KotlinExposedTableGeneratorTest {
             // Columns of the entity are present.
             assertTrue("val id = long(\"id\")" in src,
                 "expected id column; saw:\n$src")
-            assertTrue("val name = varchar(\"name\"" in src,
+            // No `@maxLength` → derived `text(...)` (Phase 1).
+            assertTrue("val name = text(\"name\")" in src,
                 "expected name column; saw:\n$src")
             assertTrue("val postCount = integer(\"post_count\")" in src,
                 "expected postCount column; saw:\n$src")
@@ -933,9 +936,9 @@ class KotlinExposedTableGeneratorTest {
                 "expected uuid id column (not varchar); saw:\n$src")
             assertTrue("val userId = uuid(\"user_id\")" in src,
                 "expected uuid userId column with snake_case name; saw:\n$src")
-            // Regular field.string without @dbColumnType=uuid stays as varchar.
-            assertTrue("val displayName = varchar(\"display_name\", 255)" in src,
-                "expected plain varchar for displayName (no @dbColumnType); saw:\n$src")
+            // Regular field.string (no @dbColumnType, no @maxLength) derives `text(...)` (Phase 1).
+            assertTrue("val displayName = text(\"display_name\")" in src,
+                "expected plain text for displayName (no @dbColumnType/@maxLength); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -966,9 +969,10 @@ class KotlinExposedTableGeneratorTest {
             gen.execute(loadString("snake", camelFixture))
 
             val src = Files.readString(outDir.resolve("x/UserTable.kt"))
-            assertTrue("val displayName = varchar(\"display_name\", 255)" in src,
+            // No `@maxLength` → derived `text(...)` (Phase 1); snake_case column name preserved.
+            assertTrue("val displayName = text(\"display_name\")" in src,
                 "expected snake_case column for camelCase field; saw:\n$src")
-            assertTrue("val htmlContent = varchar(\"html_content\", 255).nullable()" in src,
+            assertTrue("val htmlContent = text(\"html_content\").nullable()" in src,
                 "expected snake_case column for camelCase field; saw:\n$src")
             assertTrue("val loginCount = integer(\"login_count\")" in src,
                 "expected snake_case column for camelCase int field; saw:\n$src")
@@ -1146,15 +1150,16 @@ class KotlinExposedTableGeneratorTest {
                 "Composite PK should emit both fields — was:\n$src",
             )
             // Both PK fields must be non-nullable (they're part of the PK).
-            // Column names are snake_case-d for Postgres convention.
+            // Column names are snake_case-d for Postgres convention. No `@maxLength` on the
+            // PK string fields → derived `text(...)` (Phase 1), not the old varchar(255).
             assertTrue(
-                "val userId = varchar(\"user_id\", 255)\n" in src ||
-                    "val userId = varchar(\"user_id\", 255)\r\n" in src ||
-                    ("val userId = varchar(\"user_id\", 255)" in src && "userId = varchar(\"user_id\", 255).nullable" !in src),
+                "val userId = text(\"user_id\")\n" in src ||
+                    "val userId = text(\"user_id\")\r\n" in src ||
+                    ("val userId = text(\"user_id\")" in src && "userId = text(\"user_id\").nullable" !in src),
                 "userId (PK member) should NOT be .nullable() — was:\n$src",
             )
             assertTrue(
-                "roleId = varchar(\"role_id\", 255).nullable" !in src,
+                "roleId = text(\"role_id\").nullable" !in src,
                 "roleId (PK member) should NOT be .nullable() — was:\n$src",
             )
         } finally {
