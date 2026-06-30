@@ -48,6 +48,19 @@ public class ScalarArrayCodegenTests
     ]}}
     """;
 
+    // An entity with a field.uuid isArray:true — array-ness is derived, not via
+    // the removed dbColumnType:uuid_array value (Phase 1 slim-and-derive).
+    private const string UuidArrayModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Widget", "children": [
+        { "source.rdb": { "@table": "widgets" } },
+        { "field.long": { "name": "id" } },
+        { "field.uuid": { "name": "refs", "isArray": true } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
     // An entity with both a scalar enum (no isArray) and an enum-array, so we can
     // assert the scalar path is unchanged (regression guard).
     private const string MixedEnumModel = """
@@ -189,6 +202,38 @@ public class ScalarArrayCodegenTests
     }
 
     // -------------------------------------------------------------------------
+    // field.uuid isArray — Phase 1 slim-and-derive: array-ness via isArray:true,
+    // not the removed dbColumnType:uuid_array value.
+    // ScalarFor("uuid") == "Guid", so the existing scalar-array path handles this.
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Uuid_array_field_emits_ICollection_Guid_property()
+    {
+        var ctx = Ctx(Load(UuidArrayModel));
+        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+
+        // field.uuid isArray:true → ICollection<Guid> with List<Guid> initializer.
+        Assert.Contains("public ICollection<Guid> Refs { get; set; } = new List<Guid>();", src);
+        // Guard: the scalar form must NOT appear.
+        Assert.DoesNotContain("public Guid? Refs", src);
+        Assert.DoesNotContain("public Guid Refs", src);
+    }
+
+    [Fact]
+    public void Uuid_array_field_emits_PrimitiveCollection_in_dbcontext()
+    {
+        var ctx = Ctx(Load(UuidArrayModel));
+        var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
+
+        // EF Core 8 primitive collection API for the uuid array (derived, not via
+        // the removed dbColumnType:uuid_array value).
+        Assert.Contains(
+            "modelBuilder.Entity<Widget>().PrimitiveCollection(x => x.Refs);",
+            dbCtx);
+    }
+
+    // -------------------------------------------------------------------------
     // Compile check — generated scalar-array entity must be valid C#
     // -------------------------------------------------------------------------
 
@@ -206,6 +251,14 @@ public class ScalarArrayCodegenTests
         var ctx = Ctx(Load(EnumArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
         AssertCompiles(src, "enumarray");
+    }
+
+    [Fact]
+    public void Generated_uuid_array_entity_compiles()
+    {
+        var ctx = Ctx(Load(UuidArrayModel));
+        var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        AssertCompiles(src, "uuidarray");
     }
 
     // -------------------------------------------------------------------------

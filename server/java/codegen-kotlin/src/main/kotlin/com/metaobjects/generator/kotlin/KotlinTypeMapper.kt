@@ -57,12 +57,6 @@ object KotlinTypeMapper {
      */
     private const val VARCHAR_TEXT_THRESHOLD = 4000
 
-    /** Sentinel `@kind` value on a [StringField] that forces `text(name)` emission. */
-    private const val KIND_TEXT = "text"
-
-    /** Attribute name read off a [StringField] to dispatch to `text(name)` (kind=text). */
-    private const val ATTR_KIND = "kind"
-
     /**
      * Attribute name read off any field to override the default Exposed column type
      * (R6 Plan 2b — the registered physical `@dbColumnType` attr on the `dbProvider`,
@@ -70,9 +64,11 @@ object KotlinTypeMapper {
      * (logical subtype × value) pairing against the closed set; here we only ROUTE the
      * already-legal value to the matching Exposed column. Recognised values
      * (case-insensitive), all leaving the Kotlin data-class property type unchanged:
-     * - `uuid` (on [StringField]) — emit Exposed `uuid("col")` instead of `varchar("col", N)`.
+     * - `uuid` (on [StringField]) — emit Exposed `uuid("col")` instead of `text("col")`.
      *   Postgres maps this to the native `uuid` column type; the property stays `String`
-     *   (Exposed coerces String ↔ uuid at the SQL boundary).
+     *   (Exposed coerces String ↔ uuid at the SQL boundary). The narrow "uuid column +
+     *   String native type" escape hatch; `field.uuid` is preferred when a native UUID
+     *   property is wanted.
      * - `jsonb` (on [StringField]) — emit Exposed `jsonb("col", { it }, { it })` (a real
      *   Postgres `JSONB` column). The property stays a raw-JSON `String`; the identity
      *   encode/decode functions pass the JSON text straight through.
@@ -108,12 +104,6 @@ object KotlinTypeMapper {
 
     /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
     private val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ
-
-    /** `@dbColumnType` values on [StringField] that emit native Postgres array columns
-     *  (`uuid[]` / `text[]`) via the Exposed `array<E>("col")` extension. The Kotlin
-     *  property becomes `List<UUID>` / `List<String>`. */
-    private val DB_COLUMN_TYPE_UUID_ARRAY = CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID_ARRAY
-    private val DB_COLUMN_TYPE_TEXT_ARRAY = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TEXT_ARRAY
 
     /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
     private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
@@ -213,17 +203,14 @@ object KotlinTypeMapper {
 
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */
     fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
-        // `@dbColumnType=uuid_array/text_array` makes a field.string a native SQL array,
-        // so the property is a List<UUID> / List<String>. `@dbColumnType=jsonb` is the open
-        // JSON bag — a parsed JSON value (kotlinx `JsonElement`, issue #98), uniform with the
-        // payload + Exposed column codec so the entity-CRUD DTO is never a double-encoded String.
-        // Plain strings stay String.
-        is StringField    -> when (dbColumnType(field)) {
-            DB_COLUMN_TYPE_UUID_ARRAY -> LIST.parameterizedBy(ClassName("java.util", "UUID"))
-            DB_COLUMN_TYPE_TEXT_ARRAY -> LIST.parameterizedBy(STRING)
-            DB_COLUMN_TYPE_JSONB      -> JSON_VALUE_TYPE
-            else -> STRING
-        }
+        // This is the SCALAR/element mapper — `isArray` List<…> wrapping is applied by the
+        // CALLERS (entity + payload generators), so a `field.string`'s element type is plain
+        // String even when isArray (the column DDL `text[]` is derived separately in
+        // [exposedColumnSpec]). `@dbColumnType=jsonb` is the open JSON bag — a parsed JSON value
+        // (kotlinx `JsonElement`, issue #98), uniform with the payload + Exposed column codec so
+        // the entity-CRUD DTO is never a double-encoded String. Plain strings stay String.
+        is StringField    ->
+            if (dbColumnType(field) == DB_COLUMN_TYPE_JSONB) JSON_VALUE_TYPE else STRING
         is IntegerField   -> INT
         is LongField      -> LONG
         is DoubleField    -> DOUBLE
@@ -255,9 +242,11 @@ object KotlinTypeMapper {
         // requires materialising the `@values` set into a top-level declaration — deferred
         // until the enum-class generator lands (see field-constants enum design doc).
         is EnumField      -> STRING
-        // field.uuid → native java.util.UUID property (R6 Plan 2a). `@dbColumnType=uuid`
-        // on a field.string is the separate physical escape hatch and keeps the String
-        // property — handled by the StringField arm, not here.
+        // field.uuid → native java.util.UUID property (R6 Plan 2a). This is the SCALAR/element
+        // type — `isArray` List<UUID> wrapping is applied by the callers; the native `uuid[]`
+        // column DDL is derived separately in [exposedColumnSpec]. `@dbColumnType=uuid` on a
+        // field.string is the separate physical escape hatch and keeps the String property —
+        // handled by the StringField arm, not here.
         is UuidField      -> ClassName("java.util", "UUID")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
         // Keys are always String. The value type is the scalar named by @valueType,
@@ -366,10 +355,10 @@ object KotlinTypeMapper {
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
         // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
         // member — no import. All other StringField shapes (varchar/text) are Table members.
-        // `uuid_array`/`text_array` emit Exposed's `array<E>("col")` — a Table MEMBER
-        // (like uuid/integer), so no import is required (same as the uuid/varchar paths).
+        // A derived `isArray` string emits Exposed's `array<E>("col")` — a Table MEMBER
+        // (like uuid/integer), so no import is required (same as the uuid/text paths).
         is StringField    ->
-            if (dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
+            if (!isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_JSONB) EXPOSED_JSONB_IMPORT else null
         // field.map emits the `jsonb(...)` extension (single JSONB column), which needs
         // the exposed-json import — same as the `@dbColumnType=jsonb` string path.
         is MapField       -> EXPOSED_JSONB_IMPORT
@@ -386,7 +375,13 @@ object KotlinTypeMapper {
      */
     fun exposedColumnSpec(field: MetaField<*>, colName: String): String = when (field) {
         is StringField    -> {
-            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of varchar. The Kotlin
+            // Phase 1 (dbColumnType slim-and-derive): a `field.string` + `isArray` DERIVES a
+            // native Postgres `text[]` via Exposed's `array<E>("col", columnType)` Table member.
+            // The element ColumnType is explicit (TextColumnType) so emission never depends on
+            // Exposed's reified resolveColumnType picking VARCHAR vs TEXT for String — `text[]`
+            // matches the canonical migrate-ts DDL. Derivation wins over any `@dbColumnType`.
+            //
+            // `@dbColumnType=uuid` opt-in: emit `uuid("col")` instead of `text`. The Kotlin
             // data class property stays `String` for now (Exposed coerces String ↔ uuid at
             // the SQL boundary), so adopters can convert a string-shaped FK column to the
             // native Postgres uuid type without changing their data class shape.
@@ -396,7 +391,9 @@ object KotlinTypeMapper {
             // functions (the property stays raw-JSON `String`; the JSON text passes
             // straight through). Matches the other ports' JSONB emission — a TEXT column
             // would never round-trip to JSONB through the introspection corpus.
-            when (dbColumnType(field)) {
+            if (isArrayResolved(field)) {
+                "array<String>(\"$colName\", org.jetbrains.exposed.sql.TextColumnType())"
+            } else when (dbColumnType(field)) {
                 DB_COLUMN_TYPE_UUID  -> "uuid(\"$colName\")"
                 // `@dbColumnType=jsonb` open bag (#98): decode the JSONB text to a kotlinx
                 // `JsonElement` (so the data-class property + CRUD DTO is a parsed JSON value, not
@@ -406,20 +403,14 @@ object KotlinTypeMapper {
                 // (the `{ it }` identity codec would have left it `Column<String>`). The table file
                 // imports `kotlinx.serialization.json.Json` (see KotlinExposedTableGenerator).
                 DB_COLUMN_TYPE_JSONB -> "jsonb(\"$colName\", { it.toString() }, { Json.parseToJsonElement(it) })"
-                // Native SQL array columns via Exposed's `array<E>("col", columnType)` Table
-                // member. The element ColumnType is explicit (UUIDColumnType / TextColumnType)
-                // so emission never depends on Exposed's reified resolveColumnType picking
-                // VARCHAR vs TEXT for String. uuid[] / text[] match the migrate-ts DDL.
-                DB_COLUMN_TYPE_UUID_ARRAY -> "array<java.util.UUID>(\"$colName\", org.jetbrains.exposed.sql.UUIDColumnType())"
-                DB_COLUMN_TYPE_TEXT_ARRAY -> "array<String>(\"$colName\", org.jetbrains.exposed.sql.TextColumnType())"
                 else -> {
-                    // Dispatch to Exposed `text(name)` when the field is declared as unbounded text:
-                    //   (1) explicit `@kind: "text"` opt-in, OR
+                    // Dispatch to Exposed `text(name)` when the field is unbounded text:
+                    //   (1) no `@maxLength` declared — the DEFAULT for `field.string` (Phase 1:
+                    //       no-maxLength string → `text`, matching the canonical TS Postgres DDL), OR
                     //   (2) `@maxLength` exceeds the VARCHAR/TEXT cutoff (Postgres TOAST boundary).
-                    // Otherwise emit `varchar(name, N)` with N defaulting to 255.
-                    val kind = stringAttr(field, ATTR_KIND)
-                    val maxLen = stringMaxLength(field)
-                    if (kind == KIND_TEXT || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
+                    // Otherwise (a `@maxLength` within the cutoff) emit `varchar(name, N)`.
+                    val maxLen = stringMaxLengthOrNull(field)
+                    if (maxLen == null || maxLen > VARCHAR_TEXT_THRESHOLD) "text(\"$colName\")"
                     else "varchar(\"$colName\", $maxLen)"
                 }
             }
@@ -457,7 +448,12 @@ object KotlinTypeMapper {
         is EnumField      -> "varchar(\"$colName\", $ENUM_VARCHAR_LEN)"
         // field.uuid → Exposed's first-class `uuid(name)` (native Postgres uuid column).
         // R6 Plan 2a: matched by instanceof now that UuidField is a real JVM class.
-        is UuidField      -> "uuid(\"$colName\")"
+        // Phase 1: with `isArray` it DERIVES a native Postgres `uuid[]` via Exposed's
+        // `array<E>("col", columnType)` Table member (explicit UUIDColumnType element) —
+        // matching the canonical migrate-ts DDL.
+        is UuidField      ->
+            if (isArrayResolved(field)) "array<java.util.UUID>(\"$colName\", org.jetbrains.exposed.sql.UUIDColumnType())"
+            else "uuid(\"$colName\")"
         // field.map → a single Postgres `JSONB` column holding the JSON object. Same
         // emission as a `field.object` jsonb column (the typed-object JSONB path) — the
         // Exposed `jsonb(name, encoder, decoder)` extension with kotlinx.serialization
@@ -475,12 +471,34 @@ object KotlinTypeMapper {
      * Read the `@dbColumnType` attribute (case-folded) for column-type overrides. Resolved
      * THROUGH the `extends` super-field chain (`includeParent = true`), so an `object.projection`
      * field that binds a base-entity column via `extends:` inherits that column's physical type
-     * (uuid / text_array / timestamp_with_tz) — exactly as it already inherits `@maxLength` (see
-     * [stringMaxLength]). Own value still wins (checked first by [MetaData.hasMetaAttr]).
-     * Returns null when absent. See [ATTR_DB_COLUMN_TYPE] for recognised values.
+     * (uuid / timestamp_with_tz) — exactly as it already inherits `@maxLength` (see
+     * [stringMaxLengthOrNull]) and `isArray` (see [isArrayResolved]). Own value still wins
+     * (checked first by [MetaData.hasMetaAttr]). Returns null when absent. See
+     * [ATTR_DB_COLUMN_TYPE] for recognised values.
      */
     private fun dbColumnType(field: MetaField<*>): String? =
         stringAttr(field, ATTR_DB_COLUMN_TYPE, includeParent = true)?.lowercase()
+
+    /**
+     * True iff [field] is an array — own `isArray` flag/attr OR (for an `object.projection`
+     * field that binds an array base field via `extends:`) the inherited `isArray` from the
+     * super-field chain. Phase 1 derives native Postgres `text[]` / `uuid[]` from this, so
+     * resolving it THROUGH `extends` keeps the projection-inheritance contract intact — a
+     * projection field inherits its base field's array-ness the same way it inherits
+     * `@maxLength` and `@dbColumnType` (own-flag wins; checked first by [MetaField.isArrayType]).
+     */
+    private fun isArrayResolved(field: MetaField<*>): Boolean {
+        if (field.isArrayType()) return true
+        // Walk the `extends` super-field chain (defensive against cycles via a visited set).
+        var current: MetaField<*>? = field.superField
+        val seen = HashSet<String>()
+        while (current != null) {
+            if (!seen.add(current.name)) break
+            if (current.isArrayType()) return true
+            current = current.superField
+        }
+        return false
+    }
 
     /**
      * True iff [field] carries `@dbColumnType=timestamp_with_tz` (case-insensitive).
@@ -503,8 +521,7 @@ object KotlinTypeMapper {
      * Best-effort read of a named string attribute on [field] (own-only by default;
      * [includeParent] = true also walks the `extends` super-field chain). Returns null when
      * the attribute is absent, throws during lookup, or isn't a [com.metaobjects.attr.MetaAttribute].
-     * Used for non-typed dispatch keys (e.g. `@kind`) that aren't part of the registered
-     * StringField attribute schema.
+     * Used for non-typed dispatch keys (e.g. `@dbColumnType`, `@valueType`) read off a field.
      */
     private fun stringAttr(field: MetaField<*>, name: String, includeParent: Boolean = false): String? {
         if (!field.hasMetaAttr(name, includeParent)) return null
@@ -543,16 +560,22 @@ object KotlinTypeMapper {
         }
     }
 
-    /** Resolve @maxLength on a StringField; default 255. */
-    private fun stringMaxLength(field: StringField): Int {
-        if (!field.hasMetaAttr(StringField.ATTR_MAX_LENGTH, true)) return 255
+    /**
+     * Resolve `@maxLength` on a StringField (resolved THROUGH the `extends` chain), or `null`
+     * when none is declared. Phase 1: a no-`@maxLength` string is unbounded text and derives to
+     * Exposed `text(name)` (matching the canonical TS Postgres `text` DDL) — there is no longer a
+     * `varchar(255)` default. Returns null both when the attr is absent and when it is present but
+     * unparseable.
+     */
+    private fun stringMaxLengthOrNull(field: StringField): Int? {
+        if (!field.hasMetaAttr(StringField.ATTR_MAX_LENGTH, true)) return null
         val raw = runCatching {
             field.getMetaAttr(StringField.ATTR_MAX_LENGTH, true).value
         }.getOrNull()
         return when (raw) {
             is Number -> raw.toInt()
-            is String -> raw.toIntOrNull() ?: 255
-            else -> 255
+            is String -> raw.toIntOrNull()
+            else -> null
         }
     }
 }

@@ -306,11 +306,17 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	}
 
 	/**
-	 * Read the @maxLength attribute on a string field; default 50 (matches
-	 * legacy behavior so any unannotated string keeps its old shape). Cross-port:
-	 * TS + C# both emit {@code VARCHAR(@maxLength)} when present, {@code TEXT}
-	 * (postgres) / {@code VARCHAR(MAX)} (mssql) when absent; Java's current emit
-	 * layer can't express "no length," so a numeric default stands in.
+	 * Read the @maxLength attribute on a string field. Cross-port DDL contract
+	 * (dbColumnType slim-and-derive, Phase 1): with {@code @maxLength: N} → {@code varchar(N)};
+	 * with NO {@code @maxLength} → unbounded {@code text} (matches the canonical TS-owned
+	 * {@code schema.postgres.sql} and C# EF, which both emit {@code TEXT} for a no-length
+	 * string). Previously Java hardcoded {@code 50} here, capping every unannotated string at
+	 * VARCHAR(50) — a divergence from the canonical {@code text}.
+	 *
+	 * <p>This length feeds {@link com.metaobjects.manager.db.defs.ColumnDef} metadata only;
+	 * OMDB is pure data-access (no DDL — schema is TypeScript-owned, ADR-0015), so the runtime
+	 * string bind ({@code setString}) is unbounded regardless. {@link #UNBOUNDED_TEXT_LENGTH}
+	 * (0) is the sentinel for "no length cap → text".</p>
 	 */
 	protected int readStringMaxLength(MetaField mf) {
 		if (mf.hasMetaAttr(com.metaobjects.field.StringField.ATTR_MAX_LENGTH)) {
@@ -319,8 +325,14 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 					mf.getMetaAttr(com.metaobjects.field.StringField.ATTR_MAX_LENGTH).getValueAsString());
 			} catch (NumberFormatException ignored) { /* fall through */ }
 		}
-		return 50;
+		return UNBOUNDED_TEXT_LENGTH;
 	}
+
+	/**
+	 * Sentinel length for a no-{@code maxLength} {@code field.string} → unbounded {@code text}
+	 * (the canonical cross-port default). OMDB does no DDL, so this is metadata-only.
+	 */
+	protected static final int UNBOUNDED_TEXT_LENGTH = 0;
 
 	/**
 	 * Returns whether the metafield is an auto id and is set prior to creation or update.

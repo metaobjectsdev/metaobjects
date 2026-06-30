@@ -51,6 +51,8 @@ public static class DbConstants
     /// Physical DB column-type override on a field (<c>@dbColumnType</c>). Closed value
     /// set: <see cref="DB_COLUMN_TYPE_UUID"/> / <see cref="DB_COLUMN_TYPE_JSONB"/> /
     /// <see cref="DB_COLUMN_TYPE_TIMESTAMP_TZ"/>.
+    /// Array-ness is derived from <c>isArray: true</c> on the field, not from a separate
+    /// <c>uuid_array</c>/<c>text_array</c> value (removed in Phase 1 of the slim-and-derive pass).
     /// </summary>
     public const string FIELD_ATTR_DB_COLUMN_TYPE = "dbColumnType";
 
@@ -60,10 +62,6 @@ public static class DbConstants
     public const string DB_COLUMN_TYPE_JSONB        = "jsonb";
     /// <summary><c>@dbColumnType: timestamp_with_tz</c> — <c>timestamp with time zone</c> column (legal on field.timestamp).</summary>
     public const string DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz";
-    /// <summary><c>@dbColumnType: uuid_array</c> — native Postgres <c>uuid[]</c> array column (legal on field.string).</summary>
-    public const string DB_COLUMN_TYPE_UUID_ARRAY   = "uuid_array";
-    /// <summary><c>@dbColumnType: text_array</c> — native Postgres <c>text[]</c> array column (legal on field.string).</summary>
-    public const string DB_COLUMN_TYPE_TEXT_ARRAY   = "text_array";
 
     /// <summary>The closed set of legal <c>@dbColumnType</c> values.</summary>
     public static readonly IReadOnlyList<string> VALID_DB_COLUMN_TYPES = new[]
@@ -71,7 +69,5 @@ public static class DbConstants
         DB_COLUMN_TYPE_UUID,
         DB_COLUMN_TYPE_JSONB,
         DB_COLUMN_TYPE_TIMESTAMP_TZ,
-        DB_COLUMN_TYPE_UUID_ARRAY,
-        DB_COLUMN_TYPE_TEXT_ARRAY,
     };
 }

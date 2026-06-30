@@ -148,19 +148,20 @@ describe("buildExpectedSchema — @autoSet timestamp default", () => {
 });
 
 // ---------------------------------------------------------------------------
-// @dbColumnType uuid_array / text_array → native SQL array columns
-// (metaobjects can't model Postgres arrays via field subtypes; the physical
-// @dbColumnType escape hatch carries them, emitting uuid[] / text[].)
+// Native SQL array columns are DERIVED from `isArray` (dbColumnType slim-and-derive
+// Phase 1): the array-ness already lives on the field's `isArray` axis, so the DDL
+// derives `text[]` / `uuid[]` directly — no `@dbColumnType` escape hatch. The
+// removed `uuid_array` / `text_array` values now fail the loader (ERR_BAD_ATTR_VALUE).
 // ---------------------------------------------------------------------------
 
-describe("buildExpectedSchema — native array columns (@dbColumnType *_array)", () => {
+describe("buildExpectedSchema — native array columns (derived from isArray)", () => {
   async function arrayCols() {
     const doc = { "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Bag", children: [
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
-        { "field.string": { name: "memberIds", "@dbColumnType": "uuid_array" } },
-        { "field.string": { name: "tags", "@dbColumnType": "text_array" } },
+        { "field.uuid": { name: "memberIds", isArray: true } },
+        { "field.string": { name: "tags", isArray: true } },
       ] } },
     ] } };
     const { root, errors } = await new MetaDataLoader().load([
@@ -170,10 +171,44 @@ describe("buildExpectedSchema — native array columns (@dbColumnType *_array)",
     return new Map((buildExpectedSchema(root).tables[0]?.columns ?? []).map((c) => [c.name, c]));
   }
 
-  test("uuid_array → array of uuid; text_array → array of text", async () => {
+  test("field.uuid isArray → uuid[]; field.string isArray → text[]", async () => {
     const byName = await arrayCols();
     expect(byName.get("member_ids")?.sqlType).toEqual({ kind: "array", element: { kind: "uuid" } });
     expect(byName.get("tags")?.sqlType).toEqual({ kind: "array", element: { kind: "text" } });
+  });
+
+  test("field.uuid scalar → uuid; field.string scalar (no maxLength) → text", async () => {
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Scalars", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "field.uuid": { name: "ownerId" } },
+        { "field.string": { name: "label" } },
+      ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(doc)),
+    ]);
+    expect(errors).toHaveLength(0);
+    const byName = new Map((buildExpectedSchema(root).tables[0]?.columns ?? []).map((c) => [c.name, c]));
+    expect(byName.get("owner_id")?.sqlType).toEqual({ kind: "uuid" });
+    expect(byName.get("label")?.sqlType).toEqual({ kind: "text" });
+  });
+
+  test("removed @dbColumnType:uuid_array / text_array now fail the loader (ERR_BAD_ATTR_VALUE)", async () => {
+    for (const removed of ["uuid_array", "text_array"]) {
+      const doc = { "metadata.root": { package: "acme", children: [
+        { "object.entity": { name: "Bag", children: [
+          { "field.long": { name: "id" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
+          { "field.string": { name: "x", "@dbColumnType": removed } },
+        ] } },
+      ] } };
+      const { errors } = await new MetaDataLoader().load([
+        new InMemoryStringSource(JSON.stringify(doc)),
+      ]);
+      expect(errors.some((e) => (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE")).toBe(true);
+    }
   });
 });
 

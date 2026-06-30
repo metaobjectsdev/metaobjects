@@ -39,6 +39,7 @@ from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
+from ..shared.structural import KEY_IS_ARRAY
 from .n2m_resolver import (
     N2mDescriptor,
     collect_column_ids,
@@ -643,6 +644,11 @@ def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
 # ----------------------------------------------------------------------------
 
 
+def _field_is_array(field: MetaField) -> bool:
+    """Array-ness from either form: the node property or the ``@isArray`` attr."""
+    return bool(field.is_array) or field.attr(KEY_IS_ARRAY) is True
+
+
 def _coerce_write_value(field: MetaField, value: Any) -> Any:
     if value is None:
         return None
@@ -657,7 +663,14 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     # uuid (logical field.uuid, or a string field pinned to a uuid column):
     # string → uuid.UUID so the driver binds the native uuid type. PG stores it
     # lowercase-canonically regardless of input case.
+    #
+    # For isArray=true (native uuid[] column, Phase 1): coerce each element in the
+    # list. pg8000 binds a Python list[uuid.UUID] to a uuid[] column natively.
+    # field.string isArray=true (text[] column) passes through — pg8000 binds
+    # list[str] to text[] natively without element conversion.
     if sub == fc.FIELD_SUBTYPE_UUID or col_type == dbc.DB_COLUMN_TYPE_UUID:
+        if _field_is_array(field) and isinstance(value, list):
+            return [v if isinstance(v, _uuid.UUID) else _uuid.UUID(str(v)) for v in value]
         return value if isinstance(value, _uuid.UUID) else _uuid.UUID(str(value))
 
     # temporal: parse the authoring string to the native type, with tz-awareness

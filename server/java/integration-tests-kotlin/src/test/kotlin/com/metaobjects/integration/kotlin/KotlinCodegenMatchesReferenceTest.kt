@@ -66,7 +66,12 @@ internal class KotlinCodegenMatchesReferenceTest {
         "ProgramView" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("id", families = setOf("long")),
-                ExpectedColumn("title", families = setOf("varchar")),
+                // `ProgramView.title` is a `origin.passthrough` projection field with NO own
+                // `@maxLength` (the passthrough does not carry the source field's maxLength), so
+                // Phase 1 (dbColumnType slim-and-derive) derives `text(...)` — the no-maxLength
+                // string default — not the old `varchar(255)`. The view's DDL is TS-canonical-owned;
+                // this Exposed mapping is read-only.
+                ExpectedColumn("title", families = setOf("text")),
                 ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
             ),
         ),
