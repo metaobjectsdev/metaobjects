@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  *
  *   - `@dbColumnType=uuid`            → `uuid("col")`            (NOT `varchar(col, 36)`)
  *   - `isArray:true` (string)         → `array<String>(...)`    (NOT `varchar`/`text`)
- *   - `@dbColumnType=timestamp_with_tz` → `instantWithTimeZone(...)` (NOT `datetime`)
+ *   - a default (instant/TZ-aware) `field.timestamp` → `instantWithTimeZone(...)` (NOT `datetime`)
  *   - a `field.enum` super            → the projection's OWN `<View>Status` enum
  *     (`ProgramViewStatus`, self-contained, values inherited via `extends`), NOT a
  *     root-package `Status` (the cross-entity-collision bug).
@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
  */
 class KotlinProjectionExtendsInheritanceTest {
 
-    // Program (writable base) carries uuid / isArray-string / timestamp_with_tz / enum fields.
+    // Program (writable base) carries uuid / isArray-string / instant-timestamp / enum fields.
     // ProgramView projects them via `extends:` with NO own physical shaping — every
     // physical type below MUST be inherited from the base field.
     private val fixture = """{
@@ -46,7 +46,7 @@ class KotlinProjectionExtendsInheritanceTest {
             { "field.enum":      { "name": "status",      "@required": true,
                 "@values": ["DRAFT", "LIVE", "ARCHIVED"] } },
             { "field.string":    { "name": "tags",        "isArray": true } },
-            { "field.timestamp": { "name": "publishedAt", "@dbColumnType": "timestamp_with_tz" } },
+            { "field.timestamp": { "name": "publishedAt" } },
             { "source.rdb":      { "@table": "programs" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
         ] } },
@@ -88,9 +88,9 @@ class KotlinProjectionExtendsInheritanceTest {
             assertTrue("val tags = array<String>(\"tags\"" in table,
                 "tags must inherit @dbColumnType=text_array (array<String>); saw:\n$table")
 
-            // --- @dbColumnType=timestamp_with_tz inherited ---
+            // --- default (instant/TZ-aware) timestamp inherited ---
             assertTrue("val publishedAt = instantWithTimeZone(\"published_at\")" in table,
-                "publishedAt must inherit @dbColumnType=timestamp_with_tz (instantWithTimeZone); saw:\n$table")
+                "publishedAt must inherit the instant/TZ-aware timestamp (instantWithTimeZone); saw:\n$table")
 
             // --- enum gets the projection's OWN self-contained type, not root Status ---
             assertTrue("enumerationByName(\"status\", " in table && "ProgramViewStatus::class" in table,

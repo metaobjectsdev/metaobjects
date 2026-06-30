@@ -727,10 +727,11 @@ class KotlinExposedTableGeneratorTest {
      * the generated file compile-fails with "unresolved reference: date / timestamp".
      * See also the comment on [KotlinTypeMapper.exposedColumnImport].
      *
-     * Default for `field.timestamp` is `datetime(...)` (Postgres `timestamp without
-     * time zone`, java.time.LocalDateTime) — the zone-less wall-clock wire shape. Column
-     * names are snake_case-d for Postgres convention. The opt-in TZ-aware variant is
-     * covered by [timestampFieldWithDbColumnTypeTimestampWithTzEmitsTzVariant].
+     * The `@localTime:true` naive opt-out on a `field.timestamp` selects `datetime(...)`
+     * (Postgres `timestamp without time zone`, java.time.LocalDateTime) — the zone-less
+     * wall-clock wire shape (ADR-0036 Wave 2). Column names are snake_case-d for Postgres
+     * convention. The DEFAULT (instant/TZ-aware) variant is covered by
+     * [timestampFieldDefaultsToInstantTzColumn].
      */
     @Test fun dateAndTimestampFieldsEmitJavatimeImports() {
         val withDateAndTs = """{
@@ -738,7 +739,7 @@ class KotlinExposedTableGeneratorTest {
             { "object.entity": { "name": "Event", "children": [
                 { "field.long":      { "name": "id" } },
                 { "field.date":      { "name": "occursOn" } },
-                { "field.timestamp": { "name": "loggedAt" } },
+                { "field.timestamp": { "name": "loggedAt", "@localTime": true } },
                 { "source.rdb":      { "@table": "events" } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } }
@@ -758,10 +759,10 @@ class KotlinExposedTableGeneratorTest {
                 "expected javatime.date import for field.date; saw:\n$src")
             assertTrue("import org.jetbrains.exposed.sql.javatime.datetime\n" in src ||
                 src.endsWith("import org.jetbrains.exposed.sql.javatime.datetime"),
-                "expected javatime.datetime import for default field.timestamp; saw:\n$src")
-            // Default `field.timestamp` MUST NOT bring in the timestampWithTimeZone variant.
-            assertTrue("timestampWithTimeZone" !in src,
-                "default field.timestamp should NOT emit timestampWithTimeZone; saw:\n$src")
+                "expected javatime.datetime import for @localTime field.timestamp; saw:\n$src")
+            // @localTime naive `field.timestamp` MUST NOT bring in the instant TZ variant.
+            assertTrue("instantWithTimeZone" !in src,
+                "@localTime field.timestamp should NOT emit instantWithTimeZone; saw:\n$src")
             // Column names are snake_case-d for Postgres convention.
             assertTrue("val occursOn = date(\"occurs_on\")" in src, src)
             assertTrue("val loggedAt = datetime(\"logged_at\")" in src, src)
@@ -771,7 +772,7 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * Opt-in: `@dbColumnType=timestamp_with_tz` on a `field.timestamp` selects a
+     * Default (ADR-0036 Wave 2): a plain `field.timestamp` selects a
      * `Column<java.time.Instant>` column whose Postgres DDL is `timestamp with time zone`.
      * The emitted column function is the `instantWithTimeZone("col")` extension (a custom
      * `ColumnType<Instant>`), NOT Exposed's native `timestampWithTimeZone(...)` (which is
@@ -782,12 +783,12 @@ class KotlinExposedTableGeneratorTest {
      * visibility, same package), so the table file itself carries NEITHER the helper NOR the
      * Instant/Column/javatime imports — it just calls the same-package internal extension.
      */
-    @Test fun timestampFieldWithDbColumnTypeTimestampWithTzEmitsInstantColumn() {
+    @Test fun timestampFieldDefaultsToInstantTzColumn() {
         val tzFixture = """{
           "metadata.root": { "package": "x", "children": [
             { "object.entity": { "name": "Event", "children": [
                 { "field.long":      { "name": "id" } },
-                { "field.timestamp": { "name": "occurredAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "field.timestamp": { "name": "occurredAt" } },
                 { "source.rdb":      { "@table": "events" } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } }
@@ -831,7 +832,7 @@ class KotlinExposedTableGeneratorTest {
 
     /**
      * Regression for the multi-table-per-package redeclaration bug: when TWO entities in the
-     * SAME package each carry a `@dbColumnType=timestamp_with_tz` column, the earlier per-file
+     * SAME package each carry a default (instant/TZ-aware) timestamp column, the earlier per-file
      * inline emission emitted the top-level `MetaInstantWithTimeZoneColumnType` class +
      * `instantWithTimeZone` extension into BOTH `*Table.kt` files → redeclaration + private-access
      * compile errors (162 errors in a real consumer). The fix emits the helper ONCE PER PACKAGE
@@ -848,14 +849,14 @@ class KotlinExposedTableGeneratorTest {
           "metadata.root": { "package": "acme::audit", "children": [
             { "object.entity": { "name": "Role", "children": [
                 { "field.long":      { "name": "id" } },
-                { "field.timestamp": { "name": "createdAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "field.timestamp": { "name": "createdAt"  } },
                 { "source.rdb":      { "@table": "roles" } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } },
             { "object.entity": { "name": "UserAuthToken", "children": [
                 { "field.long":      { "name": "id" } },
-                { "field.timestamp": { "name": "issuedAt", "@dbColumnType": "timestamp_with_tz" } },
-                { "field.timestamp": { "name": "expiresAt", "@dbColumnType": "timestamp_with_tz" } },
+                { "field.timestamp": { "name": "issuedAt"  } },
+                { "field.timestamp": { "name": "expiresAt"  } },
                 { "source.rdb":      { "@table": "user_auth_tokens" } },
                 { "identity.primary": { "@fields": "id", "@generation": "increment" } }
             ] } }

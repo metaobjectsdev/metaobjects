@@ -72,19 +72,19 @@ object KotlinTypeMapper {
      * - `jsonb` (on [StringField]) — emit Exposed `jsonb("col", { it }, { it })` (a real
      *   Postgres `JSONB` column). The property stays a raw-JSON `String`; the identity
      *   encode/decode functions pass the JSON text straight through.
-     * - `timestamp_with_tz` (on [TimestampField]) — emit the generated, file-local
-     *   `instantWithTimeZone("col")` extension (a `Column<java.time.Instant>` whose DDL is
-     *   Postgres `timestamp with time zone`). Opt-in: the default for `field.timestamp` is
-     *   plain `datetime("col")` (Postgres `timestamp without time zone`, `LocalDateTime`).
-     *   NOTE: Exposed 0.55's native `timestampWithTimeZone(...)` is a `Column<OffsetDateTime>`,
-     *   which would MISMATCH the `Instant` data-class property emitted by [kotlinTypeName] and
-     *   force callers to hand-coerce `Instant`↔`OffsetDateTime`. We therefore emit a custom
-     *   `Column<Instant>` column whose `sqlType()` is `TIMESTAMP WITH TIME ZONE` (the helper is
-     *   emitted file-locally by [KotlinExposedTableGenerator] — see [EXPOSED_INSTANT_TZ_FN]).
+     * Timestamp timezone-awareness is NOT a `@dbColumnType` value anymore (ADR-0036
+     * Wave 2): a `field.timestamp` is an absolute INSTANT (`Column<java.time.Instant>`,
+     * file-local `instantWithTimeZone("col")`, Postgres `timestamp with time zone`) by
+     * DEFAULT, and the `@localTime:true` boolean is the rare naive opt-out (plain
+     * `datetime("col")`, Postgres `timestamp without time zone`, `LocalDateTime`). See
+     * [localTimeOptIn] / [EXPOSED_INSTANT_TZ_FN].
      *
      * Unknown values fall through to the default mapping for the field type.
      */
     private val ATTR_DB_COLUMN_TYPE = CoreDBMetaDataProvider.DB_COLUMN_TYPE
+
+    /** `@localTime` boolean attr on [TimestampField] — ADR-0036 Wave 2 naive opt-out. */
+    private val ATTR_LOCAL_TIME = CoreDBMetaDataProvider.LOCAL_TIME
 
     /** `@dbColumnType` value on [StringField] that selects Exposed `uuid("col")`. */
     private val DB_COLUMN_TYPE_UUID = CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID
@@ -101,9 +101,6 @@ object KotlinTypeMapper {
      * `jsonb("col", encoder, decoder)` with kotlinx.serialization.
      */
     private val DB_COLUMN_TYPE_JSONB = CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB
-
-    /** `@dbColumnType` value on [TimestampField] that opts in to Exposed `timestampWithTimeZone("col")`. */
-    private val DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ = CoreDBMetaDataProvider.DB_COLUMN_TYPE_TIMESTAMP_TZ
 
     /** FQN of the Exposed `jsonb` extension function (raw-string open-JSON path). */
     private const val EXPOSED_JSONB_IMPORT = "org.jetbrains.exposed.sql.json.jsonb"
@@ -125,8 +122,8 @@ object KotlinTypeMapper {
     private val JSON_VALUE_TYPE = ClassName("kotlinx.serialization.json", "JsonElement")
 
     /**
-     * Name of the generated, file-local Exposed extension function emitted for a
-     * `@dbColumnType=timestamp_with_tz` [TimestampField]. It returns a
+     * Name of the generated, file-local Exposed extension function emitted for an
+     * instant (default, non-`@localTime`) [TimestampField]. It returns a
      * `Column<java.time.Instant>` whose `sqlType()` is `TIMESTAMP WITH TIME ZONE` — so the
      * column type MATCHES the `Instant` data-class property (zero `Instant`↔`OffsetDateTime`
      * coercion) while keeping the TZ-aware Postgres column (offset→UTC normalization, the
@@ -225,15 +222,15 @@ object KotlinTypeMapper {
         // field.time → java.time.LocalTime / Exposed `time(...)` (Postgres TIME). The
         // wall-clock-only sibling of DateField; the wire form is "HH:MM:SS".
         is TimeField      -> ClassName("java.time", "LocalTime")
-        // Default for field.timestamp is `java.time.LocalDateTime` — the zone-less
-        // wall-clock shape (Postgres `timestamp without time zone`). The cross-port wire
-        // value is zone-less (`yyyy-MM-dd'T'HH:mm:ss`, no `Z`), which a `java.time.Instant`
-        // cannot carry — Jackson 400s deserializing it into the DTO. Opt in to
-        // `Instant` (UTC instant) via `@dbColumnType=timestamp_with_tz`, paired with the
-        // Exposed `timestampWithTimeZone` column. Mirrors the Java SpringTypeMapper fix.
+        // Default for field.timestamp is `java.time.Instant` — an absolute UTC instant
+        // (Postgres `timestamp with time zone`), whose cross-port wire value carries a
+        // `Z` (ADR-0036 Wave 2). The rare `@localTime:true` naive opt-out is the zone-less
+        // wall-clock shape (`yyyy-MM-dd'T'HH:mm:ss`, no `Z`), which is `java.time.LocalDateTime`
+        // (an Instant cannot carry a zone-less wall clock — Jackson 400s on it), paired with
+        // the Exposed `datetime` column. Mirrors the Java SpringTypeMapper flip.
         is TimestampField ->
-            if (timestampWithTzOptIn(field)) ClassName("java.time", "Instant")
-            else ClassName("java.time", "LocalDateTime")
+            if (localTimeOptIn(field)) ClassName("java.time", "LocalDateTime")
+            else ClassName("java.time", "Instant")
         // Currency: integer minor units on the wire (project-wide invariant). Same JVM
         // representation as Long; surfaced as its own arm so the semantic is documented
         // and downstream tooling can branch on subtype.
@@ -304,7 +301,9 @@ object KotlinTypeMapper {
             BooleanField.SUBTYPE_BOOLEAN  -> BOOLEAN
             DateField.SUBTYPE_DATE        -> ClassName("java.time", "LocalDate")
             TimeField.SUBTYPE_TIME        -> ClassName("java.time", "LocalTime")
-            TimestampField.SUBTYPE_TIMESTAMP -> ClassName("java.time", "LocalDateTime")
+            // A map's @valueType:timestamp follows the field.timestamp DEFAULT — an
+            // absolute instant (ADR-0036 Wave 2). @localTime has no place on a map value.
+            TimestampField.SUBTYPE_TIMESTAMP -> ClassName("java.time", "Instant")
             UuidField.SUBTYPE_UUID        -> ClassName("java.util", "UUID")
             else -> null
         }
@@ -340,17 +339,17 @@ object KotlinTypeMapper {
         // field.time → Exposed `time(...)` (javatime extension; needs an explicit import,
         // same as `date(...)`).
         is TimeField      -> "org.jetbrains.exposed.sql.javatime.time"
-        // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
-        // time zone`, mapped by exposed-java-time to `java.time.LocalDateTime` (the
-        // zone-less wall-clock shape carried on the cross-port wire) — needs the javatime
-        // `datetime` import. Opt-in `@dbColumnType=timestamp_with_tz` emits the file-local
-        // `instantWithTimeZone(...)` extension instead (a `Column<java.time.Instant>` with
-        // `TIMESTAMP WITH TIME ZONE` DDL — see [EXPOSED_INSTANT_TZ_FN]). That helper is
+        // Default for field.timestamp (ADR-0036 Wave 2) emits the file-local
+        // `instantWithTimeZone(...)` extension — a `Column<java.time.Instant>` with
+        // `TIMESTAMP WITH TIME ZONE` DDL (see [EXPOSED_INSTANT_TZ_FN]). That helper is
         // emitted into the table's own file by [KotlinExposedTableGenerator], so it needs
-        // NO external import — return null for the opt-in branch.
+        // NO external import — return null for the default branch. The rare `@localTime:true`
+        // naive opt-out emits `datetime(...)` — Postgres `timestamp without time zone`,
+        // mapped by exposed-java-time to `java.time.LocalDateTime` (the zone-less wall-clock
+        // shape) — which needs the javatime `datetime` import.
         is TimestampField -> {
-            if (timestampWithTzOptIn(field)) null
-            else "org.jetbrains.exposed.sql.javatime.datetime"
+            if (localTimeOptIn(field)) "org.jetbrains.exposed.sql.javatime.datetime"
+            else null
         }
         // `@dbColumnType=jsonb` on a field.string emits the `jsonb(...)` extension, which
         // needs the exposed-json import. `@dbColumnType=uuid` maps to `uuid(...)`, a Table
@@ -429,15 +428,15 @@ object KotlinTypeMapper {
         is DateField      -> "date(\"$colName\")"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
         is TimeField      -> "time(\"$colName\")"
-        // Default for field.timestamp is `datetime(...)` — Postgres `timestamp without
-        // time zone` (`java.time.LocalDateTime`), the zone-less wall-clock wire shape.
-        // Opt in to TZ-aware (`java.time.Instant`) via `@dbColumnType=timestamp_with_tz`,
-        // which emits the file-local `instantWithTimeZone(...)` extension — a
+        // Default for field.timestamp is TZ-aware (`java.time.Instant`) — ADR-0036 Wave 2:
+        // emits the file-local `instantWithTimeZone(...)` extension, a
         // `Column<java.time.Instant>` (matches the Instant data class) whose DDL is
-        // `TIMESTAMP WITH TIME ZONE` (see [EXPOSED_INSTANT_TZ_FN]).
+        // `TIMESTAMP WITH TIME ZONE` (see [EXPOSED_INSTANT_TZ_FN]). The rare `@localTime:true`
+        // naive opt-out emits `datetime(...)` — Postgres `timestamp without time zone`
+        // (`java.time.LocalDateTime`), the zone-less wall-clock shape.
         is TimestampField -> {
-            if (timestampWithTzOptIn(field)) "$EXPOSED_INSTANT_TZ_FN(\"$colName\")"
-            else "datetime(\"$colName\")"
+            if (localTimeOptIn(field)) "datetime(\"$colName\")"
+            else "$EXPOSED_INSTANT_TZ_FN(\"$colName\")"
         }
         // Currency stored as BIGINT minor units — same as Long. Separate arm for
         // semantic clarity (a future migration generator can branch on it).
@@ -471,7 +470,7 @@ object KotlinTypeMapper {
      * Read the `@dbColumnType` attribute (case-folded) for column-type overrides. Resolved
      * THROUGH the `extends` super-field chain (`includeParent = true`), so an `object.projection`
      * field that binds a base-entity column via `extends:` inherits that column's physical type
-     * (uuid / timestamp_with_tz) — exactly as it already inherits `@maxLength` (see
+     * (uuid / jsonb) — exactly as it already inherits `@maxLength` (see
      * [stringMaxLengthOrNull]) and `isArray` (see [isArrayResolved]). Own value still wins
      * (checked first by [MetaData.hasMetaAttr]). Returns null when absent. See
      * [ATTR_DB_COLUMN_TYPE] for recognised values.
@@ -501,21 +500,35 @@ object KotlinTypeMapper {
     }
 
     /**
-     * True iff [field] carries `@dbColumnType=timestamp_with_tz` (case-insensitive).
+     * True iff [field] carries `@localTime=true` (ADR-0036 Wave 2) — the naive wall-clock
+     * opt-out. Absent/false (the default) = an absolute instant. Resolved THROUGH the
+     * `extends` chain (so a projection field inherits the base column's tz/naive shape).
      * Centralised so the type spec and the import set stay in lockstep — both call this.
      */
-    private fun timestampWithTzOptIn(field: MetaField<*>): Boolean =
-        dbColumnType(field) == DB_COLUMN_TYPE_TIMESTAMP_WITH_TZ
+    private fun localTimeOptIn(field: MetaField<*>): Boolean =
+        booleanAttr(field, ATTR_LOCAL_TIME)
 
     /**
-     * True iff [field] is a [TimestampField] that opted in to the TZ-aware
-     * `@dbColumnType=timestamp_with_tz` column. [KotlinExposedTableGenerator] uses this to
-     * decide whether a table file must carry the file-local `instantWithTimeZone(...)`
-     * support helper (the custom `Column<java.time.Instant>` / `TIMESTAMP WITH TIME ZONE`
-     * column type). Non-timestamp fields are always false.
+     * True iff [field] is a [TimestampField] using the instant/TZ-aware column — i.e. the
+     * DEFAULT (ADR-0036 Wave 2): every `field.timestamp` NOT flagged `@localTime:true`.
+     * [KotlinExposedTableGenerator] uses this to decide whether a table file must carry the
+     * file-local `instantWithTimeZone(...)` support helper (the custom
+     * `Column<java.time.Instant>` / `TIMESTAMP WITH TIME ZONE` column type). Non-timestamp
+     * fields are always false.
      */
     fun usesInstantWithTimeZone(field: MetaField<*>): Boolean =
-        field is TimestampField && timestampWithTzOptIn(field)
+        field is TimestampField && !localTimeOptIn(field)
+
+    /**
+     * Best-effort read of a named boolean attribute on [field], resolved THROUGH the `extends`
+     * super-field chain (own value wins). Returns false when absent/unparseable. Used for the
+     * `@localTime` naive-timestamp opt-out.
+     */
+    private fun booleanAttr(field: MetaField<*>, name: String): Boolean {
+        if (!field.hasMetaAttr(name, true)) return false
+        val raw = runCatching { field.getMetaAttr(name, true).value }.getOrNull() ?: return false
+        return raw.toString().trim().toBoolean()
+    }
 
     /**
      * Best-effort read of a named string attribute on [field] (own-only by default;

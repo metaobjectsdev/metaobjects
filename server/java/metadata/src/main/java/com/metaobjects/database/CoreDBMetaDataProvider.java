@@ -56,17 +56,31 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      * <ul>
      *   <li>{@code uuid} → {@code field.string} → Postgres {@code UUID} column.</li>
      *   <li>{@code jsonb} → {@code field.string} → Postgres {@code JSONB} (genuinely-open JSON).</li>
-     *   <li>{@code timestamp_with_tz} → {@code field.timestamp} → {@code TIMESTAMP WITH TIME ZONE}.</li>
      * </ul>
+     *
+     * <p>The retired {@code timestamp_with_tz} value is gone (ADR-0036 Wave 2):
+     * timezone-awareness now lives in {@code field.timestamp} (instant by default)
+     * + {@link #LOCAL_TIME} (the naive opt-out).</p>
      */
     public static final String DB_COLUMN_TYPE = "dbColumnType";
+
+    /**
+     * {@code @localTime} attribute (boolean) on {@code field.timestamp} — ADR-0036 Wave 2.
+     *
+     * <p>When {@code true}, the timestamp is a naive wall-clock value with no
+     * timezone (Postgres {@code timestamp without time zone} / {@code LocalDateTime});
+     * absent/false (the default) = an absolute instant ({@code timestamptz} /
+     * {@code Instant}). Replaces the retired {@code @dbColumnType: timestamp_with_tz}
+     * escape hatch. Registered on {@code field.timestamp} by
+     * {@link com.metaobjects.field.TimestampField}; described/enriched via the shared
+     * {@code spec/metamodel/db.json}.</p>
+     */
+    public static final String LOCAL_TIME = "localTime";
 
     /** {@code @dbColumnType} value → Postgres native {@code uuid} column (on {@code field.string}). */
     public static final String DB_COLUMN_TYPE_UUID = "uuid";
     /** {@code @dbColumnType} value → Postgres native {@code jsonb} column (on {@code field.string}). */
     public static final String DB_COLUMN_TYPE_JSONB = "jsonb";
-    /** {@code @dbColumnType} value → {@code timestamp with time zone} column (on {@code field.timestamp}). */
-    public static final String DB_COLUMN_TYPE_TIMESTAMP_TZ = "timestamp_with_tz";
 
     /**
      * The closed set of legal {@code @dbColumnType} values.
@@ -76,11 +90,13 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
      * {@code text[]} column is now <em>derived</em> from {@code field.uuid} / {@code field.string}
      * + {@code isArray:true} (the metadata already says it — ADR-0023), never declared. The
      * vestigial {@code text} value was never carried here (a no-{@code maxLength}
-     * {@code field.string} already defaults to a {@code text} column). This value-set is shared
+     * {@code field.string} already defaults to a {@code text} column). The
+     * {@code timestamp_with_tz} value was retired in ADR-0036 Wave 2 (timezone-awareness
+     * moved to {@code field.timestamp} + {@code @localTime}). This value-set is shared
      * with the Kotlin port via this JVM provider.</p>
      */
     public static final java.util.List<String> VALID_DB_COLUMN_TYPES = java.util.List.of(
-        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB, DB_COLUMN_TYPE_TIMESTAMP_TZ);
+        DB_COLUMN_TYPE_UUID, DB_COLUMN_TYPE_JSONB);
 
     @Override
     public String getProviderId() {

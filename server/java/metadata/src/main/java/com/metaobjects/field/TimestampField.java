@@ -16,6 +16,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.*;
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.IntAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.constraint.PlacementConstraint;
@@ -45,6 +46,16 @@ public class TimestampField extends PrimitiveField<java.util.Date> {
     public final static String ATTR_MIN_DATE = "minDate";
     public final static String ATTR_MAX_DATE = "maxDate";
 
+    /**
+     * {@code @localTime} (boolean) — ADR-0036 Wave 2. When true, the timestamp is a
+     * naive wall-clock value with no timezone ({@code timestamp without time zone} /
+     * {@code LocalDateTime}); absent/false (the default) = an absolute instant
+     * ({@code timestamptz} / {@code Instant}). Replaces the retired
+     * {@code @dbColumnType: timestamp_with_tz} escape hatch. Description/enrichment
+     * for the registry manifest is sourced from {@code spec/metamodel/db.json}.
+     */
+    public final static String ATTR_LOCAL_TIME = com.metaobjects.database.CoreDBMetaDataProvider.LOCAL_TIME;
+
     
     /**
      * Register TimestampField type with the registry (called by provider)
@@ -58,6 +69,13 @@ public class TimestampField extends PrimitiveField<java.util.Date> {
             // precision is the one canonical (cross-port) timestamp attr.
             def.optionalAttributeWithConstraints(ATTR_PRECISION)
                .ofType(IntAttribute.SUBTYPE_INT)
+               .asSingle();
+
+            // @localTime (boolean) — ADR-0036 Wave 2 naive opt-out (timestamp WITHOUT
+            // time zone); absent/false = the instant/tz default. Scoped to
+            // field.timestamp; allowedValues/description enriched from spec db.json.
+            def.optionalAttributeWithConstraints(ATTR_LOCAL_TIME)
+               .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
                .asSingle();
 
             // The field-level @dateFormat (presentation) and @minDate/@maxDate (range)

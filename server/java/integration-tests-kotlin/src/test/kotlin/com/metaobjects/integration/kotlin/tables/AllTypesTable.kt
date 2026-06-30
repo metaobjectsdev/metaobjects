@@ -26,7 +26,7 @@ import org.jetbrains.exposed.sql.json.jsonb
  *   - `field.date`                                      → `date("dateVal")`
  *   - `field.time`                                      → `preciseTime("timeVal")` (millisecond-preserving TIME)
  *   - `field.timestamp`                                 → `datetime("tsVal")` (plain TIMESTAMP, no tz)
- *   - `field.timestamp` + `@dbColumnType:timestamp_with_tz` → `instantWithTimeZone("tsTzVal")` (TIMESTAMPTZ)
+ *   - default `field.timestamp` (instant/TZ-aware, ADR-0036 Wave 2) → `instantWithTimeZone("tsTzVal")` (TIMESTAMPTZ)
  *   - `field.currency` (@currency USD)                  → `long("moneyVal")` (BIGINT minor units)
  *   - `field.enum` (@values LOW/MEDIUM/HIGH)            → `varchar("enumVal", 64)` (text + CHECK in DDL)
  *   - `field.uuid` (non-key, @required)                 → `uuid("uuidVal")` (Postgres native uuid)
