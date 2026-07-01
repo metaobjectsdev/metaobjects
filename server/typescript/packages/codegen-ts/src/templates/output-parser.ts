@@ -55,7 +55,7 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
 /** Render the Zod expression for a single field; recurses on @objectRef. */
 function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, depth: number): string {
   // isArray is a native (reserved) property on MetaData, not an attr.
-  const isArray = field.isArray === true;
+  const isArray = field.resolvedIsArray();
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const refName = field.attr(FIELD_ATTR_OBJECT_REF);

@@ -178,7 +178,12 @@ public static class SerializerJson
 
         // NOTE: overlay is NOT serialized (authoring-time directive only).
 
-        if (model.IsArray)
+        // ADR-0039: effective mode resolves array-ness through the super chain (a
+        // concrete field that extends an abstract array field is itself an array);
+        // own mode (CanonicalSerialize) emits only the authored `isArray` so the
+        // round-trip reconstructs the same extends tree.
+        var isArrayForMode = effective ? model.ResolvedIsArray() : model.IsArray;
+        if (isArrayForMode)
         {
             obj.Add(RESERVED_KEY_IS_ARRAY, JsonValue.Create(true));
         }

@@ -150,10 +150,10 @@ function fieldSpecFor(
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const values = enumValues(field);
     const aliases = enumAliases(field);
-    const cd = ownAttrString(field, FIELD_ATTR_COERCE_DEFAULT);
-    const dv = ownAttrString(field, FIELD_ATTR_DEFAULT);
+    const cd = attrString(field, FIELD_ATTR_COERCE_DEFAULT);
+    const dv = attrString(field, FIELD_ATTR_DEFAULT);
     const normalize = resolveNormalize(field, owner);
-    const build = field.isArray === true ? enumArray : enumField;
+    const build = field.resolvedIsArray() ? enumArray : enumField;
     return build(name, required, values, aliases, cd, normalize, dv);
   }
 
@@ -166,18 +166,18 @@ function fieldSpecFor(
       return scalar(name, FieldKind.STRING, required);
     }
     const nested = extractSchemaForInner(ref, format, visited, depth + 1);
-    return object(name, required, field.isArray === true, nested);
+    return object(name, required, field.resolvedIsArray(), nested);
   }
 
   // --- Scalar (carry generalized @default) ----------------------------------
   const kind = scalarKind(field.subType);
-  const dv = ownAttrString(field, FIELD_ATTR_DEFAULT);
-  if (field.isArray === true) {
+  const dv = attrString(field, FIELD_ATTR_DEFAULT);
+  if (field.resolvedIsArray()) {
     // Scalar array: the engine coerces each element; no per-element default fill.
     return scalarArray(name, kind, required);
   }
   // @xmlText: a (non-array) scalar field marked to receive its element's XML text content.
-  if (ownAttrString(field, FIELD_ATTR_XML_TEXT) === "true") {
+  if (attrString(field, FIELD_ATTR_XML_TEXT) === "true") {
     return textContentField(name, kind, required);
   }
   // Numeric range: source the bound from the field's numeric validator (@min/@max) — the single
@@ -242,7 +242,7 @@ function assembleInner(
     const ref = resolveObjectRef(field);
     const cyclicOrDeep = ref === undefined || visited.has(ref) || depth + 1 >= MAX_NEST_DEPTH;
 
-    if (field.isArray === true) {
+    if (field.resolvedIsArray()) {
       // Array-of-objects: map each element record -> assembled child.
       if (Array.isArray(value)) {
         const children: object[] = [];
@@ -303,23 +303,26 @@ function scalarKind(subType: string): FieldKind {
   }
 }
 
-/** True iff `@required` is explicitly true (or the string "true"). */
+/** True iff `@required` is explicitly true (or the string "true").
+ *  ADR-0039: resolving — @required may be inherited via extends. */
 function isRequired(field: MetaField): boolean {
-  const v = field.ownAttr(FIELD_ATTR_REQUIRED);
+  const v = field.attr(FIELD_ATTR_REQUIRED);
   if (v === true) return true;
   return typeof v === "string" && v.toLowerCase() === "true";
 }
 
-/** The string members of an enum field's `@values` attr (empty when absent). */
+/** The string members of an enum field's `@values` attr (empty when absent).
+ *  ADR-0039: resolving — @values may be inherited from an abstract enum base via extends. */
 function enumValues(field: MetaField): string[] {
-  const v = field.ownAttr(FIELD_ATTR_VALUES);
+  const v = field.attr(FIELD_ATTR_VALUES);
   if (Array.isArray(v)) return v.map((e) => String(e));
   return [];
 }
 
-/** The `@enumAlias` map (an object literal) of an enum field, or {} when absent/empty. */
+/** The `@enumAlias` map (an object literal) of an enum field, or {} when absent/empty.
+ *  ADR-0039: resolving — @enumAlias may be inherited via extends. */
 function enumAliases(field: MetaField): Record<string, string> {
-  const raw = field.ownAttr(FIELD_ATTR_ENUM_ALIAS);
+  const raw = field.attr(FIELD_ATTR_ENUM_ALIAS);
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out: Record<string, string> = {};
   for (const [k, val] of Object.entries(raw as Record<string, unknown>)) {
@@ -341,13 +344,16 @@ function resolveNormalize(field: MetaField, owner: MetaObject | null): Normalize
 }
 
 function normalizeAttrOf(node: MetaData): NormalizeMode | null {
-  const v = node.ownAttr(FIELD_ATTR_NORMALIZE);
+  // ADR-0039: resolving — @normalize may be inherited via extends.
+  const v = node.attr(FIELD_ATTR_NORMALIZE);
   return typeof v === "string" && v.length > 0 ? (v as NormalizeMode) : null;
 }
 
-/** The own (non-inherited) string value of an attr on a node, or null when absent/empty. */
-function ownAttrString(node: MetaData, attr: string): string | null {
-  const v = node.ownAttr(attr);
+/** The effective string value of an attr on a node, or null when absent/empty.
+ *  ADR-0039: resolving — extract config attrs (@default/@coerceDefault/@xmlText/
+ *  @objectRef) may be inherited via extends. */
+function attrString(node: MetaData, attr: string): string | null {
+  const v = node.attr(attr);
   if (typeof v === "string") return v.length > 0 ? v : null;
   return v == null ? null : String(v);
 }
@@ -358,7 +364,7 @@ function ownAttrString(node: MetaData, attr: string): string | null {
  * name after the last package separator. Returns undefined when unresolvable (→ opaque-leaf guard).
  */
 function resolveObjectRef(field: MetaField): MetaObject | undefined {
-  const ref = ownAttrString(field, FIELD_ATTR_OBJECT_REF) ?? field.objectRef;
+  const ref = attrString(field, FIELD_ATTR_OBJECT_REF) ?? field.objectRef;
   if (ref === undefined || ref === null) return undefined;
   const root = field.root();
   if (!(root instanceof MetaRoot)) return undefined;

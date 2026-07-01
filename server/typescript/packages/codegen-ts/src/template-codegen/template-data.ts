@@ -41,7 +41,7 @@ function fieldData(field: MetaField): FieldTemplateData {
     name: field.name,
     type: field.subType,
     required: field.isRequired,
-    isArray: field.isArray === true,
+    isArray: field.resolvedIsArray(),
   };
   if (typeof field.maxLength === "number") d.maxLength = field.maxLength;
   if (field.subType === FIELD_SUBTYPE_ENUM) {

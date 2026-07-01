@@ -1909,7 +1909,9 @@ public static class ValidationPasses
         {
             foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
-                var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+                // ADR-0039: resolving — a concrete field.object may inherit @objectRef
+                // from an abstract base via extends; reading own-only would wrongly reject it.
+                var objectRef = field.Attr(FIELD_ATTR_OBJECT_REF);
                 var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
 
                 if (field.SubType == FIELD_SUBTYPE_OBJECT && !hasObjectRef)
@@ -1923,10 +1925,11 @@ public static class ValidationPasses
                     continue;
                 }
 
-                var storage = field.OwnAttr(FIELD_ATTR_STORAGE);
+                // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
+                var storage = field.Attr(FIELD_ATTR_STORAGE);
                 if (storage is null) continue;
 
-                if (storage is string st && st == STORAGE_FLATTENED && field.IsArray)
+                if (storage is string st && st == STORAGE_FLATTENED && field.ResolvedIsArray())
                 {
                     errors.Add(new MetaError(
                         $"field \"{obj.Name}.{field.Name}\" sets @storage \"flattened\" with isArray=true; " +
@@ -1979,9 +1982,10 @@ public static class ValidationPasses
             {
                 if (field.SubType != FIELD_SUBTYPE_MAP) continue;
 
-                var valueType = field.OwnAttr(FIELD_ATTR_VALUE_TYPE);
+                // ADR-0039: resolving — @valueType / @objectRef may be inherited via extends.
+                var valueType = field.Attr(FIELD_ATTR_VALUE_TYPE);
                 var hasValueType = valueType is string vt && vt.Length > 0;
-                var objectRef = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+                var objectRef = field.Attr(FIELD_ATTR_OBJECT_REF);
                 var hasObjectRef = objectRef is string refStr && refStr.Length > 0;
 
                 if (hasValueType == hasObjectRef)

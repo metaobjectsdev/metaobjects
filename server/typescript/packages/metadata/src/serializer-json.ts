@@ -122,7 +122,12 @@ function serializeNodeInner(
   // (re-parsing would seek a non-existent node to merge into). So it is
   // deliberately NOT serialized.
 
-  if (model.isArray === true) {
+  // ADR-0039: effective mode resolves array-ness through the super chain (a
+  // concrete field that extends an abstract array field is itself an array);
+  // own mode (canonicalSerialize) emits only the authored `isArray` so the
+  // round-trip reconstructs the same extends tree.
+  const isArrayForMode = effective ? model.resolvedIsArray() : model.isArray === true;
+  if (isArrayForMode) {
     obj[RESERVED_KEY_IS_ARRAY] = true;
   }
 

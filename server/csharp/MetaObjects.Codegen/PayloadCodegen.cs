@@ -44,14 +44,16 @@ public static class PayloadCodegen
     private static MetaData? FindObject(MetaData root, string name) =>
         root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
 
-    private static bool IsArrayField(MetaData field) =>
-        field.OwnAttr(RESERVED_KEY_IS_ARRAY) is true || field.IsArray;
+    // ADR-0039: resolve array-ness through the super chain (isArray is a native
+    // property, not an attr; the former OwnAttr("isArray") clause was dead code).
+    private static bool IsArrayField(MetaData field) => field.ResolvedIsArray();
 
     private static (string Type, string? RefVo) FieldType(MetaData owner, MetaData field)
     {
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
         {
-            var refAttr = field.OwnAttr(FIELD_ATTR_OBJECT_REF);
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            var refAttr = field.Attr(FIELD_ATTR_OBJECT_REF);
             // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare;
             // the generated record type + the nested-record lookup key are the BARE
             // short name (FindObject matches bare names — every other caller strips too).

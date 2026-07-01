@@ -82,7 +82,8 @@ export function resolveColumnName(
   field: MetaData,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): string {
-  const col = field.ownAttr(FIELD_ATTR_COLUMN);
+  // ADR-0039: resolving — a concrete field may inherit @column via extends.
+  const col = field.attr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col) return col;
   return applyColumnNamingStrategy(field.name, strategy);
 }

@@ -108,8 +108,8 @@ public static class ExtractObject
         {
             IReadOnlyList<string> values = EnumValues(field);
             IReadOnlyDictionary<string, string> aliases = EnumAliases(field);
-            string? coerceDefault = OwnAttrString(field, FIELD_ATTR_COERCE_DEFAULT);
-            string? defaultValue = OwnAttrString(field, FIELD_ATTR_DEFAULT);
+            string? coerceDefault = AttrString(field, FIELD_ATTR_COERCE_DEFAULT);
+            string? defaultValue = AttrString(field, FIELD_ATTR_DEFAULT);
             NormalizeMode normalize = ResolveNormalize(field, owner);
             return IsArrayType(field)
                 ? FieldSpec.EnumArray(name, required, values, aliases, coerceDefault, normalize, defaultValue)
@@ -129,7 +129,7 @@ public static class ExtractObject
 
         // --- Scalar (single or array; carry generalized @default) -----------
         FieldKind kind = ScalarKind(field.SubType);
-        string? scalarDefault = OwnAttrString(field, FIELD_ATTR_DEFAULT);
+        string? scalarDefault = AttrString(field, FIELD_ATTR_DEFAULT);
         // A scalar ARRAY (e.g. field.string isArray) must carry Array=true so the engine reads a
         // list (else a JSON array under a scalar key fails to coerce and the field is lost). The
         // engine's f.Array branch handles non-enum scalar arrays (raw element list). @default is a
@@ -154,7 +154,8 @@ public static class ExtractObject
     /// <summary>True iff the field's <c>@xmlText</c> is explicitly true (the XML text-content extract marker).</summary>
     private static bool IsXmlText(MetaField field)
     {
-        object? v = field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT);
+        // ADR-0039: resolving — @xmlText may be inherited via extends.
+        object? v = field.Attr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT);
         return v is true || (v is string s && s.Equals("true", System.StringComparison.OrdinalIgnoreCase));
     }
 
@@ -232,7 +233,8 @@ public static class ExtractObject
 
     private static IReadOnlyDictionary<string, string> EnumAliases(MetaField field)
     {
-        if (field.OwnAttr(FIELD_ATTR_ENUM_ALIAS) is not IReadOnlyDictionary<string, object?> d)
+        // ADR-0039: resolving — @enumAlias may be inherited from an abstract enum base via extends.
+        if (field.Attr(FIELD_ATTR_ENUM_ALIAS) is not IReadOnlyDictionary<string, object?> d)
             return new Dictionary<string, string>();
         var aliases = new Dictionary<string, string>(System.StringComparer.Ordinal);
         foreach (var kv in d)
@@ -247,9 +249,10 @@ public static class ExtractObject
     /// </summary>
     private static NormalizeMode ResolveNormalize(MetaField field, MetaObject owner)
     {
-        string? fieldMode = OwnAttrString(field, FIELD_ATTR_NORMALIZE);
+        // ADR-0039: resolving — @normalize may be inherited via extends.
+        string? fieldMode = AttrString(field, FIELD_ATTR_NORMALIZE);
         if (fieldMode != null) return ParseNormalize(fieldMode);
-        string? objMode = OwnAttrString(owner, FIELD_ATTR_NORMALIZE);
+        string? objMode = AttrString(owner, FIELD_ATTR_NORMALIZE);
         if (objMode != null) return ParseNormalize(objMode);
         return NormalizeMode.Strip;
     }
@@ -265,9 +268,11 @@ public static class ExtractObject
     // Common helpers
     // =========================================================================
 
-    /// <summary>The own (non-inherited) string value of an attr on a node, or null when absent/empty.</summary>
-    private static string? OwnAttrString(MetaData node, string attr) =>
-        node.OwnAttr(attr) is string s && s.Length > 0 ? s : null;
+    /// <summary>The effective string value of an attr on a node, or null when absent/empty.
+    /// ADR-0039: resolving — extract config attrs (@default/@coerceDefault/@xmlText/
+    /// @objectRef/@normalize) may be inherited via extends.</summary>
+    private static string? AttrString(MetaData node, string attr) =>
+        node.Attr(attr) is string s && s.Length > 0 ? s : null;
 
     /// <summary>Map a scalar field subtype to its <see cref="FieldKind"/>. Unknown → STRING.</summary>
     private static FieldKind ScalarKind(string subType) => subType switch
@@ -280,7 +285,8 @@ public static class ExtractObject
         _ => FieldKind.String,
     };
 
-    private static bool IsArrayType(MetaField field) => field.IsArray;
+    // ADR-0039: resolving array-ness — a concrete field inherits isArray via extends.
+    private static bool IsArrayType(MetaField field) => field.ResolvedIsArray();
 
     /// <summary>
     /// Resolve a field's <c>@objectRef</c> to its target <see cref="MetaObject"/> by matching the

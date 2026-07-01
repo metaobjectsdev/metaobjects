@@ -231,6 +231,37 @@ public abstract class MetaData
         _isArray = val;
     }
 
+    /// <summary>
+    /// Effective array-ness — the RESOLVING accessor for the native <c>isArray</c>
+    /// flag (ADR-0039). <c>isArray</c> is a native boolean property, NOT an attr,
+    /// so it has no resolving path through <see cref="Attrs"/>/<see cref="Attr"/>;
+    /// a concrete node that <c>extends</c> an abstract array node inherits its
+    /// array-ness only through the super chain. Reading the bare <see cref="IsArray"/>
+    /// property is OWN-ONLY and silently drops inherited array-ness — every
+    /// codegen / runtime / effective-serializer read of a node's effective
+    /// array-ness MUST route through this method instead.
+    ///
+    /// Returns the node's own <c>isArray</c> if set true, else walks the super
+    /// chain (own <c>true</c> always wins; a node can only widen to array, never
+    /// narrow — an abstract array base extended by a concrete node stays an array).
+    /// Cycle-guarded.
+    /// </summary>
+    public bool ResolvedIsArray()
+    {
+        return Cached("resolvedIsArray", () =>
+        {
+            MetaData? node = this;
+            var visited = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+            while (node is not null && !visited.Contains(node))
+            {
+                if (node._isArray) return true;
+                visited.Add(node);
+                node = node._superData;
+            }
+            return false;
+        });
+    }
+
     // ---------------------------------------------------------------------------
     // DataType
     // ---------------------------------------------------------------------------

@@ -36,8 +36,9 @@ public static class TemplateData
 
     public static bool IsConcrete(MetaObject o) => !o.IsAbstract;
 
-    private static bool Required(MetaField f) =>
-        f.OwnAttr("required") is true || f.Validators().Any(v => v.IsRequired());
+    // ADR-0039: resolving — delegate to the field's resolving IsRequired getter
+    // (@required and the validator set are both effective forms).
+    private static bool Required(MetaField f) => f.IsRequired;
 
     private static List<string> ToStringList(object? raw) =>
         raw is IEnumerable en and not string
@@ -51,10 +52,12 @@ public static class TemplateData
             ["name"] = f.Name,
             ["type"] = f.SubType,
             ["required"] = Required(f),
-            ["isArray"] = f.IsArray,
+            // ADR-0039: resolving array-ness (inheritable via extends).
+            ["isArray"] = f.ResolvedIsArray(),
         };
-        if (f.OwnHasAttr("maxLength"))
-            d["maxLength"] = Convert.ToInt32(f.OwnAttr("maxLength"));
+        // ADR-0039: resolving — @maxLength may be inherited via extends (MaxLength getter resolves).
+        if (f.MaxLength is { } ml)
+            d["maxLength"] = Convert.ToInt32(ml);
         if (f.SubType == SubtypeEnum && f.HasAttr("values"))
             d["enumValues"] = ToStringList(f.Attr("values"));
         return d;

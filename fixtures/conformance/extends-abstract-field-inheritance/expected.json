@@ -1,0 +1,116 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "field.string": {
+          "name": "Tags",
+          "package": "acme",
+          "abstract": true,
+          "isArray": true,
+          "@maxLength": 40
+        }
+      },
+      {
+        "field.decimal": {
+          "name": "Money",
+          "package": "acme",
+          "abstract": true,
+          "@precision": 12,
+          "@scale": 2
+        }
+      },
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "field.object": {
+          "name": "AddressBag",
+          "package": "acme",
+          "abstract": true,
+          "isArray": true,
+          "@objectRef": "acme::Address",
+          "@storage": "jsonb"
+        }
+      },
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "uuid"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Contact",
+          "extends": "acme::BaseEntity",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "contacts"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "tags",
+                "extends": "acme::Tags"
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "balance",
+                "extends": "acme::Money"
+              }
+            },
+            {
+              "field.object": {
+                "name": "addresses",
+                "extends": "acme::AddressBag"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -413,7 +413,7 @@ public class EntityGenerator : IGenerator
         var baseType = CSharpNaming.ScalarForField(field)!;
         var propName = PropertyName(field);
 
-        if (field.IsArray)
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
             arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
@@ -440,7 +440,7 @@ public class EntityGenerator : IGenerator
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
         var colAttr = $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n";
-        if (field.IsArray)
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
         return $"{colAttr}    public {typeName}{nullable} {propName} {{ get; set; }}";
@@ -747,7 +747,7 @@ public class EntityGenerator : IGenerator
         var typeName = EnumPropertyTypeName(entity, field, config);
         var propName = PropertyName(field);
         var colAttr = withAttributes ? $"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]\n" : "";
-        if (field.IsArray)
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"{colAttr}    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
@@ -778,7 +778,7 @@ public class EntityGenerator : IGenerator
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]
         // attribute — [Key]/[MaxLength]/[Required] are not meaningful for a List<T> jsonb
         // column (arrays are never PKs, and the list itself is never null in C#).
-        if (field.IsArray)
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
             if (withAttributes)
@@ -965,7 +965,7 @@ public class EntityGenerator : IGenerator
         // An object-typed field with @isArray:true is a COLLECTION of the value object,
         // not a single nullable ref. Emit a non-nullable ICollection<T> with an empty-list
         // initializer (matching the scalar/enum array convention — the list is never null).
-        if (field.IsArray)
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(owner, field);
         return required

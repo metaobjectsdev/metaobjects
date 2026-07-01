@@ -603,16 +603,36 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * @return true if @isArray=true is set on this field, false otherwise
      */
     public boolean isArrayType() {
-        // Prefer the native flag (set by the canonical parser for structural
-        // `isArray: true`) and fall back to a child MetaAttribute for callers
-        // that may set the attribute directly.
-        if (isArray) return true;
+        // ADR-0039: RESOLVING array-ness. `isArray` is a native boolean flag (not an
+        // attr), so it has no attrs()-based resolution path — walk the super chain
+        // explicitly so a concrete field that `extends` an abstract array field
+        // inherits its array-ness. (isArray() is the own-only raw flag; codegen must
+        // route through isArrayType(), never isArray().)
+        if (resolvedNativeIsArray()) return true;
+        // hasMetaAttr/getMetaAttr default to includeParentData=true → RESOLVING, so an
+        // inherited `@isArray` attr is honored as well.
         if (hasMetaAttr(ATTR_IS_ARRAY)) {
             MetaAttribute attr = getMetaAttr(ATTR_IS_ARRAY);
             String value = attr.getValueAsString();
             if ("true".equalsIgnoreCase(value)) return true;
             if ("false".equalsIgnoreCase(value)) return false;
             return Boolean.parseBoolean(value);
+        }
+        return false;
+    }
+
+    /**
+     * RESOLVING read of the native {@code isArray} flag: true if this field OR any
+     * field in its {@code extends} super chain declares {@code isArray:true}. The
+     * flag physically lives on the node that declared it (extends is a
+     * super-reference, not a flatten), so a bare {@code this.isArray} read misses
+     * inheritance (ADR-0039).
+     */
+    private boolean resolvedNativeIsArray() {
+        MetaData node = this;
+        while (node instanceof MetaField) {
+            if (((MetaField) node).isArray) return true;   // own-only flag read on each hop
+            node = node.getSuperData();
         }
         return false;
     }

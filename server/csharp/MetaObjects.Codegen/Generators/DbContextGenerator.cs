@@ -64,7 +64,7 @@ public class DbContextGenerator : IGenerator
             // column as Int32 at materialization — an InvalidCastException. Mirror the
             // entity-side HasConversion<string>() so a projection that passes an enum
             // through (e.g. ProgramView.status over v_program) round-trips.
-            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.IsArray))
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
                 modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).HasConversion<string>();");
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
@@ -75,7 +75,7 @@ public class DbContextGenerator : IGenerator
             foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
-                if (f.IsArray)
+                if (f.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
                 {
                     // Array-of-enum: EF Core 8 primitive collection with per-element string conversion
                     // so enum values persist as string symbols (e.g. ["DRAFT","ARCHIVED"]), consistent
@@ -90,7 +90,7 @@ public class DbContextGenerator : IGenerator
             }
             // Scalar arrays (scalar subtypes, non-enum): EF Core 8 .PrimitiveCollection() API.
             // .Property(...).ToJson() does not exist on PropertyBuilder<List<T>> (CS1061).
-            foreach (var f in e.Fields().Where(f => f.IsArray && CSharpNaming.ScalarFor(f.SubType) is not null))
+            foreach (var f in e.Fields().Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
@@ -100,7 +100,7 @@ public class DbContextGenerator : IGenerator
             // model agrees with the TS-owned schema DDL and the value round-trips
             // precision-exact (vs. EF's default decimal(18,2) coercion).
             foreach (var f in e.Fields().Where(f =>
-                         !f.IsArray && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
+                         !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(f.Scale is long sc
@@ -118,7 +118,7 @@ public class DbContextGenerator : IGenerator
             //     explicit mapping is REQUIRED (else DbUpdateException at runtime: "Cannot
             //     write DateTime with Kind=Unspecified to PostgreSQL type 'timestamp with
             //     time zone'").
-            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
+            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 var colType = CSharpNaming.IsLocalTime(f)
@@ -133,13 +133,13 @@ public class DbContextGenerator : IGenerator
             //   • field.inet → CLR System.Net.IPAddress over the Postgres-native `inet`
             //     column. Npgsql maps IPAddress↔inet natively; the explicit HasColumnType
             //     keeps the model and the TS-owned schema DDL in lockstep.
-            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_URI))
+            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_URI))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(
                     $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new Uri(v));");
             }
-            foreach (var f in e.Fields().Where(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_INET))
+            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(
@@ -150,14 +150,14 @@ public class DbContextGenerator : IGenerator
             // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
             // told the provider column type (and, for uuid, a string↔Guid value converter)
             // so the native uuid / jsonb column round-trips into that property.
-            foreach (var f in e.Fields().Where(f => !f.IsArray && f.DbColumnType is not null))
+            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
                 if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
 
             // FR-013 — a @readOnly field is read-after-insert-only. The property carries a
             // private setter (EntityGenerator), and EF must skip the column on writes:
             // SetAfterSaveBehavior(Ignore) excludes it from UPDATE, and ValueGeneratedOnAdd
             // (paired below) lets the DB / trigger / default own the value on INSERT.
-            foreach (var f in e.Fields().Where(f => !f.IsArray && f.ReadOnly))
+            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.ReadOnly))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(
@@ -190,7 +190,7 @@ public class DbContextGenerator : IGenerator
         // read-only field is present so models without one stay byte-identical.
         var needsMetadataUsing = objects
             .Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
-            .Any(o => o.Fields().Any(f => !f.IsArray && f.ReadOnly));
+            .Any(o => o.Fields().Any(f => !f.ResolvedIsArray() && f.ReadOnly));
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);

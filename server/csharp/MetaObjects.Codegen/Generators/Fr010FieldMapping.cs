@@ -22,9 +22,10 @@ internal static class Fr010FieldMapping
     public static IEnumerable<MetaData> Fields(MetaData vo) =>
         vo.Children().Where(c => c.Type == TYPE_FIELD);
 
-    /// <summary>The string members of an enum field's <c>@values</c> attr (empty when absent).</summary>
+    /// <summary>The string members of an enum field's <c>@values</c> attr (empty when absent).
+    /// ADR-0039: resolving — @values may be inherited from an abstract enum base via extends.</summary>
     public static IReadOnlyList<string> EnumValues(MetaData field) =>
-        field.OwnAttr(FIELD_ATTR_VALUES) switch
+        field.Attr(FIELD_ATTR_VALUES) switch
         {
             IReadOnlyList<string> ss => ss,
             IReadOnlyList<object?> os => os.Select(o => o?.ToString() ?? "").ToList(),
@@ -54,14 +55,15 @@ internal static class Fr010FieldMapping
 
     /// <summary>
     /// FR-011: the field's <c>@coerceDefault</c> member symbol (present-but-uncoercible enum fallback),
-    /// or null when absent. Own-attr only — <c>@coerceDefault</c> is concrete, never inherited.
+    /// or null when absent. ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public static string? CoerceDefault(MetaData field) =>
-        field.OwnAttr(FIELD_ATTR_COERCE_DEFAULT) is string s && s.Length > 0 ? s : null;
+        field.Attr(FIELD_ATTR_COERCE_DEFAULT) is string s && s.Length > 0 ? s : null;
 
-    /// <summary>FR-011: the field's <c>@default</c> member symbol (absent-fill enum value), or null when absent.</summary>
+    /// <summary>FR-011: the field's <c>@default</c> member symbol (absent-fill enum value), or null when absent.
+    /// ADR-0039: resolving — inheritable via extends.</summary>
     public static string? DefaultValue(MetaData field) =>
-        field.OwnAttr(FIELD_ATTR_DEFAULT) is string s && s.Length > 0 ? s : null;
+        field.Attr(FIELD_ATTR_DEFAULT) is string s && s.Length > 0 ? s : null;
 
     /// <summary>
     /// FR-011: resolve the enum normalization mode for a field — field-level <c>@normalize</c>, else
@@ -78,9 +80,10 @@ internal static class Fr010FieldMapping
         return NORMALIZE_DEFAULT;
     }
 
-    /// <summary>The <c>@normalize</c> attr of a node as a mode string, or null when absent.</summary>
+    /// <summary>The <c>@normalize</c> attr of a node as a mode string, or null when absent.
+    /// ADR-0039: resolving — inheritable via extends.</summary>
     private static string? NormalizeAttrOf(MetaData node) =>
-        node.OwnAttr(FIELD_ATTR_NORMALIZE) is string s && s.Length > 0 ? s : null;
+        node.Attr(FIELD_ATTR_NORMALIZE) is string s && s.Length > 0 ? s : null;
 
     /// <summary>Map a <c>@normalize</c> mode string onto the render-engine <c>NormalizeMode</c> member name.</summary>
     public static string NormalizeModeMember(string mode) => mode switch
@@ -194,17 +197,21 @@ internal static class Fr010FieldMapping
         };
     }
 
-    public static bool IsArray(MetaData field) =>
-        field.OwnAttr(RESERVED_KEY_IS_ARRAY) is true || field.IsArray;
+    // ADR-0039: resolve array-ness through the super chain (isArray is a native
+    // property, not an attr). The former `OwnAttr("isArray")` clause was dead —
+    // isArray is never stored as an attr — and own-only anyway; removed.
+    public static bool IsArray(MetaData field) => field.ResolvedIsArray();
 
+    // ADR-0039: resolving — @required may be inherited from an abstract base via extends.
     public static bool IsRequired(MetaData field) =>
-        field.OwnAttr(FIELD_ATTR_REQUIRED) is true ||
-        (field.OwnAttr(FIELD_ATTR_REQUIRED) is string s && s.Equals("true", StringComparison.OrdinalIgnoreCase));
+        field.Attr(FIELD_ATTR_REQUIRED) is true ||
+        (field.Attr(FIELD_ATTR_REQUIRED) is string s && s.Equals("true", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>True iff the field's <c>@xmlText</c> is explicitly true (the XML text-content extract marker).</summary>
+    /// <summary>True iff the field's <c>@xmlText</c> is explicitly true (the XML text-content extract marker).
+    /// ADR-0039: resolving — inheritable via extends.</summary>
     public static bool HasXmlText(MetaData field) =>
-        field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is true ||
-        (field.OwnAttr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is string s &&
+        field.Attr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is true ||
+        (field.Attr(MetaObjects.Template.TemplateConstants.FIELD_ATTR_XML_TEXT) is string s &&
          s.Equals("true", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Escape a value for embedding inside a C# double-quoted string literal.</summary>

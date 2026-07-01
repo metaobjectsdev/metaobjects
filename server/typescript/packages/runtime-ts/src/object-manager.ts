@@ -499,7 +499,8 @@ const NUMERIC_SUBTYPES = new Set([
 
 // decodeRef always returns strings; numeric PK fields need coercion back to number.
 function coercePkValue(entity: MetaData, fieldName: string, rawValue: string): string | number {
-  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  // ADR-0039: resolving — the PK field may be inherited from a BaseEntity via extends.
+  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (field && NUMERIC_SUBTYPES.has(field.subType)) {
     const n = Number(rawValue);
     if (!Number.isNaN(n)) return n;

@@ -52,7 +52,8 @@ def is_concrete(o: Any) -> bool:
 
 
 def _is_required(f: Any) -> bool:
-    if f.own_attrs().get(_VALIDATOR_REQUIRED) is True:
+    # ADR-0039 resolving: @required / a validator.required child may be inherited via extends.
+    if f.attrs().get(_VALIDATOR_REQUIRED) is True:
         return True
     return any(
         c.type == TYPE_VALIDATOR and c.sub_type == _VALIDATOR_REQUIRED
@@ -65,11 +66,12 @@ def _field_data(f: Any) -> dict[str, Any]:
         "name": f.name,
         "type": f.sub_type,
         "required": _is_required(f),
-        "isArray": bool(f.is_array),
+        # ADR-0039 resolving: a concrete field may inherit isArray/@maxLength from an abstract parent.
+        "isArray": f.resolved_is_array(),
     }
-    own = f.own_attrs()
-    if "maxLength" in own:
-        d["maxLength"] = int(own["maxLength"])
+    eff = f.attrs()
+    if "maxLength" in eff:
+        d["maxLength"] = int(eff["maxLength"])
     if f.sub_type == _SUBTYPE_ENUM:
         values = f.attrs().get("values")
         if isinstance(values, list):

@@ -22,17 +22,19 @@ import type { MetaRoot } from "../../shared/meta-root.js";
 export type IdentityGeneration = "increment" | "uuid" | "assigned";
 
 export class MetaIdentity extends MetaData {
+  /** ADR-0039: resolving — @fields may be inherited via extends. */
   get fields(): string[] {
-    const f = this.ownAttr(IDENTITY_ATTR_FIELDS);
+    const f = this.attr(IDENTITY_ATTR_FIELDS);
     return Array.isArray(f) ? (f as string[]) : [];
   }
 
   /**
    * Whether the identity enforces uniqueness.
    * Defaults to true; explicit `@unique: false` makes it a non-unique index.
+   * ADR-0039: resolving.
    */
   get unique(): boolean {
-    return this.ownAttr(IDENTITY_ATTR_UNIQUE) !== false;
+    return this.attr(IDENTITY_ATTR_UNIQUE) !== false;
   }
 
   isPrimary(): boolean {
@@ -58,7 +60,8 @@ export class MetaIdentity extends MetaData {
  */
 export class MetaPrimaryIdentity extends MetaIdentity {
   get generation(): IdentityGeneration | undefined {
-    const v = this.ownAttr(IDENTITY_ATTR_GENERATION);
+    // ADR-0039: resolving — @generation may be inherited via extends.
+    const v = this.attr(IDENTITY_ATTR_GENERATION);
     return typeof v === "string" ? (v as IdentityGeneration) : undefined;
   }
 }
@@ -83,7 +86,8 @@ export class MetaSecondaryIdentity extends MetaIdentity {}
 export class MetaReferenceIdentity extends MetaIdentity {
   /** Raw `@references` attr value, unparsed. */
   get referencesRaw(): string | undefined {
-    const v = this.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
+    // ADR-0039: resolving — @references may be inherited via extends.
+    const v = this.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     return typeof v === "string" ? v : undefined;
   }
 
@@ -103,7 +107,8 @@ export class MetaReferenceIdentity extends MetaIdentity {
    * block and projection JOIN inference are unaffected.
    */
   get enforce(): boolean {
-    return this.ownAttr(IDENTITY_REFERENCE_ATTR_ENFORCE) !== false;
+    // ADR-0039: resolving — @enforce may be inherited via extends.
+    return this.attr(IDENTITY_REFERENCE_ATTR_ENFORCE) !== false;
   }
 
   /**
@@ -114,13 +119,15 @@ export class MetaReferenceIdentity extends MetaIdentity {
    * declared here too rather than only on a sibling relationship node.
    */
   get onDelete(): string | undefined {
-    const v = this.ownAttr(IDENTITY_REFERENCE_ATTR_ON_DELETE);
+    // ADR-0039: resolving — @onDelete may be inherited via extends.
+    const v = this.attr(IDENTITY_REFERENCE_ATTR_ON_DELETE);
     return typeof v === "string" && v !== "" ? v : undefined;
   }
 
   /** Referential action on key update, declared directly on the reference. Undefined when not set. */
   get onUpdate(): string | undefined {
-    const v = this.ownAttr(IDENTITY_REFERENCE_ATTR_ON_UPDATE);
+    // ADR-0039: resolving — @onUpdate may be inherited via extends.
+    const v = this.attr(IDENTITY_REFERENCE_ATTR_ON_UPDATE);
     return typeof v === "string" && v !== "" ? v : undefined;
   }
 
@@ -167,7 +174,8 @@ export class MetaReferenceIdentity extends MetaIdentity {
     if (!targetObj) return undefined;
 
     const primary = targetObj.primaryIdentity();
-    const fields = primary?.ownAttr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
+    // ADR-0039: resolving — the target's @fields may be inherited via extends.
+    const fields = primary?.attr(IDENTITY_ATTR_FIELDS) as string | string[] | undefined;
     if (typeof fields === "string") return fields.split(",")[0]!.trim();
     if (Array.isArray(fields) && fields.length > 0) return String(fields[0]).trim();
     return "id";

@@ -143,7 +143,8 @@ internal object KotlinExtractSchemaEmitter {
      * Mirrors [KotlinTypeMapper.kotlinTypeName] but always nullable with `= null` defaults.
      */
     private fun nullableTypeName(field: MetaField<*>): String = when {
-        field.isArray                -> "List<String>?"
+        // ADR-0039: resolving array-ness (isArray is the own-only native flag).
+        field.isArrayType()          -> "List<String>?"
         field is EnumField           -> "String?"
         field is StringField         -> "String?"
         field is IntegerField        -> "Int?"

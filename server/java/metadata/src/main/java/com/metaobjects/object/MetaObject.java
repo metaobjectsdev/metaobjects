@@ -889,12 +889,18 @@ public abstract class MetaObject extends MetaData {
     }
 
     /**
-     * Get all {@link MetaSource} children (own-only, no inheritance walk).
+     * Get all {@link MetaSource} children (RESOLVING — walks the {@code extends}
+     * chain), matching {@link #getMetaFields()} / {@link #getIdentities()} /
+     * {@link #getRelationships()} whose no-arg forms all default to
+     * {@code includeParentData=true}. ADR-0039: an entity that inherits its
+     * {@code source.rdb} via {@code extends} must expose it here — a no-arg
+     * own-only default silently dropped the inherited source (codegen emitted
+     * nothing for such an entity).
      *
-     * @return all direct {@code source.*} children, in declaration order
+     * @return all {@code source.*} children — own first, then super-chain in order
      */
     public Collection<MetaSource> getSources() {
-        return getSources(false);
+        return getSources(true);
     }
 
     /**

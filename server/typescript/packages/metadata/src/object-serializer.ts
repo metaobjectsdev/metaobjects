@@ -41,7 +41,8 @@ export function objectToJson(
   for (const field of mo.fields()) {
     const raw = instance[field.name];
     if (raw === undefined) continue; // absent field → omit
-    out[field.name] = field.isArray
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    out[field.name] = field.resolvedIsArray()
       ? mapArray(raw, (el) => toJsonValue(field, el, mo))
       : toJsonValue(field, raw, mo);
   }
@@ -57,7 +58,8 @@ export function jsonToObject(
   for (const field of mo.fields()) {
     const raw = json[field.name];
     if (raw === undefined) continue;
-    out[field.name] = field.isArray
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    out[field.name] = field.resolvedIsArray()
       ? mapArray(raw, (el) => fromJsonValue(field, el, mo))
       : fromJsonValue(field, raw, mo);
   }

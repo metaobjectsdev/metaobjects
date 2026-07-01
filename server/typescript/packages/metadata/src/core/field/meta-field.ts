@@ -89,20 +89,23 @@ export class MetaField extends MetaData implements DataTypeAware {
     return convertToDataType(this.dataType, raw);
   }
 
-  /** The target object name for an object-typed field (the `@objectRef` attr). */
+  /** The target object name for an object-typed field (the `@objectRef` attr).
+   *  ADR-0039: resolving — a concrete field.object may inherit @objectRef via extends. */
   get objectRef(): string | undefined {
-    const v = this.ownAttr(FIELD_ATTR_OBJECT_REF);
+    const v = this.attr(FIELD_ATTR_OBJECT_REF);
     return typeof v === "string" ? v : undefined;
   }
 
-  /** Physical column name override (`@column` attr). */
+  /** Physical column name override (`@column` attr).
+   *  ADR-0039: resolving — inheritable via extends. */
   get column(): string | undefined {
-    const v = this.ownAttr(FIELD_ATTR_COLUMN);
+    const v = this.attr(FIELD_ATTR_COLUMN);
     return typeof v === "string" ? v : undefined;
   }
 
+  /** ADR-0039: resolving — a concrete field may inherit @default from an abstract base. */
   get default(): unknown {
-    return this.ownAttr(FIELD_ATTR_DEFAULT);
+    return this.attr(FIELD_ATTR_DEFAULT);
   }
 
   /**
@@ -119,30 +122,35 @@ export class MetaField extends MetaData implements DataTypeAware {
    */
   defaultValue(): AttrValue | undefined {
     return this.cached("defaultValue", () => {
-      const raw = this.ownAttr(FIELD_ATTR_DEFAULT);
+      // ADR-0039: resolving — inherit @default from an abstract base via extends.
+      const raw = this.attr(FIELD_ATTR_DEFAULT);
       if (raw === undefined) return undefined;
       return this.coerce(raw);
     });
   }
 
+  /** ADR-0039: resolving — a concrete field inherits @maxLength from an abstract base. */
   get maxLength(): number | undefined {
-    const v = this.ownAttr(FIELD_ATTR_MAX_LENGTH);
+    const v = this.attr(FIELD_ATTR_MAX_LENGTH);
     return typeof v === "number" ? v : undefined;
   }
 
+  /** ADR-0039: resolving — inheritable via extends (abstract decimal base). */
   get precision(): number | undefined {
-    const v = this.ownAttr(FIELD_ATTR_PRECISION);
+    const v = this.attr(FIELD_ATTR_PRECISION);
     return typeof v === "number" ? v : undefined;
   }
 
+  /** ADR-0039: resolving — inheritable via extends (abstract decimal base). */
   get scale(): number | undefined {
-    const v = this.ownAttr(FIELD_ATTR_SCALE);
+    const v = this.attr(FIELD_ATTR_SCALE);
     return typeof v === "number" ? v : undefined;
   }
 
-  /** True if `@unique: true` is set on the field itself (column-level unique). */
+  /** True if `@unique: true` is the effective value on the field (column-level unique).
+   *  ADR-0039: resolving — inheritable via extends. */
   get unique(): boolean {
-    return this.ownAttr(FIELD_ATTR_UNIQUE) === true;
+    return this.attr(FIELD_ATTR_UNIQUE) === true;
   }
 
   /**
@@ -150,9 +158,11 @@ export class MetaField extends MetaData implements DataTypeAware {
    *
    * Checks both `@required: true` attr and `validator.required` children —
    * matches the codegen-ts isRequired() semantics.
+   * ADR-0039: resolving — both the @required attr and the validator set are the
+   * effective (own + inherited) forms.
    */
   get isRequired(): boolean {
-    if (this.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
+    if (this.attr(FIELD_ATTR_REQUIRED) === true) return true;
     return this.validators().some((v) => v.subType === VALIDATOR_SUBTYPE_REQUIRED);
   }
 

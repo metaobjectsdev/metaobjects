@@ -996,7 +996,9 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+      // ADR-0039: resolving — a concrete field.object may inherit @objectRef from
+      // an abstract base via extends; reading own-only would wrongly reject it.
+      const objectRef = field.attr(FIELD_ATTR_OBJECT_REF);
       const hasObjectRef = typeof objectRef === "string" && objectRef.length > 0;
 
       if (field.subType === FIELD_SUBTYPE_OBJECT && !hasObjectRef) {
@@ -1011,9 +1013,10 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
         continue;
       }
 
-      const storage = field.ownAttr(FIELD_ATTR_STORAGE);
+      // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
+      const storage = field.attr(FIELD_ATTR_STORAGE);
       if (storage === undefined || storage === null) continue;
-      if (storage === STORAGE_FLATTENED && field.isArray === true) {
+      if (storage === STORAGE_FLATTENED && field.resolvedIsArray()) {
         errors.push(
           new ParseError(
             `field "${obj.name}.${field.name}" sets @storage "flattened" with isArray=true; flattened storage requires a single nested value`,
@@ -1057,9 +1060,10 @@ export function validateFieldMap(root: MetaData): ParseError[] {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       if (field.subType !== FIELD_SUBTYPE_MAP) continue;
 
-      const valueType = field.ownAttr(FIELD_ATTR_VALUE_TYPE);
+      // ADR-0039: resolving — @valueType / @objectRef may be inherited via extends.
+      const valueType = field.attr(FIELD_ATTR_VALUE_TYPE);
       const hasValueType = typeof valueType === "string" && valueType.length > 0;
-      const objectRef = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+      const objectRef = field.attr(FIELD_ATTR_OBJECT_REF);
       const hasObjectRef = typeof objectRef === "string" && objectRef.length > 0;
 
       if (hasValueType === hasObjectRef) {

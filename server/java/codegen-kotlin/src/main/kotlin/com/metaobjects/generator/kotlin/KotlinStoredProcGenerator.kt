@@ -76,7 +76,8 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a stored-proc binding.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
-            val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
+            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             if (sourceRdb.effectiveKind != MetaSource.KIND_STORED_PROC) continue
             emit(entity, sourceRdb, outRoot)
         }

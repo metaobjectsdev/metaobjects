@@ -8,6 +8,9 @@ namespace MetaObjects.Meta;
 /// Concrete node class for <c>relationship.*</c> nodes.
 /// Extends <see cref="MetaData"/> directly: no model wrapper, no metaOf() indirection.
 /// </summary>
+// ADR-0039: every getter below uses the RESOLVING Attr() accessor — a relationship
+// attr may be inherited from an abstract base via extends (reconciled with the
+// resolving MetaIdentity getters).
 public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>Relationship cardinality (e.g. <c>"one"</c> or <c>"many"</c>).</summary>
@@ -15,7 +18,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(RELATIONSHIP_ATTR_CARDINALITY);
+            var v = Attr(RELATIONSHIP_ATTR_CARDINALITY);
             return v is string s ? s : null;
         }
     }
@@ -25,7 +28,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+            var v = Attr(RELATIONSHIP_ATTR_OBJECT_REF);
             return v is string s ? s : null;
         }
     }
@@ -35,7 +38,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(RELATIONSHIP_ATTR_THROUGH);
+            var v = Attr(RELATIONSHIP_ATTR_THROUGH);
             return v is string s ? s : null;
         }
     }
@@ -45,13 +48,13 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            var v = OwnAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+            var v = Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
             return v is string s ? s : null;
         }
     }
 
     /// <summary>Whether this M:N relationship is an undirected (symmetric) self-join.</summary>
-    public bool Symmetric => OwnAttr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
+    public bool Symmetric => Attr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
 
     /// <summary>
     /// The effective FK referential action on parent delete — the explicit
@@ -62,7 +65,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            if (OwnAttr(RELATIONSHIP_ATTR_ON_DELETE) is string s && s != "") return s;
+            if (Attr(RELATIONSHIP_ATTR_ON_DELETE) is string s && s != "") return s;
             return ON_DELETE_DEFAULT_BY_SUBTYPE.TryGetValue(SubType, out var def)
                 ? def : ACTION_RESTRICT;
         }
@@ -76,7 +79,7 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     {
         get
         {
-            if (OwnAttr(RELATIONSHIP_ATTR_ON_UPDATE) is string s && s != "") return s;
+            if (Attr(RELATIONSHIP_ATTR_ON_UPDATE) is string s && s != "") return s;
             return ON_UPDATE_DEFAULT;
         }
     }

@@ -76,7 +76,7 @@ export function fields(vo: MetaData): MetaData[] {
 
 /** isArray is a native (reserved) property on MetaData, not an attr. */
 export function isArray(field: MetaData): boolean {
-  return field.isArray === true;
+  return field.resolvedIsArray();
 }
 
 /** True iff the field's @required is explicitly true (or the string "true"). */

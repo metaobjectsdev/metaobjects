@@ -91,7 +91,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // FR-017 TPH: a subtype is folded into its base's single table + base controller (it
             // also carries no own source.rdb, so the guard below would skip it too).
             if (KotlinTphPlan.isTphSubtype(entity)) continue
-            val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
+            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             val kind = sourceRdb.effectiveKind
             // Only writable tables get a CRUD controller. View / materializedView are
             // read-only (would need a different controller shape — list + get only);

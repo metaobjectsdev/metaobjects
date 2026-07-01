@@ -20,18 +20,22 @@ namespace MetaObjects.Meta;
 /// <c>@schema</c> (optional DB schema). See <see cref="PhysicalName"/> for the
 /// FR-016 four-step resolution rule that codegen / migrate / runtime should use.
 /// </summary>
+// ADR-0039: source attr getters use the RESOLVING Attr() accessor — a source attr
+// may be inherited from an abstract base via extends (reconciled with the resolving
+// MetaIdentity getters).
 public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>
     /// Physical SQL table/view name from the legacy <c>@table</c> attr. Kept as a
     /// back-compat accessor that reads ONLY the <c>@table</c> slot — callers should
     /// use <see cref="PhysicalName"/> for the FR-016 four-step rule.
+    /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public string? TableName
     {
         get
         {
-            var v = OwnAttr(SOURCE_ATTR_TABLE);
+            var v = Attr(SOURCE_ATTR_TABLE);
             return v is string s && s != "" ? s : null;
         }
     }
@@ -39,12 +43,13 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>
     /// The effective <c>@kind</c> for this source — the declared value, or
     /// <see cref="DEFAULT_SOURCE_KIND"/> ("table") when absent.
+    /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public string EffectiveKind
     {
         get
         {
-            var v = OwnAttr(SOURCE_ATTR_KIND);
+            var v = Attr(SOURCE_ATTR_KIND);
             return v is string s && s != "" ? s : DEFAULT_SOURCE_KIND;
         }
     }
@@ -52,22 +57,24 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     /// <summary>
     /// The multi-source role — the declared <c>@role</c>, or
     /// <see cref="DEFAULT_SOURCE_ROLE"/> ("primary") when absent.
+    /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public string Role
     {
         get
         {
-            var v = OwnAttr(SOURCE_ATTR_ROLE);
+            var v = Attr(SOURCE_ATTR_ROLE);
             return v is string s && s != "" ? s : DEFAULT_SOURCE_ROLE;
         }
     }
 
-    /// <summary>Optional database schema namespace (the <c>@schema</c> attr).</summary>
+    /// <summary>Optional database schema namespace (the <c>@schema</c> attr).
+    /// ADR-0039: resolving — inheritable via extends.</summary>
     public string? Schema
     {
         get
         {
-            var v = OwnAttr(SOURCE_ATTR_SCHEMA);
+            var v = Attr(SOURCE_ATTR_SCHEMA);
             return v is string s && s != "" ? s : null;
         }
     }
@@ -82,7 +89,8 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     {
         get
         {
-            var v = OwnAttr(SOURCE_ATTR_PARAMETER_REF);
+            // ADR-0039: resolving — inheritable via extends.
+            var v = Attr(SOURCE_ATTR_PARAMETER_REF);
             return v is string s && s != "" ? s : null;
         }
     }
@@ -130,13 +138,15 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
             if (SourceConstants.PHYSICAL_NAME_ATTR_BY_KIND.TryGetValue(kind, out var attr))
             {
                 canonicalAttr = attr;
-                if (OwnAttr(attr) is string s && s != "") return s;
+                // ADR-0039: resolving — physical-name alias inheritable via extends.
+                if (Attr(attr) is string s && s != "") return s;
             }
 
             // Step 2: legacy @table for non-table kind.
             if (canonicalAttr != SOURCE_ATTR_TABLE)
             {
-                if (OwnAttr(SOURCE_ATTR_TABLE) is string legacy && legacy != "") return legacy;
+                // ADR-0039: resolving — inheritable via extends.
+                if (Attr(SOURCE_ATTR_TABLE) is string legacy && legacy != "") return legacy;
             }
 
             // Step 3: source's structural `name` via snake_case (no pluralization —

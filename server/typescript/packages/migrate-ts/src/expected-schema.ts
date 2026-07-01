@@ -277,7 +277,8 @@ function buildTable(
     const isPk = pkJsNames.includes(field.name);
     if (
       field.subType === FIELD_SUBTYPE_OBJECT &&
-      field.ownAttr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED
+      // ADR-0039: resolving — @storage may be inherited via extends.
+      field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED
     ) {
       // Flattened storage: expand nested value-object fields as prefixed columns.
       // The parent field.object itself does NOT produce its own column.
@@ -339,7 +340,8 @@ function buildSecondaryIndexes(
   // column has `.unique()`. We mirror them in the expected schema so the diff
   // doesn't see them as drop-only on the actual side.
   for (const field of entity.fields()) {
-    if (field.ownAttr(FIELD_ATTR_UNIQUE) !== true) continue;
+    // ADR-0039: resolving — @unique may be inherited via extends.
+    if (field.attr(FIELD_ATTR_UNIQUE) !== true) continue;
     const colName = resolveColumnName(field, strategy);
     indexes.push({
       name: `${tableName}_${colName}_unique`,
@@ -644,7 +646,8 @@ function buildForeignKeys(
 function flattenObjectField(
   field: MetaData, root: MetaRoot, strategy: ColumnNamingStrategy,
 ): ColumnDescriptor[] {
-  const ref = field.ownAttr(FIELD_ATTR_OBJECT_REF);
+  // ADR-0039: resolving — @objectRef may be inherited via extends.
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string" || ref.length === 0) return [];
   const targetObject = root.findObject(ref);
   if (targetObject === undefined) return [];
@@ -673,7 +676,8 @@ function buildColumn(
 ): ColumnDescriptor {
   // Both the @required attr and the validator.required child signal NOT NULL.
   const fieldIsRequired = isRequired(field);
-  const defaultRaw = field.ownAttr(FIELD_ATTR_DEFAULT);
+  // ADR-0039: resolving — @default may be inherited via extends.
+  const defaultRaw = field.attr(FIELD_ATTR_DEFAULT);
 
   const col: ColumnDescriptor = {
     name: resolveColumnName(field, strategy),
@@ -692,7 +696,8 @@ function buildColumn(
     // NOT NULL timestamp populates without an explicit value. (The per-update
     // refresh for "onUpdate" is the ORM/trigger's job, not the column default.)
     // An explicit @default always wins, so this only applies when none was set.
-    const autoSet = field.ownAttr(FIELD_ATTR_AUTO_SET);
+    // ADR-0039: resolving — @autoSet may be inherited via extends.
+    const autoSet = field.attr(FIELD_ATTR_AUTO_SET);
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       col.default = { kind: "expr", value: "now()" };
     }
@@ -734,6 +739,9 @@ function subtypeToSqlType(field: MetaData): SqlType {
   // below, not declared here. ADR-0036 Wave 2: `timestamp_with_tz` is RETIRED
   // too — field.timestamp is tz-aware by default + @localTime opts into naive
   // (handled in the subtype switch below), not via this physical escape hatch.
+  // ADR-0039: @dbColumnType is the ONE deliberately own-only attr — a physical
+  // column-type override is never inherited (a logical field extending a base
+  // must not silently pick up the base's physical DB type). Keep ownAttr.
   const dbColumnType = field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE);
   if (typeof dbColumnType === "string") {
     switch (dbColumnType) {
@@ -747,7 +755,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
   // Postgres array (e.g. field.string → text[], field.uuid → uuid[]). field.object
   // / field.map carry their array-ness inside a single jsonb column (no native
   // array — handled by the subtype switch returning { kind: "json" }).
-  if (field.isArray) {
+  // ADR-0039: resolving — array-ness may be inherited via extends.
+  if (field.resolvedIsArray()) {
     const element = arrayElementSqlType(field);
     if (element !== undefined) return { kind: "array", element };
   }
@@ -756,7 +765,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
   switch (subType) {
     case FIELD_SUBTYPE_STRING:    {
       // @maxLength is declared as ATTR_SUBTYPE_INT so the loader coerces it to a number.
-      const m = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+      // ADR-0039: resolving — @maxLength may be inherited via extends.
+      const m = field.attr(FIELD_ATTR_MAX_LENGTH);
       return typeof m === "number" ? { kind: "text", maxLength: m } : { kind: "text" };
     }
     case FIELD_SUBTYPE_INT:       return { kind: "integer", bits: 32 };
@@ -767,8 +777,9 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_DECIMAL:   {
       // @precision/@scale are declared as ATTR_SUBTYPE_INT so the loader coerces them
       // to numbers. Both present → NUMERIC(p,s); absent → bare NUMERIC (back-compat).
-      const precision = field.ownAttr(FIELD_ATTR_PRECISION);
-      const scale = field.ownAttr(FIELD_ATTR_SCALE);
+      // ADR-0039: resolving — @precision / @scale may be inherited via extends.
+      const precision = field.attr(FIELD_ATTR_PRECISION);
+      const scale = field.attr(FIELD_ATTR_SCALE);
       if (typeof precision === "number" && typeof scale === "number") {
         return { kind: "numeric", precision, scale };
       }
@@ -783,7 +794,8 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_TIMESTAMP:
       // ADR-0036 Wave 2: instant / tz-aware BY DEFAULT (→ timestamptz). A naive
       // wall-clock value opts out with @localTime:true (→ TIMESTAMP, no tz).
-      return { kind: "timestamp", withTimezone: field.ownAttr(FIELD_ATTR_LOCAL_TIME) !== true };
+      // ADR-0039: resolving — @localTime may be inherited via extends.
+      return { kind: "timestamp", withTimezone: field.attr(FIELD_ATTR_LOCAL_TIME) !== true };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:       return { kind: "json" }; // field.map → single jsonb (pg) / text-json (sqlite) column
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid

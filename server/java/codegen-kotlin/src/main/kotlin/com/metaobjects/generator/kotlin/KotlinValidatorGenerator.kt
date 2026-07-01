@@ -5,7 +5,6 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
-import com.metaobjects.source.RdbSource
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -41,7 +40,8 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             .filter { it.subType == MetaObject.SUBTYPE_ENTITY }
             // Abstract entities are inheritance scaffolding — never register a validator for them.
             .filter { !KotlinGenUtil.isAbstractEntity(it) }
-            .filter { it.children.any { c -> c is RdbSource } }
+            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+            .filter { KotlinGenUtil.hasRdbSource(it) }
             .map { entity ->
                 val (tablePkg, shortName) = PackageMapping.splitFqn(entity.name)
                 // (metadata FQN, Table object name, Table's Kotlin package)
