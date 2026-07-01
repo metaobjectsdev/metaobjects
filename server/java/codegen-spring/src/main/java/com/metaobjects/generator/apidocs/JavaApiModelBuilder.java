@@ -287,7 +287,11 @@ public final class JavaApiModelBuilder {
         return new ApiUnit(shortName, javaPkg, "template", symbols, null);
     }
 
-    /** True when the template's {@code @kind} (own attr, default {@code document}) is {@code email}. */
+    /**
+     * True when the template's {@code @kind} is {@code email}. ADR-0039: template.*
+     * attrs read OWN-ONLY by cross-port contract (a template's declared refs are
+     * authored-here, not inherited); default {@code document}.
+     */
     private static boolean isEmailKind(MetaTemplate tmpl) {
         if (tmpl instanceof OutputTemplate
                 && tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {

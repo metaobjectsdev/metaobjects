@@ -161,6 +161,8 @@ public final class M2MResolver {
 
     private static MetaObject mustGetEntity(MetaRoot root, String name) {
         String bare = stripPackage(name);
+        // ADR-0039: root-level entity scan — root is never extended, so own children
+        // is correct (entities are declared directly under root, not inherited into it).
         for (var child : root.getChildren(MetaObject.class, false)) {
             if (bare.equals(child.getShortName())) return child;
         }

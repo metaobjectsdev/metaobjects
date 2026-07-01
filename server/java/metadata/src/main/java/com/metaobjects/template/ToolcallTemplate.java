@@ -52,7 +52,11 @@ public final class ToolcallTemplate extends MetaTemplate {
         });
     }
 
-    /** Returns the raw value of {@code @toolName}, or {@code null} if absent. */
+    /**
+     * Returns the raw value of {@code @toolName}, or {@code null} if absent.
+     * ADR-0039: template.* attrs read OWN-ONLY by cross-port contract (declared-here,
+     * not inherited into an effective form).
+     */
     public String getToolName() {
         return hasMetaAttr(ATTR_TOOL_NAME, false)
             ? getMetaAttr(ATTR_TOOL_NAME, false).getValueAsString()

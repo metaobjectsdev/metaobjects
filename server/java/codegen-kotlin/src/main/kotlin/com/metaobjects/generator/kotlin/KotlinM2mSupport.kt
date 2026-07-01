@@ -108,7 +108,9 @@ object KotlinM2mSupport {
 
     /** The single primary-key field name of an entity (defaults to `id`). */
     private fun primaryKeyField(entity: MetaObject): String {
-        val pk = entity.children
+        // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
+        // entity.children (own-only) would miss an inherited primary identity.
+        val pk = entity.getIdentities(true)
             .filterIsInstance<com.metaobjects.identity.MetaIdentity>()
             .firstOrNull { it.isPrimary }
         return pk?.fields?.firstOrNull() ?: "id"

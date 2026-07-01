@@ -109,6 +109,8 @@ public final class SpringM2mSupport {
     private static MetaObject findEntity(MetaRoot root, String name) {
         if (name == null) return null;
         String bare = stripPackage(name);
+        // ADR-0039: root-level entity scan — root is never extended, so own children
+        // is correct (entities are declared directly under root, not inherited into it).
         for (MetaObject mo : root.getChildren(MetaObject.class, false)) {
             if (bare.equals(mo.getShortName())) return mo;
         }

@@ -79,6 +79,8 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         val provider = FilesystemProvider(Paths.get(templateRoot))
 
         // Stable name order — matches the other ports' deterministic emission.
+        // ADR-0039: root-level declaration scan — root is never extended (matches the TS
+        // reference's root.ownChildren()), so own children is correct.
         val outputs = loader.root.children
             .filterIsInstance<OutputTemplate>()
             .sortedBy { it.name }
@@ -254,6 +256,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `object.value` is found.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
+        // ADR-0039: @objectRef is an inheritable effective field property — RESOLVE
+        // (includeParentData=true) so a field.object inheriting @objectRef via extends
+        // still resolves its target VO.
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
         val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
         if (ref.isNullOrEmpty()) return null
@@ -294,7 +299,11 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     // Local helpers
     // -------------------------------------------------------------------------
 
-    /** Resolve `@kind` (own attr), defaulting to `document`. */
+    // ADR-0039: template.* attrs are read OWN-ONLY by cross-port contract (TS
+    // render-helper uses tmpl.ownAttr). A template's declared refs are authored-here,
+    // not inherited into an effective form. KEPT own to match the reference.
+
+    /** Resolve `@kind` (OWN attr — templates read own, ADR-0039), defaulting to `document`. */
     private fun kindOf(template: MetaTemplate): String {
         if (template is OutputTemplate && template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
             val v = template.getMetaAttr(TemplateConstants.ATTR_KIND, false).valueAsString
@@ -303,7 +312,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         return TemplateConstants.KIND_DEFAULT
     }
 
-    /** Read an own attr value, or null if absent. */
+    /** Read an OWN template attr value, or null if absent (templates read own — ADR-0039). */
     private fun attr(template: MetaTemplate, attr: String): String? =
         if (template.hasMetaAttr(attr, false))
             template.getMetaAttr(attr, false).valueAsString

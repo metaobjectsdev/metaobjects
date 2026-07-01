@@ -843,8 +843,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
-            for (child in entity.children) {
-                if (child !is MetaRelationship) continue
+            // ADR-0039: relationships are inheritable — RESOLVE via entity.relationships;
+            // entity.children (own-only) would miss an inherited relationship.
+            for (child in entity.relationships) {
                 if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
 
                 val objectRef = child.objectRef ?: continue
@@ -1016,7 +1017,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val acc = linkedMapOf<String, MutableMap<String, RefDecoration>>()
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
-            for (child in entity.children) {
+            // ADR-0039: identity.reference children are inheritable — RESOLVE via
+            // getIdentities(true); entity.children (own-only) would miss inherited FK refs.
+            for (child in entity.getIdentities(true)) {
                 if (child !is ReferenceIdentity) continue
                 val fields = child.fields
                 if (fields.size != 1) {

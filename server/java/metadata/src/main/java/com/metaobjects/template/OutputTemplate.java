@@ -39,6 +39,8 @@ public final class OutputTemplate extends MetaTemplate {
     /**
      * Returns the value of {@code @promptStyle} if explicitly set, else
      * {@link TemplateConstants#PROMPT_STYLE_DEFAULT} ({@code "guide"}).
+     * ADR-0039: template.* attrs read OWN-ONLY by cross-port contract (declared-here,
+     * not inherited into an effective form).
      */
     public String getPromptStyle() {
         if (!hasMetaAttr(ATTR_PROMPT_STYLE, false)) return PROMPT_STYLE_DEFAULT;

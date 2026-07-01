@@ -70,8 +70,9 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             // ADR-0039: resolving (an inherited source.rdb still means the entity is persisted).
             if (!KotlinGenUtil.hasRdbSource(entity)) continue
 
-            val manyRels = entity.children
-                .filterIsInstance<MetaRelationship>()
+            // ADR-0039: relationships are inheritable — RESOLVE via entity.relationships;
+            // entity.children (own-only) would miss an inherited relationship.
+            val manyRels = entity.relationships
                 .filter {
                     it.subType == CompositionRelationship.SUBTYPE_COMPOSITION &&
                         it.cardinality == MetaRelationship.CARDINALITY_MANY
@@ -233,7 +234,9 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      */
     protected open fun reverseFksFor(entity: MetaObject): List<ReverseFk> {
         val out = mutableListOf<ReverseFk>()
-        for (child in entity.children) {
+        // ADR-0039: identity.reference children are inheritable — RESOLVE via
+        // getIdentities(true); entity.children (own-only) would miss inherited FK refs.
+        for (child in entity.getIdentities(true)) {
             if (child !is ReferenceIdentity) continue
             val fields = child.fields
             if (fields.size != 1) continue // single-column FKs only
@@ -258,7 +261,9 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * metadata.
      */
     protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
-        val primary = entity.children
+        // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
+        // entity.children (own-only) would miss an inherited primary identity.
+        val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary } ?: return LONG
         val pkFieldName = primary.fields.firstOrNull() ?: return LONG

@@ -27,7 +27,12 @@ object KotlinTphPlan {
     /** The per-subtype REST route segment for a discriminator value — the value lowercased. */
     fun routeSegment(discriminatorValue: String): String = discriminatorValue.lowercase(Locale.ROOT)
 
-    /** The nearest `@discriminator`-bearing ancestor (or self), walking `extends`. */
+    /**
+     * The nearest `@discriminator`-bearing ancestor (or self), walking `extends`.
+     * ADR-0039: this IS the super-resolution walk — `@discriminator`/`@discriminatorValue`
+     * are declaration-layer TPH markers (never inherited into an effective form), so each
+     * hop is read own-only while the loop does the resolving.
+     */
     private fun discriminatorRoot(obj: MetaObject): MetaObject? {
         var cursor: MetaObject? = obj
         while (cursor != null) {
@@ -43,6 +48,8 @@ object KotlinTphPlan {
      * table/controller — it is folded into the base's single table.
      */
     fun isTphSubtype(obj: MetaObject): Boolean {
+        // ADR-0039: @discriminatorValue is declaration-layer — each subtype declares its
+        // own; never inherited. KEPT own-only.
         if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) return false
         val root = discriminatorRoot(obj)
         return root != null && root !== obj
@@ -53,6 +60,9 @@ object KotlinTphPlan {
      * (no `@discriminator`, or no concrete subtypes extending it).
      */
     fun planFor(base: MetaObject, loader: MetaDataLoader): Plan? {
+        // ADR-0039: @discriminator/@discriminatorValue are declaration-layer TPH markers,
+        // never inherited into an effective form — read own-only. (`base` is already the
+        // discriminator-bearing node resolved via discriminatorRoot's super walk.)
         if (!base.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return null
         val discField = base.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).valueAsString
         if (discField.isNullOrEmpty()) return null
@@ -62,6 +72,8 @@ object KotlinTphPlan {
             if (obj === base) continue
             if (obj.subType != MetaObject.SUBTYPE_ENTITY) continue
             if (KotlinGenUtil.isAbstractEntity(obj)) continue
+            // ADR-0039: @discriminatorValue is declaration-layer — each subtype declares
+            // its own; never inherited. KEPT own-only.
             if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) continue
             val value = obj.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false).valueAsString
             if (value.isNullOrEmpty()) continue

@@ -544,6 +544,9 @@ public final class CanonicalJsonSerializer {
      * rather than being silently swallowed.</p>
      */
     private static boolean getIsAbstractValue(MetaData node) {
+        // ADR-0039: @isAbstract is a declaration-layer marker — never inherited (even in
+        // effective mode a concrete node extending an abstract base is itself concrete).
+        // KEPT own-only.
         if (!node.hasMetaAttr(ATTR_NAME_IS_ABSTRACT, false)) {
             return false;
         }

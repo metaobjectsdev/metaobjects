@@ -35,6 +35,10 @@ public final class PromptTemplate extends MetaTemplate {
         });
     }
 
+    // ADR-0039: template.* attrs (@requiredSlots/@maxTokens/@model/@responseRef) read
+    // OWN-ONLY by cross-port contract — a template's declared refs are authored-here,
+    // not inherited into an effective form. Every `, false` below is that sanctioned own.
+
     /** Returns the {@code @requiredSlots} list, or {@code null} if absent. */
     public List<String> getRequiredSlots() {
         if (!hasMetaAttr(ATTR_REQUIRED_SLOTS, false)) return null;

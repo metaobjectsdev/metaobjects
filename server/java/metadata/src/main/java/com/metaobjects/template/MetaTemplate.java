@@ -62,6 +62,12 @@ public abstract class MetaTemplate extends MetaData {
 
     // -----------------------------------------------------------------------
     // Accessors — own-only attr reads (mirrors MetaOrigin's getFrom/getVia)
+    //
+    // ADR-0039: template.* attrs are read OWN-ONLY by cross-port contract (TS + C#
+    // read template attrs via ownAttr/OwnAttr). A template describes an authored
+    // render unit; its declared refs (@payloadRef/@textRef/@format/@maxChars/@owner/
+    // @since/@requiredTags) are declared-here, not inherited into an effective form.
+    // Every `, false` read below is this sanctioned own case.
     // -----------------------------------------------------------------------
 
     /** Returns the raw value of {@code @payloadRef}, or {@code null} if absent. */

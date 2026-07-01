@@ -326,8 +326,11 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
      * has no {@code @objectRef} or no matching {@code object.value} is found.
      */
     protected static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
-        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
+        // ADR-0039: @objectRef is an inheritable effective field property — a concrete
+        // field.object may inherit it from an abstract parent via extends. RESOLVE
+        // (default includeParentData=true); own-only would miss the inherited ref.
+        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF)) return null;
+        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
         String refShort = SpringNaming.splitFqn(ref)[1];
         for (MetaObject obj : loader.getMetaObjects()) {
@@ -366,7 +369,12 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     // Local helpers
     // -------------------------------------------------------------------------
 
-    /** Resolve {@code @kind} (own attr), defaulting to {@code document}. */
+    // ADR-0039: template.* attrs are read OWN-ONLY by cross-port contract (TS
+    // render-helper uses tmpl.ownAttr for @kind/@payloadRef/@subjectRef/@textRef/…).
+    // A template describes an authored render unit; its refs are declared-here, not
+    // inherited into an effective form. KEPT own to match the reference.
+
+    /** Resolve {@code @kind} (OWN attr — templates read own, ADR-0039), defaulting to {@code document}. */
     private static String kindOf(MetaTemplate template) {
         if (template instanceof OutputTemplate
                 && template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
@@ -376,10 +384,12 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         return TemplateConstants.KIND_DEFAULT;
     }
 
+    /** OWN-only template attr presence (templates read own — ADR-0039). */
     private static boolean attrPresent(MetaTemplate template, String attr) {
         return template.hasMetaAttr(attr, false);
     }
 
+    /** OWN-only template attr value (templates read own — ADR-0039). */
     private static String attr(MetaTemplate template, String attr) {
         return template.getMetaAttr(attr, false).getValueAsString();
     }

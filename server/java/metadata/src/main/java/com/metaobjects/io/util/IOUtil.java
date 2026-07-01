@@ -63,8 +63,10 @@ public class IOUtil {
     }
 
     public static boolean isAbstract( MetaData md ) {
-        // Own-only read (do not walk the super-chain): matches the canonical
-        // abstract contract in ValidationPhase + CanonicalJsonSerializer.
+        // ADR-0039: @isAbstract is a declaration-layer marker — describes THIS
+        // declaration and must NOT be inherited (a concrete node extending an abstract
+        // base is itself concrete). Own-only read; matches the canonical abstract
+        // contract in ValidationPhase + CanonicalJsonSerializer.
         if ( md.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)
                 && Boolean.TRUE.equals( md.getMetaAttr( MetaData.ATTR_IS_ABSTRACT, false ).getValue())) {
             return true;

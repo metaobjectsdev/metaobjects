@@ -63,6 +63,8 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // typed as its generated enum class (reusing the entity enum scheme); two fields sharing an
         // abstract enum super collapse onto ONE emitted file.
         val emittedEnumFqns = mutableSetOf<String>()
+        // ADR-0039: root-level declaration scan — root is never extended (matches the TS
+        // reference's root.ownChildren()), so own children is correct.
         for (md in loader.root.children) {
             if (md !is MetaTemplate) continue
             emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns)
@@ -148,6 +150,8 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
     ): TypeName {
+        // ADR-0039/ADR-0029: origin.* NEVER inherits — a derived field's origin is
+        // declared-here, so read OWN children (field.children), not resolving.
         val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
 
         if (origin != null) {
@@ -300,8 +304,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val via = origin.via ?: return fallbackType()
         val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return fallbackType()
         val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return fallbackType()
-        val relationship = parent.children
-            .filterIsInstance<MetaRelationship>()
+        // ADR-0039: relationships are inheritable — RESOLVE via parent.relationships;
+        // parent.children (own-only) would miss a relationship inherited via extends.
+        val relationship = parent.relationships
             .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
             ?: return fallbackType()
         val targetRef = relationship.objectRef ?: return fallbackType()
