@@ -1377,6 +1377,10 @@ public static class ValidationPasses
 
             // Check 3: allowedValues membership.
             //
+            // For an isArray attr the value is an array, so each ELEMENT must be
+            // a member (not the array as a whole); a scalar attr checks the value
+            // directly. Mirrors the TS Check-3 per-element logic in attr-schema-validate.ts.
+            //
             // @dbColumnType is exempt here: it carries `allowedValues` ONLY so the
             // value-set surfaces in the registry manifest (ADR-0036 Wave 1), but its
             // real constraint — both an unrecognized value AND the (subtype × value)
@@ -1386,11 +1390,30 @@ public static class ValidationPasses
             if (attrName != FIELD_ATTR_DB_COLUMN_TYPE
                 && spec.AllowedValues is { Count: > 0 } allowed)
             {
-                if (!allowed.Any(av => Equals(av, value)))
+                // Collect offending values — for arrays, check each element; for scalars, check directly.
+                List<object?> offenders;
+                if (value is IReadOnlyList<string> strList)
+                {
+                    offenders = strList.Cast<object?>()
+                        .Where(v => !allowed.Any(av => Equals(av, v)))
+                        .ToList();
+                }
+                else if (value is IReadOnlyList<object?> objList)
+                {
+                    offenders = objList
+                        .Where(v => !allowed.Any(av => Equals(av, v)))
+                        .ToList();
+                }
+                else
+                {
+                    offenders = allowed.Any(av => Equals(av, value)) ? [] : [value];
+                }
+
+                foreach (var bad in offenders)
                 {
                     errors.Add(new MetaError(
                         $"{NodeLabel(node)} attribute '@{attrName}' has value " +
-                        $"'{value}' which is not one of the allowed values: " +
+                        $"'{bad}' which is not one of the allowed values: " +
                         $"{string.Join(", ", allowed.Select(v => v?.ToString() ?? "null"))}",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
                         Envelope: node.Source));
@@ -2679,6 +2702,71 @@ public static class ValidationPasses
                             $"{targetEntity.Name}.{targetFieldName} is field.{targetField.SubType}; types must match",
                             ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
                             Envelope: paramField.Source));
+                    }
+                }
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
+    // ValidateIndexLookupFields — index.lookup @fields resolution
+    //
+    // Every index.lookup on an entity must name at least one field, and every
+    // named field must exist in the entity's EFFECTIVE (resolved) field set.
+    //
+    // ADR-0039: use Children() / MetaIndex.Fields — never own* — so that a
+    // field inherited via extends still resolves correctly.
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateIndexLookupFields.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateIndexLookupFields(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        // ADR-0039: root has no super; Children()==OwnChildren() but resolving is the default.
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Effective (resolved) field names — includes inherited fields via extends.
+            var effectiveFieldNames = new HashSet<string>(
+                obj.Children().Where(c => c.Type == TYPE_FIELD).Select(f => f.Name),
+                StringComparer.Ordinal);
+
+            foreach (var node in obj.Children().Where(
+                c => c.Type == TYPE_INDEX && c.SubType == INDEX_SUBTYPE_LOOKUP))
+            {
+                // MetaIndex.Fields uses the resolving Attr() accessor per ADR-0039.
+                var idx = (MetaIndex)node;
+                var fields = idx.Fields;
+
+                // Rule 1: must have at least one field.
+                if (fields.Count == 0)
+                {
+                    errors.Add(new MetaError(
+                        $"index.lookup \"{idx.Name}\" on \"{obj.Name}\" has no @{INDEX_ATTR_FIELDS}; " +
+                        "at least one field is required",
+                        ErrorCode.ERR_INVALID_INDEX,
+                        Envelope: idx.Source));
+                    continue;
+                }
+
+                // Rule 2: every named field must resolve against the entity's effective field set.
+                foreach (var fieldName in fields)
+                {
+                    if (!effectiveFieldNames.Contains(fieldName))
+                    {
+                        string available = effectiveFieldNames.Count > 0
+                            ? string.Join(", ", effectiveFieldNames)
+                            : "(none)";
+                        errors.Add(new MetaError(
+                            $"index.lookup \"{idx.Name}\" on \"{obj.Name}\" references field \"{fieldName}\" " +
+                            $"which does not exist on \"{obj.Name}\". " +
+                            $"Available fields: {available}",
+                            ErrorCode.ERR_INVALID_INDEX,
+                            Envelope: idx.Source));
                     }
                 }
             }

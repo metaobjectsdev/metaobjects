@@ -31,11 +31,9 @@ public static class IdentitySchema
     private static readonly IReadOnlyList<AttrSchema> SecondaryIdentityAttrs =
     [
         IdentityFieldsAttr,
-        new AttrSchema(
-            Name: IdentityConstants.IDENTITY_ATTR_UNIQUE,
-            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
-            Required: false,
-            Description: "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."),
+        // NOTE: @unique is REMOVED from identity.secondary. identity.secondary is
+        // always a unique constraint by definition. Non-unique indexes are expressed
+        // via index.lookup — the dedicated type for query-performance indexes.
     ];
 
     private static readonly IReadOnlyList<AttrSchema> ReferenceIdentityAttrs =
@@ -56,7 +54,8 @@ public static class IdentitySchema
     ];
 
     /// <summary>
-    /// Attrs per identity subtype. primary adds @generation; secondary adds @unique;
+    /// Attrs per identity subtype. primary adds @generation; secondary carries only
+    /// @fields (always-unique constraint — non-unique indexes use index.lookup);
     /// reference adds @references (+ @enforce).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> IdentityAttrsMap =
