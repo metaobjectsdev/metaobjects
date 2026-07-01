@@ -13,6 +13,7 @@ using MetaObjects.Core.Object;
 using MetaObjects.Core.Field;
 using MetaObjects.Core.Validator;
 using MetaObjects.Core.Identity;
+using MetaObjects.Core.Index;
 using MetaObjects.Core.Relationship;
 using MetaObjects.Persistence.Origin;
 using MetaObjects.Persistence.Source;
@@ -176,6 +177,15 @@ public static class CoreTypes
     };
 
     // -------------------------------------------------------------------------
+    // Index subtype → concrete factory
+    // -------------------------------------------------------------------------
+
+    private static readonly Dictionary<string, Func<TypeId, string, MetaData>> IndexClassMap = new()
+    {
+        [INDEX_SUBTYPE_LOOKUP] = (tid, n) => new MetaIndex(tid, n),
+    };
+
+    // -------------------------------------------------------------------------
     // Origin subtype → concrete factory
     // -------------------------------------------------------------------------
 
@@ -213,6 +223,7 @@ public static class CoreTypes
         [
             Wildcard(TYPE_FIELD),
             Wildcard(TYPE_IDENTITY),
+            Wildcard(TYPE_INDEX),
             Wildcard(TYPE_RELATIONSHIP),
             Wildcard(TYPE_VALIDATOR),
             Wildcard(TYPE_LAYOUT),
@@ -480,6 +491,25 @@ public static class CoreTypes
             idRefDef.References = [new MetaObjects.Validation.ReferenceDescriptor(
                 IDENTITY_REFERENCE_ATTR_REFERENCES, TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE")];
         }
+
+        // index — 1 subtype (lookup). Non-unique lookup indexes for query-performance.
+        // Distinct from identity.secondary (which enforces uniqueness). A single
+        // MetaIndex class backs the lookup subtype; physical attrs (@orders/@expr/
+        // @where/@using) are contributed by the db provider via registry.Extend.
+        // NOTE: there is no spec/metamodel/index.json (the index type is defined
+        // inline in the TS INDEX_DEFINITION embedded module), so descriptions and
+        // whenToUse are provided here directly rather than via ApplySpecDescriptions.
+        registry.Register(new TypeDefinition(
+            typeId: new TypeId(TYPE_INDEX, INDEX_SUBTYPE_LOOKUP),
+            description:
+                "A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.",
+            childRules: [Wildcard(TYPE_ATTR)],
+            factory: (tid, n) => new MetaIndex(tid, n),
+            attributes: IndexSchema.IndexAttrsMap.TryGetValue(INDEX_SUBTYPE_LOOKUP, out var idxLookupAttrs)
+                ? idxLookupAttrs.ToList()
+                : [],
+            whenToUse:
+                "You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning."));
 
         // template — fourth-pillar metatype (FR-004). prompt + output; attr-only
         // children. A single MetaTemplate class backs both subtypes (mirrors source);

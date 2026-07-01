@@ -46,6 +46,7 @@ SPEC_FILES: tuple[str, ...] = (
     "documentation.json",
     "field.json",
     "identity.json",
+    "index.json",
     "layout.json",
     "object.json",
     "origin.json",

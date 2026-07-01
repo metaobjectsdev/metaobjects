@@ -25,12 +25,6 @@ public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
         }
     }
 
-    /// <summary>
-    /// Whether the identity enforces uniqueness.
-    /// Defaults to <see langword="true"/>; explicit <c>@unique: false</c> makes it a non-unique index.
-    /// </summary>
-    public bool Unique => Attr(IDENTITY_ATTR_UNIQUE) is not false;
-
     /// <summary>True when this identity's subtype is <c>primary</c>.</summary>
     public bool IsPrimary() => SubType == IDENTITY_SUBTYPE_PRIMARY;
 

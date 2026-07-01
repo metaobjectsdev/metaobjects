@@ -44,8 +44,8 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
     {
       "type": "identity",
       "subType": "secondary",
-      "description": "A secondary index (unique by default via @unique).",
-      "whenToUse": "A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.",
+      "description": "A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.",
+      "whenToUse": "A column or set of columns must be unique (e.g. email, slug, composite business key). For a plain non-unique index, use index.lookup instead.",
       "children": [
         {
           "type": "attr",
@@ -54,15 +54,7 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 1,
           "max": 1,
-          "description": "The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite."
-        },
-        {
-          "type": "attr",
-          "subType": "boolean",
-          "name": "unique",
-          "min": 0,
-          "max": 1,
-          "description": "When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index."
+          "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint."
         }
       ]
     },

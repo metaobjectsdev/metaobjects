@@ -6,9 +6,9 @@
 namespace MetaObjects.Core.Identity;
 
 /// <summary>
-/// Identity concern constants — the identity subtypes (primary, secondary — NO
-/// base; Java doesn't register one), the identity attr keys, and the primary-key
-/// value-generation strategies.
+/// Identity concern constants — the identity subtypes (primary, secondary, reference — NO
+/// base), the identity attr keys, and the primary-key value-generation strategies.
+/// identity.secondary is always a UNIQUE constraint; non-unique indexes use index.lookup.
 /// </summary>
 public static class IdentityConstants
 {
@@ -27,8 +27,8 @@ public static class IdentityConstants
     // Identity attrs
     public const string IDENTITY_ATTR_FIELDS     = "fields";
     public const string IDENTITY_ATTR_GENERATION = "generation";
-    /// <summary>On secondary identities: true → uniqueIndex; false/absent → index. Defaults to true for back-compat.</summary>
-    public const string IDENTITY_ATTR_UNIQUE     = "unique";
+    // NOTE: IDENTITY_ATTR_UNIQUE ("unique") is intentionally ABSENT. identity.secondary
+    // is always a unique constraint; non-unique indexes use index.lookup.
 
     // identity.reference attrs
     /// <summary>Target of the reference: bare entity (→ its primary identity) or dotted Entity.field[,field].</summary>

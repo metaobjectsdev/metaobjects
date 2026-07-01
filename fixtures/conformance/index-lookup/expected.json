@@ -1,0 +1,89 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "orderNumber",
+                "@maxLength": 40,
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "sessionId",
+                "@required": true
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "isActive",
+                "@required": true
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "placedAt",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.secondary": {
+                "name": "uq_orders_order_number",
+                "@fields": [
+                  "orderNumber"
+                ]
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "idx_orders_session",
+                "@fields": [
+                  "sessionId"
+                ]
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "idx_orders_session_active_placed",
+                "@fields": [
+                  "sessionId",
+                  "isActive",
+                  "placedAt"
+                ],
+                "@orders": [
+                  "asc",
+                  "asc",
+                  "desc"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

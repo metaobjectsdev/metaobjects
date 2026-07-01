@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Event",
+          "extends": "acme::BaseEntity",
+          "children": [
+            {
+              "field.string": {
+                "name": "kind",
+                "@required": true
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "events"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "idx_events_created_at",
+                "@fields": [
+                  "createdAt"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -58,7 +58,7 @@ describe("config-driven default name (singleton child types)", () => {
     const { errors } = await load(
       ENTITY([
         { "identity.primary": { "@fields": ["id"] } },
-        { "identity.secondary": { "@fields": ["email"], "@unique": true } },
+        { "identity.secondary": { "@fields": ["email"] } },
       ]),
     );
     expect(errors.some((e) => e.message.includes("has no name"))).toBe(true);

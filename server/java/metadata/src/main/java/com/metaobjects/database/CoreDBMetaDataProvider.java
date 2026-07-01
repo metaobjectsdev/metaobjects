@@ -1,5 +1,8 @@
 package com.metaobjects.database;
 
+import com.metaobjects.attr.StringAttribute;
+import com.metaobjects.index.Index;
+import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
@@ -105,16 +108,51 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String[] getDependencies() {
-        // Depends on field types, object types, and identity types so it loads after them.
-        return new String[]{"field-types", "object-types", "identity-types"};
+        // Depends on field types, object types, identity types, and index types so it loads after them.
+        return new String[]{"field-types", "object-types", "identity-types", "index-types"};
     }
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // No attrs to register: the cross-port logical field attrs (column,
-        // dbColumnType, db.indexed, maxLength, precision, scale, unique, storage)
-        // are declared on field.base by MetaField (SP-G Unit 4), and the legacy
-        // physical db* vocabulary was converged/dropped in SP-G Unit 7.
+        // Cross-port logical field attrs (column, dbColumnType, db.indexed,
+        // maxLength, precision, scale, storage) are declared on field.base by
+        // MetaField (SP-G Unit 4). The legacy db* vocabulary was converged/dropped
+        // in SP-G Unit 7.
+        //
+        // This provider contributes RDB-physical attrs to:
+        //   - identity.secondary: @orders / @expr / @where / @using
+        //   - index.lookup:       @orders / @expr / @where / @using
+        // (mirroring the TS db provider's "extends" blocks in db.json)
+
+        // --- identity.secondary RDB-physical attrs ---
+        // Contributed here (via extendType) so they are cleanly separated from the
+        // core identity type — mirrors the TS db provider's "extends" blocks in
+        // spec/metamodel/db.json. The allowedValues for @orders (["asc","desc"]) are
+        // applied by applySpecDescriptions reading spec/metamodel/db.json, not here.
+        registry.extendType(com.metaobjects.identity.SecondaryIdentity.class,
+            def -> {
+                def.optionalAttributeWithConstraints(SecondaryIdentity.ATTR_ORDERS)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+                def.optionalAttributeWithConstraints(SecondaryIdentity.ATTR_WHERE)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(SecondaryIdentity.ATTR_EXPR)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(SecondaryIdentity.ATTR_USING)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            });
+
+        // --- index.lookup RDB-physical attrs ---
+        registry.extendType(com.metaobjects.index.LookupIndex.class,
+            def -> {
+                def.optionalAttributeWithConstraints(Index.ATTR_ORDERS)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+                def.optionalAttributeWithConstraints(Index.ATTR_WHERE)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(Index.ATTR_EXPR)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+                def.optionalAttributeWithConstraints(Index.ATTR_USING)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            });
     }
 
     @Override

@@ -3,10 +3,10 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaObject, MetaField, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, MetaIndex, stripPackage } from "@metaobjectsdev/metadata";
 import {
-  IDENTITY_SUBTYPE_SECONDARY, FIELD_SUBTYPE_LONG,
-  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_UNIQUE,
+  FIELD_SUBTYPE_LONG,
+  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
 } from "@metaobjectsdev/metadata";
@@ -50,16 +50,15 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const isComposite = pkFieldNames.size > 1;
 
   // Collect secondary identities and the field names that need .unique() on
-  // their column. Only single-column UNIQUE identities propagate .unique() to
-  // the column — non-unique indexes emit a separate index() callback entry
-  // (handled below) and must not stamp .unique() on the underlying column.
+  // their column. identity.secondary is ALWAYS unique (no @unique attr) — only
+  // single-column identities propagate .unique() to the column; multi-column ones
+  // emit a callback uniqueIndex() entry instead.
+  // index.lookup is non-unique and must NOT stamp .unique() on its columns.
   const secondaryIdentities = obj.secondaryIdentities();
   const uniqueFieldNames = new Set<string>();
   for (const sec of secondaryIdentities) {
-    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
-    if (uniqueAttr === false) continue; // explicit non-unique → don't mark column
     const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
-    if (!Array.isArray(fields) || fields.length !== 1) continue; // multi-col uniques use a callback index, not a column flag
+    if (!Array.isArray(fields) || fields.length !== 1) continue; // multi-col uniques use a callback uniqueIndex, not a column flag
     uniqueFieldNames.add(fields[0]!);
   }
 
@@ -114,21 +113,25 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     callbackEntries.push(buildCompositeKeyCallback(pkFieldNames, importModule));
   }
 
+  // identity.secondary — always unique (uniqueness is in the type, no boolean).
   for (const sec of secondaryIdentities) {
     const fields = sec.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined;
     if (!Array.isArray(fields) || fields.length === 0) continue;
     const indexName = `idx_${tableName}_${fields.map((f) => columnNameFromField(f, ctx.columnNamingStrategy)).join("_")}`;
-    // @unique on the identity defaults to true (preserves back-compat with
-    // foundations fixtures that assumed secondary identities were always
-    // unique). Explicit @unique: false → ordinary non-unique index.
-    const uniqueAttr = sec.attr(IDENTITY_ATTR_UNIQUE);
-    const isUnique = uniqueAttr !== false;
-    const indexFn = isUnique ? "uniqueIndex" : "index";
-    const indexSym = imp(`${indexFn}@${importModule}`);
+    const indexSym = imp(`uniqueIndex@${importModule}`);
     // Use the callback param `table` (not the outer varName) so TS doesn't see
     // the table referencing itself inside its own initializer (TS7022/TS7024).
     const cols = fields.map((f) => `table.${f}`).join(", ");
     callbackEntries.push(code`${indexSym}(${JSON.stringify(indexName)}).on(${cols})`);
+  }
+
+  // index.lookup — always non-unique. Use MetaIndex.fields() per ADR-0039.
+  for (const lookup of obj.lookupIndexes()) {
+    const fields = lookup.fields();
+    if (fields.length === 0) continue;
+    const indexSym = imp(`index@${importModule}`);
+    const cols = fields.map((f) => `table.${f}`).join(", ");
+    callbackEntries.push(code`${indexSym}(${JSON.stringify(lookup.name)}).on(${cols})`);
   }
 
   // Emit table-level CHECK constraints for enum fields.

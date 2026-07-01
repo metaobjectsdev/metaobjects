@@ -7,6 +7,7 @@ import { MetaData } from "../../shared/meta-data.js";
 import {
   TYPE_FIELD,
   TYPE_IDENTITY,
+  TYPE_INDEX,
   TYPE_RELATIONSHIP,
   TYPE_VALIDATOR,
   TYPE_LAYOUT,
@@ -32,6 +33,7 @@ import {
 } from "../identity/identity-constants.js";
 import type { MetaField } from "../field/meta-field.js";
 import type { MetaIdentity, MetaReferenceIdentity } from "../identity/meta-identity.js";
+import type { MetaIndex } from "../index/meta-index.js";
 import type { MetaLayout } from "../../presentation/layout/meta-layout.js";
 import type { MetaRelationship } from "../relationship/meta-relationship.js";
 import type { MetaValidator } from "../validator/meta-validator.js";
@@ -126,6 +128,13 @@ export class MetaObject extends MetaData {
     return this.cached("ownRelationships", () =>
       // ADR-0039: own-accessor definition — the deliberate own-only API twin of relationships().
       this.ownChildren().filter((c): c is MetaRelationship => c.type === TYPE_RELATIONSHIP),
+    );
+  }
+
+  /** All effective lookup indexes (own + inherited via extends). ADR-0039: resolving. */
+  lookupIndexes(): MetaIndex[] {
+    return this.cached("lookupIndexes", () =>
+      this.children().filter((c): c is MetaIndex => c.type === TYPE_INDEX),
     );
   }
 

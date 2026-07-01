@@ -2,13 +2,13 @@
 // the object provider (spec/metamodel/object.json, read via defineProviderFromData)
 // is FAITHFUL and STRICT. Object is the last core provider made strict: object.base
 // holds the INTERSECTION of every subtype's structural children
-// (field/identity/validator/layout/source); each concrete subtype sets
+// (field/identity/validator/layout/source/index); each concrete subtype sets
 // extendsBase:true and adds ONLY its own children — value adds relationship; entity
 // adds relationship + template + the FR-014 TPH attrs @discriminator/
 // @discriminatorValue (an entity-inheritance concept); projection inherits the base
 // intersection ONLY (no relationship, no template). The "any attr" wildcard child
 // rule is GONE from all four. This test pins the EXACT composed per-subtype
-// childRules (base=5 / value=6 / entity=7 / projection=5, none with an attr
+// childRules (base=6 / value=7 / entity=8 / projection=6, none with an attr
 // wildcard) AND the attr scoping (@discriminator/@discriminatorValue ONLY on
 // entity), with explicit negatives. expected-registry.json (children byte-identical)
 // is the second gate; enforcement (ERR_UNKNOWN_ATTR / ERR_CHILD_NOT_ALLOWED) is the
@@ -73,11 +73,11 @@ function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
 }
 
 // The EXACT composed structural childRule childType set per subtype (the critical
-// safety net). Base is the intersection of all subtypes (5 rules); value adds
-// relationship (6); entity adds relationship + template (7); projection inherits
-// base only (5). NO subtype carries an `attr` wildcard rule (strict/fail-closed —
+// safety net). Base is the intersection of all subtypes (6 rules); value adds
+// relationship (7); entity adds relationship + template (8); projection inherits
+// base only (6). NO subtype carries an `attr` wildcard rule (strict/fail-closed —
 // attrs enforce via the named AttrSchema set, ERR_UNKNOWN_ATTR).
-const BASE_RULE_TYPES = ["field", "identity", "validator", "layout", "source"];
+const BASE_RULE_TYPES = ["field", "identity", "validator", "layout", "source", "index"];
 const VALUE_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP];
 const ENTITY_RULE_TYPES = [...BASE_RULE_TYPES, TYPE_RELATIONSHIP, TYPE_TEMPLATE];
 const PROJECTION_RULE_TYPES = [...BASE_RULE_TYPES];
@@ -132,11 +132,11 @@ describe("object provider — strict per-subtype completeness (FR-033 S1-object)
     });
   }
 
-  test("composed childRule counts: base=5, value=6, entity=7, projection=5", () => {
-    expect(registry.find(TYPE_OBJECT, SUBTYPE_BASE)!.childRules.length).toBe(5);
-    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_VALUE)!.childRules.length).toBe(6);
-    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)!.childRules.length).toBe(7);
-    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_PROJECTION)!.childRules.length).toBe(5);
+  test("composed childRule counts: base=6, value=7, entity=8, projection=6", () => {
+    expect(registry.find(TYPE_OBJECT, SUBTYPE_BASE)!.childRules.length).toBe(6);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_VALUE)!.childRules.length).toBe(7);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY)!.childRules.length).toBe(8);
+    expect(registry.find(TYPE_OBJECT, OBJECT_SUBTYPE_PROJECTION)!.childRules.length).toBe(6);
   });
 
   test("only object.entity carries the template childRule", () => {

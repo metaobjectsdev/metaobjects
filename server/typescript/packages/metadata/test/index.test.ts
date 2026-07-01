@@ -38,6 +38,7 @@ import {
   TYPE_LAYOUT,
   TYPE_SOURCE,
   TYPE_TEMPLATE,
+  TYPE_INDEX,
   BASE_TYPES,
   SUBTYPE_BASE,
   SUBTYPE_ROOT,
@@ -312,12 +313,13 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
   });
 
   test("BASE_TYPES array is exported and correct length", () => {
-    expect(BASE_TYPES).toHaveLength(12);
+    expect(BASE_TYPES).toHaveLength(13);
     expect(BASE_TYPES).toContain(TYPE_OBJECT);
     expect(BASE_TYPES).toContain(TYPE_FIELD);
     expect(BASE_TYPES).toContain(TYPE_LAYOUT);
     expect(BASE_TYPES).toContain(TYPE_SOURCE);
     expect(BASE_TYPES).toContain(TYPE_TEMPLATE);
+    expect(BASE_TYPES).toContain(TYPE_INDEX);
   });
 
   test("SUBTYPE_BASE is 'base'", () => {

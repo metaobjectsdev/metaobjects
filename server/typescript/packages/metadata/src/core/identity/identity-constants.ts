@@ -21,8 +21,6 @@ export type IdentitySubType = (typeof IDENTITY_SUBTYPES)[number];
 
 export const IDENTITY_ATTR_FIELDS = "fields";
 export const IDENTITY_ATTR_GENERATION = "generation";
-/** On secondary identities: true → uniqueIndex; false/absent → index. Defaults to true for back-compat. */
-export const IDENTITY_ATTR_UNIQUE = "unique";
 /** Identity-reference attr: target entity (bare or dotted `Entity.field` / `Entity.fA,fB`). */
 export const IDENTITY_REFERENCE_ATTR_REFERENCES = "references";
 /** Identity-reference attr: physical-enforcement flag. Default true → hard FK constraint; false → logical-only reference. */

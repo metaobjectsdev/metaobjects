@@ -335,6 +335,13 @@ public enum ErrorCode {
      */
     ERR_RELATIVE_REF_IN_CANONICAL,
 
+    /**
+     * An {@code index.lookup}'s {@code @fields} is empty (at least one field is
+     * required) or names a field that does not exist on the owning entity's
+     * effective (resolved, via {@code extends:}) field set.
+     */
+    ERR_INVALID_INDEX,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

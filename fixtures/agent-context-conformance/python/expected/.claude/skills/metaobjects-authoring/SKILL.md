@@ -384,7 +384,7 @@ The `[]` key-suffix declares an array field: `field.long[]: weekIds` lowers to
 | Subtype | Purpose | Key attrs |
 |---|---|---|
 | `identity.primary` | the PK field(s) | `@fields`, `@generation` |
-| `identity.secondary` | a unique secondary index | `@fields` (or `@expr` for a functional index) |
+| `identity.secondary` | a unique alternate key (always enforces uniqueness — uniqueness is the type, not a `@unique` attr) | `@fields` (or `@expr` for a functional index) |
 | `identity.reference` | an inbound FK from this entity to another | `@fields`, `@references`, `@enforce` |
 
 `@generation` on a primary controls value generation (e.g. `increment`).
@@ -407,7 +407,7 @@ PK needs the explicit dotted form `@references: "pkg::Target.fieldA,fieldB"`.
 exist (previously such references loaded silently). So every `@references` /
 `@objectRef` you author must name a real entity.
 
-A `identity.secondary` can index an **expression** instead of plain columns: use
+An `identity.secondary` can index an **expression** instead of plain columns: use
 `@expr` (e.g. `"lower(email)"`) in place of `@fields`, optionally with `@using` (the
 index method — `gin` / `gist` / `hash`; default `btree`) and `@where` (a partial-index
 predicate).
@@ -418,6 +418,30 @@ predicate).
 { "identity.secondary": { "name": "byEmailCI", "@expr": "lower(email)" } }
 { "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@enforce": true } }
 ```
+
+## Indexes (non-unique)
+
+Use `index.lookup` for a **non-unique** DB index added purely for query performance — it
+does NOT enforce uniqueness. Choose the right construct by what the constraint IS:
+
+| Need | Construct |
+|---|---|
+| Unique alternate key (e.g. email, slug) | `identity.secondary` — uniqueness is the type |
+| Query-performance index, no uniqueness | `index.lookup` |
+
+`@fields` names the indexed columns and is **required** (at least one). The db provider
+contributes physical-tuning attrs: `@orders` (per-column sort direction), `@using` (access
+method — `gin`/`gist`/`hash`; default `btree`), `@expr` (key expression derived from
+`@fields`, e.g. for a functional index), and `@where` (partial-index predicate).
+
+```json
+{ "index.lookup": { "name": "byCreatedAt", "@fields": ["createdAt"], "@orders": ["desc"] } }
+{ "index.lookup": { "name": "byStatusCreatedAt", "@fields": ["status", "createdAt"] } }
+{ "index.lookup": { "name": "byEmailCI", "@fields": ["email"], "@expr": "lower(email)" } }
+```
+
+`index.lookup` is a sibling of `identity.*` — declare it as a direct child of an `object.entity`,
+at the same level as fields and identities.
 
 ## Relationships
 

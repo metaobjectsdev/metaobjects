@@ -9,7 +9,7 @@
             { "field.uuid": { "name": "id" } },
             { "field.string": { "name": "email" } },
             { "identity.primary": { "name": "pk", "@fields": ["id"] } },
-            { "identity.secondary": { "@fields": ["email"], "@unique": true } }
+            { "identity.secondary": { "@fields": ["email"] } }
           ]
         }
       }

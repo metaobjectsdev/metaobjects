@@ -22,9 +22,10 @@ from ...core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_SUBTYPE_SECONDARY,
 )
+from ...core.index.index_constants import INDEX_SUBTYPE_LOOKUP
 from ....provider import Provider
 from ....registry import AttrSchema, TypeRegistry
-from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY
+from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
 from .db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
     FIELD_ATTR_LOCAL_TIME,
@@ -155,6 +156,12 @@ def _register(registry: TypeRegistry) -> None:
         TYPE_IDENTITY,
         IDENTITY_SUBTYPE_REFERENCE,
         attributes=[_CONSTRAINT_NAME_SCHEMA],
+    )
+    # index.lookup: same RDB physical attrs as identity.secondary (@orders/@where/@expr/@using).
+    registry.extend(
+        TYPE_INDEX,
+        INDEX_SUBTYPE_LOOKUP,
+        attributes=[_ORDERS_SCHEMA, _WHERE_SCHEMA, _EXPR_SCHEMA, _USING_SCHEMA],
     )
 
 

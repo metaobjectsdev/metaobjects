@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "placedAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": ["id"]
+              }
+            },
+            {
+              "index.lookup": {
+                "name": "idx_customer_placed",
+                "@fields": ["customerId", "placedAt"],
+                "@orders": ["asc", "desc"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

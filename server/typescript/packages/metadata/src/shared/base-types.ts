@@ -17,6 +17,8 @@ export const TYPE_LAYOUT = "layout";
 export const TYPE_SOURCE = "source";
 export const TYPE_ORIGIN = "origin";
 export const TYPE_TEMPLATE = "template";
+/** Non-unique lookup indexes — `index.lookup` is the only registered subtype. */
+export const TYPE_INDEX = "index";
 
 export const BASE_TYPES = [
   TYPE_METADATA,
@@ -31,6 +33,7 @@ export const BASE_TYPES = [
   TYPE_SOURCE,
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
+  TYPE_INDEX,
 ] as const;
 export type BaseType = (typeof BASE_TYPES)[number];
 

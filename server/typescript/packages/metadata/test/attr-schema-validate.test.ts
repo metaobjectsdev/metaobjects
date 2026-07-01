@@ -345,7 +345,6 @@ describe("attr-schema validation — allowedValues", () => {
                     name: "event_recent_idx",
                     "@fields": ["device_id", "ts"],
                     "@orders": ["asc", "desc"],
-                    "@unique": false,
                   },
                 },
               ],

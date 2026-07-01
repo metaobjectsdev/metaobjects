@@ -1,7 +1,6 @@
 package com.metaobjects.identity;
 
 import com.metaobjects.MetaData;
-import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -22,11 +21,14 @@ public class SecondaryIdentity extends MetaIdentity {
     private static final Logger log = LoggerFactory.getLogger(SecondaryIdentity.class);
 
     /**
-     * Create a secondary identity with the specified name.
-     * The subType is automatically set to "secondary".
+     * RDB-physical index attrs — contributed by the db provider via
+     * {@code registry.extendType} (mirroring the TS db provider's {@code extends} blocks).
+     * Kept as constants here for cross-module consumers that resolve them by name.
+     *
+     * NOTE: {@code @unique} was removed from {@code identity.secondary} — uniqueness is
+     * an inherent property of the subtype (secondary identities ALWAYS enforce uniqueness).
+     * For a non-unique query-performance index, use {@code index.lookup} instead.
      */
-    /** Logical uniqueness marker (boolean) — cross-port canonical attr on identity.secondary. */
-    public static final String ATTR_UNIQUE = "unique";
     /** Physical index-key sort direction array (asc|desc) — db-provider attr (RDB-physical). */
     public static final String ATTR_ORDERS = "orders";
     /** Partial-index predicate (raw SQL) — db-provider attr (RDB-physical). */
@@ -46,39 +48,25 @@ public class SecondaryIdentity extends MetaIdentity {
      */
     public static void registerTypes(MetaDataRegistry registry) {
         registry.registerType(SecondaryIdentity.class, def -> {
-            // ✅ FLUENT ARRAY CONSTRAINTS WITH CONSTANTS
             def.type(TYPE_IDENTITY).subType(SUBTYPE_SECONDARY)
                .description("Secondary identity for business keys and alternate identifiers")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // Configure each attribute separately to avoid method chaining conflicts.
             // @fields is REQUIRED on identity.secondary (cross-port canonical).
             // @generation is NOT a secondary-identity attr in the canonical (it is
             // primary-only) — intentionally not declared here.
+            // @unique is removed: secondary identities ALWAYS enforce uniqueness —
+            // it is an inherent property of the subtype, not an attr to be toggled.
+            // For a non-unique query-performance index, use index.lookup instead.
             def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_UNIQUE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            // RDB-physical index attrs contributed by the db provider (db.json extends
-            // identity.secondary). Descriptions are sourced from the embedded
-            // spec/metamodel/db.json by applySpecDescriptions; allowedValues for @orders
-            // (asc|desc) is not part of the v1 manifest contract.
-            def.optionalAttributeWithConstraints(ATTR_ORDERS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_WHERE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_EXPR).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_USING).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // RDB-physical index attrs (@orders / @where / @expr / @using) are
+            // contributed by CoreDBMetaDataProvider via registry.extendType, mirroring
+            // the TS db provider's "extends" blocks in spec/metamodel/db.json.
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
             def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
         });
-    }
-
-    /**
-     * Returns true if this secondary identity is unique across the object.
-     * Most secondary identities should be unique (like email, SKU, etc.)
-     */
-    public boolean isUniqueKey() {
-        // Secondary identities are typically unique business keys
-        return true;
     }
 
     /**

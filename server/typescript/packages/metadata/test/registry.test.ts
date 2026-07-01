@@ -9,6 +9,7 @@ import {
   TYPE_METADATA,
   TYPE_VALIDATOR,
   TYPE_IDENTITY,
+  TYPE_INDEX,
   TYPE_VIEW,
   TYPE_RELATIONSHIP,
   TYPE_LAYOUT,
@@ -399,17 +400,17 @@ describe("registerCoreTypes", () => {
   });
 
   // 5. Child rules spot-checks per base type
-  it("object.base has the 5 intersection child-type wildcards (no attr, no relationship — strict model)", () => {
+  it("object.base has the 6 intersection child-type wildcards (no attr, no relationship — strict model)", () => {
     // FR-033 S1-object: object.base is the INTERSECTION of every object subtype's
-    // structural children (field / identity / validator / layout / source). The
-    // "any attr" wildcard is dropped (strict/fail-closed); relationship rides
+    // structural children (field / identity / validator / layout / source / index).
+    // The "any attr" wildcard is dropped (strict/fail-closed); relationship rides
     // value + entity only (NOT base — extendsBase is additive, and projection,
     // which forbids relationship, inherits base).
     const def = registry.find(TYPE_OBJECT, SUBTYPE_BASE);
     expect(def).toBeDefined();
     const childTypes = def!.childRules.map((r) => r.childType).sort();
     expect(childTypes).toEqual(
-      [TYPE_FIELD, TYPE_IDENTITY, TYPE_LAYOUT, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
+      [TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX, TYPE_LAYOUT, TYPE_SOURCE, TYPE_VALIDATOR].sort(),
     );
     expect(childTypes).not.toContain(TYPE_ATTR);
     expect(childTypes).not.toContain(TYPE_RELATIONSHIP);

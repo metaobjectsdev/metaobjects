@@ -315,8 +315,12 @@ public class MetaDataRegistry {
             );
         }
 
-        // Create a builder from the existing definition
-        TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing);
+        // Create a builder from the existing definition.
+        // Wire the registry so that auto-generated constraints (e.g. the .array
+        // constraint that marks isArray=true in the manifest) are registered during
+        // build(). Without withRegistry() the constraints stay in the builder and are
+        // lost, causing the manifest to report isArray=false for array-typed attrs.
+        TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing).withRegistry(this);
 
         // Apply the extension
         extension.accept(builder);

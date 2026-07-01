@@ -247,6 +247,49 @@ export const DB_DEFINITION: ProviderDefinition = {
           "description": "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider."
         }
       ]
+    },
+    {
+      "type": "index",
+      "subType": "lookup",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "orders",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
+          "description": "Physical index-key sort direction, positional to @fields ('asc' | 'desc'). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "where",
+          "min": 0,
+          "max": 1,
+          "description": "Partial-index predicate (raw SQL, e.g. \"delivered_at IS NULL\"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "expr",
+          "min": 0,
+          "max": 1,
+          "description": "Raw key EXPRESSION for a functional/expression index (e.g. \"lower(email)\"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "using",
+          "min": 0,
+          "max": 1,
+          "description": "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider."
+        }
+      ]
     }
   ]
 };

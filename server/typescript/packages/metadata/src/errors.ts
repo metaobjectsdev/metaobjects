@@ -155,6 +155,9 @@ export const ERROR_CODES = [
   // clash / required-child cycle / conflicting attr redefinition. The detail names
   // which of the six checks fired and the offending type(s).
   "ERR_INVALID_METAMODEL_CONSTRAINT",
+  // index.lookup field-resolution: @fields is empty or names a field that does
+  // not exist on the owning entity's effective (resolved via extends) field set.
+  "ERR_INVALID_INDEX",
   "ERR_UNKNOWN",
 ] as const;
 

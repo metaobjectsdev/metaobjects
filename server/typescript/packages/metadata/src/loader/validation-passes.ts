@@ -25,7 +25,13 @@ import {
   TYPE_RELATIONSHIP,
   TYPE_SOURCE,
   TYPE_TEMPLATE,
+  TYPE_INDEX,
 } from "../shared/base-types.js";
+import {
+  INDEX_SUBTYPE_LOOKUP,
+  INDEX_ATTR_FIELDS,
+} from "../core/index/index-constants.js";
+import { MetaIndex } from "../core/index/meta-index.js";
 import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
@@ -1427,6 +1433,60 @@ export function validateRelationships(root: MetaData): ParseError[] {
 
 // NOTE: identity.reference @references resolution moved to the validation registry
 // (defaultValidationRegistry → a declarative reference descriptor with dottedFieldPath).
+
+// ---------------------------------------------------------------------------
+// index.lookup @fields resolution (Task 3)
+//
+// Every index.lookup on an entity must name at least one field, and every
+// named field must exist in the entity's EFFECTIVE (resolved) field set.
+// ADR-0039: use children() / MetaIndex.fields() — never own* — so that a
+// field inherited via extends still resolves correctly.
+// ---------------------------------------------------------------------------
+
+export function validateIndexLookupFields(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // Effective (resolved) field names — includes inherited fields via extends.
+    const effectiveFieldNames = new Set(
+      obj.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
+    );
+    for (const node of obj.children().filter(
+      (c) => c.type === TYPE_INDEX && c.subType === INDEX_SUBTYPE_LOOKUP,
+    )) {
+      // MetaIndex.fields() uses the resolving attr() accessor per ADR-0039.
+      const idx = node as MetaIndex;
+      const fields = idx.fields();
+
+      // Rule 1: must have at least one field.
+      if (fields.length === 0) {
+        errors.push(
+          new ParseError(
+            `index.lookup "${idx.name}" on "${obj.name}" has no @${INDEX_ATTR_FIELDS}; ` +
+              `at least one field is required`,
+            { code: "ERR_INVALID_INDEX", source: idx.source },
+          ),
+        );
+        continue;
+      }
+
+      // Rule 2: every named field must resolve against the entity's effective field set.
+      for (const fieldName of fields) {
+        if (!effectiveFieldNames.has(fieldName)) {
+          errors.push(
+            new ParseError(
+              `index.lookup "${idx.name}" on "${obj.name}" references field "${fieldName}" ` +
+                `which does not exist on "${obj.name}". ` +
+                `Available fields: ${[...effectiveFieldNames].join(", ") || "(none)"}`,
+              { code: "ERR_INVALID_INDEX", source: idx.source },
+            ),
+          );
+        }
+      }
+    }
+  }
+  return errors;
+}
 
 function checkFilterClauses(
   filter: Record<string, unknown>,

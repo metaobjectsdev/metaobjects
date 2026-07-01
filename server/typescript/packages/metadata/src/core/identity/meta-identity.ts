@@ -10,7 +10,6 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
-  IDENTITY_ATTR_UNIQUE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_REFERENCE_ATTR_ENFORCE,
   IDENTITY_REFERENCE_ATTR_ON_DELETE,
@@ -26,15 +25,6 @@ export class MetaIdentity extends MetaData {
   get fields(): string[] {
     const f = this.attr(IDENTITY_ATTR_FIELDS);
     return Array.isArray(f) ? (f as string[]) : [];
-  }
-
-  /**
-   * Whether the identity enforces uniqueness.
-   * Defaults to true; explicit `@unique: false` makes it a non-unique index.
-   * ADR-0039: resolving.
-   */
-  get unique(): boolean {
-    return this.attr(IDENTITY_ATTR_UNIQUE) !== false;
   }
 
   isPrimary(): boolean {
@@ -67,7 +57,8 @@ export class MetaPrimaryIdentity extends MetaIdentity {
 }
 
 /**
- * Secondary identity — a unique or non-unique index on one or more fields.
+ * Secondary identity — always a unique index on one or more fields.
+ * Uniqueness is in the type; use `index.lookup` for non-unique indexes.
  * `@generation` does not apply here.
  */
 export class MetaSecondaryIdentity extends MetaIdentity {}

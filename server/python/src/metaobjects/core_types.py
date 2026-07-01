@@ -42,7 +42,6 @@ from .meta.core.identity.identity_constants import (
     GENERATION_VALUES,
     IDENTITY_ATTR_FIELDS,
     IDENTITY_ATTR_GENERATION,
-    IDENTITY_ATTR_UNIQUE,
     IDENTITY_REFERENCE_ATTR_ENFORCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_PRIMARY,
@@ -50,6 +49,8 @@ from .meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_SECONDARY,
 )
 from .meta.core.identity.meta_identity import MetaIdentity
+from .meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP, INDEX_SUBTYPES
+from .meta.core.index.meta_index import MetaIndex
 from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
@@ -117,6 +118,7 @@ from .shared.base_types import (
     TYPE_ATTR,
     TYPE_FIELD,
     TYPE_IDENTITY,
+    TYPE_INDEX,
     TYPE_LAYOUT,
     TYPE_METADATA,
     TYPE_OBJECT,
@@ -195,10 +197,12 @@ core_provider.add(
     )
 )
 
+
 # object.* (entity, value, projection)
 _OBJECT_CHILD_RULES = [
     ChildRule(TYPE_FIELD, "*"),
     ChildRule(TYPE_IDENTITY, "*"),
+    ChildRule(TYPE_INDEX, "*"),
     ChildRule(TYPE_ATTR, "*"),
     ChildRule(TYPE_SOURCE, "*"),
     ChildRule(TYPE_RELATIONSHIP, "*"),
@@ -436,8 +440,9 @@ core_provider.add(
     )
 )
 
-# identity.secondary — @fields required stringArray; @unique optional boolean
-# (true → UNIQUE index, false → plain index). Cross-port; mirrors TS secondaryIdentityAttrs.
+# identity.secondary — @fields required stringArray. Always enforces uniqueness;
+# use index.lookup for non-unique indexes. @unique is no longer a core attr
+# (removed — the secondary index is always unique by definition).
 core_provider.add(
     TypeDefinition(
         type=TYPE_IDENTITY,
@@ -445,7 +450,6 @@ core_provider.add(
         factory=MetaIdentity,
         attrs=[
             AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
-            AttrSchema(name=IDENTITY_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -469,6 +473,22 @@ core_provider.add(
             IDENTITY_REFERENCE_ATTR_REFERENCES, TYPE_OBJECT, None, True, "ERR_INVALID_REFERENCE")],
     )
 )
+
+# index.lookup — non-unique lookup index on one or more fields.
+# Distinct from identity.secondary (which always enforces uniqueness).
+# Physical attrs (@orders/@expr/@where/@using) are contributed by the db provider.
+for _idx_sub in INDEX_SUBTYPES:
+    core_provider.add(
+        TypeDefinition(
+            type=TYPE_INDEX,
+            sub_type=_idx_sub,
+            factory=MetaIndex,
+            attrs=[
+                AttrSchema(name=INDEX_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+            ],
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
 
 # relationship.* (base, association, aggregation, composition).
 # @onDelete / @onUpdate are validated against REFERENTIAL_ACTIONS — kebab-case

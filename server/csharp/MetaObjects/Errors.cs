@@ -125,6 +125,9 @@ public enum ErrorCode
     // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
     // band (e.g. field.object). Would silently generate an empty-ops filter.
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+    // index.lookup @fields resolution — no @fields declared (at least one required)
+    // or a named field does not exist in the entity's effective field set.
+    ERR_INVALID_INDEX,
     // ADR-0023 — a registration was attempted against a registry sealed after its
     // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
     ERR_REGISTRY_SEALED,

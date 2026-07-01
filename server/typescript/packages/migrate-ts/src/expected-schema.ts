@@ -12,7 +12,6 @@ import {
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
   MetaSource,
   IDENTITY_ATTR_GENERATION,
-  IDENTITY_ATTR_UNIQUE,
   IDENTITY_ATTR_ORDERS,
   IDENTITY_ATTR_WHERE,
   IDENTITY_ATTR_EXPR,
@@ -362,7 +361,7 @@ function buildSecondaryIndexes(
     });
   }
 
-  // (b) Explicit secondary identities — unique-by-default, opt out with @unique: false.
+  // (b) Explicit secondary identities — always unique (uniqueness is in the type).
   // Drizzle emits the index using the identity's @name attr directly (no table
   // prefix), so the expected name must match.
   for (const identity of entity.secondaryIdentities()) {
@@ -376,11 +375,10 @@ function buildSecondaryIndexes(
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
-    const uniqueAttr = identity.attr(IDENTITY_ATTR_UNIQUE);
     const index: IndexDescriptor = {
       name: identity.name,
       columns: expr ? [] : cols,
-      unique: uniqueAttr !== false,
+      unique: true,
     };
     if (expr) index.expr = expr;
     const usingRaw = identity.attr(IDENTITY_ATTR_USING);
@@ -404,6 +402,43 @@ function buildSecondaryIndexes(
     }
     indexes.push(index);
   }
+
+  // (c) index.lookup — always non-unique. Physical attrs @orders/@using/@where/@expr share
+  // the same constant names as identity.secondary (both registered by the db provider).
+  for (const lookup of entity.lookupIndexes()) {
+    const exprRaw = lookup.attr(IDENTITY_ATTR_EXPR);
+    const expr = typeof exprRaw === "string" && exprRaw.trim().length > 0 ? exprRaw.trim() : undefined;
+    const fieldNames = lookup.fields(); // ADR-0039: resolving via MetaIndex.fields()
+    // An expression index keys off @expr (not @fields); a plain index needs @fields.
+    if (fieldNames.length === 0 && expr === undefined) continue;
+    const cols = fieldNames.map((jsName) => {
+      const field = findField(entity, jsName);
+      return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
+    });
+    const index: IndexDescriptor = {
+      name: lookup.name,
+      columns: expr ? [] : cols,
+      unique: false,
+    };
+    if (expr) index.expr = expr;
+    const usingRaw = lookup.attr(IDENTITY_ATTR_USING);
+    if (typeof usingRaw === "string" && usingRaw.trim().length > 0 && usingRaw.trim() !== "btree") {
+      index.using = usingRaw.trim();
+    }
+    const ordersRaw = lookup.attr(IDENTITY_ATTR_ORDERS);
+    if (Array.isArray(ordersRaw)) {
+      const orders = cols.map((_, i) => (ordersRaw[i] === "desc" ? "desc" : "asc")) as (
+        "asc" | "desc"
+      )[];
+      if (orders.some((o) => o === "desc")) index.orders = orders;
+    }
+    const whereRaw = lookup.attr(IDENTITY_ATTR_WHERE);
+    if (typeof whereRaw === "string" && whereRaw.trim().length > 0) {
+      index.where = whereRaw.trim();
+    }
+    indexes.push(index);
+  }
+
   return indexes;
 }
 

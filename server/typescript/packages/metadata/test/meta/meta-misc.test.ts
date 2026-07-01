@@ -57,7 +57,6 @@ import {
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_ATTR_FIELDS,
   IDENTITY_ATTR_GENERATION,
-  IDENTITY_ATTR_UNIQUE,
   RELATIONSHIP_SUBTYPE_ASSOCIATION,
   RELATIONSHIP_SUBTYPE_AGGREGATION,
   RELATIONSHIP_ATTR_CARDINALITY,
@@ -129,14 +128,12 @@ function makePrimaryIdentity(
 function makeSecondaryIdentity(
   name: string,
   fields: string[],
-  unique?: boolean,
 ): MetaSecondaryIdentity {
   const node = new MetaSecondaryIdentity(
     new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY),
     name,
   );
   node.setAttr(IDENTITY_ATTR_FIELDS, fields);
-  if (unique !== undefined) node.setAttr(IDENTITY_ATTR_UNIQUE, unique);
   return node;
 }
 
@@ -274,16 +271,6 @@ describe("MetaIdentity — base class", () => {
     expect(id.fields).toEqual([]);
   });
 
-  it("unique defaults to true when attr absent", () => {
-    const id = makeIdentity("pk", IDENTITY_SUBTYPE_PRIMARY, ["id"]);
-    expect(id.unique).toBe(true);
-  });
-
-  it("unique returns false when @unique: false is set", () => {
-    const id = makeSecondaryIdentity("idx_tag", ["tag"], false);
-    expect(id.unique).toBe(false);
-  });
-
   it("isPrimary / isSecondary subtype checks", () => {
     const pk = makeIdentity("pk", IDENTITY_SUBTYPE_PRIMARY, ["id"]);
     expect(pk.isPrimary()).toBe(true);
@@ -361,16 +348,6 @@ describe("MetaSecondaryIdentity", () => {
   it("isPrimary returns false", () => {
     const sec = makeSecondaryIdentity("idx_email", ["email"]);
     expect(sec.isPrimary()).toBe(false);
-  });
-
-  it("unique defaults to true when @unique attr absent", () => {
-    const sec = makeSecondaryIdentity("idx_email", ["email"]);
-    expect(sec.unique).toBe(true);
-  });
-
-  it("unique is false when @unique: false is explicit", () => {
-    const sec = makeSecondaryIdentity("idx_tag", ["tag"], false);
-    expect(sec.unique).toBe(false);
   });
 
   it("has no .generation accessor (MetaSecondaryIdentity narrows away from primary)", () => {

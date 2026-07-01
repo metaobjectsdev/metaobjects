@@ -24,6 +24,7 @@ _No subtype-specific attributes._
 
 - `field.*` — 0..*
 - `identity.*` — 0..*
+- `index.*` — 0..*
 - `layout.*` — 0..*
 - `source.*` — 0..*
 - `validator.*` — 0..*
@@ -49,6 +50,7 @@ An object that owns its data: own identity, writable sources, and lifecycle. The
 
 - `field.*` — 0..*
 - `identity.*` — 0..*
+- `index.*` — 0..*
 - `layout.*` — 0..*
 - `relationship.*` — 0..*
 - `source.*` — 0..*
@@ -73,6 +75,7 @@ _No subtype-specific attributes._
 
 - `field.*` — 0..*
 - `identity.*` — 0..*
+- `index.*` — 0..*
 - `layout.*` — 0..*
 - `source.*` — 0..*
 - `validator.*` — 0..*
@@ -97,6 +100,7 @@ A value object — pure shape with NO identity and NO source, ever. Constructed 
 
 - `field.*` — 0..*
 - `identity.*` — 0..*
+- `index.*` — 0..*
 - `layout.*` — 0..*
 - `relationship.*` — 0..*
 - `source.*` — 0..*

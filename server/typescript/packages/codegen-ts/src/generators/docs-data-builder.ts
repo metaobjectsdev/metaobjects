@@ -510,8 +510,7 @@ function describeIdentity(id: MetaIdentity): string {
     return `**Primary key:** ${fieldList}${genSuffix}`;
   }
   if (id.subType === IDENTITY_SUBTYPE_SECONDARY) {
-    const uniqueText = id.unique ? "unique" : "non-unique";
-    return `**Secondary index:** ${fieldList} — ${uniqueText}`;
+    return `**Secondary index:** ${fieldList} — unique`;
   }
   if (id.subType === IDENTITY_SUBTYPE_REFERENCE) {
     // The subType discriminator guarantees the instance is a MetaReferenceIdentity;

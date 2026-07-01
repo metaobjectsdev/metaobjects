@@ -56,7 +56,7 @@ public class SpecMetamodelEmbedTests
     [Fact]
     public void Reader_loads_every_embedded_file()
     {
-        // Smoke: the reader parses all 15 files off the assembly without throwing and
+        // Smoke: the reader parses all 16 files off the assembly without throwing and
         // exposes a non-trivial set of type docs + the common-attr docs.
         SpecMetamodelReader reader = SpecMetamodelReader.Load();
         Assert.NotNull(reader.CommonAttrDoc("description"));
