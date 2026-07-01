@@ -63,6 +63,7 @@ from ..registry import AttrSchema, ChildRule, TypeRegistry
 from ..shared.base_types import (
     TYPE_FIELD,
     TYPE_IDENTITY,
+    TYPE_INDEX,
     TYPE_LAYOUT,
     TYPE_OBJECT,
     TYPE_ORIGIN,
@@ -104,6 +105,7 @@ from ..meta.core.object.object_constants import (
     OBJECT_SUBTYPE_VALUE,
 )
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
+from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP
 from ..source import resolved_source
 
 # A subtype-specific template attr is valid ONLY on the subtype it is registered
@@ -184,6 +186,7 @@ def run_validations(
     _validate_filterable_has_index(root, warnings)
     # SP-H Unit9 — @filterable on a subtype with no operator band → error.
     _validate_filterable_has_supported_ops(root, errors)
+    _validate_index_lookup_fields(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -459,21 +462,29 @@ def _validate_attr_schema(
             # ERR_BAD_ATTR_VALUE for both an unrecognized value and an illegal
             # pairing. Running the flat membership check too would double-report
             # (tests assert exactly one error). Mirrors the TS reference.
+            #
+            # For array-valued attrs (is_array=True) the raw_value is a list;
+            # check each element individually against allowed_values (e.g.
+            # @orders: ["asc","desc"] — each element must be in {"asc","desc"}).
             if (
                 attr_node.name != FIELD_ATTR_DB_COLUMN_TYPE
                 and schema.allowed_values is not None
                 and len(schema.allowed_values) > 0
             ):
-                if raw_value not in schema.allowed_values:
-                    allowed_str = ", ".join(str(v) for v in schema.allowed_values)
-                    errors.append(
-                        MetaError(
-                            f"{_node_label(node)} attribute '@{attr_node.name}' has value "
-                            f"'{raw_value}' which is not one of the allowed values: {allowed_str}",
-                            ErrorCode.ERR_BAD_ATTR_VALUE,
-                            envelope=node.source,
+                allowed_str = ", ".join(str(v) for v in schema.allowed_values)
+                values_to_check: list = (
+                    list(raw_value) if isinstance(raw_value, list) else [raw_value]
+                )
+                for elem in values_to_check:
+                    if elem not in schema.allowed_values:
+                        errors.append(
+                            MetaError(
+                                f"{_node_label(node)} attribute '@{attr_node.name}' has value "
+                                f"'{elem}' which is not one of the allowed values: {allowed_str}",
+                                ErrorCode.ERR_BAD_ATTR_VALUE,
+                                envelope=node.source,
+                            )
                         )
-                    )
 
 
 # ---------------------------------------------------------------------------
@@ -2448,3 +2459,49 @@ def _parse_string_list(raw: object) -> tuple[str, ...]:
     if isinstance(raw, (list, tuple)):
         return tuple(str(x) for x in raw)
     return ()
+
+
+# ---------------------------------------------------------------------------
+# Pass: index.lookup @fields resolution
+#
+# Every index.lookup on an entity must name at least one field, and every
+# named field must exist in the entity's EFFECTIVE (resolved) field set.
+# ADR-0039: use children() / MetaIndex.fields() — never own* — so that a
+# field inherited via extends still resolves correctly.
+# ---------------------------------------------------------------------------
+
+def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.index.meta_index import MetaIndex
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        # Effective (resolved) field names — includes inherited fields via extends.
+        effective_field_names = {
+            f.name for f in obj.children() if f.type == TYPE_FIELD
+        }
+        for node in obj.children():
+            if node.type != TYPE_INDEX or node.sub_type != INDEX_SUBTYPE_LOOKUP:
+                continue
+            if not isinstance(node, MetaIndex):
+                continue
+            fields = node.fields()
+
+            if len(fields) == 0:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_INDEX,
+                    message=(
+                        f'index.lookup "{node.name}" on "{obj.name}" has no '
+                        f"@{INDEX_ATTR_FIELDS}; at least one field is required"
+                    ),
+                ))
+                continue
+
+            for field_name in fields:
+                if field_name not in effective_field_names:
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_INVALID_INDEX,
+                        message=(
+                            f'index.lookup "{node.name}" on "{obj.name}" references '
+                            f'field "{field_name}" which does not exist on "{obj.name}". '
+                            f"Available fields: "
+                            f"{', '.join(sorted(effective_field_names)) or '(none)'}"
+                        ),
+                    ))

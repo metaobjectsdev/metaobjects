@@ -10,7 +10,8 @@
         { "type": "identity", "subType": "*", "name": "*", "min": 0, "max": null },
         { "type": "validator", "subType": "*", "name": "*", "min": 0, "max": null },
         { "type": "layout", "subType": "*", "name": "*", "min": 0, "max": null },
-        { "type": "source", "subType": "*", "name": "*", "min": 0, "max": null }
+        { "type": "source", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "index", "subType": "*", "name": "*", "min": 0, "max": null }
       ]
     },
     {
