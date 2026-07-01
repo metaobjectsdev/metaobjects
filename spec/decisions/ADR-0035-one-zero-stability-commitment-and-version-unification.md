@@ -22,11 +22,16 @@ turning point:
    enough to *define* "well-integrated" — the audit is the maturity signal that the
    surface has set.
 
-Against that, the honest tension: the `0.14.0`/`7.6.0` line just shipped **breaking
-changes in a minor** (verify strict-by-default; the jsonb open-bag contract). 1.0's
-entire value is the *compat promise*, so 1.0 is gated less by "are the features
-there" than by "has the breaking-change rate dropped enough to commit to
-no-breaking-until-2.0." Three things are still in motion: FR-024 (declared
+Against that, the honest tension: the last two lines each shipped **breaking changes
+in a minor** — `0.14.0`/`7.6.0` (verify strict-by-default; the jsonb open-bag
+contract) and then `0.15.0`/`7.7.0` (the metamodel-1.0 vocabulary program:
+instant-default timestamps + the `@dbColumnType` slim). That second round was the
+*intended* pre-1.0 vocabulary finalization (ADR-0036/0037/0038) — a decision framework
+now governs future additions, so the churn should stop here — but it does mean the
+breaking-change rate has not yet demonstrably dropped. 1.0's entire value is the
+*compat promise*, so 1.0 is gated less by "are the features there" than by "has the
+breaking-change rate dropped enough to commit to no-breaking-until-2.0" — which now
+wants at least one no-breaking release *after* `0.15.0`/`7.7.0`. Three things are still in motion: FR-024 (declared
 `api.*`/`operation.*`/`binding.*` — net-new vocabulary), the deprecated
 `@metaobjectsdev/codegen-ts/generators` export ("removal in a future major"), and
 the fact that "own your codegen" is TS-led (`meta init`) while the JVM/Python/C#
@@ -81,9 +86,11 @@ change we still want, then freeze. Before cutting 1.0:
 - **Cross-port "own your codegen":** ratify that it is *per-port-idiomatic* (TS
   `meta init`; JVM/Python/C# via build config) and **document that explicitly**, OR
   close a parity gap first. **[RATIFY: idiomatic-and-document vs close-gap]**
-- **Metamodel freeze:** no pending vocabulary churn; `registry-conformance` is the
-  enforcer; the jsonb + verify-strict contracts (just shipped) are the last
-  breaking moves on those surfaces.
+- **Metamodel freeze:** the metamodel-1.0 vocabulary program (`0.15.0`/`7.7.0`;
+  ADR-0036/0037/0038) was the intended finalization, and ADR-0037 sets the framework
+  for future additions; `registry-conformance` is the enforcer. Treat the vocabulary
+  program + the `0.14.0` jsonb/verify-strict contracts as the last breaking moves on
+  these surfaces (only A2/FR-024 could add more).
 - **Cross-port conformance complete:** all corpora green; the cross-port
   api-contract jsonb gate fully wired (TS/Python/Java/Kotlin/C#).
 - **Migration + policy docs:** a `0.x → 1.0` migration guide and a published
