@@ -7,6 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-07-01
+
+_Coordinated minor with breaking changes — Maven Central `7.7.0` · PyPI `0.15.0` · NuGet `0.15.0`
+· npm `0.15.0` (follows via RC). The metamodel-1.0 vocabulary program plus the ADR-0039
+own-accessor correctness fix, cross-port conformance-gated across all five ports._
+
+### Added
+- **1.0 metamodel vocabulary program (ADR-0036/0037/0038).** `field.uri` (native URI, text
+  column) and `field.inet` (native IP, Postgres `inet` column) field subtypes; a `@stringFormat`
+  attribute (`{email, hostname}`) for validated-string content; reverse navigation via generated
+  explicit FK finders (`find<Source>By<FkField>(id)` + batched `…In(ids)`) instead of lazy
+  collections; a closed-value-set conformance gate (`allowedValues` in the registry manifest). A
+  general decision framework (ADR-0037) now governs when a new concept becomes a subtype vs `@kind`
+  vs an attribute.
+
+### Changed
+- **BREAKING — `field.timestamp` is instant-by-default** (`timestamptz` / `Instant` /
+  `DateTimeOffset` / aware `datetime`), with a boolean **`@localTime`** naive opt-out. Retires
+  `@dbColumnType: timestamp_with_tz` (now derived from the subtype).
+- **BREAKING — `@dbColumnType` slim-and-derive.** Array-ness is derived (`isArray`) rather than
+  spelled as `uuid_array` / `text_array`, and the `text` default is derived; `@kind: text` and the
+  `*_array` column types are dropped. `@dbColumnType` narrows to the genuinely-physical escapes
+  (`uuid`, `jsonb`).
+
+### Fixed
+- **ADR-0039 — `own*()` accessors broke `extends` inheritance (all five ports).** `extends` is a
+  super-reference, not a flatten: reading a field/node's effective property (`isArray`, `subType`,
+  `@maxLength`, `@precision`, `@default`, `@objectRef`, `@storage`, …) or iterating its members via
+  an own-only accessor silently dropped `extends`-inherited values, corrupting codegen and runtime.
+  Resolving/effective accessors are now the default everywhere; `own*()` is reserved for its one
+  legitimate use (codegen emitting a generated subclass's own members) plus the metamodel-internal
+  serializer/overlay/`origin.*`/`@dbColumnType` cases. A concrete field or entity that `extends` an
+  abstract parent now correctly inherits its properties and members, guarded permanently by a shared
+  `extends-abstract-field-inheritance` conformance fixture. Notable bugs it surfaced: an entity
+  inheriting its `source.rdb` via `extends` generated no table/controller; an M:N junction
+  inheriting its `identity.reference` children was falsely rejected; a Python runtime path dropped
+  an inherited M:N relationship.
+
 ## [0.14.2] — 2026-06-29
 
 _npm `0.14.2` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
