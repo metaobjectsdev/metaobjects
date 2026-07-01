@@ -77,12 +77,9 @@ class KotlinApiModelBuilder {
         }
 
         // Templates: one unit per template.output under the model root.
-        // ADR-0039: root-level declaration scan — root is never extended (matches the TS
-        // reference's root.ownChildren()), so own children is correct.
-        for (child in loader.root.children) {
-            if (child is OutputTemplate) {
-                units.add(buildTemplateUnit(child, loader))
-            }
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        for (child in loader.root.getChildren(OutputTemplate::class.java, true)) {
+            units.add(buildTemplateUnit(child, loader))
         }
 
         return KotlinApiModel(project, units)
@@ -437,10 +434,10 @@ class KotlinApiModelBuilder {
     }
 
     private fun isEmailKind(tmpl: MetaTemplate): Boolean {
-        // ADR-0039: template.* attrs read OWN-ONLY by cross-port contract (a template's
-        // declared refs are authored-here, not inherited into an effective form).
-        if (!tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) return false
-        val v = runCatching { tmpl.getMetaAttr(TemplateConstants.ATTR_KIND, false).valueAsString }.getOrNull()
+        // ADR-0039: template.* attrs RESOLVE through extends (includeParentData=true,
+        // the default) — matching the TS reference + C#.
+        if (!tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND)) return false
+        val v = runCatching { tmpl.getMetaAttr(TemplateConstants.ATTR_KIND).valueAsString }.getOrNull()
         return TemplateConstants.KIND_EMAIL.equals(v, ignoreCase = true)
     }
 }

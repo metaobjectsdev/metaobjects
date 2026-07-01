@@ -74,10 +74,8 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         val outRoot = Paths.get(outDir.absolutePath)
 
         // Stable name order — matches TS/C#/Python/Java deterministic emission.
-        // ADR-0039: root-level declaration scan — root is never extended (matches the TS
-        // reference's root.ownChildren()), so own children is correct.
-        val outputs = loader.root.children
-            .filterIsInstance<OutputTemplate>()
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
             .sortedBy { it.name }
 
         for (tmpl in outputs) {

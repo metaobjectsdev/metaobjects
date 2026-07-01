@@ -63,10 +63,8 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // typed as its generated enum class (reusing the entity enum scheme); two fields sharing an
         // abstract enum super collapse onto ONE emitted file.
         val emittedEnumFqns = mutableSetOf<String>()
-        // ADR-0039: root-level declaration scan — root is never extended (matches the TS
-        // reference's root.ownChildren()), so own children is correct.
-        for (md in loader.root.children) {
-            if (md !is MetaTemplate) continue
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        for (md in loader.root.getChildren(MetaTemplate::class.java, true)) {
             emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns)
         }
     }

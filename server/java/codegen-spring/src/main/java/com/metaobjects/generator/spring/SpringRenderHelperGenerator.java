@@ -107,10 +107,10 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         FilesystemProvider provider = new FilesystemProvider(Paths.get(templateRoot));
 
         // Stable name order — matches the other ports' deterministic emission.
+        // ADR-0039: root-scan discipline — resolving children accessor.
         List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaData child : loader.getRoot().getChildren()) {
-            if (child instanceof MetaTemplate t
-                    && TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
+        for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
+            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
                 outputs.add(t);
             }
         }
@@ -369,29 +369,28 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     // Local helpers
     // -------------------------------------------------------------------------
 
-    // ADR-0039: template.* attrs are read OWN-ONLY by cross-port contract (TS
-    // render-helper uses tmpl.ownAttr for @kind/@payloadRef/@subjectRef/@textRef/…).
-    // A template describes an authored render unit; its refs are declared-here, not
-    // inherited into an effective form. KEPT own to match the reference.
+    // ADR-0039: template.* attrs RESOLVE through extends (includeParentData=true, the
+    // default) — a template is a registered type that can be an `extends` target, so its
+    // refs (@kind/@payloadRef/@subjectRef/@textRef/…) inherit. Matches the TS reference + C#.
 
-    /** Resolve {@code @kind} (OWN attr — templates read own, ADR-0039), defaulting to {@code document}. */
+    /** Resolve {@code @kind} (RESOLVING attr — ADR-0039), defaulting to {@code document}. */
     private static String kindOf(MetaTemplate template) {
         if (template instanceof OutputTemplate
-                && template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
-            String v = template.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString();
+                && template.hasMetaAttr(TemplateConstants.ATTR_KIND)) {
+            String v = template.getMetaAttr(TemplateConstants.ATTR_KIND).getValueAsString();
             if (v != null && !v.isEmpty()) return v;
         }
         return TemplateConstants.KIND_DEFAULT;
     }
 
-    /** OWN-only template attr presence (templates read own — ADR-0039). */
+    /** Resolving template attr presence (ADR-0039). */
     private static boolean attrPresent(MetaTemplate template, String attr) {
-        return template.hasMetaAttr(attr, false);
+        return template.hasMetaAttr(attr);
     }
 
-    /** OWN-only template attr value (templates read own — ADR-0039). */
+    /** Resolving template attr value (ADR-0039). */
     private static String attr(MetaTemplate template, String attr) {
-        return template.getMetaAttr(attr, false).getValueAsString();
+        return template.getMetaAttr(attr).getValueAsString();
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */

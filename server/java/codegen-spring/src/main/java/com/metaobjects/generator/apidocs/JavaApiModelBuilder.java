@@ -1,6 +1,5 @@
 package com.metaobjects.generator.apidocs;
 
-import com.metaobjects.MetaData;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -44,8 +43,8 @@ import java.util.List;
  *       read DTO only (no VALIDATION / DATA_ACCESS / REST / FILTER — those
  *       generators gate on a writable table entity and skip a projection). A value
  *       object ({@code object.value}) yields MODEL only.</li>
- *   <li><b>Templates</b> (iterated via {@code loader.getRoot().getChildren()}
- *       filtered to {@link MetaTemplate}): each template yields PAYLOAD / RENDER /
+ *   <li><b>Templates</b> (iterated via the resolving
+ *       {@code loader.getRoot().getChildren(MetaTemplate.class, true)}): each template yields PAYLOAD / RENDER /
  *       PROMPT / OUTPUT_PARSER symbols gated by the matching {@code appliesTo}.</li>
  * </ul>
  *
@@ -90,10 +89,9 @@ public final class JavaApiModelBuilder {
         }
 
         // Templates: one unit per template.* node under the model root.
-        for (MetaData child : loader.getRoot().getChildren()) {
-            if (child instanceof MetaTemplate tmpl) {
-                units.add(buildTemplateUnit(tmpl, loader));
-            }
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        for (MetaTemplate tmpl : loader.getRoot().getChildren(MetaTemplate.class, true)) {
+            units.add(buildTemplateUnit(tmpl, loader));
         }
 
         return new JavaApiModel(project, units);
@@ -289,13 +287,13 @@ public final class JavaApiModelBuilder {
 
     /**
      * True when the template's {@code @kind} is {@code email}. ADR-0039: template.*
-     * attrs read OWN-ONLY by cross-port contract (a template's declared refs are
-     * authored-here, not inherited); default {@code document}.
+     * attrs RESOLVE through extends (includeParentData=true, the default) — matching
+     * the TS reference + C#; default {@code document}.
      */
     private static boolean isEmailKind(MetaTemplate tmpl) {
         if (tmpl instanceof OutputTemplate
-                && tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
-            String v = tmpl.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString();
+                && tmpl.hasMetaAttr(TemplateConstants.ATTR_KIND)) {
+            String v = tmpl.getMetaAttr(TemplateConstants.ATTR_KIND).getValueAsString();
             return TemplateConstants.KIND_EMAIL.equals(v);
         }
         return false;

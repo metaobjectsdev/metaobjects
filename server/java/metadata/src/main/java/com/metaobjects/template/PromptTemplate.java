@@ -35,14 +35,14 @@ public final class PromptTemplate extends MetaTemplate {
         });
     }
 
-    // ADR-0039: template.* attrs (@requiredSlots/@maxTokens/@model/@responseRef) read
-    // OWN-ONLY by cross-port contract — a template's declared refs are authored-here,
-    // not inherited into an effective form. Every `, false` below is that sanctioned own.
+    // ADR-0039: template.* attrs (@requiredSlots/@maxTokens/@model/@responseRef) resolve
+    // through extends (includeParentData=true, the default) — a template is a registered
+    // type that can be an `extends` target, matching the TS reference + C#.
 
     /** Returns the {@code @requiredSlots} list, or {@code null} if absent. */
     public List<String> getRequiredSlots() {
-        if (!hasMetaAttr(ATTR_REQUIRED_SLOTS, false)) return null;
-        Object v = getMetaAttr(ATTR_REQUIRED_SLOTS, false).getValue();
+        if (!hasMetaAttr(ATTR_REQUIRED_SLOTS)) return null;
+        Object v = getMetaAttr(ATTR_REQUIRED_SLOTS).getValue();
         if (v instanceof List<?> list) {
             List<String> out = new ArrayList<>(list.size());
             for (Object o : list) out.add(String.valueOf(o));
@@ -53,23 +53,23 @@ public final class PromptTemplate extends MetaTemplate {
 
     /** Returns the value of {@code @maxTokens}, or {@code null} if absent. */
     public Integer getMaxTokens() {
-        if (!hasMetaAttr(ATTR_MAX_TOKENS, false)) return null;
+        if (!hasMetaAttr(ATTR_MAX_TOKENS)) return null;
         // IntAttribute is parameterized on Integer; load-time conversion via
         // DataConverter guarantees getValue() is Integer or null here.
-        return (Integer) getMetaAttr(ATTR_MAX_TOKENS, false).getValue();
+        return (Integer) getMetaAttr(ATTR_MAX_TOKENS).getValue();
     }
 
     /** Returns the raw value of {@code @model}, or {@code null} if absent. */
     public String getModel() {
-        return hasMetaAttr(ATTR_MODEL, false)
-            ? getMetaAttr(ATTR_MODEL, false).getValueAsString()
+        return hasMetaAttr(ATTR_MODEL)
+            ? getMetaAttr(ATTR_MODEL).getValueAsString()
             : null;
     }
 
     /** Returns the raw value of {@code @responseRef}, or {@code null} if absent. */
     public String getResponseRef() {
-        return hasMetaAttr(ATTR_RESPONSE_REF, false)
-            ? getMetaAttr(ATTR_RESPONSE_REF, false).getValueAsString()
+        return hasMetaAttr(ATTR_RESPONSE_REF)
+            ? getMetaAttr(ATTR_RESPONSE_REF).getValueAsString()
             : null;
     }
 }
