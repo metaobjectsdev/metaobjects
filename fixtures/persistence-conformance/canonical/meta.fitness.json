@@ -13,7 +13,8 @@
           { "field.timestamp": { "name": "createdAt", "@required": true, "@localTime": true } },
           { "relationship.composition": { "name": "weeks", "@objectRef": "Week", "@cardinality": "many" } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
-          { "identity.secondary": { "name": "byTitle", "@fields": "title", "@unique": true } }
+          { "identity.secondary": { "name": "byTitle", "@fields": "title" } },
+          { "index.lookup": { "name": "idx_programs_title_status", "@fields": ["title", "status"], "@orders": ["asc", "asc"] } }
         ]
       }},
       { "object.entity": {
