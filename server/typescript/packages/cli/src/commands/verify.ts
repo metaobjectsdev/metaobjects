@@ -156,7 +156,8 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
 
   // -- template (prompt / output) drift --------------------------------------
   function runTemplateVerify(): number {
-    const templates = root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE);
+    // ADR-0039: effective children — resolve rather than rely on root being unextended.
+    const templates = root.children().filter((c) => c.type === TYPE_TEMPLATE);
     if (templates.length === 0) {
       log.info("meta verify — no template.* nodes found; nothing to check.");
       return 0;
@@ -167,8 +168,9 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     let checked = 0;
 
     for (const tmpl of templates) {
-      const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
-      const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+      // ADR-0039: effective attrs — @textRef/@payloadRef may be inherited via an abstract template.
+      const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
+      const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
       // Absent/typeless required attrs are a loader-schema concern, not verify's.
       if (typeof textRef !== "string" || typeof payloadRef !== "string") continue;
 
@@ -196,8 +198,9 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
           continue;
         }
 
-        const requiredSlots = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
-        const requiredTags = attrAsStringArray(tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
+        // ADR-0039: effective attrs — @requiredSlots/@requiredTags may be inherited via an abstract template.
+        const requiredSlots = attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+        const requiredTags = attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_TAGS));
 
         const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
         checked++;

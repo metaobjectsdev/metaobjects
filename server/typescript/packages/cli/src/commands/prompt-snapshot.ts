@@ -60,7 +60,8 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
-  const templates = root.ownChildren().filter((c) => c.type === TYPE_TEMPLATE);
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  const templates = root.children().filter((c) => c.type === TYPE_TEMPLATE);
   if (templates.length === 0) {
     log.info("meta prompt-snapshot — no template.* nodes found; nothing to snapshot.");
     return 0;
@@ -73,7 +74,8 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   let skipped = 0;
 
   for (const tmpl of templates) {
-    const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+    // ADR-0039: effective attr — @textRef may be inherited via an abstract template.
+    const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
     // Absent/typeless required attrs are a loader-schema concern, not ours.
     if (typeof textRef !== "string") continue;
 
@@ -97,7 +99,8 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     // against the render engine's own escaper registry so the RenderFormat cast is
     // a checked narrowing (never a TypeError on an unknown format), and omit the
     // key entirely when absent (exactOptionalPropertyTypes forbids `format: undefined`).
-    const fmtAttr = tmpl.ownAttr(TEMPLATE_ATTR_FORMAT);
+    // ADR-0039: effective attr — @format may be inherited via an abstract template.
+    const fmtAttr = tmpl.attr(TEMPLATE_ATTR_FORMAT);
     const format =
       typeof fmtAttr === "string" && fmtAttr in ESCAPERS ? (fmtAttr as RenderFormat) : undefined;
 

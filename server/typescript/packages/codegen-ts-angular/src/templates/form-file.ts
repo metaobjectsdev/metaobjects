@@ -26,7 +26,8 @@ function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
   for (const child of entity.identities()) {
     if (child.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
-    const fields = child.ownAttr(IDENTITY_ATTR_FIELDS);
+    // ADR-0039: resolving — an identity may inherit @fields via extends.
+    const fields = child.attr(IDENTITY_ATTR_FIELDS);
     const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
     for (const f of fieldsList) if (typeof f === "string") set.add(f);
   }
@@ -34,7 +35,8 @@ function primaryFieldNames(entity: MetaObject): Set<string> {
 }
 
 function isAutoManaged(field: MetaField): boolean {
-  const def = field.ownAttr(FIELD_ATTR_DEFAULT);
+  // ADR-0039: resolving — a field may inherit @default via extends.
+  const def = field.attr(FIELD_ATTR_DEFAULT);
   if (typeof def === "string") {
     const upper = def.toUpperCase();
     if (upper === "CURRENT_TIMESTAMP" || upper === "NOW" || upper === "NOW()") return true;
@@ -46,7 +48,8 @@ function visibleFields(entity: MetaObject): MetaField[] {
   const pkNames = primaryFieldNames(entity);
   const out: MetaField[] = [];
   for (const child of entity.fields()) {
-    if (child.ownAttr("formExclude") === true) continue;
+    // ADR-0039: resolving — a field may inherit @formExclude via extends.
+    if (child.attr("formExclude") === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     out.push(child);
@@ -65,7 +68,8 @@ function controlDefaultFor(field: MetaField): string {
 function controlValidatorsFor(field: MetaField): string[] {
   const out: string[] = [];
   if (field.isRequired) out.push("Validators.required");
-  const max = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  // ADR-0039: resolving — a field may inherit @maxLength via extends.
+  const max = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof max === "number") out.push(`Validators.maxLength(${max})`);
   return out;
 }

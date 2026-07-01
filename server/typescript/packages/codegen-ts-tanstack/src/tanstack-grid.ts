@@ -30,10 +30,11 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     // grid is the single source of truth.
     filter: (e: MetaObject) =>
       emitsInstanceArtifacts(e)
-      && e.ownAttr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
+      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+      && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
       && userFilter(e)
       && hasDataGridLayout(e)
-      && (!isTphSubtype(e) || e.ownAttr(CODEGEN_ATTR_EMIT_GRID) === true),
+      && (!isTphSubtype(e) || e.attr(CODEGEN_ATTR_EMIT_GRID) === true),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("tanstack-grid: renderContext is required (provided by runGen)");

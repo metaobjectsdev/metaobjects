@@ -56,6 +56,9 @@ def validate_source_physical_names(
     cross-port string warnings channel — populated with the same code string
     so the legacy ``warnings: list[str]`` consumers see something too.
     """
+    # ADR-0039 sanctioned own: validates the AUTHORED source declaration — root
+    # scan (never extended) + each object's OWN source children + own physical-name
+    # aliases (mirrors the TS validate-source-physical-names ``ownChildren``/``ownAttr``).
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
             continue

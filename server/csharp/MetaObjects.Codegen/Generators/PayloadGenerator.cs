@@ -37,7 +37,8 @@ public class PayloadGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var outputs = ctx.Root.OwnChildren()
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        var outputs = ctx.Root.Children()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
@@ -47,11 +48,12 @@ public class PayloadGenerator : IGenerator
         {
             if (!AppliesTo(tmpl, ctx.Root))
             {
-                if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
+                // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+                if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
                     ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
-            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+            var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
             files.Add(EmitPayload(payloadRef, ctx));
         }
         return files;
@@ -67,7 +69,8 @@ public class PayloadGenerator : IGenerator
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {
         if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
-        if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
+        // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+        if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
         return RenderHelperGenerator.ResolveValueObject(root, payloadRef) is not null;
     }
 

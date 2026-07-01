@@ -60,12 +60,12 @@ def render_output_prompt(
     Returns ``None`` when the format is unsupported (not json/xml) or the
     ``@payloadRef`` can't be resolved to an ``object.value`` (defensive — the loader
     validation pass / the parser generator share this contract)."""
-    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)
+    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
     if fmt_str.lower() not in _PROMPT_FORMATS:
         return None
 
-    payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     payload = resolve_payload_vo(root, payload_ref)
@@ -153,6 +153,7 @@ class OutputPromptGenerator:
         files: list[EmittedFile] = []
         outputs = sorted(
             (
+                # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
                 c
                 for c in root.own_children()
                 if c.type == TYPE_TEMPLATE and c.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT

@@ -107,7 +107,8 @@ import {
 
 export function validateDataGridSortFields(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     // Use children() so inherited fields (via extends:/super:) are
     // visible when validating @defaultSortField references.
     const effective = obj.children();
@@ -115,7 +116,8 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
       effective.filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
     for (const layout of effective.filter((c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID)) {
-      const sortField = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+      // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+      const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
       if (typeof sortField === "string" && !fieldNames.has(sortField)) {
         errors.push(
           new ParseError(
@@ -144,6 +146,8 @@ export function validateDataGridSortFields(root: MetaData): ParseError[] {
 /** Recursively collect all template.* nodes anywhere in the metadata tree. */
 function allTemplates(node: MetaData): MetaData[] {
   const out: MetaData[] = [];
+  // ADR-0039: own — structural walk over the PHYSICAL declaration tree collecting
+  // every declared template.* node (each visited once at its declaration site).
   for (const c of node.ownChildren()) {
     if (c.type === TYPE_TEMPLATE) out.push(c);
     out.push(...allTemplates(c));
@@ -161,9 +165,11 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     // body). The closed-enum membership of @kind is handled by validateAttrSchema
     // (allowedValues) — here we only enforce the conditional ref presence.
     if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
-      const kind = tmpl.ownAttr(TEMPLATE_ATTR_KIND);
+      // ADR-0039: resolving — a template may inherit its refs/attrs via extends.
+      const kind = tmpl.attr(TEMPLATE_ATTR_KIND);
       if (kind === TEMPLATE_KIND_EMAIL) {
-        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_SUBJECT_REF) !== "string") {
+        // ADR-0039: resolving — a template may inherit @subjectRef via extends.
+        if (typeof tmpl.attr(TEMPLATE_ATTR_SUBJECT_REF) !== "string") {
           errors.push(
             new ParseError(
               `template "${tmpl.name}" @kind "email" requires @subjectRef`,
@@ -171,7 +177,8 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
             ),
           );
         }
-        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_HTML_BODY_REF) !== "string") {
+        // ADR-0039: resolving — a template may inherit @htmlBodyRef via extends.
+        if (typeof tmpl.attr(TEMPLATE_ATTR_HTML_BODY_REF) !== "string") {
           errors.push(
             new ParseError(
               `template "${tmpl.name}" @kind "email" requires @htmlBodyRef`,
@@ -183,7 +190,8 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
         // @kind absent or "document" → require @textRef. (An out-of-enum @kind is
         // separately reported by validateAttrSchema; we still require @textRef so a
         // document is never bodyless.)
-        if (typeof tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
+          // ADR-0039: resolving — a template may inherit @textRef via extends.
+        if (typeof tmpl.attr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
           errors.push(
             new ParseError(
               `template "${tmpl.name}" @kind "document" requires @textRef`,
@@ -194,7 +202,8 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       }
     } else if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
       // template.prompt always carries a renderable body via @textRef.
-      if (typeof tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
+        // ADR-0039: resolving — a template may inherit @textRef via extends.
+      if (typeof tmpl.attr(TEMPLATE_ATTR_TEXT_REF) !== "string") {
         errors.push(
           new ParseError(
             `template "${tmpl.name}" requires @textRef`,
@@ -204,9 +213,11 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       }
     }
 
-    const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+    // ADR-0039: resolving — a template may inherit @payloadRef via extends.
+    const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
-    const payload = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
+    // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+    const payload = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
     if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
       // FR5d — @payloadRef is a reference; emit format=resolved with
       // referrer=template FQN, target=the unresolved payloadRef string.
@@ -221,9 +232,11 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       );
       continue;
     }
-    const responseRef = tmpl.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
+    // ADR-0039: resolving — a template may inherit @responseRef via extends.
+    const responseRef = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
     if (typeof responseRef === "string") {
-      const resVo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, responseRef));
+      // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+      const resVo = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, responseRef));
       if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
         errors.push(
           new ParseError(
@@ -236,7 +249,8 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     const fieldNames = new Set(
       payload.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
-    const slots = tmpl.ownAttr(TEMPLATE_ATTR_REQUIRED_SLOTS);
+    // ADR-0039: resolving — a template may inherit @requiredSlots via extends.
+    const slots = tmpl.attr(TEMPLATE_ATTR_REQUIRED_SLOTS);
     const slotList = Array.isArray(slots) ? slots : typeof slots === "string" ? [slots] : [];
     for (const slot of slotList) {
       if (typeof slot === "string" && !fieldNames.has(slot)) {
@@ -265,14 +279,16 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
 
 export function validateFilterableHasIndex(root: MetaData): string[] {
   const warnings: string[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     // Use children() so inherited fields and identities (via extends:/super:)
     // are included when checking filterable-without-index.
     const effective = obj.children();
     // Build the set of field names that are part of any identity on this object.
     const indexedFieldNames = new Set<string>();
     for (const identity of effective.filter((c) => c.type === TYPE_IDENTITY)) {
-      const fields = identity.ownAttr(IDENTITY_ATTR_FIELDS);
+      // ADR-0039: resolving — an identity may inherit @fields via extends.
+      const fields = identity.attr(IDENTITY_ATTR_FIELDS);
       if (typeof fields === "string") {
         for (const name of fields.split(",")) indexedFieldNames.add(name.trim());
       } else if (Array.isArray(fields)) {
@@ -281,9 +297,11 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
     }
 
     for (const field of effective.filter((c) => c.type === TYPE_FIELD)) {
-      const filterable = field.ownAttr(FIELD_ATTR_FILTERABLE);
+      // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
+      const filterable = field.attr(FIELD_ATTR_FILTERABLE);
       if (filterable !== true) continue;
-      if (field.ownAttr(FIELD_ATTR_DB_INDEXED) === true) continue;
+      // ADR-0039: resolving — a concrete field may inherit @db.indexed via extends.
+      if (field.attr(FIELD_ATTR_DB_INDEXED) === true) continue;
       if (indexedFieldNames.has(field.name)) continue;
       warnings.push(
         `[filterable-without-index] field "${obj.name}.${field.name}" has @filterable: true but is not ` +
@@ -306,10 +324,12 @@ export function validateFilterableHasIndex(root: MetaData): string[] {
 
 export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     // children() — inherited @filterable fields (via extends:/super:) are visible.
     for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
-      if (field.ownAttr(FIELD_ATTR_FILTERABLE) !== true) continue;
+      // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
+      if (field.attr(FIELD_ATTR_FILTERABLE) !== true) continue;
       if (opsForSubType(field.subType).length > 0) continue;
       errors.push(
         new ParseError(
@@ -341,7 +361,8 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
 function _findObject(root: MetaData, name: string): MetaData | undefined {
   // FR-032 — origin heads are FQN-qualified after the desugar/sweep; match on
   // the effective FQN resolution key (with bare back-compat).
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 function _findField(obj: MetaData, name: string): MetaData | undefined {
@@ -497,7 +518,8 @@ function _validateViaPath(
       );
       return undefined;
     }
-    const refTarget = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+    // ADR-0039: resolving — a relationship may inherit @objectRef via extends.
+    const refTarget = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
     if (typeof refTarget !== "string" || refTarget === "") {
       errors.push(
         new ParseError(
@@ -587,6 +609,8 @@ function _deriveBaseEntity(
 
   // 1) The extended identity anchors the base entity (declared, not inferred).
   //    The anchor is the entity NAMED in the ref's owner part — see _refNamedOwner.
+  // ADR-0039: own — inspects THIS projection's OWN declared identities to read
+  // their extends refs (an inherited identity carries no local superRef to anchor).
   for (const identity of obj.ownChildren().filter((c) => c.type === TYPE_IDENTITY)) {
     const extended = identity.superResolved;
     if (extended !== undefined && extended.type === TYPE_IDENTITY) {
@@ -600,6 +624,8 @@ function _deriveBaseEntity(
   // 2) Fallback: the single distinct entity targeted by plain field-extends —
   //    again preferring the ref-named owner over the physical declaring ancestor.
   const targets = new Set<MetaData>();
+  // ADR-0039: own — inspects THIS projection's OWN declared fields to read their
+  // extends refs (an inherited field carries no local superRef to anchor).
   for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
     const sup = f.superResolved;
     if (sup === undefined) continue;
@@ -679,7 +705,8 @@ function _inferViaSingleHop(
     .children()
     .filter((c) => c.type === TYPE_RELATIONSHIP)
     .filter((rel) => {
-      const ref = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+      // ADR-0039: resolving — a relationship may inherit @objectRef via extends.
+      const ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
       return typeof ref === "string" && stripPackage(ref) === targetEntity.name;
     });
   // FR5d — referrer is `<host-FQN>::<fieldName>`, target is the from/of ref
@@ -815,15 +842,19 @@ function _checkExtendsOriginAgreement(
 
 export function validateOriginPaths(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     // FR-024 B5: object.value hosts are EXEMPT from @via inference and
     // cardinality checks — a value's origin.passthrough is FR-015 parameter
     // lineage (values are constructed, never assembled; spec §7), not an
     // assembly path. Their @from refs are still resolution-validated.
     const isValueHost = obj.subType === OBJECT_SUBTYPE_VALUE;
+    // ADR-0039: own — origin validation operates on the OWN-declared field+origin
+    // layer (the established cross-port contract; origin.* never inherits, ADR-0029).
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN)) {
         if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
+          // ADR-0039: own — origin.* never inherits (ADR-0029).
           const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
           if (typeof from !== "string" || from === "") {
             // Missing-attr (not a reference resolution failure) — keep the
@@ -842,6 +873,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           if (fromTarget !== undefined) {
             _checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.source, errors);
           }
+          // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
@@ -864,6 +896,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             }
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
+          // ADR-0039: own — origin.* never inherits (ADR-0029).
           const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
           if (typeof of_ !== "string" || of_ === "") {
             errors.push(
@@ -878,6 +911,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // an aggregate computes something new (count/sum/…); spec §4 defines
           // agreement for passthrough only.
           const ofTarget = _validateFromPath(of_, root, obj, field.name, origin.source, errors, "origin.aggregate.@of");
+          // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
@@ -953,14 +987,17 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
 
 export function validateDerivedFieldProvidability(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root
-    .ownChildren()
+    .children()
     .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_ENTITY)) {
     const hasReadCapableSource = obj
       .children()
       .filter((c) => c.type === TYPE_SOURCE)
       .some((s) => (s as MetaSource).isReadOnly());
     if (hasReadCapableSource) continue;
+    // ADR-0039: own — origin-bearing fields are validated on the OWN-declared
+    // layer (mirrors validateOriginPaths; origin.* never inherits, ADR-0029).
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       if (!field.ownChildren().some((c) => c.type === TYPE_ORIGIN)) continue;
       errors.push(
@@ -994,7 +1031,10 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 
 export function validateFieldObjectStorage(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — the concrete field is an OWN child of this object; its
+    // inheritable attrs (@objectRef/@storage) are read resolving below.
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       // ADR-0039: resolving — a concrete field.object may inherit @objectRef from
       // an abstract base via extends; reading own-only would wrongly reject it.
@@ -1056,7 +1096,10 @@ const _MAP_SCALAR_VALUE_SUBTYPES = new Set<string>([
 
 export function validateFieldMap(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — the concrete field is an OWN child; its inheritable attrs
+    // (@valueType/@objectRef) are read resolving below.
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       if (field.subType !== FIELD_SUBTYPE_MAP) continue;
 
@@ -1164,6 +1207,8 @@ export function validateFieldDefaults(root: MetaData): ParseError[] {
 function _walkFieldDefaults(node: MetaData, errors: ParseError[]): void {
   if (node.type === TYPE_FIELD && node.subType !== FIELD_SUBTYPE_ENUM) {
     // Enum @default membership is validated by attr-schema-validate Check 5.
+    // ADR-0039: own — validates the @default declared on THIS node (matches the
+    // @values / FR-011 own-attr passes; an inherited default was gated on its parent).
     const raw = node.ownAttr(FIELD_ATTR_DEFAULT);
     if (raw !== undefined && raw !== null && !Array.isArray(raw) && typeof raw !== "object") {
       const def = _stringifyDefault(raw as string | number | boolean);
@@ -1183,6 +1228,7 @@ function _walkFieldDefaults(node: MetaData, errors: ParseError[]): void {
       }
     }
   }
+  // ADR-0039: own — structural walk visiting every physical node once at its site.
   for (const child of node.ownChildren()) _walkFieldDefaults(child, errors);
 }
 
@@ -1197,18 +1243,21 @@ function _walkFieldDefaults(node: MetaData, errors: ParseError[]): void {
 
 export function validateDataGridFilterValues(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     const effective = obj.children();
     const allow = new Map<string, readonly string[]>();
     for (const f of effective.filter((c) => c.type === TYPE_FIELD)) {
-      if (f.ownAttr(FIELD_ATTR_FILTERABLE) === true) {
+      // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
+      if (f.attr(FIELD_ATTR_FILTERABLE) === true) {
         allow.set(f.name, opsForSubType(f.subType));
       }
     }
     for (const layout of effective.filter(
       (c) => c.type === TYPE_LAYOUT && c.subType === LAYOUT_SUBTYPE_DATA_GRID,
     )) {
-      const filter = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
+      // ADR-0039: resolving — a layout may inherit @filter via extends.
+      const filter = layout.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
       // Type errors (e.g. legacy string form) are reported by validateAttrSchema.
       if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
       checkFilterClauses(filter as Record<string, unknown>, allow, obj.name, layout.name, layout.source, errors);
@@ -1261,13 +1310,18 @@ function _countJunctionReferences(junction: MetaData): number {
 
 export function validateRelationships(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — a relationship is validated on the entity that DECLARES it
+    // (the M:N slim-vocabulary rules apply to own-declared relationships; its
+    // inheritable attrs are read resolving below).
     for (const rel of obj.ownChildren().filter((c) => c.type === TYPE_RELATIONSHIP)) {
-      const through = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH);
-      const sourceRefField = rel.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
-      const symmetric = rel.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true;
-      const cardinality = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
-      const objectRef = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+      // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends.
+      const through = rel.attr(RELATIONSHIP_ATTR_THROUGH);
+      const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      const symmetric = rel.attr(RELATIONSHIP_ATTR_SYMMETRIC) === true;
+      const cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
+      const objectRef = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
 
       const hasThrough = typeof through === "string" && through !== "";
       const hasSourceRefField = typeof sourceRefField === "string" && sourceRefField !== "";

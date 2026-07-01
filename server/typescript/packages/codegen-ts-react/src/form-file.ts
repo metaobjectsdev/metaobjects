@@ -25,10 +25,13 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
     // NO form (you can't create an abstract base), but each concrete subtype
     // does — even though it has no own writable source (it inherits the base's).
     filter: (e: MetaObject) => {
-      if (e.ownAttr(CODEGEN_ATTR_EMIT_FORM) === false) return false;
+      // ADR-0039: resolving — a concrete entity may inherit @emitForm via extends.
+      if (e.attr(CODEGEN_ATTR_EMIT_FORM) === false) return false;
       if (!userFilter(e)) return false;
       if (isTphSubtype(e)) return true; // per-subtype form
       // A discriminator base is never form-rendered directly.
+      // ADR-0039: own — @discriminator identifies a TPH base level (read own so a
+      // subtype isn't mistaken for a base); e is already known not to be a subtype.
       if (typeof e.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
       return emitsWriteArtifacts(e);
     },

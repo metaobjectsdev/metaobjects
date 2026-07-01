@@ -46,10 +46,11 @@ const SCALAR_TS: Record<string, string> = {
   timestamp: "string",
 };
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
   // FR-032 — @payloadRef/@responseRef are FQN after the desugar/sweep; match on
   // the effective FQN resolution key (with bare back-compat).
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 /**
@@ -169,9 +170,10 @@ function pascal(s: string): string {
 
 /** Emit a typed render handle binding a template's @textRef + @format and typing its payload. */
 export function generateRenderHandle(root: MetaData, templateName: string): string {
-  const tmpl = root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === templateName);
+  const tmpl = root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === templateName);
   if (!tmpl) throw new Error(`template "${templateName}" not found`);
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   // FR-032 — @payloadRef is an FQN after the desugar/sweep; the generated TS
   // TYPE NAME is the resolved value-object's bare name (an FQN like
   // `acme::ai::Payload` is not a valid TS identifier). Fall back to the last
@@ -179,8 +181,9 @@ export function generateRenderHandle(root: MetaData, templateName: string): stri
   const payloadType =
     (typeof payloadRef === "string" ? findObject(root, payloadRef)?.name : undefined) ??
     (typeof payloadRef === "string" ? stripPackage(payloadRef) : String(payloadRef));
-  const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
-  const format = (tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
+  const format = (tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
   const fn = `render${pascal(templateName)}`;
   return [
     `import { render, type Provider } from "@metaobjectsdev/render";`,

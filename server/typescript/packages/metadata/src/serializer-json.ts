@@ -133,6 +133,8 @@ function serializeNodeInner(
 
   // In effective mode use children()/attrs() (own + inherited via super chain);
   // in own mode use ownChildren()/ownAttrs() (declared on this node only).
+  // ADR-0039: own-mode canonical serializer — round-trips the AUTHORED form so
+  // re-loading reconstructs the same extends tree (the effective branch resolves).
   const childList = effective ? model.children() : model.ownChildren();
   const attrMap = effective ? model.attrs() : model.ownAttrs();
 

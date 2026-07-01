@@ -18,6 +18,8 @@ public final class SymbolTable {
 
     public static SymbolTable build(MetaRoot root) {
         SymbolTable t = new SymbolTable();
+        // ADR-0039: root-level object scan — root is never extended, so own children
+        // is the complete top-level object set.
         for (MetaData child : root.getChildren(MetaData.class, false)) {
             if (child instanceof MetaObject) {
                 t.objects.add((MetaObject) child);

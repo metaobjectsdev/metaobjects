@@ -672,6 +672,8 @@ function parseNodeInto(
     // Snapshot of own attrs (name → value) — used to detect ERR_MERGE_CONFLICT
     // when a new contribution sets an attr the target already declared to a
     // different non-empty value.
+    // ADR-0039: own — overlay/merge machinery, operating on the AUTHORED
+    // declaration layer (pre super-resolution).
     preMergeAttrSnapshot = new Map(target.ownAttrs());
   }
 
@@ -897,6 +899,8 @@ function createOrFindMetaData(
 
   // Look up an existing child with (type, name). Skip unnamed nodes — they
   // are always distinct (e.g. inline validators, anonymous attrs).
+  // ADR-0039: own — overlay/merge lookup on the AUTHORED declaration layer
+  // (an overlay targets a same-file/same-node own child, pre super-resolution).
   const existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
 
   if (isOverlayNode) {
@@ -1245,6 +1249,7 @@ function processChildren(
         childNodePath,
       );
 
+      // ADR-0039: own — tree-building dedup on the AUTHORED declaration layer.
       if (childModel !== undefined && !parent.ownChildren().includes(childModel)) {
         parent.addChild(childModel);
       }

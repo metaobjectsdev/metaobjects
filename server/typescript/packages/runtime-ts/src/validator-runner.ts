@@ -60,7 +60,8 @@ export function runValidators(
     // DB will fill them in (e.g. timestamps with `@default: CURRENT_TIMESTAMP`,
     // booleans with `@default: false`).
     const required = isRequired(field);
-    const hasDefault = field.ownAttr(FIELD_ATTR_DEFAULT) !== undefined;
+    // ADR-0039: effective attr — @default may be inherited via extends.
+    const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
     if (required && (value === undefined || value === null)) {
       if (opts.partial && !present) continue;
       if (hasDefault) continue;
@@ -80,6 +81,7 @@ export function runValidators(
     // string type-check + length checks must NOT fire — they would reject the
     // very value the column is declared to hold. Required-ness (above) still
     // applies; everything else is unconstrained for the open bag.
+    // ADR-0039: @dbColumnType is the ONE deliberately own-only attr (physical, never inherited).
     if (field.subType === FIELD_SUBTYPE_STRING && field.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
       continue;
     }
@@ -119,10 +121,12 @@ export function runValidators(
       }
     }
 
-    for (const child of field.ownChildren()) {
+    // ADR-0039: effective children — a validator may be inherited via extends.
+    for (const child of field.children()) {
       if (child.type !== TYPE_VALIDATOR) continue;
       if (child.subType !== VALIDATOR_SUBTYPE_REGEX) continue;
-      const pattern = child.ownAttr(VALIDATOR_ATTR_PATTERN);
+      // ADR-0039: effective attr — @pattern may be inherited.
+      const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern !== "string") continue;
       if (typeof value !== "string") continue;
       let regex: RegExp;
@@ -153,30 +157,33 @@ export function runValidators(
 }
 
 function isRequired(field: MetaData): boolean {
-  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.ownChildren()) {
+  // ADR-0039: effective — @required and a required-validator may be inherited via extends.
+  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
+  for (const child of field.children()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }
   return false;
 }
 
 function resolveMaxLength(field: MetaData): number | undefined {
-  const attr = field.ownAttr(FIELD_ATTR_MAX_LENGTH);
+  // ADR-0039: effective — @maxLength and a length-validator may be inherited via extends.
+  const attr = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof attr === "number") return attr;
-  for (const child of field.ownChildren()) {
+  for (const child of field.children()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
-    const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+    const max = child.attr(VALIDATOR_ATTR_MAX);
     if (typeof max === "number") return max;
   }
   return undefined;
 }
 
 function resolveMinLength(field: MetaData): number | undefined {
-  for (const child of field.ownChildren()) {
+  // ADR-0039: effective — a length-validator may be inherited via extends.
+  for (const child of field.children()) {
     if (child.type !== TYPE_VALIDATOR) continue;
     if (child.subType !== VALIDATOR_SUBTYPE_LENGTH) continue;
-    const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+    const min = child.attr(VALIDATOR_ATTR_MIN);
     if (typeof min === "number") return min;
   }
   return undefined;

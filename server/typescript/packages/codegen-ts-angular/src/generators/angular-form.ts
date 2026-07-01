@@ -27,7 +27,8 @@ export const angularFormFile = function angularFormFile(
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "angular-form",
-    filter: (e: MetaObject) => e.ownAttr("emitAngular") !== false && userFilter(e),
+    // ADR-0039: resolving — a concrete entity may inherit @emitAngular via extends.
+    filter: (e: MetaObject) => e.attr("emitAngular") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-form: renderContext is required (provided by runGen)");

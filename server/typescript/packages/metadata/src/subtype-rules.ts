@@ -78,6 +78,7 @@ function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
     }
   }
 
+  // ADR-0039: own — structural walk visiting every physical node once at its site.
   for (const child of model.ownChildren()) {
     walk(child, errors, warnings);
   }
@@ -151,9 +152,9 @@ function validateProjectionLicensing(
     );
   }
 
-  // OWN sources only: an inherited source is validated on the (projection)
-  // object that declares it; an inherited source from a non-projection super
-  // is unreachable without first tripping the extends rule above.
+  // ADR-0039: own — OWN sources only: an inherited source is validated on the
+  // (projection) object that declares it; an inherited source from a non-projection
+  // super is unreachable without first tripping the extends rule above.
   for (const child of model.ownChildren()) {
     if (child.type !== TYPE_SOURCE) continue;
     const kind =

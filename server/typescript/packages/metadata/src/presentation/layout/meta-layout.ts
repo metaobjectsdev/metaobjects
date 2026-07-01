@@ -18,13 +18,15 @@ import type { SortOrderValue } from "../../core/query/query-constants.js";
 export class MetaLayout extends MetaData {
   /** The number of rows per page for the dataGrid layout. */
   get pageSize(): number | undefined {
-    const v = this.ownAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
+    // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE);
     return typeof v === "number" ? v : undefined;
   }
 
   /** The field name to sort by default in the dataGrid layout. */
   get defaultSortField(): string | undefined {
-    const v = this.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+    // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
     return typeof v === "string" ? v : undefined;
   }
 
@@ -33,7 +35,8 @@ export class MetaLayout extends MetaData {
    * Returns `undefined` when the attr is absent.
    */
   get defaultSortOrder(): SortOrderValue | undefined {
-    const v = this.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
     return typeof v === "string" ? (v as SortOrderValue) : undefined;
   }
 
@@ -42,12 +45,14 @@ export class MetaLayout extends MetaData {
    * Defaults to `false` when the attr is absent.
    */
   get filterable(): boolean {
-    return this.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true;
+    // ADR-0039: resolving — a layout may inherit @filterable via extends.
+    return this.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true;
   }
 
   /** The desugared preset filter object for the dataGrid layout, or undefined. */
   get filter(): Record<string, unknown> | undefined {
-    const v = this.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
+    // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+    const v = this.attr(LAYOUT_DATA_GRID_ATTR_FILTER);
     return typeof v === "object" && v !== null && !Array.isArray(v)
       ? (v as Record<string, unknown>)
       : undefined;
@@ -55,7 +60,8 @@ export class MetaLayout extends MetaData {
 
   /** The ordered list of field names to display as columns in the dataGrid layout. */
   get columns(): string[] {
-    const c = this.ownAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
+    // ADR-0039: resolving — a layout may inherit its grid attrs via extends.
+    const c = this.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
     return Array.isArray(c) ? (c as string[]) : [];
   }
 }

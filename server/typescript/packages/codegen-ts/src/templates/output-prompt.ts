@@ -21,17 +21,20 @@ import {
 } from "@metaobjectsdev/metadata";
 import { specLiteral } from "./output-format-spec-emitter.js";
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
+  return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
 /** True iff the template.output's @format is json or xml (the renderable structured formats). */
 export function templateSupportsPrompt(tmpl: MetaData): boolean {
-  const f = ((tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const f = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
   return f === "json" || f === "xml";
 }
 
@@ -51,7 +54,8 @@ export function renderOutputPrompt(root: MetaData, templateName: string): string
   if (!templateSupportsPrompt(tmpl)) {
     throw new Error(`template "${templateName}" @format is not json/xml — no prompt fragment`);
   }
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }

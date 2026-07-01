@@ -51,6 +51,8 @@ const BASE_ATTR_DATA_TYPE: Readonly<Record<string, DataType>> = {
 export class MetaAttr extends MetaData implements DataTypeAware {
   /** This attribute's coerced value (stored on the instance under RESERVED_KEY_VALUE). */
   get value(): AttrValue | undefined {
+    // ADR-0039: own — an attr node's own scalar payload (the RESERVED_KEY_VALUE
+    // slot it physically carries); an attr IS its value, it is not inherited.
     return this.ownAttr(RESERVED_KEY_VALUE);
   }
 

@@ -42,12 +42,14 @@ export function specLiteral(vo: MetaData, template: MetaData, rootName: string):
 }
 
 function resolveFormat(template: MetaData): string {
-  const f = template.ownAttr(TEMPLATE_ATTR_FORMAT);
+  // ADR-0039: resolving — a template may inherit @format via extends.
+  const f = template.attr(TEMPLATE_ATTR_FORMAT);
   return typeof f === "string" && f.toLowerCase() === "xml" ? "Format.XML" : "Format.JSON";
 }
 
 function resolvePromptStyle(template: MetaData): string {
-  switch (template.ownAttr(TEMPLATE_ATTR_PROMPT_STYLE)) {
+  // ADR-0039: resolving — a template may inherit @promptStyle via extends.
+  switch (template.attr(TEMPLATE_ATTR_PROMPT_STYLE)) {
     case PROMPT_STYLE_INLINE:
       return "PromptStyle.INLINE";
     case PROMPT_STYLE_EXAMPLE_ONLY:
@@ -92,6 +94,8 @@ function promptFieldLiteral(field: MetaData): string {
 }
 
 function optStringAttr(field: MetaData, attrName: string): string {
-  const v = field.ownAttr(attrName);
+  // ADR-0039: resolving — a field may inherit @example/@instruction via extends
+  // (mirrors the Java OutputFormatSpecEmitter own→resolving flip).
+  const v = field.attr(attrName);
   return typeof v === "string" ? jsonStringLiteral(v) : "null";
 }

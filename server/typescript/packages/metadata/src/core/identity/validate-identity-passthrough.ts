@@ -30,6 +30,9 @@ import { IDENTITY_ATTR_FIELDS } from "./identity-constants.js";
  * undefined when the identity declares no own @fields (the pass-through case).
  */
 export function identityOwnFields(identity: MetaData): string[] | undefined {
+  // ADR-0039: own — the OWN @fields is read deliberately (paired with
+  // identityEffectiveFields below) to detect an explicit author-declared @fields
+  // that disagrees with the computed pass-through key.
   return normalizeFields(identity.ownAttr(IDENTITY_ATTR_FIELDS));
 }
 
@@ -92,6 +95,8 @@ export function resolveIdentityPassthrough(
       continue;
     }
     const local = owner
+      // ADR-0039: own — a pass-through field must be LOCALLY declared on the
+      // projection (it carries the extends ref reaching the entity field).
       .ownChildren()
       .find((c) => c.type === TYPE_FIELD && extendsChainReaches(c, entityField));
     if (local === undefined) {
@@ -134,11 +139,14 @@ function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
 export function validateIdentityPassthrough(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root
-    .ownChildren()
+    .children()
     .filter(
       (c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION,
     )) {
+    // ADR-0039: own — validates the projection's OWN-declared identities (the
+    // pass-through subjects; an inherited identity was validated on its declarer).
     for (const identity of obj
       .ownChildren()
       .filter((c) => c.type === TYPE_IDENTITY)) {

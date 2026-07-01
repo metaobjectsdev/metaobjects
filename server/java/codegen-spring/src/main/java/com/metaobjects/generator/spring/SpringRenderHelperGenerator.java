@@ -107,10 +107,10 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         FilesystemProvider provider = new FilesystemProvider(Paths.get(templateRoot));
 
         // Stable name order — matches the other ports' deterministic emission.
+        // ADR-0039: root-scan discipline — resolving children accessor.
         List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaData child : loader.getRoot().getChildren()) {
-            if (child instanceof MetaTemplate t
-                    && TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
+        for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
+            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
                 outputs.add(t);
             }
         }
@@ -326,8 +326,11 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
      * has no {@code @objectRef} or no matching {@code object.value} is found.
      */
     protected static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
-        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
+        // ADR-0039: @objectRef is an inheritable effective field property — a concrete
+        // field.object may inherit it from an abstract parent via extends. RESOLVE
+        // (default includeParentData=true); own-only would miss the inherited ref.
+        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF)) return null;
+        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
         String refShort = SpringNaming.splitFqn(ref)[1];
         for (MetaObject obj : loader.getMetaObjects()) {
@@ -366,22 +369,28 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     // Local helpers
     // -------------------------------------------------------------------------
 
-    /** Resolve {@code @kind} (own attr), defaulting to {@code document}. */
+    // ADR-0039: template.* attrs RESOLVE through extends (includeParentData=true, the
+    // default) — a template is a registered type that can be an `extends` target, so its
+    // refs (@kind/@payloadRef/@subjectRef/@textRef/…) inherit. Matches the TS reference + C#.
+
+    /** Resolve {@code @kind} (RESOLVING attr — ADR-0039), defaulting to {@code document}. */
     private static String kindOf(MetaTemplate template) {
         if (template instanceof OutputTemplate
-                && template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
-            String v = template.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString();
+                && template.hasMetaAttr(TemplateConstants.ATTR_KIND)) {
+            String v = template.getMetaAttr(TemplateConstants.ATTR_KIND).getValueAsString();
             if (v != null && !v.isEmpty()) return v;
         }
         return TemplateConstants.KIND_DEFAULT;
     }
 
+    /** Resolving template attr presence (ADR-0039). */
     private static boolean attrPresent(MetaTemplate template, String attr) {
-        return template.hasMetaAttr(attr, false);
+        return template.hasMetaAttr(attr);
     }
 
+    /** Resolving template attr value (ADR-0039). */
     private static String attr(MetaTemplate template, String attr) {
-        return template.getMetaAttr(attr, false).getValueAsString();
+        return template.getMetaAttr(attr).getValueAsString();
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */

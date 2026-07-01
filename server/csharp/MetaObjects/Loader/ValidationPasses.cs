@@ -19,6 +19,24 @@ namespace MetaObjects.Loader;
 /// Stateless validation passes for the loader pipeline.
 /// Called in order after super resolution, before freeze.
 /// </summary>
+/// <remarks>
+/// ADR-0039 own-accessor discipline for the loader: the passes below read attrs and iterate
+/// children via the OWN accessors (<c>OwnAttr</c> / <c>OwnChildren</c> / <c>OwnAttrs</c>) by
+/// design, and each such use is one of the sanctioned categories:
+///   (a) <b>own-declared-layer validation</b> — a pass validates the shape/typing/pairing of what
+///       a node DECLARES HERE (e.g. attr-schema well-typedness, filterable-has-index, datagrid
+///       sort/filter references), not the extends-resolved effective node. Reading resolved would
+///       validate inherited declarations twice (they are already validated on their declaring node).
+///   (b) <b>declaration-structure tree walks</b> — recursive <c>OwnChildren()</c> descent that must
+///       visit each physically-declared node exactly once (resolving would fold in super children
+///       and double-visit).
+///   (c) <b>origin.* attr reads</b> — origins never inherit (ADR-0029).
+///   (d) <b>physical/source attrs</b> read from the node that declares them.
+/// This matches the cross-port reference 1:1: the TS <c>loader/validation-passes.ts</c> reads the
+/// same sites via <c>ownAttr</c>/<c>ownChildren</c>. (Effective, extends-resolving reads live in the
+/// typed node getters — <c>MetaField</c>/<c>MetaIdentity</c>/<c>MetaRelationship</c> — used by codegen
+/// and runtime; the validation layer intentionally inspects the authored layer.)
+/// </remarks>
 public static class ValidationPasses
 {
     // -------------------------------------------------------------------------

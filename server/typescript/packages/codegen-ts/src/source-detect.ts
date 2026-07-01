@@ -18,7 +18,10 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
  * transit data — no migration, no ORM table to point at.
  */
 export function hasWritableRdbSource(entity: MetaObject): boolean {
-  for (const child of entity.ownChildren()) {
+  // ADR-0039: resolving — an entity may inherit its writable source.rdb via extends
+  // (the JVM port's "entity inheriting its source emitted NOTHING" bug); own-only
+  // would suppress the Drizzle table for such an entity.
+  for (const child of entity.children()) {
     if (child.type !== TYPE_SOURCE) continue;
     if (child.subType !== SOURCE_SUBTYPE_RDB) continue;
     if (!(child instanceof MetaSource)) continue;

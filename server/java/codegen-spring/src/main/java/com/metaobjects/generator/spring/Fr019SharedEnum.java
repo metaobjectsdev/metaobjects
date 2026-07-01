@@ -129,7 +129,11 @@ public final class Fr019SharedEnum {
         return idx < 0 ? "" : fqn.substring(0, idx);
     }
 
-    /** Own-only read of {@code @provided} on an enum declaration. */
+    /**
+     * Read {@code @provided} on an enum declaration. ADR-0039: {@code @provided} is a
+     * declaration-layer marker (like {@code @isAbstract}) — it describes THIS
+     * declaration's provided-ness, never inherited through extends. KEPT own-only.
+     */
     private static boolean isProvided(EnumField decl) {
         if (!decl.hasMetaAttr(EnumField.ATTR_PROVIDED, false)) return false;
         Object raw = decl.getMetaAttr(EnumField.ATTR_PROVIDED, false).getValue();

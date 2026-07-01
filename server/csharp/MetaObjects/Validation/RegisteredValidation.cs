@@ -10,6 +10,13 @@ namespace MetaObjects.Validation;
 /// validates itself just by being registered. Per node: apply the type's declared references
 /// (resolve against the symbol table), invoke its validator, recurse. Mirrors TS/Java.
 /// </summary>
+/// <remarks>
+/// ADR-0039: this validation walk reads reference attrs via <c>OwnAttr</c> and descends via
+/// <c>OwnChildren()</c> by design — it validates each node's OWN-DECLARED reference attrs and
+/// visits each physically-declared node exactly once (a declaration-structure walk; resolving
+/// would re-validate inherited refs and double-visit). Matches the cross-port reference 1:1
+/// (TS <c>loader/validation-registry.ts</c> reads <c>ownAttr</c>/<c>ownChildren</c> at the same sites).
+/// </remarks>
 public static class RegisteredValidation
 {
     public static IReadOnlyList<MetaError> Run(MetaData root, TypeRegistry registry)

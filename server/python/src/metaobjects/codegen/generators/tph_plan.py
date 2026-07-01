@@ -51,7 +51,9 @@ def _discriminator_root(obj: MetaObject) -> MetaObject | None:
     """The nearest ``@discriminator``-bearing ancestor (or self), walking ``extends``."""
     cursor: MetaObject | None = obj
     while cursor is not None:
-        field = cursor.attr(OBJECT_ATTR_DISCRIMINATOR)  # own attr
+        # ADR-0039 sanctioned own: explicit super-resolution walk — @discriminator
+        # is read own at each node while climbing the extends chain by hand.
+        field = cursor.attr(OBJECT_ATTR_DISCRIMINATOR)
         if isinstance(field, str) and field:
             return cursor
         cursor = cursor.super_data  # type: ignore[assignment]
@@ -63,12 +65,14 @@ def tph_subtype_binding(obj: MetaObject) -> tuple[str, str] | None:
     — the field NAME inherited from the ``@discriminator`` base + this subtype's own
     ``@discriminatorValue``. ``None`` when *obj* is not a subtype. Used by the entity
     generator to pin the inherited discriminator field to a ``Literal`` on the subtype."""
-    value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)  # own attr
+    # ADR-0039 sanctioned own: @discriminatorValue is THIS subtype's own value.
+    value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)
     if not isinstance(value, str) or not value:
         return None
     root = _discriminator_root(obj)
     if root is None or root is obj:
         return None
+    # ADR-0039 sanctioned own: @discriminator read on the located declaring base.
     field = root.attr(OBJECT_ATTR_DISCRIMINATOR)
     if not isinstance(field, str) or not field:
         return None
@@ -79,7 +83,8 @@ def is_tph_subtype(obj: MetaObject) -> bool:
     """True when *obj* is a concrete TPH subtype: it declares ``@discriminatorValue``
     and (transitively) extends a ``@discriminator``-bearing base. Such an entity emits
     NO standalone table/router — it is folded into the base's single table."""
-    value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)  # own attr
+    # ADR-0039 sanctioned own: @discriminatorValue is THIS subtype's own value.
+    value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)
     if not isinstance(value, str) or not value:
         return False
     root = _discriminator_root(obj)
@@ -89,14 +94,17 @@ def is_tph_subtype(obj: MetaObject) -> bool:
 def tph_plan_for(base: MetaObject, object_index: dict[str, MetaObject]) -> TphPlan | None:
     """The :class:`TphPlan` for a discriminator base, or ``None`` when *base* is not a
     discriminator base (no ``@discriminator``, or no concrete subtypes)."""
-    disc_field = base.attr(OBJECT_ATTR_DISCRIMINATOR)  # own attr
+    # ADR-0039 sanctioned own: a discriminator base is the node that OWN-declares
+    # @discriminator; we ask each candidate whether it declares one directly.
+    disc_field = base.attr(OBJECT_ATTR_DISCRIMINATOR)
     if not isinstance(disc_field, str) or not disc_field:
         return None
     subtypes: list[TphSubtypePlan] = []
     for obj in object_index.values():
         if obj is base or getattr(obj, "is_abstract", False):
             continue
-        value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)  # own attr
+        # ADR-0039 sanctioned own: @discriminatorValue is each subtype's own value.
+        value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)
         if not isinstance(value, str) or not value:
             continue
         # Walk the extends chain looking for `base`.

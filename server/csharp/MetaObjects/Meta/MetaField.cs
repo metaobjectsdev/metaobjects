@@ -140,11 +140,14 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     public bool Unique => Attr(FIELD_ATTR_UNIQUE) is true;
 
     /// <summary>
-    /// FR-013 — true when <c>@readOnly: true</c> is set. A read-only field is
+    /// FR-013 — true when <c>@readOnly: true</c> is the effective value. A read-only field is
     /// read-after-insert-only: codegen emits a getter only (no public setter), and
     /// the persistence layer omits the column from INSERT / UPDATE. Default false.
+    /// ADR-0039: resolving — a concrete field may inherit <c>@readOnly</c> from an abstract
+    /// base via extends (TS codegen reads <c>field.attr(FIELD_ATTR_READ_ONLY)</c>); the own-only
+    /// read lives in the loader's declared-layer validation pass, not this codegen/runtime getter.
     /// </summary>
-    public bool ReadOnly => OwnAttr(FIELD_ATTR_READ_ONLY) is true;
+    public bool ReadOnly => Attr(FIELD_ATTR_READ_ONLY) is true;
 
     /// <summary>
     /// Own member symbols of an enum-subtype field (the <c>@values</c> attr),

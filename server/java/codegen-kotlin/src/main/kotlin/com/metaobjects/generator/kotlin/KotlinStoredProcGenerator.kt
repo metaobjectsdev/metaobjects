@@ -234,8 +234,10 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
      * Any other value (false, `"false"`, missing attr) means "result-row column".
      */
     private fun isParamField(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(ATTR_PARAM, false)) return false
-        val raw = runCatching { field.getMetaAttr(ATTR_PARAM, false).value }.getOrNull()
+        // ADR-0039: @param is an inheritable effective field property — a concrete
+        // field extending an abstract param-field inherits it. RESOLVE (default true).
+        if (!field.hasMetaAttr(ATTR_PARAM)) return false
+        val raw = runCatching { field.getMetaAttr(ATTR_PARAM).value }.getOrNull()
         return when (raw) {
             is Boolean -> raw
             is String -> {
@@ -246,10 +248,14 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
     }
 
-    /** Read an own-only string attr; null when absent or unreadable. */
+    /**
+     * Read a string attr off the rdb source. ADR-0039: source.* attrs (@proc/@table/
+     * @procName) are inheritable effective source properties — a projection or subtype
+     * that inherits its source via extends must still see them. RESOLVE (default true).
+     */
     private fun readStringAttr(rdb: RdbSource, attrName: String): String? {
-        if (!rdb.hasMetaAttr(attrName, false)) return null
-        return runCatching { rdb.getMetaAttr(attrName, false).valueAsString }.getOrNull()
+        if (!rdb.hasMetaAttr(attrName)) return null
+        return runCatching { rdb.getMetaAttr(attrName).valueAsString }.getOrNull()
     }
 
     /**

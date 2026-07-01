@@ -85,21 +85,21 @@ def _is_writable_table_entity(obj: MetaObject, object_index: dict[str, MetaObjec
 
 
 def _template_format(tmpl: MetaData) -> str:
-    fmt = tmpl.attr(tc.TEMPLATE_ATTR_FORMAT)
+    fmt = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     return fmt if isinstance(fmt, str) and fmt else tc.TEMPLATE_FORMAT_DEFAULT
 
 
 def _payload_resolves(tmpl: MetaData, root: MetaData) -> MetaObject | None:
     """The payload VO a template resolves to (``@payloadRef`` → ``object.value``),
     or ``None`` — the shared gate for payload / render / prompt / parser / extractor."""
-    payload_ref = tmpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+    payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     return resolve_payload_vo(root, payload_ref)
 
 
 def _is_email_kind(tmpl: MetaData) -> bool:
-    kind = tmpl.attr(tc.TEMPLATE_ATTR_KIND)
+    kind = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_KIND)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     return isinstance(kind, str) and kind.lower() == tc.TEMPLATE_KIND_EMAIL
 
 
@@ -113,6 +113,7 @@ class PythonApiModelBuilder:
 
     def build(self, root: MetaData, project: str) -> ApiModel:
         objects = [
+            # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
             c
             for c in root.own_children()
             if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
@@ -127,6 +128,7 @@ class PythonApiModelBuilder:
 
         # Templates: only template.output is consumed by the payload/render/prompt/
         # parser/extractor generators (the other template subtypes emit nothing).
+        # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
         for tmpl in root.own_children():
             if tmpl.type == TYPE_TEMPLATE and tmpl.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT:
                 units.append(self._build_template_unit(tmpl, root))
@@ -353,7 +355,7 @@ class PythonApiModelBuilder:
                 values = type_map.effective_enum_values(f)
                 if values:
                     note = "allowed: " + " | ".join(values)
-            required = f.attr(fc.FIELD_ATTR_REQUIRED) is True
+            required = f.get_meta_attr(fc.FIELD_ATTR_REQUIRED) is True  # ADR-0039: resolving (@required may be inherited)
             rows.append(FieldShape(f.name, type_expr, optional=not required, note=note))
         return rows
 

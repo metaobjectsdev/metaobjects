@@ -72,7 +72,10 @@ def plural_lowercase(name: str) -> str:
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
-    for c in entity.own_children():
+    # ADR-0039 — RESOLVING (children()): an entity may inherit its source.rdb from
+    # an abstract base via extends (BaseEntity pattern); own_children() would emit
+    # nothing for such an entity. Mirrors the TS dbTable source lookup.
+    for c in entity.children():
         if c.type == TYPE_SOURCE and isinstance(c, MetaSource):
             return c
     return None
@@ -111,7 +114,7 @@ def _pk_field_name(entity: MetaObject) -> str:
     """The single PK field name (``identity.primary @fields``), default ``id``."""
     for c in entity.children():
         if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_PRIMARY:
-            fields = c.attr(IDENTITY_ATTR_FIELDS)
+            fields = c.get_meta_attr(IDENTITY_ATTR_FIELDS)  # ADR-0039: resolving (identity attr)
             if isinstance(fields, (list, tuple)) and fields:
                 first = fields[0]
                 if isinstance(first, str):
@@ -122,10 +125,14 @@ def _pk_field_name(entity: MetaObject) -> str:
 
 
 def m2m_relationships(entity: MetaObject) -> list[MetaRelationship]:
-    """The entity's own ``relationship.* @cardinality:"many" + @through`` children
-    (declaration order). 1:N relationships (no ``@through``) are excluded."""
+    """The entity's ``relationship.* @cardinality:"many" + @through`` children
+    (declaration order). 1:N relationships (no ``@through``) are excluded.
+
+    ADR-0039 — RESOLVING (children()): mirrors the TS ``relationships()`` (built on
+    the effective ``children()``); a relationship inherited via ``extends`` counts.
+    """
     out: list[MetaRelationship] = []
-    for c in entity.own_children():
+    for c in entity.children():
         if not isinstance(c, MetaRelationship):
             continue
         if c.cardinality() != CARDINALITY_MANY:

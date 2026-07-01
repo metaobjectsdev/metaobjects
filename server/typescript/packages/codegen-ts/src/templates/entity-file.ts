@@ -11,7 +11,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
-import { renderZodValidators } from "./zod-validators.js";
+import { renderZodValidators, isTphSubtype } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
@@ -88,7 +88,12 @@ export function renderEntityFile(
   // shape) OR the target is contract-only (a UI/wire package gets the read shape,
   // not a DB table). Either way: interface + Zod, no migration footprint, no
   // drizzle-orm. Consumers validate via the Zod schema and type via the interface.
-  if (!runtime || !hasWritableRdbSource(entity)) {
+  //
+  // A TPH subtype (FR-017) also routes here: it inherits the base's writable
+  // source.rdb via extends (so hasWritableRdbSource is now true under the ADR-0039
+  // resolving read), but the base owns the single shared table — the subtype must
+  // emit its per-subtype read schema (<Sub>Schema), never its own pgTable.
+  if (!runtime || !hasWritableRdbSource(entity) || isTphSubtype(entity)) {
     return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
 

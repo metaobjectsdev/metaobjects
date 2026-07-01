@@ -40,12 +40,14 @@ import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
+  return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
@@ -288,7 +290,8 @@ export function renderExtractor(root: MetaData, templateName: string): string {
   if (tmpl.subType !== TEMPLATE_SUBTYPE_OUTPUT) {
     throw new Error(`template "${templateName}" is not a template.output (got subtype "${tmpl.subType}")`);
   }
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
@@ -296,7 +299,8 @@ export function renderExtractor(root: MetaData, templateName: string): string {
   if (!vo) {
     throw new Error(`template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`);
   }
-  const format = ((tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const format = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
   if (format !== "json" && format !== "xml") {
     throw new Error(
       `template "${templateName}" @format "${format}" has no extract API to extract over (json/xml only)`,

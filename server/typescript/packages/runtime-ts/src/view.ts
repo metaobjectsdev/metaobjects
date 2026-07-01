@@ -24,9 +24,10 @@ export interface EntityViewSpec {
 
 export function viewFieldNames(entity: MetaData, viewName: string): string[] {
   const names: string[] = [];
-  for (const field of entity.ownChildren()) {
+  // ADR-0039: effective children — fields and their views may be inherited via extends.
+  for (const field of entity.children()) {
     if (field.type !== TYPE_FIELD) continue;
-    if (field.ownChildren().some((c) => c.type === TYPE_VIEW && c.name === viewName)) {
+    if (field.children().some((c) => c.type === TYPE_VIEW && c.name === viewName)) {
       names.push(field.name);
     }
   }
@@ -34,14 +35,16 @@ export function viewFieldNames(entity: MetaData, viewName: string): string[] {
 }
 
 export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: string): FieldViewSpec | null {
-  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  // ADR-0039: effective children — a field and its view may be inherited via extends.
+  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return null;
-  const view = field.ownChildren().find((c) => c.type === TYPE_VIEW && c.name === viewName);
+  const view = field.children().find((c) => c.type === TYPE_VIEW && c.name === viewName);
   if (!view) return null;
 
   const attrs: Record<string, unknown> = {};
-  for (const key of view.ownAttrs().keys()) {
-    attrs[key] = view.ownAttr(key);
+  // ADR-0039: effective attrs — a view's attrs may be inherited via its extends.
+  for (const key of view.attrs().keys()) {
+    attrs[key] = view.attr(key);
   }
 
   const required = isFieldRequired(field);
@@ -59,7 +62,8 @@ export function fieldViewSpec(entity: MetaData, fieldName: string, viewName: str
 
 export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSpec {
   const fields: FieldViewSpec[] = [];
-  for (const field of entity.ownChildren()) {
+  // ADR-0039: effective children — fields may be inherited via extends.
+  for (const field of entity.children()) {
     if (field.type !== TYPE_FIELD) continue;
     const spec = fieldViewSpec(entity, field.name, viewName);
     if (spec !== null) fields.push(spec);
@@ -74,8 +78,9 @@ export function entityViewSpec(entity: MetaData, viewName: string): EntityViewSp
 }
 
 function isFieldRequired(field: MetaData): boolean {
-  if (field.ownAttr(FIELD_ATTR_REQUIRED) === true) return true;
-  for (const child of field.ownChildren()) {
+  // ADR-0039: effective — @required and a required-validator may be inherited via extends.
+  if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
+  for (const child of field.children()) {
     if (child.type === TYPE_VALIDATOR && child.subType === VALIDATOR_SUBTYPE_REQUIRED) return true;
   }
   return false;

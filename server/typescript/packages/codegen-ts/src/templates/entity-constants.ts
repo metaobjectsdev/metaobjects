@@ -68,7 +68,8 @@ function humanize(s: string): string {
  *   "WorkoutEvent" → "/workout_events"
  */
 export function resourcePath(entity: MetaData): string {
-  const overrideAttr = entity.ownAttr("routePath");
+  // ADR-0039: resolving — a concrete entity may inherit @routePath via extends.
+  const overrideAttr = entity.attr("routePath");
   if (typeof overrideAttr === "string" && overrideAttr.length > 0) {
     return overrideAttr.startsWith("/") ? overrideAttr : `/${overrideAttr}`;
   }
@@ -130,27 +131,29 @@ function renderFieldRules(field: MetaField): string | undefined {
   let hasRequired = false;
   let hasMaxLength = false;
 
+  // ADR-0039: resolving — a validator may inherit its config attrs (@min/@max/
+  // @pattern/@message/…) via extends.
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) {
-      const msg = (child.ownAttr("message") as string | undefined) ?? `${humanize(field.name)} is required`;
+      const msg = (child.attr("message") as string | undefined) ?? `${humanize(field.name)} is required`;
       ruleParts.push(`required: ${JSON.stringify(msg)}`);
       hasRequired = true;
     } else if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = child.attr(VALIDATOR_ATTR_MIN);
+      const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof min === "number") {
-        const msg = (child.ownAttr("minMessage") as string | undefined) ?? `Must be at least ${min} characters`;
+        const msg = (child.attr("minMessage") as string | undefined) ?? `Must be at least ${min} characters`;
         ruleParts.push(`minLength: { value: ${min}, message: ${JSON.stringify(msg)} }`);
       }
       if (typeof max === "number") {
-        const msg = (child.ownAttr("maxMessage") as string | undefined) ?? `Must be ${max} characters or fewer`;
+        const msg = (child.attr("maxMessage") as string | undefined) ?? `Must be ${max} characters or fewer`;
         ruleParts.push(`maxLength: { value: ${max}, message: ${JSON.stringify(msg)} }`);
         hasMaxLength = true;
       }
     } else if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = child.ownAttr(VALIDATOR_ATTR_PATTERN);
+      const pattern = child.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern === "string") {
-        const msg = (child.ownAttr("message") as string | undefined) ?? "Invalid format";
+        const msg = (child.attr("message") as string | undefined) ?? "Invalid format";
         // Emit as RegExp literal /.../ — `as const` preserves the value-ref.
         // Forward-slash inside the pattern is escaped so the literal closes correctly.
         const safe = pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/");
@@ -180,9 +183,10 @@ function renderFieldRules(field: MetaField): string | undefined {
 function renderFieldEntry(field: MetaField): string {
   const { view, viewNode } = resolveView(field);
   const label = labelFor(field);
-  const placeholder = viewNode?.ownAttr("placeholder") as string | undefined;
-  const helpText = viewNode?.ownAttr("helpText") as string | undefined;
-  const htmlType = htmlTypeFromView(view, viewNode?.ownAttr("htmlType") as string | undefined);
+  // ADR-0039: resolving — a view node may inherit @placeholder/@helpText/@htmlType via extends.
+  const placeholder = viewNode?.attr("placeholder") as string | undefined;
+  const helpText = viewNode?.attr("helpText") as string | undefined;
+  const htmlType = htmlTypeFromView(view, viewNode?.attr("htmlType") as string | undefined);
   const rules = renderFieldRules(field);
 
   const entries: string[] = [

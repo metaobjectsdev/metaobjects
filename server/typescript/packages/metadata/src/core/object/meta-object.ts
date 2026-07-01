@@ -71,6 +71,7 @@ export class MetaObject extends MetaData {
   /** Own fields only — excludes fields inherited via extends. Java parity: getMetaFields(false). */
   ownFields(): MetaField[] {
     return this.cached("ownFields", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of fields().
       this.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD),
     );
   }
@@ -85,6 +86,7 @@ export class MetaObject extends MetaData {
   /** Own identities only — excludes inherited. */
   ownIdentities(): MetaIdentity[] {
     return this.cached("ownIdentities", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of identities().
       this.ownChildren().filter((c): c is MetaIdentity => c.type === TYPE_IDENTITY),
     );
   }
@@ -122,6 +124,7 @@ export class MetaObject extends MetaData {
   /** Own relationships only — excludes inherited. */
   ownRelationships(): MetaRelationship[] {
     return this.cached("ownRelationships", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of relationships().
       this.ownChildren().filter((c): c is MetaRelationship => c.type === TYPE_RELATIONSHIP),
     );
   }
@@ -136,6 +139,7 @@ export class MetaObject extends MetaData {
   /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
   ownValidators(): MetaValidator[] {
     return this.cached("ownValidators", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of validators().
       this.ownChildren().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
@@ -150,6 +154,7 @@ export class MetaObject extends MetaData {
   /** Own layouts only — excludes inherited. */
   ownLayouts(): MetaLayout[] {
     return this.cached("ownLayouts", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of layouts().
       this.ownChildren().filter((c): c is MetaLayout => c.type === TYPE_LAYOUT),
     );
   }

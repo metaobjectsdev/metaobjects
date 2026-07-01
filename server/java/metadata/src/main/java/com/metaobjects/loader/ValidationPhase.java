@@ -85,6 +85,20 @@ import java.util.Set;
  * validation contract (validate the node's own attributes, not inherited ones) means we
  * do not need effective/resolved attribute access.</p>
  *
+ * <p><b>ADR-0039 own-accessor policy for this phase.</b> Validation runs on AUTHORED
+ * DECLARATIONS, so the pervasive {@code , false} / {@code getChildren(MetaData.class,
+ * false)} reads here are the sanctioned own cases: (a) the tree walk descends via OWN
+ * children so each declared node is validated exactly ONCE at its declaration site
+ * (inherited members were already validated on the parent); (b) an attribute rule
+ * validates the {@code @attr} on the node that DECLARES it — re-validating inherited
+ * attrs on every subtype would be redundant and could double-report. The rare reads
+ * that must instead resolve an EFFECTIVE property to decide correctness — {@code
+ * field.object @objectRef}/{@code @storage}, {@code field.map @valueType}/{@code
+ * @objectRef}, and the primary-source lookup — are flipped to the resolving accessor
+ * inline and marked "ADR-0039: resolving …" (mirrors the C# ValidationPasses fix).
+ * Declaration-layer markers ({@code @isAbstract}, TPH {@code @discriminator}/{@code
+ * @discriminatorValue}) and template.* attrs stay own by contract.</p>
+ *
  * @since 6.1.0
  */
 public final class ValidationPhase {
@@ -694,7 +708,10 @@ public final class ValidationPhase {
         if (!MetaField.TYPE_FIELD.equals(node.getType())) {
             return;
         }
-        // Own-only: only validate @dbColumnType declared on this node.
+        // ADR-0039 physical exception: @dbColumnType is NEVER inherited (a physical
+        // column-type override is not a logical property) — the one attribute deliberately
+        // read own-only outside the emit-declared-here cases. Own-only here validates only
+        // the declaration that carries it.
         if (!node.hasMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE, false)) {
             return;
         }

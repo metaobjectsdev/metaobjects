@@ -455,7 +455,8 @@ export class ObjectManager {
         { value: entityName },
       );
     }
-    const entity = this.metadata.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
+    // ADR-0039: effective children — resolve rather than rely on root being unextended.
+    const entity = this.metadata.children().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
     if (!entity) {
       throw new MetadataError(`Unknown entity '${entityName}'`, { entity: entityName });
     }

@@ -190,6 +190,7 @@ export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number;
 function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
   const baseName = base.name;
   const tableVar = ctx.collectionName(baseName);
+  // ADR-0039: own — TPH discriminator, read own to identify the base level.
   const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(base, ctx);
 
@@ -237,6 +238,7 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
   // --- Per-subtype CRUD against the single base table ---
   const subtypeSections: Code[] = [];
   for (const sub of tphConcreteSubtypes(base, ctx.loadedRoot)) {
+    // ADR-0039: own — each concrete subtype declares its OWN @discriminatorValue.
     const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
     const valueLit = JSON.stringify(value);
     const subFileSpec = entityModuleSpecifier(

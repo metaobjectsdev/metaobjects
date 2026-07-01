@@ -96,12 +96,14 @@ export function resolveColumnName(
  * SQLite treats it as the only allowed value (no schema concept).
  */
 export function resolveTableSchema(entity: MetaData): string | undefined {
-  const source = entity.ownChildren().find(
+  // ADR-0039: resolving — a concrete entity may inherit its source.rdb via extends.
+  const source = entity.children().find(
     (c): c is MetaSource =>
       c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (!source) return undefined;
-  const schema = source.ownAttr(SOURCE_ATTR_SCHEMA);
+  // ADR-0039: resolving — an inherited source's @schema lives on the super node.
+  const schema = source.attr(SOURCE_ATTR_SCHEMA);
   if (typeof schema === "string" && schema !== "") return schema;
   return undefined;
 }

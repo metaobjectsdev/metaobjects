@@ -16,6 +16,9 @@ export function validateMaxOccurs(root: MetaData, registry: TypeRegistry): Parse
 
 function walk(node: MetaData, registry: TypeRegistry, errors: ParseError[]): void {
   const counts = new Map<string, MetaData[]>();
+  // ADR-0039: own — maxOccurs constrains the AUTHORED declaration layer (how many
+  // children a node may DECLARE); inherited children were counted at their
+  // declaring parent, so only own children count against this node's limit.
   for (const child of node.ownChildren()) {
     const key = `${child.type}.${child.subType}`;
     const list = counts.get(key);
@@ -35,5 +38,7 @@ function walk(node: MetaData, registry: TypeRegistry, errors: ParseError[]): voi
       );
     }
   }
+  // ADR-0039: own — structural walk over the physical declaration tree (each
+  // declared node is visited once at its declaration site).
   for (const child of node.ownChildren()) walk(child, registry, errors);
 }

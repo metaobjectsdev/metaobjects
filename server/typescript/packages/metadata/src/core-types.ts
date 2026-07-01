@@ -266,8 +266,8 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // childRules EMPTY. The named attrs still enforce strictly via attr-schema-
   // validate (ERR_UNKNOWN_ATTR); a misplaced STRUCTURAL child is now
   // ERR_CHILD_NOT_ALLOWED. Attr schemas: base + length/numeric/array read @min/@max
-  // via this.ownAttr(VALIDATOR_ATTR_MIN/MAX); regex also reads @pattern; required
-  // has no extra attrs.
+  // via this.attr(VALIDATOR_ATTR_MIN/MAX) (ADR-0039 resolving); regex also reads
+  // @pattern; required has no extra attrs.
   const VALIDATOR_FACTORIES: FactoryMap = Object.fromEntries(
     VALIDATOR_SUBTYPES.map((subType) => [
       `${TYPE_VALIDATOR}.${subType}`,

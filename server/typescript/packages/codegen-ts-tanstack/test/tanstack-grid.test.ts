@@ -72,6 +72,8 @@ describe("tanstackGrid() factory", () => {
     // Synthesize a fake entity without grids:
     const fakeEntity = {
       name: "X",
+      // ADR-0039: the filter now resolves @emit* via attr() (own + inherited).
+      attr: () => undefined,
       ownAttr: () => undefined,
       layouts: () => [] as any[],
     } as any;

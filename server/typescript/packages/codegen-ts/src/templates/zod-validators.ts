@@ -45,12 +45,16 @@ import { valueObjectModuleSpecifier } from "../import-path.js";
  * when the object is not a TPH subtype.
  */
 export function tphDiscriminatorPin(obj: MetaObject): { fieldName: string; value: string } | undefined {
+  // ADR-0039: own — super-resolution walk. A subtype declares its OWN
+  // @discriminatorValue (must not inherit one), and the base level is found by
+  // walking superResolved reading each level's OWN @discriminator.
   const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
   if (typeof value !== "string" || value === "") return undefined;
 
   // Walk the extends chain to find the root carrying @discriminator.
   let cursor = obj.superResolved;
   while (cursor !== undefined) {
+    // ADR-0039: own — super-resolution walk; read each level's OWN @discriminator.
     const fieldName = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
     if (typeof fieldName === "string" && fieldName !== "") {
       return { fieldName, value };
@@ -516,25 +520,27 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
   let arrMax: number | undefined;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
+    // ADR-0039: resolving — a validator may inherit @min/@max/@pattern via extends
+    // (matches Java attrInt's resolving getMetaAttr(attr)).
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
-      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = child.attr(VALIDATOR_ATTR_MAX);
+      const min = child.attr(VALIDATOR_ATTR_MIN);
       if (typeof max === "number") maxLen = max;
       if (typeof min === "number") minLen = min;
     }
     if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const p = child.ownAttr(VALIDATOR_ATTR_PATTERN);
+      const p = child.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof p === "string") pattern = p;
     }
     if (child.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
-      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = child.attr(VALIDATOR_ATTR_MAX);
+      const min = child.attr(VALIDATOR_ATTR_MIN);
       if (typeof max === "number") numMax = max;
       if (typeof min === "number") numMin = min;
     }
     if (child.subType === VALIDATOR_SUBTYPE_ARRAY) {
-      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
-      const min = child.ownAttr(VALIDATOR_ATTR_MIN);
+      const max = child.attr(VALIDATOR_ATTR_MAX);
+      const min = child.attr(VALIDATOR_ATTR_MIN);
       if (typeof max === "number") arrMax = max;
       if (typeof min === "number") arrMin = min;
     }

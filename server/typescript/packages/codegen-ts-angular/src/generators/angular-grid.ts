@@ -33,7 +33,8 @@ export const angularGridFile = function angularGridFile(
   const generator: Generator = {
     name: "angular-grid",
     filter: (e: MetaObject) =>
-      e.ownAttr("emitAngular") !== false
+      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+      e.attr("emitAngular") !== false
       && userFilter(e)
       && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {

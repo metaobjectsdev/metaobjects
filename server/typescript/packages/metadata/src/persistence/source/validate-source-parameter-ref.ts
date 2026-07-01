@@ -55,7 +55,8 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
   // matches via resolutionKey() (these fixtures declare package at metadata.root
   // only, so obj.package is undefined and the file-default must be folded in).
   const objectIndex = new Map<string, MetaData>();
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     objectIndex.set(obj.name, obj);
     const fqn = obj.package !== undefined && obj.package !== ""
       ? `${obj.package}${PACKAGE_SEPARATOR}${obj.name}`
@@ -64,12 +65,15 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
     objectIndex.set(obj.resolutionKey(), obj);
   }
 
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — declaration-layer source iteration (mirrors validateSourceRoles).
     for (const source of obj.ownChildren().filter(
       (c): c is MetaSource =>
         c.type === TYPE_SOURCE && c.subType === SOURCE_SUBTYPE_RDB && c instanceof MetaSource,
     )) {
-      const ref = source.ownAttr(SOURCE_ATTR_PARAMETER_REF);
+      // ADR-0039: resolving — a source may inherit @parameterRef via extends.
+      const ref = source.attr(SOURCE_ATTR_PARAMETER_REF);
       if (typeof ref !== "string" || ref === "") continue;
 
       // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — checked even before resolution
@@ -114,11 +118,15 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
       // with origin.passthrough must have a subtype matching the referenced
       // field. The origin path validation pass checks the from-path resolves;
       // here we just check the subtype alignment.
-      for (const paramField of target.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      // ADR-0039: resolving — the parameter value-object's fields may be inherited.
+      for (const paramField of target.children().filter((c) => c.type === TYPE_FIELD)) {
+        // ADR-0039: own — origin.* never inherits (ADR-0029); the origin child and
+        // its @from are read own.
         const passthrough = paramField.ownChildren().find(
           (c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_PASSTHROUGH,
         );
         if (passthrough === undefined) continue;
+        // ADR-0039: own — origin.* never inherits (ADR-0029).
         const from = passthrough.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
         if (typeof from !== "string" || from === "") continue;
         const dot = from.indexOf(".");
@@ -127,7 +135,8 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
         const targetFieldName = from.slice(dot + 1);
         const targetEntity = objectIndex.get(targetEntityName);
         if (targetEntity === undefined) continue; // origin-paths pass surfaces this
-        const targetField = targetEntity.ownChildren().find(
+        // ADR-0039: resolving — the referenced entity's field may be inherited via extends.
+        const targetField = targetEntity.children().find(
           (c) => c.type === TYPE_FIELD && c.name === targetFieldName,
         );
         if (targetField === undefined) continue;

@@ -52,11 +52,12 @@ internal object KotlinGenUtil {
     }
 
     /**
-     * True if [obj] has an own `@isAbstract` attribute set to boolean-true. Reads only the
-     * own attribute (not inherited) — matches the ValidationPhase convention so concrete
-     * subtypes extending an abstract base still emit. Shared by every instance/write
-     * generator so the "never emit write artifacts for an abstract entity" invariant has a
-     * single definition.
+     * True if [obj] has an own `@isAbstract` attribute set to boolean-true. ADR-0039:
+     * `@isAbstract` is a declaration-layer marker — it describes THIS declaration and must
+     * NOT be inherited (a concrete subtype extending an abstract base is itself concrete
+     * and MUST emit). KEPT own-only, matching the ValidationPhase / GeneratorUtil.isAbstract
+     * convention. Shared by every instance/write generator so the "never emit write
+     * artifacts for an abstract entity" invariant has a single definition.
      */
     fun isAbstractEntity(obj: MetaObject): Boolean {
         if (!obj.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) return false

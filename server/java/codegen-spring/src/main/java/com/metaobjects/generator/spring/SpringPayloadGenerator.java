@@ -119,12 +119,9 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         // Stable name order — matches the other ports' deterministic emission.
         // Iterate ALL MetaTemplate subtypes (prompt / output / toolcall);
         // every template with a @payloadRef gets a payload record.
-        List<MetaTemplate> templates = new ArrayList<>();
-        for (MetaData child : loader.getRoot().getChildren()) {
-            if (child instanceof MetaTemplate t) {
-                templates.add(t);
-            }
-        }
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        List<MetaTemplate> templates =
+            new ArrayList<>(loader.getRoot().getChildren(MetaTemplate.class, true));
         templates.sort(Comparator.comparing(MetaTemplate::getName));
 
         for (MetaTemplate tmpl : templates) {

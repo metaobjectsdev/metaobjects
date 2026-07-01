@@ -321,6 +321,8 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
      */
     private void tagAttrChildWithJsonSource(MetaData parent, String attrName) {
         if (parent == null || attrName == null) return;
+        // ADR-0039: parse-time source-tagging operates on the just-added OWN attr of the
+        // authored declaration (parser layer) — own-only is correct, not resolving.
         if (!parent.hasMetaAttr(attrName, false)) return;
         try {
             MetaAttribute<?> attr = parent.getMetaAttr(attrName, false);

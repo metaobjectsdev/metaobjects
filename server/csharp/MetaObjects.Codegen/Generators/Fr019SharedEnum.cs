@@ -67,7 +67,8 @@ public static class Fr019SharedEnum
         return new SharedEnum(
             Name: CSharpNaming.Pascal(decl.Name),
             Values: values,
-            Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true,
+            // ADR-0039: resolving — @provided may be inherited via extends (TS reads decl.attr).
+            Provided: decl.Attr(FIELD_ATTR_PROVIDED) is true,
             Package: PackageOf(decl));
     }
 

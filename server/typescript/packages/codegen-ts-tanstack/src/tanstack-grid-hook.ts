@@ -28,7 +28,8 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     // opt-out, user filter, and dataGrid layout presence.
     filter: (e: MetaObject) =>
       emitsInstanceArtifacts(e)
-      && e.ownAttr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
+      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+      && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
       && userFilter(e)
       && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {

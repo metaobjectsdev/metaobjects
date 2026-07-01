@@ -69,8 +69,12 @@ def _effective_fqn(entity: MetaObject) -> str:
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
-    """Return the entity's ``source.rdb`` child (own only), or ``None``."""
-    for c in entity.own_children():
+    """Return the entity's ``source.rdb`` child, or ``None``.
+
+    ADR-0039 — RESOLVING (children()): an entity may inherit its source.rdb via
+    ``extends`` (BaseEntity); own_children() would miss it. Mirrors TS dbTable.
+    """
+    for c in entity.children():
         if c.type == TYPE_SOURCE and isinstance(c, MetaSource):
             return c
     return None
@@ -94,21 +98,26 @@ class ReverseFk:
 
 
 def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
-    """The entity's OWN ``identity.reference`` FKs, in declaration order — the
+    """The entity's ``identity.reference`` FKs, in declaration order — the
     cross-port-canonical source for the reverse-finder pair (mirrors the TS
     ``reverseFksFor``). Each reference contributes one FK field + target entity;
-    malformed references (no ``@fields`` / no ``@references``) are skipped."""
+    malformed references (no ``@fields`` / no ``@references``) are skipped.
+
+    ADR-0039 — RESOLVING (children() + get_meta_attr): mirrors the TS
+    ``entity.referenceIdentities()`` + ``ref.fields``/``ref.targetEntity`` (all
+    resolving); an ``identity.reference`` inherited via ``extends`` is honored.
+    """
     out: list[ReverseFk] = []
-    for c in entity.own_children():
+    for c in entity.children():
         if c.type != TYPE_IDENTITY or c.sub_type != IDENTITY_SUBTYPE_REFERENCE:
             continue
-        fields = c.attr(IDENTITY_ATTR_FIELDS)
+        fields = c.get_meta_attr(IDENTITY_ATTR_FIELDS)  # ADR-0039: resolving (identity attr)
         fk_field: str | None = None
         if isinstance(fields, (list, tuple)) and fields and isinstance(fields[0], str):
             fk_field = fields[0]
         elif isinstance(fields, str) and fields:
             fk_field = fields.split(",")[0].strip() or None
-        references = c.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+        references = c.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
         target = (
             references[references.rfind(PACKAGE_SEP) + len(PACKAGE_SEP):]
             if isinstance(references, str) and PACKAGE_SEP in references

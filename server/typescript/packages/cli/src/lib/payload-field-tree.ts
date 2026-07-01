@@ -15,7 +15,8 @@ import {
 import type { PayloadField } from "@metaobjectsdev/render";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
 }
 
 /**
@@ -35,7 +36,8 @@ export function derivePayloadFieldTree(
   const fields: PayloadField[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = f.ownAttr(FIELD_ATTR_OBJECT_REF);
+      // ADR-0039: effective attr — @objectRef may be inherited via extends.
+      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string") {
         fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, nextSeen) });
         continue;

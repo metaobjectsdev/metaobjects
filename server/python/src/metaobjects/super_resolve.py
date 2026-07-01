@@ -74,6 +74,8 @@ def _walk(
 
     # The context package for children is this node's own package, if set, else inherit.
     next_ctx = node.package or ctx_pkg
+    # ADR-0039 sanctioned own: this IS the super-resolution walk — it runs BEFORE
+    # extends is resolved (it sets super_data), so it must iterate own children.
     for child in node.own_children():
         _walk(child, next_ctx, index, errors)
 
@@ -100,6 +102,8 @@ def _index_walk(node: MetaData, idx: dict[str, MetaData]) -> None:
         if not node.package and node.file_default_package:
             folded = f"{node.file_default_package}{PACKAGE_SEP}{node.name}"
             idx.setdefault(folded, node)
+    # ADR-0039 sanctioned own: index-building walk over the declared tree (feeds
+    # super-resolution; runs before extends is resolved).
     for child in node.own_children():
         _index_walk(child, idx)
 

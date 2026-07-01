@@ -108,20 +108,21 @@ function collectValidatorParts(field: MetaField): ValidatorParts {
   const regexParts: string[] = [];
   const lengthParts: string[] = [];
   const numericParts: string[] = [];
+  // ADR-0039: resolving — a validator may inherit @min/@max/@pattern via extends.
   for (const v of field.validators()) {
     if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      const pattern = v.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern === "string" && pattern.length > 0) {
         regexParts.push(`pattern \`${pattern}\``);
       }
     } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = v.attr(VALIDATOR_ATTR_MIN);
+      const max = v.attr(VALIDATOR_ATTR_MAX);
       if (typeof min === "number") lengthParts.push(`minLength: ${min}`);
       if (typeof max === "number" && typeof maxLenAttr !== "number") lengthParts.push(`maxLength: ${max}`);
     } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = v.attr(VALIDATOR_ATTR_MIN);
+      const max = v.attr(VALIDATOR_ATTR_MAX);
       if (typeof min === "number") numericParts.push(`min: ${min}`);
       if (typeof max === "number") numericParts.push(`max: ${max}`);
     }
@@ -423,22 +424,23 @@ function buildFieldDetail(
   // Validators — one bullet per validator subtype (regex / length / numeric),
   // rendered in declaration order so authors can rely on the order they
   // wrote.
+  // ADR-0039: resolving — a validator may inherit @min/@max/@pattern via extends.
   for (const v of validators) {
     if (v.subType === VALIDATOR_SUBTYPE_REGEX) {
-      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      const pattern = v.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern === "string" && pattern.length > 0) {
         bullets.push(`**Validator (regex):** pattern \`${pattern}\``);
       }
     } else if (v.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = v.attr(VALIDATOR_ATTR_MIN);
+      const max = v.attr(VALIDATOR_ATTR_MAX);
       const fragments: string[] = [];
       if (typeof min === "number") fragments.push(`min ${min}`);
       if (typeof max === "number") fragments.push(`max ${max}`);
       if (fragments.length > 0) bullets.push(`**Validator (length):** ${fragments.join(", ")}`);
     } else if (v.subType === VALIDATOR_SUBTYPE_NUMERIC) {
-      const min = v.ownAttr(VALIDATOR_ATTR_MIN);
-      const max = v.ownAttr(VALIDATOR_ATTR_MAX);
+      const min = v.attr(VALIDATOR_ATTR_MIN);
+      const max = v.attr(VALIDATOR_ATTR_MAX);
       const fragments: string[] = [];
       if (typeof min === "number") fragments.push(`min ${min}`);
       if (typeof max === "number") fragments.push(`max ${max}`);
@@ -524,9 +526,10 @@ function describeIdentity(id: MetaIdentity): string {
 }
 
 function relationshipBullet(r: ReturnType<MetaObject["relationships"]>[number]): string {
-  const cardinality = r.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
+  // ADR-0039: resolving — a relationship may inherit its attrs via extends.
+  const cardinality = r.attr(RELATIONSHIP_ATTR_CARDINALITY);
   const card = typeof cardinality === "string" ? cardinality : "?";
-  const targetRaw = r.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+  const targetRaw = r.attr(RELATIONSHIP_ATTR_OBJECT_REF);
   const target = typeof targetRaw === "string" ? stripPackage(targetRaw) : "?";
   const subtype = r.subType;
   let label: string;
@@ -542,14 +545,14 @@ function relationshipBullet(r: ReturnType<MetaObject["relationships"]>[number]):
   //   symmetric (undirected) → "symmetric self-join"
   //   @sourceRefField set (directed) → "directed self-join via `<field>`"
   // The junction/disambiguator are DECLARED facts (ADR-0020 — no re-derivation).
-  const throughRaw = r.ownAttr(RELATIONSHIP_ATTR_THROUGH);
+  const throughRaw = r.attr(RELATIONSHIP_ATTR_THROUGH);
   if (typeof throughRaw === "string" && throughRaw.length > 0) {
     const through = stripPackage(throughRaw);
     const noteParts = [`${label}, through \`${through}\``];
-    if (r.ownAttr(RELATIONSHIP_ATTR_SYMMETRIC) === true) {
+    if (r.attr(RELATIONSHIP_ATTR_SYMMETRIC) === true) {
       noteParts.push("symmetric self-join");
     } else {
-      const srcRef = r.ownAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+      const srcRef = r.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
       if (typeof srcRef === "string" && srcRef.length > 0) {
         noteParts.push(`directed self-join via \`${srcRef}\``);
       }
@@ -664,9 +667,11 @@ export function buildEntityDocData(
 
   // ---- UsedBy
   const usedByMatches: UsedByDoc[] = [];
-  for (const child of root.ownChildren()) {
+  // ADR-0039: resolving — root has no super (children()==ownChildren()), and a
+  // template may inherit @payloadRef via extends; resolve rather than work-by-accident.
+  for (const child of root.children()) {
     if (child.type !== TYPE_TEMPLATE) continue;
-    const ref = child.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+    const ref = child.attr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof ref !== "string") continue;
     if (stripPackage(ref) !== entity.name) continue;
     // Link to the template's own doc page. The href is derived from the SAME

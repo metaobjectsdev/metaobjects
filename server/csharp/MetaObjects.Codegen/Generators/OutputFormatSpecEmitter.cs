@@ -28,12 +28,14 @@ internal static class OutputFormatSpecEmitter
             + $"new PromptField[] {{ {string.Join(", ", fields)} }})";
     }
 
+    // ADR-0039: resolving — @format may be inherited via an abstract template base.
     private static string ResolveFormat(MetaData template) =>
-        template.OwnAttr(TEMPLATE_ATTR_FORMAT) is string f && f.Equals("xml", System.StringComparison.OrdinalIgnoreCase)
+        template.Attr(TEMPLATE_ATTR_FORMAT) is string f && f.Equals("xml", System.StringComparison.OrdinalIgnoreCase)
             ? "Format.Xml" : "Format.Json";
 
+    // ADR-0039: resolving — @promptStyle may be inherited via an abstract template base.
     private static string ResolvePromptStyle(MetaData template) =>
-        (template.OwnAttr(TEMPLATE_ATTR_PROMPT_STYLE) as string) switch
+        (template.Attr(TEMPLATE_ATTR_PROMPT_STYLE) as string) switch
         {
             PROMPT_STYLE_INLINE => "PromptStyle.Inline",
             PROMPT_STYLE_EXAMPLE_ONLY => "PromptStyle.ExampleOnly",
@@ -55,7 +57,8 @@ internal static class OutputFormatSpecEmitter
         if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
             string valuesLit = Fr010FieldMapping.StringArrayLiteral(Fr010FieldMapping.EnumValues(field));
-            string enumDocLit = Fr010FieldMapping.PropertiesMapLiteral(field.OwnAttr(FIELD_ATTR_ENUM_DOC));
+            // ADR-0039: resolving — @enumDoc may be inherited via extends (TS reads field.attr).
+            string enumDocLit = Fr010FieldMapping.PropertiesMapLiteral(field.Attr(FIELD_ATTR_ENUM_DOC));
             return $"new PromptField(\"{name}\", FieldKind.Enum, {req}, {array}, "
                 + $"{valuesLit}, {enumDocLit}, {example}, {instruction}, null)";
         }
@@ -67,8 +70,9 @@ internal static class OutputFormatSpecEmitter
 
     // ---- helpers ----
 
+    // ADR-0039: resolving — @example/@instruction may be inherited via extends.
     private static string OptStringAttr(MetaData field, string attrName) =>
-        field.OwnAttr(attrName) is string v
+        field.Attr(attrName) is string v
             ? $"\"{Fr010FieldMapping.CSharpStringLiteral(v)}\""
             : "null";
 }

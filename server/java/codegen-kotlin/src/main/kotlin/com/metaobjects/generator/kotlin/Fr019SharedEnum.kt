@@ -61,7 +61,11 @@ internal object Fr019SharedEnum {
         return sup
     }
 
-    /** Own-only read of `@provided` on an enum declaration. */
+    /**
+     * Read `@provided` on an enum declaration. ADR-0039: `@provided` is a
+     * declaration-layer marker (like `@isAbstract`) — describes THIS declaration,
+     * never inherited through extends. KEPT own-only.
+     */
     fun isProvided(decl: EnumField): Boolean {
         if (!decl.hasMetaAttr(EnumField.ATTR_PROVIDED, false)) return false
         val raw = runCatching { decl.getMetaAttr(EnumField.ATTR_PROVIDED, false).value }.getOrNull()

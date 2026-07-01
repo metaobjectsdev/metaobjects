@@ -35,13 +35,15 @@ export const extractor = function extractor(opts?: ExtractorOpts): Generator {
   const generator: Generator = {
     name: "extractor",
     generate: oncePerRun((_entities, ctx) => {
+      // ADR-0039: resolving — root has no super (children()==ownChildren()).
       const outputs = ctx.loadedRoot
-        .ownChildren()
+        .children()
         .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
       for (const t of outputs) {
         // The extract tier requires the extract API, which only json/xml output-parsers emit.
-        const format = ((t.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+        // ADR-0039: resolving — a template may inherit @format via extends.
+        const format = ((t.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
         if (format !== "json" && format !== "xml") continue;
         files.push({
           path: `${dirPrefix}${t.name}.extractor.ts`,

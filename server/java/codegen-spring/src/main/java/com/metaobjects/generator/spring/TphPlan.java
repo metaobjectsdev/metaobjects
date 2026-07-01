@@ -45,7 +45,12 @@ public final class TphPlan {
         return discriminatorValue.toLowerCase(Locale.ROOT);
     }
 
-    /** The nearest {@code @discriminator}-bearing ancestor (or self), walking {@code extends}. */
+    /**
+     * The nearest {@code @discriminator}-bearing ancestor (or self), walking {@code extends}.
+     * ADR-0039: this IS the super-resolution walk — {@code @discriminator}/
+     * {@code @discriminatorValue} are declaration-layer TPH markers (never inherited into
+     * an effective form), so each hop is read own-only while the loop does the resolving.
+     */
     private static MetaObject discriminatorRoot(MetaObject obj) {
         for (MetaObject cursor = obj; cursor != null; cursor = cursor.getSuperObject()) {
             if (cursor.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return cursor;
@@ -59,6 +64,8 @@ public final class TphPlan {
      * emits NO standalone controller/repository — it is folded into the base's single table.
      */
     public static boolean isTphSubtype(MetaObject obj) {
+        // ADR-0039: @discriminatorValue is a declaration-layer marker — each concrete
+        // subtype declares its OWN value; it is never inherited. KEPT own-only.
         if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) return false;
         MetaObject root = discriminatorRoot(obj);
         return root != null && root != obj;
@@ -69,6 +76,9 @@ public final class TphPlan {
      * discriminator base (no {@code @discriminator}, or no concrete subtypes extending it).
      */
     public static Plan planFor(MetaObject base, MetaDataLoader loader) {
+        // ADR-0039: @discriminator/@discriminatorValue are declaration-layer TPH markers,
+        // never inherited into an effective form — read own-only. (`base` here is already
+        // the discriminator-bearing node resolved via discriminatorRoot's super walk.)
         if (!base.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return null;
         String discField = base.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).getValueAsString();
         if (discField == null || discField.isEmpty()) return null;
@@ -78,6 +88,8 @@ public final class TphPlan {
             if (obj == base) continue;
             if (!MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) continue;
             if (GeneratorUtil.isAbstract(obj)) continue;
+            // ADR-0039: @discriminatorValue is declaration-layer — each subtype declares
+            // its own; never inherited. KEPT own-only.
             if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) continue;
             String value = obj.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false).getValueAsString();
             if (value == null || value.isEmpty()) continue;

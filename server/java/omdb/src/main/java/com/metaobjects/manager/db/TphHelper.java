@@ -36,6 +36,9 @@ public final class TphHelper {
      * and inherits {@code @discriminator} from an ancestor in its resolved super chain.
      */
     public static TphSubtype tphSubtypeOf(MetaObject entity) {
+        // ADR-0039: @discriminatorValue is declaration-layer — each subtype declares its
+        // own; never inherited. @discriminator is located by an explicit super-resolution
+        // walk (below), reading own-only on each hop. Both KEPT own-only.
         if (entity == null || !entity.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) {
             return null; // not a subtype (no own @discriminatorValue)
         }

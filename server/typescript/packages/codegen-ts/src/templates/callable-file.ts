@@ -44,7 +44,8 @@ export function isCallableEntity(entity: MetaObject): boolean {
 }
 
 function callableSource(entity: MetaObject): MetaSource | undefined {
-  for (const child of entity.ownChildren()) {
+  // ADR-0039: resolving — an entity may inherit its callable source.rdb via extends.
+  for (const child of entity.children()) {
     if (child.type !== TYPE_SOURCE) continue;
     if (!(child instanceof MetaSource)) continue;
     if (CALLABLE_KINDS.has(child.effectiveKind)) return child;
@@ -63,14 +64,16 @@ export function renderCallableFile(entity: MetaObject): string {
   }
 
   const procName = source.physicalName;
-  const argsRef = source.ownAttr(SOURCE_ATTR_PARAMETER_REF);
+  // ADR-0039: resolving — a source may inherit @parameterRef via extends.
+  const argsRef = source.attr(SOURCE_ATTR_PARAMETER_REF);
   const argsObjectName = typeof argsRef === "string" && argsRef !== "" ? argsRef : undefined;
 
   // Resolve the parameter value-object (when set) — same root as the entity.
   const root = entity.root();
+  // ADR-0039: resolving — root has no super (children()==ownChildren()).
   const argsObject =
     argsObjectName !== undefined
-      ? (root.ownChildren().find(
+      ? (root.children().find(
           (c) =>
             c.subType === OBJECT_SUBTYPE_VALUE && c.name === argsObjectName,
         ) as MetaObject | undefined)
@@ -78,8 +81,9 @@ export function renderCallableFile(entity: MetaObject): string {
 
   // Build the parameter list for the SQL call site. Declaration order = arg
   // order. Empty when argsObject is undefined (zero-arg proc).
+  // ADR-0039: resolving — a value object may inherit fields via extends (shape reuse).
   const paramFieldNames: string[] = argsObject
-    ? argsObject.ownChildren()
+    ? argsObject.children()
         .filter((c) => c.type === TYPE_FIELD)
         .map((f) => f.name)
     : [];
