@@ -168,8 +168,9 @@ TS reference establishes the golden, then fan out to C# / Java / Kotlin / Python
 
 ## Docs to update (part of the deliverable)
 
-- **New ADR** — record the `index.*` type + `identity.secondary` key-purity + the
-  `@unique` removal as a cross-cutting metamodel decision (Nygard format, `spec/decisions/`).
+- **New ADR** — **DONE** (`spec/decisions/ADR-0040-index-type-and-secondary-key-purity.md`):
+  records the `index.*` type + `identity.secondary` key-purity + the `@unique` removal as a
+  cross-cutting metamodel decision (Nygard format, Accepted 2026-07-01).
 - **Canonical metamodel spec** — `spec/metamodel/*` (wherever `identity.secondary`'s
   `@unique`/`@orders`/`@using`/`@expr`/`@where` are described): drop `@unique`, add the
   `index.*` type + `index.lookup`, note the reserved subtypes.
