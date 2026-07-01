@@ -446,6 +446,10 @@ public class MetaDataLoader
             // (ERR_INVALID_RELATIONSHIP). Deferred-resolution (own-relationships only).
             errors.AddRange(ValidationPasses.ValidateRelationships(root));
 
+            // index.lookup @fields resolution — every index.lookup must name ≥1 field,
+            // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).
+            errors.AddRange(ValidationPasses.ValidateIndexLookupFields(root));
+
             // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
             // carries its reference descriptors (relationship @objectRef, identity.reference
             // @references for core; a downstream provider's type carries its own) + validator,

@@ -9,6 +9,7 @@
 
 using MetaObjects.Core.Field;
 using MetaObjects.Core.Identity;
+using MetaObjects.Core.Index;
 
 namespace MetaObjects.Persistence.Db;
 
@@ -54,6 +55,9 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
         // Physical RDB index/constraint attrs on identity subtypes — DB-domain
         // concerns (index ordering / partial predicate / FK constraint naming),
         // NOT core identity. Mirror the TS db.json identity extends.
+        // NOTE: @unique is intentionally NOT extended onto identity.secondary —
+        // identity.secondary is always a unique constraint. @unique was removed
+        // from the identity.secondary schema; non-unique indexes use index.lookup.
         registry.Extend(
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_SECONDARY,
@@ -62,5 +66,13 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_REFERENCE,
             attributes: [DbSchema.ConstraintNameSchema]);
+
+        // Physical RDB index attrs on index.lookup — the db provider contributes
+        // @orders / @expr / @where / @using (the same attrs as identity.secondary,
+        // reusing the DbSchema constants). Mirrors TS db.json index.lookup extends.
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_INDEX,
+            IndexConstants.INDEX_SUBTYPE_LOOKUP,
+            attributes: [DbSchema.OrdersSchema, DbSchema.WhereSchema, DbSchema.ExprSchema, DbSchema.UsingSchema]);
     }
 }
