@@ -30,10 +30,9 @@ const MODEL = JSON.stringify({
             { "source.rdb": { "name": "src", "@table": "notifications" } },
             { "identity.primary": { "name": "pk", "@fields": ["id"] } },
             {
-              "identity.secondary": {
+              "index.lookup": {
                 "name": "notifications_pending_idx",
                 "@fields": ["user_id", "created_at"],
-                "@unique": false,
                 "@orders": ["asc", "desc"],
                 "@where": "delivered_at IS NULL",
               },
