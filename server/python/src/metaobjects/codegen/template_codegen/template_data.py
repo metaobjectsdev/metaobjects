@@ -6,11 +6,13 @@ byte-gated cross-port contract (verified against the TS-produced
 (``maxLength``, ``enumValues``) are OMITTED when absent so a ``{{#maxLength}}``
 section gates identically to TS.
 
-Own-vs-effective discipline (matching the TS ``ownAttr`` semantics, per the JVM
-review): ``is_abstract`` per-node; ``@required`` attr + ``maxLength`` read from
-``own_attrs()`` (own-only); the required-*validator* branch effective; enum
-``values`` from ``attrs()`` (effective); effective package derived from
-``resolution_key()`` (matching the TS ``effectivePackage``).
+Own-vs-effective discipline (ADR-0039 — RESOLVING is the default, matching the TS
+reference which reads these via the resolving ``attr()`` / ``fields()`` /
+``identities()`` / ``relationships()``): ``is_abstract`` per-node; ``@required``
+attr + ``maxLength`` + enum ``values`` + identity ``@fields`` + relationship
+``@cardinality``/``@objectRef`` all read effective (own + inherited via extends);
+effective package derived from ``resolution_key()`` (matching the TS
+``effectivePackage``).
 """
 
 from __future__ import annotations
@@ -85,17 +87,21 @@ def build_entity_template_data(o: Any) -> dict[str, Any]:
     relationships: list[dict[str, Any]] = []
     for c in o.children():
         if c.type == TYPE_IDENTITY:
-            id_fields = c.own_attrs().get("fields")
+            # ADR-0039 resolving: identity @fields may be inherited via extends
+            # (mirrors the TS ``i.fields`` resolving getter).
+            id_fields = c.attrs().get("fields")
             identities.append(
                 {"kind": c.sub_type, "fields": list(id_fields) if isinstance(id_fields, list) else []}
             )
         elif c.type == TYPE_RELATIONSHIP:
-            own = c.own_attrs()
+            # ADR-0039 resolving: relationship @cardinality/@objectRef may be
+            # inherited via extends (mirrors the TS ``r.cardinality``/``r.objectRef``).
+            eff = c.attrs()
             relationships.append(
                 {
                     "name": c.name,
-                    "cardinality": own.get("cardinality", "") or "",
-                    "targetRef": own.get("objectRef", "") or "",
+                    "cardinality": eff.get("cardinality", "") or "",
+                    "targetRef": eff.get("objectRef", "") or "",
                 }
             )
     return {

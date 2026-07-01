@@ -113,6 +113,9 @@ def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | No
     bare ``fqn()`` / ``name`` (the latter covering legacy same-tree refs and
     root-level/empty-package objects). Mirrors TS ``refMatchesObject`` /
     ``KotlinGenUtil.resolveObjectByShortOrFqn``."""
+    # ADR-0039 sanctioned own: top-level object lookup on the loader ROOT
+    # (metadata.root is never extended, so own == effective) — mirrors the TS
+    # reference (``root.ownChildren()`` in naming-refs / validation-passes).
     for child in root.own_children():
         if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
             continue
@@ -256,7 +259,10 @@ def _enum_field_type(
 
 def _find_origin_child(field: MetaField) -> MetaOrigin | None:
     """First ``origin.*`` child of *field* (own children only — origins are
-    declared inline; there's no inheritance contract for them today)."""
+    declared inline; there's no inheritance contract for them today).
+
+    ADR-0039 sanctioned own: origin.* NEVER inherits via extends (ADR-0029), so a
+    field's origin is read from its OWN children."""
     for c in field.own_children():
         if isinstance(c, MetaOrigin):
             return c
@@ -283,7 +289,7 @@ def _resolve_passthrough_type(
     """``origin.passthrough @from "Entity.field"`` — resolve to source field's
     Python type. Falls back to the payload field's own type when the dotted
     ref can't be resolved (defensive — loader validation already gates ``@from``)."""
-    from_ref = origin.attr(ORIGIN_ATTR_FROM)
+    from_ref = origin.attr(ORIGIN_ATTR_FROM)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
     if not isinstance(from_ref, str) or not from_ref:
         return _fallback_type(fallback)
     source = _resolve_dotted_field_ref(root, from_ref)
@@ -301,13 +307,13 @@ def _resolve_aggregate_type(
     - avg   → ``float``
     - sum / min / max → type of the ``@of`` field
     """
-    agg = origin.attr(ORIGIN_ATTR_AGG)
+    agg = origin.attr(ORIGIN_ATTR_AGG)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
     if agg == "count":
         return "int", set()
     if agg == "avg":
         return "float", set()
     if agg in ("sum", "min", "max"):
-        of_ref = origin.attr(ORIGIN_ATTR_OF)
+        of_ref = origin.attr(ORIGIN_ATTR_OF)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
         if not isinstance(of_ref, str) or not of_ref:
             return _fallback_type(fallback)
         source = _resolve_dotted_field_ref(root, of_ref)
@@ -333,7 +339,7 @@ def _resolve_collection_type(
     referenced by two fields in the same payload module, only one nested
     class is emitted. Cross-file dedupe would leave forward-references
     dangling (see the module docstring)."""
-    via = origin.attr(ORIGIN_ATTR_VIA)
+    via = origin.attr(ORIGIN_ATTR_VIA)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
     if not isinstance(via, str) or not via:
         return _fallback_type(fallback)
     parts = _split_dotted_ref(via)
@@ -486,7 +492,7 @@ def render_payload_vo(
     on the same relationship), only one nested class is emitted. Across
     different templates, each file owns its full class graph independently —
     see the module docstring for the rationale."""
-    payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     payload = resolve_payload_vo(root, payload_ref)
@@ -660,6 +666,8 @@ class PayloadVoGenerator:
         if root is None:
             return []
         files: list[EmittedFile] = []
+        # ADR-0039 sanctioned own: top-level template scan on the loader ROOT
+        # (metadata.root is never extended, so own == effective).
         templates = sorted(
             (c for c in root.own_children() if c.type == TYPE_TEMPLATE and isinstance(c, MetaTemplate)),
             key=lambda c: c.name,

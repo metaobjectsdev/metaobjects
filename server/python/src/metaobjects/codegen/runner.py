@@ -25,6 +25,8 @@ class RunGenResult:
 
 
 def _objects(root: MetaData) -> list[MetaObject]:
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT
+    # (metadata.root is never extended, so own == effective).
     return [c for c in root.own_children()
             if c.type == TYPE_OBJECT and isinstance(c, MetaObject)]
 

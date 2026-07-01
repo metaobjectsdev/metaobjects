@@ -148,6 +148,9 @@ def _detect_attr_merge_conflicts(
     src_files = _source_files(src.source)
     target_json_path = _source_json_path(target.source)
 
+    # ADR-0039 sanctioned own: overlay/merge operates on the DECLARED layers by
+    # definition — it compares/combines each file's own attrs (never the resolved
+    # effective view, which would confuse inherited attrs with authored ones).
     pre_attrs: dict[str, object] = {
         attr.name: getattr(attr, "value", None) for attr in target.own_meta_attrs()
     }
@@ -216,6 +219,8 @@ def _merge_into(
         pre_canonical = canonical_serialize(target)
         _detect_attr_merge_conflicts(target, src, errors)
 
+    # ADR-0039 sanctioned own: overlay/merge — accumulate each file's own attrs +
+    # own children (declared-here layers) into the merged tree.
     # attrs: source overwrites target (last-writer-wins)
     for attr in src.own_meta_attrs():
         target.set_attr(attr.name, getattr(attr, "value", None), sub_type=attr.sub_type)

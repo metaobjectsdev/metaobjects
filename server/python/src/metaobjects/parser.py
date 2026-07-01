@@ -320,6 +320,9 @@ def _build(
             # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with
             # its origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource).
             # The attr's JsonPath points at the @-key on the parent body.
+            # ADR-0039 sanctioned own: fetches the JUST-set OWN attr node (set_attr
+            # above) to stamp its origin envelope — a declaration-layer operation, not
+            # an effective read (resolving could return an inherited node).
             attr_node = node.own_meta_attr(attr_name)
             if attr_node is not None:
                 # FR5b — the inline attr's YAML position is the body's
@@ -406,6 +409,9 @@ def _parse_attr_child(
     # FR5a / ADR-0009 — stamp the just-constructed MetaAttribute node with its
     # origin envelope. Mirrors C# Parser.cs:1039 (attrModel.SetSource). The
     # builder already points at the `attr.<sub>` wrapper (caller pushed it).
+    # ADR-0039 sanctioned own: fetches the JUST-set OWN attr node (set_attr above)
+    # to stamp its origin envelope — a declaration-layer operation, not an effective
+    # read.
     attr_node = parent.own_meta_attr(attr_name)
     if attr_node is not None:
         attr_node.set_source(_current_envelope(source, builder, yaml_position))

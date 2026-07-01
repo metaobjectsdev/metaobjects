@@ -38,12 +38,16 @@ def tph_subtype_of(entity: MetaData) -> TphSubtype | None:
     ``None``. A subtype declares ``@discriminatorValue`` (own attr) and inherits
     ``@discriminator`` from an ancestor in its resolved super chain.
     """
-    value = entity.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)  # own attr
+    # ADR-0039 sanctioned own: @discriminatorValue is THIS subtype's own value —
+    # it must NOT resolve to an ancestor's value (each subtype declares its own).
+    value = entity.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)
     if value is None:
         return None
     ancestor = entity.super_data
     while ancestor is not None:
-        field = ancestor.attr(OBJECT_ATTR_DISCRIMINATOR)  # own attr on the base
+        # ADR-0039 sanctioned own: explicit super-resolution walk — @discriminator
+        # is read own at each ancestor as we climb the chain by hand.
+        field = ancestor.attr(OBJECT_ATTR_DISCRIMINATOR)
         if field is not None:
             return TphSubtype(field=str(field), value=str(value))
         ancestor = ancestor.super_data

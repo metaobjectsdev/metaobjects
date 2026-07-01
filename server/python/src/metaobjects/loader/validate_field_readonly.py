@@ -32,14 +32,21 @@ WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT"
 
 
 def _read_only_flag(field: MetaData) -> bool | None:
-    """The explicit ``@readOnly`` value (True/False) or None when absent."""
+    """The explicit ``@readOnly`` value (True/False) or None when absent.
+
+    ADR-0039 sanctioned own: the FR-013 downgrade rule needs THIS field's OWN
+    explicit flag to distinguish an own-declared ``false`` from an inherited value
+    — mirrors the TS ``readOnlyFlag`` (``field.ownAttr``)."""
     v = field.attr(FIELD_ATTR_READ_ONLY)
     return v if isinstance(v, bool) else None
 
 
 def _inherited_field(obj: MetaData, name: str) -> MetaData | None:
     """Walk the extends chain for a field with ``name``; return its declaring
-    node (own attrs intact) if found."""
+    node (own attrs intact) if found.
+
+    ADR-0039 sanctioned own: explicit super-resolution walk (own children per
+    ancestor while climbing the chain)."""
     cursor = obj.super_data
     while cursor is not None:
         for c in cursor.own_children():
@@ -58,6 +65,9 @@ def _primary_assigned_field_names(obj: MetaData) -> set[str]:
             continue
         if ident.sub_type != IDENTITY_SUBTYPE_PRIMARY:
             continue
+        # ADR-0039 sanctioned own: validation reads the identity's OWN @generation/
+        # @fields declaration (mirrors the TS validate-field-readonly ``id.ownAttr``);
+        # the identity node itself is located via the resolving obj.children() above.
         if ident.attr(IDENTITY_ATTR_GENERATION) != GENERATION_ASSIGNED:
             continue
         fields = ident.attr(IDENTITY_ATTR_FIELDS)
@@ -76,6 +86,8 @@ def validate_field_readonly(
     envelope_warnings: list[LoaderWarning] | None = None,
     legacy_warnings: list[str] | None = None,
 ) -> None:
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never
+    # extended, own == effective).
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
             continue
@@ -83,6 +95,7 @@ def validate_field_readonly(
 
         # 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
         if is_value_object:
+            # ADR-0039 sanctioned own: validates what THIS object.value declares.
             for child in obj.own_children():
                 if child.type == TYPE_FIELD and _read_only_flag(child) is True:
                     msg = (
@@ -104,6 +117,8 @@ def validate_field_readonly(
 
         # 2) ERR_READONLY_DOWNGRADE — read-only-ness can only be upgraded across
         #    extends. Only the explicit own @readOnly: false case matters.
+        # ADR-0039 sanctioned own: the downgrade rule inspects only the fields THIS
+        # object own-declares (own @readOnly:false vs the inherited parent's true).
         for own_field in obj.own_children():
             if own_field.type != TYPE_FIELD:
                 continue

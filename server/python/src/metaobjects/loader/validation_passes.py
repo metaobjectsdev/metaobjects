@@ -193,6 +193,9 @@ def run_validations(
 
 def _walk(root: MetaData) -> list[MetaData]:
     """Return all authored nodes in the tree (BFS order, including root)."""
+    # ADR-0039 sanctioned own: the tree-walk visits each DECLARED node once at its
+    # declaration site (own children); inherited nodes are validated where declared.
+    # Mirrors the TS validation walk (`node.ownChildren()`).
     result: list[MetaData] = []
     queue: list[MetaData] = [root]
     while queue:
@@ -336,6 +339,9 @@ def _validate_attr_schema(
         # open policy). In lax mode (the default) this is a no-op, preserving the
         # legacy open-attr behavior so downstream apps can loosen.
         if strict:
+            # ADR-0039 sanctioned own: declaration-layer validation — an inherited
+            # attr was validated on its declaring node; here we judge only the OWN
+            # authored attrs (mirrors the TS Check-0 own_meta_attrs).
             for attr_node in node.own_meta_attrs():
                 # attr.properties is a first-class, registered, canonical attr
                 # subtype whose designed purpose is an arbitrary-named structural
@@ -375,6 +381,9 @@ def _validate_attr_schema(
             parent_def = registry.find(node.type, node.sub_type)
             if parent_def is not None:
                 rules = parent_def.child_rules
+                # ADR-0039 sanctioned own: declaration-layer validation — judges the
+                # children THIS node declares (own); inherited children were judged
+                # under their own declaring parent. Mirrors the TS Check-0b.
                 for child in node.own_children():
                     if not any(_child_rule_admits(r, child) for r in rules):
                         errors.append(
@@ -409,6 +418,7 @@ def _validate_attr_schema(
 
         # --- Checks 2 + 3: own attrs only (inherited attrs were already checked on
         #     the node that declared them; re-checking would double-report) ---
+        # ADR-0039 sanctioned own: declaration-layer validation of each authored attr.
         for attr_node in node.own_meta_attrs():
             maybe_schema: AttrSchema | None = schema_by_name.get(attr_node.name)
             if maybe_schema is None:
@@ -492,8 +502,9 @@ def _validate_enum_values(
         # @coerceDefault / @default / @normalize while inheriting @values).
         _validate_enum_fr011_attrs(node, errors)
 
-        # Own-only: node.attr() reads only this node's own attrs (never the super
-        # chain), so an inherited @values yields None here and is skipped.
+        # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
+        # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
+        # @values yields None here and is validated on its declaring node.
         own_values = node.attr(FIELD_ATTR_VALUES)
         if own_values is None:
             # No own @values — required-attr check (ERR_MISSING_REQUIRED_ATTR) is
@@ -572,6 +583,9 @@ def _validate_enum_fr011_attrs(node: MetaData, errors: list[MetaError]) -> None:
     members: list[str] | None = None  # lazily computed (only when a member attr is owned)
 
     for attr_name in (FIELD_ATTR_COERCE_DEFAULT, FIELD_ATTR_DEFAULT):
+        # ADR-0039 sanctioned own: validates the AUTHORED @coerceDefault/@default on
+        # THIS node against the EFFECTIVE @values (resolved below). Mirrors the TS
+        # Check-5 (`node.ownAttrs().get(attrName)` own vs `node.attrs()` values).
         own = node.attr(attr_name)
         if not isinstance(own, str):
             continue
@@ -631,7 +645,9 @@ def _validate_field_defaults(root: MetaData, errors: list[MetaError]) -> None:
         # Enum @default membership is validated by _validate_enum_fr011_attrs.
         if node.sub_type == FIELD_SUBTYPE_ENUM:
             continue
-        # Own-only: node.attr() reads only this node's own attrs.
+        # ADR-0039 sanctioned own: validates the AUTHORED @default on THIS node
+        # (mirrors the TS _walkFieldDefaults `node.ownAttr`); an inherited @default
+        # was validated on its declaring node.
         own = node.attr(FIELD_ATTR_DEFAULT)
         if not isinstance(own, str):
             continue
@@ -691,8 +707,10 @@ def _validate_db_column_type(root: MetaData, errors: list[MetaError]) -> None:
     for node in _walk(root):
         if node.type != TYPE_FIELD:
             continue
-        # Own-only: node.attr() reads only this node's own attrs (never the super
-        # chain), so an inherited @dbColumnType yields None here and is skipped.
+        # ADR-0039 sanctioned own: @dbColumnType is the deliberately NEVER-inherited
+        # attr (a physical column-type override, not a logical property) — read own,
+        # matching the TS Check-6 `node.ownAttrs()`. An inherited value yields None
+        # here and is validated on its declaring node.
         value = node.attr(FIELD_ATTR_DB_COLUMN_TYPE)
         if not isinstance(value, str):
             continue
@@ -751,6 +769,9 @@ def _validate_datagrid_sort_fields(
         for child in node.children():
             if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
                 continue
+            # ADR-0039 sanctioned own: validates the layout's OWN @defaultSortField
+            # declaration (mirrors the TS validateDataGridSortFields `layout.ownAttr`);
+            # the layout node itself is located via the resolving node.children() above.
             sort_field = child.attr(LAYOUT_ATTR_DEFAULT_SORT_FIELD)
             if sort_field is None:
                 continue
@@ -839,6 +860,9 @@ def _validate_datagrid_filter_values(
         for child in node.children():
             if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
                 continue
+            # ADR-0039 sanctioned own: validates the layout's OWN @filter declaration
+            # (mirrors the TS validateDataGridFilterValues `layout.ownAttr`); the
+            # layout node itself is located via the resolving node.children() above.
             filter_value = child.attr(LAYOUT_ATTR_FILTER)
             if filter_value is None:
                 continue
@@ -907,6 +931,8 @@ def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
     Mirrors TS ``refMatchesObject`` / the C# @parameterRef index.
     """
     index: dict[str, MetaObject] = {}
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never
+    # extended, own == effective) — mirrors the TS refMatchesObject index.
     for child in root.own_children():
         if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
             if child.name:
@@ -1055,7 +1081,10 @@ def _validate_via_path(
             )
             return None
 
-        # Advance to the referenced entity
+        # Advance to the referenced entity.
+        # ADR-0039 sanctioned own: reads the relationship's OWN @objectRef declaration
+        # (mirrors the TS _validateViaPath `rel.ownAttr`); the rel node itself is found
+        # via the resolving _relationships_by_name (children()) above.
         obj_ref = rel_node.attr(RELATIONSHIP_ATTR_OBJECT_REF)
         if not isinstance(obj_ref, str):
             errors.append(
@@ -1098,7 +1127,9 @@ def _validate_via_path(
 
 def _hop_cardinality(rel: MetaData) -> str | None:
     """A hop relationship's effective @cardinality, or None when not declared."""
-    v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY)
+    # ADR-0039: resolving (@cardinality may be inherited via extends) — mirrors the
+    # TS _hopCardinality which reads `rel.attr()` (resolving), NOT ownAttr.
+    v = rel.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY)
     return v if isinstance(v, str) else None
 
 
@@ -1147,6 +1178,9 @@ def _derive_base_entity(
         return obj
 
     # 1) The extended identity anchors the base entity (declared, not inferred).
+    # ADR-0039 sanctioned own: this inspects the OWN children that themselves carry
+    # an `extends` (their super_data) to derive the base entity — a super-resolution
+    # walk over authored declarations. Mirrors the TS _deriveBaseEntity `ownChildren`.
     for identity in (c for c in obj.own_children() if c.type == TYPE_IDENTITY):
         extended = identity.super_data
         if extended is not None and extended.type == TYPE_IDENTITY:
@@ -1158,6 +1192,8 @@ def _derive_base_entity(
                 return owner
 
     # 2) Fallback: the single distinct entity targeted by plain field-extends.
+    # ADR-0039 sanctioned own: same base-derivation walk — inspects OWN fields that
+    # carry an `extends` (their super_data). Mirrors the TS _deriveBaseEntity.
     targets: list[MetaData] = []
     seen: set[int] = set()
     for f in (c for c in obj.own_children() if c.type == TYPE_FIELD):
@@ -1217,6 +1253,9 @@ def _infer_via_single_hop(
     entity's effective relationships for those whose @objectRef resolves to the
     @from/@of target entity. Exactly one → the inferred path. Zero →
     ERR_INVALID_ORIGIN. More than one → ERR_AMBIGUOUS_PATH."""
+    # ADR-0039: rels iterated via the resolving base.children() (effective — inherited
+    # relationships included); each rel's OWN @objectRef is then read (sanctioned own,
+    # mirrors the TS _inferViaSingleHop `rel.ownAttr` after `base.children()`).
     candidates = [
         rel
         for rel in base.children()
@@ -1348,6 +1387,10 @@ def _validate_origin_paths(
         # cardinality checks — a value's origin.passthrough is FR-015 parameter
         # lineage (constructed, not assembled). @from is still resolution-checked.
         is_value_host = obj.sub_type == OBJECT_SUBTYPE_VALUE
+        # ADR-0039 sanctioned own throughout this loop: origin.* NEVER inherits via
+        # extends (ADR-0029), so a field's origins are read from its OWN children and
+        # every origin.attr(@from/@of/@via) below is a sanctioned own read. Mirrors
+        # the TS validateOriginPaths (`field.ownChildren()` + `origin.ownAttr()`).
         for origin in node.own_children():
             if origin.type != TYPE_ORIGIN:
                 continue
@@ -1487,12 +1530,18 @@ def _strip_package(name: str) -> str:
 
 
 def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
-    """FK field names declared by an entity's identity.reference children."""
+    """FK field names declared by an entity's effective identity.reference children.
+
+    ADR-0039 — RESOLVING (children() + get_meta_attr): mirrors the TS
+    _junctionReferences, which uses the EFFECTIVE view (`referenceIdentities()` over
+    `children()`) + `ref.fields` (resolving) so a junction defined through `extends`
+    is validated identically to resolution time.
+    """
     out: list[str] = []
-    for child in junction.own_children():
+    for child in junction.children():
         if child.type != TYPE_IDENTITY or child.sub_type != IDENTITY_SUBTYPE_REFERENCE:
             continue
-        fields = child.attr(IDENTITY_ATTR_FIELDS)
+        fields = child.get_meta_attr(IDENTITY_ATTR_FIELDS)  # ADR-0039: resolving (identity attr)
         if isinstance(fields, str):
             first = fields.split(",")[0].strip()
             if first:
@@ -1503,9 +1552,11 @@ def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
 
 
 def _count_junction_references(junction: MetaData) -> int:
+    # ADR-0039 — RESOLVING (children()): count the EFFECTIVE identity.reference
+    # children so an extends-defined junction is counted like the TS _junctionReferences.
     return sum(
         1
-        for c in junction.own_children()
+        for c in junction.children()
         if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE
     )
 
@@ -1513,6 +1564,12 @@ def _count_junction_references(junction: MetaData) -> int:
 def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
     object_index = _build_object_index(root)
 
+    # ADR-0039 sanctioned own: a relationship is validated on the entity that
+    # DECLARES it — root scan (never extended) + each object's OWN relationships,
+    # and each relationship's OWN @through/@sourceRefField/@symmetric/@cardinality/
+    # @objectRef declaration. Mirrors the TS validateRelationships (`ownChildren` +
+    # `rel.ownAttr`). (The junction's identity.reference fields ARE read effectively
+    # — see _junction_reference_fk_fields — matching the TS split.)
     for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
         for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
             through = rel.attr(RELATIONSHIP_ATTR_THROUGH)
@@ -1647,6 +1704,8 @@ def _validate_one_primary_source(
         if not isinstance(node, MetaObject):
             continue
 
+        # ADR-0039 sanctioned own: the one-primary rule validates the sources THIS
+        # object DECLARES (own) — mirrors the TS validate-source-roles `ownChildren`.
         sources = [c for c in node.own_children() if c.type == TYPE_SOURCE]
         if not sources:
             continue
@@ -1733,6 +1792,9 @@ def _extends_chain_reaches(node: MetaData, target: MetaData) -> bool:
 
 
 def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> None:
+    # ADR-0039 sanctioned own: root scan (never extended) + the projection's OWN
+    # identity children (validates what the projection DECLARES). Mirrors the TS
+    # validate-identity-passthrough `ownChildren`.
     for obj in (
         c
         for c in root.own_children()
@@ -1763,8 +1825,11 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
             if owner is None:
                 continue
 
+            # ADR-0039: resolving — the extended (source) identity's @fields may be
+            # inherited via extends; mirrors the TS identityEffectiveFields(extended)
+            # (`identity.attr()` resolving), NOT the own-fields helper.
             extended_fields = (
-                _normalize_identity_fields(extended.attr(IDENTITY_ATTR_FIELDS)) or []
+                _normalize_identity_fields(extended.get_meta_attr(IDENTITY_ATTR_FIELDS)) or []
             )
             computed: list[str] = []
             missing: list[str] = []
@@ -1780,6 +1845,9 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
                 if entity_field is None:
                     missing.append(field_name)
                     continue
+                # ADR-0039 sanctioned own: the projection's OWN fields are the
+                # pass-through declarations (mirrors the TS `owner.ownChildren()`);
+                # each is checked for an extends-chain reaching the entity field.
                 local = next(
                     (
                         c
@@ -1807,6 +1875,10 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
                 )
                 continue
 
+            # ADR-0039 sanctioned own: checks whether THIS projection identity
+            # EXPLICITLY authored @fields (own) that disagree with the computed
+            # pass-through key. Resolving would pull an inherited @fields and always
+            # "disagree". Mirrors the TS identityOwnFields (`identity.ownAttr`).
             explicit = _normalize_identity_fields(
                 identity.own_attrs().get(IDENTITY_ATTR_FIELDS)
             )
@@ -1836,6 +1908,11 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
 def _validate_derived_field_providability(
     root: MetaData, errors: list[MetaError]
 ) -> None:
+    # ADR-0039: root scan (sanctioned own — never extended); the read-capable-source
+    # check uses the resolving obj.children() (inherited sources count); the derived-
+    # field check inspects OWN fields with OWN origins (sanctioned own — origin.*
+    # never inherits, so a derived field is judged where declared). Mirrors the TS
+    # validateDerivedFieldProvidability (`ownChildren` + `children()` for sources).
     for obj in (
         c
         for c in root.own_children()
@@ -1848,6 +1925,8 @@ def _validate_derived_field_providability(
         )
         if has_read_capable:
             continue
+        # ADR-0039 sanctioned own: derived-field providability inspects the object's
+        # OWN fields carrying an OWN origin.* child (origin.* never inherits, ADR-0029).
         for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
             if not any(c.type == TYPE_ORIGIN for c in field.own_children()):
                 continue
@@ -1882,6 +1961,9 @@ def _validate_max_occurs(
     constraint holds."""
     for node in _walk(root):
         counts: dict[tuple[str, str], list[MetaData]] = {}
+        # ADR-0039 sanctioned own: max_occurs counts what THIS node DECLARES directly
+        # — an inherited singleton was counted on its declaring parent, so counting
+        # the effective set would double-count and falsely trip the constraint.
         for child in node.own_children():
             counts.setdefault((child.type, child.sub_type), []).append(child)
         for (type_, sub_type), group in counts.items():
@@ -1947,9 +2029,10 @@ def _validate_projection_licensing(node: MetaObject, errors: list[MetaError]) ->
             )
         )
 
-    # OWN sources only: an inherited source is validated on the projection that
-    # declares it; an inherited source from a non-projection super is unreachable
-    # without first tripping the extends rule above.
+    # ADR-0039 sanctioned own: OWN sources only — an inherited source is validated
+    # on the projection that declares it; an inherited source from a non-projection
+    # super is unreachable without first tripping the extends rule above. Mirrors the
+    # TS validateProjectionLicensing (`model.ownChildren()` + `child.effectiveKind`).
     for child in node.own_children():
         if child.type != TYPE_SOURCE:
             continue
@@ -2018,6 +2101,9 @@ def _validate_subtype_rules(
 def _identity_field_names(obj: MetaObject) -> set[str]:
     """Return the set of field names covered by ANY identity on *obj* (effective)."""
     covered: set[str] = set()
+    # ADR-0039: identities iterated via the resolving obj.children() (inherited
+    # identities included); each identity's OWN @fields is read (sanctioned own,
+    # mirrors the TS validateFilterableHasIndex `identity.ownAttr` after `children()`).
     for child in obj.children():
         if child.type != TYPE_IDENTITY:
             continue
@@ -2218,10 +2304,16 @@ def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
+    # ADR-0039 sanctioned own THROUGHOUT this pass: root scans (metadata.root is
+    # never extended) + every `tpl.attr(TEMPLATE_ATTR_*)` reads the template's OWN
+    # attr. Template attrs are read own in BOTH reference ports (TS `tmpl.ownAttr`,
+    # Java `getMetaAttr(name, false)`) — a template ref is a per-node declaration,
+    # not an inherited-across-a-template-extends-chain value. Mirrors the TS
+    # validateTemplatePayloadRefs.
+    #
     # FR-032 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
     # (e.g. ``acme::ai::ReviewPayload``). Index each object under its bare name,
     # its fqn() AND its package-folded resolution_key() so the FQN ref resolves.
-    # Mirrors TS refMatchesObject / the C# @payloadRef RefMatchesObject.
     objects_by_name: dict[str, MetaData] = {}
     for child in root.own_children():
         if child.type == TYPE_OBJECT:
@@ -2317,7 +2409,10 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
             slots_raw = tpl.attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)
             slots = _parse_string_list(slots_raw)
             if slots:
-                payload_fields = {f.name for f in payload.own_children() if f.type == TYPE_FIELD}
+                # ADR-0039: resolving — the payload VO's EFFECTIVE fields (own +
+                # inherited via extends) are the valid slot targets; mirrors the TS
+                # `payload.children()` (a payload VO may extends for shape).
+                payload_fields = {f.name for f in payload.children() if f.type == TYPE_FIELD}
                 for slot in slots:
                     if slot not in payload_fields:
                         # FR5d — @requiredSlots is a field-on-payload reference;

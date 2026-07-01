@@ -73,8 +73,10 @@ def _body(node: MetaData, effective: bool = False) -> dict[str, object]:
     if node.resolved_is_array() if effective else node.is_array:
         body[KEY_IS_ARRAY] = True
 
-    # In effective mode use attrs()/children() (own + inherited via the super
-    # chain); in own mode use own_meta_attrs()/own_children() (declared here).
+    # ADR-0039 sanctioned own: the OWN-mode canonical serializer round-trips the
+    # AUTHORED form (own_meta_attrs()/own_children() = declared-here layer) so
+    # re-loading reconstructs the same extends tree; the EFFECTIVE mode resolves
+    # (attrs()/children() = own + inherited via the super chain).
     if effective:
         for name in sorted(node.attrs()):
             body[f"{ATTR_PREFIX}{name}"] = _normalize(node.attrs()[name])

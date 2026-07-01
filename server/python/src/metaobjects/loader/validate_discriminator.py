@@ -42,7 +42,10 @@ _INT_RE = re.compile(r"^-?\d+$")
 
 
 def _find_field_on_entity(entity: MetaData, name: str) -> MetaData | None:
-    """A field with ``name`` on ``entity`` — own first, then via extends chain."""
+    """A field with ``name`` on ``entity`` — own first, then via extends chain.
+
+    ADR-0039 sanctioned own: this is an explicit super-resolution walk (own children
+    at each node while climbing the chain by hand)."""
     for child in entity.own_children():
         if child.type == TYPE_FIELD and child.name == name:
             return child
@@ -56,7 +59,10 @@ def _find_field_on_entity(entity: MetaData, name: str) -> MetaData | None:
 
 
 def _find_discriminator_root(entity: MetaData) -> tuple[MetaData | None, str | None]:
-    """First ancestor (or self) carrying ``@discriminator``: (root, fieldName)."""
+    """First ancestor (or self) carrying ``@discriminator``: (root, fieldName).
+
+    ADR-0039 sanctioned own: explicit super-resolution walk reading @discriminator
+    own at each node up the chain."""
     cursor: MetaData | None = entity
     while cursor is not None:
         v = cursor.attr(OBJECT_ATTR_DISCRIMINATOR)
@@ -67,6 +73,8 @@ def _find_discriminator_root(entity: MetaData) -> tuple[MetaData | None, str | N
 
 
 def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
+    # ADR-0039 sanctioned own: top-level entity scan on the loader ROOT (never
+    # extended, own == effective).
     entities = [
         c
         for c in root.own_children()
@@ -75,6 +83,8 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
 
     # Pass 1: @discriminator name resolution (own + inherited fields).
     for obj in entities:
+        # ADR-0039 sanctioned own: @discriminator is a declaration-layer attr (does
+        # THIS entity declare a discriminator base) — validated own.
         disc = obj.attr(OBJECT_ATTR_DISCRIMINATOR)
         if not isinstance(disc, str) or disc == "":
             continue
@@ -94,6 +104,7 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
     _root_index: dict[int, list[tuple[MetaData, str]]] = {}
 
     for obj in entities:
+        # ADR-0039 sanctioned own: @discriminatorValue is THIS subtype's own value.
         value = obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE)
         if not isinstance(value, str) or value == "":
             continue
@@ -163,8 +174,10 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
     for obj in entities:
         if obj.is_abstract is True:
             continue
+        # ADR-0039 sanctioned own: @discriminatorValue = this subtype's own value.
         if isinstance(obj.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE), str):
             continue
+        # ADR-0039 sanctioned own: @discriminator = own declaration (is this a root).
         if isinstance(obj.attr(OBJECT_ATTR_DISCRIMINATOR), str):
             continue  # a root, not a subtype
         disc_root, _ = _find_discriminator_root(obj)

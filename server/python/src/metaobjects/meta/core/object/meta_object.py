@@ -16,7 +16,12 @@ class MetaObject(MetaData):
         return [c for c in self.children() if isinstance(c, MetaField)]
 
     def own_fields(self) -> list[MetaField]:
-        """Own fields only — direct children, no inherited fields from super."""
+        """Own fields only — direct children, no inherited fields from super.
+
+        ADR-0039 sanctioned own accessor — the ONE legitimate own read is codegen
+        subclass-emit (the generated class ``extends`` its generated base, so only
+        own members are re-emitted). Pinned by ``test_entity_model.py``. Every other
+        caller must use the resolving :meth:`fields`."""
         return [c for c in self.own_children() if isinstance(c, MetaField)]
 
     def find_field(self, name: str) -> MetaField | None:

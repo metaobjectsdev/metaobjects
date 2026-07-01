@@ -179,6 +179,9 @@ class ObjectManager:
         self._root = root
         self._driver = driver
         self._entity_by_name: dict[str, MetaObject] = {}
+        # ADR-0039 sanctioned own: top-level entity scan on the loader ROOT
+        # (metadata.root is never extended, so own == effective) — mirrors the TS
+        # object-manager (``this.metadata.ownChildren()``).
         for c in root.own_children():
             if isinstance(c, MetaObject):
                 self._entity_by_name.setdefault(c.name, c)
@@ -517,14 +520,14 @@ class ObjectManager:
         # FR-016 / ADR-0018 — physical_name implements the four-step rule
         # (kind-matching alias → legacy @table → source.name → entity-name
         # fallback), so this just delegates to the primary source.
-        for c in entity.own_children():
-            if isinstance(c, MetaSource) and c.role() == sc.SOURCE_ROLE_PRIMARY:
-                pn = c.physical_name()
-                if pn:
-                    return pn
-        # FR-017 TPH: a subtype declares no source of its own — it shares the
-        # discriminator base's single table, inherited via the super chain. Fall
-        # back to the effective (inherited) primary source before the name default.
+        #
+        # ADR-0039 — RESOLVING (children()) in a SINGLE pass, mirroring the TS
+        # ``resolveTableName``. Effective children (own + inherited via the super
+        # chain) mean a FR-017 TPH SUBTYPE — which declares no source of its own
+        # and inherits the discriminator base's single table — resolves to that
+        # base table; for an entity declaring its own source, own shadows inherited
+        # so the result is unchanged. (The prior own-first pass was the redundant
+        # "works-by-accident" pattern this ADR eliminates.)
         for c in entity.children():
             if isinstance(c, MetaSource) and c.role() == sc.SOURCE_ROLE_PRIMARY:
                 pn = c.physical_name()

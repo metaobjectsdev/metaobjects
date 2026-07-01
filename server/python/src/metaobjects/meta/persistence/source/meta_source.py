@@ -57,8 +57,14 @@ def _pluralize(s: str) -> str:
 
 
 class MetaSource(MetaData):
-    """A source.* node. Accessors mirror the TS reference (meta-source.ts) and
-    the Java port (MetaSource.java) — own-attr reads, with per-paradigm defaults.
+    """A source.* node.
+
+    ADR-0039 — attr reads RESOLVE (``get_meta_attr``): the ADR lists source attrs
+    among the effective-value reads that must walk the ``extends`` chain, matching
+    the Java port's resolving ``getMetaAttr(name)``. A source declared on an
+    abstract base and inherited by a concrete entity must expose its @kind / @role
+    / @schema / physical-name aliases through the super chain. Per-paradigm
+    defaults apply when the resolved value is absent.
     """
 
     def table_name(self) -> str | None:
@@ -66,18 +72,18 @@ class MetaSource(MetaData):
         ``None`` if absent. Kept as a back-compat slot-only accessor: callers
         should use :meth:`physical_name` for the FR-016 four-step rule.
         """
-        v = self.attr(SOURCE_ATTR_TABLE)
+        v = self.get_meta_attr(SOURCE_ATTR_TABLE)  # ADR-0039: resolving
         return v if isinstance(v, str) and v else None
 
     def effective_kind(self) -> str:
         """The value of ``@kind``, defaulting to ``"table"`` when omitted
         (ADR-0007 Rule 3 — per-paradigm default)."""
-        v = self.attr(SOURCE_ATTR_KIND)
+        v = self.get_meta_attr(SOURCE_ATTR_KIND)  # ADR-0039: resolving
         return v if isinstance(v, str) and v else DEFAULT_SOURCE_KIND
 
     def role(self) -> str:
         """The value of ``@role``, defaulting to ``"primary"`` when omitted."""
-        v = self.attr(SOURCE_ATTR_ROLE)
+        v = self.get_meta_attr(SOURCE_ATTR_ROLE)  # ADR-0039: resolving
         return v if isinstance(v, str) and v else DEFAULT_SOURCE_ROLE
 
     def is_read_only(self) -> bool:
@@ -91,7 +97,7 @@ class MetaSource(MetaData):
 
     def schema(self) -> str | None:
         """The value of ``@schema``, or ``None`` if absent."""
-        v = self.attr(SOURCE_ATTR_SCHEMA)
+        v = self.get_meta_attr(SOURCE_ATTR_SCHEMA)  # ADR-0039: resolving
         return v if isinstance(v, str) and v else None
 
     def physical_name(self) -> str:
@@ -112,13 +118,13 @@ class MetaSource(MetaData):
         # Step 1: kind-matching alias.
         canonical_attr = PHYSICAL_NAME_ATTR_BY_KIND.get(kind)
         if canonical_attr is not None:
-            v = self.attr(canonical_attr)
+            v = self.get_meta_attr(canonical_attr)  # ADR-0039: resolving
             if isinstance(v, str) and v:
                 return v
 
         # Step 2: legacy @table for non-table kind.
         if canonical_attr != SOURCE_ATTR_TABLE:
-            legacy = self.attr(SOURCE_ATTR_TABLE)
+            legacy = self.get_meta_attr(SOURCE_ATTR_TABLE)  # ADR-0039: resolving
             if isinstance(legacy, str) and legacy:
                 return legacy
 
