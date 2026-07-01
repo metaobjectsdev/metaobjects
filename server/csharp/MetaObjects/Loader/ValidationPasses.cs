@@ -20,22 +20,23 @@ namespace MetaObjects.Loader;
 /// Called in order after super resolution, before freeze.
 /// </summary>
 /// <remarks>
-/// ADR-0039 own-accessor discipline for the loader: the passes below read attrs and iterate
-/// children via the OWN accessors (<c>OwnAttr</c> / <c>OwnChildren</c> / <c>OwnAttrs</c>) by
-/// design, and each such use is one of the sanctioned categories:
-///   (a) <b>own-declared-layer validation</b> — a pass validates the shape/typing/pairing of what
-///       a node DECLARES HERE (e.g. attr-schema well-typedness, filterable-has-index, datagrid
-///       sort/filter references), not the extends-resolved effective node. Reading resolved would
-///       validate inherited declarations twice (they are already validated on their declaring node).
-///   (b) <b>declaration-structure tree walks</b> — recursive <c>OwnChildren()</c> descent that must
-///       visit each physically-declared node exactly once (resolving would fold in super children
-///       and double-visit).
-///   (c) <b>origin.* attr reads</b> — origins never inherit (ADR-0029).
-///   (d) <b>physical/source attrs</b> read from the node that declares them.
-/// This matches the cross-port reference 1:1: the TS <c>loader/validation-passes.ts</c> reads the
-/// same sites via <c>ownAttr</c>/<c>ownChildren</c>. (Effective, extends-resolving reads live in the
-/// typed node getters — <c>MetaField</c>/<c>MetaIdentity</c>/<c>MetaRelationship</c> — used by codegen
-/// and runtime; the validation layer intentionally inspects the authored layer.)
+/// ADR-0039 accessor discipline for the loader (aligned 1:1 to the TS oracle
+/// <c>loader/validation-passes.ts</c>): <b>resolving is the default</b>. An inheritable attr a
+/// concrete node may pick up from an abstract base via <c>extends</c> — @filterable, @db.indexed,
+/// @defaultSortField, @filter, identity @fields, relationship @objectRef/@through/@sourceRefField/
+/// @symmetric/@cardinality, template @kind/@textRef/@subjectRef/@htmlBodyRef/@payloadRef/
+/// @requiredSlots, source @parameterRef — is read via the RESOLVING <c>Attr</c> accessor, and a
+/// cross-object field/relationship lookup uses the RESOLVING <c>Children()</c>. The OWN accessors
+/// (<c>OwnAttr</c> / <c>OwnChildren</c>) are reserved for the narrow sanctioned categories:
+///   (a) <b>declaration-structure tree walks</b> — recursive <c>OwnChildren()</c> descent that must
+///       visit each physically-declared node exactly once (resolving would double-visit inherited
+///       children, which are validated on their declaring parent). The per-object outer loops
+///       iterate own children for this reason, then read inheritable attrs resolving.
+///   (b) <b>origin.* attr reads</b> — origins never inherit (ADR-0029), so @from/@via/@of are own.
+///   (c) <b>the @default coercibility pass</b> — validates the default DECLARED on THIS node
+///       (an inherited default was already gated on its declaring parent).
+/// (Effective, extends-resolving reads also live in the typed node getters —
+/// <c>MetaField</c>/<c>MetaIdentity</c>/<c>MetaRelationship</c> — used by codegen and runtime.)
 /// </remarks>
 public static class ValidationPasses
 {
@@ -216,7 +217,8 @@ public static class ValidationPasses
                 c => c.Type == TYPE_LAYOUT &&
                      c.SubType == LAYOUT_SUBTYPE_DATA_GRID))
             {
-                var sortField = layout.OwnAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+                // ADR-0039: resolving — a layout may inherit its grid attrs via extends (TS validation-passes.ts:120).
+                var sortField = layout.Attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
                 if (sortField is string sf && !fieldNames.Contains(sf))
                 {
                     errors.Add(new MetaError(
@@ -255,7 +257,8 @@ public static class ValidationPasses
             var indexedFieldNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var identity in effective.Where(c => c.Type == TYPE_IDENTITY))
             {
-                var fields = identity.OwnAttr(IDENTITY_ATTR_FIELDS);
+                // ADR-0039: resolving — an identity may inherit @fields via extends (TS validation-passes.ts:291).
+                var fields = identity.Attr(IDENTITY_ATTR_FIELDS);
                 if (fields is string singleField)
                 {
                     // Bare string (pre-desugar): split on comma.
@@ -283,9 +286,11 @@ public static class ValidationPasses
 
             foreach (var field in effective.Where(c => c.Type == TYPE_FIELD))
             {
-                var filterable = field.OwnAttr(FIELD_ATTR_FILTERABLE);
+                // ADR-0039: resolving — a concrete field may inherit @filterable / @db.indexed
+                // via extends (TS validation-passes.ts:301,304).
+                var filterable = field.Attr(FIELD_ATTR_FILTERABLE);
                 if (filterable is not true) continue;
-                if (field.OwnAttr(FIELD_ATTR_DB_INDEXED) is true) continue;
+                if (field.Attr(FIELD_ATTR_DB_INDEXED) is true) continue;
                 if (indexedFieldNames.Contains(field.Name)) continue;
 
                 warnings.Add(
@@ -319,7 +324,8 @@ public static class ValidationPasses
             // Children() (effective) — inherited @filterable fields are visible.
             foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
             {
-                if (field.OwnAttr(FIELD_ATTR_FILTERABLE) is not true) continue;
+                // ADR-0039: resolving — a concrete field may inherit @filterable via extends (TS validation-passes.ts:332).
+                if (field.Attr(FIELD_ATTR_FILTERABLE) is not true) continue;
                 if (OpsForSubType(field.SubType).Length > 0) continue;
                 errors.Add(new MetaError(
                     $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but its subtype " +
@@ -647,7 +653,8 @@ public static class ValidationPasses
                 return null;
             }
 
-            var refTarget = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+            // ADR-0039: resolving — a relationship may inherit @objectRef via extends (TS validation-passes.ts:522).
+            var refTarget = rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
             if (refTarget is not string refStr || refStr == "")
             {
                 errors.Add(new MetaError(
@@ -781,7 +788,8 @@ public static class ValidationPasses
             .Where(c => c.Type == TYPE_RELATIONSHIP)
             .Where(rel =>
             {
-                var r = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+                // ADR-0039: resolving — a relationship may inherit @objectRef via extends (TS validation-passes.ts:709).
+                var r = rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
                 return r is string rs && StripPackageName(rs) == targetEntity.Name;
             })
             .ToList();
@@ -1111,7 +1119,8 @@ public static class ValidationPasses
             var allow = new Dictionary<string, string[]>(StringComparer.Ordinal);
             foreach (var f in effective.Where(c => c.Type == TYPE_FIELD))
             {
-                if (f.OwnAttr(FIELD_ATTR_FILTERABLE) is true)
+                // ADR-0039: resolving — a concrete field may inherit @filterable via extends (TS validation-passes.ts:1252).
+                if (f.Attr(FIELD_ATTR_FILTERABLE) is true)
                 {
                     allow[f.Name] = OpsForSubType(f.SubType);
                 }
@@ -1121,7 +1130,8 @@ public static class ValidationPasses
                 c => c.Type == TYPE_LAYOUT &&
                      c.SubType == LAYOUT_SUBTYPE_DATA_GRID))
             {
-                var filter = layout.OwnAttr(LAYOUT_DATA_GRID_ATTR_FILTER);
+                // ADR-0039: resolving — a layout may inherit @filter via extends (TS validation-passes.ts:1260).
+                var filter = layout.Attr(LAYOUT_DATA_GRID_ATTR_FILTER);
                 // Type errors (e.g. legacy string form) are reported by ValidateAttrSchema.
                 if (filter is not IReadOnlyDictionary<string, object?> filterObj) continue;
                 CheckFilterClauses(filterObj, allow, obj.Name, layout.Name, errors, layout.Source);
@@ -2037,7 +2047,9 @@ public static class ValidationPasses
     //
     // Deferred-resolution validation (runs after all files load + extends:
     // resolution, like origin paths), enforcing the cross-port M:N contract.
-    // Own-relationships only (matches the own-attrs policy of the other passes):
+    // Iterates OWN relationships (a relationship is validated on the entity that
+    // declares it — a declaration-structure walk), but reads each relationship's
+    // inheritable M:N attrs via the RESOLVING Attr accessor (ADR-0039; TS parity):
     //
     //   (a) @symmetric:true is valid only on a self-join (@objectRef == declaring
     //       entity). Otherwise ERR_BAD_ATTR_VALUE.
@@ -2053,33 +2065,31 @@ public static class ValidationPasses
     // typescript/packages/metadata/src/loader/validation-passes.ts.
     // =========================================================================
 
-    /// <summary>FK field names declared by an entity's identity.reference children.</summary>
+    // ADR-0039: the junction's reference view uses the EFFECTIVE identities (own +
+    // inherited via extends) via ReferenceIdentities() — the validator and the
+    // runtime/codegen FK derivation (M2MDerivation) MUST agree on which references
+    // count, so a junction defined through extends is treated identically here and
+    // at resolution time. Mirrors TS _junctionReferences (validation-passes.ts:1293-1294),
+    // which reads (junction as MetaObject).referenceIdentities().
+    private static IReadOnlyList<MetaReferenceIdentity> JunctionReferences(MetaData junction) =>
+        junction is MetaObject mo
+            ? mo.ReferenceIdentities()
+            : [];
+
+    /// <summary>FK field names declared by a junction's effective identity.reference children.</summary>
     private static List<string> JunctionReferenceFkFields(MetaData junction)
     {
         var output = new List<string>();
-        foreach (var id in junction.OwnChildren())
+        foreach (var reference in JunctionReferences(junction))
         {
-            if (id.Type != TYPE_IDENTITY || id.SubType != IDENTITY_SUBTYPE_REFERENCE) continue;
-            var fields = id.OwnAttr(IDENTITY_ATTR_FIELDS);
-            if (fields is string s)
-            {
-                var first = s.Split(',')[0].Trim();
-                if (first.Length > 0) output.Add(first);
-            }
-            else if (fields is IReadOnlyList<string> list && list.Count > 0)
-            {
-                output.Add(list[0]);
-            }
-            else if (fields is IReadOnlyList<object?> objList && objList.Count > 0 && objList[0] is string os)
-            {
-                output.Add(os);
-            }
+            // Reference.Fields is the resolving getter (own + inherited @fields).
+            if (reference.Fields.Count > 0) output.Add(reference.Fields[0]);
         }
         return output;
     }
 
     private static int CountJunctionReferences(MetaData junction) =>
-        junction.OwnChildren().Count(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_REFERENCE);
+        JunctionReferences(junction).Count;
 
     /// <summary>Last <c>::</c>-segment of a (possibly package-qualified) name.</summary>
     private static string StripPackage(string name)
@@ -2096,11 +2106,14 @@ public static class ValidationPasses
         {
             foreach (var rel in obj.OwnChildren().Where(c => c.Type == TYPE_RELATIONSHIP))
             {
-                var through = rel.OwnAttr(RELATIONSHIP_ATTR_THROUGH);
-                var sourceRefField = rel.OwnAttr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
-                bool symmetric = rel.OwnAttr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
-                var cardinality = rel.OwnAttr(RELATIONSHIP_ATTR_CARDINALITY);
-                var objectRef = rel.OwnAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+                // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends
+                // (TS validation-passes.ts:1320-1324). Iterated via OwnChildren above (a rel is
+                // validated on the entity that declares it), but its attrs may still be inherited.
+                var through = rel.Attr(RELATIONSHIP_ATTR_THROUGH);
+                var sourceRefField = rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
+                bool symmetric = rel.Attr(RELATIONSHIP_ATTR_SYMMETRIC) is true;
+                var cardinality = rel.Attr(RELATIONSHIP_ATTR_CARDINALITY);
+                var objectRef = rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
 
                 bool hasThrough = through is string ts && ts.Length > 0;
                 bool hasSourceRefField = sourceRefField is string srs && srs.Length > 0;
@@ -2226,15 +2239,19 @@ public static class ValidationPasses
             // body). Closed-enum membership of @kind is enforced by the AllowedValues
             // schema pass (ERR_BAD_ATTR_VALUE); here we only enforce conditional ref
             // presence. Mirrors TS validateTemplatePayloadRefs / Java validateTemplateNode.
+            // ADR-0039: resolving — a template may inherit its refs/attrs (@kind /
+            // @textRef / @subjectRef / @htmlBodyRef / @payloadRef / @requiredSlots)
+            // from an abstract base via extends (TS validation-passes.ts:169-253).
+            // Consistent with the merged codegen template-extends decision.
             if (tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT)
             {
-                if (tmpl.OwnAttr(TEMPLATE_ATTR_KIND) as string == TEMPLATE_KIND_EMAIL)
+                if (tmpl.Attr(TEMPLATE_ATTR_KIND) as string == TEMPLATE_KIND_EMAIL)
                 {
-                    if (tmpl.OwnAttr(TEMPLATE_ATTR_SUBJECT_REF) is not string)
+                    if (tmpl.Attr(TEMPLATE_ATTR_SUBJECT_REF) is not string)
                         errors.Add(new MetaError(
                             $"template \"{tmpl.Name}\" @kind \"email\" requires @subjectRef",
                             ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
-                    if (tmpl.OwnAttr(TEMPLATE_ATTR_HTML_BODY_REF) is not string)
+                    if (tmpl.Attr(TEMPLATE_ATTR_HTML_BODY_REF) is not string)
                         errors.Add(new MetaError(
                             $"template \"{tmpl.Name}\" @kind \"email\" requires @htmlBodyRef",
                             ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
@@ -2244,7 +2261,7 @@ public static class ValidationPasses
                     // @kind absent or "document" → require @textRef so a document is
                     // never bodyless. (An out-of-enum @kind is separately flagged by
                     // the AllowedValues schema pass.)
-                    if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string)
+                    if (tmpl.Attr(TEMPLATE_ATTR_TEXT_REF) is not string)
                         errors.Add(new MetaError(
                             $"template \"{tmpl.Name}\" @kind \"document\" requires @textRef",
                             ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
@@ -2253,13 +2270,13 @@ public static class ValidationPasses
             else if (tmpl.SubType == TEMPLATE_SUBTYPE_PROMPT)
             {
                 // template.prompt always carries a renderable body via @textRef.
-                if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string)
+                if (tmpl.Attr(TEMPLATE_ATTR_TEXT_REF) is not string)
                     errors.Add(new MetaError(
                         $"template \"{tmpl.Name}\" requires @textRef",
                         ErrorCode.ERR_INVALID_TEMPLATE, Envelope: tmpl.Source));
             }
 
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
+            if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
 
             // FR-032 (ADR-0032): @payloadRef is FQN after the desugar/sweep — FQN-match.
             var payload = root.OwnChildren()
@@ -2280,7 +2297,8 @@ public static class ValidationPasses
                 payload.Children().Where(c => c.Type == TYPE_FIELD).Select(f => f.Name),
                 StringComparer.Ordinal);
 
-            IEnumerable<string> slotList = tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS) switch
+            // ADR-0039: resolving — @requiredSlots may be inherited via extends (TS validation-passes.ts:253).
+            IEnumerable<string> slotList = tmpl.Attr(TEMPLATE_ATTR_REQUIRED_SLOTS) switch
             {
                 IReadOnlyList<string> ss => ss,
                 IReadOnlyList<object?> os => os.OfType<string>(),
@@ -2412,7 +2430,9 @@ public static class ValidationPasses
         foreach (var id in obj.Children().OfType<MetaIdentity>())
         {
             if (!id.IsPrimary()) continue;
-            if (id.OwnAttr(IDENTITY_ATTR_GENERATION) as string != GENERATION_ASSIGNED) continue;
+            // ADR-0039: resolving — an identity may inherit @generation / @fields via extends
+            // (TS validate-field-readonly.ts:142,144). id.Fields is the resolving getter.
+            if (id.Attr(IDENTITY_ATTR_GENERATION) as string != GENERATION_ASSIGNED) continue;
             foreach (var fn in id.Fields) outNames.Add(fn);
         }
         return outNames;
@@ -2593,7 +2613,8 @@ public static class ValidationPasses
                 .Where(c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_RDB && c is MetaSource)
                 .Cast<MetaSource>())
             {
-                if (source.OwnAttr(SOURCE_ATTR_PARAMETER_REF) is not string refName || refName.Length == 0) continue;
+                // ADR-0039: resolving — a source may inherit @parameterRef via extends (TS validate-source-parameter-ref.ts:76).
+                if (source.Attr(SOURCE_ATTR_PARAMETER_REF) is not string refName || refName.Length == 0) continue;
 
                 // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — before resolution.
                 if (!CallableKinds.Contains(source.EffectiveKind))
@@ -2630,8 +2651,12 @@ public static class ValidationPasses
                 }
 
                 // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
-                foreach (var paramField in target.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>())
+                // ADR-0039: resolving — the parameter value-object's fields may be inherited
+                // via extends (TS validate-source-parameter-ref.ts:122).
+                foreach (var paramField in target.Children().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>())
                 {
+                    // ADR-0039: own — origin.* never inherits (ADR-0029); the origin child and
+                    // its @from are read own (TS validate-source-parameter-ref.ts:125,130).
                     var passthrough = paramField.OwnChildren()
                         .FirstOrDefault(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH);
                     if (passthrough == null) continue;
@@ -2641,7 +2666,9 @@ public static class ValidationPasses
                     string targetEntityName = from.Substring(0, dot);
                     string targetFieldName = from.Substring(dot + 1);
                     if (!index.TryGetValue(targetEntityName, out var targetEntity)) continue;
-                    var targetField = targetEntity.OwnChildren()
+                    // ADR-0039: resolving — the referenced entity's field may be inherited
+                    // via extends (TS validate-source-parameter-ref.ts:139).
+                    var targetField = targetEntity.Children()
                         .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == targetFieldName) as MetaField;
                     if (targetField == null) continue;
                     if (paramField.SubType != targetField.SubType)
