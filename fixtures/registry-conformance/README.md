@@ -202,6 +202,15 @@ verifies.
   (cardinality emitted only when defined on the rule; `childSubType` may be a
   single subtype, `"*"`, or a list) — and optional `parents` (the child-side
   placement claim, emitted only when present + non-empty).
+
+> **`index.lookup` + `identity.secondary` key-purity (ADR-0040).** `identity.secondary`
+> is a **unique** alternate key — its `@unique` attr is **removed** (uniqueness is the
+> type's meaning; a legacy `@unique` is `ERR_UNKNOWN_ATTR`). Non-unique retrieval is the
+> separate `index` type; only **`index.lookup`** is registered. `index.fulltext` /
+> `index.vector` / `index.spatial` are **reserved on the axis but NOT registered** (added
+> additively when a real adopter needs one — an unregistered subtype fails closed rather
+> than silently no-op'ing). The physical index escapes (`@using`/`@expr`/`@where`/`@orders`)
+> are contributed by the db provider to both `index.lookup` and `identity.secondary`.
 - `commonAttrs` — the `registerCommonAttribute` / `registerCommonAttrs` set
   (the doc attrs: `aliases`, `deprecated`, `description`, `notes`, `replacedBy`,
   `seeAlso`, `title`), each carrying its `description`.
