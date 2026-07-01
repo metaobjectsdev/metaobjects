@@ -22,7 +22,6 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template.template_constants import TEMPLATE_ATTR_XML_TEXT
 from metaobjects.shared.base_types import TYPE_FIELD
-from metaobjects.shared.structural import KEY_IS_ARRAY
 
 
 def fields(vo: MetaData) -> list[MetaData]:
@@ -32,9 +31,10 @@ def fields(vo: MetaData) -> list[MetaData]:
 
 
 def is_array(field: MetaData) -> bool:
-    """Array-ness from either form: the node property (programmatic build) or the
-    ``@isArray`` attr (how metadata loads from JSON)."""
-    return bool(field.is_array) or field.attrs().get(KEY_IS_ARRAY) is True
+    """Effective array-ness (ADR-0039 resolving): the native ``is_array`` flag OR the
+    ``@isArray`` attr, resolved through the ``extends`` super chain so a concrete field
+    inheriting array-ness from an abstract parent is honored."""
+    return field.resolved_is_array()
 
 
 def is_required(field: MetaData) -> bool:
@@ -63,31 +63,36 @@ def enum_values(field: MetaData) -> list[str]:
     return []
 
 
-def _own_attr_string(node: MetaData, name: str) -> str | None:
-    """The own (locally declared) string value of attr *name*, or ``None``."""
-    v = node.attr(name)
+def _attr_string(node: MetaData, name: str) -> str | None:
+    """The RESOLVING string value of attr *name* (own + inherited via ``extends``),
+    or ``None``.
+
+    ADR-0039 — effective read: a concrete enum field extending an abstract enum may
+    inherit ``@coerceDefault``/``@default``/``@normalize`` from the abstract parent,
+    so these resolve through the super chain (``get_meta_attr``), never own-only."""
+    v = node.get_meta_attr(name)
     return v if isinstance(v, str) else None
 
 
 def coerce_default(field: MetaData) -> str | None:
-    """FR-011: the enum field's own ``@coerceDefault`` member, or ``None``."""
-    return _own_attr_string(field, fc.FIELD_ATTR_COERCE_DEFAULT)
+    """FR-011: the enum field's effective ``@coerceDefault`` member, or ``None``."""
+    return _attr_string(field, fc.FIELD_ATTR_COERCE_DEFAULT)
 
 
 def default_value(field: MetaData) -> str | None:
-    """FR-011: the enum field's own ``@default`` absent-fill member, or ``None``."""
-    return _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
+    """FR-011: the enum field's effective ``@default`` absent-fill member, or ``None``."""
+    return _attr_string(field, fc.FIELD_ATTR_DEFAULT)
 
 
 def resolve_normalize(field: MetaData, owner: MetaData | None) -> str:
     """FR-011: resolve the enum normalization mode — field-level ``@normalize``, else the
     owning ``object.value``'s ``@normalize`` (the per-object default), else the global
     default (``"strip"``). Mirrors the Java/Kotlin/C#/TS ``resolveNormalize``."""
-    field_mode = _own_attr_string(field, fc.FIELD_ATTR_NORMALIZE)
+    field_mode = _attr_string(field, fc.FIELD_ATTR_NORMALIZE)
     if field_mode is not None:
         return field_mode
     if owner is not None:
-        owner_mode = _own_attr_string(owner, fc.FIELD_ATTR_NORMALIZE)
+        owner_mode = _attr_string(owner, fc.FIELD_ATTR_NORMALIZE)
         if owner_mode is not None:
             return owner_mode
     return fc.NORMALIZE_DEFAULT

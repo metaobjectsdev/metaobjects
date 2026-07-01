@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.persistence.db import db_constants as dbc
-from metaobjects.shared.structural import KEY_IS_ARRAY
 
 
 @dataclass(frozen=True)
@@ -43,9 +42,11 @@ _SCALAR: dict[str, PyType] = {
 
 
 def field_is_array(field: MetaField) -> bool:
-    """Array-ness from either form: the node property (programmatic build) or the
-    `@isArray` attr (how metadata loads from JSON — the conformance-fixture form)."""
-    return field.is_array or field.attrs().get(KEY_IS_ARRAY) is True
+    """Effective array-ness (ADR-0039 resolving): the native ``is_array`` flag OR
+    the ``@isArray`` attr, resolved through the ``extends`` super chain — a concrete
+    field inheriting ``isArray:true`` from an abstract parent (whose flag lives on the
+    parent as a native property, not an attr) must generate a ``list[...]``."""
+    return field.resolved_is_array()
 
 
 def _py_str_literal(value: str) -> str:

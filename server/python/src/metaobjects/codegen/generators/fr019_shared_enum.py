@@ -66,8 +66,12 @@ def resolve_shared_enum_decl(field: MetaField) -> MetaData | None:
 
 
 def is_provided(decl: MetaData) -> bool:
-    """Own ``@provided`` truth of an enum declaration."""
-    return decl.attr(fc.FIELD_ATTR_PROVIDED) is True
+    """Effective ``@provided`` truth of an enum declaration.
+
+    ADR-0039 — resolves through ``extends`` (``get_meta_attr``): a concrete enum
+    extending an abstract ``@provided`` enum inherits the flag, so an own-only read
+    would misclassify it."""
+    return decl.get_meta_attr(fc.FIELD_ATTR_PROVIDED) is True
 
 
 def _meta_package_of(decl: MetaData) -> str:

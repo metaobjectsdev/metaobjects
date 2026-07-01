@@ -39,7 +39,6 @@ from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source import source_constants as sc
-from ..shared.structural import KEY_IS_ARRAY
 from .n2m_resolver import (
     N2mDescriptor,
     collect_column_ids,
@@ -563,7 +562,7 @@ class ObjectManager:
         pi = entity.primary_identity()
         if pi is None:
             raise ValueError(f"Entity '{entity.name}' has no primary identity")
-        raw = pi.attr(ic.IDENTITY_ATTR_FIELDS)
+        raw = pi.get_meta_attr(ic.IDENTITY_ATTR_FIELDS)  # ADR-0039 resolving: identity @fields may be inherited
         if isinstance(raw, str):
             return raw
         if isinstance(raw, (list, tuple)) and raw:
@@ -645,14 +644,18 @@ def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
 
 
 def _field_is_array(field: MetaField) -> bool:
-    """Array-ness from either form: the node property or the ``@isArray`` attr."""
-    return bool(field.is_array) or field.attr(KEY_IS_ARRAY) is True
+    """Effective array-ness (ADR-0039 resolving): the native ``is_array`` flag OR
+    the ``@isArray`` attr, resolved through the ``extends`` super chain so a concrete
+    field inheriting array-ness from an abstract parent is honored at write time."""
+    return field.resolved_is_array()
 
 
 def _coerce_write_value(field: MetaField, value: Any) -> Any:
     if value is None:
         return None
     sub = field.sub_type
+    # ADR-0039 own-only: @dbColumnType is a physical column-type override, never
+    # inherited via extends (the one deliberately own-only attribute).
     col_type = field.attr(dbc.FIELD_ATTR_DB_COLUMN_TYPE)
 
     # decimal / currency: a decimal authored as a string → Decimal (exact; never
@@ -684,7 +687,7 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     if sub == fc.FIELD_SUBTYPE_TIMESTAMP:
         if isinstance(value, _dt.datetime):
             return value
-        is_tz = field.attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True
+        is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving: @localTime may be inherited
         return _parse_datetime(str(value), tz_aware=is_tz)
 
     # field.object (jsonb storage): a dict/list passes through — pg8000 binds it
@@ -718,7 +721,7 @@ def _parse_datetime(text: str, *, tz_aware: bool) -> _dt.datetime:
 def _column_of(field: MetaField | None) -> str:
     if field is None:
         return ""
-    col = field.attr(fc.FIELD_ATTR_COLUMN)
+    col = field.get_meta_attr(fc.FIELD_ATTR_COLUMN)  # ADR-0039 resolving: @column may be inherited
     return col if isinstance(col, str) and col else field.name
 
 
