@@ -2108,7 +2108,10 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
     for node in _walk(root):
         if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_OBJECT:
             continue
-        object_ref = node.attr(FIELD_ATTR_OBJECT_REF)
+        # ADR-0039 resolving: a concrete field.object may inherit @objectRef from an
+        # abstract parent field via extends — read the effective value, not own-only,
+        # or a valid inherited target falsely trips ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+        object_ref = node.get_meta_attr(FIELD_ATTR_OBJECT_REF)
         if not (isinstance(object_ref, str) and object_ref):
             errors.append(MetaError(
                 code=ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
@@ -2120,10 +2123,10 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
                 envelope=node.source,
             ))
             continue
-        storage = node.attr(FIELD_ATTR_STORAGE)
+        storage = node.get_meta_attr(FIELD_ATTR_STORAGE)  # ADR-0039 resolving
         if storage is None:
             continue
-        if storage == "flattened" and getattr(node, "is_array", False):
+        if storage == "flattened" and node.resolved_is_array():  # ADR-0039 resolving isArray
             errors.append(MetaError(
                 code=ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
                 message=(
@@ -2163,14 +2166,17 @@ _MAP_SCALAR_VALUE_SUBTYPES = frozenset({
 
 
 def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
-    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
-        for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+    # ADR-0039: iterate EFFECTIVE members (children()) so an object inheriting a
+    # field.map through extends is still validated; and read @valueType/@objectRef
+    # via the resolving get_meta_attr (they may be inherited from an abstract parent).
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        for field in (c for c in obj.children() if c.type == TYPE_FIELD):
             if field.sub_type != FIELD_SUBTYPE_MAP:
                 continue
 
-            value_type = field.attr(FIELD_ATTR_VALUE_TYPE)
+            value_type = field.get_meta_attr(FIELD_ATTR_VALUE_TYPE)
             has_value_type = isinstance(value_type, str) and bool(value_type)
-            object_ref = field.attr(FIELD_ATTR_OBJECT_REF)
+            object_ref = field.get_meta_attr(FIELD_ATTR_OBJECT_REF)
             has_object_ref = isinstance(object_ref, str) and bool(object_ref)
 
             if has_value_type == has_object_ref:

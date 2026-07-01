@@ -44,8 +44,13 @@ class MetaField(MetaData):
 
         The value is the package-folded form (e.g. ``com::example::om::Address``)
         — matching a target object's ``resolution_key()``.
+
+        ADR-0039 — RESOLVING (``get_meta_attr``): ``@objectRef`` is an effective
+        property, so a concrete ``field.object`` extending an abstract one inherits
+        its target. Unifies with the codegen ``attrs().get(@objectRef)`` path (both
+        now resolve through the ``extends`` super chain).
         """
-        v = self.attr(fc.FIELD_ATTR_OBJECT_REF)
+        v = self.get_meta_attr(fc.FIELD_ATTR_OBJECT_REF)
         return str(v) if v is not None else None
 
     def get_value(self, obj: object, name: str | None = None) -> object:

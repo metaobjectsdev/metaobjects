@@ -6,6 +6,7 @@ from typing import Callable, Optional, TypeVar, cast
 from ..attr_class_map import attr_class_for
 from ..shared.base_types import SUBTYPE_BASE, TYPE_ATTR
 from ..shared.separators import PACKAGE_SEP
+from ..shared.structural import KEY_IS_ARRAY
 from ..source import CodeSource, ErrorSource
 
 T = TypeVar("T")
@@ -121,9 +122,53 @@ class MetaData:
         return list(self._attr_nodes.values())
 
     def attr(self, name: str) -> object:
-        """Own attr value for *name*, or ``None``."""
+        """OWN-ONLY attr value for *name*, or ``None``.
+
+        ADR-0039 — NAMING INVERSION (Python vs TS/Java): in Python ``attr()`` is
+        OWN-ONLY (reads only this node's locally-declared attr, never the super
+        chain), whereas TS/Java ``attr()`` RESOLVES. **Do not use ``attr()`` to
+        read an effective/semantic property** (``@objectRef``/``@column``/
+        ``@default``/``@maxLength``/``@precision``/``@storage``/``@required``/…) —
+        a value inherited through this node's ``extends`` chain would be silently
+        dropped. Use the resolving ``get_meta_attr(name)`` (or ``attrs().get(name)``)
+        instead. ``attr()`` is legitimate ONLY for: own-mode canonical
+        serialization, overlay/merge + super-resolution walks, validating the
+        *own* declaration, and the deliberately-never-inherited ``@dbColumnType``.
+        Every such call MUST carry a one-line comment naming the sanctioned case.
+        """
         node = self._attr_nodes.get(name)
         return getattr(node, "value", None) if node is not None else None
+
+    def get_meta_attr(self, name: str) -> object:
+        """RESOLVING attr value for *name* — own + inherited via the ``extends``
+        super chain (own wins on conflict), or ``None``.
+
+        ADR-0039 — this is the default/effective read. Prefer it over ``attr()``
+        (which is own-only in Python; see the inversion note there) for any
+        semantic property that may be inherited from an abstract parent.
+        """
+        return self.attrs().get(name)
+
+    def resolved_is_array(self) -> bool:
+        """RESOLVING array-ness — the effective ``isArray`` for this node.
+
+        ADR-0039 — mirrors the TS ``MetaData.resolvedIsArray()``. ``is_array`` is a
+        native boolean property (not an attr), so it is resolved two ways: the
+        native flag on this node OR any super in the chain has it set, OR the
+        loaded-from-JSON ``@isArray`` attr resolves true through ``attrs()``.
+        Reading the own ``is_array`` flag alone silently drops an array-ness
+        inherited from an abstract parent field.
+        """
+        if self.is_array:
+            return True
+        node = self.super_data
+        seen: set[MetaData] = {self}
+        while node is not None and node not in seen:
+            if node.is_array:
+                return True
+            seen.add(node)
+            node = node.super_data
+        return self.attrs().get(KEY_IS_ARRAY) is True
 
     def own_attrs(self) -> dict[str, object]:
         """Own attr value map — excludes inherited attrs."""

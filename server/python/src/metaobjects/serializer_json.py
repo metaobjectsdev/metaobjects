@@ -66,7 +66,11 @@ def _body(node: MetaData, effective: bool = False) -> dict[str, object]:
         body[KEY_EXTENDS] = node.super_ref
     if node.is_abstract:
         body[KEY_ABSTRACT] = True
-    if node.is_array:
+    # ADR-0039 — isArray is a native property; in EFFECTIVE mode it must resolve
+    # through the extends super chain (a concrete field inheriting isArray:true
+    # from an abstract parent), whereas own-mode emits only the locally-declared
+    # flag (round-trips the authored form).
+    if node.resolved_is_array() if effective else node.is_array:
         body[KEY_IS_ARRAY] = True
 
     # In effective mode use attrs()/children() (own + inherited via the super
