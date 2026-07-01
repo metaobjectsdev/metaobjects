@@ -81,11 +81,13 @@ public static class CSharpNaming
 
     /// <summary>
     /// ADR-0036 Wave 2 — true when a <c>field.timestamp</c> opts OUT of instant
-    /// semantics via <c>@localTime: true</c> (a naive wall-clock value). Own-only,
-    /// matching the loader's physical-attr policy. Always false for non-timestamp fields.
+    /// semantics via <c>@localTime: true</c> (a naive wall-clock value).
+    /// ADR-0039: resolving — <c>@localTime</c> is a logical/semantic property and may
+    /// be inherited via extends (unlike the physical, never-inherited @dbColumnType).
+    /// Always false for non-timestamp fields.
     /// </summary>
     public static bool IsLocalTime(MetaField field) =>
-        field.SubType == FIELD_SUBTYPE_TIMESTAMP && field.OwnAttr(DbConstants.FIELD_ATTR_LOCAL_TIME) is true;
+        field.SubType == FIELD_SUBTYPE_TIMESTAMP && field.Attr(DbConstants.FIELD_ATTR_LOCAL_TIME) is true;
 
     /// <summary>
     /// The base C# scalar type for a field (no nullability), accounting for the
@@ -127,7 +129,7 @@ public static class CSharpNaming
     /// <c>field.inet</c> (so the generated file needs <c>using System.Net;</c> for the
     /// <c>IPAddress</c> type). <c>field.uri</c> needs only <c>System</c> (always imported).</summary>
     public static bool RequiresSystemNet(MetaObject obj) =>
-        obj.Fields().Any(f => !f.IsArray && f.SubType == FIELD_SUBTYPE_INET);
+        obj.Fields().Any(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET);
 
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);
@@ -287,7 +289,8 @@ public static class CSharpNaming
     /// </summary>
     public static bool IsRequired(MetaObject entity, MetaField field)
     {
-        if (field.OwnAttr(FIELD_ATTR_REQUIRED) is true) return true;
+        // ADR-0039: resolving — @required may be inherited from an abstract base via extends.
+        if (field.Attr(FIELD_ATTR_REQUIRED) is true) return true;
         var pk = entity.PrimaryIdentity();
         return pk is not null && pk.Fields.Contains(field.Name);
     }

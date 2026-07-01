@@ -9,6 +9,10 @@ namespace MetaObjects.Meta;
 /// Concrete base node class for <c>identity.*</c> nodes.
 /// Extends <see cref="MetaData"/> directly: no model wrapper, no metaOf() indirection.
 /// </summary>
+// ADR-0039: identity attr getters use the RESOLVING Attr() accessor — an identity
+// attr (@fields, @generation, @references, @enforce, ...) may be inherited from an
+// abstract base via extends. This is the resolving reference the other node classes
+// (MetaSource / MetaRelationship) were reconciled to.
 public class MetaIdentity(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>The field names that form this identity key.</summary>

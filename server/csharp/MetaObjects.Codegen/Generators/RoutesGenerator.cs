@@ -93,7 +93,7 @@ public class RoutesGenerator : PerEntityGenerator
         // generated handler does case-insensitive lookup so the wire grammar
         // (?sort=createdAt:desc) matches the C# property name (CreatedAt).
         var sortFields = entity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.IsArray)
+            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
             .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 
@@ -273,7 +273,7 @@ public class RoutesGenerator : PerEntityGenerator
 
         // Sortable base scalar fields (the polymorphic list sorts on base columns).
         var sortFields = baseEntity.Fields()
-            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.IsArray)
+            .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
             .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 
@@ -310,7 +310,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var subClsName = CSharpNaming.Pascal(st.Entity.Name);
             var subSortFields = st.Entity.Fields()
-                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.IsArray)
+                .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray())
                 .Select(f => CSharpNaming.Pascal(f.Name))
                 .ToList();
             sb.Append($"    private static readonly System.Collections.Generic.HashSet<string> {subClsName}SortAllowlist =");

@@ -15,12 +15,13 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     /// <summary>The coarse value-type classification for this field's subtype.</summary>
     public DataType DataType => DataTypeValue ?? global::MetaObjects.DataType.String;
 
-    /// <summary>The target object name for an object-typed field (the <c>@objectRef</c> attr).</summary>
+    /// <summary>The target object name for an object-typed field (the <c>@objectRef</c> attr).
+    /// ADR-0039: resolving — a concrete field.object may inherit <c>@objectRef</c> via extends.</summary>
     public string? ObjectRef
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_OBJECT_REF);
+            var v = Attr(FIELD_ATTR_OBJECT_REF);
             return v is string s ? s : null;
         }
     }
@@ -34,7 +35,8 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_VALUE_TYPE);
+            // ADR-0039: resolving — a concrete field.map may inherit @valueType via extends.
+            var v = Attr(FIELD_ATTR_VALUE_TYPE);
             return v is string s ? s : null;
         }
     }
@@ -48,17 +50,19 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_STORAGE);
+            // ADR-0039: resolving — @storage may be inherited via extends (abstract object base).
+            var v = Attr(FIELD_ATTR_STORAGE);
             return v is string s ? s : null;
         }
     }
 
-    /// <summary>Column name override (source-v2 attr <c>@column</c>).</summary>
+    /// <summary>Column name override (source-v2 attr <c>@column</c>).
+    /// ADR-0039: resolving — inheritable via extends.</summary>
     public string? DbColumn
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_COLUMN);
+            var v = Attr(FIELD_ATTR_COLUMN);
             return v is string s ? s : null;
         }
     }
@@ -78,8 +82,9 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         }
     }
 
-    /// <summary>Raw default attr value (the <c>@default</c> attr).</summary>
-    public object? Default => OwnAttr(FIELD_ATTR_DEFAULT);
+    /// <summary>Raw default attr value (the <c>@default</c> attr).
+    /// ADR-0039: resolving — a concrete field may inherit <c>@default</c> from an abstract base.</summary>
+    public object? Default => Attr(FIELD_ATTR_DEFAULT);
 
     /// <summary>
     /// The default value for this field, converted to the field's own DataType.
@@ -90,44 +95,49 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     {
         return Cached("defaultValue", () =>
         {
-            var raw = OwnAttr(FIELD_ATTR_DEFAULT);
+            // ADR-0039: resolving — inherit @default from an abstract base via extends.
+            var raw = Attr(FIELD_ATTR_DEFAULT);
             if (raw is null) return null;
             return DataConverter.ConvertToDataType(DataType, raw);
         });
     }
 
-    /// <summary>Maximum string or array length (the <c>@maxLength</c> attr).</summary>
+    /// <summary>Maximum string or array length (the <c>@maxLength</c> attr).
+    /// ADR-0039: resolving — a concrete field inherits <c>@maxLength</c> from an abstract base.</summary>
     public long? MaxLength
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_MAX_LENGTH);
+            var v = Attr(FIELD_ATTR_MAX_LENGTH);
             return v is long l ? l : null;
         }
     }
 
-    /// <summary>Numeric precision (the <c>@precision</c> attr).</summary>
+    /// <summary>Numeric precision (the <c>@precision</c> attr).
+    /// ADR-0039: resolving — inheritable via extends (abstract decimal base).</summary>
     public long? Precision
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_PRECISION);
+            var v = Attr(FIELD_ATTR_PRECISION);
             return v is long l ? l : null;
         }
     }
 
-    /// <summary>Numeric scale (the <c>@scale</c> attr).</summary>
+    /// <summary>Numeric scale (the <c>@scale</c> attr).
+    /// ADR-0039: resolving — inheritable via extends (abstract decimal base).</summary>
     public long? Scale
     {
         get
         {
-            var v = OwnAttr(FIELD_ATTR_SCALE);
+            var v = Attr(FIELD_ATTR_SCALE);
             return v is long l ? l : null;
         }
     }
 
-    /// <summary>True if <c>@unique: true</c> is set on the field itself (column-level unique).</summary>
-    public bool Unique => OwnAttr(FIELD_ATTR_UNIQUE) is true;
+    /// <summary>True if <c>@unique: true</c> is the effective value on the field (column-level unique).
+    /// ADR-0039: resolving — inheritable via extends.</summary>
+    public bool Unique => Attr(FIELD_ATTR_UNIQUE) is true;
 
     /// <summary>
     /// FR-013 — true when <c>@readOnly: true</c> is set. A read-only field is
@@ -139,7 +149,9 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     /// <summary>
     /// Own member symbols of an enum-subtype field (the <c>@values</c> attr),
     /// or <see langword="null"/> when not set on this node (e.g. a concrete field
-    /// that inherits via <c>extends:</c>).
+    /// that inherits via <c>extends:</c>). ADR-0039: intentionally OWN-only — the
+    /// resolving companion is <see cref="EffectiveEnumValues"/>, which every
+    /// effective read (codegen / extract) must use.
     /// </summary>
     public IReadOnlyList<string>? EnumValues => OwnAttr(FIELD_ATTR_VALUES) switch
     {
@@ -160,12 +172,14 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     /// True if the field is required (NOT NULL).
     /// Checks both <c>@required: true</c> attr and <c>validator.required</c> children.
     /// Mirrors TS <c>MetaField.isRequired</c> getter.
+    /// ADR-0039: resolving — both the <c>@required</c> attr and the validator set
+    /// (via <see cref="Validators"/>) are the effective (own + inherited) forms.
     /// </summary>
     public bool IsRequired
     {
         get
         {
-            if (OwnAttr(FIELD_ATTR_REQUIRED) is true) return true;
+            if (Attr(FIELD_ATTR_REQUIRED) is true) return true;
             return Validators().Any(v => v.IsRequired());
         }
     }
