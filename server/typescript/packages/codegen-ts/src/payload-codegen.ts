@@ -68,7 +68,7 @@ function fieldTsType(
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const refName = typeof ref === "string" ? ref : "unknown";
     // isArray is a structural property on MetaData, not an attr.
-    const isArray = field.isArray;
+    const isArray = field.resolvedIsArray();
     const result: { type: string; refVo?: string } = {
       type: isArray ? `${refName}[]` : refName,
     };
@@ -83,15 +83,15 @@ function fieldTsType(
     if (values !== undefined) {
       const aliasName = enumUnionAliasName(ownerName, field as MetaField);
       return {
-        type: field.isArray ? `${aliasName}[]` : aliasName,
+        type: field.resolvedIsArray() ? `${aliasName}[]` : aliasName,
         enumAlias: { name: aliasName, decl: `export type ${aliasName} = ${enumUnionString(values)};` },
       };
     }
     // No @values → fall through to the raw-string representation.
-    return { type: field.isArray ? "string[]" : "string" };
+    return { type: field.resolvedIsArray() ? "string[]" : "string" };
   }
   const scalar = SCALAR_TS[field.subType] ?? "unknown";
-  return { type: field.isArray ? `${scalar}[]` : scalar };
+  return { type: field.resolvedIsArray() ? `${scalar}[]` : scalar };
 }
 
 /** True iff the field's @required is explicitly set to true. */

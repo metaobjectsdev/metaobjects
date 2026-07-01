@@ -189,7 +189,7 @@ function renderNestedField(
   const nextVisited = new Set(visited);
   nextVisited.add(voKey);
 
-  if (!field.isArray) {
+  if (!field.resolvedIsArray()) {
     // Single nested value object → a fieldset recursing into its fields.
     const inner: string[] = [];
     const hooks: string[] = [];

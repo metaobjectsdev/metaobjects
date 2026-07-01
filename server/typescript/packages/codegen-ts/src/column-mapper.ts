@@ -230,7 +230,7 @@ export function mapColumnType(
   const dbName = field.column ?? columnNameFromField(field.name, strategy);
   const importModule = dialect === "sqlite" ? "drizzle-orm/sqlite-core" : "drizzle-orm/pg-core";
   const subType = field.subType;
-  const isArray = field.isArray;
+  const isArray = field.resolvedIsArray();
 
   let fnName: string;
   let fnOptions: Record<string, unknown> | undefined;

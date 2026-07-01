@@ -355,7 +355,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   // field.object below).
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
     let base: Code = code`z.unknown()`;
-    if (field.isArray) base = code`z.array(${base})`;
+    if (field.resolvedIsArray()) base = code`z.array(${base})`;
     return appendValidatorChain(base, field);
   }
 
@@ -377,13 +377,13 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
         : `./${refBase}.js`;
       const refImp = imp(`${refBase}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
-      if (field.isArray) base = code`z.array(${base})`;
+      if (field.resolvedIsArray()) base = code`z.array(${base})`;
       return appendValidatorChain(base, field);
     }
     // No resolvable @objectRef — fall through to z.unknown(); downstream code
     // can still pass a value through but loses validation.
     let base: Code = code`z.unknown()`;
-    if (field.isArray) base = code`z.array(${base})`;
+    if (field.resolvedIsArray()) base = code`z.array(${base})`;
     return appendValidatorChain(base, field);
   }
 
@@ -440,7 +440,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
           const spec = sharedEnumImportSpecifier(ctx, owner?.package);
           const sharedConst = imp(`${constName}@${spec}`);
           let base: Code = code`${sharedConst}`;
-          if (field.isArray) base = code`z.array(${base})`;
+          if (field.resolvedIsArray()) base = code`z.array(${base})`;
           return appendValidatorChain(base, field);
         }
       }
@@ -477,7 +477,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       break;
   }
 
-  if (field.isArray) baseStr = `z.array(${baseStr})`;
+  if (field.resolvedIsArray()) baseStr = `z.array(${baseStr})`;
   return appendValidatorChain(code`${baseStr}`, field);
 }
 
@@ -549,7 +549,7 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
 
   let chain: Code = base;
   // Array element-count bounds apply to the z.array(...) wrapper regardless of element type.
-  if (field.isArray) {
+  if (field.resolvedIsArray()) {
     if (arrMin !== undefined) chain = code`${chain}.min(${arrMin})`;
     if (arrMax !== undefined) chain = code`${chain}.max(${arrMax})`;
   } else if (field.subType === FIELD_SUBTYPE_STRING && !isJsonbBag) {

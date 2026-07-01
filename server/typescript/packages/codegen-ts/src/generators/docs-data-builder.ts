@@ -148,7 +148,7 @@ export function neutralTypeStr(field: MetaField): string {
   } else {
     base = field.subType;
   }
-  if (field.isArray) base = `${base}[]`;
+  if (field.resolvedIsArray()) base = `${base}[]`;
   return base;
 }
 
@@ -192,7 +192,7 @@ function buildConstraintRow(
   if (isPk) rules.push("primary key");
   if (field.attr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
 
-  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
+  if (field.subType === FIELD_SUBTYPE_ENUM && !field.resolvedIsArray()) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       const list = values.map((v) => `\`${v}\``).join(", ");
@@ -289,7 +289,7 @@ function buildFieldRow(
   const rules: string[] = [];
   if (field.attr(FIELD_ATTR_UNIQUE) === true) rules.push("unique");
 
-  if (field.subType === FIELD_SUBTYPE_ENUM && !field.isArray) {
+  if (field.subType === FIELD_SUBTYPE_ENUM && !field.resolvedIsArray()) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       const list = values.map((v) => `\`${v}\``).join(", ");
@@ -344,7 +344,7 @@ function buildFieldDetail(
   const columnName = field.column;
   const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   const isUnique = field.attr(FIELD_ATTR_UNIQUE) === true;
-  const isEnum = field.subType === FIELD_SUBTYPE_ENUM && !field.isArray;
+  const isEnum = field.subType === FIELD_SUBTYPE_ENUM && !field.resolvedIsArray();
   const enumVals = isEnum ? enumValues(field) : undefined;
   const validators = field.validators();
   const hasValidatorChildren = validators.some(

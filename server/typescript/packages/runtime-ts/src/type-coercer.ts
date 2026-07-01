@@ -45,17 +45,21 @@ export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): 
  */
 function isJsonbObjectField(child: MetaData): boolean {
   if (child.subType !== FIELD_SUBTYPE_OBJECT) return false;
-  return child.ownAttr(FIELD_ATTR_STORAGE) !== STORAGE_FLATTENED;
+  // ADR-0039: resolving — @storage may be inherited via extends.
+  return child.attr(FIELD_ATTR_STORAGE) !== STORAGE_FLATTENED;
 }
 
-/** A field explicitly pinned to a JSONB physical column via `@dbColumnType`. */
+/** A field explicitly pinned to a JSONB physical column via `@dbColumnType`.
+ *  ADR-0039: @dbColumnType is the ONE deliberately own-only attr (physical
+ *  column-type override is never inherited). Keep ownAttr. */
 function isJsonbColumnTypeField(child: MetaData): boolean {
   return child.ownAttr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB;
 }
 
 function serializeJsonbColumns(entity: MetaData, row: Row): Row {
   let out: Row | null = null;
-  for (const child of entity.ownChildren()) {
+  // ADR-0039: resolving — a jsonb field may be inherited from a base via extends.
+  for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD) continue;
     if (!isJsonbObjectField(child) && !isJsonbColumnTypeField(child)) continue;
     if (!(child.name in row)) continue;
@@ -81,7 +85,8 @@ function serializeJsonbColumns(entity: MetaData, row: Row): Row {
  */
 function deserializeJsonbObjectFields(entity: MetaData, row: Row): Row {
   let out: Row | null = null;
-  for (const child of entity.ownChildren()) {
+  // ADR-0039: resolving — a jsonb field may be inherited from a base via extends.
+  for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD) continue;
     if (!isJsonbObjectField(child)) continue;
     if (!(child.name in row)) continue;

@@ -190,15 +190,15 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   // the column is a bare `jsonb()` returning any parsed JSON value, so the TS type
   // stays in lock-step with the `z.unknown()` Zod emission (NOT `string`).
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
-    return field.isArray ? "unknown[]" : "unknown";
+    return field.resolvedIsArray() ? "unknown[]" : "unknown";
   }
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       const base = stripPackage(ref);
-      return field.isArray ? `${base}[]` : base;
+      return field.resolvedIsArray() ? `${base}[]` : base;
     }
-    return field.isArray ? "unknown[]" : "unknown";
+    return field.resolvedIsArray() ? "unknown[]" : "unknown";
   }
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const values = enumValues(field);
@@ -208,12 +208,12 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
       // self-contained (an agent sees the exact allowed values, not an opaque
       // alias name). Array enums wrap the parenthesized union: `(A | B)[]`.
       const union = enumUnionString(values);
-      return field.isArray ? `(${union})[]` : union;
+      return field.resolvedIsArray() ? `(${union})[]` : union;
     }
-    return field.isArray ? "string[]" : "string";
+    return field.resolvedIsArray() ? "string[]" : "string";
   }
   const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
-  return field.isArray ? `${scalar}[]` : scalar;
+  return field.resolvedIsArray() ? `${scalar}[]` : scalar;
 }
 
 /**
@@ -225,7 +225,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   // `@dbColumnType: jsonb` (open JSON bag) → `unknown`, in lock-step with
   // fieldTsTypeString above and the `z.unknown()` Zod emission.
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
-    return field.isArray ? code`unknown[]` : code`unknown`;
+    return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
   }
   // field.object: import the referenced TS interface from its sibling module
   // so ts-poet hoists the import. Mirrors zod-validators.ts's `<Ref>InsertSchema`
@@ -243,9 +243,9 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
         ? valueObjectModuleSpecifier(base, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
         : `./${base}.js`;
       const refImp = imp(`${base}@${moduleSpec}`);
-      return field.isArray ? code`${refImp}[]` : code`${refImp}`;
+      return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
     }
-    return field.isArray ? code`unknown[]` : code`unknown`;
+    return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
   }
 
   // field.map: Record<string, V> — V is a value-object (@objectRef) or a scalar (@valueType).
@@ -280,16 +280,16 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
             ? providedEnumImportSpecifier(ctx, shared.name)
             : sharedEnumImportSpecifier(ctx, entity.package);
           const sym = imp(`${shared.name}@${spec}`);
-          return field.isArray ? code`${sym}[]` : code`${sym}`;
+          return field.resolvedIsArray() ? code`${sym}[]` : code`${sym}`;
         }
       }
-      return field.isArray ? code`${alias}[]` : code`${alias}`;
+      return field.resolvedIsArray() ? code`${alias}[]` : code`${alias}`;
     }
-    return field.isArray ? code`string[]` : code`string`;
+    return field.resolvedIsArray() ? code`string[]` : code`string`;
   }
 
   const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
-  return field.isArray ? code`${scalar}[]` : code`${scalar}`;
+  return field.resolvedIsArray() ? code`${scalar}[]` : code`${scalar}`;
 }
 
 /**

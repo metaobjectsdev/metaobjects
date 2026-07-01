@@ -32,9 +32,10 @@ export function findField(entity: MetaObject, name: string): MetaData | undefine
 }
 
 export function isRequired(field: MetaData): boolean {
-  const attr = field.ownAttr(FIELD_ATTR_REQUIRED);
+  // ADR-0039: resolving — @required and validator.required may be inherited via extends.
+  const attr = field.attr(FIELD_ATTR_REQUIRED);
   if (attr === true || attr === "true") return true;
-  return field.ownChildren().some(
+  return field.children().some(
     (c) => c.type === TYPE_VALIDATOR && c.subType === VALIDATOR_SUBTYPE_REQUIRED,
   );
 }

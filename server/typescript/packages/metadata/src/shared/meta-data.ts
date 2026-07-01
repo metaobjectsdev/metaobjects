@@ -204,6 +204,32 @@ export abstract class MetaData {
     this.isArray = val;
   }
 
+  /**
+   * Effective array-ness — the RESOLVING accessor for the native `isArray` flag
+   * (ADR-0039). `isArray` is a native boolean property, NOT an attr, so it has no
+   * resolving path through attrs()/attr(); a concrete node that `extends` an
+   * abstract array node inherits its array-ness only through the super chain.
+   * Reading the bare `isArray` field is OWN-ONLY and silently drops inherited
+   * array-ness — every codegen/runtime/effective-serializer read of a node's
+   * effective array-ness MUST route through this method instead.
+   *
+   * Returns the node's own `isArray` if set true, else walks the super chain.
+   * (Own `true` always wins; a node can only widen to array, never narrow — an
+   * abstract array base extended by a concrete node stays an array.)
+   */
+  resolvedIsArray(): boolean {
+    return this.cached("resolvedIsArray", () => {
+      let node: MetaData | undefined = this;
+      const visited = new Set<MetaData>();
+      while (node !== undefined && !visited.has(node)) {
+        if (node.isArray === true) return true;
+        visited.add(node);
+        node = node._superData;
+      }
+      return false;
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // dataType
   // ---------------------------------------------------------------------------

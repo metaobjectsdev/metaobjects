@@ -1,0 +1,48 @@
+# ADR-0039 — a concrete field/entity that `extends` an abstract base must inherit
+# its properties + members through codegen (isArray, precision/scale, maxLength,
+# @objectRef/@storage, and BaseEntity's PK). Mirrors the metadata-level conformance
+# fixture fixtures/conformance/extends-abstract-field-inheritance so the codegen
+# gate and the serializer gate exercise the same shape.
+metadata:
+  package: acme
+  children:
+  - field.string:
+      name: Tags
+      abstract: true
+      isArray: true
+      maxLength: 40
+  - field.decimal:
+      name: Money
+      abstract: true
+      precision: 12
+      scale: 2
+  - object.value:
+      name: Address
+      children:
+      - field.string: { name: street }
+      - field.string: { name: city }
+  - field.object:
+      name: AddressBag
+      abstract: true
+      isArray: true
+      objectRef: acme::Address
+      storage: jsonb
+  - object.entity:
+      name: BaseEntity
+      abstract: true
+      children:
+      - field.uuid: { name: id }
+      - field.timestamp: { name: createdAt }
+      - identity.primary: { name: id, fields: [id], generation: uuid }
+  - object.entity:
+      name: Contact
+      extends: acme::BaseEntity
+      children:
+      - source.rdb: { table: contacts }
+      - field.string: { name: name, required: true }
+      # inherits isArray:true + maxLength:40 from Tags
+      - field.string: { name: tags, extends: acme::Tags }
+      # inherits precision:12 + scale:2 from Money
+      - field.decimal: { name: balance, extends: acme::Money }
+      # inherits isArray:true + objectRef + storage:jsonb from AddressBag
+      - field.object: { name: addresses, extends: acme::AddressBag }

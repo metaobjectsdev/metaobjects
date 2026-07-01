@@ -149,7 +149,7 @@ export function renderProjectionDecl(
     const refBase = objectRefOf(f);
     if (refBase) {
       const schemaSym = imp(`${refBase}InsertSchema@${voModule(refBase)}`);
-      const base = f.isArray
+      const base = f.resolvedIsArray()
         ? code`${z}.array(${schemaSym})`
         : code`${schemaSym}`;
       return code`  ${f.name}: ${base}${nullable}`;
