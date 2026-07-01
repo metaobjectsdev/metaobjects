@@ -352,7 +352,8 @@ public final class CanonicalJsonSerializer {
         }
 
         // 5. isArray — sourced from native property on MetaField / MetaAttribute
-        boolean isArrayValue = getNativeIsArray(node);
+        //    (ADR-0039: effective mode resolves through extends; own mode reads raw flag)
+        boolean isArrayValue = getNativeIsArray(node, effective);
         if (isArrayValue) {
             body.addProperty(KEY_IS_ARRAY, true);
         }
@@ -552,14 +553,22 @@ public final class CanonicalJsonSerializer {
     }
 
     /**
-     * Returns the native {@code isArray} value from {@link MetaField} or
+     * Returns the {@code isArray} value from {@link MetaField} or
      * {@link MetaAttribute}. Returns {@code false} for all other MetaData types.
+     *
+     * <p>ADR-0039: in {@code effective} mode a {@link MetaField} resolves array-ness
+     * through the {@code extends} super chain ({@link MetaField#isArrayType()}) so an
+     * inherited {@code isArray:true} is inlined into the effective form; in own-mode
+     * (round-trip of the authored form) it reads the raw native flag
+     * ({@link MetaField#isArray()}) so inherited array-ness is NOT restated.</p>
      */
-    private static boolean getNativeIsArray(MetaData node) {
+    private static boolean getNativeIsArray(MetaData node, boolean effective) {
         if (node instanceof MetaField) {
-            return ((MetaField<?>) node).isArray();
+            MetaField<?> f = (MetaField<?>) node;
+            return effective ? f.isArrayType() : f.isArray();
         }
         if (node instanceof MetaAttribute) {
+            // MetaAttribute has no extends super chain in practice; own flag is effective.
             return ((MetaAttribute<?>) node).isArray();
         }
         return false;

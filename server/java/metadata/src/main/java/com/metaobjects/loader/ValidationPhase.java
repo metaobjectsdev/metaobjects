@@ -974,9 +974,12 @@ public final class ValidationPhase {
      * @throws MetaDataException if the one-primary rule is violated
      */
     private static void validateObjectPrimarySource(MetaObject obj) {
-        // Own-only MetaSource children — delegates to MetaObject.getSources() to avoid
-        // duplicating the child-collection logic here.
-        java.util.Collection<MetaSource> sources = obj.getSources();
+        // ADR-0039 (declaration-layer check, own-only is correct): the one-primary
+        // rule is enforced per DECLARED node — each object in the extends chain is
+        // walked separately, so we count only THIS node's own source children (an
+        // inherited primary belongs to the parent's own validation). getSources(false)
+        // is the explicit own-only form (the no-arg getSources() now RESOLVES).
+        java.util.Collection<MetaSource> sources = obj.getSources(false);
 
         if (sources.isEmpty()) {
             // No sources declared — object is not persisted; no rule to enforce.
@@ -1345,7 +1348,11 @@ public final class ValidationPhase {
 
         ObjectField field = (ObjectField) node;
 
-        if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF, false)) {
+        // ADR-0039: @objectRef is an EFFECTIVE property — a concrete field.object may
+        // inherit it from an abstract field.object via `extends`. Resolve (default
+        // includeParentData=true), else a concrete field extending an abstract
+        // AddressBag(@objectRef) is falsely reported as ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF.
+        if (!node.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF
                     + ": field.object '" + field.getName()
@@ -1355,9 +1362,10 @@ public final class ValidationPhase {
                 ErrorCode.ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF, field.getSource());
         }
 
-        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE, false)) return;
+        // ADR-0039: @storage is also an effective property — resolve it.
+        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE)) return;
 
-        Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE, false).getValue();
+        Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE).getValue();
         if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_STORAGE_FLATTENED_ARRAY
@@ -1438,10 +1446,14 @@ public final class ValidationPhase {
         }
     }
 
-    /** The own-attr string value (own-only, matching @objectRef/@storage reads), or null when absent. */
+    /**
+     * The resolving attr string value (@valueType/@objectRef are EFFECTIVE properties
+     * that may be inherited via extends — ADR-0039), or null when absent. Default
+     * includeParentData=true.
+     */
     private static String attrStringOrNull(MetaData node, String attrName) {
-        if (!node.hasMetaAttr(attrName, false)) return null;
-        return node.getMetaAttr(attrName, false).getValueAsString();
+        if (!node.hasMetaAttr(attrName)) return null;
+        return node.getMetaAttr(attrName).getValueAsString();
     }
 
     // =========================================================================

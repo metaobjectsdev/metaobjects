@@ -122,7 +122,8 @@ final class OutputFormatSpecEmitter {
     private static String promptFieldLiteral(MetaField<?> field) {
         String name = field.getName();
         boolean required = isRequired(field);
-        boolean array = field.isArray();
+        // ADR-0039: resolving array-ness (isArray() is the own-only native flag).
+        boolean array = field.isArrayType();
 
         // Nested object — bounded deferral (Plan 3.1).
         if (field instanceof ObjectField) {
@@ -164,9 +165,11 @@ final class OutputFormatSpecEmitter {
         String valuesLit = "java.util.List.of(" + String.join(", ", quoted) + ")";
 
         // @enumDoc — optional; null when absent or empty.
+        // ADR-0039: @enumDoc is an effective property — resolve (default
+        // includeParentData=true), consistent with @values above which resolves.
         Properties enumDoc = null;
-        if (field.hasMetaAttr(EnumField.ATTR_ENUM_DOC, false)) {
-            Object v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC, false).getValue();
+        if (field.hasMetaAttr(EnumField.ATTR_ENUM_DOC)) {
+            Object v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC).getValue();
             if (v instanceof Properties p && !p.isEmpty()) {
                 enumDoc = p;
             }
@@ -193,8 +196,10 @@ final class OutputFormatSpecEmitter {
      * in Java source.
      */
     private static String optStringAttr(MetaField<?> field, String attrName) {
-        if (!field.hasMetaAttr(attrName, false)) return "null";
-        String v = field.getMetaAttr(attrName, false).getValueAsString();
+        // ADR-0039: @example/@instruction are effective properties — resolve
+        // (consistent with @values/@required which resolve).
+        if (!field.hasMetaAttr(attrName)) return "null";
+        String v = field.getMetaAttr(attrName).getValueAsString();
         return v == null ? "null" : "\"" + javaStringLiteral(v) + "\"";
     }
 

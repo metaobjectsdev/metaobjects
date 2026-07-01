@@ -4,6 +4,7 @@ import com.metaobjects.MetaData
 import com.metaobjects.field.MetaField
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.source.RdbSource
 
 /**
  * Internal helpers shared by the codegen-kotlin generators. Extracted to keep
@@ -22,6 +23,23 @@ internal object KotlinGenUtil {
         }
         return null
     }
+
+    /**
+     * The first `source.rdb` child of [obj], RESOLVED through the `extends` super chain
+     * (ADR-0039). `MetaObject.getSources(true)` walks the inheritance chain, so an entity
+     * that inherits its `source.rdb` from a base entity still resolves a source — a raw
+     * `obj.children.filterIsInstance<RdbSource>()` read returned null for such entities and
+     * the generators emitted NOTHING for them (the high-blast-radius own-accessor bug).
+     * Returns null when neither the object nor any ancestor declares an `source.rdb`.
+     */
+    fun firstRdbSource(obj: MetaObject): RdbSource? =
+        obj.getSources(true).filterIsInstance<RdbSource>().firstOrNull()
+
+    /**
+     * True iff [obj] (or any ancestor via `extends`) declares a `source.rdb` — i.e. it is
+     * persisted. Resolving (ADR-0039). See [firstRdbSource].
+     */
+    fun hasRdbSource(obj: MetaObject): Boolean = firstRdbSource(obj) != null
 
     /**
      * Split `"A.b"` into `("A","b")`; null if the ref isn't a single-dot ref

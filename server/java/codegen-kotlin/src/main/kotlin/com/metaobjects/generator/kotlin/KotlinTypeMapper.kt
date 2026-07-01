@@ -321,7 +321,8 @@ object KotlinTypeMapper {
      * `@valueType` / `@objectRef` is set and that `@valueType` names a scalar subtype.
      */
     fun mapValueScalarTypeName(field: MapField): TypeName? =
-        when (stringAttr(field, MapField.ATTR_VALUE_TYPE)) {
+        // ADR-0039: @valueType is an effective property — resolve through extends.
+        when (stringAttr(field, MapField.ATTR_VALUE_TYPE, includeParent = true)) {
             StringField.SUBTYPE_STRING    -> STRING
             IntegerField.SUBTYPE_INT      -> INT
             LongField.SUBTYPE_LONG        -> LONG
@@ -583,8 +584,10 @@ object KotlinTypeMapper {
      * [includeParent] = true also walks the `extends` super-field chain). Returns null when
      * the attribute is absent, throws during lookup, or isn't a [com.metaobjects.attr.MetaAttribute].
      * Used for non-typed dispatch keys (e.g. `@dbColumnType`, `@valueType`) read off a field.
+     * ADR-0039: [includeParent] defaults to true (resolving is the default); pass false only
+     * for the rare own-only case.
      */
-    private fun stringAttr(field: MetaField<*>, name: String, includeParent: Boolean = false): String? {
+    private fun stringAttr(field: MetaField<*>, name: String, includeParent: Boolean = true): String? {
         if (!field.hasMetaAttr(name, includeParent)) return null
         val attr = runCatching {
             field.getMetaAttr(name, includeParent)
@@ -610,10 +613,15 @@ object KotlinTypeMapper {
     private fun decimalScale(field: DecimalField): Int =
         intAttr(field, DecimalField.ATTR_SCALE) ?: DECIMAL_DEFAULT_SCALE
 
-    /** Best-effort read of a named int-valued attribute (own-only) on [field]; null when absent/unparseable. */
+    /**
+     * Best-effort read of a named int-valued attribute on [field], resolved THROUGH the
+     * `extends` super-field chain (own value wins); null when absent/unparseable. ADR-0039:
+     * `@precision`/`@scale` are effective properties — a concrete field extending an abstract
+     * decimal must inherit them (consistent with [stringMaxLengthOrNull] which resolves).
+     */
     private fun intAttr(field: MetaField<*>, name: String): Int? {
-        if (!field.hasMetaAttr(name, false)) return null
-        val raw = runCatching { field.getMetaAttr(name, false).value }.getOrNull()
+        if (!field.hasMetaAttr(name, true)) return null
+        val raw = runCatching { field.getMetaAttr(name, true).value }.getOrNull()
         return when (raw) {
             is Number -> raw.toInt()
             is String -> raw.toIntOrNull()

@@ -55,7 +55,8 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         val outRoot = Paths.get(outDir.absolutePath)
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
-            val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
+            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             // Only writable tables get a filter allowlist (the controller is also
             // table-only). View / materializedView are read-only; storedProc has its
             // own dispatch; tableFunction has no controller surface today.

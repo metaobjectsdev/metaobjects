@@ -371,7 +371,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     private fun <V : MetaValidator> validator(field: MetaField<*>, type: Class<V>): V? {
-        for (child in field.children) {
+        // ADR-0039: resolving member iteration — getChildren(type) walks the extends
+        // super chain, so a concrete field inherits validators from an abstract base.
+        // A raw field.children read would miss inherited validators.
+        for (child in field.getChildren(MetaValidator::class.java, true)) {
             if (type.isInstance(child)) return type.cast(child)
         }
         return null

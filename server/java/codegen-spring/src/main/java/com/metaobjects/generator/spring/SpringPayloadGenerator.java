@@ -320,7 +320,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             // this; defensive fallback to scalar type.
             return SpringTypeMapper.javaTypeName(field);
         }
-        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArray());
+        // ADR-0039: resolving array-ness (isArray() is the own-only native flag).
+        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArrayType());
     }
 
     /**
