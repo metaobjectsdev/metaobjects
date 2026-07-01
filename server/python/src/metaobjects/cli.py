@@ -534,7 +534,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
     error_count = 0
     checked = 0
     for tmpl in sorted(templates, key=lambda c: c.name):
-        payload_ref = tmpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+        payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(payload_ref, str) or not payload_ref:
             print(f"error: [{tmpl.name}] missing @payloadRef.", file=sys.stderr)
             error_count += 1
@@ -554,8 +554,8 @@ def _verify_templates(args: argparse.Namespace) -> int:
         refs = [
             val
             for a in _TEMPLATE_TEXT_REF_ATTRS
-            # ADR-0039 sanctioned own: template attr (cross-port own)
-            if isinstance(val := tmpl.attr(a), str) and val
+            # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
+            if isinstance(val := tmpl.get_meta_attr(a), str) and val
         ]
         if not refs:
             print(

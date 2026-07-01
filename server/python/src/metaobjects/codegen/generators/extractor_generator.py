@@ -151,14 +151,14 @@ def render_extractor(
     Returns ``None`` when the ``@payloadRef`` can't be resolved to an ``object.value``,
     or when the target ``@format`` is not json/xml (the extract tier requires the
     tolerant extract API, which only the json/xml output-parsers emit)."""
-    payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     payload = resolve_payload_vo(root, payload_ref)
     if payload is None:
         return None
 
-    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
     if fmt_str.lower() not in _EXTRACT_FORMATS:
         return None

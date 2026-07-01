@@ -160,7 +160,7 @@ def _resolve_payload_vo(root: MetaData, payload_ref: str) -> MetaObject | None:
 
 def _max_chars_of(tmpl: MetaData) -> int | None:
     """Resolve ``@maxChars`` (own attr) as an int, or ``None`` when absent/non-numeric."""
-    v = tmpl.attr(tc.TEMPLATE_ATTR_MAX_CHARS)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    v = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_MAX_CHARS)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if isinstance(v, bool):
         return None
     if isinstance(v, int):
@@ -226,7 +226,7 @@ class RenderHelperGenerator:
         )
         files: list[EmittedFile] = []
         for tmpl in outputs:
-            payload_ref = tmpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+            payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
             if not isinstance(payload_ref, str) or not payload_ref:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.output '{tmpl.name}' missing "
@@ -286,7 +286,7 @@ class RenderHelperGenerator:
         template_name = tmpl.name
         snake = _snake_case(template_name)
         fields = _derive_payload_field_tree(root, vo, frozenset())
-        kind = tmpl.attr(tc.TEMPLATE_ATTR_KIND)  # ADR-0039 sanctioned own: template attr (cross-port own)
+        kind = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_KIND)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         kind = (kind if isinstance(kind, str) else tc.TEMPLATE_KIND_DEFAULT).lower()
 
         fqn = (
@@ -309,12 +309,12 @@ class RenderHelperGenerator:
         tmpl: MetaData,
         fields: list[PayloadField],
     ) -> str:
-        text_ref = tmpl.attr(tc.TEMPLATE_ATTR_TEXT_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+        text_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(text_ref, str) or not text_ref:
             raise ValueError(
                 f'template.output "{template_name}" (document) missing @textRef'
             )
-        fmt = tmpl.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
+        fmt = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         fmt = fmt if isinstance(fmt, str) and fmt else tc.TEMPLATE_FORMAT_DEFAULT
         max_chars = _max_chars_of(tmpl)
 
@@ -364,9 +364,9 @@ class RenderHelperGenerator:
         tmpl: MetaData,
         fields: list[PayloadField],
     ) -> str:
-        subject_ref = tmpl.attr(tc.TEMPLATE_ATTR_SUBJECT_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
-        html_body_ref = tmpl.attr(tc.TEMPLATE_ATTR_HTML_BODY_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
-        text_body_ref = tmpl.attr(tc.TEMPLATE_ATTR_TEXT_BODY_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+        subject_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_SUBJECT_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
+        html_body_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_HTML_BODY_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
+        text_body_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_BODY_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(subject_ref, str) or not subject_ref:
             raise ValueError(
                 f'template.output "{template_name}" (email) missing @subjectRef'

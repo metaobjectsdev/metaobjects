@@ -54,7 +54,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
 
     Returns ``None`` when the ``@payloadRef`` can't be resolved (defensive;
     the loader's template-validation pass would normally catch this first)."""
-    payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     payload = resolve_payload_vo(root, payload_ref)
@@ -77,7 +77,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # template targets json/xml. Otherwise only the FR-006 strict parser is emitted
     # (text-format outputs get no extract). The mirror is a nullable twin of the
     # payload, so the strict ``parse_*`` is left exactly as FR-006 shipped it.
-    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
     emit_extract_lenient = fmt_str.lower() in _EXTRACT_FORMATS
     extracted_class = f"{payload_class}Extracted"

@@ -492,7 +492,7 @@ def render_payload_vo(
     on the same relationship), only one nested class is emitted. Across
     different templates, each file owns its full class graph independently —
     see the module docstring for the rationale."""
-    payload_ref = template.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
     payload = resolve_payload_vo(root, payload_ref)

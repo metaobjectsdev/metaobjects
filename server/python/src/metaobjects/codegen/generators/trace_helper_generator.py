@@ -150,7 +150,7 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
 
     # Derive the parse format from the prompt's @format attr (default json) — the
     # SAME rule the output-parser / extractor generators use.
-    fmt = prompt.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
+    fmt = prompt.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
 
     fqn = entity.fqn()
