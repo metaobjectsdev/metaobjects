@@ -876,6 +876,10 @@ public abstract class MetaObject extends MetaData {
      * @return all {@code source.*} children — own first, then super-chain in order
      */
     public Collection<MetaSource> getSources(boolean includeParentData) {
+        // ADR-0039: this IS the super-resolution walk — it reads own children per hop
+        // (getChildren(...,false)) and concatenates the super chain itself (rather than
+        // delegating to the deduping resolving accessor, which would collide unnamed
+        // sources). The own-per-hop reads are the sanctioned super-walk mechanism.
         java.util.List<MetaSource> result = new java.util.ArrayList<>();
         result.addAll(getChildren(MetaSource.class, false));
         if (includeParentData) {

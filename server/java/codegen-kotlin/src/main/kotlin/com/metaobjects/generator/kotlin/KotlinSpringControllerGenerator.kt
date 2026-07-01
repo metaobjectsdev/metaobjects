@@ -139,7 +139,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // entity lacks a single-field PK, skip get/update/delete (list+create still work)
         // — but for v1 we just default to "id" : Long for the route signatures since the
         // canonical Author/BaseEntity convention is a single Long PK.
-        val primary = entity.children
+        // ADR-0039: identities are inheritable — an entity may inherit its primary
+        // identity from a BaseEntity via extends. RESOLVE via getIdentities(true);
+        // entity.children (own-only) would miss it.
+        val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary }
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD

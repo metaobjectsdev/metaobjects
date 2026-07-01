@@ -69,6 +69,9 @@ public final class RegisteredValidation {
                 }
             }
         }
+        // ADR-0039: structural tree recursion — descend via OWN children so each declared
+        // node is validated exactly once at its declaration site (inherited members are
+        // validated on the parent, not re-walked here).
         for (MetaData child : node.getChildren(MetaData.class, false)) {
             walk(child, registry, ctx);
         }

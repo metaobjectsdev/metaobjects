@@ -178,6 +178,8 @@ public class MetaRoot extends MetaData {
      * @return list of MetaObject children; empty list if none
      */
     public List<MetaObject> objects() {
+        // ADR-0039: the root node is never extended, so own children is the complete
+        // set — no super chain to resolve. (Objects are declared directly under root.)
         return useCache("objects()", () -> getChildren(MetaObject.class, false));
     }
 
@@ -188,6 +190,7 @@ public class MetaRoot extends MetaData {
      * @return list of MetaField children; empty list if none
      */
     public List<MetaField> fields() {
+        // ADR-0039: root is never extended — own children is the complete set.
         return useCache("fields()", () -> getChildren(MetaField.class, false));
     }
 
@@ -200,6 +203,7 @@ public class MetaRoot extends MetaData {
     public MetaObject findObject(String name) {
         return useCache("findObject()", name, n -> {
             try {
+                // ADR-0039: root is never extended — own child lookup is complete.
                 return getChild(n, MetaObject.class, false);
             } catch (MetaDataNotFoundException e) {
                 return null;

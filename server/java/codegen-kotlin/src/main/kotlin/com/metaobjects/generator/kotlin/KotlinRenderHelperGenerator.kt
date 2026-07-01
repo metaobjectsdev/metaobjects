@@ -79,8 +79,8 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         val provider = FilesystemProvider(Paths.get(templateRoot))
 
         // Stable name order — matches the other ports' deterministic emission.
-        val outputs = loader.root.children
-            .filterIsInstance<OutputTemplate>()
+        // ADR-0039: root-scan discipline — resolving children accessor.
+        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
             .sortedBy { it.name }
 
         for (tmpl in outputs) {
@@ -254,6 +254,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `object.value` is found.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
+        // ADR-0039: @objectRef is an inheritable effective field property — RESOLVE
+        // (includeParentData=true) so a field.object inheriting @objectRef via extends
+        // still resolves its target VO.
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
         val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
         if (ref.isNullOrEmpty()) return null
@@ -294,19 +297,23 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     // Local helpers
     // -------------------------------------------------------------------------
 
-    /** Resolve `@kind` (own attr), defaulting to `document`. */
+    // ADR-0039: template.* attrs RESOLVE through extends (includeParentData=true, the
+    // default) — a template is a registered type that can be an `extends` target, so its
+    // refs inherit. Matches the TS reference + C#.
+
+    /** Resolve `@kind` (RESOLVING attr — ADR-0039), defaulting to `document`. */
     private fun kindOf(template: MetaTemplate): String {
-        if (template is OutputTemplate && template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)) {
-            val v = template.getMetaAttr(TemplateConstants.ATTR_KIND, false).valueAsString
+        if (template is OutputTemplate && template.hasMetaAttr(TemplateConstants.ATTR_KIND)) {
+            val v = template.getMetaAttr(TemplateConstants.ATTR_KIND).valueAsString
             if (!v.isNullOrEmpty()) return v
         }
         return TemplateConstants.KIND_DEFAULT
     }
 
-    /** Read an own attr value, or null if absent. */
+    /** Read a template attr value (RESOLVING — ADR-0039), or null if absent. */
     private fun attr(template: MetaTemplate, attr: String): String? =
-        if (template.hasMetaAttr(attr, false))
-            template.getMetaAttr(attr, false).valueAsString
+        if (template.hasMetaAttr(attr))
+            template.getMetaAttr(attr).valueAsString
         else null
 
     /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */

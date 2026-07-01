@@ -187,13 +187,20 @@ public final class M2MFields {
 
     // --- helpers -----------------------------------------------------------
 
-    /** An entity's own {@code identity.reference} children, in declaration order. */
+    /**
+     * A junction's {@code identity.reference} children, in declaration order.
+     * ADR-0039: identities are inheritable — a junction may inherit an
+     * {@code identity.reference} via extends. RESOLVE via getIdentities() (the
+     * no-arg form defaults includeParentData=true), matching the TS reference's
+     * {@code junction.referenceIdentities()} which builds on the resolving
+     * {@code identities()}. Own-only would drop an inherited reference and
+     * mis-derive the M:N FK direction.
+     */
     private static List<MetaIdentity> referenceIdentities(MetaObject junction) {
         List<MetaIdentity> out = new ArrayList<>();
-        for (MetaData child : junction.getChildren(MetaData.class, false)) {
-            if (child instanceof MetaIdentity
-                    && MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) {
-                out.add((MetaIdentity) child);
+        for (MetaIdentity child : junction.getIdentities()) {
+            if (MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) {
+                out.add(child);
             }
         }
         return out;
@@ -207,8 +214,10 @@ public final class M2MFields {
 
     /** The bare entity name a reference's {@code @references} resolves to, or {@code null}. */
     private static String refTargetEntity(MetaIdentity ref) {
-        if (!ref.hasMetaAttr(MetaIdentity.ATTR_REFERENCES, false)) return null;
-        String v = ref.getMetaAttr(MetaIdentity.ATTR_REFERENCES, false).getValueAsString();
+        // ADR-0039: @references is an inheritable effective identity attr — RESOLVE
+        // (default includeParentData=true); own-only would miss an inherited target.
+        if (!ref.hasMetaAttr(MetaIdentity.ATTR_REFERENCES)) return null;
+        String v = ref.getMetaAttr(MetaIdentity.ATTR_REFERENCES).getValueAsString();
         if (v == null || v.isEmpty()) return null;
         // @references may carry a dotted Entity.field form — the entity is the head segment.
         int dot = v.indexOf('.');
@@ -226,6 +235,7 @@ public final class M2MFields {
 
     private static MetaObject findObject(MetaRoot root, String name) {
         String bare = stripPackage(name);
+        // ADR-0039: root-level scan — root is never extended, so own children is correct.
         for (MetaData child : root.getChildren(MetaData.class, false)) {
             if (child instanceof MetaObject && bare.equals(child.getShortName())) {
                 return (MetaObject) child;

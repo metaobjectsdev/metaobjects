@@ -61,20 +61,26 @@ public abstract class MetaTemplate extends MetaData {
     // moved. The former registerSharedAttrs(...) helper is therefore removed.
 
     // -----------------------------------------------------------------------
-    // Accessors — own-only attr reads (mirrors MetaOrigin's getFrom/getVia)
+    // Accessors — resolving attr reads (ADR-0039 default)
+    //
+    // ADR-0039: template.* is a registered type that can be an `extends` target, so
+    // its attrs inherit — the resolving read (includeParentData=true, the default) is
+    // correct, matching the TS reference + C# (which resolve template attrs). A
+    // template's declared refs (@payloadRef/@textRef/@format/@maxChars/@owner/@since/
+    // @requiredTags) resolve through the extends chain into an effective form.
     // -----------------------------------------------------------------------
 
     /** Returns the raw value of {@code @payloadRef}, or {@code null} if absent. */
     public String getPayloadRef() {
-        return hasMetaAttr(ATTR_PAYLOAD_REF, false)
-            ? getMetaAttr(ATTR_PAYLOAD_REF, false).getValueAsString()
+        return hasMetaAttr(ATTR_PAYLOAD_REF)
+            ? getMetaAttr(ATTR_PAYLOAD_REF).getValueAsString()
             : null;
     }
 
     /** Returns the raw value of {@code @textRef}, or {@code null} if absent. */
     public String getTextRef() {
-        return hasMetaAttr(ATTR_TEXT_REF, false)
-            ? getMetaAttr(ATTR_TEXT_REF, false).getValueAsString()
+        return hasMetaAttr(ATTR_TEXT_REF)
+            ? getMetaAttr(ATTR_TEXT_REF).getValueAsString()
             : null;
     }
 
@@ -82,37 +88,37 @@ public abstract class MetaTemplate extends MetaData {
      * Returns the value of {@code @format} if set, else {@link TemplateConstants#FORMAT_DEFAULT}.
      */
     public String getFormat() {
-        if (!hasMetaAttr(ATTR_FORMAT, false)) return FORMAT_DEFAULT;
-        String v = getMetaAttr(ATTR_FORMAT, false).getValueAsString();
+        if (!hasMetaAttr(ATTR_FORMAT)) return FORMAT_DEFAULT;
+        String v = getMetaAttr(ATTR_FORMAT).getValueAsString();
         return v != null ? v : FORMAT_DEFAULT;
     }
 
     /** Returns the value of {@code @maxChars}, or {@code null} if absent. */
     public Integer getMaxChars() {
-        if (!hasMetaAttr(ATTR_MAX_CHARS, false)) return null;
+        if (!hasMetaAttr(ATTR_MAX_CHARS)) return null;
         // IntAttribute is parameterized on Integer; load-time conversion via
         // DataConverter guarantees getValue() is Integer or null here.
-        return (Integer) getMetaAttr(ATTR_MAX_CHARS, false).getValue();
+        return (Integer) getMetaAttr(ATTR_MAX_CHARS).getValue();
     }
 
     /** Returns the raw value of {@code @owner}, or {@code null} if absent. */
     public String getOwner() {
-        return hasMetaAttr(ATTR_OWNER, false)
-            ? getMetaAttr(ATTR_OWNER, false).getValueAsString()
+        return hasMetaAttr(ATTR_OWNER)
+            ? getMetaAttr(ATTR_OWNER).getValueAsString()
             : null;
     }
 
     /** Returns the raw value of {@code @since}, or {@code null} if absent. */
     public String getSince() {
-        return hasMetaAttr(ATTR_SINCE, false)
-            ? getMetaAttr(ATTR_SINCE, false).getValueAsString()
+        return hasMetaAttr(ATTR_SINCE)
+            ? getMetaAttr(ATTR_SINCE).getValueAsString()
             : null;
     }
 
     /** Returns the {@code @requiredTags} list, or {@code null} if absent. */
     public List<String> getRequiredTags() {
-        if (!hasMetaAttr(ATTR_REQUIRED_TAGS, false)) return null;
-        Object v = getMetaAttr(ATTR_REQUIRED_TAGS, false).getValue();
+        if (!hasMetaAttr(ATTR_REQUIRED_TAGS)) return null;
+        Object v = getMetaAttr(ATTR_REQUIRED_TAGS).getValue();
         if (v instanceof List<?> list) {
             List<String> out = new ArrayList<>(list.size());
             for (Object o : list) out.add(String.valueOf(o));

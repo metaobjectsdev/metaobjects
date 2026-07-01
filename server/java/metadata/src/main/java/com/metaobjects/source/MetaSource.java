@@ -250,16 +250,19 @@ public abstract class MetaSource extends MetaData {
         String kind = getEffectiveKind();
 
         // Step 1: kind-matching alias.
+        // ADR-0039: source physical-name attrs are inheritable effective source
+        // properties — RESOLVE (default includeParentData=true), matching getTableName()/
+        // getEffectiveKind()/getRole() above and the C# port's resolving PhysicalName.
         String canonicalAttr = PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
-        if (canonicalAttr != null && hasMetaAttr(canonicalAttr, false)) {
-            String v = getMetaAttr(canonicalAttr, false).getValueAsString();
+        if (canonicalAttr != null && hasMetaAttr(canonicalAttr)) {
+            String v = getMetaAttr(canonicalAttr).getValueAsString();
             if (v != null && !v.isEmpty()) return v;
         }
 
         // Step 2: legacy @table for non-table kind.
         if (canonicalAttr != null && !ATTR_TABLE.equals(canonicalAttr)
-                && hasMetaAttr(ATTR_TABLE, false)) {
-            String legacy = getMetaAttr(ATTR_TABLE, false).getValueAsString();
+                && hasMetaAttr(ATTR_TABLE)) {
+            String legacy = getMetaAttr(ATTR_TABLE).getValueAsString();
             if (legacy != null && !legacy.isEmpty()) return legacy;
         }
 

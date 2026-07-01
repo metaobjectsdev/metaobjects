@@ -82,9 +82,10 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         Path outRoot = Paths.get(outDir.getAbsolutePath());
 
         // Stable name order — matches the other ports' deterministic emission.
+        // ADR-0039: root-scan discipline — resolving children accessor.
         List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaData child : loader.getRoot().getChildren()) {
-            if (child instanceof MetaTemplate t && TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
+        for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
+            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
                 outputs.add(t);
             }
         }
