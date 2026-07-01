@@ -73,10 +73,11 @@ def resolve_n2m_descriptor(
     *object_index* is a bare-name → object map of the loaded model's top-level
     objects (mirrors the TS ``root.findObject`` resolution surface).
     """
-    # ADR-0039 sanctioned own: byte-for-byte parity with the TS runtime resolver
-    # (``n2m-resolver.ts`` iterates ``sourceEntity.ownChildren()``). Kept own to
-    # avoid a Python-only divergence in this runtime resolution path.
-    for child in source_entity.own_children():
+    # ADR-0039: effective children — a M:N relationship may be inherited via
+    # ``extends`` from an abstract base. Matches the TS runtime resolver
+    # (``n2m-resolver.ts:63`` iterates ``sourceEntity.children()``); own_children()
+    # here silently dropped an inherited relationship.
+    for child in source_entity.children():
         if not isinstance(child, MetaRelationship):
             continue
         if child.name != relation_name:

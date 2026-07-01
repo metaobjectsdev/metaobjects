@@ -65,12 +65,12 @@ def _primary_assigned_field_names(obj: MetaData) -> set[str]:
             continue
         if ident.sub_type != IDENTITY_SUBTYPE_PRIMARY:
             continue
-        # ADR-0039 sanctioned own: validation reads the identity's OWN @generation/
-        # @fields declaration (mirrors the TS validate-field-readonly ``id.ownAttr``);
-        # the identity node itself is located via the resolving obj.children() above.
-        if ident.attr(IDENTITY_ATTR_GENERATION) != GENERATION_ASSIGNED:
+        # ADR-0039: resolving — an identity may inherit @generation / @fields via
+        # extends (mirrors the TS validate-field-readonly ``id.attr``, which resolves
+        # — validate-field-readonly.ts:142,144).
+        if ident.get_meta_attr(IDENTITY_ATTR_GENERATION) != GENERATION_ASSIGNED:
             continue
-        fields = ident.attr(IDENTITY_ATTR_FIELDS)
+        fields = ident.get_meta_attr(IDENTITY_ATTR_FIELDS)
         if isinstance(fields, (list, tuple)):
             for f_name in fields:
                 if isinstance(f_name, str):

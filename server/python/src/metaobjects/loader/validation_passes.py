@@ -769,10 +769,10 @@ def _validate_datagrid_sort_fields(
         for child in node.children():
             if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
                 continue
-            # ADR-0039 sanctioned own: validates the layout's OWN @defaultSortField
-            # declaration (mirrors the TS validateDataGridSortFields `layout.ownAttr`);
-            # the layout node itself is located via the resolving node.children() above.
-            sort_field = child.attr(LAYOUT_ATTR_DEFAULT_SORT_FIELD)
+            # ADR-0039: resolving — a layout may inherit its @defaultSortField via
+            # extends (mirrors the TS validateDataGridSortFields `layout.attr`, which
+            # resolves — validation-passes.ts:120).
+            sort_field = child.get_meta_attr(LAYOUT_ATTR_DEFAULT_SORT_FIELD)
             if sort_field is None:
                 continue
             if not isinstance(sort_field, str):
@@ -860,10 +860,10 @@ def _validate_datagrid_filter_values(
         for child in node.children():
             if child.type != TYPE_LAYOUT or child.sub_type != LAYOUT_SUBTYPE_DATA_GRID:
                 continue
-            # ADR-0039 sanctioned own: validates the layout's OWN @filter declaration
-            # (mirrors the TS validateDataGridFilterValues `layout.ownAttr`); the
-            # layout node itself is located via the resolving node.children() above.
-            filter_value = child.attr(LAYOUT_ATTR_FILTER)
+            # ADR-0039: resolving — a layout may inherit @filter via extends (mirrors
+            # the TS validateDataGridFilterValues `layout.attr`, which resolves —
+            # validation-passes.ts:1260).
+            filter_value = child.get_meta_attr(LAYOUT_ATTR_FILTER)
             if filter_value is None:
                 continue
             if not isinstance(filter_value, dict):
@@ -1082,10 +1082,10 @@ def _validate_via_path(
             return None
 
         # Advance to the referenced entity.
-        # ADR-0039 sanctioned own: reads the relationship's OWN @objectRef declaration
-        # (mirrors the TS _validateViaPath `rel.ownAttr`); the rel node itself is found
-        # via the resolving _relationships_by_name (children()) above.
-        obj_ref = rel_node.attr(RELATIONSHIP_ATTR_OBJECT_REF)
+        # ADR-0039: resolving — a relationship may inherit @objectRef via extends
+        # (mirrors the TS _validateViaPath `rel.attr`, which resolves —
+        # validation-passes.ts:522).
+        obj_ref = rel_node.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)
         if not isinstance(obj_ref, str):
             errors.append(
                 MetaError(
@@ -1254,14 +1254,15 @@ def _infer_via_single_hop(
     @from/@of target entity. Exactly one → the inferred path. Zero →
     ERR_INVALID_ORIGIN. More than one → ERR_AMBIGUOUS_PATH."""
     # ADR-0039: rels iterated via the resolving base.children() (effective — inherited
-    # relationships included); each rel's OWN @objectRef is then read (sanctioned own,
-    # mirrors the TS _inferViaSingleHop `rel.ownAttr` after `base.children()`).
+    # relationships included); each rel's @objectRef is read resolving too, since a
+    # relationship may inherit @objectRef via extends (mirrors the TS
+    # _inferViaSingleHop `rel.attr`, which resolves — validation-passes.ts:709).
     candidates = [
         rel
         for rel in base.children()
         if rel.type == TYPE_RELATIONSHIP
-        and isinstance(rel.attr(RELATIONSHIP_ATTR_OBJECT_REF), str)
-        and _strip_package(rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)) == target_entity.name
+        and isinstance(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF), str)
+        and _strip_package(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)) == target_entity.name
     ]
     if len(candidates) == 1:
         return [candidates[0]]
@@ -1564,19 +1565,20 @@ def _count_junction_references(junction: MetaData) -> int:
 def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
     object_index = _build_object_index(root)
 
-    # ADR-0039 sanctioned own: a relationship is validated on the entity that
-    # DECLARES it — root scan (never extended) + each object's OWN relationships,
-    # and each relationship's OWN @through/@sourceRefField/@symmetric/@cardinality/
-    # @objectRef declaration. Mirrors the TS validateRelationships (`ownChildren` +
-    # `rel.ownAttr`). (The junction's identity.reference fields ARE read effectively
-    # — see _junction_reference_fk_fields — matching the TS split.)
-    for obj in (c for c in root.own_children() if c.type == TYPE_OBJECT):
+    # ADR-0039: a relationship is validated on the entity that DECLARES it — the
+    # M:N slim-vocabulary rules apply to own-declared relationships (obj.own_children()),
+    # but each relationship's @through/@sourceRefField/@symmetric/@cardinality/@objectRef
+    # is read RESOLVING (get_meta_attr), since those attrs may be inherited via extends.
+    # Mirrors the TS validateRelationships (root.children() + obj.ownChildren() +
+    # `rel.attr` which resolves — validation-passes.ts:1313-1324). (The junction's
+    # identity.reference fields are also read resolving — see _count_junction_references.)
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
         for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
-            through = rel.attr(RELATIONSHIP_ATTR_THROUGH)
-            source_ref_field = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
-            symmetric = rel.attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
-            cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY)
-            object_ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)
+            through = rel.get_meta_attr(RELATIONSHIP_ATTR_THROUGH)
+            source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
+            symmetric = rel.get_meta_attr(RELATIONSHIP_ATTR_SYMMETRIC) is True
+            cardinality = rel.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY)
+            object_ref = rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)
 
             has_through = isinstance(through, str) and through != ""
             has_source_ref_field = (
@@ -2102,12 +2104,13 @@ def _identity_field_names(obj: MetaObject) -> set[str]:
     """Return the set of field names covered by ANY identity on *obj* (effective)."""
     covered: set[str] = set()
     # ADR-0039: identities iterated via the resolving obj.children() (inherited
-    # identities included); each identity's OWN @fields is read (sanctioned own,
-    # mirrors the TS validateFilterableHasIndex `identity.ownAttr` after `children()`).
+    # identities included); each identity's @fields is read resolving too, since an
+    # identity may inherit @fields via extends (mirrors the TS
+    # validateFilterableHasIndex `identity.attr`, which resolves — validation-passes.ts:291).
     for child in obj.children():
         if child.type != TYPE_IDENTITY:
             continue
-        fields_val = child.attr(IDENTITY_ATTR_FIELDS)
+        fields_val = child.get_meta_attr(IDENTITY_ATTR_FIELDS)
         if isinstance(fields_val, list):
             covered.update(str(f) for f in fields_val)
         elif isinstance(fields_val, str):
@@ -2304,36 +2307,38 @@ def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
-    # ADR-0039 sanctioned own THROUGHOUT this pass: root scans (metadata.root is
-    # never extended) + every `tpl.attr(TEMPLATE_ATTR_*)` reads the template's OWN
-    # attr. Template attrs are read own in BOTH reference ports (TS `tmpl.ownAttr`,
-    # Java `getMetaAttr(name, false)`) — a template ref is a per-node declaration,
-    # not an inherited-across-a-template-extends-chain value. Mirrors the TS
-    # validateTemplatePayloadRefs.
+    # ADR-0039: resolving is the default THROUGHOUT this pass. A template CAN
+    # extends (unlike origin.*), so every `tpl.get_meta_attr(TEMPLATE_ATTR_*)` reads
+    # the EFFECTIVE (own + inherited via extends) value — @payloadRef/@textRef/@kind/
+    # @subjectRef/@htmlBodyRef/@requiredSlots/@responseRef and the subtype-only-attr
+    # checks. Mirrors the TS validateTemplatePayloadRefs, which reads every ref
+    # resolving via `tmpl.attr` (validation-passes.ts:169-253). Root has no super, so
+    # the root scans below are children()==own_children() but resolving is the default.
     #
     # FR-032 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
     # (e.g. ``acme::ai::ReviewPayload``). Index each object under its bare name,
     # its fqn() AND its package-folded resolution_key() so the FQN ref resolves.
     objects_by_name: dict[str, MetaData] = {}
-    for child in root.own_children():
+    for child in root.children():
         if child.type == TYPE_OBJECT:
             objects_by_name.setdefault(child.name, child)
             objects_by_name.setdefault(child.fqn(), child)
             objects_by_name.setdefault(child.resolution_key(), child)
 
-    for tpl in root.own_children():
+    for tpl in root.children():
         if tpl.type != TYPE_TEMPLATE:
             continue
         is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
-        payload_ref = tpl.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
+        # ADR-0039: resolving — a template may inherit @payloadRef via extends.
+        payload_ref = tpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
         has_payload_ref = isinstance(payload_ref, str) and payload_ref
 
         # --- subtype-specific attr on the wrong subtype ---
         # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
-        # (output-only) on a template.prompt. tpl.attr() reads the node's own
-        # attrs (not the @extends super-chain), matching the other checks here.
+        # (output-only) on a template.prompt. ADR-0039: resolving — a subtype-only
+        # attr may be inherited via extends, so read the effective value.
         for attr_name, allowed_sub in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
-            if tpl.attr(attr_name) is not None and tpl.sub_type != allowed_sub:
+            if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type != allowed_sub:
                 errors.append(MetaError(
                     code=ErrorCode.ERR_INVALID_TEMPLATE,
                     message=(
@@ -2350,14 +2355,16 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         # membership of @kind is enforced by allowed_values (ERR_BAD_ATTR_VALUE);
         # here we enforce only conditional ref presence. Mirrors TS/Java.
         if tpl.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT:
-            if tpl.attr(tc.TEMPLATE_ATTR_KIND) == tc.TEMPLATE_KIND_EMAIL:
-                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_SUBJECT_REF), str):
+            # ADR-0039: resolving — a template may inherit @kind/@subjectRef/
+            # @htmlBodyRef/@textRef via extends.
+            if tpl.get_meta_attr(tc.TEMPLATE_ATTR_KIND) == tc.TEMPLATE_KIND_EMAIL:
+                if not isinstance(tpl.get_meta_attr(tc.TEMPLATE_ATTR_SUBJECT_REF), str):
                     errors.append(MetaError(
                         code=ErrorCode.ERR_INVALID_TEMPLATE,
                         message=f'template "{tpl.name}" @kind "email" requires @subjectRef',
                         envelope=tpl.source,
                     ))
-                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_HTML_BODY_REF), str):
+                if not isinstance(tpl.get_meta_attr(tc.TEMPLATE_ATTR_HTML_BODY_REF), str):
                     errors.append(MetaError(
                         code=ErrorCode.ERR_INVALID_TEMPLATE,
                         message=f'template "{tpl.name}" @kind "email" requires @htmlBodyRef',
@@ -2367,7 +2374,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                 # @kind absent or "document" -> require @textRef so a document is
                 # never bodyless. (An out-of-enum @kind is flagged separately by
                 # the allowed_values schema check.)
-                if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
+                if not isinstance(tpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
                     errors.append(MetaError(
                         code=ErrorCode.ERR_INVALID_TEMPLATE,
                         message=f'template "{tpl.name}" @kind "document" requires @textRef',
@@ -2375,7 +2382,8 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
                     ))
         elif is_prompt:
             # template.prompt always carries a renderable body via @textRef.
-            if not isinstance(tpl.attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
+            # ADR-0039: resolving — @textRef may be inherited via extends.
+            if not isinstance(tpl.get_meta_attr(tc.TEMPLATE_ATTR_TEXT_REF), str):
                 errors.append(MetaError(
                     code=ErrorCode.ERR_INVALID_TEMPLATE,
                     message=f'template "{tpl.name}" requires @textRef',
@@ -2406,7 +2414,8 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
 
         # R3 — required-slots membership
         if is_prompt:
-            slots_raw = tpl.attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)
+            # ADR-0039: resolving — a template may inherit @requiredSlots via extends.
+            slots_raw = tpl.get_meta_attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)
             slots = _parse_string_list(slots_raw)
             if slots:
                 # ADR-0039: resolving — the payload VO's EFFECTIVE fields (own +
