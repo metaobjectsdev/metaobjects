@@ -409,21 +409,25 @@ export abstract class MetaData {
 
   /** Own children whose type matches — excludes inherited. */
   ownChildrenOfType(type: string): MetaData[] {
+    // ADR-0039: own-accessor definition — delegates to ownChildren() by contract.
     return this.ownChildren().filter((c) => c.type === type);
   }
 
   /** Own children matching both type and subType — excludes inherited. */
   ownChildrenOfSubType(type: string, subType: string): MetaData[] {
+    // ADR-0039: own-accessor definition — delegates to ownChildren() by contract.
     return this.ownChildren().filter((c) => c.type === type && c.subType === subType);
   }
 
   /** First own child with matching name, or undefined — excludes inherited. */
   ownChildByName(name: string): MetaData | undefined {
+    // ADR-0039: own-accessor definition — delegates to ownChildren() by contract.
     return this.ownChildren().find((c) => c.name === name);
   }
 
   /** First own child matching both type and name, or undefined — excludes inherited. */
   ownChildByTypeAndName(type: string, name: string): MetaData | undefined {
+    // ADR-0039: own-accessor definition — delegates to ownChildren() by contract.
     return this.ownChildren().find((c) => c.type === type && c.name === name);
   }
 

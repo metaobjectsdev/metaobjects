@@ -41,7 +41,7 @@
 //                        render handle promptRender() emits into a single
 //                        aggregated `prompts.ts` (payload-codegen generateRenderHandle).
 //                        ONLY for TOP-LEVEL template.prompt nodes (matching
-//                        prompt-render-file.ts's `ctx.loadedRoot.ownChildren()`).
+//                        prompt-render-file.ts's top-level template collection).
 //
 // DEFERRALS (tracked follow-ups — NOT documented by this builder yet, stated here
 // so the gap is known + intentional):
@@ -353,7 +353,8 @@ function isQueryable(obj: MetaObject): boolean {
  *  generators which always emit. So REST symbols are gated separately from the
  *  other queryable kinds. */
 function emitsRoutes(obj: MetaObject): boolean {
-  return obj.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
+  // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
+  return obj.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false;
 }
 
 function buildEntityUnit(
@@ -750,13 +751,16 @@ function callableSymbol(
  *  undefined for a zero-arg proc. Mirrors the callable template's resolution
  *  (the source child's SOURCE_ATTR_PARAMETER_REF). */
 function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
-  for (const child of obj.ownChildren()) {
+  // ADR-0039: resolving — a callable entity's source (and its @parameterRef) may
+  // be inherited via extends.
+  for (const child of obj.children()) {
     if (child.type !== TYPE_SOURCE) continue;
-    const ref = child.ownAttr(SOURCE_ATTR_PARAMETER_REF);
+    const ref = child.attr(SOURCE_ATTR_PARAMETER_REF);
     if (typeof ref === "string" && ref !== "") {
       // Only count it when it resolves to a value object (the template's guard).
+      // ADR-0039: resolving — root has no super (children()==ownChildren()).
       const vo = root
-        .ownChildren()
+        .children()
         .find((c) => c.subType === OBJECT_SUBTYPE_VALUE && refMatchesObject(c, ref));
       if (vo !== undefined) return ref;
     }
@@ -806,8 +810,9 @@ function restHonoSymbols(obj: MetaObject, layout: OutputLayout): ApiSymbol[] {
 // ---------------------------------------------------------------------------
 
 function templateOutputs(root: MetaRoot): MetaData[] {
+  // ADR-0039: resolving — root has no super (children()==ownChildren()).
   return root
-    .ownChildren()
+    .children()
     .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
 }
 
@@ -819,10 +824,11 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   const extractorMod = templateModulePath(`${name}.extractor`);
   const renderMod = templateModulePath(`${name}.render`);
 
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit @payloadRef/@format/@kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
-  const format = ((tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
-  const kind = ((tmpl.ownAttr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
+  const format = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+  const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
 
   // --- extractor: only json/xml output-parsers expose the extract API (matches
   //     extractor-file.ts's `if (format !== "json" && format !== "xml") continue`). ---
@@ -893,13 +899,14 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
 // template.prompt nodes — the prompt-render handle.
 // ---------------------------------------------------------------------------
 
-/** TOP-LEVEL template.prompt nodes — matching the promptRender generator's own
- *  collection (`ctx.loadedRoot.ownChildren()` filtered to TYPE_TEMPLATE +
+/** TOP-LEVEL template.prompt nodes — matching the promptRender generator's
+ *  top-level collection (root children filtered to TYPE_TEMPLATE +
  *  TEMPLATE_SUBTYPE_PROMPT). A prompt nested INSIDE an entity is not collected by
  *  the generator, so the builder must not document it either (no over-doc). */
 function templatePrompts(root: MetaRoot): MetaData[] {
+  // ADR-0039: resolving — root has no super (children()==ownChildren()).
   return root
-    .ownChildren()
+    .children()
     .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
 }
 
@@ -919,7 +926,8 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
   // promptRender writes the aggregated handles to `outFile` (default "prompts.ts").
   const promptsMod = templateModulePath("prompts");
 
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit @payloadRef via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
 
   if (payload) {

@@ -135,7 +135,8 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // ALSO emit one NEUTRAL render-contract page per `template.output` node —
       // a sibling artifact, distinct from the entity page. Raw node name → file
       // (`<name>.md`), agreeing with the entity Used-by back-link target.
-      for (const child of ctx.loadedRoot.ownChildren()) {
+      // ADR-0039: resolving — root has no super (children()==ownChildren()).
+      for (const child of ctx.loadedRoot.children()) {
         if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
         const node = docPageNode(child);
         templateNodes.push(node);

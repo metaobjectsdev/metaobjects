@@ -31,8 +31,9 @@ import {
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */

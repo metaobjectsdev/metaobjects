@@ -59,15 +59,17 @@ export function resolveN2mDescriptor(
   relationName: string,
   root: MetaData,
 ): N2mDescriptor | null {
-  for (const child of sourceEntity.ownChildren()) {
+  // ADR-0039: effective children — a relationship may be inherited via extends.
+  for (const child of sourceEntity.children()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
-    if (child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
-    if (child.ownAttr(RELATIONSHIP_ATTR_THROUGH) === undefined) continue; // 1:N many — not M:N.
+    // ADR-0039: effective attrs — @cardinality/@through/@objectRef may be inherited.
+    if (child.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
+    if (child.attr(RELATIONSHIP_ATTR_THROUGH) === undefined) continue; // 1:N many — not M:N.
 
     const rel = child as MetaRelationship;
-    const targetEntityName = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    const joinEntityName = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
+    const targetEntityName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    const joinEntityName = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
     if (!targetEntityName || !joinEntityName) {
       throw new MetadataError(
         `M:N relationship '${relationName}' on '${sourceEntity.name}' requires @objectRef + @through`,
@@ -166,7 +168,8 @@ function inOrEq(column: string, ids: PrimitiveValue[]): WhereClause {
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {
-  const e = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;
 }
@@ -240,7 +243,8 @@ export function resolveJoinColumnName(
   joinEntity: MetaData, fieldName: string,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
 ): string {
-  const field = joinEntity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  // ADR-0039: effective children — a junction field may be inherited via extends.
+  const field = joinEntity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) throw new MetadataError(`Join field '${fieldName}' not on '${joinEntity.name}'`);
   return resolveColumnName(field, strategy);
 }

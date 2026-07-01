@@ -131,6 +131,9 @@ export function renderProjectionDecl(
       for (const f of baseObj.fields()) allFields.push(f);
     }
   }
+  // ADR-0039: own — category 1 (emit-declared-here): the super's effective fields
+  // were already collected above; append only the projection's OWN new fields so
+  // inherited fields are not duplicated.
   for (const f of projection.ownFields()) allFields.push(f);
 
   // A field.object passthrough carries the value-object's Zod schema (so the

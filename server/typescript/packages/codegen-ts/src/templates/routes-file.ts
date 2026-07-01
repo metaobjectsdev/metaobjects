@@ -285,7 +285,8 @@ function renderM2mMount(
 
 /** Resolve a field's physical column name on an entity (defaults if missing). */
 function resolveJunctionColumn(entity: MetaObject, fieldName: string, ctx: RenderContext): string {
-  const field = entity.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  // ADR-0039: resolving — a junction FK field may be inherited via extends.
+  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
   if (!field) return fieldName;
   return resolveColumnName(field, ctx.columnNamingStrategy);
 }

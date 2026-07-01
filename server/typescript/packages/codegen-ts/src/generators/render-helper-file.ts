@@ -48,15 +48,17 @@ export const renderHelper = function renderHelper(opts?: RenderHelperOpts): Gene
       // framework defaults; used to resolve + verify each referenced mustache so
       // the build-time drift gate runs against the same texts render() will see.
       const provider = projectProvider(ctx.projectRoot);
+      // ADR-0039: resolving — root has no super (children()==ownChildren()).
       const outputs = root
-        .ownChildren()
+        .children()
         .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
       for (const t of outputs) {
         // @payloadRef must resolve to a value-object (same contract as the parser).
-        const payloadRef = t.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+        // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+        const payloadRef = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof payloadRef !== "string") continue;
-        const vo = root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
+        const vo = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
         if (!vo) continue;
         files.push({
           // renderRenderHelper THROWS (fails codegen) on a mustache↔VO drift —

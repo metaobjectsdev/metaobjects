@@ -38,11 +38,15 @@ export function validateFieldReadOnly(root: MetaData): FieldReadOnlyValidationRe
   const errors: ParseError[] = [];
   const warnings: LoaderWarning[] = [];
 
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     const isValueObject = obj.subType === OBJECT_SUBTYPE_VALUE;
 
     // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of an object.value.
     if (isValueObject) {
+      // ADR-0039: own — warns on @readOnly DECLARED on this value's own fields
+      // (readOnlyFlag reads the explicit own flag; the FR-013 read-only checks
+      // are own-vs-super comparisons by design).
       for (const child of obj.ownChildren()) {
         if (child.type === TYPE_FIELD && readOnlyFlag(child) === true) {
           warnings.push({
@@ -60,6 +64,8 @@ export function validateFieldReadOnly(root: MetaData): FieldReadOnlyValidationRe
 
     // 2) ERR_READONLY_DOWNGRADE — read-only-ness can only be upgraded across
     //    extends. Compare own field vs. inherited field's effective @readOnly.
+    // ADR-0039: own — the downgrade check compares this object's OWN explicit
+    // @readOnly:false against the inherited effective value (own-vs-super by design).
     for (const ownField of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       const ownVal = readOnlyFlag(ownField);
       if (ownVal !== false) continue; // only the explicit downgrade case matters
@@ -103,6 +109,9 @@ export function validateFieldReadOnly(root: MetaData): FieldReadOnlyValidationRe
 /** Read the explicit @readOnly value from a field's own attrs. Returns
  *  true / false when explicitly set, undefined when absent. */
 function readOnlyFlag(field: MetaData): boolean | undefined {
+  // ADR-0039: own — the FR-013 downgrade rule needs the EXPLICIT own @readOnly on
+  // THIS node (detecting an own :false against an inherited :true); resolving would
+  // mask the downgrade. Deliberate own-vs-super comparison.
   const v = field.ownAttr(FIELD_ATTR_READ_ONLY);
   if (typeof v === "boolean") return v;
   return undefined;
@@ -113,6 +122,8 @@ function readOnlyFlag(field: MetaData): boolean | undefined {
 function inheritedField(obj: MetaData, name: string): MetaData | undefined {
   let cursor = obj.superResolved;
   while (cursor !== undefined) {
+    // ADR-0039: own — super-chain walk reading each level's OWN fields to find the
+    // declaring node (the FR-013 comparison needs the declaring node's own flag).
     const f = cursor.ownChildren().find((c) => c.type === TYPE_FIELD && c.name === name);
     if (f !== undefined) return f;
     cursor = cursor.superResolved;
@@ -127,9 +138,10 @@ function primaryAssignedFieldNames(obj: MetaData): Set<string> {
   for (const id of obj.children()) {
     if (id.type !== TYPE_IDENTITY) continue;
     if (id.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
-    const gen = id.ownAttr(IDENTITY_ATTR_GENERATION);
+    // ADR-0039: resolving — an identity may inherit @generation / @fields via extends.
+    const gen = id.attr(IDENTITY_ATTR_GENERATION);
     if (gen !== GENERATION_ASSIGNED) continue;
-    const fields = id.ownAttr(IDENTITY_ATTR_FIELDS);
+    const fields = id.attr(IDENTITY_ATTR_FIELDS);
     if (Array.isArray(fields)) {
       for (const fName of fields) {
         if (typeof fName === "string") out.add(fName);

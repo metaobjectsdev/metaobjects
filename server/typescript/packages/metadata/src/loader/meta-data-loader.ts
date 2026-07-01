@@ -249,6 +249,8 @@ export class MetaDataLoader {
    */
   findByName(name: string): MetaData | undefined {
     this._checkStateForRead();
+    // ADR-0039: own — the tree root has no super chain (never `extends`),
+    // so its own children ARE its effective children.
     return this._root!.ownChildByName(name);
   }
 
@@ -258,6 +260,7 @@ export class MetaDataLoader {
    */
   findByTypeAndName(type: string, name: string): MetaData | undefined {
     this._checkStateForRead();
+    // ADR-0039: own — the tree root has no super chain (never `extends`).
     return this._root!.ownChildByTypeAndName(type, name);
   }
 
@@ -267,6 +270,7 @@ export class MetaDataLoader {
    */
   childrenOfType(type: string): MetaData[] {
     this._checkStateForRead();
+    // ADR-0039: own — the tree root has no super chain (never `extends`).
     return this._root!.ownChildrenOfType(type);
   }
 

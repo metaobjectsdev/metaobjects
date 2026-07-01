@@ -49,6 +49,8 @@ function findInTree(root: MetaData, fqn: string): MetaData | undefined {
   if (root.package === undefined && root.name !== "" && root.resolutionKey() === fqn) {
     return root;
   }
+  // ADR-0039: own — super-resolution walk over the PHYSICAL declaration tree;
+  // resolving accessors would be circular while the super chain is being wired.
   for (const child of root.ownChildren()) {
     const found = findInTree(child, fqn);
     if (found !== undefined) return found;
@@ -266,6 +268,7 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
 
 function walk(node: MetaData, visit: (n: MetaData) => void): void {
   visit(node);
+  // ADR-0039: own — super-resolution walk over the PHYSICAL declaration tree.
   for (const child of node.ownChildren()) {
     walk(child, visit);
   }

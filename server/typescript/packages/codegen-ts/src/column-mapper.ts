@@ -198,7 +198,8 @@ function getMaxLength(field: MetaField): number | undefined {
   if (typeof lenAttr === "number") return lenAttr;
   for (const child of field.validators()) {
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
-      const max = child.ownAttr(VALIDATOR_ATTR_MAX);
+      // ADR-0039: resolving — a validator may inherit @max via extends.
+      const max = child.attr(VALIDATOR_ATTR_MAX);
       if (typeof max === "number") return max;
     }
   }

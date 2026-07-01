@@ -23,7 +23,11 @@ import { OBJECT_SUBTYPE_ENTITY } from "../../core/object/object-constants.js";
 export function validateSourceRoles(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — the one-primary rule is a DECLARATION-layer check (cross-port
+    // parity: Java uses getSources(false)); it counts sources declared on THIS object,
+    // not inherited ones. The role/kind reads below resolve via MetaSource getters.
     const sources = obj
       .ownChildren()
       .filter((c) => c.type === TYPE_SOURCE)

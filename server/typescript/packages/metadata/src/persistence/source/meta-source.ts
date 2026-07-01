@@ -36,7 +36,9 @@ export class MetaSource extends MetaData {
    *  back-compat accessor that reads ONLY the @table slot — callers should
    *  use physicalName for the FR-016 four-step rule. */
   get tableName(): string | undefined {
-    const v = this.ownAttr(SOURCE_ATTR_TABLE);
+    // ADR-0039: resolving — a source may be inherited via extends (an entity
+    // extending BaseEntity inherits its source.rdb); @table can live on the super.
+    const v = this.attr(SOURCE_ATTR_TABLE);
     return typeof v === "string" && v !== "" ? v : undefined;
   }
 
@@ -45,13 +47,15 @@ export class MetaSource extends MetaData {
    * `"table"` when omitted (ADR-0007 Rule 3 — per-paradigm default).
    */
   get effectiveKind(): string {
-    const v = this.ownAttr(SOURCE_ATTR_KIND);
+    // ADR-0039: resolving — an inherited source's @kind lives on the super node.
+    const v = this.attr(SOURCE_ATTR_KIND);
     return typeof v === "string" && v !== "" ? v : DEFAULT_SOURCE_KIND;
   }
 
   /** The multi-source role for this source (defaults to "primary" when omitted). */
   get role(): string {
-    const v = this.ownAttr(SOURCE_ATTR_ROLE);
+    // ADR-0039: resolving — an inherited source's @role lives on the super node.
+    const v = this.attr(SOURCE_ATTR_ROLE);
     return typeof v === "string" && v !== "" ? v : DEFAULT_SOURCE_ROLE;
   }
 
@@ -85,13 +89,15 @@ export class MetaSource extends MetaData {
     // Step 1: kind-matching alias.
     const canonicalAttr = PHYSICAL_NAME_ATTR_BY_KIND.get(kind);
     if (canonicalAttr !== undefined) {
-      const v = this.ownAttr(canonicalAttr);
+      // ADR-0039: resolving — an inherited source's physical-name alias lives on the super.
+      const v = this.attr(canonicalAttr);
       if (typeof v === "string" && v !== "") return v;
     }
 
     // Step 2: legacy @table for non-table kind.
     if (canonicalAttr !== SOURCE_ATTR_TABLE) {
-      const legacy = this.ownAttr(SOURCE_ATTR_TABLE);
+      // ADR-0039: resolving — inherited @table lives on the super node.
+      const legacy = this.attr(SOURCE_ATTR_TABLE);
       if (typeof legacy === "string" && legacy !== "") return legacy;
     }
 

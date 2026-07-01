@@ -169,13 +169,16 @@ async function execute(om: ObjectManager, root: MetaRoot, spec: QuerySpec): Prom
  * roundtrip-target entities declare one).
  */
 function primaryKeyField(root: MetaRoot, entityName: string): string {
-  const entity = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  const entity = root.children().find((c) => c.type === TYPE_OBJECT && c.name === entityName);
   if (!entity) throw new Error(`op:roundtrip: unknown entity '${entityName}'`);
-  const primary = entity.ownChildren().find(
+  // ADR-0039: effective children — a TPH subtype inherits its primary identity via extends.
+  const primary = entity.children().find(
     (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_PRIMARY,
   );
   if (!primary) throw new Error(`op:roundtrip: entity '${entityName}' has no primary identity`);
-  const raw = primary.ownAttr(IDENTITY_ATTR_FIELDS);
+  // ADR-0039: effective attr — @fields may be inherited via the identity's extends.
+  const raw = primary.attr(IDENTITY_ATTR_FIELDS);
   const fields = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
   if (fields.length !== 1)
     throw new Error(`op:roundtrip: entity '${entityName}' requires a single-field primary key`);

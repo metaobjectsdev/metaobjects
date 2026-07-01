@@ -30,7 +30,8 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
-    filter: (e: MetaObject) => e.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false && userFilter(e),
+    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
+    filter: (e: MetaObject) => e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file-hono: renderContext is required (provided by runGen)");

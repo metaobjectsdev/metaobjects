@@ -107,28 +107,29 @@ export function buildTemplateDocData(
 ): TemplateDocData {
   const layout = opts?.layout ?? "flat";
   const root = opts?.loadedRoot;
-  const kindRaw = ((template.ownAttr(TEMPLATE_ATTR_KIND) as string | undefined) ??
+  // ADR-0039: resolving — a template may inherit its @kind/@*Ref/@format/etc via extends.
+  const kindRaw = ((template.attr(TEMPLATE_ATTR_KIND) as string | undefined) ??
     TEMPLATE_KIND_DEFAULT).toLowerCase();
   const isEmail = kindRaw === TEMPLATE_KIND_EMAIL;
   const kind: "document" | "email" = isEmail ? TEMPLATE_KIND_EMAIL : TEMPLATE_KIND_DOCUMENT;
 
-  const payloadRefRaw = template.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  const payloadRefRaw = template.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payloadName =
     typeof payloadRefRaw === "string" && payloadRefRaw.length > 0
       ? stripPackage(payloadRefRaw)
       : "unknown";
 
-  const requiredTags = attrStringList(template.ownAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
-  const maxChars = readMaxChars(template.ownAttr(TEMPLATE_ATTR_MAX_CHARS));
+  const requiredTags = attrStringList(template.attr(TEMPLATE_ATTR_REQUIRED_TAGS));
+  const maxChars = readMaxChars(template.attr(TEMPLATE_ATTR_MAX_CHARS));
 
   let format = "";
   let parts: TemplateOutputPart[] | undefined;
   const sourceRefs: string[] = [];
 
   if (isEmail) {
-    const subjectRef = template.ownAttr(TEMPLATE_ATTR_SUBJECT_REF);
-    const htmlBodyRef = template.ownAttr(TEMPLATE_ATTR_HTML_BODY_REF);
-    const textBodyRef = template.ownAttr(TEMPLATE_ATTR_TEXT_BODY_REF);
+    const subjectRef = template.attr(TEMPLATE_ATTR_SUBJECT_REF);
+    const htmlBodyRef = template.attr(TEMPLATE_ATTR_HTML_BODY_REF);
+    const textBodyRef = template.attr(TEMPLATE_ATTR_TEXT_BODY_REF);
     parts = [];
     if (typeof subjectRef === "string") {
       parts.push({ label: "Subject", ref: subjectRef, format: "text", escaped: false });
@@ -143,8 +144,8 @@ export function buildTemplateDocData(
       sourceRefs.push(textBodyRef);
     }
   } else {
-    format = ((template.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
-    const textRef = template.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+    format = ((template.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+    const textRef = template.attr(TEMPLATE_ATTR_TEXT_REF);
     if (typeof textRef === "string") sourceRefs.push(textRef);
   }
 
@@ -285,7 +286,8 @@ function makePartialHrefResolver(
 ): (ref: string) => string | undefined {
   // Map each documented source ref → the template node that documents it.
   const refToTemplate = new Map<string, MetaData>();
-  for (const child of root.ownChildren()) {
+  // ADR-0039: resolving — root has no super (children()==ownChildren()).
+  for (const child of root.children()) {
     if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
     for (const attr of [
       TEMPLATE_ATTR_TEXT_REF,
@@ -293,7 +295,8 @@ function makePartialHrefResolver(
       TEMPLATE_ATTR_HTML_BODY_REF,
       TEMPLATE_ATTR_TEXT_BODY_REF,
     ]) {
-      const v = child.ownAttr(attr);
+      // ADR-0039: resolving — a template may inherit these refs via extends.
+      const v = child.attr(attr);
       if (typeof v === "string" && v.length > 0 && !refToTemplate.has(v)) {
         refToTemplate.set(v, child);
       }

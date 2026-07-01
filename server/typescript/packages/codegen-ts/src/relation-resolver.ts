@@ -69,12 +69,14 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
     if (isProjection(obj)) continue;
 
     for (const child of obj.relationships()) {
-      const cardinality = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+      // ADR-0039: resolving — a relationship may inherit @cardinality via extends.
+      const cardinality = child.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
 
       // FR-018 M:N: `@cardinality: "many"` + `@through` — derive the junction FK
       // columns from the junction's identity.reference children and register a
       // many(junction) navigation on the source.
-      if (cardinality === CARDINALITY_MANY && child.ownAttr(RELATIONSHIP_ATTR_THROUGH) !== undefined) {
+      // ADR-0039: resolving — @through may be inherited via extends.
+      if (cardinality === CARDINALITY_MANY && child.attr(RELATIONSHIP_ATTR_THROUGH) !== undefined) {
         const m2m = buildM2mEntry(obj, child as MetaRelationship, root);
         if (m2m) ensure(obj.name).push(m2m);
         continue;
@@ -82,7 +84,8 @@ export function buildRelationMap(root: MetaRoot): RelationMap {
 
       if (cardinality !== CARDINALITY_ONE) continue;
 
-      const targetEntityRaw = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+      // ADR-0039: resolving — @objectRef may be inherited via extends.
+      const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
       if (!targetEntityRaw) continue;
       const targetEntity = stripPackage(targetEntityRaw);
 
@@ -152,8 +155,9 @@ function collectJunctionNames(root: MetaRoot): Set<string> {
   const names = new Set<string>();
   for (const obj of root.objects()) {
     for (const rel of obj.relationships()) {
-      if (rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
-      const through = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
+      // ADR-0039: resolving — @cardinality/@through may be inherited via extends.
+      if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
+      const through = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
       if (through) names.add(stripPackage(through));
     }
   }
@@ -171,8 +175,9 @@ function buildM2mEntry(
   rel: MetaRelationship,
   root: MetaRoot,
 ): RelationEntry | null {
-  const targetRaw = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-  const throughRaw = rel.ownAttr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
+  // ADR-0039: resolving — @objectRef/@through may be inherited via extends.
+  const targetRaw = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+  const throughRaw = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
   if (!targetRaw || !throughRaw) return null;
   let fields;
   try {

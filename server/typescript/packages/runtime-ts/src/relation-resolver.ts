@@ -30,15 +30,17 @@ export interface RelationDescriptor {
  * Returns the FK field name (first field on the identity) or undefined.
  */
 function findReferenceFkField(holder: MetaData, targetName: string): string | undefined {
-  for (const child of holder.ownChildren()) {
+  // ADR-0039: effective children — an identity.reference may be inherited via extends.
+  for (const child of holder.children()) {
     if (child.type !== TYPE_IDENTITY) continue;
     if (child.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
-    const ref = child.ownAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
+    // ADR-0039: effective attrs — @references/@fields may be inherited.
+    const ref = child.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof ref !== "string") continue;
     const dotIdx = ref.indexOf(".");
     const entityName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
     if (entityName !== targetName) continue;
-    const fields = child.ownAttr(IDENTITY_ATTR_FIELDS);
+    const fields = child.attr(IDENTITY_ATTR_FIELDS);
     if (Array.isArray(fields) && fields.length > 0) return String(fields[0]);
     if (typeof fields === "string") {
       const first = fields.split(",")[0]?.trim();
@@ -61,12 +63,14 @@ export function resolveRelationDescriptor(
   relationName: string,
   root: MetaData,
 ): RelationDescriptor {
-  for (const child of sourceEntity.ownChildren()) {
+  // ADR-0039: effective children — a relationship may be inherited via extends.
+  for (const child of sourceEntity.children()) {
     if (child.type !== TYPE_RELATIONSHIP) continue;
     if (child.name !== relationName) continue;
-    const card = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
+    // ADR-0039: effective attrs — @cardinality/@objectRef may be inherited.
+    const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
     if (card !== CARDINALITY_ONE) continue;
-    const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
     if (!targetEntityName) {
       throw new MetadataError(
         `Relationship '${relationName}' on '${sourceEntity.name}' missing @objectRef`,
@@ -80,7 +84,8 @@ export function resolveRelationDescriptor(
         { entity: sourceEntity.name },
       );
     }
-    const target = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
+    // ADR-0039: effective children — resolve rather than rely on root being unextended.
+    const target = root.children().find((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
     if (!target) {
       throw new MetadataError(
         `Target entity '${targetEntityName}' not found for relation '${relationName}' on '${sourceEntity.name}'`,
@@ -95,14 +100,17 @@ export function resolveRelationDescriptor(
     };
   }
 
-  for (const other of root.ownChildren()) {
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  for (const other of root.children()) {
     if (other.type !== TYPE_OBJECT) continue;
     if (other.name === sourceEntity.name) continue;
-    for (const child of other.ownChildren()) {
+    // ADR-0039: effective children — a relationship may be inherited via extends.
+    for (const child of other.children()) {
       if (child.type !== TYPE_RELATIONSHIP) continue;
-      const card = child.ownAttr(RELATIONSHIP_ATTR_CARDINALITY);
+      // ADR-0039: effective attrs — @cardinality/@objectRef may be inherited.
+      const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
       if (card !== CARDINALITY_ONE) continue;
-      const targetEntityName = child.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+      const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
       if (targetEntityName !== sourceEntity.name) continue;
       const inverseName = inversePluralName(other.name);
       if (inverseName !== relationName) continue;
@@ -168,7 +176,8 @@ export function buildIncludeBatchSpec(
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {
-  const e = root.ownChildren().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  const e = root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
   if (!e) throw new MetadataError(`Entity '${name}' not found`, { entity: name });
   return e;
 }

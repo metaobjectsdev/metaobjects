@@ -110,17 +110,19 @@ export function buildExpectedSchema(
   //   - projections (read-only @kind source with no writable peer — handled by
   //     the view-diff pipeline, not the table diff)
   const entities: { entity: MetaObject; tableName: string }[] = [];
-  for (const child of root.ownChildren()) {
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
     if (child.subType === "value") continue;
     // FR-017 TPH: a subtype shares its discriminator base's single table, so it
     // emits no table of its own. Its own columns are folded into the base below.
     if (isTphSubtype(child)) continue;
-    const hasReadOnlySource = child.ownChildren().some(
+    // ADR-0039: effective children — an entity may inherit its source.rdb via extends.
+    const hasReadOnlySource = child.children().some(
       (c) => c instanceof MetaSource && c.isReadOnly(),
     );
-    const hasWritableSource = child.ownChildren().some(
+    const hasWritableSource = child.children().some(
       (c) => c instanceof MetaSource && c.isWritable(),
     );
     // Projection: read-only and not write-through.
@@ -223,6 +225,8 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
 function discriminatorBaseOf(entity: MetaData): MetaData | undefined {
   let a = entity.superResolved;
   while (a !== undefined) {
+    // ADR-0039 category 3: super-resolution walk — read each ancestor's OWN
+    // @discriminator as we ascend (this manual walk IS the resolution).
     if (a.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) return a;
     a = a.superResolved;
   }
@@ -233,19 +237,23 @@ function discriminatorBaseOf(entity: MetaData): MetaData | undefined {
  *  discriminator-bearing ancestor). Such an entity emits no table of its own. */
 function isTphSubtype(entity: MetaData): boolean {
   return (
-    entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+    // ADR-0039: effective attr — @discriminatorValue may be inherited (sub-subtype).
+    entity.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
     discriminatorBaseOf(entity) !== undefined
   );
 }
 
 /** Concrete TPH subtypes whose discriminator base is `base` (root-level scan). */
 function tphConcreteSubtypes(base: MetaObject, root: MetaData): MetaObject[] {
-  if (base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === undefined) return [];
-  return root.ownChildren().filter(
+  // ADR-0039: effective attr — @discriminator may be inherited.
+  if (base.attr(OBJECT_ATTR_DISCRIMINATOR) === undefined) return [];
+  // ADR-0039: effective children — resolve rather than rely on root being unextended.
+  return root.children().filter(
     (c): c is MetaObject =>
       c.type === TYPE_OBJECT &&
       !c.isAbstract &&
-      c.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
+      // ADR-0039: effective attr — @discriminatorValue may be inherited (sub-subtype).
+      c.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined &&
       discriminatorBaseOf(c) === base,
   );
 }
@@ -264,7 +272,8 @@ function buildTable(
 
   const pkJsNames = pkIdentity ? readIdentityFields(pkIdentity) : [];
   const pkGeneration = pkIdentity
-    ? (pkIdentity.ownAttr(IDENTITY_ATTR_GENERATION) as string | undefined)
+    // ADR-0039: effective attr — @generation may be inherited via the identity's extends.
+    ? (pkIdentity.attr(IDENTITY_ATTR_GENERATION) as string | undefined)
     : undefined;
 
   const primaryKey = pkJsNames.map((jsName) => {
@@ -292,9 +301,12 @@ function buildTable(
   // OWN fields into the single table as NULLABLE columns (a row of any other
   // subtype stores NULL there), even when the field is @required. Dedupe by
   // column name so an inherited/overridden base column is not re-emitted.
-  if (entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
+  // ADR-0039: effective attr — @discriminator may be inherited (deep TPH base).
+  if (entity.attr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) {
     const existing = new Set(columns.map((c) => c.name));
     for (const sub of tphConcreteSubtypes(entity, root)) {
+      // ADR-0039 category 1: emit-declared-here — fold ONLY the subtype's OWN
+      // fields (inherited base fields are already emitted on the base table).
       for (const field of sub.ownChildren()) {
         if (field.type !== TYPE_FIELD) continue;
         const col = buildColumn(field, false, undefined, strategy);
@@ -354,7 +366,8 @@ function buildSecondaryIndexes(
   // Drizzle emits the index using the identity's @name attr directly (no table
   // prefix), so the expected name must match.
   for (const identity of entity.secondaryIdentities()) {
-    const exprRaw = identity.ownAttr(IDENTITY_ATTR_EXPR);
+    // ADR-0039: effective attrs — a secondary identity's attrs may be inherited via extends.
+    const exprRaw = identity.attr(IDENTITY_ATTR_EXPR);
     const expr = typeof exprRaw === "string" && exprRaw.trim().length > 0 ? exprRaw.trim() : undefined;
     const fieldNames = readIdentityFields(identity);
     // An expression index keys off @expr (not @fields); a plain index needs @fields.
@@ -363,21 +376,21 @@ function buildSecondaryIndexes(
       const field = findField(entity, jsName);
       return field ? resolveColumnName(field, strategy) : applyColumnNamingStrategy(jsName, strategy);
     });
-    const uniqueAttr = identity.ownAttr(IDENTITY_ATTR_UNIQUE);
+    const uniqueAttr = identity.attr(IDENTITY_ATTR_UNIQUE);
     const index: IndexDescriptor = {
       name: identity.name,
       columns: expr ? [] : cols,
       unique: uniqueAttr !== false,
     };
     if (expr) index.expr = expr;
-    const usingRaw = identity.ownAttr(IDENTITY_ATTR_USING);
+    const usingRaw = identity.attr(IDENTITY_ATTR_USING);
     if (typeof usingRaw === "string" && usingRaw.trim().length > 0 && usingRaw.trim() !== "btree") {
       index.using = usingRaw.trim();
     }
     // @orders — per-field sort direction (positional to @fields). Only attach when
     // at least one field is descending (an all-ascending array is the default and
     // must serialize identically to "no orders" for diff stability).
-    const ordersRaw = identity.ownAttr(IDENTITY_ATTR_ORDERS);
+    const ordersRaw = identity.attr(IDENTITY_ATTR_ORDERS);
     if (Array.isArray(ordersRaw)) {
       const orders = cols.map((_, i) => (ordersRaw[i] === "desc" ? "desc" : "asc")) as (
         "asc" | "desc"
@@ -385,7 +398,7 @@ function buildSecondaryIndexes(
       if (orders.some((o) => o === "desc")) index.orders = orders;
     }
     // @where — partial-index predicate.
-    const whereRaw = identity.ownAttr(IDENTITY_ATTR_WHERE);
+    const whereRaw = identity.attr(IDENTITY_ATTR_WHERE);
     if (typeof whereRaw === "string" && whereRaw.trim().length > 0) {
       index.where = whereRaw.trim();
     }
@@ -432,7 +445,8 @@ function validatorCheck(
     case VALIDATOR_SUBTYPE_REGEX: {
       // Postgres-only: SQLite has no native regex operator.
       if (dialect === "sqlite" || dialect === "d1") return null;
-      const pattern = v.ownAttr(VALIDATOR_ATTR_PATTERN);
+      // ADR-0039: effective attr — @pattern may be inherited via the validator's extends.
+      const pattern = v.attr(VALIDATOR_ATTR_PATTERN);
       if (typeof pattern !== "string" || pattern.length === 0) return null;
       return {
         name: `${tableName}_${col}_regex_chk`,
@@ -533,18 +547,20 @@ function crossFieldCheck(
 ): CheckDescriptor | null {
   switch (v.subType) {
     case VALIDATOR_SUBTYPE_COMPARISON: {
-      const left = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_LEFT), strategy);
-      const right = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_RIGHT), strategy);
-      const op = COMPARISON_SQL_OP[String(v.ownAttr(VALIDATOR_ATTR_OP))];
+      // ADR-0039: effective attrs — cross-field validator attrs may be inherited via extends.
+      const left = resolveRef(entity, v.attr(VALIDATOR_ATTR_LEFT), strategy);
+      const right = resolveRef(entity, v.attr(VALIDATOR_ATTR_RIGHT), strategy);
+      const op = COMPARISON_SQL_OP[String(v.attr(VALIDATOR_ATTR_OP))];
       if (!left || !right || !op) return null;
       const lc = resolveColumnName(left.field, strategy);
       return { name: `${tableName}_${lc}_cmp_chk`, expression: `${left.qcol} ${op} ${right.qcol}` };
     }
     case VALIDATOR_SUBTYPE_REQUIRED_WHEN: {
-      const target = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_FIELD), strategy);
-      const when = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_WHEN), strategy);
+      // ADR-0039: effective attrs — cross-field validator attrs may be inherited via extends.
+      const target = resolveRef(entity, v.attr(VALIDATOR_ATTR_FIELD), strategy);
+      const when = resolveRef(entity, v.attr(VALIDATOR_ATTR_WHEN), strategy);
       if (!target || !when) return null;
-      const lit = renderEquals(v.ownAttr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
+      const lit = renderEquals(v.attr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
       const fc = resolveColumnName(target.field, strategy);
       return {
         name: `${tableName}_${fc}_reqwhen_chk`,
@@ -552,10 +568,11 @@ function crossFieldCheck(
       };
     }
     case VALIDATOR_SUBTYPE_PRESENT_IFF: {
-      const target = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_FIELD), strategy);
-      const when = resolveRef(entity, v.ownAttr(VALIDATOR_ATTR_WHEN), strategy);
+      // ADR-0039: effective attrs — cross-field validator attrs may be inherited via extends.
+      const target = resolveRef(entity, v.attr(VALIDATOR_ATTR_FIELD), strategy);
+      const when = resolveRef(entity, v.attr(VALIDATOR_ATTR_WHEN), strategy);
       if (!target || !when) return null;
-      const lit = renderEquals(v.ownAttr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
+      const lit = renderEquals(v.attr(VALIDATOR_ATTR_EQUALS), when.field, dialect);
       const fc = resolveColumnName(target.field, strategy);
       return {
         name: `${tableName}_${fc}_presentiff_chk`,
@@ -563,7 +580,8 @@ function crossFieldCheck(
       };
     }
     case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
-      const raw = v.ownAttr(VALIDATOR_ATTR_FIELDS);
+      // ADR-0039: effective attr — @fields may be inherited via the validator's extends.
+      const raw = v.attr(VALIDATOR_ATTR_FIELDS);
       const names = Array.isArray(raw) ? raw : (typeof raw === "string" ? [raw] : []);
       const refs = names.map((n) => resolveRef(entity, n, strategy));
       if (refs.length === 0 || refs.some((r) => r === null)) return null;
@@ -613,7 +631,8 @@ function buildForeignKeys(
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
     // An explicit @constraintName adopts an existing FK name (e.g. a database
     // created by another toolchain); absent → the auto-derived default.
-    const constraintNameOverride = refChild.ownAttr(IDENTITY_ATTR_CONSTRAINT_NAME);
+    // ADR-0039: effective attr — @constraintName may be inherited via the identity's extends.
+    const constraintNameOverride = refChild.attr(IDENTITY_ATTR_CONSTRAINT_NAME);
     const constraintName =
       typeof constraintNameOverride === "string" && constraintNameOverride.length > 0
         ? constraintNameOverride

@@ -30,12 +30,14 @@ export class MetaOrigin extends MetaData {}
 export class MetaPassthroughOrigin extends MetaOrigin {
   /** The dotted-path cross-entity field reference this origin passes through (e.g. "Program.title"). */
   get from(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
     return typeof v === "string" ? v : undefined;
   }
 
   /** Optional dotted relationship path used to reach the source entity (e.g. "Program.weeks"). */
   get via(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
     return typeof v === "string" ? v : undefined;
   }
@@ -50,18 +52,21 @@ export class MetaPassthroughOrigin extends MetaOrigin {
 export class MetaAggregateOrigin extends MetaOrigin {
   /** The aggregate function (count | sum | avg | min | max). */
   get agg(): AggregateFunction | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG);
     return typeof v === "string" ? (v as AggregateFunction) : undefined;
   }
 
   /** The dotted-path target of the aggregate (e.g. "Week.id"). */
   get of(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
     return typeof v === "string" ? v : undefined;
   }
 
   /** The dotted relationship path the aggregate walks (e.g. "Program.weeks"). */
   get via(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
     return typeof v === "string" ? v : undefined;
   }
@@ -76,6 +81,7 @@ export class MetaAggregateOrigin extends MetaOrigin {
 export class MetaCollectionOrigin extends MetaOrigin {
   /** The dotted relationship path (or wildcard selector) this collection is sourced from. */
   get via(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_COLLECTION_ATTR_VIA);
     return typeof v === "string" ? v : undefined;
   }

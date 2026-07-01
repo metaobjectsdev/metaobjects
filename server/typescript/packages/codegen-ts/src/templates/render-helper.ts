@@ -53,12 +53,14 @@ import {
   type VerifyError,
 } from "@metaobjectsdev/render";
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
+  return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
 /**
@@ -150,7 +152,8 @@ export function renderRenderHelper(
       `template "${templateName}" is not a template.output (got subtype "${tmpl.subType}")`,
     );
   }
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
@@ -165,13 +168,15 @@ export function renderRenderHelper(
   const ft = fieldTreeLiteral(fields);
   const fnName = `render${templateName}`;
 
-  const kind = ((tmpl.ownAttr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
     .toLowerCase();
 
   if (kind === TEMPLATE_KIND_EMAIL) {
-    const subjectRef = tmpl.ownAttr(TEMPLATE_ATTR_SUBJECT_REF);
-    const htmlBodyRef = tmpl.ownAttr(TEMPLATE_ATTR_HTML_BODY_REF);
-    const textBodyRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_BODY_REF);
+    // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+    const subjectRef = tmpl.attr(TEMPLATE_ATTR_SUBJECT_REF);
+    const htmlBodyRef = tmpl.attr(TEMPLATE_ATTR_HTML_BODY_REF);
+    const textBodyRef = tmpl.attr(TEMPLATE_ATTR_TEXT_BODY_REF);
     if (typeof subjectRef !== "string") {
       throw new Error(`template "${templateName}" (email) missing @subjectRef`);
     }
@@ -210,12 +215,14 @@ export function ${fnName}(payload: ${payloadRef}, provider: Provider): EmailDocu
   }
 
   // --- document kind ---
-  const textRef = tmpl.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
   if (typeof textRef !== "string") {
     throw new Error(`template "${templateName}" (document) missing @textRef`);
   }
-  const format = ((tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
-  const maxCharsAttr = tmpl.ownAttr(TEMPLATE_ATTR_MAX_CHARS);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const format = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
+  const maxCharsAttr = tmpl.attr(TEMPLATE_ATTR_MAX_CHARS);
   const maxChars =
     typeof maxCharsAttr === "number"
       ? maxCharsAttr

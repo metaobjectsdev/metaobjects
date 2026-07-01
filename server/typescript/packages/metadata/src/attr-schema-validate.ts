@@ -96,6 +96,7 @@ function walk(
   strict: boolean,
 ): void {
   validateNode(node, registry, errors, reportedConflicts, strict);
+  // ADR-0039: own — structural walk visiting every physical node once at its site.
   for (const child of node.ownChildren()) {
     walk(child, registry, errors, reportedConflicts, strict);
   }
@@ -151,6 +152,8 @@ function validateNode(
   // a made-up attribute → ERR_UNKNOWN_ATTR (closing the open policy). In lax
   // mode this stays a no-op (legacy open-attr behavior).
   if (strict) {
+    // ADR-0039: own — validates THIS node's OWN declared attrs; an inherited/
+    // overlaid declared attr was validated on its declaring node (never in ownMetaAttrs).
     for (const inst of node.ownMetaAttrs()) {
       // attr.properties is a first-class, registered, canonical attr subtype
       // whose designed purpose is an arbitrary-named structural property bag
@@ -188,6 +191,8 @@ function validateNode(
     const parentDef = registry.find(node.type, node.subType);
     if (parentDef !== undefined) {
       const rules = parentDef.childRules;
+      // ADR-0039: own — validates THIS node's OWN declared children (an inherited
+      // child was placement-checked on its declaring parent).
       for (const child of node.ownChildren()) {
         const admitted = rules.some((r) =>
           childRuleMatches(r, {
@@ -233,6 +238,8 @@ function validateNode(
   }
 
   // --- Checks 2 + 3: declared attrs on the node are well-typed + in range ---
+  // ADR-0039: own — validates THIS node's OWN declared attrs (inherited attrs were
+  // validated on the declaring node; own-attrs-only policy).
   for (const inst of node.ownMetaAttrs()) {
     const spec = byName.get(inst.name);
     if (spec === undefined) continue; // undeclared attr → open policy: ignore.
@@ -292,6 +299,8 @@ function validateNode(
   // only own @values need checking here (mirrors the own-attrs-only policy of
   // Checks 2+3 above — inherited attrs were validated on the declaring node).
   if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
+    // ADR-0039: own — validates the @values DECLARED on this node; a concrete enum
+    // extending an abstract one inherits already-validated @values (own-attrs-only).
     const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
     if (Array.isArray(rawValues)) {
       if (rawValues.length === 0) {
@@ -346,6 +355,8 @@ function validateNode(
       const members = Array.isArray(effectiveValues) ? effectiveValues : [];
 
       for (const attrName of [FIELD_ATTR_COERCE_DEFAULT, FIELD_ATTR_DEFAULT]) {
+        // ADR-0039: own — validates the fallback attr DECLARED on this node
+        // (membership set below uses effective node.attrs(); own-attrs-only policy).
         const ownValue = node.ownAttrs().get(attrName);
         if (typeof ownValue === "string" && !members.includes(ownValue)) {
           errors.push(
@@ -371,6 +382,8 @@ function validateNode(
   // the declaring node. Both an unrecognized value and an illegal pairing emit
   // ERR_BAD_ATTR_VALUE naming the field, the value, and the legal set.
   if (node.type === TYPE_FIELD) {
+    // ADR-0039: own — @dbColumnType is physical, never inherited (and an inherited
+    // one was pairing-checked on its declaring node; own-attrs-only policy).
     const ownValue = node.ownAttrs().get(FIELD_ATTR_DB_COLUMN_TYPE);
     if (typeof ownValue === "string") {
       const legalSubtypes = (DB_COLUMN_TYPE_VALUES as readonly string[]).includes(ownValue)

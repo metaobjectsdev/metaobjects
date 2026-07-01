@@ -17,7 +17,8 @@ import { SetNullNotNullableError } from "./errors.js";
 // ---------------------------------------------------------------------------
 
 export function readIdentityFields(identity: MetaData): string[] {
-  const raw = identity.ownAttr(IDENTITY_ATTR_FIELDS);
+  // ADR-0039: effective attr — @fields may be inherited via the identity's extends.
+  const raw = identity.attr(IDENTITY_ATTR_FIELDS);
   if (Array.isArray(raw)) return raw.map(String).filter((s) => s.length > 0);
   // Fallback: comma-separated string form (defensive; canonical form is array)
   if (typeof raw === "string") return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);

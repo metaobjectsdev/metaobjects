@@ -27,7 +27,8 @@ export function resolveIdentity(entity: MetaData, data: Record<string, unknown>)
       { entity: entity.name },
     );
   }
-  const fieldsAttr = primary.ownAttr(IDENTITY_ATTR_FIELDS);
+  // ADR-0039: effective attr — @fields may be inherited via the identity's extends.
+  const fieldsAttr = primary.attr(IDENTITY_ATTR_FIELDS);
   if (!Array.isArray(fieldsAttr) || fieldsAttr.length === 0) {
     throw new MetadataError(
       `Entity '${entity.name}' primary identity has no @fields`,
@@ -36,7 +37,8 @@ export function resolveIdentity(entity: MetaData, data: Record<string, unknown>)
   }
   const pkFields = fieldsAttr.map(String);
   const isComposite = pkFields.length > 1;
-  const generation = primary.ownAttr(IDENTITY_ATTR_GENERATION);
+  // ADR-0039: effective attr — @generation may be inherited via the identity's extends.
+  const generation = primary.attr(IDENTITY_ATTR_GENERATION);
 
   if (isComposite || generation === undefined || generation === GENERATION_ASSIGNED) {
     const missing = pkFields.filter((f) => data[f] === undefined || data[f] === null);

@@ -100,7 +100,9 @@ export interface ExtractContext {
 // ---------------------------------------------------------------------------
 
 function findRelationship(obj: MetaData, name: string): MetaData | undefined {
-  return obj.ownChildren().find(
+  // ADR-0039: resolving — a @via join hop may traverse a relationship the entity
+  // inherits via extends; own-only would silently drop the join.
+  return obj.children().find(
     (c) => c.type === TYPE_RELATIONSHIP && c.name === name,
   );
 }
@@ -110,6 +112,9 @@ function viewName(projection: MetaObject, ctx: ExtractContext): string {
   // implements the four-step rule (kind-matching alias → legacy @table →
   // source.name → entity-name fallback), so the call below correctly resolves
   // @view / @materializedView / legacy @table for projection sources.
+  // ADR-0039: own — projection source classification (mirrors C# projection
+  // OwnSources / IsReadOnlyProjection): the view name comes from the projection's
+  // OWN read-only source, not one inherited via extends.
   const viewSource = projection.ownChildren().find(
     (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
   );
@@ -171,6 +176,10 @@ function baseEntityFor(
   // ERR_PROJECTION_IDENTITY_NOT_EXTENDED) rejects any projection whose identity
   // is not dotted-extends-bound before codegen runs. If that loader gate is
   // ever loosened, this function must grow the same fallback.
+  // ADR-0039: own — the base anchor is derived from the projection's OWN
+  // extends-bound declarations (refNamedOwner reads each node's own superRef,
+  // which only exists on locally-declared nodes); an inherited node carries no
+  // projection-local superRef, so own-iteration is correct here.
   for (const identity of projection
     .ownChildren()
     .filter((c) => c.type === TYPE_IDENTITY)) {
@@ -178,6 +187,7 @@ function baseEntityFor(
     if (named !== undefined) return named;
   }
   const targets = new Set<MetaObject>();
+  // ADR-0039: own — see above; base-entity derivation reads own extends-bound fields.
   for (const f of projection.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
     const named = refNamedOwner(f, root);
     if (named !== undefined && named !== projection) targets.add(named);
@@ -253,10 +263,15 @@ function buildJoinTree(
 ): JoinTree {
   const allPaths: Path[] = [];
 
+  // ADR-0039: own — a projection's DECLARED field set IS the exposure (FR-024/
+  // ADR-0028, inclusive + fail-closed); iterate the projection's own fields and
+  // each field's own origin. origin.* NEVER inherits (ADR-0029), so origin reads
+  // below are own by policy (category 4).
   for (const field of projection.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
     for (const origin of field.ownChildren()) {
       if (origin.type !== TYPE_ORIGIN) continue;
+      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const viaAttr = origin.subType === ORIGIN_SUBTYPE_AGGREGATE
         ? (origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined)
         : (origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined);
@@ -276,7 +291,8 @@ function buildJoinTree(
       for (const relName of relSegments) {
         const rel = findRelationship(currentObj, relName);
         if (!rel) break;
-        const targetName = rel.ownAttr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+        // ADR-0039: resolving — a traversed relationship may inherit @objectRef via extends.
+        const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
         // @objectRef may be package-qualified ("pkg::Entity") — the directory loader
         // qualifies a same-package objectRef even when authored bare — but findObject
         // keys on the BARE name (like the @via/@of/@from paths above). Strip first, or
@@ -284,7 +300,8 @@ function buildJoinTree(
         const target = targetName ? root.findObject(stripPackage(targetName)) : undefined;
         if (!target || !targetName) break;
 
-        const cardAttr = rel.ownAttr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+        // ADR-0039: resolving — a traversed relationship may inherit @cardinality via extends.
+        const cardAttr = rel.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
         const cardinality: "one" | "many" = cardAttr === CARDINALITY_ONE ? "one" : "many";
 
         const ref = findReferenceBetween(currentObj as MetaObject, target);
@@ -391,6 +408,9 @@ function buildSelectSpec(
   // extends-bound fields (`{ field.int: { name: id, extends: "Program.id" } }`).
 
   // Fields explicitly declared on the projection.
+  // ADR-0039: own — the projection's DECLARED field set IS the exposure
+  // (FR-024/ADR-0028); iterate own fields + each field's own origin. origin.*
+  // NEVER inherits (ADR-0029), so the origin attr reads below are own (category 4).
   for (const field of projection.ownChildren()) {
     if (field.type !== TYPE_FIELD) continue;
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
@@ -409,6 +429,7 @@ function buildSelectSpec(
     }
 
     if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
+      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
       if (dotIdx < 1) continue;
@@ -432,6 +453,7 @@ function buildSelectSpec(
         sourceColumn: sourceColumnNameFor(targetField, ctx),
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
+      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as AggregateFunction;
       const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string;
       if (!agg || !of_) continue;
@@ -446,6 +468,7 @@ function buildSelectSpec(
       if (!targetField) continue;
       // Optional scoping filter — resolved against the aggregated entity (the @of
       // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
+      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
       const filter = filterAttr !== undefined
         ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)

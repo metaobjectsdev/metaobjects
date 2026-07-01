@@ -74,6 +74,9 @@ export function tphRouteSegment(discriminatorValue: string): string {
 export function tphPlan(base: MetaObject, root: MetaRoot): TphPlan | null {
   const cached = _tphPlanCache.get(base);
   if (cached !== undefined) return cached;
+  // ADR-0039: own — TPH super-resolution walk (mirrors C# TphPlan). @discriminator
+  // must be read own to identify WHICH hierarchy level owns it (the discriminator
+  // base); a subtype must not be treated as a base by inheriting it.
   const discriminatorField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
   let plan: TphPlan | null = null;
   if (typeof discriminatorField === "string" && discriminatorField !== "") {
@@ -117,6 +120,7 @@ export function tphConcreteSubtypes(base: MetaObject, root: MetaRoot): MetaObjec
  * caller emits each as a nullable column (rows of other subtypes store NULL).
  */
 export function collectTphSubtypeFields(base: MetaObject, root: MetaRoot): MetaField[] {
+  // ADR-0039: own — TPH super-resolution walk; @discriminator identifies the base level.
   const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
   if (typeof discFieldName !== "string" || discFieldName === "") return [];
 
@@ -140,6 +144,7 @@ export function renderTphDiscriminatorUnion(
   base: MetaObject,
   root: MetaRoot,
 ): Code | null {
+  // ADR-0039: own — TPH super-resolution walk; @discriminator identifies the base level.
   const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
   if (typeof discFieldName !== "string" || discFieldName === "") return null;
 
@@ -209,6 +214,8 @@ function collectConcreteSubtypes(base: MetaObject, root: MetaRoot): SubtypeBindi
     if (obj.isAbstract === true) continue;
     if (obj === base) continue;
 
+    // ADR-0039: own — each concrete subtype declares its OWN @discriminatorValue;
+    // it must NOT inherit a parent's value (super-resolution walk, category 3).
     const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
     if (typeof value !== "string" || value === "") continue;
 

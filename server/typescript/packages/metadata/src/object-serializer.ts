@@ -149,6 +149,8 @@ function coerceNumeric(raw: unknown): unknown {
 function resolveObjectRef(field: MetaField, mo: MetaObject): MetaObject | undefined {
   const ref = field.objectRef;
   if (ref === undefined) return undefined;
+  // ADR-0039: own — lookup is on the tree ROOT, which has no super chain
+  // (it never `extends`), so its own children ARE its effective children.
   const found: MetaData | undefined = mo.root().ownChildByTypeAndName(TYPE_OBJECT, ref);
   if (found === undefined) return undefined;
   return found as MetaObject;

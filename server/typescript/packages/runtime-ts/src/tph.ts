@@ -30,12 +30,15 @@ export interface TphSubtype {
  * from an ancestor in its resolved super chain.
  */
 export function tphSubtypeOf(entity: MetaData): TphSubtype | null {
-  const value = entity.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
+  // ADR-0039: effective attr — @discriminatorValue may be inherited (sub-subtype).
+  const value = entity.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
   if (value === undefined || value === null) return null;
 
   // Walk the resolved super chain to find the @discriminator-bearing ancestor.
   let ancestor: MetaData | undefined = entity.superResolved;
   while (ancestor !== undefined) {
+    // ADR-0039 category 3: super-resolution walk — read each ancestor's OWN
+    // @discriminator as we ascend (this manual walk IS the resolution).
     const field = ancestor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
     if (field !== undefined && field !== null) {
       return { field: String(field), value: String(value) };

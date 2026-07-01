@@ -40,7 +40,8 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     // per-entity opt-out via `@emitRoutes: false`; TPH subtypes get no standalone routes
     // file (their routes live in the discriminator base's); AND-composed with your filter.
     filter: (e: MetaObject) =>
-      e.ownAttr(CODEGEN_ATTR_EMIT_ROUTES) !== false && !isTphSubtype(e) && userFilter(e),
+      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

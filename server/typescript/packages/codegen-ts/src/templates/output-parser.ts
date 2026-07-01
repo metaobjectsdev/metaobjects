@@ -42,14 +42,16 @@ const SCALAR_ZOD: Record<string, string> = {
   boolean: "z.boolean()",
 };
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findObject(root: MetaData, name: string): MetaData | undefined {
   // FR-032 — @payloadRef is FQN after the desugar/sweep; match on the effective
   // FQN resolution key (with bare back-compat).
-  return root.ownChildren().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
+// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
-  return root.ownChildren().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
+  return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
 /** Render the Zod expression for a single field; recurses on @objectRef. */
@@ -100,7 +102,8 @@ export function renderOutputParser(root: MetaData, templateName: string): string
   if (tmpl.subType !== TEMPLATE_SUBTYPE_OUTPUT) {
     throw new Error(`template "${templateName}" is not a template.output (got subtype "${tmpl.subType}")`);
   }
-  const payloadRef = tmpl.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
@@ -119,7 +122,8 @@ export function renderOutputParser(root: MetaData, templateName: string): string
   // FR-010: emit the tolerant extract() API alongside the strict Zod parser when the
   // template targets json/xml. The @payloadRef already resolved to a value-object above,
   // so a ExtractSchema can always be baked. text-format outputs get no extract.
-  const format = (tmpl.ownAttr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
+  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
+  const format = (tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
   const lc = format.toLowerCase();
   const emitExtractLenient = lc === "json" || lc === "xml";
 

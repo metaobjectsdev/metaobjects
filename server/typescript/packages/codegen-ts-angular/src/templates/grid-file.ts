@@ -38,13 +38,15 @@ function humanize(s: string): string {
 }
 
 function fieldViewKind(field: MetaField): string {
-  const view = field.ownViews()[0];
+  // ADR-0039: resolving — a field's view may be inherited via extends.
+  const view = field.views()[0];
   return view?.subType ?? "text";
 }
 
 function fieldLabel(field: MetaField): string {
-  const view = field.ownViews()[0];
-  const label = view?.ownAttr("label");
+  // ADR-0039: resolving — a field's view (and its @label) may be inherited via extends.
+  const view = field.views()[0];
+  const label = view?.attr("label");
   if (typeof label === "string") return label;
   return humanize(field.name);
 }
@@ -54,7 +56,8 @@ function extractGrids(entity: MetaObject): GridSpec[] {
   const out: GridSpec[] = [];
   for (const layout of entity.layouts()) {
     if (layout.subType !== LAYOUT_SUBTYPE_DATA_GRID) continue;
-    const columnsAttr = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
+    // ADR-0039: resolving — a dataGrid layout may inherit its @* attrs via extends.
+    const columnsAttr = layout.attr(LAYOUT_DATA_GRID_ATTR_COLUMNS);
     const columnNames: string[] = Array.isArray(columnsAttr)
       ? (columnsAttr as unknown[]).filter((x): x is string => typeof x === "string")
       : [...fieldsByName.keys()];
@@ -63,12 +66,12 @@ function extractGrids(entity: MetaObject): GridSpec[] {
       if (!f) return [];
       return [{ id: name, header: fieldLabel(f), viewKind: fieldViewKind(f) }];
     });
-    const sortField = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
-    const sortOrder = layout.ownAttr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
+    const sortField = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD);
+    const sortOrder = layout.attr(LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER);
     const grid: GridSpec = {
       name: layout.name || "default",
-      pageSize: (layout.ownAttr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
-      filterable: layout.ownAttr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
+      pageSize: (layout.attr(LAYOUT_DATA_GRID_ATTR_PAGE_SIZE) as number | undefined) ?? 25,
+      filterable: layout.attr(LAYOUT_DATA_GRID_ATTR_FILTERABLE) === true,
       columns,
     };
     if (typeof sortField === "string") grid.defaultSortField = sortField;

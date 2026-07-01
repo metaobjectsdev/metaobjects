@@ -24,7 +24,8 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
     // here and get read-only hooks via renderHooksFile's isProjection branch.
     // FR-017 Tier 3: TPH subtypes get no standalone hooks file — their per-subtype
     // hooks live in the discriminator base's hooks file (polymorphic + per-subtype).
-    filter: (e: MetaObject) => emitsInstanceArtifacts(e) && e.ownAttr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
+    // ADR-0039: resolving — a concrete entity may inherit @emitTanstack via extends.
+    filter: (e: MetaObject) => emitsInstanceArtifacts(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(

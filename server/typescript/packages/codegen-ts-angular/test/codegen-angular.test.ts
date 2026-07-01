@@ -118,6 +118,8 @@ describe("angularGridFile() factory", () => {
     const gen = angularGridFile();
     const fake = {
       name: "X",
+      // ADR-0039: the filter now resolves @emitAngular via attr() (own + inherited).
+      attr: () => undefined,
       ownAttr: () => undefined,
       layouts: () => [] as any[],
     } as any;

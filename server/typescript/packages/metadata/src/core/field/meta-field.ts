@@ -176,6 +176,7 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** Own validators only — excludes validators inherited via extends. Java parity: getChildren(Class, false). */
   ownValidators(): MetaValidator[] {
     return this.cached("ownValidators", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of validators().
       this.ownChildren().filter((c): c is MetaValidator => c.type === TYPE_VALIDATOR),
     );
   }
@@ -190,6 +191,7 @@ export class MetaField extends MetaData implements DataTypeAware {
   /** Own views only — excludes views inherited via extends. */
   ownViews(): MetaView[] {
     return this.cached("ownViews", () =>
+      // ADR-0039: own-accessor definition — the deliberate own-only API twin of views().
       this.ownChildren().filter((c): c is MetaView => c.type === TYPE_VIEW),
     );
   }

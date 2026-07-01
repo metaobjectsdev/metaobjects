@@ -40,12 +40,16 @@ const NUMERIC_DISCRIMINATOR_SUBTYPES = new Set<string>([
 export function validateDiscriminator(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   const entities = root
-    .ownChildren()
+    .children()
     .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_ENTITY);
 
   // Pass 1: @discriminator on bases — name resolution (own + inherited fields).
   for (const obj of entities) {
+    // ADR-0039: own — @discriminator is declared on the HIERARCHY ROOT only; reading
+    // it own distinguishes a root from a subtype (a subtype inherits it, but here we
+    // want the entity that DECLARES it). findDiscriminatorRoot walks up separately.
     const disc = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
     if (typeof disc !== "string" || disc === "") continue;
 
@@ -72,6 +76,8 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
   const bindingsByRoot = new Map<MetaData, SubtypeBinding[]>();
 
   for (const obj of entities) {
+    // ADR-0039: own — @discriminatorValue is per-subtype; each concrete entity
+    // declares its OWN. Reading own detects THIS subtype's declared value.
     const value = obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE);
     if (typeof value !== "string" || value === "") continue;
 
@@ -83,7 +89,9 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
 
     // Type-match check.
     if (field.subType === FIELD_SUBTYPE_ENUM) {
-      const enumValues = field.ownAttr(FIELD_ATTR_VALUES);
+      // ADR-0039: resolving — the discriminator field may inherit @values from an
+      // abstract enum via extends.
+      const enumValues = field.attr(FIELD_ATTR_VALUES);
       const list = Array.isArray(enumValues) ? enumValues.map(String) : [];
       if (!list.includes(value)) {
         errors.push(
@@ -140,6 +148,8 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
   // entity that extends a @discriminator-bearing root must declare a value.
   for (const obj of entities) {
     if (obj.isAbstract === true) continue;
+    // ADR-0039: own — checks whether THIS entity declares its OWN value / its OWN
+    // @discriminator (a root). Resolving would inherit a parent's and mis-classify.
     if (typeof obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) === "string") continue;
     if (typeof obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") continue; // a root, not a subtype
     const { root: discRoot } = findDiscriminatorRoot(obj);
@@ -160,11 +170,14 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
 /** Find a field with the given name on `entity` — own first, then via the
  *  resolved extends chain. Returns the declaring field node (own attrs intact). */
 function findFieldOnEntity(entity: MetaData, name: string): MetaData | undefined {
+  // ADR-0039: own — extends-chain walk returning the DECLARING field node (own
+  // children at each level), so callers can read that node's own/effective attrs.
   for (const child of entity.ownChildren()) {
     if (child.type === TYPE_FIELD && child.name === name) return child;
   }
   let cursor = entity.superResolved;
   while (cursor !== undefined) {
+    // ADR-0039: own — super-chain walk reading each level's OWN fields.
     for (const child of cursor.ownChildren()) {
       if (child.type === TYPE_FIELD && child.name === name) return child;
     }
@@ -181,6 +194,8 @@ function findDiscriminatorRoot(
 ): { root: MetaData | undefined; fieldName: string | undefined } {
   let cursor: MetaData | undefined = entity;
   while (cursor !== undefined) {
+    // ADR-0039: own — walks up to find the ancestor that DECLARES @discriminator
+    // (the hierarchy root); must read own to locate the physical declaration site.
     const v = cursor.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
     if (typeof v === "string" && v !== "") {
       return { root: cursor, fieldName: v };

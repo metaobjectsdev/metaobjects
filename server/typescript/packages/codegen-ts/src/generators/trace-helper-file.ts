@@ -72,13 +72,17 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       if (!extendsBase(entity)) return [];
 
       // Find the nested template.prompt.
-      const prompt = entity.ownChildren().find(
+      // ADR-0039: resolving — a concrete trace entity may inherit its
+      // template.prompt from an abstract base (it extendsBase); own-only would
+      // miss the inherited prompt.
+      const prompt = entity.children().find(
         (c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT,
       );
       if (prompt === undefined) return [];
 
-      const payloadRef = prompt.ownAttr(TEMPLATE_ATTR_PAYLOAD_REF);
-      const responseRef = prompt.ownAttr(TEMPLATE_ATTR_RESPONSE_REF);
+      // ADR-0039: resolving — a prompt may inherit @payloadRef/@responseRef via extends.
+      const payloadRef = prompt.attr(TEMPLATE_ATTR_PAYLOAD_REF);
+      const responseRef = prompt.attr(TEMPLATE_ATTR_RESPONSE_REF);
 
       // @responseRef types the result; @payloadRef types the request. Both gate
       // the helper: the entity must declare voRequest/voResponse field.object
@@ -111,7 +115,8 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
 
       // Derive the parse format from the prompt's @format attr.
       // "xml" → Format.XML; absent or any other value → Format.JSON.
-      const promptFormat = prompt.ownAttr(TEMPLATE_ATTR_FORMAT);
+      // ADR-0039: resolving — a prompt may inherit @format via extends.
+      const promptFormat = prompt.attr(TEMPLATE_ATTR_FORMAT);
       const formatLiteral = typeof promptFormat === "string" && promptFormat.toLowerCase() === "xml"
         ? "Format.XML"
         : "Format.JSON";
@@ -124,7 +129,8 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
 
       // A renderable prompt (carries @textRef) gets an additional call<Entity> helper
       // that renders the prompt text, calls the LLM, then parses + persists a trace row.
-      const textRef = prompt.ownAttr(TEMPLATE_ATTR_TEXT_REF);
+      // ADR-0039: resolving — a prompt may inherit @textRef via extends.
+      const textRef = prompt.attr(TEMPLATE_ATTR_TEXT_REF);
       const renderable = typeof textRef === "string";
       // Same @format attr, two intentionally different shapes: extract() takes the
       // Format enum (formatLiteral, above → Format.XML/Format.JSON), render() takes the

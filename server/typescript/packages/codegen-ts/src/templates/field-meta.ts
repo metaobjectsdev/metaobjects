@@ -136,8 +136,9 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
   const currency =
     (field.attr(FIELD_ATTR_CURRENCY) as string | undefined) ?? FIELD_ATTR_CURRENCY_DEFAULT;
   const viewChild = field.views().find((c) => c.subType === VIEW_SUBTYPE_CURRENCY);
+  // ADR-0039: resolving — a view may inherit @locale via extends.
   const locale =
-    (viewChild?.ownAttr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
+    (viewChild?.attr(VIEW_CURRENCY_ATTR_LOCALE) as string | undefined) ??
     VIEW_CURRENCY_ATTR_LOCALE_DEFAULT;
   return { currency, locale };
 }
@@ -152,7 +153,8 @@ export function currencyMetaFor(field: MetaField): { currency: string; locale: s
  */
 export function labelFor(field: MetaField): string {
   for (const child of field.views()) {
-    const label = child.ownAttr("label");
+    // ADR-0039: resolving — a view may inherit @label via extends.
+    const label = child.attr("label");
     if (typeof label === "string" && label.length > 0) return label;
   }
   return humanize(field.name);

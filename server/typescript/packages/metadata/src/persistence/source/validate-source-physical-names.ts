@@ -42,7 +42,11 @@ export function validateSourcePhysicalNames(root: MetaData): PhysicalNameValidat
   const errors: ParseError[] = [];
   const warnings: LoaderWarning[] = [];
 
-  for (const obj of root.ownChildren().filter((c) => c.type === TYPE_OBJECT)) {
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: own — validates the physical-name aliases DECLARED on this object's
+    // own sources (declaration-layer, mirrors validateSourceRoles); an inherited
+    // source's aliases were validated on the object that declares it.
     const sources = obj
       .ownChildren()
       .filter(
@@ -54,6 +58,9 @@ export function validateSourcePhysicalNames(root: MetaData): PhysicalNameValidat
       // Empty-string check first — explicit "" is meaningless and an
       // authoring error regardless of which alias was used.
       for (const attr of ALL_PHYSICAL_NAME_ALIASES) {
+        // ADR-0039: own — the "exactly one alias, non-empty" rule is a per-source
+        // OWN-declaration constraint (resolving would conflate an inherited alias
+        // with an own one and falsely trip ERR_PHYSICAL_NAME_MULTIPLE).
         const v = source.ownAttr(attr);
         if (typeof v === "string" && v === "") {
           errors.push(
@@ -66,6 +73,7 @@ export function validateSourcePhysicalNames(root: MetaData): PhysicalNameValidat
       }
 
       const setAliases = ALL_PHYSICAL_NAME_ALIASES.filter((attr) => {
+        // ADR-0039: own — per-source own-declaration constraint (see above).
         const v = source.ownAttr(attr);
         return typeof v === "string" && v !== "";
       });

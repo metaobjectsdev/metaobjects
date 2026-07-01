@@ -22,7 +22,8 @@ function specifierFor(layout: string, pkg: string | undefined, stem: string): st
 }
 
 function isAngularEmittable(entity: MetaObject): boolean {
-  return entity.ownAttr("emitAngular") !== false;
+  // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+  return entity.attr("emitAngular") !== false;
 }
 
 function hasDataGridLayout(entity: MetaObject): boolean {

@@ -19,7 +19,8 @@ class SymbolTableImpl implements SymbolTable {
 
   static build(root: MetaData): SymbolTableImpl {
     const t = new SymbolTableImpl();
-    for (const child of root.ownChildren()) {
+    // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+    for (const child of root.children()) {
       if (child.type !== TYPE_OBJECT) continue;
       if (child.name) t.byRef.set(child.name, child);
       t.byRef.set(child.fqn(), child);
@@ -60,7 +61,9 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
     const def = registry.find(node.type, node.subType);
     if (def) {
       for (const desc of def.references ?? []) {
-        const raw = node.ownAttr(desc.attr);
+        // ADR-0039: resolving — a reference attr (e.g. @objectRef/@through) may be
+        // inherited via extends; read the effective value.
+        const raw = node.attr(desc.attr);
         if (typeof raw !== "string" || raw === "") continue; // absence is the required-attr pass's job
         const entityRef = desc.dottedFieldPath ? (raw.split(".")[0] ?? raw) : raw;
         const target = ctx.symbols.resolveObject(entityRef);
@@ -88,6 +91,8 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
       }
       def.validate?.(node, ctx);
     }
+    // ADR-0039: own — structural walk visiting every physical node once at its
+    // declaration site (an inherited child is validated on its declaring parent).
     for (const child of node.ownChildren()) walk(child);
   }
 }
