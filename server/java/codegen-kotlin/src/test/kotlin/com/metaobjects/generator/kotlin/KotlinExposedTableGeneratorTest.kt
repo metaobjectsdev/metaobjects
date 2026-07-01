@@ -1520,4 +1520,125 @@ class KotlinExposedTableGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    // === index.lookup coverage ===============================================
+
+    /**
+     * A single-field `index.lookup` on an entity emits a non-unique Exposed
+     * {@code index("idx_...", false, col)} call inside an {@code init { }} block.
+     * The index is non-unique (second arg {@code false}) — uniqueness is always
+     * expressed via {@code identity.secondary}, never via {@code index.lookup}.
+     */
+    @Test fun `single index lookup emits non-unique Exposed index`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Order", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "status", "@required": true } },
+                { "source.rdb":   { "@table": "orders" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+                { "index.lookup": { "name": "idx_orders_status", "@fields": ["status"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-lookup-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("lookup-single", fx))
+
+            val table = outDir.resolve("acme/demo/OrderTable.kt").toFile()
+            assertTrue(table.exists(), "OrderTable.kt should be generated at $table")
+            val src = table.readText()
+            // Non-unique index: second arg is false.
+            assertTrue(
+                "index(\"idx_orders_status\", false, status)" in src,
+                "expected non-unique index() call for index.lookup; saw:\n$src",
+            )
+            // Must live inside an init { } block.
+            assertTrue(
+                Regex("""init\s*\{[^}]*index\("idx_orders_status", false, status\)""",
+                    RegexOption.DOT_MATCHES_ALL).containsMatchIn(src),
+                "index() call should be inside an init { } block; saw:\n$src",
+            )
+            // Must NOT emit uniqueIndex for a lookup index.
+            assertTrue("uniqueIndex" !in src,
+                "index.lookup must NOT emit uniqueIndex; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * A composite (multi-field) `index.lookup` emits all columns in declaration
+     * order: {@code index("idx_...", false, col1, col2)}.
+     */
+    @Test fun `composite index lookup emits multi-column non-unique index`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Event", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "tenantId", "@required": true } },
+                { "field.string": { "name": "eventType", "@required": true } },
+                { "source.rdb":   { "@table": "events" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+                { "index.lookup": { "name": "idx_events_tenant_type", "@fields": ["tenantId", "eventType"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-lookup-composite-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("lookup-composite", fx))
+
+            val src = outDir.resolve("acme/demo/EventTable.kt").toFile().readText()
+            assertTrue(
+                "index(\"idx_events_tenant_type\", false, tenantId, eventType)" in src,
+                "expected multi-column non-unique index; saw:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * When an entity has BOTH `identity.secondary` and `index.lookup` children,
+     * both are emitted inside a single {@code init { }} block:
+     * {@code uniqueIndex(...)} for secondaries, {@code index(..., false, ...)} for
+     * lookup indexes. Stable order: secondaries first, then lookup indexes.
+     */
+    @Test fun `entity with both identity secondary and index lookup shares one init block`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Product", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "sku",      "@required": true } },
+                { "field.string": { "name": "category", "@required": true } },
+                { "source.rdb":   { "@table": "products" } },
+                { "identity.primary":   { "name": "pk",          "@fields": ["id"], "@generation": "increment" } },
+                { "identity.secondary": { "name": "by_sku",      "@fields": ["sku"] } },
+                { "index.lookup":       { "name": "idx_products_category", "@fields": ["category"] } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-mixed-idx-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("mixed-idx", fx))
+
+            val src = outDir.resolve("acme/demo/ProductTable.kt").toFile().readText()
+            assertTrue("uniqueIndex(\"by_sku\", sku)" in src,
+                "expected uniqueIndex for identity.secondary; saw:\n$src")
+            assertTrue("index(\"idx_products_category\", false, category)" in src,
+                "expected non-unique index for index.lookup; saw:\n$src")
+            // Exactly one init { } block — all index calls share it.
+            val initCount = Regex("""\binit\s*\{""").findAll(src).count()
+            assertTrue(initCount == 1,
+                "expected exactly 1 init { } block, saw $initCount; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

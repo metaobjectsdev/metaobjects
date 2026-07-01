@@ -8,6 +8,7 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.identity.ReferenceIdentity
+import com.metaobjects.index.LookupIndex
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
@@ -475,13 +476,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
                 append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
             }
-            // Emit `init { uniqueIndex("<name>", col1, col2, ...) }` for every
-            // identity.secondary. Single init block holds all calls so the
-            // generated body stays compact. Skips secondaries whose fields list
-            // is empty (defensive — the metadata constraint already requires
-            // at least one field).
+            // Emit `init { uniqueIndex("<name>", col1, ...) }` for identity.secondary
+            // and `init { index("<name>", false, col1, ...) }` for index.lookup, all
+            // inside a single init block. Skips entries whose fields list is empty
+            // (defensive — the metadata constraint already requires at least one field).
+            // ADR-0039: getChildren(LookupIndex::class.java, true) uses the resolving
+            // accessor so inherited index.lookup nodes from abstract base entities are
+            // visible. Views never carry indexes (they inherit from underlying tables).
             val emittableSecondaries = secondaries.filter { it.fields.isNotEmpty() }
-            if (emittableSecondaries.isNotEmpty()) {
+            val lookupIndexes = if (isView) emptyList()
+                else entity.getChildren(LookupIndex::class.java, true)
+                    .filter { it.fields.isNotEmpty() }
+            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
@@ -490,6 +496,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // for relationship.composition's FK property name above.
                     val indexName = sec.shortName ?: sec.name
                     append("        uniqueIndex(\"$indexName\", $cols)\n")
+                }
+                for (idx in lookupIndexes) {
+                    val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
+                    val indexName = idx.shortName ?: idx.name
+                    append("        index(\"$indexName\", false, $cols)\n")
                 }
                 append("    }\n")
             }
