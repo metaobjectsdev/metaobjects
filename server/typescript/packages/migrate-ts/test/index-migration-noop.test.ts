@@ -126,7 +126,7 @@ describe("index.lookup vocabulary migration — no DDL churn", () => {
     const eventsTable = expected.tables.find((t) => t.name === "events")!;
     const actual = {
       tables: [eventsTable],
-      views: [] as const,
+      views: [],
     };
 
     const result = await diff({ expected, actual });
@@ -141,7 +141,7 @@ describe("index.lookup vocabulary migration — no DDL churn", () => {
     const root = await load(NEW_MODEL_COMPOSITE);
     const expected = buildExpectedSchema(root, { dialect: "postgres" });
     const eventsTable = expected.tables.find((t) => t.name === "events")!;
-    const actual = { tables: [eventsTable], views: [] as const };
+    const actual = { tables: [eventsTable], views: [] };
 
     const result = await diff({ expected, actual });
     expect(result.changes).toEqual([]);
