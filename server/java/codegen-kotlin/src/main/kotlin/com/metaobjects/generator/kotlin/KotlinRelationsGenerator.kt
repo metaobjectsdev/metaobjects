@@ -8,7 +8,6 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
-import com.metaobjects.source.RdbSource
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.TypeName
 import java.io.OutputStream
@@ -68,7 +67,8 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             // Abstract entities are inheritance scaffolding — never emit relation helpers.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // No source.rdb → no persistence layer → no FK column to query against.
-            entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
+            // ADR-0039: resolving (an inherited source.rdb still means the entity is persisted).
+            if (!KotlinGenUtil.hasRdbSource(entity)) continue
 
             val manyRels = entity.children
                 .filterIsInstance<MetaRelationship>()

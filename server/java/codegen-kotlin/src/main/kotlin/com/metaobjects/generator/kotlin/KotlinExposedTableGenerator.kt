@@ -81,7 +81,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a persistence table.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
-            val sourceRdb = entity.children.filterIsInstance<RdbSource>().firstOrNull() ?: continue
+            // ADR-0039: resolving source lookup — an entity inheriting its source.rdb via
+            // extends must still emit a table (own-only .children returned null → no table).
+            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             val kind = sourceRdb.effectiveKind
             // table + view + materializedView → emit; view-like kinds are emitted read-only.
             // storedProc → skip; consumer should wire KotlinStoredProcGenerator for those entities.
@@ -927,7 +929,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun buildInverseFkSpec(owner: MetaObject, rel: MetaRelationship): FkColumnSpec? {
         // Skip when the owner has no rdb source — there would be no OwnerTable to reference.
-        if (owner.children.filterIsInstance<RdbSource>().firstOrNull() == null) return null
+        // ADR-0039: resolving (an inherited source.rdb still means the owner is persisted).
+        if (!KotlinGenUtil.hasRdbSource(owner)) return null
         val ownerShort = PackageMapping.splitFqn(owner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
@@ -1027,7 +1030,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val targetEntityName = child.targetEntity ?: continue
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
                 // Skip when the target has no rdb source — Exposed cannot reference a non-table.
-                if (target.children.filterIsInstance<RdbSource>().firstOrNull() == null) continue
+                // ADR-0039: resolving (an inherited source.rdb still means the target is a table).
+                if (!KotlinGenUtil.hasRdbSource(target)) continue
                 // Soft references register a null-targetTable entry so dedup-vs-inferred works,
                 // but column emission will skip the `.references(...)` decoration.
                 val targetTable = if (child.isEnforced)

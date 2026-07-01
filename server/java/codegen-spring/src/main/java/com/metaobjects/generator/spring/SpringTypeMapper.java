@@ -177,7 +177,9 @@ public final class SpringTypeMapper {
     public static String payloadJavaTypeName(MetaField<?> field, MetaObject owner, String enumQualifier) {
         if (field instanceof EnumField) {
             String enumType = enumQualifier + enumTypeName(owner, field);
-            return field.isArray() ? "java.util.List<" + enumType + ">" : enumType;
+            // ADR-0039: resolving array-ness (isArray() is the own-only native flag — a
+            // concrete enum field extending an abstract array enum would emit a scalar).
+            return field.isArrayType() ? "java.util.List<" + enumType + ">" : enumType;
         }
         return javaTypeName(field);
     }

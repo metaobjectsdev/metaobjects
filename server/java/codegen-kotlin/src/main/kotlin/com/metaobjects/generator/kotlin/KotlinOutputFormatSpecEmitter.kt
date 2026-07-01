@@ -102,7 +102,8 @@ internal object KotlinOutputFormatSpecEmitter {
     private fun promptFieldLiteral(field: MetaField<*>): String {
         val name = field.name
         val required = KotlinExtractSchemaEmitter.isRequired(field)
-        val array = field.isArray
+        // ADR-0039: resolving array-ness (isArray is the own-only native flag).
+        val array = field.isArrayType()
 
         // Nested object OR open-keyed map — both structured JSON values; bounded
         // deferral (mirrors Java plan 3.1). FieldKind.OBJECT, nested prompt deferred.
@@ -138,9 +139,10 @@ internal object KotlinOutputFormatSpecEmitter {
         val valuesLit = "listOf($valuesList)"
 
         // @enumDoc — optional; null when absent or empty.
+        // ADR-0039: @enumDoc is an effective property — resolve (consistent with @values above).
         val enumDocLit: String = run {
-            if (!field.hasMetaAttr(EnumField.ATTR_ENUM_DOC, false)) return@run "null"
-            val v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC, false).value
+            if (!field.hasMetaAttr(EnumField.ATTR_ENUM_DOC)) return@run "null"
+            val v = field.getMetaAttr(EnumField.ATTR_ENUM_DOC).value
             if (v is Properties && v.isNotEmpty()) KotlinExtractSchemaEmitter.buildMapOfLiteral(v) else "null"
         }
 
@@ -160,8 +162,10 @@ internal object KotlinOutputFormatSpecEmitter {
      * example/instruction free-text containing quotes or newlines embeds safely in Kotlin source.
      */
     private fun optStringAttr(field: MetaField<*>, attrName: String): String {
-        if (!field.hasMetaAttr(attrName, false)) return "null"
-        val v = field.getMetaAttr(attrName, false).valueAsString ?: return "null"
+        // ADR-0039: @example/@instruction are effective properties — resolve (consistent
+        // with @values/@required which resolve).
+        if (!field.hasMetaAttr(attrName)) return "null"
+        val v = field.getMetaAttr(attrName).valueAsString ?: return "null"
         return "\"${KotlinExtractSchemaEmitter.kotlinStringLiteral(v)}\""
     }
 

@@ -12,7 +12,6 @@ import com.metaobjects.generator.kotlin.PackageMapping
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.MetaSource
-import com.metaobjects.source.RdbSource
 import com.metaobjects.template.MetaTemplate
 import com.metaobjects.template.OutputTemplate
 import com.metaobjects.template.TemplateConstants
@@ -187,7 +186,8 @@ class KotlinApiModelBuilder {
         if (obj.subType != MetaObject.SUBTYPE_ENTITY) return false
         if (KotlinGenUtil.isAbstractEntity(obj)) return false
         if (KotlinTphPlan.isTphSubtype(obj)) return false
-        val src = obj.children.filterIsInstance<RdbSource>().firstOrNull() ?: return false
+        // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+        val src = KotlinGenUtil.firstRdbSource(obj) ?: return false
         return src.effectiveKind == MetaSource.KIND_TABLE
     }
 
@@ -203,7 +203,8 @@ class KotlinApiModelBuilder {
      */
     private fun projectionDataAccess(obj: MetaObject): ApiSymbol? {
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
-        val src = obj.children.filterIsInstance<RdbSource>().firstOrNull() ?: return null
+        // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+        val src = KotlinGenUtil.firstRdbSource(obj) ?: return null
         return when (src.effectiveKind) {
             MetaSource.KIND_TABLE, MetaSource.KIND_VIEW, MetaSource.KIND_MATERIALIZED_VIEW -> {
                 val table = KotlinNaming.tableObjectName(shortName)
