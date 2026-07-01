@@ -52,20 +52,19 @@ _No structural children._
 
 ### identity.secondary
 
-A secondary index (unique by default via @unique).
+A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.
 
 **Owning provider:** metaobjects-core-types
 
-**When to use:** A column or set must be unique, or you want an index for lookups/sorting. Declare it instead of a hand-written UNIQUE constraint or CREATE INDEX.
+**When to use:** A column or set of columns must be unique (e.g. email, slug, composite business key). For a plain non-unique index, use index.lookup instead.
 
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@expr` | string | no |  |  | metaobjects-db | Raw key EXPRESSION for a functional/expression index (e.g. "lower(email)"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider. |
-| `@fields` | string[] | yes |  |  | metaobjects-core-types | The field name(s) composing this identity. Single-element for a simple PK/index, multiple for a composite. |
+| `@fields` | string[] | yes |  |  | metaobjects-core-types | The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. |
 | `@orders` | string[] | no |  | `asc`, `desc` | metaobjects-db | Physical index-key sort direction, positional to @fields ('asc' \| 'desc'). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider, not core identity. |
-| `@unique` | boolean | no |  |  | metaobjects-core-types | When true (default), the secondary identity is a UNIQUE index; false makes it a plain (non-unique) index. |
 | `@using` | string | no |  |  | metaobjects-db | Index access method (e.g. "gin", "gist", "hash"); default "btree" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider. |
 | `@where` | string | no |  |  | metaobjects-db | Partial-index predicate (raw SQL, e.g. "delivered_at IS NULL"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider. |
 

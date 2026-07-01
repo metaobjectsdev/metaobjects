@@ -26,7 +26,7 @@ Core metaobjects metamodel types and subtypes.
 - `field.string`: `@maxLength`, `@stringFormat`
 - `identity.primary`: `@fields`, `@generation`
 - `identity.reference`: `@enforce`, `@fields`, `@references`
-- `identity.secondary`: `@fields`, `@unique`
+- `identity.secondary`: `@fields`
 - `object.entity`: `@discriminator`, `@discriminatorValue`
 - `origin.aggregate`: `@agg`, `@of`, `@via`
 - `origin.collection`: `@via`
@@ -71,6 +71,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
 - `identity.reference`: `@constraintName`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
+- `index.lookup`: `@expr`, `@orders`, `@using`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@table`, `@view`
 
 ## metaobjects-documentation

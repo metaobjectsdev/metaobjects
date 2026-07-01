@@ -3,12 +3,12 @@
 // defineProviderFromData) is FAITHFUL and COMPLETE: a composed core registry
 // registers, for every identity subtype, exactly the expected attr name-set
 // (+ valueType + isArray + required + allowedValues) AND the post-assigned
-// childRules ([wildcard(attr)]) that the hand-coded identity-schema.ts + the old
-// loop produced before the conversion.
+// childRules that the hand-coded identity-schema.ts + the old loop produced
+// before the conversion.
 //
-// The expected table below is derived directly from the pre-FR-033
-// core/identity/identity-schema.ts (IDENTITY_ATTRS_MAP) and the old
-// `[wildcard(TYPE_ATTR)]` childRules. It is the safety net the plan asks for.
+// Task 2 update: identity.secondary no longer declares @unique (removed in the
+// index.lookup design). `identity.secondary` now always means "unique constraint"
+// and `index.lookup` is the non-unique query-performance index.
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
@@ -43,9 +43,9 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
   },
   secondary: {
     fields: FIELDS,
-    unique: { valueType: "boolean", required: false },
-    // NOTE: @orders / @where are physical RDB attrs contributed by the db provider
-    // (registry.extend), NOT core — so they are absent from this core-only registry.
+    // @unique removed — identity.secondary always means unique constraint.
+    // @orders / @where / @expr / @using are physical RDB attrs contributed by
+    // the db provider (registry.extend), NOT core — absent from core-only registry.
   },
   reference: {
     fields: FIELDS,

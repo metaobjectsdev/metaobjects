@@ -51,6 +51,9 @@ import { LAYOUT_DEFINITION } from "./presentation/layout/layout-definition.embed
 import { MetaTemplate } from "./template/meta-template.js";
 import { TEMPLATE_DEFINITION } from "./template/template-definition.embedded.js";
 import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
+import { MetaIndex } from "./core/index/meta-index.js";
+import { INDEX_DEFINITION } from "./core/index/index-definition.embedded.js";
+import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -64,6 +67,7 @@ import {
   TYPE_SOURCE,
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
+  TYPE_INDEX,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -461,6 +465,20 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     RELATIONSHIP_FACTORIES,
   )) {
     registry.register(relationshipDef);
+  }
+
+  // index — 1 subtype (lookup). Non-unique lookup indexes for query-performance.
+  // Distinct from identity.secondary (which enforces uniqueness). A single
+  // MetaIndex class backs the lookup subtype; physical attrs (@orders/@expr/
+  // @where/@using) are contributed by the db provider via registry.extend.
+  const INDEX_FACTORIES: FactoryMap = Object.fromEntries(
+    INDEX_SUBTYPES.map((subType) => [
+      `${TYPE_INDEX}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaIndex(typeId, name),
+    ]),
+  );
+  for (const indexDef of defineProviderFromData(INDEX_DEFINITION, INDEX_FACTORIES)) {
+    registry.register(indexDef);
   }
 
   // Declare the core cross-references ON their TypeDefinitions, so the loader's

@@ -275,10 +275,10 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(attrs.get("generation")!.allowedValues).toEqual(["increment", "uuid", "assigned"]);
   });
 
-  it("identity.secondary declares required @fields and optional @unique", () => {
+  it("identity.secondary declares required @fields and no @unique (removed — use index.lookup for non-unique indexes)", () => {
     const attrs = byName(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY);
     expect(attrs.get("fields")!.required).toBe(true);
-    expect(attrs.get("unique")!.required).toBe(false);
+    expect(attrs.get("unique")).toBeUndefined();
     expect(attrs.get("generation")).toBeUndefined();
   });
 

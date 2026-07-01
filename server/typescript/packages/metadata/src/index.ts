@@ -13,6 +13,7 @@ import type { MetaRoot } from "./shared/meta-root.js";
 import type { MetaObject } from "./core/object/meta-object.js";
 import type { MetaField } from "./core/field/meta-field.js";
 import type { MetaIdentity } from "./core/identity/meta-identity.js";
+import type { MetaIndex } from "./core/index/meta-index.js";
 import type { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import type { MetaValidator } from "./core/validator/meta-validator.js";
 import type { MetaView } from "./presentation/view/meta-view.js";
@@ -30,6 +31,7 @@ export * from "./core/attr/attr-constants.js";
 export * from "./core/documentation/doc-constants.js";
 export * from "./core/validator/validator-constants.js";
 export * from "./core/identity/identity-constants.js";
+export * from "./core/index/index-constants.js";
 export * from "./core/relationship/relationship-constants.js";
 export * from "./core/query/query-constants.js";
 export * from "./persistence/source/source-constants.js";
@@ -67,6 +69,8 @@ export {
   MetaSecondaryIdentity,
   MetaReferenceIdentity,
 } from "./core/identity/meta-identity.js";
+// Index
+export { MetaIndex } from "./core/index/meta-index.js";
 export type { IdentityGeneration } from "./core/identity/meta-identity.js";
 // FR-024 — projection identity pass-through derivation (computed local key;
 // pure tree read, codegen-facing).
@@ -122,6 +126,7 @@ export type AnyMeta =
   | MetaObject
   | MetaField
   | MetaIdentity
+  | MetaIndex
   | MetaRelationship
   | MetaValidator
   | MetaView

@@ -48,6 +48,13 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "*",
           "min": 0,
           "max": null
+        },
+        {
+          "type": "index",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
         }
       ]
     },

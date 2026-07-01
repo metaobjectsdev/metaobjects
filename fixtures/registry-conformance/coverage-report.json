@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 63,
-  "exercisedSubTypeCount": 41,
+  "registeredSubTypeCount": 64,
+  "exercisedSubTypeCount": 42,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -141,7 +141,6 @@
         "filterable",
         "instruction",
         "readOnly",
-        "required",
         "sortable",
         "sortableDefaultOrder",
         "unique",
@@ -238,7 +237,6 @@
         "filterable",
         "instruction",
         "readOnly",
-        "required",
         "sortable",
         "sortableDefaultOrder",
         "unique",
@@ -270,6 +268,14 @@
       "untestedAttrs": [
         "expr",
         "orders",
+        "using",
+        "where"
+      ]
+    },
+    {
+      "key": "index.lookup",
+      "untestedAttrs": [
+        "expr",
         "using",
         "where"
       ]
