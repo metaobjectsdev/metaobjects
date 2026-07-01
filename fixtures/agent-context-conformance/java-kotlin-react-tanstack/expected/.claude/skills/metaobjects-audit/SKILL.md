@@ -69,7 +69,35 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   (ADR-0019); runtime reflection to resolve a type from FQN vs generated static imports /
   FQN registry (ADR-0001 / 0017); process-global registry vs per-loader (ADR-0014); code
   that **mutates the loaded metadata tree** (read-only after load); JVM/Kotlin missing
-  startup validator; writes not routed to the `@role: primary` source.
+  startup validator; writes not routed to the `@role: primary` source; **`own*()`
+  accessor reads of effective properties / own-only member iteration (ADR-0039 — see
+  the active check below).**
+
+- [ ] **G2. `own*()` accessor discipline (ADR-0039 — CORRECTNESS DEFECT, not advisory).**
+  In any custom generator, metamodel provider, or runtime path (NOT the sanctioned cases
+  below), **flag every read of a field/node's effective property, or own-only member
+  iteration, done through an own-only accessor** — it silently drops everything inherited
+  via `extends` (a super-reference, not a flatten), corrupting codegen and runtime. This
+  is exactly the class of bug that broke Kotlin's array-type derivation (a concrete field
+  inheriting an array flag from an abstract parent generated a scalar) and, per the audit,
+  is latent cross-port. Grep for the own-only accessors and verify each hit:
+  - **TS:** `ownAttr(`, `ownChildren(`, `ownFields(`, a raw `isArray` field flag read →
+    should be `attr(` / `children()` / `fields()` unless emitting a subclass's own members.
+  - **Python:** `own_children(`, `own_fields(`, and the **inverted** bare `attr(` (Python
+    `attr()` is OWN; the resolving form is `attrs().get(`) → flag `attr(` used to read an
+    effective value.
+  - **Java / Kotlin:** `getMetaAttr(name, false)` (the `,false` own overload), own-only
+    child walks (e.g. an own-only `filterIsInstance<…>()` source lookup that emits nothing
+    for an entity inheriting its source).
+  - **C#:** a native `IsArray` flag read, `OwnChildren()`, own attr reads.
+
+  **Sanctioned (do NOT flag):** (a) a generator emitting a generated **subclass** that
+  iterates `ownFields()` so inherited members aren't re-emitted (the generated base
+  declares them — the `class Sub extends Base` / TPH pattern); (b) the own-mode canonical
+  serializer + overlay-merge + super-resolution walks (library-internal); (c) the single
+  deliberately-own attribute `@dbColumnType` (a physical column-type override, never
+  inherited). Any own read that carries a comment naming one of these cases is fine; an
+  uncommented own read of an effective property is the defect.
 - [ ] **H. Authoring-correctness / ADR-conformance (deep).** Invented/unregistered
   `@`-attrs or post-bootstrap registration (ADR-0023 — custom attrs belong in a registered
   provider or `attr.properties`); retired source-v2 forms (`source.dbTable` / `@name` /
@@ -172,6 +200,7 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 4. **Drift-admitting comments** — grep: `"keep in sync with"` / `"mirrors the"` / `"matching the"`.
 5. **Runtime schema patching** (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, `_ensure_schema()`) — N schema owners.
 6. **N declarations of one shape** — same entity as Drizzle table + Zod schema + Pydantic model + hand dataclass; target is 1 + N generated.
+7. **`own*()` accessor read of an effective property** (ADR-0039) — `ownAttr` / `ownFields` / `own_children` / bare Python `attr(` / `getMetaAttr(name, false)` / native `IsArray` used to read a value or iterate members outside the sanctioned subclass-emit / own-serializer / `@dbColumnType` cases → silently drops `extends`-inherited values. A **correctness defect** (axis G2), not advisory.
 
 ---
 

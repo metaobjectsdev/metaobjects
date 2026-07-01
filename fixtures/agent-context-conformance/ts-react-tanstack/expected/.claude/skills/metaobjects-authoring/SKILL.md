@@ -540,6 +540,16 @@ Resolution facts:
 
 `abstract` and `extends` are **structural keys** (bare, no `@`).
 
+**Extends-inherited properties are real — consume metadata through the resolving
+accessors (ADR-0039).** If you write a custom generator or a metamodel provider that
+reads this metadata, a concrete field/entity's inherited attributes and members live
+on the parent it `extends`, not on the node itself (extends is a super-*reference*, not
+a flatten). Always read a property or iterate a member set via the **resolving/effective**
+accessor (TS `attr()`/`children()`/`fields()`, Python `attrs().get()`), **never an
+`own*()` accessor** — an own-only read silently drops everything inherited via `extends`
+and corrupts the generated code. See the `metaobjects-codegen` skill for the full
+per-port mapping.
+
 **`overlay` is a different concept.** `extends:` is an IS-A relationship between
 two distinct nodes. `overlay: true` re-opens the *same* named node to amend it
 across files (same `package` + same `name` → merged; last-writer-wins on attr
