@@ -8,6 +8,7 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.identity.ReferenceIdentity
+import com.metaobjects.identity.SecondaryIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
@@ -411,11 +412,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it) }
                 append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
             }
-            // Emit `init { uniqueIndex("<name>", col1, col2, ...) }` for every
-            // identity.secondary. Single init block holds all calls so the
-            // generated body stays compact. Skips secondaries whose fields list
-            // is empty (defensive — the metadata constraint already requires
-            // at least one field).
+            // Emit `init { uniqueIndex("<name>", col1, ...) }` for a unique
+            // secondary identity and `index("<name>", false, col1, ...)` for a
+            // non-unique one (`@unique: false`). Single init block holds all
+            // calls so the generated body stays compact. Skips secondaries whose
+            // fields list is empty (defensive — the metadata constraint already
+            // requires at least one field).
             val emittableSecondaries = secondaries.filter { it.fields.isNotEmpty() }
             if (emittableSecondaries.isNotEmpty()) {
                 append("\n    init {\n")
@@ -425,7 +427,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // (`acme::demo::by_name` → `by_name`) — same pattern used
                     // for relationship.composition's FK property name above.
                     val indexName = sec.shortName ?: sec.name
-                    append("        uniqueIndex(\"$indexName\", $cols)\n")
+                    // A secondary identity is a unique business key by default;
+                    // `@unique: false` downgrades it to a plain (non-unique) index.
+                    val unique = (sec as? SecondaryIdentity)?.isUniqueKey() ?: true
+                    if (unique) {
+                        append("        uniqueIndex(\"$indexName\", $cols)\n")
+                    } else {
+                        append("        index(\"$indexName\", false, $cols)\n")
+                    }
                 }
                 append("    }\n")
             }

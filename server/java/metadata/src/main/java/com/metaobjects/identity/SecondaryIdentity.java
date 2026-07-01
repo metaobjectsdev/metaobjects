@@ -74,10 +74,16 @@ public class SecondaryIdentity extends MetaIdentity {
 
     /**
      * Returns true if this secondary identity is unique across the object.
-     * Most secondary identities should be unique (like email, SKU, etc.)
+     * Honors an explicit {@code @unique} attribute; when absent, defaults to
+     * {@code true} because most secondary identities are unique business keys
+     * (email, SKU, etc.). Declaring {@code @unique: false} models a plain
+     * (non-unique) secondary index — the DDL and Exposed generators emit a
+     * regular index instead of a UNIQUE one.
      */
     public boolean isUniqueKey() {
-        // Secondary identities are typically unique business keys
+        if (hasMetaAttr(ATTR_UNIQUE)) {
+            return Boolean.parseBoolean(getMetaAttr(ATTR_UNIQUE).getValueAsString());
+        }
         return true;
     }
 

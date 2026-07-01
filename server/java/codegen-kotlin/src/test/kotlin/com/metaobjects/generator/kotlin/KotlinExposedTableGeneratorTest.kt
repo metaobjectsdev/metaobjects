@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KotlinExposedTableGeneratorTest {
@@ -1307,6 +1308,46 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(
                 "uniqueIndex(\"by_tenant_slug\", tenantId, slug)" in src,
                 "Expected multi-column uniqueIndex — was:\n$src",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * `identity.secondary` with `@unique: false` models a plain (non-unique)
+     * secondary index — it must emit `index("<name>", false, cols...)`, NOT
+     * `uniqueIndex(...)`. Regression for the Exposed generator ignoring the
+     * `@unique` flag (which the DDL side already honored).
+     */
+    @Test fun `non-unique identity secondary emits a plain index not uniqueIndex`() {
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Command", "children": [
+                { "field.string": { "name": "id",       "@required": true, "@dbColumnType": "uuid" } },
+                { "field.string": { "name": "playerId", "@required": true, "@dbColumnType": "uuid" } },
+                { "source.rdb":   { "@table": "commands" } },
+                { "identity.primary":   { "name": "pk",         "@fields": ["id"] } },
+                { "identity.secondary": { "name": "by_player",  "@fields": ["playerId"], "@unique": false } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-secondary-nonunique-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("secondary-nonunique", fx))
+
+            val cmdTable = outDir.resolve("acme/demo/CommandTable.kt").toFile()
+            assertTrue(cmdTable.exists())
+            val src = cmdTable.readText()
+            assertTrue(
+                "index(\"by_player\", false, playerId)" in src,
+                "Expected a plain non-unique index for '@unique: false' — was:\n$src",
+            )
+            assertFalse(
+                "uniqueIndex(\"by_player\"" in src,
+                "Non-unique secondary must NOT emit uniqueIndex — was:\n$src",
             )
         } finally {
             outDir.toFile().deleteRecursively()
