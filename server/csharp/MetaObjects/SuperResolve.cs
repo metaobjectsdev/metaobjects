@@ -44,6 +44,9 @@ internal static class SuperResolve
         {
             return root;
         }
+        // ADR-0039: OwnChildren — super-resolution tree walk. This IS the extends-resolution
+        // machinery, so it must traverse only the physically-declared children (resolving
+        // Children() would recurse through the very super chain being built).
         foreach (MetaData child in root.OwnChildren())
         {
             MetaData? found = FindInTree(child, fqn);
@@ -299,6 +302,8 @@ internal static class SuperResolve
     {
         visit(node, ctxPkg);
         string nextCtx = node.Package ?? ctxPkg;
+        // ADR-0039: OwnChildren — this is a declaration-structure walk internal to
+        // super-resolution; it must visit only physically-declared children.
         foreach (MetaData child in node.OwnChildren())
         {
             Walk(child, nextCtx, visit);

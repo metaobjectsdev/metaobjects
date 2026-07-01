@@ -42,7 +42,8 @@ public static class PayloadCodegen
         };
 
     private static MetaData? FindObject(MetaData root, string name) =>
-        root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
 
     // ADR-0039: resolve array-ness through the super chain (isArray is a native
     // property, not an attr; the former OwnAttr("isArray") clause was dead code).
@@ -159,7 +160,8 @@ public static class PayloadCodegen
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
-            if (f.SubType == FIELD_SUBTYPE_OBJECT && f.OwnAttr(FIELD_ATTR_OBJECT_REF) is string refName)
+            // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
+            if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
                 fields.Add(new PayloadField(f.Name, BuildTree(root, CSharpNaming.StripPkg(refName), visiting)));
             else
                 fields.Add(new PayloadField(f.Name));
@@ -179,14 +181,16 @@ public static class PayloadCodegen
     /// </summary>
     public static string GenerateRenderHandle(MetaData root, string templateName)
     {
-        var tmpl = root.OwnChildren()
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        var tmpl = root.Children()
             .FirstOrDefault(c => c.Type == TYPE_TEMPLATE && c.Name == templateName)
             ?? throw new ArgumentException($"template \"{templateName}\" not found", nameof(templateName));
 
-        var payloadRef = tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) as string
+        // ADR-0039: resolving — template refs may be inherited via an abstract template base.
+        var payloadRef = tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) as string
             ?? throw new InvalidOperationException($"template \"{templateName}\" has no @payloadRef");
-        var textRef = tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) as string ?? "";
-        var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
+        var textRef = tmpl.Attr(TEMPLATE_ATTR_TEXT_REF) as string ?? "";
+        var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
         var fn = $"Render{Pascal(templateName)}";
 
         var sb = new StringBuilder();

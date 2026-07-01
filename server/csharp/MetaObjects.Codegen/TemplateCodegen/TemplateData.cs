@@ -14,10 +14,13 @@ namespace MetaObjects.Codegen.TemplateCodegen;
 /// (<c>maxLength</c>, <c>enumValues</c>) are OMITTED when absent so a
 /// <c>{{#maxLength}}</c> section gates identically to TS.
 ///
-/// Own-vs-effective discipline (matching the TS ownAttr semantics, per the JVM +
-/// Python reviews — both rounds): <c>IsAbstract</c> per-node; <c>@required</c> attr,
-/// <c>maxLength</c>, identity <c>fields</c>, relationship <c>cardinality</c>/<c>objectRef</c>
-/// via own-only attrs; the required-<i>validator</i> branch + enum <c>values</c> effective.
+/// Own-vs-effective discipline (matching TS exactly, ADR-0039): <c>IsAbstract</c> is
+/// per-node; the required-<i>validator</i> branch + enum <c>values</c> + <c>@required</c>
+/// + <c>maxLength</c> + <c>isArray</c> + identity <c>fields</c> + relationship
+/// <c>cardinality</c>/<c>objectRef</c> are all EFFECTIVE (resolving) — TS reads these via
+/// the resolving <c>i.fields</c> / <c>r.cardinality</c> / <c>r.objectRef</c> getters, so C#
+/// reads through the matching resolving typed getters (<see cref="MetaIdentity.Fields"/> /
+/// <see cref="MetaRelationship.Cardinality"/> / <see cref="MetaRelationship.ObjectRef"/>).
 /// </summary>
 public static class TemplateData
 {
@@ -68,14 +71,16 @@ public static class TemplateData
         var identities = o.Identities().Select(id => new Dictionary<string, object?>
         {
             ["kind"] = id.SubType,
-            ["fields"] = ToStringList(id.OwnAttr("fields")),
+            // ADR-0039: resolving — identity @fields may be inherited via extends (TS reads i.fields).
+            ["fields"] = id.Fields.ToList(),
         }).ToList();
 
         var relationships = o.Relationships().Select(r => new Dictionary<string, object?>
         {
             ["name"] = r.Name,
-            ["cardinality"] = r.OwnAttr("cardinality") as string ?? "",
-            ["targetRef"] = r.OwnAttr("objectRef") as string ?? "",
+            // ADR-0039: resolving — @cardinality/@objectRef may be inherited (TS reads r.cardinality/r.objectRef).
+            ["cardinality"] = r.Cardinality ?? "",
+            ["targetRef"] = r.ObjectRef ?? "",
         }).ToList();
 
         return new Dictionary<string, object?>

@@ -636,8 +636,9 @@ public static class Parser
         if (fr5cActive)
         {
             preMergeShape = SerializerJson.CanonicalSerialize(target);
-            // Snapshot of own attrs (name → value) — used to detect ERR_MERGE_CONFLICT
-            // when a new contribution sets an attr the target already declared to a
+            // ADR-0039: OwnAttrs — this IS the overlay/merge machinery. The conflict check must
+            // compare the target's OWN declared attrs (not extends-resolved) so ERR_MERGE_CONFLICT
+            // fires only when a new contribution overwrites an attr THIS node already declared to a
             // different non-empty value.
             preMergeAttrSnapshot = new Dictionary<string, object?>(target.OwnAttrs(), StringComparer.Ordinal);
         }
@@ -1351,9 +1352,10 @@ public static class Parser
                                 childType, childSubType, childData, parent, accumRoot,
                                 inheritedContextPkg, st);
 
-                            // Overlay and same-name-reuse paths in CreateOrFindMetaData return an existing
-                            // child that is already in parent's own children; only AddChild for freshly
-                            // created nodes to avoid duplicates.
+                            // ADR-0039: OwnChildren — overlay/merge dedup. Overlay and same-name-reuse
+                            // paths in CreateOrFindMetaData return an existing child already in parent's
+                            // OWN children; only AddChild for freshly created nodes to avoid duplicates.
+                            // (Must be own — a node is never added to an inherited/super child list.)
                             var owned = parent.OwnChildren();
                             if (childModel is not null && !owned.Contains(childModel))
                                 parent.AddChild(childModel);

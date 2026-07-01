@@ -127,7 +127,8 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     }
 
     /// <summary>True iff <paramref name="field"/> carries <c>@filterable: true</c> (bool true or case-insensitive "true" — matches Java/Kotlin/Python tolerance).</summary>
-    private static bool IsFilterable(MetaField field) => field.OwnAttr(FIELD_ATTR_FILTERABLE) switch
+    // ADR-0039: resolving — @filterable may be inherited via extends (TS reads field.attr).
+    private static bool IsFilterable(MetaField field) => field.Attr(FIELD_ATTR_FILTERABLE) switch
     {
         true => true,
         string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase),

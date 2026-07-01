@@ -55,8 +55,10 @@ public class CallableGenerator : PerEntityGenerator
                     "emitting a zero-argument method.");
         }
 
-        // Own fields preserve declaration order. The SQL binds {args.<Prop>} per field;
-        // FromSqlInterpolated parameterises each interpolation hole safely.
+        // ADR-0039: OwnFields is the deliberate cross-port form here (TS reads argsObject.ownChildren())
+        // — the callable's SQL binds exactly the params the args value-object DECLARES, in declaration
+        // order; the VO is the authored parameter list, not an extends participant. The SQL binds
+        // {args.<Prop>} per field; FromSqlInterpolated parameterises each interpolation hole safely.
         var argProps = argsObject is null
             ? []
             : argsObject.OwnFields().Select(f => CSharpNaming.Pascal(f.Name)).ToList();

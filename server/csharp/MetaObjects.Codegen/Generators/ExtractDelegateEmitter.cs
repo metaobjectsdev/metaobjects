@@ -38,7 +38,8 @@ internal static class ExtractDelegateEmitter
     // =========================================================================
 
     internal static MetaData? FindObject(MetaData root, string name) =>
-        root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
 
     /// <summary>
     /// The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable.
@@ -47,7 +48,8 @@ internal static class ExtractDelegateEmitter
     /// </summary>
     internal static MetaData? RefVo(MetaData field, MetaData root)
     {
-        if (field.OwnAttr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
+        // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
+        if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
         var direct = FindObject(root, objectRef);
         if (direct is not null) return direct;
         int sep = objectRef.LastIndexOf(PACKAGE_SEPARATOR, System.StringComparison.Ordinal);

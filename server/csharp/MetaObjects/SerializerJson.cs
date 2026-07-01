@@ -188,8 +188,9 @@ public static class SerializerJson
             obj.Add(RESERVED_KEY_IS_ARRAY, JsonValue.Create(true));
         }
 
-        // In effective mode use Children()/Attrs() (own + inherited via super chain);
-        // in own mode use OwnChildren()/OwnAttrs() (declared on this node only).
+        // ADR-0039: the OwnChildren()/OwnAttrs() branch is the sanctioned own-mode canonical
+        // serializer — it round-trips the AUTHORED form (declared-here only) so re-loading
+        // reconstructs the same extends tree. Effective mode resolves via Children()/Attrs().
         var childList = effective ? model.Children() : model.OwnChildren();
         var attrMap = effective ? model.Attrs() : model.OwnAttrs();
 

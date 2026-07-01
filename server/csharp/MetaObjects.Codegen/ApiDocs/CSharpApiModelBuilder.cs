@@ -206,7 +206,8 @@ public sealed class CSharpApiModelBuilder
             // object.value) — no inline mirror that could drift from what is emitted.
             if (PayloadGenerator.AppliesTo(tmpl, root))
             {
-                var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+                // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+                var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
                 var vo = PayloadGenerator.ResolvePayloadVo(root, payloadRef)!;
                 symbols.Add(new ApiSymbol(
                     payloadRef, ApiSymbolKind.Payload, ns,
@@ -219,9 +220,10 @@ public sealed class CSharpApiModelBuilder
         return new ApiUnit(name, PackageOf(tmpl), "template", symbols);
     }
 
-    /// <summary>True when the template's <c>@kind</c> (own attr, default document) is <c>email</c>.</summary>
+    /// <summary>True when the template's effective <c>@kind</c> (default document) is <c>email</c>.
+    /// ADR-0039: resolving — @kind may be inherited via an abstract template base.</summary>
     private static bool IsEmailKind(MetaData tmpl) =>
-        tmpl.OwnAttr(TEMPLATE_ATTR_KIND) is string v &&
+        tmpl.Attr(TEMPLATE_ATTR_KIND) is string v &&
         v.Equals(TEMPLATE_KIND_EMAIL, StringComparison.OrdinalIgnoreCase);
 
     // ----- field shapes -------------------------------------------------------

@@ -9,6 +9,12 @@ namespace MetaObjects.Meta;
 /// Concrete base node class for <c>origin.*</c> nodes (field-level provenance).
 /// Extends <see cref="MetaData"/> directly: no model wrapper, no metaOf() indirection.
 /// </summary>
+/// <remarks>
+/// ADR-0039: every <c>origin.*</c> attr below is read <c>OwnAttr</c> (own-only) by
+/// deliberate policy — an <c>origin.*</c> node NEVER inherits via <c>extends</c>
+/// (ADR-0029), so its provenance attrs are always the authored, node-local form.
+/// This is the sanctioned "origin attr read" own-accessor case.
+/// </remarks>
 public class MetaOrigin(TypeId typeId, string name) : MetaData(typeId, name) { }
 
 /// <summary>

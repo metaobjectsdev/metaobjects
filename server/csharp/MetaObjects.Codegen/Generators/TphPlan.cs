@@ -52,6 +52,9 @@ public static class TphPlanBuilder
     /// </summary>
     public static TphPlan? For(MetaObject baseObj, MetaRoot root)
     {
+        // ADR-0039: OwnAttr is REQUIRED here — @discriminator marks the base that OWNS the
+        // single TPH table. A subtype inherits @discriminator via extends; reading it resolved
+        // would mis-treat every subtype as its own discriminator base. (Matches TS tphDiscriminator.)
         if (baseObj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not string discField || discField.Length == 0)
             return null;
         var subtypes = CollectConcreteSubtypes(baseObj, root);
@@ -74,6 +77,9 @@ public static class TphPlanBuilder
     /// </summary>
     public static bool IsTphSubtype(MetaObject obj, MetaRoot root)
     {
+        // ADR-0039: OwnAttr is REQUIRED — @discriminatorValue must be declared ON this entity to
+        // make it a concrete leaf. An abstract intermediate inherits its parent's value via extends;
+        // reading resolved would falsely count intermediates as concrete subtypes.
         if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string value || value.Length == 0)
             return false;
         return DiscriminatorRoot(obj) is { } discRoot && !ReferenceEquals(discRoot, obj);
@@ -123,6 +129,8 @@ public static class TphPlanBuilder
             if (!obj.IsEntity()) continue;
             if (obj.IsAbstract) continue;
             if (ReferenceEquals(obj, baseObj)) continue;
+            // ADR-0039: OwnAttr is REQUIRED — only entities that declare @discriminatorValue
+            // themselves are concrete subtypes; abstract intermediates (which inherit it) are excluded.
             if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string value || value.Length == 0) continue;
 
             // Walk the extends chain looking for baseObj.
@@ -144,6 +152,8 @@ public static class TphPlanBuilder
     private static MetaObject? DiscriminatorRoot(MetaObject obj)
     {
         MetaData? cursor = obj;
+        // ADR-0039: this IS the super-chain walk — OwnAttr at each level finds the nearest
+        // ancestor that itself DECLARES @discriminator (the sanctioned super-resolution pattern).
         while (cursor is not null)
         {
             if (cursor.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string v && v.Length > 0)
