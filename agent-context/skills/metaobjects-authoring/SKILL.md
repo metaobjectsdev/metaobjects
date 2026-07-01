@@ -429,15 +429,15 @@ does NOT enforce uniqueness. Choose the right construct by what the constraint I
 | Unique alternate key (e.g. email, slug) | `identity.secondary` — uniqueness is the type |
 | Query-performance index, no uniqueness | `index.lookup` |
 
-`@fields` names the indexed columns (required unless `@expr` is used). The db provider
-contributes the same physical-tuning attrs as `identity.secondary`: `@orders` (per-column
-sort direction), `@using` (access method — `gin`/`gist`/`hash`; default `btree`), `@expr`
-(functional index expression instead of `@fields`), and `@where` (partial-index predicate).
+`@fields` names the indexed columns and is **required** (at least one). The db provider
+contributes physical-tuning attrs: `@orders` (per-column sort direction), `@using` (access
+method — `gin`/`gist`/`hash`; default `btree`), `@expr` (key expression derived from
+`@fields`, e.g. for a functional index), and `@where` (partial-index predicate).
 
 ```json
 { "index.lookup": { "name": "byCreatedAt", "@fields": ["createdAt"], "@orders": ["desc"] } }
 { "index.lookup": { "name": "byStatusCreatedAt", "@fields": ["status", "createdAt"] } }
-{ "index.lookup": { "name": "byEmailCI", "@expr": "lower(email)" } }
+{ "index.lookup": { "name": "byEmailCI", "@fields": ["email"], "@expr": "lower(email)" } }
 ```
 
 `index.lookup` is a sibling of `identity.*` — declare it as a direct child of an `object.entity`,

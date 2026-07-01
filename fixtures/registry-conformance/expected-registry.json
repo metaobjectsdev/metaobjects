@@ -2694,8 +2694,8 @@
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": false,
-          "description": "The field name(s) composing this index. Single-element for a simple index, multiple for a composite. May be omitted when @expr (a functional/expression index) is provided instead."
+          "required": true,
+          "description": "The field name(s) this index covers (at least one). When @expr is present, it is the key expression derived from these fields."
         },
         {
           "name": "orders",

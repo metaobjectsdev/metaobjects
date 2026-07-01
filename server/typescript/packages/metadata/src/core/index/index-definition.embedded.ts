@@ -15,9 +15,9 @@ export const INDEX_DEFINITION: ProviderDefinition = {
           "subType": "string",
           "name": "fields",
           "isArray": true,
-          "min": 0,
+          "min": 1,
           "max": 1,
-          "description": "The field name(s) composing this index. Single-element for a simple index, multiple for a composite. May be omitted when @expr (a functional/expression index) is provided instead."
+          "description": "The field name(s) this index covers (at least one). When @expr is present, it is the key expression derived from these fields."
         }
       ]
     }

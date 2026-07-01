@@ -53,10 +53,10 @@ public class LookupIndex extends Index {
                    + "identity.secondary for unique constraints instead.")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // @fields: the core logical attr (optional — may be omitted when @expr is used).
-            // The db provider adds the physical attrs (@orders / @expr / @where / @using)
-            // via registry.extendType.
-            def.optionalAttributeWithConstraints(ATTR_FIELDS)
+            // @fields: required — at least one field. The db provider adds the physical
+            // attrs (@orders / @expr / @where / @using) via registry.extendType; when
+            // @expr is present it is the key expression derived from these fields.
+            def.requiredAttributeWithConstraints(ATTR_FIELDS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
 
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)

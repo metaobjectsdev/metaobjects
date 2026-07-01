@@ -484,7 +484,7 @@ for _idx_sub in INDEX_SUBTYPES:
             sub_type=_idx_sub,
             factory=MetaIndex,
             attrs=[
-                AttrSchema(name=INDEX_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+                AttrSchema(name=INDEX_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             ],
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
