@@ -25,7 +25,8 @@ public class OutputPromptGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var outputs = ctx.Root.OwnChildren()
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        var outputs = ctx.Root.Children()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
@@ -34,8 +35,9 @@ public class OutputPromptGenerator : IGenerator
         foreach (var tmpl in outputs)
         {
             if (!AppliesTo(tmpl, ctx.Root)) continue;
-            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-            var vo = ctx.Root.OwnChildren().First(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+            // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+            var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+            var vo = ctx.Root.Children().First(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
             files.Add(EmitPrompt(tmpl, vo, payloadRef, ctx));
         }
         return files;
@@ -50,13 +52,15 @@ public class OutputPromptGenerator : IGenerator
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {
         if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
-        var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
+        // ADR-0039: resolving — @format/@payloadRef may be inherited via an abstract template base.
+        var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
         var supported =
             format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
         if (!supported) return false;
-        if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        return root.OwnChildren().Any(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+        if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        return root.Children().Any(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
     }
 
     protected virtual EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)

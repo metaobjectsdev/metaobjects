@@ -51,7 +51,9 @@ public class OutputParserGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var outputs = ctx.Root.OwnChildren()
+        // ADR-0039: Children() — resolving root scan (a metadata root has no super, so this is
+        // behavior-identical, but follows the ADR rule to never rely on "root is never extended").
+        var outputs = ctx.Root.Children()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
@@ -61,12 +63,12 @@ public class OutputParserGenerator : IGenerator
         {
             if (!AppliesTo(tmpl))
             {
-                // Loader passes treat missing @payloadRef as a load error; defensively skip.
-                if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
+                // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+                if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
                     ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
-            var payloadRef = (string)tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF)!;
+            var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
             files.Add(EmitParser(tmpl, payloadRef, ctx));
         }
         return files;
@@ -80,7 +82,8 @@ public class OutputParserGenerator : IGenerator
     /// </summary>
     public static bool AppliesTo(MetaData tmpl) =>
         tmpl.Type == TYPE_TEMPLATE && tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT &&
-        tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is string;
+        // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+        tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string;
 
     protected virtual EmittedFile EmitParser(MetaData tmpl, string payloadRef, GenContext ctx)
     {
@@ -95,11 +98,13 @@ public class OutputParserGenerator : IGenerator
         // FR-010: emit the tolerant extract() API alongside strict Parse/TryParse when the
         // template targets json/xml AND the @payloadRef resolves to a value-object we can
         // bake a ExtractSchema from. Otherwise only the FR-006 strict parser is emitted.
-        var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
+        // ADR-0039: resolving — @format may be inherited via an abstract template base.
+        var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
         bool formatSupportsExtract =
             format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-        var vo = ctx.Root.OwnChildren().FirstOrDefault(c => c.Type == TYPE_OBJECT && CSharpNaming.StripPkg(c.Name) == payloadType);
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        var vo = ctx.Root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && CSharpNaming.StripPkg(c.Name) == payloadType);
         bool emitExtract = formatSupportsExtract && vo is not null;
 
         var sb = new StringBuilder();

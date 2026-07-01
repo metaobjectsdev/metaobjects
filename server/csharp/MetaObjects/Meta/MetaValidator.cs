@@ -11,6 +11,13 @@ namespace MetaObjects.Meta;
 /// </summary>
 public class MetaValidator(TypeId typeId, string name) : MetaData(typeId, name)
 {
+    // ADR-0039: the validator bound/pattern attrs below are read OwnAttr (own-only),
+    // matching the cross-port reference (TS MetaValidator reads ownAttr too). A
+    // validator.* is an authored leaf constraint node — it does not itself carry an
+    // extends chain, so its own layer IS its effective layer. (A field's *effective set*
+    // of validators, including those inherited via the field's extends, is resolved by
+    // MetaField.Validators() through Children() — the resolving accessor.)
+
     /// <summary>
     /// Numeric range minimum — shared by length, numeric, and array validators.
     /// </summary>

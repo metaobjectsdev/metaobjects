@@ -470,6 +470,8 @@ public class EntityGenerator : IGenerator
     protected static MetaObject TphBaseOf(MetaObject subtype)
     {
         MetaData? cursor = subtype.SuperData;
+        // ADR-0039: super-chain walk — OwnAttr at each level locates the nearest ancestor that
+        // itself DECLARES @discriminator (the TPH base). Sanctioned super-resolution pattern.
         while (cursor is not null)
         {
             if (cursor.OwnAttr(MetaObjects.Core.Object.ObjectConstants.OBJECT_ATTR_DISCRIMINATOR) is string v
@@ -837,7 +839,8 @@ public class EntityGenerator : IGenerator
         // format. The canonical matcher per format lives HERE (codegen), never author
         // validator.regex (cross-language regex engines diverge). The field stays a plain
         // string: email → [EmailAddress]; hostname → the canonical RFC-1123 [RegularExpression].
-        switch (field.OwnAttr(FIELD_ATTR_STRING_FORMAT) as string)
+        // ADR-0039: resolving — @stringFormat may be inherited via extends (TS reads field.attr).
+        switch (field.Attr(FIELD_ATTR_STRING_FORMAT) as string)
         {
             case STRING_FORMAT_EMAIL:
                 sb.AppendLine("    [EmailAddress]");

@@ -320,6 +320,9 @@ public static class ExtractObject
     private static IEnumerable<MetaObject> DescendantObjects(MetaData node)
     {
         if (node is MetaObject mo) yield return mo;
+        // ADR-0039: OwnChildren — a PHYSICAL tree walk to enumerate every declared object node
+        // exactly once. Resolving Children() would fold each node's super-inherited children into
+        // the traversal, double-visiting objects; this walk needs the declaration structure only.
         foreach (MetaData child in node.OwnChildren())
             foreach (MetaObject d in DescendantObjects(child))
                 yield return d;

@@ -8,6 +8,13 @@ namespace MetaObjects.Meta;
 /// Concrete node class for <c>layout.*</c> nodes (object-level UI surfaces).
 /// Extends <see cref="MetaData"/> directly: no model wrapper, no metaOf() indirection.
 /// </summary>
+/// <remarks>
+/// ADR-0039: the dataGrid attrs below are read <c>OwnAttr</c> (own-only), matching the
+/// cross-port reference (TS <c>MetaLayout</c> reads <c>ownAttr</c> too). A <c>layout.dataGrid</c>
+/// is an authored leaf presentation node that does not participate in field/object
+/// <c>extends</c> inheritance, so its own layer IS its effective layer; keeping the accessor
+/// own preserves byte-identical cross-port render/codegen output.
+/// </remarks>
 public class MetaLayout(TypeId typeId, string name) : MetaData(typeId, name)
 {
     /// <summary>The number of rows per page for the dataGrid layout.</summary>

@@ -46,7 +46,8 @@ public class ExtractorGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        var outputs = ctx.Root.OwnChildren()
+        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        var outputs = ctx.Root.Children()
             .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
             .OrderBy(t => t.Name, System.StringComparer.Ordinal)
             .ToList();
@@ -54,13 +55,15 @@ public class ExtractorGenerator : IGenerator
         var files = new List<EmittedFile>();
         foreach (var tmpl in outputs)
         {
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
+            if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
             {
                 ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
 
-            var format = tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
+            // ADR-0039: resolving — @format may be inherited via an abstract template base.
+            var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
             bool formatSupportsExtract =
                 format.Equals("json", System.StringComparison.OrdinalIgnoreCase) ||
                 format.Equals("xml", System.StringComparison.OrdinalIgnoreCase);
