@@ -38,8 +38,14 @@ public final class RegisteredValidation {
             TypeDefinition def = registry.getTypeDefinition(type, subType);
             if (def != null) {
                 for (ReferenceDescriptor desc : def.getReferences()) {
-                    if (!node.hasMetaAttr(desc.attr(), false)) continue;
-                    String raw = node.getMetaAttr(desc.attr(), false).getValueAsString();
+                    // ADR-0039: resolving — a reference attr (e.g. @objectRef on a
+                    // relationship, @references on identity.reference) may be inherited
+                    // via extends; read the EFFECTIVE value so an inherited reference is
+                    // still resolution-checked. Mirrors TS validation-registry.ts:66
+                    // (node.attr(desc.attr), resolving). Own-only would skip validating
+                    // an inherited reference, letting a dangling inherited ref slip through.
+                    if (!node.hasMetaAttr(desc.attr())) continue;
+                    String raw = node.getMetaAttr(desc.attr()).getValueAsString();
                     if (raw == null || raw.isEmpty()) continue; // absence is the required-attr pass's job
                     int dot = raw.indexOf('.');
                     String entityRef = (desc.dottedFieldPath() && dot >= 0) ? raw.substring(0, dot) : raw;
