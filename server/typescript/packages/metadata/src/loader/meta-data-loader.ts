@@ -17,7 +17,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
@@ -494,6 +494,11 @@ export class MetaDataLoader {
       // @symmetric is self-join-only + mutually exclusive with @sourceRefField; M:N attrs
       // are invalid on a 1:N relationship.
       errors.push(...validateRelationships(root));
+
+      // index.lookup @fields resolution — each index.lookup must name ≥1 field,
+      // and every field must exist in the entity's effective (resolved) field set
+      // (ADR-0039: resolving accessor, so inherited fields via extends are visible).
+      errors.push(...validateIndexLookupFields(root));
 
       // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
       // carries its reference descriptors + imperative validator, run as one recursive walk
