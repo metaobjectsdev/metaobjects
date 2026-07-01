@@ -112,6 +112,11 @@ jobs:
           # gen --list registry drift) ships green. `dotnet test` only compiles the
           # projects it actually runs, so this is what brings the CLI into the gate.
           dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet
+          # Cross-port api/csharp SDK-docs surface — execs `dotnet meta docs` end-to-end
+          # against the shared api-docs-cross-port manifest. MUST run AFTER the CLI build
+          # above: the test skips if the CLI dll is absent, so it only gates for real once
+          # the CLI exists. TS + Java + Python + Kotlin gate their own surfaces; this is C#.
+          dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ApiDocsCrossPort" --nologo --verbosity quiet
 
       - name: Java conformance
         if: matrix.language == 'java'
