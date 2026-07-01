@@ -46,13 +46,14 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
     # the desugar/sweep (e.g. ``acme::ParamVO``), which is the package-folded
     # resolution_key() (objects keep a bare fqn() per FR5d), so the index must
     # carry that key too. Mirrors the C# @parameterRef ResolutionKey() index.
-    # ADR-0039 sanctioned own: this is a declaration-layer validation pass —
-    # mirrors the TS validate-source-parameter-ref which reads ``ownChildren`` /
-    # ``ownAttr`` throughout (root scans, own source children, own @parameterRef,
-    # the value-object's own param fields, origin @from reads). Root is never
-    # extended; origin.* never inherits (ADR-0029).
+    # ADR-0039 (mirrors the TS validate-source-parameter-ref): resolving is the
+    # default. Root has no super, so children()==own_children() here, but the
+    # inheritable reads below RESOLVE — @parameterRef on the source, the parameter
+    # value-object's fields, and the referenced entity's field can all be inherited
+    # via extends. The SOURCE iteration stays own (a source is validated on the
+    # entity that declares it), as does origin.* (never inherits; ADR-0029).
     object_index: dict[str, MetaData] = {}
-    for obj in root.own_children():
+    for obj in root.children():
         if obj.type != TYPE_OBJECT:
             continue
         object_index[obj.name] = obj
@@ -64,7 +65,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
         object_index[fqn] = obj
         object_index[obj.resolution_key()] = obj
 
-    for obj in root.own_children():
+    for obj in root.children():
         if obj.type != TYPE_OBJECT:
             continue
         for source in obj.own_children():
@@ -72,7 +73,10 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
                 continue
             if not isinstance(source, MetaSource):
                 continue
-            ref = source.attr(SOURCE_ATTR_PARAMETER_REF)
+            # ADR-0039: resolving — a source may inherit @parameterRef via extends
+            # (mirrors the TS `source.attr`, which resolves —
+            # validate-source-parameter-ref.ts:76).
+            ref = source.get_meta_attr(SOURCE_ATTR_PARAMETER_REF)
             if not isinstance(ref, str) or ref == "":
                 continue
 
@@ -120,9 +124,14 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
 
             # ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH — each parameter field
             # with origin.passthrough must match the referenced field's subtype.
-            for param_field in target.own_children():
+            # ADR-0039: resolving — the parameter value-object's fields may be
+            # inherited via extends (mirrors the TS `target.children()` —
+            # validate-source-parameter-ref.ts:122).
+            for param_field in target.children():
                 if param_field.type != TYPE_FIELD:
                     continue
+                # ADR-0039 own: origin.* never inherits (ADR-0029); the origin child
+                # is read own (mirrors the TS `paramField.ownChildren()`).
                 passthrough = next(
                     (
                         c
@@ -145,10 +154,13 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
                 target_entity = object_index.get(target_entity_name)
                 if target_entity is None:
                     continue  # origin-paths pass surfaces this
+                # ADR-0039: resolving — the referenced entity's field may be
+                # inherited via extends (mirrors the TS `targetEntity.children()` —
+                # validate-source-parameter-ref.ts:139).
                 target_field = next(
                     (
                         c
-                        for c in target_entity.own_children()
+                        for c in target_entity.children()
                         if c.type == TYPE_FIELD and c.name == target_field_name
                     ),
                     None,

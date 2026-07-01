@@ -11,11 +11,13 @@ namespace MetaObjects.Validation;
 /// (resolve against the symbol table), invoke its validator, recurse. Mirrors TS/Java.
 /// </summary>
 /// <remarks>
-/// ADR-0039: this validation walk reads reference attrs via <c>OwnAttr</c> and descends via
-/// <c>OwnChildren()</c> by design — it validates each node's OWN-DECLARED reference attrs and
-/// visits each physically-declared node exactly once (a declaration-structure walk; resolving
-/// would re-validate inherited refs and double-visit). Matches the cross-port reference 1:1
-/// (TS <c>loader/validation-registry.ts</c> reads <c>ownAttr</c>/<c>ownChildren</c> at the same sites).
+/// ADR-0039: the walk DESCENDS via <c>OwnChildren()</c> — a declaration-structure walk that
+/// visits each physically-declared node exactly once (an inherited child is validated on its
+/// declaring parent; resolving would double-visit). But a visited node's reference attr
+/// (e.g. <c>@objectRef</c> / <c>@through</c>) may itself be INHERITED from an abstract base via
+/// <c>extends</c>, so the attr is read via the RESOLVING <c>Attr</c> accessor. Matches the
+/// cross-port reference 1:1 (TS <c>loader/validation-registry.ts:66</c> reads <c>node.attr(...)</c>
+/// while descending via <c>ownChildren()</c>).
 /// </remarks>
 public static class RegisteredValidation
 {
@@ -33,7 +35,9 @@ public static class RegisteredValidation
         {
             foreach (var desc in def.References)
             {
-                if (node.OwnAttr(desc.Attr) is not string raw || raw.Length == 0) continue;
+                // ADR-0039: resolving — a reference attr (e.g. @objectRef/@through) may be
+                // inherited via extends; read the effective value (TS validation-registry.ts:66).
+                if (node.Attr(desc.Attr) is not string raw || raw.Length == 0) continue;
                 int dot = raw.IndexOf('.');
                 var entityRef = (desc.DottedFieldPath && dot >= 0) ? raw[..dot] : raw;
                 var target = ctx.Symbols.ResolveObject(entityRef);

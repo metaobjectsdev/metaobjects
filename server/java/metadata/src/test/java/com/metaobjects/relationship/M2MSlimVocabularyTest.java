@@ -288,4 +288,54 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         loadThrough(DIRECTED, "directed-ok.json");
         loadThrough(SYMMETRIC, "symmetric-ok.json");
     }
+
+    // --- 4. ADR-0039 — junction inherits its identity.reference children via extends -----
+
+    /**
+     * Hetero M:N whose junction ({@code PostTag}) declares NO own
+     * {@code identity.reference} children — it inherits BOTH from an abstract base
+     * ({@code JunctionBase}) via {@code extends}. Under the pre-ADR-0039 own-only
+     * junction-reference iteration, the junction would show ZERO references and the
+     * M:N would be wrongly rejected ({@code ERR_INVALID_RELATIONSHIP}) at load and
+     * fail to derive its FK direction. The resolving fix (junction.getIdentities()
+     * effective, mirroring TS referenceIdentities()) sees the two inherited
+     * references, so the model loads cleanly AND derives the FK columns.
+     */
+    private static final String JUNCTION_REFS_INHERITED =
+        "{ \"metadata.root\": { \"package\": \"acme\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"JunctionBase\", \"@isAbstract\": true, \"children\": ["
+        + "    { \"identity.reference\": { \"name\": \"postRef\", \"@fields\": \"postId\", \"@references\": \"Post\" } },"
+        + "    { \"identity.reference\": { \"name\": \"tagRef\", \"@fields\": \"tagId\", \"@references\": \"Tag\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Post\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"relationship.association\": { \"name\": \"tags\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"Tag\", \"@through\": \"PostTag\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Tag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"PostTag\", \"extends\": \"JunctionBase\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"postId\" } },"
+        + "    { \"field.long\": { \"name\": \"tagId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } }"
+        + "] } }";
+
+    @Test
+    public void junctionWithInheritedReferencesLoadsCleanly() {
+        // ADR-0039: the M:N junction-reference view must RESOLVE — own-only would
+        // count 0 references on PostTag and reject the M:N at load.
+        loadThrough(JUNCTION_REFS_INHERITED, "junction-inherited-refs.json");
+    }
+
+    @Test
+    public void junctionWithInheritedReferencesDerivesFkDirection() {
+        // ADR-0039: M2MFields.derive + validation both read the junction's EFFECTIVE
+        // identity.reference view, so the FK columns are derived from the inherited refs.
+        MetaDataLoader loader = loadThrough(JUNCTION_REFS_INHERITED, "junction-inherited-refs.json");
+        M2MFields f = M2MFields.derive(rel(loader, "acme::Post", "tags"),
+            obj(loader, "acme::Post"), loader.getRoot());
+        assertEquals("postId", f.getSourceField());
+        assertEquals("tagId", f.getTargetField());
+    }
 }

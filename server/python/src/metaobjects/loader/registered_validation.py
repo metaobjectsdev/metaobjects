@@ -64,10 +64,11 @@ def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> Non
     type_def = registry.find(node.type, node.sub_type)
     if type_def is not None:
         for desc in type_def.references:
-            # ADR-0039 sanctioned own: declaration-layer validation — each node
-            # validates its OWN reference attr (mirrors the TS ``node.ownAttr``);
-            # an inherited reference is validated at its own declaration site.
-            raw = node.attr(desc.attr)
+            # ADR-0039: resolving — a reference attr (e.g. @objectRef/@through) may be
+            # inherited via extends; read the effective value (mirrors the TS
+            # ``node.attr``, which resolves — validation-registry.ts:66). The recursive
+            # walk below stays own (each node validated once at its declaration site).
+            raw = node.get_meta_attr(desc.attr)
             if not isinstance(raw, str) or raw == "":
                 continue  # absence is the required-attr pass's job
             entity_ref = raw.split(".", 1)[0] if desc.dotted_field_path else raw

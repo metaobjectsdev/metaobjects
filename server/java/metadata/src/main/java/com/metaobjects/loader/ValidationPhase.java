@@ -94,10 +94,15 @@ import java.util.Set;
  * attrs on every subtype would be redundant and could double-report. The rare reads
  * that must instead resolve an EFFECTIVE property to decide correctness — {@code
  * field.object @objectRef}/{@code @storage}, {@code field.map @valueType}/{@code
- * @objectRef}, and the primary-source lookup — are flipped to the resolving accessor
- * inline and marked "ADR-0039: resolving …" (mirrors the C# ValidationPasses fix).
- * Declaration-layer markers ({@code @isAbstract}, TPH {@code @discriminator}/{@code
- * @discriminatorValue}) and template.* attrs stay own by contract.</p>
+ * @objectRef}, the primary-source lookup, the M:N slim-vocabulary attrs
+ * ({@code @through}/{@code @sourceRefField}/{@code @objectRef}/{@code @cardinality}/
+ * {@code @symmetric}) and the junction's {@code identity.reference} view, the
+ * {@code layout.dataGrid} lookup + its {@code @defaultSortField}/{@code @filter}, and
+ * the {@code template.*} attrs ({@code @format}/{@code @promptStyle}/{@code @kind}/
+ * part-refs — templates CAN extend) — are flipped to the resolving accessor inline and
+ * marked "ADR-0039: resolving" (mirrors the TS reference and the C# ValidationPasses
+ * fix). Declaration-layer markers ({@code @isAbstract}, TPH {@code @discriminator}/
+ * {@code @discriminatorValue}) stay own by contract.</p>
  *
  * @since 6.1.0
  */
@@ -1173,10 +1178,15 @@ public final class ValidationPhase {
 
     private static void validateRelationshipM2MNode(MetaRoot root, MetaObject obj,
                                                     MetaRelationship rel) {
-        String through = rel.hasMetaAttr(MetaRelationship.ATTR_THROUGH, false)
-            ? rel.getMetaAttr(MetaRelationship.ATTR_THROUGH, false).getValueAsString() : null;
-        String sourceRefField = rel.hasMetaAttr(MetaRelationship.ATTR_SOURCE_REF_FIELD, false)
-            ? rel.getMetaAttr(MetaRelationship.ATTR_SOURCE_REF_FIELD, false).getValueAsString() : null;
+        // ADR-0039: resolving — a relationship may inherit its M:N slim-vocabulary
+        // attrs (@through/@sourceRefField/@objectRef/@cardinality/@symmetric) via
+        // extends. Mirrors TS validateRelationships (validation-passes.ts:1320-1324),
+        // which reads them all through the resolving rel.attr(...). The getThrough()/
+        // getSourceRefField()/isSymmetric()/getObjectRef()/getCardinality() getters
+        // use the no-arg (resolving) getMetaAttr, so an inherited M:N relationship is
+        // validated identically to a declared one.
+        String through = rel.getThrough();
+        String sourceRefField = rel.getSourceRefField();
         boolean symmetric = rel.isSymmetric();
         String objectRef = rel.getObjectRef();
         // getCardinality() defaults to "one" when absent — matches the TS isMany check.
@@ -1282,12 +1292,17 @@ public final class ValidationPhase {
         }
     }
 
-    /** Count an entity's own {@code identity.reference} children. */
+    /** Count a junction's {@code identity.reference} children.
+     *  ADR-0039: resolving — a junction may inherit an {@code identity.reference}
+     *  via extends, so the FK direction/count must be judged on the EFFECTIVE view.
+     *  Mirrors TS {@code _countJunctionReferences} → {@code referenceIdentities()}
+     *  (validation-passes.ts:1293-1309) and the M2MFields.derive resolving
+     *  {@code getIdentities()}. Own-only would drop an inherited reference and
+     *  falsely reject a well-formed junction. */
     private static int countJunctionReferences(MetaObject junction) {
         int n = 0;
-        for (MetaData child : junction.getChildren(MetaData.class, false)) {
-            if (MetaIdentity.TYPE_IDENTITY.equals(child.getType())
-                    && MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) {
+        for (MetaIdentity child : junction.getIdentities()) {
+            if (MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) {
                 n++;
             }
         }
@@ -1295,13 +1310,13 @@ public final class ValidationPhase {
     }
 
     /** The first {@code @fields} entry of each {@code identity.reference} child
-     *  (the physical FK column on the junction), in declaration order. */
+     *  (the physical FK column on the junction), in declaration order.
+     *  ADR-0039: resolving — see {@link #countJunctionReferences}. */
     private static List<String> junctionReferenceFkFields(MetaObject junction) {
         List<String> out = new java.util.ArrayList<>();
-        for (MetaData child : junction.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaIdentity)) continue;
+        for (MetaIdentity child : junction.getIdentities()) {
             if (!MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) continue;
-            List<String> fields = ((MetaIdentity) child).getFields();
+            List<String> fields = child.getFields();
             if (!fields.isEmpty()) out.add(fields.get(0));
         }
         return out;
@@ -1819,7 +1834,12 @@ public final class ValidationPhase {
         for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
             if (rootChild instanceof MetaObject) {
                 MetaObject obj = (MetaObject) rootChild;
-                for (MetaData c : obj.getChildren(MetaData.class, false)) {
+                // ADR-0039: resolving — an object may inherit a layout.dataGrid via
+                // extends. Mirrors TS validateDataGridSortFields/FilterValues, which
+                // find the layout on the EFFECTIVE child view (obj.children()) and
+                // read its @defaultSortField/@filter resolving. Own-only would skip
+                // validating an inherited grid entirely.
+                for (MetaData c : obj.getChildren(MetaData.class, true)) {
                     if (c instanceof DataGridLayout) {
                         validateDataGridLayout(obj, (DataGridLayout) c);
                     }
@@ -1844,8 +1864,10 @@ public final class ValidationPhase {
         }
 
         // @defaultSortField
-        if (grid.hasMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false)) {
-            Object v = grid.getMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD, false).getValue();
+        // ADR-0039: resolving — a grid may inherit @defaultSortField via extends
+        // (TS validateDataGridSortFields reads layout.attr(...) resolving).
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD)) {
+            Object v = grid.getMetaAttr(DataGridLayout.ATTR_DEFAULT_SORT_FIELD).getValue();
             String sortField = v == null ? null : v.toString();
             if (sortField != null && !sortField.isEmpty() && !fieldsByName.containsKey(sortField)) {
                 throw new MetaDataException(
@@ -1858,8 +1880,10 @@ public final class ValidationPhase {
         }
 
         // @filter
-        if (grid.hasMetaAttr(DataGridLayout.ATTR_FILTER, false)) {
-            Object raw = grid.getMetaAttr(DataGridLayout.ATTR_FILTER, false).getValue();
+        // ADR-0039: resolving — a grid may inherit @filter via extends
+        // (TS validateDataGridFilterValues reads layout.attr(...) resolving).
+        if (grid.hasMetaAttr(DataGridLayout.ATTR_FILTER)) {
+            Object raw = grid.getMetaAttr(DataGridLayout.ATTR_FILTER).getValue();
             if (raw instanceof java.util.Map) {
                 validateFilterClause(obj, grid, (java.util.Map<?, ?>) raw, fieldsByName, filterable);
             }
@@ -2066,8 +2090,10 @@ public final class ValidationPhase {
     // =========================================================================
     // Template validation (FR-004 — cross-language prompt construction)
     //
-    // Two rules, own-only, eager-throw — mirrors TS validateTemplates and
-    // C# TemplateValidator. Required-attr enforcement (formerly R1 for
+    // Eager-throw — mirrors TS validateTemplatePayloadRefs and C# TemplateValidator.
+    // ADR-0039: template attrs are read RESOLVING (templates CAN extend), matching
+    // the TS reference and the merged codegen template decision.
+    // Required-attr enforcement (formerly R1 for
     // template.prompt's @payloadRef and R1b for template.toolcall's @toolName +
     // @payloadRef) now lives in the generic validateRequiredAttrs pass above.
     //
@@ -2099,9 +2125,12 @@ public final class ValidationPhase {
         String payloadRef = template.getPayloadRef();
 
         // R4 — @format (if present) must be in the closed allowed set
-        // (text|html|xml|csv|json|markdown|spreadsheet). Own-only — absent is fine.
-        if (template.hasMetaAttr(TemplateConstants.ATTR_FORMAT, false)) {
-            String fmt = template.getMetaAttr(TemplateConstants.ATTR_FORMAT, false).getValueAsString();
+        // (text|html|xml|csv|json|markdown|spreadsheet).
+        // ADR-0039: resolving — a template may inherit @format via extends
+        // (templates CAN extend; consistent with the merged codegen template
+        // decision). TS handles @format via the resolving generic schema pass.
+        if (template.hasMetaAttr(TemplateConstants.ATTR_FORMAT)) {
+            String fmt = template.getMetaAttr(TemplateConstants.ATTR_FORMAT).getValueAsString();
             if (fmt != null && !TemplateConstants.ALLOWED_FORMATS.contains(fmt)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
@@ -2114,9 +2143,10 @@ public final class ValidationPhase {
         }
 
         // R5 — @promptStyle (template.output only, FR-010) must be in the closed
-        // set (guide|inline|exampleOnly). Own-only — absent is fine; default is "guide".
-        if (template.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false)) {
-            String style = template.getMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false)
+        // set (guide|inline|exampleOnly). Absent is fine; default is "guide".
+        // ADR-0039: resolving — a template may inherit @promptStyle via extends.
+        if (template.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE)) {
+            String style = template.getMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE)
                                    .getValueAsString();
             if (style != null && !TemplateConstants.ALLOWED_PROMPT_STYLES.contains(style)) {
                 throw new MetaDataException(
@@ -2135,10 +2165,13 @@ public final class ValidationPhase {
         // requires @textRef. template.prompt always requires @textRef (its
         // renderable body). Mirrors TS validateTemplatePayloadRefs.
         if (TemplateConstants.SUBTYPE_OUTPUT.equals(subType)) {
-            String kind = template.hasMetaAttr(TemplateConstants.ATTR_KIND, false)
-                ? template.getMetaAttr(TemplateConstants.ATTR_KIND, false).getValueAsString()
+            // ADR-0039: resolving — a template may inherit @kind and its part-refs
+            // (@subjectRef/@htmlBodyRef/@textRef) via extends. Mirrors TS
+            // validateTemplatePayloadRefs, which reads them via the resolving tmpl.attr(...).
+            String kind = template.hasMetaAttr(TemplateConstants.ATTR_KIND)
+                ? template.getMetaAttr(TemplateConstants.ATTR_KIND).getValueAsString()
                 : null;
-            // Closed-enum membership (own-only; absent → default "document").
+            // Closed-enum membership (absent → default "document").
             if (kind != null && !TemplateConstants.ALLOWED_KINDS.contains(kind)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
@@ -2149,14 +2182,14 @@ public final class ValidationPhase {
                     ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
             }
             if (TemplateConstants.KIND_EMAIL.equals(kind)) {
-                if (!template.hasMetaAttr(TemplateConstants.ATTR_SUBJECT_REF, false)) {
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_SUBJECT_REF)) {
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_INVALID_TEMPLATE
                             + ": template '" + template.getName()
                             + "' @kind 'email' requires @subjectRef",
                         ErrorCode.ERR_INVALID_TEMPLATE, template.getSource());
                 }
-                if (!template.hasMetaAttr(TemplateConstants.ATTR_HTML_BODY_REF, false)) {
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_HTML_BODY_REF)) {
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_INVALID_TEMPLATE
                             + ": template '" + template.getName()
@@ -2166,7 +2199,7 @@ public final class ValidationPhase {
             } else {
                 // @kind absent or "document" → require @textRef so a document is
                 // never bodyless. (An out-of-enum @kind already threw above.)
-                if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF, false)) {
+                if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF)) {
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_INVALID_TEMPLATE
                             + ": template '" + template.getName()
@@ -2176,7 +2209,8 @@ public final class ValidationPhase {
             }
         } else if (TemplateConstants.SUBTYPE_PROMPT.equals(subType)) {
             // template.prompt always carries a renderable body via @textRef.
-            if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF, false)) {
+            // ADR-0039: resolving — @textRef may be inherited via extends.
+            if (!template.hasMetaAttr(TemplateConstants.ATTR_TEXT_REF)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_TEMPLATE
                         + ": template '" + template.getName() + "' requires @textRef",
@@ -3138,9 +3172,14 @@ public final class ValidationPhase {
         for (MetaData rc : root.getChildren(MetaData.class, false)) {
             if (!(rc instanceof MetaObject)) continue;
             MetaObject obj = (MetaObject) rc;
+            // ADR-0039: own — declaration-layer source iteration (mirrors TS
+            // validateSourceParameterRef, which walks obj.ownChildren() sources).
             for (MetaSource source : obj.getSources(false)) {
                 if (!RdbSource.SUBTYPE_RDB.equals(source.getSubType())) continue;
-                String ref = ownAttrString(source, RdbSource.ATTR_PARAMETER_REF);
+                // ADR-0039: resolving — a source may inherit @parameterRef via extends
+                // (TS reads source.attr(...) resolving).
+                String ref = source.hasMetaAttr(RdbSource.ATTR_PARAMETER_REF)
+                    ? source.getMetaAttr(RdbSource.ATTR_PARAMETER_REF).getValueAsString() : null;
                 if (ref == null || ref.isEmpty()) continue;
 
                 // ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND — before resolution.
@@ -3174,8 +3213,12 @@ public final class ValidationPhase {
                 }
 
                 // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
-                for (MetaField paramField : ownFieldsRaw(target)) {
+                // ADR-0039: resolving — the parameter value-object's fields may be
+                // inherited via extends (TS reads target.children() resolving).
+                for (MetaField paramField : target.getChildren(MetaField.class, true)) {
                     MetaOrigin passthrough = null;
+                    // ADR-0039: own — origin.* never inherits (ADR-0029); the origin
+                    // child and its @from are read own (TS: paramField.ownChildren()).
                     for (MetaData c : paramField.getChildren(MetaData.class, false)) {
                         if (c instanceof MetaOrigin
                                 && PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(c.getSubType())) {
@@ -3193,7 +3236,9 @@ public final class ValidationPhase {
                     MetaObject targetEntity = index.get(targetEntityName);
                     if (targetEntity == null) continue;
                     MetaField targetField = null;
-                    for (MetaField f : ownFieldsRaw(targetEntity)) {
+                    // ADR-0039: resolving — the referenced entity's field may be
+                    // inherited via extends (TS reads targetEntity.children() resolving).
+                    for (MetaField f : targetEntity.getChildren(MetaField.class, true)) {
                         if (targetFieldName.equals(shortNameOf(f))) { targetField = f; break; }
                     }
                     if (targetField == null) continue;
