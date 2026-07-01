@@ -28,7 +28,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- FR-033: bundle the repo-root spec/metamodel/*.json (the 15 shared
+            <!-- FR-033: bundle the repo-root spec/metamodel/*.json (the 16 shared
                  provider-definition files; byte-identical cross-port by design) into
                  the metadata jar at spec/metamodel/, so the SpecMetamodelReader can
                  read them off the classpath at registration time (AOT-safe, ADR-0001

@@ -215,6 +215,14 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE";
 
+    /**
+     * Error code emitted when an {@code index.lookup}'s {@code @fields} is empty
+     * (at least one field is required) or names a field that does not exist on the
+     * owning entity's effective (resolved, via {@code extends:}) field set.
+     * Cross-language contract: {@code ERR_INVALID_INDEX}.
+     */
+    public static final String ERR_INVALID_INDEX = "ERR_INVALID_INDEX";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

@@ -37,6 +37,8 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.index.Index;
+import com.metaobjects.index.LookupIndex;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
@@ -202,6 +204,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
+        pass(collected, () -> validateIndexLookupFields(root));
         warnFilterableWithoutIndex(root, loader); // warnings only — never throws
 
         // The SAME defect can be flagged by more than one pass (e.g. a missing required attr
@@ -3252,6 +3255,78 @@ public final class ValidationPhase {
                                 + targetField.getSubType() + "; types must match",
                             ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH, paramField.getSource());
                     }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // index.lookup @fields resolution
+    //
+    // Every index.lookup on an entity must name at least one field (Rule 1), and
+    // every named field must exist in the entity's EFFECTIVE (resolved) field set
+    // — inherited fields via extends: count as valid (Rule 2).
+    //
+    // ADR-0039: uses resolving getChildren(MetaField.class, true) so that fields
+    // inherited via extends: are visible; mirrors the TS validateIndexLookupFields
+    // (uses obj.children() = resolving). Own-only walk on object children so each
+    // index.lookup is validated exactly once at its declaration site.
+    //
+    // Code: ERR_INVALID_INDEX.
+    // =========================================================================
+
+    static void validateIndexLookupFields(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            walkIndexLookupFields(rootChild);
+        }
+    }
+
+    private static void walkIndexLookupFields(MetaData node) {
+        if (node instanceof MetaObject) {
+            validateObjectIndexLookupFields((MetaObject) node);
+        }
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkIndexLookupFields(child);
+        }
+    }
+
+    private static void validateObjectIndexLookupFields(MetaObject obj) {
+        // Build the effective (resolved) field name set — includes inherited fields.
+        // ADR-0039: resolving — getChildren(MetaField.class, true).
+        java.util.Set<String> effectiveFieldNames = new java.util.HashSet<>();
+        for (com.metaobjects.field.MetaField f : obj.getChildren(com.metaobjects.field.MetaField.class, true)) {
+            if (f.getName() != null) effectiveFieldNames.add(f.getName());
+        }
+
+        // Validate each own index.lookup child.
+        for (MetaData child : obj.getChildren(MetaData.class, false)) {
+            if (!(child instanceof LookupIndex)) continue;
+            LookupIndex idx = (LookupIndex) child;
+            java.util.List<String> fields = idx.getFields();
+
+            // Rule 1: at least one field required.
+            if (fields.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_INDEX
+                        + ": index.lookup \"" + idx.getName()
+                        + "\" on \"" + obj.getName()
+                        + "\" has no @" + Index.ATTR_FIELDS
+                        + "; at least one field is required",
+                    ErrorCode.ERR_INVALID_INDEX, idx.getSource());
+            }
+
+            // Rule 2: every named field must resolve.
+            for (String fieldName : fields) {
+                if (!effectiveFieldNames.contains(fieldName)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_INDEX
+                            + ": index.lookup \"" + idx.getName()
+                            + "\" on \"" + obj.getName()
+                            + "\" references field \"" + fieldName
+                            + "\" which does not exist on \"" + obj.getName()
+                            + "\". Available fields: "
+                            + (effectiveFieldNames.isEmpty() ? "(none)" : String.join(", ", effectiveFieldNames)),
+                        ErrorCode.ERR_INVALID_INDEX, idx.getSource());
                 }
             }
         }

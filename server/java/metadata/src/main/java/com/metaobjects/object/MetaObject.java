@@ -146,6 +146,10 @@ public abstract class MetaObject extends MetaData {
             // OBJECTS CAN CONTAIN SOURCES (source.rdb and future subtypes)
             def.optionalChild("source", "*", "*");
 
+            // OBJECTS CAN CONTAIN INDEXES (index.lookup for query-performance; index.unique
+            // is intentionally absent — use identity.secondary for unique constraints).
+            def.optionalChild(com.metaobjects.index.Index.TYPE_INDEX, "*", "*");
+
             // OBJECTS CAN CONTAIN TEMPLATES (template.prompt/output/toolcall) — FR-004 AI-trace
             // (a nested template.prompt under object.entity drives typed LLM-call trace derivation).
             def.optionalChild("template", "*", "*");
