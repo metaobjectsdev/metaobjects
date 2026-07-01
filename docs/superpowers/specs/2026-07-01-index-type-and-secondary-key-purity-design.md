@@ -39,8 +39,10 @@ not a boolean attr.
 
 - `identity.secondary` = a **unique** alternate key (a uniqueness constraint that
   identifies a row by a non-primary field set). The `*_unique` adopter cases.
-- **The `@unique` attr is removed.** Uniqueness is the type's meaning; a boolean toggle
-  that only ever reads `true` on a *key* is redundant. (Breaking; migration below.)
+- **The `@unique` attr is removed outright — no backwards compatibility, no deprecation
+  window.** Uniqueness is the type's meaning; a boolean toggle that only ever reads
+  `true` on a *key* is redundant. A legacy `@unique` on `identity.secondary` becomes
+  `ERR_UNKNOWN_ATTR` (strict provenance). The migration script does the one-time rewrite.
 
 ### 2. New `index.*` type — a non-unique retrieval structure
 
@@ -152,12 +154,28 @@ TS reference establishes the golden, then fan out to C# / Java / Kotlin / Python
   explicitly-named complement, and the existing `[filterable-without-index]` drift check
   continues to bridge query-exposure → physical index.
 
-## Open questions for spec review
+## Resolved decisions (spec review, 2026-07-01)
 
-1. **Node name** — `index.lookup` vs `index.plain` vs `index.standard` for the shipping
-   subtype (leaning `lookup` — semantic, reads as "a lookup index").
-2. **`@unique` removal vs deprecation** — this design *removes* it (pre-1.0, clean,
-   with migration). Confirm we want the breaking removal now rather than a deprecation
-   window.
-3. **`@orders` shape** — keep as-is on the escape set, or defer (also rare in adopter
-   data)?
+1. **Shipping subtype name = `index.lookup`.** (Reserved: `index.fulltext` / `index.vector`
+   / `index.spatial` — documented, not registered.)
+2. **`@unique` is REMOVED — no backwards compatibility, no deprecation window.** The attr
+   is deleted from `identity.secondary`'s registered set outright; a legacy `@unique`
+   becomes `ERR_UNKNOWN_ATTR`. The migration script (this repo's fixtures + a provided
+   adopter script) does the one-time rewrite. Pre-1.0 is the moment for the clean break.
+3. **`@orders` is KEPT** (not deferred) — it is genuinely used in adopter metadata (DESC
+   recency indexes), unlike `@expr`/`@using`/`@where`. It stays an RDB-physical escape on
+   both `index.lookup` and `identity.secondary` (a unique key may also want a DESC key).
+
+## Docs to update (part of the deliverable)
+
+- **New ADR** — record the `index.*` type + `identity.secondary` key-purity + the
+  `@unique` removal as a cross-cutting metamodel decision (Nygard format, `spec/decisions/`).
+- **Canonical metamodel spec** — `spec/metamodel/*` (wherever `identity.secondary`'s
+  `@unique`/`@orders`/`@using`/`@expr`/`@where` are described): drop `@unique`, add the
+  `index.*` type + `index.lookup`, note the reserved subtypes.
+- **Metamodel-docs fixtures** — `fixtures/metamodel-docs/expected/types/identity.md`
+  (drop `@unique`) + a new `index.md`; refresh `INDEX.md`/`providers.md`.
+- **CLAUDE.md** — the "Metamodel subtype vocabularies" section (identity subtypes; add
+  `index.lookup`; note uniqueness-in-the-type).
+- **Agent-context skills** — `metaobjects-authoring` (how to declare a non-unique index
+  vs a unique key), regenerate the agent-context conformance fixtures.
