@@ -53,17 +53,22 @@ def _strip_package(name: str) -> str:
 
 
 def _reference_children(junction: MetaData) -> list[MetaData]:
-    """The junction's own identity.reference children (declaration order)."""
+    """The junction's identity.reference children (declaration order).
+
+    ADR-0039 — RESOLVING (``children()``): mirrors the TS
+    ``junction.referenceIdentities()`` (built over the effective ``identities()``),
+    so a junction inheriting an ``identity.reference`` via ``extends`` is honored.
+    """
     return [
         c
-        for c in junction.own_children()
+        for c in junction.children()
         if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE
     ]
 
 
 def _ref_fk_field(ref: MetaData) -> str | None:
     """First @fields entry of a reference (the physical FK column on the junction)."""
-    fields = ref.attr(IDENTITY_ATTR_FIELDS)
+    fields = ref.get_meta_attr(IDENTITY_ATTR_FIELDS)  # ADR-0039: resolving (identity attr)
     if isinstance(fields, (list, tuple)) and fields:
         first = fields[0]
         return first if isinstance(first, str) else None
@@ -74,7 +79,7 @@ def _ref_fk_field(ref: MetaData) -> str | None:
 
 def _ref_target_entity(ref: MetaData) -> str | None:
     """The @references target-entity name of a reference (bare, package-stripped)."""
-    v = ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+    v = ref.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)  # ADR-0039: resolving (identity attr)
     return _strip_package(v) if isinstance(v, str) and v else None
 
 

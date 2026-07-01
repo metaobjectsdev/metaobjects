@@ -25,6 +25,8 @@ class SymbolTable:
     @classmethod
     def build(cls, root: MetaData) -> "SymbolTable":
         t = cls()
+        # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never
+        # extended, own == effective) — mirrors the TS validation-registry.
         for child in root.own_children():
             if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
                 if child.name:
@@ -62,6 +64,9 @@ def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> Non
     type_def = registry.find(node.type, node.sub_type)
     if type_def is not None:
         for desc in type_def.references:
+            # ADR-0039 sanctioned own: declaration-layer validation — each node
+            # validates its OWN reference attr (mirrors the TS ``node.ownAttr``);
+            # an inherited reference is validated at its own declaration site.
             raw = node.attr(desc.attr)
             if not isinstance(raw, str) or raw == "":
                 continue  # absence is the required-attr pass's job
@@ -91,5 +96,8 @@ def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> Non
                 )
         if type_def.validate is not None:
             type_def.validate(node, ctx)
+    # ADR-0039 sanctioned own: the recursive validation walk visits each DECLARED
+    # node once at its declaration site (own children); inherited nodes are
+    # validated where they are declared. Mirrors the TS ``node.ownChildren()`` walk.
     for child in node.own_children():
         _walk(child, registry, ctx)

@@ -103,7 +103,9 @@ def collect_shared_enums(entities: list) -> list[SharedEnum]:
     not materialized (no dangling type)."""
     out: dict[str, SharedEnum] = {}
     for entity in entities:
-        for f in entity.own_fields():
+        # ADR-0039 — RESOLVING (fields()): mirrors the TS collectSharedEnums
+        # (``entity.fields()``); an inherited field consuming a shared enum counts.
+        for f in entity.fields():
             shared = shared_enum_for_field(f)
             if shared is None:
                 continue

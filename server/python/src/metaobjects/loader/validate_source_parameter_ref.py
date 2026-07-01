@@ -46,6 +46,11 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
     # the desugar/sweep (e.g. ``acme::ParamVO``), which is the package-folded
     # resolution_key() (objects keep a bare fqn() per FR5d), so the index must
     # carry that key too. Mirrors the C# @parameterRef ResolutionKey() index.
+    # ADR-0039 sanctioned own: this is a declaration-layer validation pass —
+    # mirrors the TS validate-source-parameter-ref which reads ``ownChildren`` /
+    # ``ownAttr`` throughout (root scans, own source children, own @parameterRef,
+    # the value-object's own param fields, origin @from reads). Root is never
+    # extended; origin.* never inherits (ADR-0029).
     object_index: dict[str, MetaData] = {}
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT:
@@ -129,7 +134,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
                 )
                 if passthrough is None:
                     continue
-                frm = passthrough.attr(ORIGIN_ATTR_FROM)
+                frm = passthrough.attr(ORIGIN_ATTR_FROM)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
                 if not isinstance(frm, str) or frm == "":
                     continue
                 dot = frm.find(".")

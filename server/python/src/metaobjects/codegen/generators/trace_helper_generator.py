@@ -92,7 +92,11 @@ def _extends_base(entity: MetaObject) -> bool:
 def _first_prompt(entity: MetaObject) -> MetaTemplate | None:
     """First OWN ``template.prompt`` child of *entity*, or ``None``. Own-only —
     the trace prompt is declared inline on the concrete trace entity (Slice 1/3
-    derive the typed columns from it)."""
+    derive the typed columns from it).
+
+    ADR-0039 sanctioned own: byte-for-byte parity with the TS trace-helper
+    (``entity.ownChildren().find(... template.prompt ...)``); the trace prompt is a
+    per-entity inline declaration, not an inherited member."""
     for child in entity.own_children():
         if (
             isinstance(child, MetaTemplate)
@@ -146,7 +150,7 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
 
     # Derive the parse format from the prompt's @format attr (default json) — the
     # SAME rule the output-parser / extractor generators use.
-    fmt = prompt.attr(tc.TEMPLATE_ATTR_FORMAT)
+    fmt = prompt.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
     fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
 
     fqn = entity.fqn()
@@ -305,6 +309,8 @@ class TraceHelperGenerator:
             return []
         files: list[EmittedFile] = []
         # Stable name order — deterministic emission (matches the other generators).
+        # ADR-0039 sanctioned own: top-level entity scan on the loader ROOT
+        # (metadata.root is never extended, so own == effective).
         entities = sorted(
             (
                 c

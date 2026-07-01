@@ -64,8 +64,12 @@ def _effective_fqn(entity: MetaObject) -> str:
 
 
 def _primary_source_rdb(entity: MetaObject) -> MetaSource | None:
-    """Return the entity's ``source.rdb`` child (own only), or ``None``."""
-    for c in entity.own_children():
+    """Return the entity's ``source.rdb`` child, or ``None``.
+
+    ADR-0039 — RESOLVING (children()): an entity may inherit its source.rdb via
+    ``extends`` (BaseEntity); own_children() would miss it. Mirrors TS dbTable.
+    """
+    for c in entity.children():
         if c.type == TYPE_SOURCE and isinstance(c, MetaSource):
             return c
     return None
@@ -194,6 +198,10 @@ class FilterAllowlistGenerator:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
                 for st in plan.subtypes:
+                    # ADR-0039 sanctioned own: TPH subtype delta — the base's
+                    # effective fields are added above via entity.fields(); each
+                    # subtype contributes ONLY its own additional fields (inherited
+                    # base fields must not be re-added).
                     for f in st.entity.own_fields():
                         add(f)
         return out

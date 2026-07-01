@@ -16,7 +16,7 @@ from metaobjects.meta.template import template_constants as tc
 
 
 def _format_enum(template: MetaData) -> str:
-    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)
+    fmt = template.attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039 sanctioned own: template attr (cross-port own)
     return (
         "Format.XML"
         if isinstance(fmt, str) and fmt.lower() == "xml"
@@ -25,7 +25,7 @@ def _format_enum(template: MetaData) -> str:
 
 
 def _prompt_style_enum(template: MetaData) -> str:
-    style = template.attr(tc.TEMPLATE_ATTR_PROMPT_STYLE)
+    style = template.attr(tc.TEMPLATE_ATTR_PROMPT_STYLE)  # ADR-0039 sanctioned own: template attr (cross-port own)
     if style == tc.PROMPT_STYLE_INLINE:
         return "PromptStyle.INLINE"
     if style == tc.PROMPT_STYLE_EXAMPLE_ONLY:

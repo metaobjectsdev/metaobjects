@@ -36,7 +36,12 @@ from metaobjects.shared.separators import PACKAGE_SEP
 
 
 def _find_object(root: MetaData, name: str) -> MetaData | None:
-    """The own-child ``object.*`` node named *name*, or ``None``."""
+    """The top-level ``object.*`` node named *name*, or ``None``.
+
+    ADR-0039 sanctioned own: top-level object lookup on the loader ROOT
+    (metadata.root is never extended, so own == effective) — mirrors the TS
+    reference (``root.ownChildren()``).
+    """
     for c in root.own_children():
         if c.type == TYPE_OBJECT and c.name == name:
             return c

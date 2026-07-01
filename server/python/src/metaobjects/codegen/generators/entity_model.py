@@ -72,6 +72,10 @@ def _validators(field: MetaField, sub_type: str) -> list[MetaField]:
 def _first_attr(field: MetaField, sub_type: str, attr_name: str) -> object | None:
     """First int-valued *attr_name* across the field's ``validator.<sub_type>`` children."""
     for v in _validators(field, sub_type):
+        # ADR-0039 sanctioned own: a validator's @min/@max are its own declared
+        # bounds (never inherited across a validator extends chain) — matches the TS
+        # MetaValidator.min/.max ownAttr reads. The validator nodes are located via
+        # the resolving field.children() in _validators().
         val = v.attr(attr_name)
         if _is_int(val):
             return val
@@ -118,6 +122,9 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
 
     # Regex: validator.regex @pattern -> pattern.
     for v in _validators(field, vc.VALIDATOR_SUBTYPE_REGEX):
+        # ADR-0039 sanctioned own: a validator's @pattern is its own declared value
+        # (matches the TS MetaValidator.pattern ownAttr read); the validator node is
+        # located via the resolving field.children() in _validators().
         pattern = v.attr(vc.VALIDATOR_ATTR_PATTERN)
         if isinstance(pattern, str):
             kwargs["pattern"] = pattern
@@ -268,6 +275,9 @@ class EntityModelGenerator:
         cfg = config if config is not None else GenConfig(out_dir="")
         uses_field = False
         lines: list[str] = []
+        # ADR-0039 SANCTIONED OWN — codegen subclass-emit: the generated model
+        # `extends` its generated base, so only OWN fields are emitted here (the base
+        # class already declares inherited ones). Pinned by test_entity_model.py.
         for f in entity.own_fields():
             line, used = _field_line(f, imports, cfg)
             uses_field = uses_field or used

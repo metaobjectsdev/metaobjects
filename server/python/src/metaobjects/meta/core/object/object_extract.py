@@ -49,7 +49,6 @@ from metaobjects.render.extract import (
     ExtractionResult,
     extract,
 )
-from metaobjects.shared.structural import KEY_IS_ARRAY
 
 from .meta_object import MetaObject
 
@@ -153,8 +152,8 @@ def _field_spec_for(
     if field.sub_type == fc.FIELD_SUBTYPE_ENUM:
         values = _enum_values(field)
         aliases = _enum_aliases(field)
-        cd = _own_attr_string(field, fc.FIELD_ATTR_COERCE_DEFAULT)
-        dv = _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
+        cd = _resolved_attr_string(field, fc.FIELD_ATTR_COERCE_DEFAULT)
+        dv = _resolved_attr_string(field, fc.FIELD_ATTR_DEFAULT)
         normalize = _resolve_normalize(field, owner)
         if array:
             return FieldSpec.enum_array(name, required, values, aliases, cd, normalize, dv)
@@ -187,7 +186,7 @@ def _field_spec_for(
         num_max = _numeric_bound(field, vc.VALIDATOR_ATTR_MAX)
         if num_min is not None or num_max is not None:
             return FieldSpec.range_(name, kind, required, num_min, num_max)
-    dv = _own_attr_string(field, fc.FIELD_ATTR_DEFAULT)
+    dv = _resolved_attr_string(field, fc.FIELD_ATTR_DEFAULT)
     return FieldSpec.scalar(name, kind, required, dv)
 
 
@@ -196,6 +195,10 @@ def _numeric_bound(field: MetaField, attr_name: str) -> float | None:
     canonical range source — or ``None`` if there is no such validator/bound."""
     for c in field.children():
         if c.type == TYPE_VALIDATOR and c.sub_type == vc.VALIDATOR_SUBTYPE_NUMERIC:
+            # ADR-0039 sanctioned own: a validator's @min/@max are its own declared
+            # bounds (never inherited across a validator extends chain) — matches the
+            # TS MetaValidator.min/.max ownAttr reads. The validator node itself is
+            # located via the resolving field.children() above.
             val = c.attr(attr_name)
             if isinstance(val, (int, float)) and not isinstance(val, bool):
                 return float(val)
@@ -308,14 +311,18 @@ def _scalar_kind(sub_type: str) -> FieldKind:
 
 
 def _is_array(field: MetaField) -> bool:
-    """Array-ness from either form: the node property (programmatic build) or the
-    ``@isArray`` attr (how metadata loads from JSON). Mirrors ``fr010_field_mapping``."""
-    return bool(field.is_array) or field.attr(KEY_IS_ARRAY) is True
+    """Effective array-ness (ADR-0039 RESOLVING): the native ``is_array`` flag or the
+    ``@isArray`` attr, resolved through the ``extends`` chain so a concrete field
+    inheriting array-ness from an abstract parent is honored. Mirrors the TS
+    ``field.resolvedIsArray()``."""
+    return field.resolved_is_array()
 
 
 def _is_required(field: MetaField) -> bool:
-    """True iff ``@required`` is explicitly the bool ``True`` or the string ``"true"``."""
-    v = field.attr(fc.FIELD_ATTR_REQUIRED)
+    """True iff ``@required`` is explicitly the bool ``True`` or the string ``"true"``.
+
+    ADR-0039 RESOLVING — @required may be inherited via extends (matches TS)."""
+    v = field.get_meta_attr(fc.FIELD_ATTR_REQUIRED)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"
@@ -324,24 +331,29 @@ def _is_required(field: MetaField) -> bool:
 def _text_content(field: MetaField) -> bool:
     """True iff ``@xmlText`` is explicitly the bool ``True`` or the string ``"true"`` —
     the XML text-content extract marker (the field receives its element's text body).
-    Mirrors ``_is_required`` and the TS ``xmlText(field)`` own-attr check."""
-    v = field.attr(TEMPLATE_ATTR_XML_TEXT)
+
+    ADR-0039 RESOLVING — @xmlText may be inherited via extends (matches TS)."""
+    v = field.get_meta_attr(TEMPLATE_ATTR_XML_TEXT)
     if v is True:
         return True
     return isinstance(v, str) and v.lower() == "true"
 
 
 def _enum_values(field: MetaField) -> list[str]:
-    """The string members of an enum field's ``@values`` attr (empty when absent)."""
-    v = field.attr(fc.FIELD_ATTR_VALUES)
+    """The string members of an enum field's ``@values`` attr (empty when absent).
+
+    ADR-0039 RESOLVING — @values may be inherited via extends (matches TS)."""
+    v = field.get_meta_attr(fc.FIELD_ATTR_VALUES)
     if isinstance(v, (list, tuple)):
         return [str(x) for x in v]
     return []
 
 
 def _enum_aliases(field: MetaField) -> dict[str, str]:
-    """The ``@enumAlias`` map of an enum field, or ``{}`` when absent/empty."""
-    raw = field.attr(fc.FIELD_ATTR_ENUM_ALIAS)
+    """The ``@enumAlias`` map of an enum field, or ``{}`` when absent/empty.
+
+    ADR-0039 RESOLVING — @enumAlias may be inherited via extends (matches TS)."""
+    raw = field.get_meta_attr(fc.FIELD_ATTR_ENUM_ALIAS)
     if not isinstance(raw, dict):
         return {}
     return {str(k): str(v) for k, v in raw.items() if v is not None}
@@ -351,20 +363,22 @@ def _resolve_normalize(field: MetaField, owner: MetaObject | None) -> str:
     """Resolve the enum normalization mode: field-level ``@normalize``, else the
     owning object's ``@normalize``, else the global default (``"strip"``). Mirrors the
     cross-port ``resolveNormalize``."""
-    field_mode = _own_attr_string(field, fc.FIELD_ATTR_NORMALIZE)
+    field_mode = _resolved_attr_string(field, fc.FIELD_ATTR_NORMALIZE)
     if field_mode is not None:
         return field_mode
     if owner is not None:
-        owner_mode = _own_attr_string(owner, fc.FIELD_ATTR_NORMALIZE)
+        owner_mode = _resolved_attr_string(owner, fc.FIELD_ATTR_NORMALIZE)
         if owner_mode is not None:
             return owner_mode
     return fc.NORMALIZE_DEFAULT
 
 
-def _own_attr_string(node: MetaData, attr: str) -> str | None:
-    """The own (non-inherited) string value of an attr on a node, or ``None`` when
-    absent/empty."""
-    v = node.attr(attr)
+def _resolved_attr_string(node: MetaData, attr: str) -> str | None:
+    """The resolving string value of an attr on a node, or ``None`` when absent/empty.
+
+    ADR-0039 RESOLVING — extract config attrs (@default/@coerceDefault/@normalize)
+    may be inherited via extends; mirrors the TS ``_attr_string`` resolving helper."""
+    v = node.get_meta_attr(attr)
     if isinstance(v, str):
         return v if v else None
     return None if v is None else str(v)
