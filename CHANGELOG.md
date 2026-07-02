@@ -9,6 +9,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.15.2] — 2026-07-02
 
+_npm `0.15.2` · NuGet `0.15.2` · Maven Central `7.7.2` · PyPI `0.15.3` (Python was a patch ahead). A coordinated bug-fix + hardening patch._
+
+### Fixed
+- **codegen-ts — `isArray` field with a `@default` emitted invalid Drizzle** (`.array().default("<string>")` → `tsc` TS2345). A regression from the `0.15.0` `@dbColumnType` slim (arrays became native `text[]`); the default-emitter now parses the string default into a JS array literal (`.default([])` / `.default(["a","b"])`, `sql\`...\`` fallback), so array-default output typechecks. Adds a real-`tsc` compile-guard fixture. (#146)
+- **Filter `in`-list size cap unified cross-port.** Java/Python/C# generated filter parsers + the Kotlin controller now enforce the same 100-element cap TS had — a `>100`-element `in` list is rejected with HTTP 400 (`filter.in_too_large`) so it can't be forced against the DB. Gated by a new shared api-contract conformance scenario. (#150, #32)
+- **Java — `ERR_PROVIDER_ATTR_CONFLICT` is now actually thrown** with that code on a colliding attr child requirement (previously a bare `IllegalArgumentException`). (#148)
+
+### Added
+- **Provider-composition conformance harness** — five registry/provider error codes (`ERR_PROVIDER_DUPLICATE_ID` / `_MISSING_DEPENDENCY` / `_DEPENDENCY_CYCLE` / `_ATTR_CONFLICT`, `ERR_REGISTRY_SEALED`) are now gated cross-port (all 5 ports) via a shared named-provider manifest corpus. (#148, #33)
+
+### Performance
+- **Java read-path cache** wired into the resolving accessors (`getChildren`/`getMetaAttrs`/`isArrayType`), frozen-only + behavior-neutral — matching the existing TS/Python/C# caches — plus a 100k-object throughput benchmark gate. (#149, FR-031)
+
+### Docs
+- **Cross-language version-drift guidance.** Because the package-version lines differ by ecosystem (npm/PyPI/NuGet `0.x` vs Maven `7.x`), a stale port is invisible in the numbers; the `metaobjects-audit` skill now enumerates every port and compares the shared `metamodelVersion`, and the always-on prompt tells agents to keep all ports on the same Metamodel version. (#147)
+- Documented the TS-only filter extensions (`search` / `filter[or]|[and]` / leading-wildcard / nesting) as not part of the cross-port contract. (#32)
+
+
+## [0.15.2] — 2026-07-02
+
 _PyPI `0.15.2` — Python-only patch (npm/NuGet stay `0.15.1`, Maven Central stays `7.7.1`)._
 
 ### Fixed
