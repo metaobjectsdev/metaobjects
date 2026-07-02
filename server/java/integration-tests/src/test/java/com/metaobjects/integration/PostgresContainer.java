@@ -4,38 +4,82 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.UUID;
 
 /**
- * Start a fresh Postgres container per scenario by shelling out to the
- * {@code docker} CLI directly.
+ * Obtain a fresh, isolated Postgres database per scenario.
  *
- * Implementation note: testcontainers-java 1.21.x bundles docker-java 3.4.x
- * which hardcodes a client API version (1.32-class) below the minimum
- * supported by recent Docker daemons (Docker Engine 29+ requires API 1.44+).
- * That mismatch surfaces as a BadRequestException during the Testcontainers
- * discovery phase, with no extraction path short of waiting for an upstream
- * docker-java upgrade. The hand-managed CLI path here is small, fast (~3s
- * incl. pg_isready), and avoids the version-negotiation issue entirely.
- * Mirrors the TS port's {@code postgres-container.ts} workaround for the
- * parallel bun/testcontainers-node compat issue.
+ * <p>Two modes, mirroring the TS/Kotlin/Python/C# suites:
+ * <ol>
+ *   <li><b>Shared sidecar (CI)</b>: if {@code METAOBJECTS_TEST_PG_URL} is set,
+ *       connect to that already-running Postgres and {@code CREATE DATABASE} a
+ *       uniquely-named database per instance (dropping it on close). No
+ *       container boot / image pull on the hot path — the point of the shared
+ *       {@code services: postgres} CI sidecar. Each scenario still gets a
+ *       pristine empty database, so isolation is identical to the per-container
+ *       path.</li>
+ *   <li><b>Per-container (local dev)</b>: with no env var, boot a fresh
+ *       container via the {@code docker} CLI, exactly as before.</li>
+ * </ol>
+ *
+ * <p>Implementation note (mode 2): testcontainers-java 1.21.x bundles
+ * docker-java 3.4.x which hardcodes a client API version (1.32-class) below the
+ * minimum supported by recent Docker daemons (Docker Engine 29+ requires API
+ * 1.44+). That mismatch surfaces as a BadRequestException during the
+ * Testcontainers discovery phase, with no extraction path short of waiting for
+ * an upstream docker-java upgrade. The hand-managed CLI path here is small, fast
+ * (~3s incl. pg_isready), and avoids the version-negotiation issue entirely.
+ * Mirrors the TS port's {@code postgres-container.ts}. The shared sidecar mode
+ * sidesteps this entirely; the fallback keeps the docker path.
  */
 public final class PostgresContainer implements AutoCloseable {
+    /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
+    private static final String SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
+
     private static final String IMAGE = "postgres:16-alpine";
     private static final String PG_USER = "postgres";
     private static final String PG_PASSWORD = "test";
 
-    private final String name;
-    private final int port;
+    private final boolean shared;
+    private final String name;       // null in shared mode
+    private final String adminUrl;   // JDBC admin URL, null in per-container mode
+    private final String createdDb;  // created database name, null in per-container mode
     private final String jdbcUrl;
+    private final String username;
+    private final String password;
 
     public PostgresContainer() {
+        String sharedUri = System.getenv(SHARED_PG_URL_ENV);
+        if (sharedUri != null && !sharedUri.isBlank()) {
+            this.shared = true;
+            this.name = null;
+            // postgres://user:pass@host:port/adminDb -> jdbc coordinates.
+            URI u = URI.create(sharedUri);
+            String[] userInfo = (u.getUserInfo() == null ? "" : u.getUserInfo()).split(":", 2);
+            this.username = userInfo.length > 0 ? userInfo[0] : PG_USER;
+            this.password = userInfo.length > 1 ? userInfo[1] : "";
+            int port = u.getPort() == -1 ? 5432 : u.getPort();
+            String adminDb = u.getPath() == null || u.getPath().length() <= 1
+                ? "postgres" : u.getPath().substring(1);
+            this.adminUrl = "jdbc:postgresql://" + u.getHost() + ":" + port + "/" + adminDb;
+            this.createdDb = "mo_test_" + UUID.randomUUID().toString().replace("-", "");
+            execAdmin("CREATE DATABASE \"" + createdDb + "\"");  // generated name — no user input
+            this.jdbcUrl = "jdbc:postgresql://" + u.getHost() + ":" + port + "/" + createdDb;
+            return;
+        }
+        this.shared = false;
+        this.adminUrl = null;
+        this.createdDb = null;
+        this.username = PG_USER;
+        this.password = PG_PASSWORD;
         this.name = "metaobjects-test-" + UUID.randomUUID().toString().substring(0, 8);
-        this.port = pickFreePort();
+        int port = pickFreePort();
         runDocker("run", "-d", "--rm",
             "--name", name,
             "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
@@ -46,12 +90,27 @@ public final class PostgresContainer implements AutoCloseable {
     }
 
     public String jdbcUrl()  { return jdbcUrl; }
-    public String username() { return PG_USER; }
-    public String password() { return PG_PASSWORD; }
+    public String username() { return username; }
+    public String password() { return password; }
 
     @Override public void close() {
+        if (shared) {
+            try { execAdmin("DROP DATABASE IF EXISTS \"" + createdDb + "\" WITH (FORCE)"); }
+            catch (RuntimeException ignored) { /* best-effort cleanup */ }
+            return;
+        }
         try { runDocker("rm", "-f", name); }
         catch (RuntimeException ignored) { /* container may already be gone */ }
+    }
+
+    /** Run a statement against the shared sidecar's admin database (auto-commit). */
+    private void execAdmin(String sql) {
+        try (Connection c = DriverManager.getConnection(adminUrl, username, password);
+             Statement s = c.createStatement()) {
+            s.execute(sql);
+        } catch (SQLException e) {
+            throw new RuntimeException("admin SQL failed: " + sql, e);
+        }
     }
 
     // -----------------------------------------------------------------------

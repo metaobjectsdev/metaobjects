@@ -27,6 +27,28 @@ jobs:
       fail-fast: false
       matrix:
         port: [ts, csharp, java, kotlin, python]
+    # A single job-level Postgres sidecar shared by every port, instead of each
+    # port booting (and pulling) its own container per scenario. Mirrors the
+    # migrate-ts-pg job below. Each port's PG helper, when it sees
+    # METAOBJECTS_TEST_PG_URL, connects to this sidecar and CREATEs a
+    # uniquely-named database per scenario (dropping it on stop) — preserving the
+    # "fresh empty DB per scenario" isolation the per-port containers gave, with
+    # no image pull / container boot on the hot path. Local dev (no env var) still
+    # boots per-port containers exactly as before.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metaobjects
+          POSTGRES_PASSWORD: metaobjects
+          POSTGRES_DB: metaobjects_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U metaobjects"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +104,12 @@ jobs:
         run: bun install
 
       - name: Run integration tests
+        env:
+          # The shared sidecar's admin URL. Each port's PG helper sees this and
+          # creates/drops a uniquely-named database per scenario off it, rather
+          # than booting its own container. Unset locally → per-port container
+          # fallback.
+          METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:5432/metaobjects_test
         run: ./scripts/integration-test.sh ${{ matrix.port }}
 
   # migrate-ts PG integration tests — the apply / lifecycle / rollback +

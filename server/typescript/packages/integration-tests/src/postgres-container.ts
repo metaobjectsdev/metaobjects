@@ -1,21 +1,35 @@
-// PostgresContainer — start a fresh Postgres testcontainer per scenario.
+// PostgresContainer — obtain a fresh, isolated Postgres database per scenario.
 //
-// Implementation note: testcontainers-node 10.x hangs on `start()` under Bun
-// even though the container itself comes up healthy (verified: container ready
-// in <1s, but the promise never resolves). The hand-managed docker-CLI path
-// here is small, fast, and avoids the bun/testcontainers compat issue entirely.
-// When testcontainers-node + bun is fixed upstream, swap in
-// `@testcontainers/postgresql` (deps for it are already declared).
+// Two modes:
+//   1. Shared sidecar (CI): if METAOBJECTS_TEST_PG_URL is set, connect to that
+//      already-running Postgres and CREATE a uniquely-named database per call
+//      (dropping it on stop). No container boot / image pull on the hot path —
+//      the whole point of the shared `services: postgres` CI sidecar. Each
+//      scenario still gets a pristine empty database, so isolation is identical
+//      to the per-container path.
+//   2. Per-container (local dev): with no env var, boot a fresh container via
+//      the docker CLI, exactly as before.
 //
-// Readiness gating: postgres' first-boot entrypoint starts the server twice
-// (initial init, then the real boot). `pg_isready` can return success during
-// the first window, so we additionally verify a real client connection from
-// the host succeeds before returning.
+// Implementation note (mode 2): testcontainers-node 10.x hangs on `start()`
+// under Bun even though the container itself comes up healthy (verified:
+// container ready in <1s, but the promise never resolves). The hand-managed
+// docker-CLI path here is small, fast, and avoids the bun/testcontainers compat
+// issue entirely. When testcontainers-node + bun is fixed upstream, swap in
+// `@testcontainers/postgresql` (deps for it are already declared). The shared
+// sidecar mode sidesteps this entirely; the fallback keeps the docker path.
+//
+// Readiness gating (mode 2): postgres' first-boot entrypoint starts the server
+// twice (initial init, then the real boot). `pg_isready` can return success
+// during the first window, so we additionally verify a real client connection
+// from the host succeeds before returning.
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { Client } from "pg";
+
+/** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
+const SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
 
 export interface RunningPg {
   readonly connectionUri: string;
@@ -23,6 +37,9 @@ export interface RunningPg {
 }
 
 export async function startPostgres(image = "postgres:16-alpine"): Promise<RunningPg> {
+  const sharedUrl = process.env[SHARED_PG_URL_ENV];
+  if (sharedUrl) return startOnSharedPostgres(sharedUrl);
+
   const name = `metaobjects-test-${randomUUID().slice(0, 8)}`;
   const port = await pickFreePort();
   runDocker([
@@ -38,6 +55,42 @@ export async function startPostgres(image = "postgres:16-alpine"): Promise<Runni
     connectionUri,
     stop: async () => { runDocker(["rm", "-f", name]); },
   };
+}
+
+// Shared-sidecar mode: create a fresh, uniquely-named database on the already
+// running Postgres named by the URL, hand back a URL pointing at it, and drop it
+// on stop. A dedicated database per scenario preserves the per-container path's
+// "pristine empty DB" isolation.
+async function startOnSharedPostgres(adminUri: string): Promise<RunningPg> {
+  const dbName = `mo_test_${randomUUID().replace(/-/g, "")}`;
+  const admin = new Client({ connectionString: adminUri });
+  await admin.connect();
+  try {
+    // Identifier is a fixed-shape generated name (no user input) — safe to inline.
+    await admin.query(`CREATE DATABASE "${dbName}"`);
+  } finally {
+    await admin.end();
+  }
+  const connectionUri = withDatabase(adminUri, dbName);
+  return {
+    connectionUri,
+    stop: async () => {
+      const drop = new Client({ connectionString: adminUri });
+      await drop.connect();
+      try {
+        await drop.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+      } finally {
+        await drop.end();
+      }
+    },
+  };
+}
+
+/** Replace the database (path) component of a postgres:// URL. */
+function withDatabase(uri: string, dbName: string): string {
+  const u = new URL(uri);
+  u.pathname = `/${dbName}`;
+  return u.toString();
 }
 
 function runDocker(args: string[]): string {
