@@ -97,8 +97,20 @@ interface ManifestType {
   parents?: string[];
 }
 
+/**
+ * The Metamodel spec version — the shared, rolled-up name for the frozen core
+ * vocabulary (ADR-0035 §2 / docs/1.0-readiness.md C4). It is a version TAG on this
+ * manifest (the byte-exact bill of materials), NOT a per-provider or per-file marker:
+ * every port emits the same string, asserted by registry-conformance. Pre-1.0 the
+ * vocabulary is in development, so this is `"0"` (semver major-0 = unstable); the 1.0
+ * cut (readiness G1) freezes it to `"1.0"`.
+ */
+export const METAMODEL_VERSION = "0";
+
 /** The full canonical manifest. All collections are sorted for byte-stability. */
 interface RegistryManifest {
+  /** The Metamodel spec version (first key — a header). See {@link METAMODEL_VERSION}. */
+  metamodelVersion: string;
   types: ManifestType[];
   commonAttrs: ManifestAttr[];
   defaultSubTypes: Record<string, string>;
@@ -317,7 +329,7 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
     }
   }
 
-  return { types, commonAttrs, defaultSubTypes };
+  return { metamodelVersion: METAMODEL_VERSION, types, commonAttrs, defaultSubTypes };
 }
 
 /**
@@ -326,7 +338,8 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
  * Serialization contract — every port MUST match this exactly:
  *  - 2-space indentation (JSON.stringify(_, _, 2)).
  *  - Object keys in a fixed order (JSON.stringify preserves insertion order):
- *    the manifest is built with `types`, `commonAttrs`, `defaultSubTypes`.
+ *    the manifest is built with `metamodelVersion` (first — the spec-version
+ *    header), then `types`, `commonAttrs`, `defaultSubTypes`.
  *    - Each attr: `name`, `valueType`, `isArray`, `required`, then optional
  *      `allowedValues` (omitted unless the attr declares a non-empty closed set —
  *      decision 5), then `description`, then optional `rules`, `example`,
