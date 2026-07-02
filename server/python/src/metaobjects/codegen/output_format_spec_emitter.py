@@ -44,10 +44,14 @@ def _prompt_field_literal(field: MetaData) -> str:
     array = "True" if fm.is_array(field) else "False"
 
     if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-        return (
-            f'PromptField("{name}", FieldKind.OBJECT, {req}, array={array})'
-            "  # FR-010: nested prompt deferred"
-        )
+        # FR-010: nested prompt deferred — emit a FieldKind.OBJECT placeholder (nested
+        # defaults to None on PromptField). The note lives HERE, not in the returned
+        # literal: spec_literal joins every field onto ONE line, and a Python '#' inline
+        # comment would swallow the rest of that line — including the closing `])` — so a
+        # nested-object payload emitted invalid Python (unterminated list) and crashed
+        # `gen` + `verify --codegen`. The other ports use `/* */` block comments, which
+        # are inline-safe; Python has none, so the literal must carry no comment.
+        return f'PromptField("{name}", FieldKind.OBJECT, {req}, array={array})'
 
     example = _opt_string_attr(field, fc.FIELD_ATTR_EXAMPLE)
     instruction = _opt_string_attr(field, fc.FIELD_ATTR_INSTRUCTION)
