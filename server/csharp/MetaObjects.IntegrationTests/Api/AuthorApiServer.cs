@@ -55,6 +55,9 @@ internal sealed class AuthorApiServer : IAsyncDisposable
 
     private static readonly object InvalidValue = new();
 
+    /// <summary>Cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST).</summary>
+    private const int MaxInList = 100;
+
     // ISO-8601 without zone — matches the seed/wire format and the Java/Kotlin
     // runners' formatter. NB: the corpus carries trailing fractional seconds
     // for round-tripped timestamps; .NET 's' standard format produces the same
@@ -344,6 +347,8 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             object? coerced = CoerceValue(value, rule.SubType, op);
             if (ReferenceEquals(coerced, InvalidValue))
                 return FilterResult.Err("invalid_filter_value");
+            if (op == "in" && coerced is List<object?> inList && inList.Count > MaxInList)
+                return FilterResult.Err("filter.in_too_large");
             predicates.Add(new FilterPredicate(field, op, coerced));
         }
         return FilterResult.Ok(predicates);

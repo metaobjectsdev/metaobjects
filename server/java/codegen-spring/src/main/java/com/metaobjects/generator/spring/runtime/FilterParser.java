@@ -25,8 +25,9 @@ import java.util.Set;
  *   <li>{@code predicates} non-null + {@code error} null — success path;
  *       generated controller passes {@code predicates} into the repository.</li>
  *   <li>{@code error} non-null (one of {@code invalid_filter_field} /
- *       {@code invalid_filter_op} / {@code invalid_filter_value}) — generated
- *       controller emits {@code 400 {"error": "<envelope>"}}.</li>
+ *       {@code invalid_filter_op} / {@code invalid_filter_value} /
+ *       {@code filter.in_too_large}) — generated controller emits
+ *       {@code 400 {"error": "<envelope>"}}.</li>
  * </ul>
  *
  * <p>Mirror of the TypeScript reference parser in
@@ -38,6 +39,14 @@ public final class FilterParser {
 
     /** Sentinel returned by {@link #coerceScalar} on a parse failure. */
     private static final Object INVALID_VALUE = new Object();
+
+    /**
+     * Cross-port cap on the number of elements in an {@code in}-list. A larger
+     * list is rejected with the {@code filter.in_too_large} envelope so a
+     * caller cannot force an unbounded {@code IN (...)} against the DB. Matches
+     * the TypeScript {@code runtime-ts} filter parser's {@code DEFAULT_MAX_IN_LIST}.
+     */
+    public static final int MAX_IN_LIST = 100;
 
     /**
      * Parse the {@code filter[...]} parameters from a raw URL query string.
@@ -88,6 +97,9 @@ public final class FilterParser {
             if (ops == null || !ops.contains(op)) return FilterParseResult.err("invalid_filter_op");
             Object coerced = coerceValue(value, op);
             if (coerced == INVALID_VALUE) return FilterParseResult.err("invalid_filter_value");
+            if (op.equals("in") && coerced instanceof List<?> list && list.size() > MAX_IN_LIST) {
+                return FilterParseResult.err("filter.in_too_large");
+            }
             out.add(new FilterPredicate(field, op, coerced));
         }
         return FilterParseResult.ok(out);

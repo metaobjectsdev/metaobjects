@@ -26,6 +26,14 @@ public static class FilterParser
     private static readonly object InvalidValue = new();
 
     /// <summary>
+    /// Cross-port cap on the number of elements in an <c>in</c>-list. A larger
+    /// list is rejected with the <c>filter.in_too_large</c> envelope so a caller
+    /// cannot force an unbounded <c>IN (...)</c> against the DB. Matches the
+    /// TypeScript <c>runtime-ts</c> filter parser's <c>DEFAULT_MAX_IN_LIST</c>.
+    /// </summary>
+    public const int MaxInList = 100;
+
+    /// <summary>
     /// Parse the <c>filter[...]</c> query parameters against the per-entity
     /// allowlist. Returns predicates on success, or an error envelope key on
     /// the first failure (no partial progress).
@@ -78,6 +86,8 @@ public static class FilterParser
             object? coerced = CoerceValue(raw, op);
             if (ReferenceEquals(coerced, InvalidValue))
                 return FilterParseResult.Err("invalid_filter_value");
+            if (op == "in" && coerced is List<string> list && list.Count > MaxInList)
+                return FilterParseResult.Err("filter.in_too_large");
 
             predicates.Add(new FilterPredicate(field, op, coerced));
         }

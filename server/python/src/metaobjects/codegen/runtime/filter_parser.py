@@ -14,8 +14,9 @@ Returned ``FilterParseResult`` is either:
 * ``predicates`` populated + ``error_envelope`` ``None`` — success path; the
   generated router passes ``predicates`` into the repository.
 * ``error_envelope`` non-``None`` (one of ``invalid_filter_field`` /
-  ``invalid_filter_op`` / ``invalid_filter_value``) — the generated router
-  raises ``HTTPException(status_code=400, detail=result.error_envelope)``.
+  ``invalid_filter_op`` / ``invalid_filter_value`` / ``filter.in_too_large``) —
+  the generated router raises
+  ``HTTPException(status_code=400, detail=result.error_envelope)``.
 
 Mirror of the Java ``FilterParser`` / Kotlin ``KotlinFilterAllowlistGenerator`` /
 C# ``FilterParser`` ports — same wire grammar, same error envelopes, same
@@ -35,6 +36,13 @@ _INVALID_VALUE = object()
 _ERR_FIELD = "invalid_filter_field"
 _ERR_OP = "invalid_filter_op"
 _ERR_VALUE = "invalid_filter_value"
+_ERR_IN_TOO_LARGE = "filter.in_too_large"
+
+# Cross-port cap on the number of elements in an ``in``-list. A larger list is
+# rejected with the ``filter.in_too_large`` envelope so a caller cannot force an
+# unbounded ``IN (...)`` against the DB. Matches the TypeScript ``runtime-ts``
+# filter parser's ``DEFAULT_MAX_IN_LIST``.
+MAX_IN_LIST = 100
 
 
 @dataclass(frozen=True)
@@ -85,7 +93,7 @@ def parse_filter(
     validated + coerced filter list (preserving URL order); on failure,
     ``error_envelope`` is one of the cross-port envelopes
     (``invalid_filter_field`` / ``invalid_filter_op`` /
-    ``invalid_filter_value``).
+    ``invalid_filter_value`` / ``filter.in_too_large``).
     """
     allowed_set = set(allowed_fields)
     ops_map: dict[str, frozenset[str]] = {
@@ -129,6 +137,8 @@ def parse_filter(
         coerced = _coerce_value(value, op)
         if coerced is _INVALID_VALUE:
             return FilterParseResult(error_envelope={"error": _ERR_VALUE})
+        if op == "in" and isinstance(coerced, list) and len(coerced) > MAX_IN_LIST:
+            return FilterParseResult(error_envelope={"error": _ERR_IN_TOO_LARGE})
         out.append(FilterPredicate(field=field_name, op=op, value=coerced))
 
     return FilterParseResult(predicates=out)

@@ -296,12 +296,18 @@ final class AuthorApiServer implements AutoCloseable {
             if (!rule.ops().contains(op)) return FilterResult.err("invalid_filter_op");
             Object coerced = coerceValue(value, rule.subType(), op);
             if (coerced == INVALID_VALUE) return FilterResult.err("invalid_filter_value");
+            if (op.equals("in") && coerced instanceof List<?> inList && inList.size() > MAX_IN_LIST) {
+                return FilterResult.err("filter.in_too_large");
+            }
             out.add(new FilterPredicate(field, op, coerced));
         }
         return FilterResult.ok(out);
     }
 
     private static final Object INVALID_VALUE = new Object();
+
+    /** Cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). */
+    private static final int MAX_IN_LIST = 100;
 
     /** Coerce a raw URL-decoded string into a JDBC-bindable value for {@code op}. */
     private static Object coerceValue(String raw, String subType, String op) {

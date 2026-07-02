@@ -353,6 +353,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             if (op !in rule.ops) return FilterResult(emptyList(), "invalid_filter_op")
             val coerced = coerceValue(value, rule.subType, op)
                 ?: return FilterResult(emptyList(), "invalid_filter_value")
+            if (op == "in" && coerced is List<*> && coerced.size > MAX_IN_LIST) {
+                return FilterResult(emptyList(), "filter.in_too_large")
+            }
             out.add(FilterPredicate(field, op, coerced))
         }
         return FilterResult(out, null)
@@ -459,6 +462,10 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     companion object {
         // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
         private val SORT_ALLOWLIST = setOf("id", "name", "createdAt")
+
+        // Cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). An
+        // over-cap `in` list is rejected with the `filter.in_too_large` envelope.
+        private const val MAX_IN_LIST = 100
         private val TIMESTAMP_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
 
         // Cross-port FILTER_ALLOWLIST — mirrors the TS api-contract-server. Per

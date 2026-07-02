@@ -34,6 +34,7 @@ fixtures/api-contract-conformance/
     ├── filter-gt.yaml
     ├── filter-lt.yaml
     ├── filter-in.yaml
+    ├── filter-in-over-cap-400.yaml # `in`-list over the 100-element cap → 400
     ├── filter-like.yaml
     ├── filter-isnull-true.yaml
     ├── filter-and.yaml
