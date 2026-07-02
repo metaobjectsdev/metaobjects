@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.1] — 2026-07-01
+
+_Maven Central `7.7.1` · PyPI `0.15.1` · NuGet `0.15.1` · npm `0.15.1`._
+
+> ⚠️ **This "patch" carries a BREAKING metamodel change** (versioned as a patch by request; treat it as breaking). Read the migration guide before upgrading: [`docs/features/migrations/identity-secondary-to-index-lookup.md`](docs/features/migrations/identity-secondary-to-index-lookup.md).
+
+### Changed
+- **BREAKING — `identity.secondary` is now a *unique* alternate key; `@unique` is removed** (ADR-0040). Uniqueness is encoded by the type, not a boolean — a legacy `@unique` on `identity.secondary` now fails load with `ERR_UNKNOWN_ATTR`.
+
+### Added
+- **New `index` type / `index.lookup` subtype — a *non-unique* retrieval index.** This is where a non-unique index now lives (previously mis-modeled as `identity.secondary @unique:false`). `@fields` is required (single or composite). The physical RDB escapes `@using` / `@expr` / `@where` / `@orders` are contributed by the db provider to both `index.lookup` and `identity.secondary`, consumed only by RDB codegen. `index.fulltext` / `index.vector` / `index.spatial` are reserved on the axis but not registered. Cross-port conformance-gated (registry, metadata, persistence). An `index.lookup` produces the same `CREATE INDEX` a non-unique index always did — **no schema/DDL churn** for the migrated form (a `verify`/migrate no-op).
+
+### Migration
+- `identity.secondary` with `unique: false` → **`index.lookup`** (drop `unique`, keep `name`/`fields`/any physical escape). `identity.secondary` with `unique: true` or absent → stays `identity.secondary`, drop the now-invalid `unique`. See the migration guide above.
+
 ## [0.15.0] — 2026-07-01
 
 _Coordinated minor with breaking changes — Maven Central `7.7.0` · PyPI `0.15.0` · NuGet `0.15.0`
