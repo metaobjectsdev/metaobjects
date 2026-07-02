@@ -316,9 +316,16 @@ function renderColumn(
       } else {
         modifiersStr += `.defaultNow()`;
       }
+    } else if (spec.defaultExpr.kind === "arrayLiteral") {
+      // isArray field: Drizzle's .array().default(x) (postgres) and
+      // .$type<E[]>().default(x) (sqlite json) want a JS array literal, not the
+      // raw @default string. Elements are pre-rendered TS source literals.
+      modifiersStr += `.default([${spec.defaultExpr.elements.join(", ")}])`;
     } else if (spec.defaultExpr.kind === "sqlExpr") {
       const sqlSym = imp("sql@drizzle-orm");
-      // Raw SQL keyword/expression — emit as sql`<raw>` for both dialects.
+      // Raw SQL keyword/expression — emit as sql`<raw>` for both dialects. This
+      // is also the always-typechecks fallback for an array @default whose shape
+      // parseArrayDefault couldn't safely model.
       sqlDefaultSegment = code`.default(${sqlSym}\`${spec.defaultExpr.raw}\`)`;
     } else {
       // literal

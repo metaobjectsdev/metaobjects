@@ -47,14 +47,102 @@ export type { Dialect };
 
 /**
  * Discriminated union describing how a column default should be emitted.
- * - { kind: "now" }            — dialect-aware: sql`CURRENT_TIMESTAMP` (sqlite) or .defaultNow() (postgres)
- * - { kind: "sqlExpr"; raw }   — raw SQL expression wrapped in sql`...` (CURRENT_DATE, CURRENT_TIME, function calls)
- * - { kind: "literal"; value } — .default(JSON.stringify(value))
+ * - { kind: "now" }              — dialect-aware: sql`CURRENT_TIMESTAMP` (sqlite) or .defaultNow() (postgres)
+ * - { kind: "sqlExpr"; raw }     — raw SQL expression wrapped in sql`...` (CURRENT_DATE, CURRENT_TIME, function calls)
+ * - { kind: "literal"; value }   — .default(JSON.stringify(value))
+ * - { kind: "arrayLiteral"; elements } — .default([...]) for an isArray field. Drizzle's
+ *   `.array().default(x)` (postgres) and `.$type<E[]>().default(x)` (sqlite json)
+ *   both want a JS array, NOT the raw metadata string ("{}" / "[]" / "{a,b}"),
+ *   which would fail `tsc` (TS2345). The metadata @default MUST be a string (the
+ *   Java loader rejects a JSON array default), so the array literal is parsed out
+ *   of that string here and emitted as a real JS array. Elements are pre-rendered
+ *   TS literal source (numbers/booleans bare, strings quoted).
  */
 export type DefaultExpr =
   | { kind: "now" }
   | { kind: "sqlExpr"; raw: string }
-  | { kind: "literal"; value: unknown };
+  | { kind: "literal"; value: unknown }
+  | { kind: "arrayLiteral"; elements: string[] };
+
+/**
+ * Parse a string @default for an isArray field into the element source-literals
+ * that go inside a JS `[...]` array literal, or return undefined when the shape
+ * is ambiguous/unsupported (caller then falls back to a raw sql`...` cast so the
+ * output ALWAYS typechecks — never a bare string).
+ *
+ * Recognized input shapes (the metadata @default is always a string — an array
+ * default is authored as "[]" / "{}" / "{a,b}", never a JSON array, because the
+ * Java loader requires @default to be a string):
+ *   - "{}"            → []           (Postgres empty-array literal)
+ *   - "[]"            → []           (JSON empty array)
+ *   - "{a,b}"         → elements a,b (Postgres array literal, comma-separated)
+ *   - '["a","b"]'     → elements a,b (JSON array)
+ *
+ * `numericElements` controls quoting: numeric/boolean element subtypes emit bare
+ * literals (1, true), everything else is quoted as a string literal. A parse that
+ * can't be represented safely (nested quotes/commas we don't fully model, mixed
+ * shapes) returns undefined.
+ */
+function parseArrayDefault(
+  raw: string,
+  numericElements: boolean,
+): string[] | undefined {
+  const trimmed = raw.trim();
+
+  // JSON array form: '[]' or '["a","b"]' or '[1,2]'.
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(parsed)) return undefined;
+    const out: string[] = [];
+    for (const el of parsed) {
+      if (numericElements) {
+        if (typeof el === "number" || typeof el === "boolean") {
+          out.push(String(el));
+        } else if (typeof el === "string" && el.trim() !== "" && !Number.isNaN(Number(el))) {
+          out.push(String(Number(el)));
+        } else {
+          return undefined; // numeric column but a non-numeric element — bail to raw SQL
+        }
+      } else {
+        if (typeof el === "string") {
+          out.push(JSON.stringify(el));
+        } else if (typeof el === "number" || typeof el === "boolean") {
+          out.push(JSON.stringify(String(el)));
+        } else {
+          return undefined;
+        }
+      }
+    }
+    return out;
+  }
+
+  // Postgres array-literal form: '{}' or '{a,b}'.
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    const inner = trimmed.slice(1, -1).trim();
+    if (inner === "") return []; // '{}' → empty array
+    // A quote or nested brace means an escaping shape we don't fully model — bail
+    // to a raw sql`...` cast rather than mis-split it.
+    if (/["{}]/.test(inner)) return undefined;
+    const parts = inner.split(",").map((p) => p.trim());
+    const out: string[] = [];
+    for (const p of parts) {
+      if (numericElements) {
+        if (p === "" || Number.isNaN(Number(p))) return undefined;
+        out.push(String(Number(p)));
+      } else {
+        out.push(JSON.stringify(p));
+      }
+    }
+    return out;
+  }
+
+  return undefined;
+}
 
 /**
  * Patterns recognized as SQL expressions in a default value. Anything matching
@@ -454,6 +542,29 @@ export function mapColumnType(
         defaultExpr = { kind: "now" };
       } else {
         defaultExpr = { kind: "sqlExpr", raw: canonical };
+      }
+    } else if (
+      isArray &&
+      subType !== FIELD_SUBTYPE_OBJECT &&
+      subType !== FIELD_SUBTYPE_MAP &&
+      typeof defaultAttr === "string"
+    ) {
+      // Array branch (scalar element arrays only). The column is a native
+      // Postgres array (.array()) or a sqlite json-mode text column typed
+      // .$type<E[]>() — BOTH want a JS array default, not the raw @default
+      // string ("{}" / "[]" / "{a,b}"), which fails `tsc` (TS2345). Parse the
+      // string into element literals; on an unsupported shape, fall back to a
+      // raw sql`...` cast so the emitted default ALWAYS typechecks.
+      const numericElements = sqliteJsonArrayElementTsType(subType) === "number"
+        || sqliteJsonArrayElementTsType(subType) === "boolean";
+      const elements = parseArrayDefault(defaultAttr, numericElements);
+      if (elements !== undefined) {
+        defaultExpr = { kind: "arrayLiteral", elements };
+      } else {
+        // Unparseable — emit the raw metadata string as a typed SQL cast. The
+        // dialect-specific SQL is resolved in the template (postgres needs a
+        // ::type[] cast; sqlite json takes the raw string).
+        defaultExpr = { kind: "sqlExpr", raw: defaultAttr };
       }
     } else {
       // Literal branch: use the field-type-converted value so booleans/numbers
