@@ -1,0 +1,5 @@
+{
+  "description": "Two providers name each other as a dependency — the topological sort cannot proceed.",
+  "providers": ["cycle-a", "cycle-b"],
+  "expectedError": "ERR_PROVIDER_DEPENDENCY_CYCLE"
+}

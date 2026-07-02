@@ -442,8 +442,21 @@ public class TypeDefinitionBuilder {
         
         ChildRequirement existing = childRequirements.get(key);
         if (existing != null && !existing.equals(requirement)) {
+            // A colliding ATTR child requirement is a provider redefining an attr
+            // another provider already declared on this type — the cross-port
+            // ERR_PROVIDER_ATTR_CONFLICT invariant (mirrors the TS/Python/C#
+            // registry.extend guard). Surface it with the stable code so the
+            // provider-composition conformance corpus can assert it. Non-attr
+            // child collisions keep the historical IllegalArgumentException.
+            if ("attr".equals(requirement.getExpectedType())) {
+                throw new com.metaobjects.MetaDataException(
+                    "Attribute '" + requirement.getName() + "' is already declared on this type "
+                        + "(a provider redefined an attr another provider already declared). "
+                        + "Existing: " + existing + ", New: " + requirement,
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
             throw new IllegalArgumentException(
-                "Child requirement already exists for key '" + key + 
+                "Child requirement already exists for key '" + key +
                 "'. Existing: " + existing + ", New: " + requirement
             );
         }

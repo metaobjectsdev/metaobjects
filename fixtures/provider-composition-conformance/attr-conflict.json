@@ -1,0 +1,5 @@
+{
+  "description": "A provider extend redefines an attr another provider already declared on the same type.subType.",
+  "providers": ["attr-conflict-base", "attr-conflict-clash"],
+  "expectedError": "ERR_PROVIDER_ATTR_CONFLICT"
+}
