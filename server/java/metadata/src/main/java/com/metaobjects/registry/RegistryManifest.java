@@ -216,6 +216,14 @@ public final class RegistryManifest {
     /** Wildcard token used by Java's {@link ChildRequirement} for "any name / any type". */
     private static final String WILDCARD = "*";
 
+    /**
+     * The rolled-up spec-version string emitted as the first top-level key of
+     * the registry manifest. Value {@code "0"} = pre-1.0/unstable (semver major-0);
+     * the 1.0 cut will flip it to {@code "1.0"}. Mirrors the TS reference's
+     * {@code METAMODEL_VERSION} constant.
+     */
+    public static final String METAMODEL_VERSION = "0";
+
     // ------------------------------------------------------------------
     // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform
     // across all four ports; see fixtures/registry-conformance/README.md
@@ -562,7 +570,8 @@ public final class RegistryManifest {
      * <p>Serialization contract — every port MUST match this exactly:</p>
      * <ul>
      *   <li>2-space indentation.</li>
-     *   <li>Object key order fixed by construction: {@code types}, {@code commonAttrs},
+     *   <li>Object key order fixed by construction: {@code metamodelVersion},
+     *       {@code types}, {@code commonAttrs},
      *       {@code defaultSubTypes}; each type as {@code type}, {@code subType},
      *       {@code attrs}; each attr as {@code name}, {@code valueType},
      *       {@code isArray}, {@code required}.</li>
@@ -645,6 +654,9 @@ public final class RegistryManifest {
                                     Map<String, String> defaultSubTypes) {
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
+
+        // "metamodelVersion": first top-level key (C4 of the 1.0 readiness program)
+        sb.append("  \"metamodelVersion\": ").append(jsonString(METAMODEL_VERSION)).append(",\n");
 
         // "types": [ ... ]
         sb.append("  \"types\": [");
