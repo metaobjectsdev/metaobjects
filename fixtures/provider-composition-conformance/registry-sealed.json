@@ -1,0 +1,6 @@
+{
+  "description": "Composing a valid provider set, sealing the registry, then attempting a further registration (ADR-0023). The runner composes the named providers, calls seal() on the resulting registry, then invokes the sealed-mutation probe provider's registerTypes against the sealed registry — which must throw ERR_REGISTRY_SEALED.",
+  "providers": ["attr-conflict-base"],
+  "sealThenRegister": "seal-probe",
+  "expectedError": "ERR_REGISTRY_SEALED"
+}

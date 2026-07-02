@@ -1,0 +1,5 @@
+{
+  "description": "Two providers report the same id — composition rejects the duplicate.",
+  "providers": ["duplicate-x", "duplicate-x-clone"],
+  "expectedError": "ERR_PROVIDER_DUPLICATE_ID"
+}

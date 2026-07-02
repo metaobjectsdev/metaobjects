@@ -1,0 +1,5 @@
+{
+  "description": "A provider declares a dependency id with no matching provider in the set.",
+  "providers": ["depends-on-missing"],
+  "expectedError": "ERR_PROVIDER_MISSING_DEPENDENCY"
+}
