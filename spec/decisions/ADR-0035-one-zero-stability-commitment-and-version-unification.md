@@ -2,15 +2,19 @@
 
 ## Status
 
-**Proposed** (2026-06-29; §2 version-line strategy **ratified 2026-07-02** — decouple).
+**Accepted** (2026-06-29; all **[RATIFY]** items resolved 2026-07-02).
 Companion checklist: [`docs/1.0-readiness.md`](../../docs/1.0-readiness.md).
 
-This ADR frames the decisions a 1.0 release commits to; the bracketed **[RATIFY]**
-items are open calls for the maintainer to confirm before this moves to *Accepted*.
-It does not itself change any code or contract. **§2 (version-line strategy) is
-ratified: decouple — npm/PyPI/NuGet `→1.0.0`, Java/Kotlin `→8.0.0`, tied by a shared
-`Metamodel 1.0` spec version.** The §3 items (A2 FR-024, A3 deprecated export, A4
-own-your-codegen) remain open.
+This ADR frames the decisions a 1.0 release commits to. All bracketed **[RATIFY]**
+items are now resolved:
+- **§2 version-line strategy — decouple:** npm/PyPI/NuGet `→1.0.0`, Java/Kotlin
+  `→8.0.0`, tied by a shared `Metamodel 1.0` spec version.
+- **§3 A2 FR-024 — defer** (reserved-but-unregistered post-1.0).
+- **§3 A3 deprecated export — remove at the 1.0/8.0 cut** (G2, not before).
+- **§3 A4 own-your-codegen — ratified per-port-idiomatic + documented.**
+
+It does not itself change code; the one-time moves it commits to (version
+re-baselining, the export removal) execute at the cut per `docs/1.0-readiness.md` §G.
 
 ## Context
 
@@ -126,18 +130,28 @@ by the conformance matrix. Pre-cut the vocabulary is "Metamodel 0.x / in
 development"; the cut *freezes* it as `1.0` (mirroring OTel's own 0.x→1.0). Tracked
 in `docs/1.0-readiness.md` (§C).
 
-### 3. Gating items — the breaking-change consolidation window — **[RATIFY each]**
+### 3. Gating items — the breaking-change consolidation window — **[RATIFIED 2026-07-02]**
 
-Treat the next one or two `0.x`/`7.x` releases as the window to land every breaking
-change we still want, then freeze. Before cutting 1.0:
-- **FR-024 declared-API:** land it, **or** explicitly defer post-1.0 with
-  `api.*`/`operation.*`/`binding.*` *reserved but unregistered* (so adding them later
-  is additive, not breaking). **[RATIFY: land vs defer]**
-- **Deprecated `codegen-ts/generators` export:** remove at 1.0 (1.0 is the natural
-  major for it), **or** consciously retain one more line. **[RATIFY: remove vs keep]**
-- **Cross-port "own your codegen":** ratify that it is *per-port-idiomatic* (TS
-  `meta init`; JVM/Python/C# via build config) and **document that explicitly**, OR
-  close a parity gap first. **[RATIFY: idiomatic-and-document vs close-gap]**
+Treat the next one or two releases as the window to land every breaking change we
+still want, then freeze. Before cutting 1.0:
+- **FR-024 declared-API — [RATIFIED: DEFER].** `api.*`/`operation.*`/`binding.*` stay
+  **reserved but unregistered** post-1.0 (they are already absent from
+  `expected-registry.json`; ADR-0030 defines the shape). Adding them later is
+  *additive*, so deferral costs nothing and keeps the declared-API surface out of the
+  1.0 breaking window. This is what makes the quiet period achievable — it removes the
+  only remaining candidate for another breaking round (§C3). Tracked in #10.
+- **Deprecated `codegen-ts/generators` export — [RATIFIED: REMOVE at the cut].** The
+  `@deprecated ADR-0034` re-exports (`entityFile`/`queriesFile`/`routesFile`/`barrel`
+  from `@metaobjectsdev/codegen-ts/generators`) are removed **as part of the 1.0/8.0
+  major bump (G2)** — *not before*. Removing an export is itself a breaking change;
+  doing it at the major absorbs it, whereas doing it during the run-up would restart
+  the quiet-period clock (§G3). Consumers migrate to the `meta init`-scaffolded owned
+  copies under `codegen/generators/*`.
+- **Cross-port "own your codegen" — [RATIFIED: idiomatic + document].** The per-port
+  split is intentional and *not* a parity gap to close: TS uses `meta init`
+  scaffold-and-own; the JVM/Python/C# ports own their codegen via build config
+  (Maven `metaobjects:gen`, `metaobjects gen`, `dotnet meta gen`). Documented in
+  `docs/features/own-your-codegen.md` (readiness D4).
 - **Metamodel freeze:** the metamodel-1.0 vocabulary program (`0.15.0`/`7.7.0`;
   ADR-0036/0037/0038) was the intended finalization, and ADR-0037 sets the framework
   for future additions; `registry-conformance` is the enforcer. **The actual last
