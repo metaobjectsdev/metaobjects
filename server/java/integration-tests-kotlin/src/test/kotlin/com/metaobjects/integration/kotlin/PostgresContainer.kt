@@ -3,43 +3,86 @@ package com.metaobjects.integration.kotlin
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ServerSocket
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.sql.DriverManager
 import java.util.UUID
 
 /**
- * Start a fresh Postgres container by shelling out to the `docker` CLI directly.
+ * Obtain a fresh, isolated Postgres database per scenario.
  *
- * Implementation note: testcontainers-java 1.21.x bundles docker-java 3.4.x
- * which hardcodes a client API version (1.32-class) below the minimum
+ * Two modes, mirroring the TS/Java/Python/C# suites:
+ *  1. **Shared sidecar (CI)**: if `METAOBJECTS_TEST_PG_URL` is set, connect to
+ *     that already-running Postgres and `CREATE DATABASE` a uniquely-named
+ *     database per instance (dropping it on close). No container boot / image
+ *     pull on the hot path — the point of the shared `services: postgres` CI
+ *     sidecar. Each scenario still gets a pristine empty database, so isolation
+ *     is identical to the per-container path.
+ *  2. **Per-container (local dev)**: with no env var, boot a fresh container via
+ *     the `docker` CLI, exactly as before.
+ *
+ * Implementation note (mode 2): testcontainers-java 1.21.x bundles docker-java
+ * 3.4.x which hardcodes a client API version (1.32-class) below the minimum
  * supported by recent Docker daemons. The hand-managed CLI path here is small,
  * fast (~3s incl. pg_isready), and avoids the version-negotiation issue
  * entirely. Mirrors the Java port's `PostgresContainer.java` and the TS port's
- * `postgres-container.ts`.
+ * `postgres-container.ts`. The shared sidecar mode sidesteps this entirely.
  */
 class PostgresContainer : AutoCloseable {
-    private val name: String = "metaobjects-test-kt-" + UUID.randomUUID().toString().substring(0, 8)
-    private val port: Int = pickFreePort()
+    private val shared: Boolean
+    private val name: String?          // null in shared mode
+    private val adminUrl: String?      // JDBC admin URL, null in per-container mode
+    private val createdDb: String?     // created database name, null in per-container mode
     val jdbcUrl: String
-
-    val username: String = PG_USER
-    val password: String = PG_PASSWORD
+    val username: String
+    val password: String
 
     init {
-        runDocker(
-            "run", "-d", "--rm",
-            "--name", name,
-            "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
-            "-p", "$port:5432",
-            IMAGE,
-        )
-        jdbcUrl = "jdbc:postgresql://localhost:$port/postgres"
-        waitForReady()
+        val sharedUri = System.getenv(SHARED_PG_URL_ENV)
+        if (!sharedUri.isNullOrBlank()) {
+            shared = true
+            name = null
+            val u = URI.create(sharedUri)
+            val userInfo = (u.userInfo ?: "").split(":", limit = 2)
+            username = userInfo.getOrElse(0) { PG_USER }
+            password = userInfo.getOrElse(1) { "" }
+            val port = if (u.port == -1) 5432 else u.port
+            val adminDb = if (u.path.isNullOrEmpty() || u.path.length <= 1) "postgres" else u.path.substring(1)
+            adminUrl = "jdbc:postgresql://${u.host}:$port/$adminDb"
+            createdDb = "mo_test_kt_" + UUID.randomUUID().toString().replace("-", "")
+            execAdmin("CREATE DATABASE \"$createdDb\"") // generated name — no user input
+            jdbcUrl = "jdbc:postgresql://${u.host}:$port/$createdDb"
+        } else {
+            shared = false
+            adminUrl = null
+            createdDb = null
+            username = PG_USER
+            password = PG_PASSWORD
+            name = "metaobjects-test-kt-" + UUID.randomUUID().toString().substring(0, 8)
+            val port = pickFreePort()
+            runDocker(
+                "run", "-d", "--rm",
+                "--name", name,
+                "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
+                "-p", "$port:5432",
+                IMAGE,
+            )
+            jdbcUrl = "jdbc:postgresql://localhost:$port/postgres"
+            waitForReady()
+        }
     }
 
     override fun close() {
+        if (shared) {
+            try {
+                execAdmin("DROP DATABASE IF EXISTS \"$createdDb\" WITH (FORCE)")
+            } catch (_: RuntimeException) {
+                // Best-effort cleanup.
+            }
+            return
+        }
         try {
-            runDocker("rm", "-f", name)
+            runDocker("rm", "-f", name!!) // non-null in per-container mode
         } catch (_: RuntimeException) {
             // Container may already be gone; ignore.
         }
@@ -48,6 +91,13 @@ class PostgresContainer : AutoCloseable {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /** Run a statement against the shared sidecar's admin database (auto-commit). */
+    private fun execAdmin(sql: String) {
+        DriverManager.getConnection(adminUrl, username, password).use { c ->
+            c.createStatement().use { s -> s.execute(sql) }
+        }
+    }
 
     private fun waitForReady() {
         val deadline = System.currentTimeMillis() + 30_000
@@ -77,6 +127,8 @@ class PostgresContainer : AutoCloseable {
     }
 
     companion object {
+        /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
+        private const val SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL"
         private const val IMAGE = "postgres:16-alpine"
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
