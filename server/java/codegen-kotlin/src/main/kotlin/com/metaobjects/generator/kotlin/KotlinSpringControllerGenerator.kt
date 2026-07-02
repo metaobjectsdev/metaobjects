@@ -664,6 +664,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         allowlistName: String,
         scalarFields: List<ScalarFieldSpec>,
     ) {
+        // Cross-port cap on `in`-list size — a larger list is rejected with the
+        // `filter.in_too_large` envelope, matching the TS runtime-ts parser's
+        // DEFAULT_MAX_IN_LIST. Emitted as a file-private const so parse<Entity>Filter
+        // can reference it unqualified.
+        out.append("/** GENERATED — cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). */\n")
+        out.append("private const val MAX_IN_LIST = 100\n\n")
+
         out.append("/** GENERATED — single parsed + validated FR-009 filter predicate. */\n")
         out.append("private data class ${shortName}FilterPredicate(val field: String, val op: String, val value: Any?)\n\n")
 
@@ -677,7 +684,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append(" * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded\n")
         out.append(" * {@code allParams} map. Returns either a list of validated predicates or one of\n")
         out.append(" * the cross-port error envelope keys ({@code invalid_filter_field /\n")
-        out.append(" * invalid_filter_op / invalid_filter_value}).\n")
+        out.append(" * invalid_filter_op / invalid_filter_value / filter.in_too_large}).\n")
         out.append(" */\n")
         out.append("private fun parse${shortName}Filter(allParams: Map<String, String>): ${shortName}FilterResult {\n")
         out.append("    val out = mutableListOf<${shortName}FilterPredicate>()\n")
@@ -701,7 +708,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        if (ops == null || op !in ops) return ${shortName}FilterResult(emptyList(), \"invalid_filter_op\")\n")
         out.append("        val coerced = coerce${shortName}Value(field, op, value)\n")
         out.append("            ?: return ${shortName}FilterResult(emptyList(), \"invalid_filter_value\")\n")
-        out.append("        out.add(${shortName}FilterPredicate(field, op, coerced.value))\n")
+        out.append("        val coercedValue = coerced.value\n")
+        out.append("        if (op == \"in\" && coercedValue is List<*> && coercedValue.size > MAX_IN_LIST) {\n")
+        out.append("            return ${shortName}FilterResult(emptyList(), \"filter.in_too_large\")\n")
+        out.append("        }\n")
+        out.append("        out.add(${shortName}FilterPredicate(field, op, coercedValue))\n")
         out.append("    }\n")
         out.append("    return ${shortName}FilterResult(out, null)\n")
         out.append("}\n\n")

@@ -49,6 +49,9 @@ private fun parseAuthorSort(raw: String): Pair<String, SortOrder>? {
     return field to dir
 }
 
+/** GENERATED — cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). */
+private const val MAX_IN_LIST = 100
+
 /** GENERATED — single parsed + validated FR-009 filter predicate. */
 private data class AuthorFilterPredicate(val field: String, val op: String, val value: Any?)
 
@@ -59,7 +62,7 @@ private data class AuthorFilterResult(val predicates: List<AuthorFilterPredicate
  * GENERATED — parse the bracketed-qs FR-009 filter grammar from a URL-decoded
  * {@code allParams} map. Returns either a list of validated predicates or one of
  * the cross-port error envelope keys ({@code invalid_filter_field /
- * invalid_filter_op / invalid_filter_value}).
+ * invalid_filter_op / invalid_filter_value / filter.in_too_large}).
  */
 private fun parseAuthorFilter(allParams: Map<String, String>): AuthorFilterResult {
     val out = mutableListOf<AuthorFilterPredicate>()
@@ -83,7 +86,11 @@ private fun parseAuthorFilter(allParams: Map<String, String>): AuthorFilterResul
         if (ops == null || op !in ops) return AuthorFilterResult(emptyList(), "invalid_filter_op")
         val coerced = coerceAuthorValue(field, op, value)
             ?: return AuthorFilterResult(emptyList(), "invalid_filter_value")
-        out.add(AuthorFilterPredicate(field, op, coerced.value))
+        val coercedValue = coerced.value
+        if (op == "in" && coercedValue is List<*> && coercedValue.size > MAX_IN_LIST) {
+            return AuthorFilterResult(emptyList(), "filter.in_too_large")
+        }
+        out.add(AuthorFilterPredicate(field, op, coercedValue))
     }
     return AuthorFilterResult(out, null)
 }

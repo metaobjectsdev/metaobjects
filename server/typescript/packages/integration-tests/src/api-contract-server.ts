@@ -223,9 +223,15 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
  * Returns `{ filter }` on success (filter is `undefined` when no filter params
  * are present) or `{ error }` on validation failure.
  */
+// Cross-port cap on `in`-list size. A larger list is rejected with the
+// `filter.in_too_large` envelope so a caller cannot force an unbounded
+// IN (...) against the DB. Matches the runtime-ts filter parser's
+// DEFAULT_MAX_IN_LIST and every other port's generated parser.
+const MAX_IN_LIST = 100;
+
 function parseFilterFromUrl(
   url: string,
-): { filter: Filter | undefined } | { error: "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" } {
+): { filter: Filter | undefined } | { error: "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" | "filter.in_too_large" } {
   const qIdx = url.indexOf("?");
   if (qIdx === -1) return { filter: undefined };
   const search = url.slice(qIdx + 1);
@@ -256,6 +262,9 @@ function parseFilterFromUrl(
     if (!rule.ops.has(e.op)) return { error: "invalid_filter_op" };
     const coerced = coerceFilterValue(e.value, rule.subType, e.op);
     if (coerced === INVALID) return { error: "invalid_filter_value" };
+    if (e.op === "in" && Array.isArray(coerced) && coerced.length > MAX_IN_LIST) {
+      return { error: "filter.in_too_large" };
+    }
     subFilters.push({ [e.field]: { [`$${e.op}`]: coerced } } as Filter);
   }
 
