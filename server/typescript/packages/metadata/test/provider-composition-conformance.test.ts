@@ -86,7 +86,7 @@ const attrConflictBaseProvider: MetaDataTypeProvider = {
         },
       ],
       attributes: [
-        { name: CONFLICT_ATTR, valueType: ATTR_SUBTYPE_STRING, description: "Conflict probe attr." },
+        { name: CONFLICT_ATTR, valueType: ATTR_SUBTYPE_STRING, required: false, description: "Conflict probe attr." },
       ],
     });
   },
@@ -99,7 +99,7 @@ const attrConflictClashProvider: MetaDataTypeProvider = {
   registerTypes(registry: TypeRegistry) {
     registry.extend(TYPE_TEMPLATE, CONFLICT_SUBTYPE, {
       attributes: [
-        { name: CONFLICT_ATTR, valueType: ATTR_SUBTYPE_STRING, description: "Redefined — collides." },
+        { name: CONFLICT_ATTR, valueType: ATTR_SUBTYPE_STRING, required: false, description: "Redefined — collides." },
       ],
     });
   },
