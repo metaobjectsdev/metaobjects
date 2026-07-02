@@ -96,6 +96,9 @@ All `@metaobjectsdev/*` packages publish in lockstep. A mixed resolved version
 (e.g. `codegen-ts@0.12.0` alongside `metadata@0.11.9`) is an intra-port skew
 finding. A runtime package (`@metaobjectsdev/runtime-ts`) in `devDependencies`
 rather than `dependencies` is also a finding — it ships to the deployed app.
+This intra-port skew is npm-vs-npm; **cross-language** skew (a stale npm line next to
+a newer Maven/PyPI/NuGet line) is invisible in the package numbers and must be checked
+via `metamodelVersion` (see the Phase 0 cross-language consistency item).
 
 ---
 

@@ -25,6 +25,7 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 - [ ] **Owned-generators check:** does the project own generators at `codegen/generators/*`
   (scaffold-and-own via `meta init`), or still import the **deprecated** package export
   (`@metaobjectsdev/codegen-ts/generators`)? Not owning is itself a finding.
+- [ ] **Cross-language version consistency (silent-drift check).** If the project uses MetaObjects in more than one language (e.g. a TS web client + a Java/Python/C# backend), enumerate EVERY MetaObjects package across ALL ecosystems (npm `@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and record each version. **The version-number LINES differ by ecosystem (npm/PyPI/NuGet `0.x`/`1.x` vs Maven `7.x`/`8.x`), so you CANNOT eyeball drift** — a `0.12` next to a `7.7` looks fine but can be badly out of sync. Compare the **`metamodelVersion`** each port reports (the shared spec version on the registry manifest): a mismatch is real cross-language drift and a **finding** — the ports disagree on vocabulary/wire behavior. Also flag any port not on the latest release for its ecosystem. (This is a known real-world failure mode: newest backend, stale client, invisible because the numbers differ.)
 - [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
 
 ---
@@ -347,7 +348,7 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
 - **Cut subtypes** — `field.byte` / `field.short` / `field.class` are removed; never recommend them.
 - **TS/web-only** — `view.*` widget subtypes exist only for TS/web consumers; only `view.base` / `view.currency` are cross-port-gated.
 - **Planned, not shipped** — `api.*` / `operation.*` / `binding.*` (FR-024) and MCP exposure of declared prompts/tools are not yet in the registry; their absence is not an adopter defect.
-- **Cross-port version skew is by design** — TS/C#/Python `0.x` vs Java/Kotlin `7.x` Maven is correct; never flag it. Flag only *intra-port* drift (mixed versions within one port, or a runtime package in `devDependencies`).
+- **Cross-port version-NUMBER skew is by design** — TS/C#/Python `0.x` vs Java/Kotlin `7.x` Maven is correct; never flag the *number lines* differing. But that is exactly why you can't eyeball cross-language drift: compare **`metamodelVersion`** (Phase 0 cross-language consistency item), not the package numbers. A `metamodelVersion` MISMATCH across ports *is* a finding; so is a port lagging its ecosystem's latest release. Also flag *intra-port* drift (mixed versions within one port, or a runtime package in `devDependencies`).
 - **Stale upstream prose** — "hand-write the Spring controller" (Java/Kotlin) is out of date; trust `meta gen --list`, not stale prose.
 
 ---
