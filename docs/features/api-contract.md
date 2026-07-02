@@ -76,8 +76,10 @@ path segment without hand-coordination.
 
 Filters use a **bracketed qs** shape: `filter[<field>][<op>]=<value>`.
 A bare value (`filter[<field>]=<value>`) is sugar for `eq`. Multiple
-filters AND together; the optional `filter[or]=[...]` / `filter[and]=[...]`
-keys nest disjunctions / conjunctions.
+filters AND together.
+
+> **`filter[or]` / `filter[and]` nesting is a TS-only extension**, not part of
+> the cross-port contract — see "TS-only filter extensions" below.
 
 | Operator | Strings | Numbers / Dates | Booleans |
 |---|---|---|---|
@@ -90,6 +92,27 @@ The operator set is gated by field subtype in the generated
 subtype doesn't support → HTTP 400. The operator list is a Tier 1
 cross-port invariant — every port's parser must implement these eight
 and only these eight.
+
+### TS-only filter extensions (not part of the cross-port contract)
+
+The TypeScript runtime parser ships five filter behaviors beyond the eight
+operators. They are **NOT part of the cross-port REST contract** — the other
+ports (Java, Kotlin, Python, C#) do not implement them, and a relying adopter
+must not assume them on a non-TS backend. They are deliberately deferred until
+real consumer demand (none touch the metamodel vocabulary, so any of them can be
+added cross-port later as a purely additive, non-breaking change):
+
+| Extension | What it does |
+|---|---|
+| `?search=<term>` | ORs a `like` across the entity's `@filterable` string fields |
+| `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
+| leading-wildcard gating | opt-in allow of `like` patterns starting with `%` |
+| filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
+
+The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
+safety limit, not a feature — TS enforces it, the other ports currently do not.
+Unifying that cap cross-port is the one item here worth doing regardless of
+feature demand (it is a consistency/safety divergence, not a capability).
 
 ### Sort + pagination
 
