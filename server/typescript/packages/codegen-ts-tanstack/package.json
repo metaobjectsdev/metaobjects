@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/codegen-ts-tanstack",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "TanStack codegen for metaobjects — emits hooks and column definitions for TanStack Query and Table.",
   "type": "module",
   "main": "./dist/index.js",
