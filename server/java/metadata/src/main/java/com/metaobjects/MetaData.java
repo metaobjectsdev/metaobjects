@@ -265,6 +265,15 @@ public class MetaData implements Cloneable, Serializable {
 
     // Unified caching strategy
     private final CacheStrategy cache = new HybridCache();
+
+    // FR-031 read-path cache freeze flag. Set true (recursively) by freeze() once
+    // the owning loader reaches its terminal REGISTERED phase — i.e. the tree is
+    // load-complete and immutable. Only when frozen does useFrozenCache() memoize
+    // the resolving extends-chain walks (getChildren/getMetaAttrs/isArrayType), so
+    // a value computed during the still-mutable load phase can never be cached
+    // stale. Mirrors the TS/Python/C# per-node `_frozen` gate on their `cached()`
+    // helper. Volatile: freeze() may run on a different thread than later reads.
+    private volatile boolean frozen = false;
     
     // Indexed collection for O(1) child lookups
     private final IndexedMetaDataCollection children = new IndexedMetaDataCollection();
@@ -960,6 +969,14 @@ public class MetaData implements Cloneable, Serializable {
      */
     public void setSuperData(MetaData superData) {
         this.superData = superData;
+        // FR-031 defense-in-depth: the resolving read-path cache keys off the
+        // super chain. Super resolution normally completes during load() (before
+        // register()/freeze()), so this is a no-op then. But if a super reference
+        // is ever re-pointed on an already-frozen node, drop any memoized
+        // resolving results so they cannot be served stale.
+        if (frozen) {
+            flushCaches();
+        }
     }
 
     /**
@@ -1383,6 +1400,19 @@ public class MetaData implements Cloneable, Serializable {
      * @return list of children of the specified class type
      */
     public <T extends MetaData> List<T> getChildren(Class<T> c, boolean includeParentData ) {
+        // FR-031: memoize the RESOLVING walk (includeParentData=true) once frozen.
+        // The super-chain traversal + cross-hop dedup in addChildren() is the hot
+        // cost on an extends chain; the local-only (includeParentData=false) read
+        // is a cheap single-node filter and is left uncached. The cached snapshot
+        // is immutable; a fresh mutable copy is returned so the historical
+        // "returns a mutable ArrayList" contract is preserved byte-for-byte.
+        if (includeParentData && getSuperData() != null && frozen) {
+            @SuppressWarnings("unchecked")
+            List<T> cached = useFrozenCache(
+                "getChildren(Class){" + c.getName() + "}",
+                () -> (List<T>) Collections.unmodifiableList(addChildren(null, c, true)));
+            return new ArrayList<>(cached);
+        }
         return addChildren(null, c, includeParentData );
     }
 
@@ -1839,6 +1869,66 @@ public class MetaData implements Cloneable, Serializable {
 
         // Clear the super data caches
         if ( getSuperData() != null ) getSuperData().flushCaches();
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    // FR-031 read-path freeze + frozen-only resolving cache
+
+    /**
+     * Recursively marks this node and every child as frozen (load-complete /
+     * immutable). Called by {@link com.metaobjects.loader.MetaDataLoader#register()}
+     * once the loader reaches its terminal REGISTERED phase. After freeze,
+     * {@link #useFrozenCache(String, GetValueForCache)} memoizes the resolving
+     * {@code extends}-chain walks; before freeze it always recomputes, so a value
+     * derived from the still-mutable tree can never be cached stale.
+     *
+     * <p>Idempotent. Super references are NOT walked here — each node in the tree
+     * is reached via the parent→child recursion (a super node is itself a member
+     * of the same registered tree and is frozen when its own subtree is visited).</p>
+     */
+    public void freeze() {
+        if (frozen) return;
+        frozen = true;
+        for (MetaData child : getChildren()) {
+            child.freeze();
+        }
+    }
+
+    /**
+     * @return {@code true} once {@link #freeze()} has marked this node
+     *         load-complete; {@code false} during the mutable load phase.
+     */
+    public boolean isFrozen() {
+        return frozen;
+    }
+
+    /**
+     * Frozen-only memoization for resolving (extends-chain) read-path walks.
+     * Identical contract to {@link #useCache(String, GetValueForCache)} EXCEPT the
+     * result is only stored once this node is {@link #isFrozen() frozen}. During
+     * the load phase the getter runs every call (no caching → no staleness); after
+     * freeze the tree is immutable so a cached entry is valid for the node's
+     * lifetime and there is no invalidation. Behavior is byte-identical to the
+     * uncached path — this only removes redundant recomputation on a frozen tree.
+     *
+     * @param <T> the cached value type
+     * @param cacheKey the cache key
+     * @param getter computes the value on a miss (or always, pre-freeze)
+     * @return the resolved value
+     */
+    public <T> T useFrozenCache(String cacheKey, GetValueForCache<T> getter) {
+        if (!frozen) {
+            return getter.get();
+        }
+        Object o = getCacheValue(cacheKey);
+        if (o == CACHE_NULL) return null;
+        @SuppressWarnings("unchecked")
+        T cacheValue = (T) o;
+        if (cacheValue == null) {
+            cacheValue = getter.get();
+            setCacheValue(cacheKey, cacheValue == null ? CACHE_NULL : cacheValue);
+        }
+        return cacheValue;
     }
 
     //////////////////////////////////////////////////////////////////////////////
