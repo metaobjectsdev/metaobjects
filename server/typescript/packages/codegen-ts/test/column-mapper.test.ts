@@ -150,6 +150,64 @@ describe("mapColumnType — Postgres", () => {
   });
 });
 
+describe("mapColumnType — isArray @default (regression: raw string → TS2345)", () => {
+  // Drizzle's .array().default(x) / .$type<E[]>().default(x) want a JS array,
+  // not the raw @default string ("{}"/"[]"/"{a,b}"). Before the fix these
+  // emitted a bare string literal that failed `tsc`. The @default MUST be a
+  // string (the Java loader rejects a JSON-array default), so the array literal
+  // is parsed out of the string. Emission is dialect-agnostic (arrayLiteral).
+  function arrayField(subType: string, name: string, def: string) {
+    const f = metaField(subType, name);
+    f.setIsArray(true);
+    f.setAttr("default", def);
+    return f;
+  }
+
+  test("string[] with '{}' → arrayLiteral []", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "conditions", "{}"), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: [] });
+  });
+
+  test("string[] with '[]' → arrayLiteral []", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "conditions", "[]"), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: [] });
+  });
+
+  test("string[] with '{a,b}' → arrayLiteral of quoted string literals", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "tags", "{a,b}"), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: ['"a"', '"b"'] });
+  });
+
+  test("string[] with JSON '[\"a\",\"b\"]' → arrayLiteral of quoted string literals", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "tags", '["a","b"]'), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: ['"a"', '"b"'] });
+  });
+
+  test("int[] with '{1,2}' → arrayLiteral of BARE numeric literals", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_INT, "nums", "{1,2}"), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: ["1", "2"] });
+  });
+
+  test("sqlite json array default parses identically (dialect-agnostic)", () => {
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "tags", "{a,b}"), "sqlite");
+    expect(spec.defaultExpr).toEqual({ kind: "arrayLiteral", elements: ['"a"', '"b"'] });
+  });
+
+  test("unparseable array shape falls back to a raw sql`...` cast (never a bare string)", () => {
+    // A nested-quote/brace shape parseArrayDefault refuses to split → sqlExpr,
+    // which the template emits as .default(sql`...`) (always typechecks).
+    const spec = mapColumnType(arrayField(FIELD_SUBTYPE_STRING, "weird", '{"a,b",c}'), "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "sqlExpr", raw: '{"a,b",c}' });
+  });
+
+  test("scalar (non-array) @default is unchanged — still a literal", () => {
+    const f = metaField(FIELD_SUBTYPE_STRING, "status");
+    f.setAttr("default", "active");
+    const spec = mapColumnType(f, "postgres");
+    expect(spec.defaultExpr).toEqual({ kind: "literal", value: "active" });
+  });
+});
+
 describe("mapColumnType — field.object column parity with migrate-ts (SP-H Unit 4)", () => {
   // migrate-ts/expected-schema maps a (non-flattened) field.object → { kind: "json" }
   // → JSONB on Postgres / JSON on SQLite. Codegen must AGREE: the default
