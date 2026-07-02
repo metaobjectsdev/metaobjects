@@ -17,9 +17,9 @@ Equal weight — all four ship per-language today across the five ports (TS / C#
 
 ## Status
 
-_Last refreshed 2026-07-01._
+_Last refreshed 2026-07-02._
 
-**TypeScript reference implementation** is **published to npm at `0.15.0`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# at `0.15.0` (NuGet); Python at `0.15.0` (PyPI); Java / Kotlin at `7.7.0` (Maven Central). 2500+ tests passing across the workspace. (The `0.15.0` / `7.7.0` line is a **coordinated minor with breaking changes**: the **metamodel-1.0 vocabulary program** — `field.uri` / `field.inet` subtypes, a `@stringFormat` attribute, `field.timestamp` **instant-by-default** + `@localTime` opt-out, `@dbColumnType` **slim-and-derive**, and reverse-navigation via generated FK finders — plus the **ADR-0039 own-accessor fix** [resolving/effective accessors are the default; `extends`-inherited field/node properties are now honored in codegen + runtime], all conformance-gated across the five ports.)
+**TypeScript reference implementation** is **published to npm at `0.15.1`** (all 13 `@metaobjectsdev/*` publish candidates on the `latest` tag, full lockstep). C# at `0.15.1` (NuGet); Python at `0.15.2` (PyPI — a Python-only patch on top of `0.15.1` fixing the output-prompt emitter crash on nested `field.object` payloads); Java / Kotlin at `7.7.1` (Maven Central). 2500+ tests passing across the workspace. (The `0.15.1` / `7.7.1` line ships the **`index.*` type + `identity.secondary` key-purity** [ADR-0040]: `identity.secondary` is now a *unique* alternate key with `@unique` **removed** — a legacy `@unique` fails load with `ERR_UNKNOWN_ATTR` — and a new **`index.lookup`** subtype carries *non-unique* retrieval [`@fields` required; `@using`/`@expr`/`@where`/`@orders` are RDB-physical escapes], cross-port conformance-gated; **breaking**, migration in `docs/features/migrations/identity-secondary-to-index-lookup.md`. This is on top of the `0.15.0` metamodel-1.0 vocabulary program + the ADR-0039 own-accessor fix.)
 
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 
