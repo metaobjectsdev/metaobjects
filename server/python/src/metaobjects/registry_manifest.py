@@ -255,6 +255,15 @@ def _sorted_children(definition: TypeDefinition) -> list[dict[str, object]]:
     return children
 
 
+METAMODEL_VERSION = "0"
+"""Rolled-up spec-version for the cross-port registry manifest.
+
+``"0"`` = pre-1.0 / unstable (semver major-0). Flips to ``"1.0"`` at the
+1.0 vocabulary cut. Emitted as the first top-level key in the canonical
+manifest so every port's byte-comparison gate sees it at position 0.
+"""
+
+
 def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     """Build the canonical registry-manifest object from an assembled registry.
 
@@ -306,8 +315,9 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
         if default_sub is not None:
             default_sub_types[type_name] = default_sub
 
-    # Fixed top-level key order: types, commonAttrs, defaultSubTypes.
+    # Fixed top-level key order: metamodelVersion (C4), types, commonAttrs, defaultSubTypes.
     return {
+        "metamodelVersion": METAMODEL_VERSION,
         "types": types,
         "commonAttrs": common_attrs,
         "defaultSubTypes": default_sub_types,
