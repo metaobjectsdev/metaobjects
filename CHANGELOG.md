@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.2] — 2026-07-02
+
+_PyPI `0.15.2` — Python-only patch (npm/NuGet stay `0.15.1`, Maven Central stays `7.7.1`)._
+
+### Fixed
+- **Python — the output-prompt spec emitter crashed `gen` / `verify --codegen` on a nested `field.object` payload.** A `template.output` whose payload value-object had a nested `field.object` child emitted invalid Python: the nested-object branch appended an inline `#` comment to the `PromptField` literal, and since the whole `OutputFormatSpec(...)` is one line, the `#` swallowed the closing `])` — an unterminated list (`SyntaxError`) that hard-crashed codegen and the drift gate (not just a diff). Flat payloads were unaffected. Python-only (the other four ports use inline-safe `/* */` block comments). The nested field now emits a valid `FieldKind.OBJECT` placeholder (`nested=None`).
+
 ## [0.15.1] — 2026-07-01
 
 _Maven Central `7.7.1` · PyPI `0.15.1` · NuGet `0.15.1` · npm `0.15.1`._
