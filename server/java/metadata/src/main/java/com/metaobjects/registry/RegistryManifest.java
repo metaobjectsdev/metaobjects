@@ -222,7 +222,7 @@ public final class RegistryManifest {
      * the 1.0 cut will flip it to {@code "1.0"}. Mirrors the TS reference's
      * {@code METAMODEL_VERSION} constant.
      */
-    public static final String METAMODEL_VERSION = "0";
+    public static final String METAMODEL_VERSION = "0.9";
 
     // ------------------------------------------------------------------
     // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform

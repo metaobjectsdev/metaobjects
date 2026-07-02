@@ -102,10 +102,12 @@ interface ManifestType {
  * vocabulary (ADR-0035 §2 / docs/1.0-readiness.md C4). It is a version TAG on this
  * manifest (the byte-exact bill of materials), NOT a per-provider or per-file marker:
  * every port emits the same string, asserted by registry-conformance. Pre-1.0 the
- * vocabulary is in development, so this is `"0"` (semver major-0 = unstable); the 1.0
- * cut (readiness G1) freezes it to `"1.0"`.
+ * vocabulary is still `0.x` (semver = unstable, may change) but largely settled going
+ * into the quiet period, so this is `"0.9"` (near-final); the 1.0 cut (readiness G1)
+ * freezes it to `"1.0"`. Decoupled from every package line — it is the spec version,
+ * not a package version.
  */
-export const METAMODEL_VERSION = "0";
+export const METAMODEL_VERSION = "0.9";
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
 interface RegistryManifest {
