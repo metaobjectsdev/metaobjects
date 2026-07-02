@@ -603,6 +603,12 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
      * @return true if @isArray=true is set on this field, false otherwise
      */
     public boolean isArrayType() {
+        // FR-031: memoize the resolving array-ness walk once frozen (see
+        // MetaData.useFrozenCache). Behavior-identical to the uncached path.
+        return Boolean.TRUE.equals(useFrozenCache("isArrayType()", this::computeIsArrayType));
+    }
+
+    private boolean computeIsArrayType() {
         // ADR-0039: RESOLVING array-ness. `isArray` is a native boolean flag (not an
         // attr), so it has no attrs()-based resolution path — walk the super chain
         // explicitly so a concrete field that `extends` an abstract array field

@@ -1344,6 +1344,14 @@ public class MetaDataLoader implements LoaderConfigurable {
                     "Failed to transition to REGISTERED phase for MetaDataLoader [" + getName() + "]");
             }
 
+            // FR-031: the tree is now load-complete and immutable — freeze every
+            // node so the resolving read-path accessors (getChildren/getMetaAttrs/
+            // isArrayType) may memoize their extends-chain walks (frozen-only, so
+            // nothing computed during the mutable load phase is cached stale).
+            if (root != null) {
+                root.freeze();
+            }
+
             if (loaderOptions.isVerbose()) {
                 log.info("Successfully registered MetaDataLoader [" + getName() + "]");
             }
