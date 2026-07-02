@@ -1,4 +1,5 @@
 {
+  "metamodelVersion": "0.9",
   "types": [
     {
       "type": "attr",

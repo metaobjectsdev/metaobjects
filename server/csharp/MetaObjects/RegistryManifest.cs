@@ -370,14 +370,22 @@ public static class RegistryManifest
     // ------------------------------------------------------------------
 
     /// <summary>
+    /// The rolled-up metamodel spec-version string. Value <c>"0"</c> = pre-1.0 /
+    /// unstable (semver major-0). The 1.0 cut flips this to <c>"1.0"</c>.
+    /// Emitted as the FIRST top-level key in the registry manifest (C4).
+    /// </summary>
+    public const string MetamodelVersion = "0.9";
+
+    /// <summary>
     /// Emit the canonical registry manifest as a byte-stable JSON string.
     ///
     /// Serialization contract — every port MUST match this exactly:
     ///  - 2-space indentation.
-    ///  - Object key order fixed by construction: <c>types</c>, <c>commonAttrs</c>,
-    ///    <c>defaultSubTypes</c>; each type as <c>type</c>, <c>subType</c>, <c>attrs</c>;
-    ///    each attr as <c>name</c>, <c>valueType</c>, <c>isArray</c>, <c>required</c>,
-    ///    optional <c>allowedValues</c> (ADR-0036 Wave 1; only-when-closed), <c>description</c>.
+    ///  - Object key order fixed by construction: <c>metamodelVersion</c> (first),
+    ///    <c>types</c>, <c>commonAttrs</c>, <c>defaultSubTypes</c>; each type as
+    ///    <c>type</c>, <c>subType</c>, <c>attrs</c>; each attr as <c>name</c>,
+    ///    <c>valueType</c>, <c>isArray</c>, <c>required</c>, optional
+    ///    <c>allowedValues</c> (ADR-0036 Wave 1; only-when-closed), <c>description</c>.
     ///  - All arrays sorted (ordinal/ASCII): types by "type.subType"; attrs by name;
     ///    commonAttrs by name; defaultSubTypes keys sorted.
     ///  - <c>valueType: null</c> literal for polymorphic/untyped attrs.
@@ -402,6 +410,9 @@ public static class RegistryManifest
         using (var writer = new Utf8JsonWriter(stream, writerOptions))
         {
             writer.WriteStartObject();
+
+            // metamodelVersion — FIRST key (C4: rolled-up spec-version marker)
+            writer.WriteString("metamodelVersion", MetamodelVersion);
 
             // types
             writer.WriteStartArray("types");

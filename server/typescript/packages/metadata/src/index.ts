@@ -146,7 +146,7 @@ export type { EffectiveConstraints } from "./constraint-merge.js";
 export { validateConstraints } from "./constraint-validate.js";
 
 // Registry conformance manifest (SP-G) — the canonical logical-vocabulary serializer.
-export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr } from "./registry-manifest.js";
+export { buildRegistryManifest, emitRegistryManifest, classifyPerTypeAttr, METAMODEL_VERSION } from "./registry-manifest.js";
 export type { AttrClassification } from "./registry-manifest.js";
 export { ExclusionReason } from "./registry-manifest-exclusions.js";
 
