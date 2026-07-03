@@ -196,7 +196,7 @@ echo "metaobjects local CI  (mode: $_mode)"
 if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
   step()    { echo "  + $1"; }
   step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
-  run_integration_for() { echo "  + integration-tests (${1:-})"; }
+  run_integration_for() { local label="$1"; shift; local r; for r in "$@"; do echo "  + integration-tests ($r)"; done; }
   echo "Steps that would run:"
 fi
 
@@ -223,12 +223,12 @@ if [ "$QUICK" -eq 1 ]; then
 else
   # Heavy tier — other-language ports + full reactor + docker integration suite.
   if want csharp; then step_if dotnet "conformance: csharp"          gate_conf_csharp;   fi
+  if want java;   then step_if mvn "conformance: java"               gate_conf_java;     fi
+  if want python; then step_if uv "conformance: python"              gate_conf_python;   fi
   if want java;   then
-    step_if mvn "conformance: java"              gate_conf_java
     step_if mvn "conformance: kotlin"            gate_conf_kotlin
     step_if mvn "java-reactor (clean install)"   gate_java_reactor
   fi
-  if want python; then step_if uv "conformance: python"              gate_conf_python;   fi
   # Docker integration — full suite when no --only, per-port otherwise.
   if [ -z "$ONLY" ]; then
     if docker info >/dev/null 2>&1; then
