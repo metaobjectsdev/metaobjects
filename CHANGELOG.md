@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.3] — 2026-07-03
+
+_npm `0.15.3` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
+
+_npm `0.15.3` · NuGet `0.15.3` · Maven Central `7.7.3` · PyPI `0.15.4` (Python stays a patch ahead). A coordinated feature patch._
+
+### Added
+- **`@via` can traverse an `identity.reference` (reference-only FK).** A projection's `origin.*` `@via` join path may now name an `identity.reference` as a to-one forward-FK hop (target = `@references`, cardinality `one`), not just a `relationship.*`. The reference IS the FK — `findReferenceBetween` already derives every hop's join key from it, and a correlated relationship only adds a name + cardinality — so a FK-only / reverse-engineered model navigates it directly instead of authoring a redundant `relationship.association` that just restates the target. Valid in a `passthrough`, rejected in an `aggregate`; single-hop-unique inference stays relationship-only. Applied across all four loader ports (TS also updates the codegen join-tree; Python/Java/C# are loader-only) + a shared cross-port conformance fixture (`origin-via-reference-hop`) all four loaders serialize identically. (#153)
+
 ## [0.15.2] — 2026-07-02
 
 _npm `0.15.2` · NuGet `0.15.2` · Maven Central `7.7.2` · PyPI `0.15.3` (Python was a patch ahead). A coordinated bug-fix + hardening patch._
