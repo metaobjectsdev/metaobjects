@@ -77,6 +77,13 @@ want() { # want <section> — true when the section should run
 PASS=(); FAIL=(); SKIP=()
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# bun's installer exits 1 when an OPTIONAL native dep fails to build (e.g. the
+# ssh2/cpu-features chain) even though the workspace is fully usable — and an
+# immediate re-run exits 0. Retry once so fresh checkouts (the self-hosted CI
+# runner wipes its workdir every run) don't fail the gate on that flake; a
+# genuinely broken install still fails both attempts.
+bun_install() { bun install || bun install; }
+
 step() {  # step "<name>" <cmd...>
   local name="$1"; shift
   echo ""
@@ -106,13 +113,13 @@ gate_pom_versions() { scripts/check-pom-versions.sh; }
 
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
-  bun install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
+  bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
 }
 gate_ts_build_typecheck() { bun run --filter '*' build && bun run --filter '*' typecheck; }
 
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
-  bun install || return 1
+  bun_install || return 1
   ( cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts test/object-model-conformance.test.ts \
       && bun test test/registry-conformance.test.ts test/registry-coverage.test.ts ) || return 1
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
