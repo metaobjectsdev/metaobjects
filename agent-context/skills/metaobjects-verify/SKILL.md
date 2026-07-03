@@ -98,6 +98,29 @@ So even in a Java or Python or C# project, schema migration and `verify --db` ru
 through the Node `meta` tool. The per-port `gen`/codegen tooling stays native to
 the language; only schema crosses to Node.
 
+## Never hand-edit the live database — apply schema only through the tool
+
+The live schema is a derived artifact, exactly like generated code. **Do not mutate a running
+database by hand** — no `psql`/console `ALTER TABLE` / `CREATE` / `DROP`, not to preview a column, not
+to patch a mismatch, not to "just unblock" a boot. It is the single most common way a database ends up
+in a state no migration can reproduce:
+
+- The column now exists but no migration recorded it, so the next `meta migrate` (or a JVM app's
+  boot-time migrator) tries to add it again and dies on `column ... already exists` — or worse,
+  silently diverges and the drift only surfaces days later.
+- "I'll just add it real quick so I can see it in the tool" is the exact rationalization to catch. It
+  doesn't *feel* like a schema change, so it skips the metadata-first check — but it is one.
+
+Apply every schema change the same way: change the metadata, then let `meta migrate` (or, for a
+project still driving its own migrator, a migration authored *to match* the regenerated schema) apply
+it. Want to see a new column in a tool or an app? Apply the migration and re-read — never reach for
+`psql`.
+
+**Make `meta verify --db` a done-check, not just a CI gate.** Run it after any work that touched the
+database or the schema-shaping metadata, before you consider the task finished — it introspects the
+live DB against the metadata and fails on exactly this drift (a hand-added column, a missing index, a
+mismatched type), catching a manual poke immediately instead of at the next boot.
+
 ## Interpreting conformance / test failures
 
 MetaObjects' behavior is pinned by cross-port **conformance corpora** (metamodel,
