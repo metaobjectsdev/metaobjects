@@ -19,11 +19,31 @@
 #                                    #   lint, ts build+typecheck, ts conformance,
 #                                    #   completeness, drift). Skips the other-
 #                                    #   language ports, the reactor, and docker.
+#   scripts/ci-local.sh --only <section> [--only <section> ...]
+#                                    # Run one or more named sections. Mutually
+#                                    #   exclusive with --quick (exit 2 if combined).
+#                                    #   gates  → leak-scan, pom parity, fixture-lint,
+#                                    #            doc-template drift, embedded-library drift
+#                                    #   ts     → ts build+typecheck, ts conformance,
+#                                    #            completeness-gate, integration-tests ts
+#                                    #   java   → java+kotlin conformance, reactor,
+#                                    #            integration-tests java+kotlin
+#                                    #   python → python conformance + integration-tests
+#                                    #   csharp → csharp conformance + integration-tests
+#   scripts/ci-local.sh --strict-toolchains
+#                                    # Promote missing-toolchain and docker-down SKIPs
+#                                    #   to FAILs; useful in CI or a full-toolchain
+#                                    #   machine where skips indicate real problems.
 #   scripts/ci-local.sh --help
+#
+# Set MO_CI_LIST_ONLY=1 to print the steps that would run (given the current
+# flags) and exit 0 without running anything — useful for verifying section
+# selection without waiting for tests to complete.
 #
 # Ports whose toolchain (bun / dotnet / uv / mvn) is not installed are SKIPPED
 # with a loud warning (not silently passed). A full pre-release run is expected on
 # a machine with every toolchain — otherwise rely on the release-tag CI run.
+# Use --strict-toolchains to promote all SKIPs to FAILs (e.g. in CI itself).
 #
 # Mirrors: hygiene.yml (leak-scan) · conformance.yml (fixture-lint, typecheck,
 # 5-port conformance, kotlin, java-reactor, completeness-gate, doc-template-drift,
@@ -33,14 +53,26 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-QUICK=0
-for arg in "$@"; do
-  case "$arg" in
+QUICK=0; STRICT=0; ONLY=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --quick) QUICK=1 ;;
-    -h|--help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown arg: $arg (see --help)" >&2; exit 2 ;;
+    --strict-toolchains) STRICT=1 ;;
+    --only) shift; case "${1:-}" in
+        gates|ts|java|python|csharp) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|ts|java|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+      esac ;;
+    -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
+    *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
   esac
+  shift
 done
+[ -n "$ONLY" ] && [ "$QUICK" -eq 1 ] && { echo "--only and --quick are mutually exclusive" >&2; exit 2; }
+
+want() { # want <section> — true when the section should run
+  [ -z "$ONLY" ] && return 0
+  case " $ONLY " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
 
 PASS=(); FAIL=(); SKIP=()
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -51,9 +83,12 @@ step() {  # step "<name>" <cmd...>
   echo "── ▶ $name ──────────────────────────────────────────────"
   if "$@"; then PASS+=("$name"); else FAIL+=("$name"); echo "  ✖ $name FAILED" >&2; fi
 }
-step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (not fail) when tool absent
+step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (or FAIL under --strict-toolchains) when tool absent
   local tool="$1"; local name="$2"; shift 2
-  if have "$tool"; then step "$name" "$@"; else
+  if have "$tool"; then step "$name" "$@"; elif [ "$STRICT" -eq 1 ]; then
+    echo ""; echo "  ✖ $name — '$tool' not installed (strict-toolchains)" >&2
+    FAIL+=("$name (no $tool, strict)")
+  else
     echo ""; echo "── ⊘ $name — SKIPPED ('$tool' not installed) ──" >&2
     SKIP+=("$name (no $tool)")
   fi
@@ -130,19 +165,52 @@ gate_embedded_library_drift() {
 
 # ── integration-tests.yml (docker) ────────────────────────────────────────────
 gate_integration() { scripts/integration-test.sh all; }
+gate_integration_port() { scripts/integration-test.sh "$1"; }
 
-echo "metaobjects local CI  (mode: $([ "$QUICK" = 1 ] && echo 'quick — TS + drift gates only' || echo 'full — all ports + reactor + docker'))"
+run_integration_for() { # run_integration_for "<label>" <runner...>
+  local label="$1"; shift
+  if docker info >/dev/null 2>&1; then
+    local r; for r in "$@"; do step "integration-tests ($r)" gate_integration_port "$r"; done
+  elif [ "$STRICT" -eq 1 ]; then
+    FAIL+=("integration-tests $label (docker down, strict)")
+    echo "  ✖ docker is DOWN — integration ($label) FAILED (strict-toolchains)." >&2
+  else
+    SKIP+=("integration-tests $label (docker down)")
+    echo "  ⊘ docker is DOWN — integration ($label) skipped." >&2
+  fi
+}
 
-# Fast tier — cheap, TS-centric, single-toolchain (bun). Runs in both modes; this is
-# the whole of --quick. (The pre-push hook covers ts build+typecheck on its own.)
-step    "leak-scan (security)"             gate_leak_scan
-step    "pom-version parity"               gate_pom_versions
-step_if bun    "fixture-lint"              gate_fixture_lint
-step_if bun    "ts build + typecheck"      gate_ts_build_typecheck
-step_if bun    "conformance: typescript"   gate_conf_ts
-step_if bun    "completeness-gate (mutation)" gate_completeness
-step_if bun    "doc-template drift"        gate_doc_template_drift
-step_if bun    "embedded-library drift"    gate_embedded_library_drift
+# ── Banner ────────────────────────────────────────────────────────────────────
+if [ -n "$ONLY" ]; then
+  _mode="only:$(echo "${ONLY# }" | tr ' ' ',')"
+elif [ "$QUICK" -eq 1 ]; then
+  _mode="quick — TS + drift gates only"
+else
+  _mode="full — all ports + reactor + docker"
+fi
+echo "metaobjects local CI  (mode: $_mode)"
+
+# ── Optional dry-run listing ──────────────────────────────────────────────────
+# MO_CI_LIST_ONLY=1: print the steps that would run (want + toolchain checks)
+# without running them, then exit 0.  Useful for verifying section selection.
+if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
+  step()    { echo "  + $1"; }
+  step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
+  run_integration_for() { echo "  + integration-tests (${1:-})"; }
+  echo "Steps that would run:"
+fi
+
+# ── Step invocations ──────────────────────────────────────────────────────────
+# Fast tier: shared gates and TS checks, interleaved in the original order so
+# that no-flags execution is byte-equivalent to the pre-refactor script.
+if want gates; then step    "leak-scan (security)"             gate_leak_scan;             fi
+if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
+if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
+if want ts;    then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
+if want ts;    then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+if want ts;    then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
+if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi
+if want gates; then step_if bun "embedded-library drift"       gate_embedded_library_drift; fi
 
 if [ "$QUICK" -eq 1 ]; then
   echo ""
@@ -154,18 +222,31 @@ if [ "$QUICK" -eq 1 ]; then
   SKIP+=("integration-tests (--quick)")
 else
   # Heavy tier — other-language ports + full reactor + docker integration suite.
-  step_if dotnet "conformance: csharp"     gate_conf_csharp
-  step_if mvn    "conformance: java"       gate_conf_java
-  step_if uv     "conformance: python"     gate_conf_python
-  step_if mvn    "conformance: kotlin"     gate_conf_kotlin
-  step_if mvn    "java-reactor (clean install)" gate_java_reactor
-  if docker info >/dev/null 2>&1; then
-    step "integration-tests (5-port + docker)" gate_integration
+  if want csharp; then step_if dotnet "conformance: csharp"          gate_conf_csharp;   fi
+  if want java;   then
+    step_if mvn "conformance: java"              gate_conf_java
+    step_if mvn "conformance: kotlin"            gate_conf_kotlin
+    step_if mvn "java-reactor (clean install)"   gate_java_reactor
+  fi
+  if want python; then step_if uv "conformance: python"              gate_conf_python;   fi
+  # Docker integration — full suite when no --only, per-port otherwise.
+  if [ -z "$ONLY" ]; then
+    if docker info >/dev/null 2>&1; then
+      step "integration-tests (5-port + docker)" gate_integration
+    else
+      echo ""; echo "  ✖ docker is DOWN — cannot run the integration suite. Start docker, or use --quick." >&2
+      FAIL+=("integration-tests (docker down)")
+    fi
   else
-    echo ""; echo "  ✖ docker is DOWN — cannot run the integration suite. Start docker, or use --quick." >&2
-    FAIL+=("integration-tests (docker down)")
+    want ts     && run_integration_for ts     ts
+    want java   && run_integration_for java   java kotlin
+    want python && run_integration_for python python
+    want csharp && run_integration_for csharp csharp
   fi
 fi
+
+# ── Dry-run listing exits before summary ──────────────────────────────────────
+if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then exit 0; fi
 
 echo ""
 echo "══════════════════════ SUMMARY ══════════════════════"
