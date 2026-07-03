@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>local-ci — final whole-branch review</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+</head>
+<body class="bg-base-200 text-base-content min-h-screen">
+<div class="max-w-5xl mx-auto p-4 sm:p-8 space-y-8">
+
+  <!-- ═══ Verdict hero ═══ -->
+  <header class="card card-border bg-base-100">
+    <div class="card-body">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="badge badge-success badge-lg font-bold">READY — shipped &amp; green</span>
+        <span class="badge badge-ghost">10 commits on main</span>
+        <span class="badge badge-ghost">range 8f6b8e2b…385c0c35</span>
+      </div>
+      <h1 class="card-title text-2xl mt-2">Final review: local CI on self-hosted runners</h1>
+      <p class="text-sm opacity-80 min-w-0">Whole-branch review of the push-to-main CI gate (workflow + affected-port selection + <code>ci-local.sh</code> flags + the two cli test fixes + docs). Review was performed inline by the controller after the reviewer subagent hit the account's monthly spend limit. Verdict is grounded in live evidence, not just diff reading: run <code>28645855466</code> on current <code>main</code> finished <b>all green</b>.</p>
+      <div class="stats stats-vertical sm:stats-horizontal bg-base-200 mt-2 overflow-x-auto">
+        <div class="stat py-3"><div class="stat-title">Full matrix</div><div class="stat-value text-lg">~10 min</div><div class="stat-desc">parallel, warm caches</div></div>
+        <div class="stat py-3"><div class="stat-title">Single-port push</div><div class="stat-value text-lg">2–6 min</div><div class="stat-desc">affected ports only</div></div>
+        <div class="stat py-3"><div class="stat-title">Per-port (green run)</div><div class="stat-value text-lg">☕</div><div class="stat-desc">gates 0.1m · cs 2m · py 2.6m · ts 5.3m · java 9.8m</div></div>
+        <div class="stat py-3"><div class="stat-title">Actions cost</div><div class="stat-value text-lg text-success">$0</div><div class="stat-desc">self-hosted minutes are free</div></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ Findings table ═══ -->
+  <section class="card card-border bg-base-100">
+    <div class="card-body">
+      <h2 class="card-title">All findings, triaged</h2>
+      <p class="text-sm opacity-80">Three were found and <b>fixed during the review loop</b> (two would have shipped a broken gate). Seven minors are <b>accepted with rationale</b>. Three carry a <b>recommended follow-up fix</b> — pick which to apply at the bottom.</p>
+      <div class="overflow-x-auto rounded-box border border-base-content/5">
+        <table class="table table-zebra table-sm">
+          <thead><tr><th>Sev</th><th>Finding</th><th>Where</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-error badge-sm">Critical</span></td><td class="min-w-0">No-flags heavy-tier step <b>order regressed</b> (python transposed after kotlin/reactor) — violated the byte-equivalence constraint; the plan's own example code contained the slip</td><td><code>scripts/ci-local.sh</code></td><td><span class="badge badge-success badge-soft badge-sm">Fixed in review</span> <span class="opacity-60 text-xs">16e635bf</span></td></tr>
+            <tr><td><span class="badge badge-error badge-sm">Critical</span></td><td class="min-w-0"><code>--only ts</code> ran build with <b>no node_modules</b> — the ts gate had silently piggybacked on fixture-lint's install for years; the section split exposed it (<code>tsc: command not found</code> on the runner)</td><td><code>scripts/ci-local.sh:117</code></td><td><span class="badge badge-success badge-soft badge-sm">Fixed live</span> <span class="opacity-60 text-xs">5e9e81a4</span></td></tr>
+            <tr><td><span class="badge badge-error badge-sm">Critical</span></td><td class="min-w-0">Fresh-checkout <code>bun install</code> exits 1 — <code>cpu-features</code> optional dep needs <b>node-gyp</b>, which was missing from the machine; the retry-once helper did NOT survive it on clean workdirs</td><td>runner machine</td><td><span class="badge badge-success badge-soft badge-sm">Fixed live</span> <span class="opacity-60 text-xs">npm i -g node-gyp</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">TPH generated-lane test hit its 60s timeout once under cold 4-way parallel docker load; passed warm on the next run</td><td><code>integration-tests/test/api-contract-tph.test.ts:45</code></td><td><span class="badge badge-info badge-soft badge-sm">Follow-up F3</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">Config-loader temp file <code>.metaobjects-config-proc-*.ts</code> survives SIGKILL in the consumer's project root (finally-block covers all normal paths)</td><td><code>cli/src/lib/load-metaobjects-config.ts</code></td><td><span class="badge badge-info badge-soft badge-sm">Follow-up F1</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">Dynamic <code>import("@metaobjectsdev/…")</code> specifiers are not rewritten (static <code>from</code>/side-effect imports are); essentially unheard of in a config file</td><td><code>cli/src/lib/load-metaobjects-config.ts</code></td><td><span class="badge badge-info badge-soft badge-sm">Follow-up F2 (doc)</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">Import rewrite also touches <code>from "pkg"</code> text inside comments / string literals. Blast radius: 6 known specifiers, import-syntax position only; replacement-function form is <code>$</code>-safe; close-quote backreference prevents <code>codegen-ts</code> vs <code>codegen-ts/generators</code> collisions</td><td><code>rewriteImportSpecifiers()</code></td><td><span class="badge badge-neutral badge-soft badge-sm">Accepted</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0"><code>github.event_name</code> / <code>inputs.tier</code> interpolated directly in a <code>run:</code> block — both GitHub-controlled (event routing id; choice-validated input); not attacker-influenceable on a repo with no PR trigger</td><td><code>local-ci.yml:58,60</code></td><td><span class="badge badge-neutral badge-soft badge-sm">Accepted</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0"><code>gates</code> is skipped if <code>detect</code> itself fails (default <code>if: success()</code>); <code>notify</code> still fires on the detect failure, so reds can't pass silently</td><td><code>local-ci.yml</code> gates job</td><td><span class="badge badge-neutral badge-soft badge-sm">Accepted</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">MO_CI_LIST_ONLY integration stub printed one line per section instead of per runner — list mode understated <code>--only java</code> by one step</td><td><code>scripts/ci-local.sh</code></td><td><span class="badge badge-success badge-soft badge-sm">Fixed in review</span> <span class="opacity-60 text-xs">16e635bf</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">Four commits authored as <code>Doug Mealing &lt;noreply@anthropic.com&gt;</code> (subagent git-config slip). Pushed history — not rewriting; later commits use the real identity</td><td><code>e61b3c5d…c77be1b3</code></td><td><span class="badge badge-neutral badge-soft badge-sm">Accepted</span></td></tr>
+            <tr><td><span class="badge badge-warning badge-sm">Minor</span></td><td class="min-w-0">actionlint unavailable on this machine — workflow validated by YAML-parse + live runs only</td><td>tooling</td><td><span class="badge badge-neutral badge-soft badge-sm">Accepted</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div role="alert" class="alert alert-success alert-soft mt-2"><span><b>Security posture (verified):</b> no <code>pull_request</code> trigger anywhere near the runners · <code>persist-credentials: false</code> on all six checkouts · untrusted commit-message text env-indirected + newline-sanitized · runners repo-scoped · fork-PR approval = all outside collaborators.</span></div>
+    </div>
+  </section>
+
+  <!-- ═══ Recommended fixes ═══ -->
+  <section class="card card-border bg-base-100">
+    <div class="card-body">
+      <h2 class="card-title">Recommended fixes</h2>
+      <p class="text-sm opacity-80">None block anything — the gate is live and green. Each is small; tick the ones you want and queue the answer at the bottom.</p>
+
+      <h3 class="font-bold mt-2">F1 — Self-heal stale config temp files <span class="badge badge-info badge-soft badge-sm align-middle">recommended</span></h3>
+      <p class="text-sm opacity-80 min-w-0">A SIGKILL during <code>meta gen</code>/<code>meta docs</code> can strand <code>.metaobjects-config-proc-&lt;hex&gt;.ts</code> in a consumer's project root (visible in their <code>git status</code>). <code>meta init</code> writes no root <code>.gitignore</code>, so hiding it isn't an option — instead, sweep stale temp files on every config load. Self-healing beats hiding.</p>
+      <div id="diff-f1" class="rounded-box overflow-hidden border border-base-content/10"></div>
+
+      <h3 class="font-bold mt-4">F2 — Document the dynamic-import gap where it bites <span class="badge badge-info badge-soft badge-sm align-middle">recommended</span></h3>
+      <p class="text-sm opacity-80 min-w-0">One sentence in the function doc so the next person debugging a consumer's exotic config knows the boundary is deliberate.</p>
+      <div id="diff-f2" class="rounded-box overflow-hidden border border-base-content/10"></div>
+
+      <h3 class="font-bold mt-4">F3 — TPH generated-lane timeout headroom <span class="badge badge-ghost badge-sm align-middle">optional — could also wait for a repeat</span></h3>
+      <p class="text-sm opacity-80 min-w-0">The generated-lane boot (full server + Testcontainers PG) hit exactly 60s once while four port suites shared docker cold. 120s keeps the test meaningful while absorbing parallel-load jitter. Alternative: leave it and only bump if it recurs.</p>
+      <div id="diff-f3" class="rounded-box overflow-hidden border border-base-content/10"></div>
+
+      <!-- ═══ Triage form ═══ -->
+      <form data-lavish-question="apply-fixes" class="mt-6 p-4 rounded-box bg-base-200 space-y-3"
+        onsubmit="event.preventDefault();
+          const fd = new FormData(event.currentTarget);
+          const picked = fd.getAll('fix');
+          const note = (fd.get('note') || '').toString().trim();
+          const msg = picked.length
+            ? 'Apply these recommended fixes from the final review: ' + picked.join(', ') + '. F1 = stale temp-file sweep in load-metaobjects-config.ts; F2 = dynamic-import doc comment; F3 = bump api-contract-tph.test.ts timeout 60_000 -> 120_000. Commit to main via an isolated worktree as before.' + (note ? ' Additional instruction: ' + note : '')
+            : 'Apply none of the recommended fixes — accept all findings as-is.' + (note ? ' Note: ' + note : '');
+          window.lavish.queuePrompt(msg, { tag: 'triage', text: 'Fixes: ' + (picked.join(', ') || 'none'), element: event.currentTarget, data: { question: 'apply-fixes', answer: picked } });">
+        <div class="font-semibold">Which fixes should I apply?</div>
+        <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" name="fix" value="F1" checked class="checkbox checkbox-primary checkbox-sm mt-0.5"><span class="min-w-0 text-sm"><b>F1</b> — sweep stale <code>.metaobjects-config-proc-*.ts</code> on config load</span></label>
+        <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" name="fix" value="F2" checked class="checkbox checkbox-primary checkbox-sm mt-0.5"><span class="min-w-0 text-sm"><b>F2</b> — document dynamic-import non-coverage in the rewrite function doc</span></label>
+        <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" name="fix" value="F3" class="checkbox checkbox-primary checkbox-sm mt-0.5"><span class="min-w-0 text-sm"><b>F3</b> — TPH generated-lane timeout 60s → 120s <span class="opacity-60">(unchecked by default: one occurrence, could wait for a repeat)</span></span></label>
+        <input type="text" name="note" placeholder="Optional: anything to change about how I apply them…" class="input input-sm w-full">
+        <button type="submit" class="btn btn-primary btn-sm">Queue this answer</button>
+        <span class="text-xs opacity-60">Queues one prompt; press “Send to Agent” when ready.</span>
+      </form>
+    </div>
+  </section>
+
+  <footer class="text-xs opacity-60 px-2 pb-6">Evidence: green run 28640403173→red-path notify validated · 28645855466→all green · final state origin/main 385c0c35 · full ledger in .superpowers/sdd/progress.md</footer>
+</div>
+
+<script type="module">
+  import { FileDiff } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+  const theme = { light: "github-light", dark: "github-dark" };
+  const opts = { theme, themeType: "dark", overflow: "wrap", diffStyle: "unified" };
+
+  // F1 — stale temp-file sweep
+  const f1Old = {
+    name: "server/typescript/packages/cli/src/lib/load-metaobjects-config.ts",
+    contents: `export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
+  const fullPath = resolve(projectRoot, CONFIG_FILE);
+  if (!existsSync(fullPath)) {
+    throw new Error(
+      \`metaobjects.config.ts not found at \${fullPath}. Run 'meta init' to scaffold one.\`,
+    );
+  }
+`,
+  };
+  const f1New = {
+    name: "server/typescript/packages/cli/src/lib/load-metaobjects-config.ts",
+    contents: `export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
+  const fullPath = resolve(projectRoot, CONFIG_FILE);
+  if (!existsSync(fullPath)) {
+    throw new Error(
+      \`metaobjects.config.ts not found at \${fullPath}. Run 'meta init' to scaffold one.\`,
+    );
+  }
+
+  // Self-heal: a SIGKILL mid-load can strand a pre-processed temp config
+  // (.metaobjects-config-proc-*.ts) next to the user's config. Sweep any
+  // stale ones before loading so an abnormal exit never pollutes git status.
+  for (const entry of readdirSync(dirname(fullPath))) {
+    if (entry.startsWith(".metaobjects-config-proc-") && entry.endsWith(".ts")) {
+      try { unlinkSync(resolve(dirname(fullPath), entry)); } catch { /* best-effort */ }
+    }
+  }
+`,
+  };
+
+  // F2 — doc comment
+  const f2Old = {
+    name: "server/typescript/packages/cli/src/lib/load-metaobjects-config.ts",
+    contents: ` * Relative imports (\`./foo\`, \`../bar\`) are intentionally NOT rewritten; they
+ * must continue to resolve relative to the config file's own directory.
+ */
+function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string>): string {
+`,
+  };
+  const f2New = {
+    name: "server/typescript/packages/cli/src/lib/load-metaobjects-config.ts",
+    contents: ` * Relative imports (\`./foo\`, \`../bar\`) are intentionally NOT rewritten; they
+ * must continue to resolve relative to the config file's own directory.
+ *
+ * Dynamic \`import("specifier")\` calls are NOT rewritten either — configs are
+ * loaded eagerly and none of the scaffolded templates use them; a dynamic
+ * import of an aliased package falls back to normal module resolution (and
+ * jiti's alias map on non-Bun runtimes).
+ */
+function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string>): string {
+`,
+  };
+
+  // F3 — timeout bump
+  const f3Old = {
+    name: "server/typescript/packages/integration-tests/test/api-contract-tph.test.ts",
+    contents: `        await runScenario(scenario, server);
+      } finally {
+        if (server) await server.close();
+        await pg.stop();
+      }
+    }, { timeout: 60_000 });
+`,
+  };
+  const f3New = {
+    name: "server/typescript/packages/integration-tests/test/api-contract-tph.test.ts",
+    contents: `        await runScenario(scenario, server);
+      } finally {
+        if (server) await server.close();
+        await pg.stop();
+      }
+      // 120s: the generated-lane boot (server + Testcontainers PG) hit 60s
+      // once under cold 4-way parallel docker load on the local-ci runner.
+    }, { timeout: 120_000 });
+`,
+  };
+
+  new FileDiff(opts).render({ containerWrapper: document.querySelector("#diff-f1"), oldFile: f1Old, newFile: f1New });
+  new FileDiff(opts).render({ containerWrapper: document.querySelector("#diff-f2"), oldFile: f2Old, newFile: f2New });
+  new FileDiff(opts).render({ containerWrapper: document.querySelector("#diff-f3"), oldFile: f3Old, newFile: f3New });
+</script>
+</body>
+</html>
