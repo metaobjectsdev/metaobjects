@@ -7,6 +7,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+- **Loader — root-level same-name nodes in different packages were wrongly merged (TS/C#/Python).** Two files declaring the same (type, name) at root level under different packages collapsed into one node: identical twins merged silently, and twins differing in an `@attr` (e.g. each package's `@objectRef` pointing at its own nested view) failed the load with `ERR_MERGE_CONFLICT`. Root-level merge matching now compares the package-qualified identity (own `package` else the file-default package) — mirroring the Java parser, which was already correct. Nested children stay bare-name matched; same-package cross-file overlay merging unchanged. New cross-port conformance fixture `loader-same-name-distinct-packages` (Java passes it unchanged). (#155)
+
 ## [0.15.3] — 2026-07-03
 
 _npm `0.15.3` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._

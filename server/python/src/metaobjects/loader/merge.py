@@ -34,6 +34,7 @@ from typing import Optional
 from ..errors import ErrorCode, MetaError
 from ..meta.meta_data import MetaData
 from ..serializer_json import canonical_serialize
+from ..shared.separators import PACKAGE_SEP
 from ..source import (
     Contributor,
     ErrorSource,
@@ -191,6 +192,20 @@ def _detect_attr_merge_conflicts(
         )
 
 
+def _root_child_key(node: MetaData) -> str:
+    """The package-qualified identity of a ROOT-LEVEL child for merge matching.
+
+    ``<pkg>::<name>`` where pkg is the node's own ``package`` when declared,
+    else its ``file_default_package`` (the declaring file's root package
+    captured at parse time). Bare name when neither exists. Deliberately does
+    NOT use :meth:`MetaData.resolution_key` — its ancestor-walk fallback would
+    fold the MERGED root's (first file's) package onto a package-less child,
+    skewing identity for later files in the merge sequence.
+    """
+    pkg = node.package or node.file_default_package
+    return f"{pkg}{PACKAGE_SEP}{node.name}" if pkg else node.name
+
+
 def _merge_into(
     target: MetaData,
     src: MetaData,
@@ -224,10 +239,22 @@ def _merge_into(
     # attrs: source overwrites target (last-writer-wins)
     for attr in src.own_meta_attrs():
         target.set_attr(attr.name, getattr(attr, "value", None), sub_type=attr.sub_type)
-    # children: merge by (type, name), else append
+    # children: merge by (type, name), else append.
+    #
+    # ROOT-LEVEL matches are PACKAGE-QUALIFIED: two files declaring the same
+    # (type, name) under different packages are DISTINCT root nodes, never a
+    # merge pair (mirrors the Java parser, which searches root children by
+    # "pkg::name"). Nested children stay bare-name matched — they are scoped
+    # by their parent, and packages don't disambiguate siblings inside a node.
     for sc in src.own_children():
         tc = next(
-            (c for c in target.own_children() if c.type == sc.type and c.name == sc.name),
+            (
+                c
+                for c in target.own_children()
+                if c.type == sc.type
+                and c.name == sc.name
+                and (not is_root or _root_child_key(c) == _root_child_key(sc))
+            ),
             None,
         )
         if tc is not None:

@@ -325,6 +325,25 @@ public static class Parser
         return basePkg + pkgPath;
     }
 
+    /// <summary>
+    /// The resolution key a ROOT-LEVEL declaration would carry once parsed:
+    /// <c>&lt;pkg&gt;::&lt;name&gt;</c> where pkg is the node's own <c>package</c>
+    /// (expanded against the file context, same as ApplyReservedKeys) when
+    /// declared, else the file's context package. Bare name when neither exists.
+    /// Matches <see cref="MetaData.ResolutionKey"/> on the already-parsed side,
+    /// so the root-level merge lookup can compare identity BEFORE the new node
+    /// is constructed.
+    /// </summary>
+    private static string RootChildResolutionKey(
+        JsonElement nodeData, string inheritedContextPkg, string name)
+    {
+        string? rawPkg = TryGetString(nodeData, RESERVED_KEY_PACKAGE);
+        string pkg = !string.IsNullOrEmpty(rawPkg)
+            ? ExpandPackageForPath(inheritedContextPkg, rawPkg)
+            : inheritedContextPkg;
+        return pkg.Length != 0 ? $"{pkg}{PACKAGE_SEPARATOR}{name}" : name;
+    }
+
     // -----------------------------------------------------------------------
     // buildTree — the shared registry-driven tree-builder.
     //
@@ -889,9 +908,27 @@ public static class Parser
 
         // Look up an existing child with (type, name). Skip unnamed nodes —
         // they are always distinct (e.g. inline validators, anonymous attrs).
+        //
+        // ROOT-LEVEL lookups are PACKAGE-QUALIFIED: two files declaring the same
+        // (type, name) under different packages are DISTINCT root nodes, never a
+        // merge pair (mirrors the Java parser, which searches root children by
+        // "pkg::name"). Nested children stay bare-name matched — they are scoped
+        // by their parent, and packages don't disambiguate siblings inside a node.
         MetaData? existing = name != ""
             ? parent.OwnChildByTypeAndName(type, name)
             : null;
+        if (existing is not null && parent is MetaRoot)
+        {
+            string candidateKey = RootChildResolutionKey(nodeData, inheritedContextPkg, name);
+            if (existing.ResolutionKey() != candidateKey)
+            {
+                // The first same-name hit is a different package — scan for an
+                // exact package-qualified match (several packages may declare
+                // this name).
+                existing = parent.OwnChildren().FirstOrDefault(
+                    c => c.Type == type && c.Name == name && c.ResolutionKey() == candidateKey);
+            }
+        }
 
         if (isOverlayNode)
         {
