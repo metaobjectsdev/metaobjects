@@ -13,6 +13,7 @@ name: integration-tests
 #   scripts/ci-local.sh            # full local CI (this suite + conformance + drift)
 #   scripts/integration-test.sh <port>
 # The cheap public-repo SECURITY gate (hygiene / leak-scan) still runs on every PR.
+# Push-to-main coverage now comes from local-ci.yml on the self-hosted runner.
 
 on:
   push:

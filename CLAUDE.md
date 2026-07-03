@@ -66,8 +66,13 @@ bypasses branch protection. This hook closes that hole locally: when a push touc
 `server/typescript/` or `client/web/`, it runs the same `bun run --filter '*' build &&
 … typecheck` gate CI runs and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
-or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates stay
-CI-only (still required on PRs via branch protection).
+or `SKIP_TS_TYPECHECK=1 git push`. The Java/C#/Python compile+conformance gates do NOT run on PRs (hosted CI runs
+them on release tags + manual dispatch only, for cost). Instead, every push to
+`main` triggers `local-ci.yml` on the maintainer's self-hosted runner: affected
+ports only (via `scripts/ci-affected-ports.sh`), parallel per-port jobs, each
+running `scripts/ci-local.sh --only <port> --strict-toolchains`; a nightly
+dispatch runs the full matrix. PRs get the leak-scan only — run
+`scripts/ci-local.sh --quick` locally before opening one.
 
 ## Monorepo layout
 

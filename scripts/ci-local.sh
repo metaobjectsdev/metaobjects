@@ -77,11 +77,10 @@ want() { # want <section> — true when the section should run
 PASS=(); FAIL=(); SKIP=()
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# bun's installer exits 1 when an OPTIONAL native dep fails to build (e.g. the
-# ssh2/cpu-features chain) even though the workspace is fully usable — and an
-# immediate re-run exits 0. Retry once so fresh checkouts (the self-hosted CI
-# runner wipes its workdir every run) don't fail the gate on that flake; a
-# genuinely broken install still fails both attempts.
+# bun exits 1 when an OPTIONAL native dep fails its install script (the
+# ssh2/cpu-features chain needs node-gyp on the machine — `npm i -g node-gyp`
+# fixes it for good). Retry once as defense-in-depth for transient installer
+# flakes; a genuinely broken install still fails both attempts.
 bun_install() { bun install || bun install; }
 
 step() {  # step "<name>" <cmd...>
