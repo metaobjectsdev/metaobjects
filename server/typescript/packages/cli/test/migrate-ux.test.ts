@@ -256,8 +256,10 @@ describe("detectPackageManager", () => {
   test("returns bun as default when no lockfile is found", async () => {
     const dir = await mkdtemp(join(tmpdir(), "mts-pm-"));
     dirs.push(dir);
-    // No lockfile written
-    expect(await detectPackageManager(dir)).toBe("bun");
+    // No lockfile written. Pass stopAt so the walk doesn't escape the isolated
+    // temp dir and accidentally find a lockfile in an ancestor directory (e.g.
+    // a stale /tmp/package-lock.json on a shared CI or developer machine).
+    expect(await detectPackageManager(dir, { stopAt: dir })).toBe("bun");
   });
 });
 
