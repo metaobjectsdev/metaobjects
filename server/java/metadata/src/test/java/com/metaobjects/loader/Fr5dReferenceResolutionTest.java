@@ -314,6 +314,112 @@ public class Fr5dReferenceResolutionTest extends SharedRegistryTestBase {
     }
 
     // =========================================================================
+    // FR-024 — @via over a reference-only FK (identity.reference)
+    //
+    // A passthrough @via segment may name a relationship.* OR an
+    // identity.reference (a forward FK). A reference hop is inherently to-one
+    // (a child names the parent it points at), so it is valid in a passthrough
+    // (and correctly rejected in an aggregate by the cardinality rules). Its
+    // target entity comes from @references (relationships use @objectRef).
+    // Inference stays relationship-only — only the EXPLICIT @via path resolution
+    // accepts references. Mirrors the TS/Python reference-hop tests
+    // (loader-origin-validation.test.ts / test_validation_origin_paths.py).
+    // =========================================================================
+
+    /**
+     * Build a canonical tree whose projection passthrough joins via an
+     * identity.reference (a reference-only FK — no relationship declared):
+     *   - Program(id, title)
+     *   - Enrollment(id, programId, identity.reference ref_program → Program)
+     *   - EnrollmentView (object.projection anchored to Enrollment) passthrough
+     *     Program.title @via {@code via}
+     *
+     * <p>EnrollmentView is an {@code object.projection} (a read model), which is
+     * the FR-024 host for a view-backed passthrough — an {@code object.entity}
+     * with a read-only primary source is illegal (ADR-0028). The projection
+     * carries a view source, an extended primary identity (anchors the base
+     * entity), and the {@code programTitle} passthrough field extends
+     * {@code Program.title} so it satisfies the B6 extends/origin agreement.</p>
+     */
+    private static String referenceViaCanonical(String via) {
+        return "{ \"metadata.root\": {"
+            + "\"package\": \"acme::commerce\","
+            + "\"children\": ["
+            + "  { \"object.entity\": {"
+            + "    \"name\": \"Program\","
+            + "    \"children\": ["
+            + "      { \"field.long\": { \"name\": \"id\" } },"
+            + "      { \"field.string\": { \"name\": \"title\" } },"
+            + "      { \"identity.primary\": { \"name\": \"pk\", \"@fields\": \"id\" } }"
+            + "    ]"
+            + "  } },"
+            + "  { \"object.entity\": {"
+            + "    \"name\": \"Enrollment\","
+            + "    \"children\": ["
+            + "      { \"field.long\": { \"name\": \"id\" } },"
+            + "      { \"field.long\": { \"name\": \"programId\" } },"
+            + "      { \"identity.primary\": { \"name\": \"pk\", \"@fields\": \"id\" } },"
+            + "      { \"identity.reference\": { \"name\": \"ref_program\","
+            + "        \"@fields\": \"programId\", \"@references\": \"Program\" } }"
+            + "    ]"
+            + "  } },"
+            + "  { \"object.projection\": {"
+            + "    \"name\": \"EnrollmentView\","
+            + "    \"children\": ["
+            + "      { \"source.rdb\": { \"@kind\": \"view\", \"@table\": \"v_enrollment\" } },"
+            + "      { \"field.long\": { \"name\": \"id\", \"extends\": \"Enrollment.id\" } },"
+            + "      { \"field.string\": { \"name\": \"programTitle\", \"extends\": \"Program.title\", \"children\": ["
+            + "        { \"origin.passthrough\": {"
+            + "          \"@from\": \"Program.title\","
+            + "          \"@via\": \"" + via + "\""
+            + "        } }"
+            + "      ] } },"
+            + "      { \"identity.primary\": { \"name\": \"pk\", \"extends\": \"Enrollment.pk\" } }"
+            + "    ]"
+            + "  } }"
+            + "] } }";
+    }
+
+    @Test
+    public void passthroughViaReferenceOnlyFk_isAccepted_noOriginError() {
+        // @via names the identity.reference ref_program (a reference-only FK, no
+        // relationship) — FR-024 makes this a navigable many-to-one hop. Loads
+        // cleanly with no origin error.
+        MetaDataLoader loader = newTestLoader();
+        loader.load(List.of(new InMemoryStringSource(
+            referenceViaCanonical("Enrollment.ref_program"), "meta.commerce.json")));
+        // No exception → the reference hop resolved. Sanity-check the tree loaded
+        // (getMetaDataByName throws MetaDataNotFoundException if absent).
+        assertNotNull("EnrollmentView projection must load",
+            loader.getMetaDataByName(com.metaobjects.object.MetaObject.class,
+                "acme::commerce::EnrollmentView"));
+    }
+
+    @Test
+    public void passthroughViaBogusSegment_reportsNoRelationshipOrReference() {
+        // @via names neither a relationship nor a reference on Enrollment → the
+        // hop-resolution error, whose text now reads "no such relationship or
+        // reference" (FR-024).
+        MetaDataLoader loader = newTestLoader();
+        try {
+            loader.load(List.of(new InMemoryStringSource(
+                referenceViaCanonical("Enrollment.bogus"), "meta.commerce.json")));
+            fail("expected MetaDataException for a bogus @via segment");
+        } catch (MetaDataException ex) {
+            assertResolved(ex,
+                ErrorCode.ERR_INVALID_ORIGIN,
+                "EnrollmentView::programTitle",
+                "Enrollment.bogus",
+                List.of("meta.commerce.json"));
+            assertTrue("message must say 'no such relationship or reference', got: "
+                    + ex.getMessage(),
+                ex.getMessage().contains("no such relationship or reference"));
+            assertTrue("message must name the bogus segment, got: " + ex.getMessage(),
+                ex.getMessage().contains("bogus"));
+        }
+    }
+
+    // =========================================================================
     // 4 — @of / @from emits format=resolved
     // =========================================================================
 

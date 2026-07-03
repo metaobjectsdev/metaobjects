@@ -105,6 +105,77 @@ describe("extractViewSpec — flat passthrough via extends", () => {
   });
 });
 
+describe("extractViewSpec — @via over a reference-only FK (FR-024)", () => {
+  test("passthrough joins the parent via an identity.reference, no relationship declared", async () => {
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Program",
+          children: [
+            { "source.rdb": { "@table": "programs" } },
+            { "field.int": { name: "id" } },
+            { "field.string": { name: "title" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Enrollment",
+          children: [
+            { "source.rdb": { "@table": "enrollments" } },
+            { "field.int": { name: "id" } },
+            { "field.int": { name: "programId" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+            // A reference-only FK to Program — NO correlated relationship.
+            { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "EnrollmentView",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_enrollment" } },
+            { "field.int": { name: "id", extends: "Enrollment.id" } },
+            { "identity.primary": { name: "id", extends: "Enrollment.id" } },
+            {
+              "field.string": {
+                name: "program_title",
+                children: [
+                  {
+                    "origin.passthrough": {
+                      "@from": "Program.title",
+                      // @via names the identity.reference, not a relationship.
+                      "@via": "Enrollment.ref_program",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const projection = root.objects().find((o) => o.name === "EnrollmentView")!;
+    const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
+
+    expect(spec.viewName).toBe("v_enrollment");
+    expect(spec.joinTree.baseEntity).toBe("Enrollment");
+    expect(spec.joinTree.joins.length).toBe(1);
+    const join = spec.joinTree.joins[0]!;
+    expect(join.relationship).toBe("ref_program"); // the reference name IS the hop
+    expect(join.targetEntity).toBe("Program");
+    expect(join.fkColumn).toBe("program_id"); // FK on Enrollment (the holder/source)
+    expect(join.cardinality).toBe("one"); // a forward FK is inherently to-one
+    expect(join.referenceHolder).toBe("source");
+
+    const programTitle = spec.selectSpec.columns.find((c) => c.fieldName === "program_title")!;
+    expect(programTitle).toBeDefined();
+  });
+});
+
 describe("extractViewSpec — multi-level via path", () => {
   test("Program.weeks.workouts → 2 joins (1 child on the first join)", async () => {
     const root = await load([

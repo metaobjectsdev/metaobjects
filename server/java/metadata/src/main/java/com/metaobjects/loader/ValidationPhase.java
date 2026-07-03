@@ -1575,7 +1575,7 @@ public final class ValidationPhase {
             checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                java.util.List<MetaRelationship> hops =
+                java.util.List<MetaData> hops =
                     validateViaPath(via, root, obj, field.getName(), origin.getSource());
                 checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
             } else if (!isValueHost) {
@@ -1583,7 +1583,7 @@ public final class ValidationPhase {
                 // base relation itself is a plain base column; else infer single-hop.
                 MetaObject base = deriveBaseEntity(obj, root, field.getName(), origin.getSource());
                 if (base != null && !isBaseRelationTarget(fromTarget.entity, base, obj)) {
-                    java.util.List<MetaRelationship> hops = inferViaSingleHop(
+                    java.util.List<MetaData> hops = inferViaSingleHop(
                         base, fromTarget.entity, obj, field.getName(), from,
                         "origin.passthrough.@from", origin.getSource());
                     checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
@@ -1619,7 +1619,7 @@ public final class ValidationPhase {
 
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                java.util.List<MetaRelationship> hops =
+                java.util.List<MetaData> hops =
                     validateViaPath(via, root, obj, field.getName(), origin.getSource());
                 checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
                 return;
@@ -1643,7 +1643,7 @@ public final class ValidationPhase {
                         + ": missing @via (aggregates require a relationship path).",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
             }
-            java.util.List<MetaRelationship> hops = inferViaSingleHop(
+            java.util.List<MetaData> hops = inferViaSingleHop(
                 base, ofTarget.entity, obj, field.getName(), of,
                 "origin.aggregate.@of", origin.getSource());
             checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
@@ -2364,20 +2364,22 @@ public final class ValidationPhase {
     }
 
     /**
-     * Validate a dotted relationship path of the form
-     * {@code "Entity.relationship[.relationship...]"}. The leading entity must
-     * exist at root; each relationship segment must exist on the current entity
-     * and carry a {@code @objectRef} that resolves to another entity at root,
+     * Validate a dotted path of the form
+     * {@code "Entity.hop[.hop...]"}. The leading entity must exist at root; each
+     * hop segment must name a {@code relationship.*} OR an {@code identity.reference}
+     * (a reference-only forward FK) on the current entity. A relationship hop's
+     * next entity comes from {@code @objectRef}; a reference hop's from
+     * {@code @references} (FR-024). The resolved target must be an entity at root,
      * which becomes the next hop's current entity.
      */
-    private static java.util.List<MetaRelationship> validateViaPath(String viaAttr, MetaRoot root,
+    private static java.util.List<MetaData> validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
                                         com.metaobjects.source.ErrorSource envelope) {
         // FR5d — referrer is `<projection-bare-name>::<fieldName>` (matches
         // TS/C#/Python: bare entity name, not package-qualified).
         String projectionName = projection.getName();
         String referrer = projection.getShortName() + "::" + fieldName;
-        java.util.List<MetaRelationship> hops = new java.util.ArrayList<>();
+        java.util.List<MetaData> hops = new java.util.ArrayList<>();
         String[] segments = viaAttr.split("\\.");
         if (segments.length < 2) {
             throw new MetaDataException(
@@ -2408,49 +2410,54 @@ public final class ValidationPhase {
         validSegments.add(entityName);
         for (int i = 1; i < segments.length; i++) {
             String relName = segments[i];
+            // FR-024: a hop may name a relationship OR a reference-only FK
+            // (identity.reference) — the reference IS a navigable many-to-one edge.
             MetaRelationship rel = findRelationship(currentObj, relName);
-            if (rel == null) {
+            MetaData hop = (rel != null) ? rel : findReference(currentObj, relName);
+            if (hop == null) {
                 String prefix = String.join(".", validSegments);
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.@via \"" + viaAttr + "\" on "
                         + projectionName + "." + fieldName
-                        + ": no such relationship \"" + relName
+                        + ": no such relationship or reference \"" + relName
                         + "\" on " + currentObj.getName() + ". "
                         + "Deepest valid prefix was \"" + prefix + "\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     ResolvedSource.from(envelope, referrer, viaAttr));
             }
-            String refTarget = rel.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)
-                ? rel.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString()
-                : null;
+            // Target entity: @objectRef (relationship) or @references (reference hop).
+            String refTarget = hopTargetName(hop);
             if (refTarget == null || refTarget.isEmpty()) {
+                String missingAttr = isReferenceHop(hop) ? "@references" : "@objectRef";
+                String kind = isReferenceHop(hop) ? "reference" : "relationship";
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.@via \"" + viaAttr + "\" on "
                         + projectionName + "." + fieldName
-                        + ": relationship \"" + relName + "\" on "
-                        + currentObj.getName() + " is missing @objectRef.",
+                        + ": " + kind + " \"" + relName + "\" on "
+                        + currentObj.getName() + " is missing " + missingAttr + ".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     ResolvedSource.from(envelope, referrer, viaAttr));
             }
             MetaObject nextObj = findRootObject(root, refTarget);
             if (nextObj == null) {
-                // FR5d — relationship's @objectRef points at a missing entity. This
-                // is the @objectRef-resolution edge of the via-path walk (the "5th
-                // site" in FR5d's scope list for @objectRef references encountered
-                // transitively). Target = the @objectRef value (the missing entity name).
+                // FR5d — the hop's target points at a missing entity. This is the
+                // @objectRef/@references-resolution edge of the via-path walk (the
+                // "5th site" in FR5d's scope list for refs encountered transitively).
+                // Target = the target value (the missing entity name).
+                String kind = isReferenceHop(hop) ? "reference" : "relationship";
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.@via \"" + viaAttr + "\" on "
                         + projectionName + "." + fieldName
-                        + ": relationship \"" + relName
+                        + ": " + kind + " \"" + relName
                         + "\" points to non-existent entity \"" + refTarget + "\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     ResolvedSource.from(envelope, referrer, refTarget));
             }
             validSegments.add(relName);
-            hops.add(rel);
+            hops.add(hop);
             currentObj = nextObj;
         }
         return hops;
@@ -2493,6 +2500,44 @@ public final class ValidationPhase {
     }
 
     /**
+     * Find an {@code identity.reference} (a forward-FK) by name — the "reference
+     * hop" FR-024 allows in a {@code @via} path. The reference IS the FK (single
+     * source of truth for direction + join column), so naming it in {@code @via}
+     * navigates its many-to-one edge without a redundant {@code relationship.*}.
+     * Walks inherited children (via extends/super), mirroring {@link #findRelationship}.
+     * Mirrors the TS {@code _findReference} / Python {@code _find_reference}.
+     */
+    private static MetaIdentity findReference(MetaObject obj, String name) {
+        for (MetaData child : obj.getChildren(MetaData.class, true)) {
+            if (!(child instanceof MetaIdentity)) continue;
+            if (!MetaIdentity.SUBTYPE_REFERENCE.equals(child.getSubType())) continue;
+            if (nameMatches(child, name)) {
+                return (MetaIdentity) child;
+            }
+        }
+        return null;
+    }
+
+    /** True for an {@code identity.reference} node (a {@code @via} reference hop). */
+    private static boolean isReferenceHop(MetaData hop) {
+        return hop instanceof MetaIdentity
+            && MetaIdentity.SUBTYPE_REFERENCE.equals(hop.getSubType());
+    }
+
+    /**
+     * The target entity a {@code @via} hop points at: {@code @references} for a
+     * reference hop (identity.reference), {@code @objectRef} for a relationship hop.
+     * Returns {@code null} when the attr is absent.
+     * Mirrors the TS {@code _hopTargetName} / Python {@code _hop_target_name}.
+     */
+    private static String hopTargetName(MetaData hop) {
+        String attr = isReferenceHop(hop)
+            ? MetaIdentity.ATTR_REFERENCES
+            : MetaRelationship.ATTR_OBJECT_REF;
+        return hop.hasMetaAttr(attr) ? hop.getMetaAttr(attr).getValueAsString() : null;
+    }
+
+    /**
      * True if {@code child}'s bare name matches {@code name}. Compares against
      * {@code getShortName()} first, then falls back to deriving the tail
      * segment from {@code getName()} (after the last {@code "::"}).
@@ -2531,12 +2576,16 @@ public final class ValidationPhase {
     // Mirrors TS validation-passes.ts / the Python port. Throw-first per pass.
     // =========================================================================
 
-    /** A hop relationship's DECLARED @cardinality, or null when absent. Mirrors TS
-     *  {@code _hopCardinality} (rel.attr → undefined when not declared): the
-     *  conservative cardinality checks must never judge an undeclared hop, so we
+    /** A hop's effective @cardinality, or null when absent. A reference hop (a
+     *  forward FK) is inherently to-one — a child names the parent it points at,
+     *  so it is valid in a passthrough and (correctly) rejected in an aggregate.
+     *  Mirrors TS {@code _hopCardinality} (returns CARDINALITY_ONE for a reference
+     *  hop; else rel.attr → undefined when not declared): the conservative
+     *  cardinality checks must never judge an undeclared relationship hop, so we
      *  read the RAW own attr rather than {@link MetaRelationship#getCardinality()}
      *  (which defaults to "one"). */
-    private static String hopCardinality(MetaRelationship rel) {
+    private static String hopCardinality(MetaData rel) {
+        if (isReferenceHop(rel)) return MetaRelationship.CARDINALITY_ONE;
         return rel.hasMetaAttr(MetaRelationship.ATTR_CARDINALITY)
             ? rel.getMetaAttr(MetaRelationship.ATTR_CARDINALITY).getValueAsString()
             : null;
@@ -2629,11 +2678,14 @@ public final class ValidationPhase {
      * effective relationships for those whose @objectRef resolves to the target
      * entity. Exactly one → that hop. Zero → ERR_INVALID_ORIGIN. &gt;1 → ERR_AMBIGUOUS_PATH.
      */
-    private static java.util.List<MetaRelationship> inferViaSingleHop(
+    private static java.util.List<MetaData> inferViaSingleHop(
             MetaObject base, MetaObject targetEntity, MetaObject obj, String fieldName,
             String fromAttr, String label, com.metaobjects.source.ErrorSource originSource) {
+        // FR-024: inference stays relationship-only — a single-hop-unique @via is
+        // inferred over relationships, never references (two FKs to the same entity
+        // would be ambiguous, and single-hop-unique must stay trivially portable).
         String targetBare = shortNameOf(targetEntity);
-        java.util.List<MetaRelationship> candidates = new java.util.ArrayList<>();
+        java.util.List<MetaData> candidates = new java.util.ArrayList<>();
         for (MetaData c : base.getChildren(MetaData.class, true)) {
             if (!(c instanceof MetaRelationship)) continue;
             MetaRelationship rel = (MetaRelationship) c;
@@ -2661,9 +2713,9 @@ public final class ValidationPhase {
     }
 
     /** ADR-0029 dec 6 — a passthrough via-path must be to-one at every hop. */
-    private static void checkPassthroughCardinality(java.util.List<MetaRelationship> hops,
+    private static void checkPassthroughCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
-        for (MetaRelationship rel : hops) {
+        for (MetaData rel : hops) {
             if (MetaRelationship.CARDINALITY_MANY.equals(hopCardinality(rel))) {
                 throw new MetaDataException(
                     "ERR_ORIGIN_CARDINALITY"
@@ -2675,11 +2727,11 @@ public final class ValidationPhase {
     }
 
     /** ADR-0029 dec 6 — an aggregate via-path must have ≥1 to-many hop (conservative). */
-    private static void checkAggregateCardinality(java.util.List<MetaRelationship> hops,
+    private static void checkAggregateCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
         if (hops.isEmpty()) return;
         boolean provablyToOne = true;
-        for (MetaRelationship rel : hops) {
+        for (MetaData rel : hops) {
             if (!MetaRelationship.CARDINALITY_ONE.equals(hopCardinality(rel))) { provablyToOne = false; break; }
         }
         if (provablyToOne) {

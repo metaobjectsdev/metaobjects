@@ -12,6 +12,7 @@ from metaobjects.registry import TypeRegistry
 from metaobjects.shared.base_types import (
     SUBTYPE_ROOT,
     TYPE_FIELD,
+    TYPE_IDENTITY,
     TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
@@ -117,6 +118,69 @@ def _build_passthrough_tree(from_ref: str) -> MetaData:
     root.add_child(summary)
 
     return root
+
+
+def _build_reference_via_tree(via: str) -> MetaData:
+    """Build a tree whose projection passthrough joins via an identity.reference
+    (a reference-only FK, no relationship) — FR-024 @via-over-reference.
+      - Program (id, title)
+      - Enrollment (id, programId, identity.reference ref_program → Program)
+      - EnrollmentView (extends Enrollment) passthrough Program.title @via *via*
+    """
+    from metaobjects.meta.core.field.meta_field import MetaField
+    from metaobjects.meta.core.object.meta_object import MetaObject
+
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "")
+
+    program = MetaObject(TYPE_OBJECT, "entity", "Program")
+    program.add_child(MetaField(TYPE_FIELD, "long", "id"))
+    program.add_child(MetaField(TYPE_FIELD, "string", "title"))
+    root.add_child(program)
+
+    enrollment = MetaObject(TYPE_OBJECT, "entity", "Enrollment")
+    enrollment.add_child(MetaField(TYPE_FIELD, "long", "id"))
+    enrollment.add_child(MetaField(TYPE_FIELD, "long", "programId"))
+    ref = MetaData(TYPE_IDENTITY, "reference", "ref_program")
+    ref.set_attr("fields", "programId", ATTR_SUBTYPE_STRING)
+    ref.set_attr("references", "Program", ATTR_SUBTYPE_STRING)
+    enrollment.add_child(ref)
+    root.add_child(enrollment)
+
+    view = MetaObject(TYPE_OBJECT, "entity", "EnrollmentView")
+    view.super_ref = "Enrollment"
+    view.super_data = enrollment
+    field = MetaField(TYPE_FIELD, "string", "program_title")
+    origin = MetaData(TYPE_ORIGIN, "passthrough", "")
+    origin.set_attr("from", "Program.title", ATTR_SUBTYPE_STRING)
+    origin.set_attr("via", via, ATTR_SUBTYPE_STRING)
+    field.add_child(origin)
+    view.add_child(field)
+    root.add_child(view)
+
+    return root
+
+
+def _via_errors(root: MetaData) -> list[str]:
+    """ERR_INVALID_ORIGIN messages that mention the @via path (ignores unrelated passes)."""
+    errors, _ = _errors_and_warnings(root)
+    return [
+        e.message
+        for e in errors
+        if e.code == ErrorCode.ERR_INVALID_ORIGIN and "@via" in e.message
+    ]
+
+
+def test_valid_passthrough_via_reference_no_error() -> None:
+    """@via naming an identity.reference (reference-only FK) resolves — no origin error."""
+    root = _build_reference_via_tree(via="Enrollment.ref_program")
+    assert _via_errors(root) == []
+
+
+def test_invalid_passthrough_via_bad_reference() -> None:
+    """@via naming neither a relationship nor a reference → ERR_INVALID_ORIGIN."""
+    root = _build_reference_via_tree(via="Enrollment.bogus")
+    msgs = _via_errors(root)
+    assert any("bogus" in m and "no relationship or reference" in m for m in msgs), msgs
 
 
 # ---------------------------------------------------------------------------

@@ -179,9 +179,23 @@ views) are legal; without identity there is no get-by-id surface.
 
 ## 6. `@via` — assembly paths, on `origin.*` only
 
-`@via` is a dotted **relationship path** (multi-hop is existing grammar:
+`@via` is a dotted **navigation path** (multi-hop is existing grammar:
 `"Program.weeks.workouts"`). It lives on `origin.*` and nowhere else — fields never
 carry join mechanics.
+
+**A hop may name a `relationship.*` OR an `identity.reference`.** A reference-only FK
+is a navigable edge in its own right: it declares the target (`@references`) and the
+join column (`@fields`), and `findReferenceBetween` already derives the join key from
+it for *every* hop (a correlated relationship only supplies a name + cardinality). So a
+FK-only / reverse-engineered model can `@via` its reference directly —
+`"Enrollment.ref_program"` — with no redundant `relationship.association` restating the
+target. A reference hop is inherently **to-one** (a child names the parent it points at),
+so it is valid in a `passthrough` and rejected in an `aggregate` (provably to-one) by the
+same cardinality rules below. Inverse (parent→children, to-many) navigation still needs a
+`relationship.composition` on the parent — a bare FK has no inverse edge. Explicit `@via`
+resolves either kind; **inference (below) stays relationship-only** (a reference name is
+never inferred — two FKs to the same entity would be ambiguous, and single-hop-unique must
+stay trivially portable).
 
 > **`via` may be omitted only when exactly one single-hop relationship leads from the
 > base entity to the `from`/`of` entity. Everything else declares it.**

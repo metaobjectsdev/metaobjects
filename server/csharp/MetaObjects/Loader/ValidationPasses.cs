@@ -517,6 +517,34 @@ public static class ValidationPasses
     }
 
     // -------------------------------------------------------------------------
+    // Origin helper: _findReference / _isReferenceHop / _hopTargetName (FR-024)
+    // -------------------------------------------------------------------------
+
+    /// Find an `identity.reference` (a forward-FK) by name — the "reference hop"
+    /// FR-024 allows in a `@via` path. The reference IS the FK (single source of
+    /// truth for direction + join column), so naming it in `@via` navigates its
+    /// many-to-one edge without a redundant `relationship.*`. Inherited via
+    /// extends — use Children().
+    private static MetaData? FindReference(MetaData obj, string name)
+    {
+        return obj.Children()
+            .FirstOrDefault(c => c.Type == TYPE_IDENTITY &&
+                                 c.SubType == IDENTITY_SUBTYPE_REFERENCE &&
+                                 c.Name == name);
+    }
+
+    /// True for an `identity.reference` node (a `@via` reference hop).
+    private static bool IsReferenceHop(MetaData hop)
+        => hop.Type == TYPE_IDENTITY && hop.SubType == IDENTITY_SUBTYPE_REFERENCE;
+
+    /// The target entity a `@via` hop points at: @objectRef (relationship) or
+    /// @references (reference hop).
+    private static object? HopTargetName(MetaData hop)
+        => IsReferenceHop(hop)
+            ? hop.Attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+            : hop.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
+
+    // -------------------------------------------------------------------------
     // Origin helper: _validateFromPath
     // -------------------------------------------------------------------------
 
@@ -640,26 +668,32 @@ public static class ValidationPasses
 
         foreach (var relName in relSegments)
         {
-            var rel = FindRelationship(currentObj, relName);
+            // FR-024: a hop may name a relationship OR a reference-only FK
+            // (identity.reference) — the reference IS a navigable many-to-one edge.
+            var rel = FindRelationship(currentObj, relName) ?? FindReference(currentObj, relName);
             if (rel is null)
             {
                 string prefix = string.Join('.', validSegments);
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
-                    $"no such relationship \"{relName}\" on {currentObj.Name}. " +
+                    $"no such relationship or reference \"{relName}\" on {currentObj.Name}. " +
                     $"Deepest valid prefix was \"{prefix}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
                 return null;
             }
 
-            // ADR-0039: resolving — a relationship may inherit @objectRef via extends (TS validation-passes.ts:522).
-            var refTarget = rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
+            // ADR-0039: resolving — a relationship/reference may inherit its target via
+            // extends (TS validation-passes.ts:522). Target entity: @objectRef
+            // (relationship) or @references (reference hop).
+            var refTarget = HopTargetName(rel);
             if (refTarget is not string refStr || refStr == "")
             {
+                string missingAttr = IsReferenceHop(rel) ? "@references" : "@objectRef";
+                string kind = IsReferenceHop(rel) ? "reference" : "relationship";
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
-                    $"relationship \"{relName}\" on {currentObj.Name} is missing @objectRef.",
+                    $"{kind} \"{relName}\" on {currentObj.Name} is missing {missingAttr}.",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
                 return null;
@@ -668,11 +702,12 @@ public static class ValidationPasses
             var nextObj = FindObject(root, refStr);
             if (nextObj is null)
             {
-                // FR5d — relationship's @objectRef points at a missing entity.
-                // target = the bad @objectRef value (NOT the full via path).
+                // FR5d — the hop's target points at a missing entity.
+                // target = the bad ref value (NOT the full via path).
+                string kind = IsReferenceHop(rel) ? "reference" : "relationship";
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
-                    $"relationship \"{relName}\" points to non-existent entity \"{refStr}\".",
+                    $"{kind} \"{relName}\" points to non-existent entity \"{refStr}\".",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, refStr)));
                 return null;
@@ -691,9 +726,12 @@ public static class ValidationPasses
     // origin cardinality checks (spec §5–§6; ADR-0029 decisions 5–6).
     // -------------------------------------------------------------------------
 
-    /// A hop relationship's effective @cardinality, or null when not declared.
+    /// A hop's effective @cardinality, or null when not declared. A reference hop
+    /// (a forward FK) is inherently to-one — a child names the parent it points at.
     private static string? HopCardinality(MetaData rel)
-        => rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
+        => IsReferenceHop(rel)
+            ? CARDINALITY_ONE
+            : rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
 
     /// FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part
     /// of `<owner>.<child>...` resolved as an object. Differs from

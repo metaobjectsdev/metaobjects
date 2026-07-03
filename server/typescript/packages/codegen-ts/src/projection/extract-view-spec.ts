@@ -14,6 +14,8 @@ import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_COLUMN,
   findReferenceBetween,
   stripPackage,
@@ -105,6 +107,37 @@ function findRelationship(obj: MetaData, name: string): MetaData | undefined {
   return obj.children().find(
     (c) => c.type === TYPE_RELATIONSHIP && c.name === name,
   );
+}
+
+/** FR-024: a `@via` hop may also name an `identity.reference` (a forward FK). */
+function findReferenceHop(obj: MetaData, name: string): MetaData | undefined {
+  return obj
+    .children()
+    .find(
+      (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === name,
+    );
+}
+
+/** Resolve a `@via` hop (relationship OR reference) to its target + cardinality.
+ *  A reference hop is a to-one forward FK; its target is `@references`. */
+function resolveHop(
+  obj: MetaData,
+  name: string,
+): { hop: MetaData; targetName: string; cardinality: "one" | "many" } | undefined {
+  const rel = findRelationship(obj, name);
+  if (rel) {
+    const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+    if (!targetName) return undefined;
+    const cardAttr = rel.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
+    return { hop: rel, targetName, cardinality: cardAttr === CARDINALITY_ONE ? "one" : "many" };
+  }
+  const ref = findReferenceHop(obj, name);
+  if (ref) {
+    const targetName = ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES) as string | undefined;
+    if (!targetName) return undefined;
+    return { hop: ref, targetName, cardinality: "one" };
+  }
+  return undefined;
 }
 
 function viewName(projection: MetaObject, ctx: ExtractContext): string {
@@ -289,20 +322,18 @@ function buildJoinTree(
 
       const path: Path = [];
       for (const relName of relSegments) {
-        const rel = findRelationship(currentObj, relName);
-        if (!rel) break;
-        // ADR-0039: resolving — a traversed relationship may inherit @objectRef via extends.
-        const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-        // @objectRef may be package-qualified ("pkg::Entity") — the directory loader
-        // qualifies a same-package objectRef even when authored bare — but findObject
+        // FR-024: a hop may name a relationship OR a reference-only FK
+        // (identity.reference — a to-one forward-FK edge). ADR-0039: resolving —
+        // a traversed relationship/reference may inherit its target via extends.
+        const resolved = resolveHop(currentObj, relName);
+        if (!resolved) break;
+        const { targetName, cardinality } = resolved;
+        // @objectRef/@references may be package-qualified ("pkg::Entity") — the directory
+        // loader qualifies a same-package ref even when authored bare — but findObject
         // keys on the BARE name (like the @via/@of/@from paths above). Strip first, or
         // the join (and every aggregate traversing it) is silently dropped.
-        const target = targetName ? root.findObject(stripPackage(targetName)) : undefined;
-        if (!target || !targetName) break;
-
-        // ADR-0039: resolving — a traversed relationship may inherit @cardinality via extends.
-        const cardAttr = rel.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
-        const cardinality: "one" | "many" = cardAttr === CARDINALITY_ONE ? "one" : "many";
+        const target = root.findObject(stripPackage(targetName));
+        if (!target) break;
 
         const ref = findReferenceBetween(currentObj as MetaObject, target);
         if (!ref) break;
