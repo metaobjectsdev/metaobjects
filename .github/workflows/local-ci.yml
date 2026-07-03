@@ -7,6 +7,10 @@
 # Tiers:
 #   push to main        -> affected ports only (scripts/ci-affected-ports.sh)
 #   nightly + dispatch  -> full matrix
+#
+# Measured 2026-07-03 (full tier, all ports in parallel, warm caches):
+#   detect 0.2m · gates 0.1m · csharp 2m · python 2.6m · ts 5.3m · java 9.8m
+#   -> full-matrix wall-clock ~10m (slowest port); single-port pushes ~2-6m.
 name: local-ci
 on:
   push:
