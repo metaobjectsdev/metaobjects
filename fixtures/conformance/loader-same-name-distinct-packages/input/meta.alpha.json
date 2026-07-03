@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme::alpha",
+    "children": [
+      {
+        "object.value": {
+          "name": "ItemView",
+          "children": [
+            { "field.string": { "name": "value" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "SituationView",
+          "children": [
+            { "field.object": { "name": "items", "isArray": true, "@objectRef": "acme::alpha::ItemView" } },
+            { "field.string": { "name": "alphaOnly" } }
+          ]
+        }
+      }
+    ]
+  }
+}

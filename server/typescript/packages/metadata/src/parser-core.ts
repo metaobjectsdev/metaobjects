@@ -254,6 +254,27 @@ function expandPackageForPath(basePkg: string, pkgPath: string): string {
   return basePkg + pkgPath;
 }
 
+/**
+ * The resolution key a ROOT-LEVEL declaration would carry once parsed:
+ * `<pkg>::<name>` where pkg is the node's own `package` (expanded against the
+ * file context, same as applyReservedKeys) when declared, else the file's
+ * context package. Bare name when neither exists. Matches
+ * `MetaData.resolutionKey()` on the already-parsed side, so the root-level
+ * merge lookup can compare identity BEFORE the new node is constructed.
+ */
+function rootChildResolutionKey(
+  nodeData: Record<string, unknown>,
+  inheritedContextPkg: string,
+  name: string,
+): string {
+  const rawPkg = nodeData[RESERVED_KEY_PACKAGE];
+  const pkg =
+    typeof rawPkg === "string" && rawPkg !== ""
+      ? expandPackageForPath(inheritedContextPkg, rawPkg)
+      : inheritedContextPkg;
+  return pkg !== "" ? `${pkg}${PACKAGE_SEPARATOR}${name}` : name;
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -901,7 +922,23 @@ function createOrFindMetaData(
   // are always distinct (e.g. inline validators, anonymous attrs).
   // ADR-0039: own — overlay/merge lookup on the AUTHORED declaration layer
   // (an overlay targets a same-file/same-node own child, pre super-resolution).
-  const existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
+  //
+  // ROOT-LEVEL lookups are PACKAGE-QUALIFIED: two files declaring the same
+  // (type, name) under different packages are DISTINCT root nodes, never a
+  // merge pair (mirrors the Java parser, which searches root children by
+  // "pkg::name"). Nested children stay bare-name matched — they are scoped
+  // by their parent, and packages don't disambiguate siblings inside a node.
+  let existing = name !== "" ? parent.ownChildByTypeAndName(type, name) : undefined;
+  if (existing !== undefined && parent instanceof MetaRoot) {
+    const candidateKey = rootChildResolutionKey(nodeData, inheritedContextPkg, name);
+    if (existing.resolutionKey() !== candidateKey) {
+      // The first same-name hit is a different package — scan for an exact
+      // package-qualified match (several packages may declare this name).
+      existing = parent
+        .ownChildren()
+        .find((c) => c.type === type && c.name === name && c.resolutionKey() === candidateKey);
+    }
+  }
 
   if (isOverlayNode) {
     if (existing === undefined) {
