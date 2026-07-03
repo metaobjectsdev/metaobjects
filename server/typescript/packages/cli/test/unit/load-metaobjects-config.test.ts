@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadMetaobjectsConfig } from "../../src/lib/load-metaobjects-config.js";
@@ -76,6 +76,27 @@ describe("loadMetaobjectsConfig", () => {
     } finally {
       rmSync(osTmp, { recursive: true, force: true });
     }
+  });
+
+  test("sweeps a stranded .metaobjects-config-proc-*.ts temp file left by an abnormal exit", async () => {
+    // A SIGKILL during a prior load can strand the pre-processed temp config
+    // (whose deletion normally happens in a finally block). The next load must
+    // self-heal by removing any such stale files before proceeding, so a
+    // consumer's `git status` never shows the artifact.
+    const stale = join(tmp, ".metaobjects-config-proc-deadbeef.ts");
+    writeFileSync(stale, `export default { generators: [] };`);
+    writeFileSync(join(tmp, "metaobjects.config.ts"), `
+      import { defineConfig } from "@metaobjectsdev/codegen-ts";
+      import { entityFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+      export default defineConfig({
+        outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        generators: [entityFile(), barrel()],
+      });
+    `);
+    expect(existsSync(stale)).toBe(true);
+    const cfg = await loadMetaobjectsConfig(tmp);
+    expect(cfg.generators.length).toBe(2);      // normal load still works
+    expect(existsSync(stale)).toBe(false);      // stale temp file swept
   });
 
   test("loads a config that imports from @metaobjectsdev/codegen-ts-tanstack", async () => {

@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -8,6 +8,12 @@ import { createJiti } from "jiti";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
 const CONFIG_FILE = "metaobjects.config.ts";
+
+// Prefix for the transient, pre-processed config the loader writes next to the
+// user's config (see the rewrite step below). Normally deleted in a finally
+// block; the prefix is also used to sweep any copies stranded by an abnormal
+// exit so a consumer's `git status` never surfaces one.
+const PROC_TEMP_PREFIX = ".metaobjects-config-proc-";
 
 // Resolve @metaobjectsdev/codegen-ts from the CLI's own node_modules so that
 // metaobjects.config.ts (which lives in the user's project) can import it even
@@ -116,6 +122,11 @@ function resolveCliPkg(specifier: string): string {
  *
  * Relative imports (`./foo`, `../bar`) are intentionally NOT rewritten; they
  * must continue to resolve relative to the config file's own directory.
+ *
+ * Dynamic `import("specifier")` calls are NOT rewritten either — configs are
+ * loaded eagerly and none of the scaffolded templates use them; a dynamic
+ * import of an aliased package falls back to normal module resolution (and to
+ * jiti's alias map on non-Bun runtimes).
  */
 function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string>): string {
   let result = source;
@@ -144,6 +155,17 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     );
   }
 
+  // Self-heal: a SIGKILL mid-load can strand a pre-processed temp config
+  // (PROC_TEMP_PREFIX*.ts) next to the user's config, since deletion normally
+  // happens in the finally block below. Sweep any stale ones before loading so
+  // an abnormal exit never pollutes the consumer's working tree.
+  const configDir = dirname(fullPath);
+  for (const entry of readdirSync(configDir)) {
+    if (entry.startsWith(PROC_TEMP_PREFIX) && entry.endsWith(".ts")) {
+      try { unlinkSync(resolve(configDir, entry)); } catch { /* best-effort */ }
+    }
+  }
+
   // Build the canonical alias map: specifier → resolved absolute path.
   const aliasMap: Record<string, string> = {};
   for (const specifier of Object.keys(CLI_PKG_PATHS)) {
@@ -165,7 +187,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   let loadPath = fullPath;
   let tempCreated = false;
   if (processed !== original) {
-    const tempName = `.metaobjects-config-proc-${randomBytes(4).toString("hex")}.ts`;
+    const tempName = `${PROC_TEMP_PREFIX}${randomBytes(4).toString("hex")}.ts`;
     const tempPath = resolve(dirname(fullPath), tempName);
     try {
       await writeFile(tempPath, processed, "utf8");

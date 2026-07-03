@@ -27,6 +27,12 @@ import {
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_TPH_DIR, "seed.json"), "utf8")) as TphSeed;
 const META_PATH = join(API_CONTRACT_TPH_DIR, "meta.json");
 
+// 120s per scenario: each spins up its own server + Testcontainers PG. The old
+// 60s ceiling was hit once by the generated lane under cold 4-way parallel
+// docker load on the local-ci runner; the headroom absorbs that startup jitter
+// without weakening the assertions. Both lanes share the same boot cost.
+const TPH_SCENARIO_TIMEOUT_MS = 120_000;
+
 interface Lane { baseUrl: string; applySeed(s: TphSeed): Promise<void>; close(): Promise<void>; }
 
 describe("api contract TPH — hand-rolled reference lane", () => {
@@ -42,7 +48,7 @@ describe("api contract TPH — hand-rolled reference lane", () => {
         if (server) await server.close();
         await pg.stop();
       }
-    }, { timeout: 60_000 });
+    }, { timeout: TPH_SCENARIO_TIMEOUT_MS });
   }
 });
 
@@ -59,7 +65,7 @@ describe("api contract TPH — GENERATED routes lane", () => {
         if (server) await server.close();
         await pg.stop();
       }
-    }, { timeout: 60_000 });
+    }, { timeout: TPH_SCENARIO_TIMEOUT_MS });
   }
 });
 
