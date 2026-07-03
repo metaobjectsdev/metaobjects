@@ -114,7 +114,9 @@ gate_pom_versions() { scripts/check-pom-versions.sh; }
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
 }
-gate_ts_build_typecheck() { bun run --filter '*' build && bun run --filter '*' typecheck; }
+# bun_install first: under `--only ts` this gate runs without fixture-lint
+# (whose install it historically piggybacked on), so it must install itself.
+gate_ts_build_typecheck() { bun_install && bun run --filter '*' build && bun run --filter '*' typecheck; }
 
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
