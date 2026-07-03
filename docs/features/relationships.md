@@ -108,6 +108,27 @@ metadata:
 The kebab-case metamodel values map to the SCREAMING_SNAKE forms in Exposed / EF
 Core / SQLAlchemy at codegen time.
 
+## Navigating a relationship or reference in a projection (`@via`)
+
+A projection's `origin.*` `@via` join path (FR-024) may name **either** a
+`relationship.*` **or** an `identity.reference`. A reference-only FK is a navigable
+edge in its own right — it declares the target (`@references`) and the join column
+(`@fields`), and codegen derives the join key from the reference for *every* hop (a
+correlated relationship only adds a name + cardinality). So a FK-only or
+reverse-engineered model can `@via` its reference directly:
+
+```yaml
+# Enrollment has `identity.reference: { name: refProgram, references: Program }`
+# and NO relationship — the projection still joins Program:
+- origin.passthrough: { from: "Program.title", via: "Enrollment.refProgram" }
+```
+
+A reference hop is inherently **to-one** (a child names the parent it points at), so it
+is valid in a `passthrough` and rejected in an `aggregate`. Inverse navigation
+(parent → many children) still needs a `relationship.composition` on the parent — a bare
+FK has no inverse edge. Explicit `@via` resolves either kind; single-hop-unique
+inference stays relationship-only.
+
 ## What each port generates
 
 ### TypeScript

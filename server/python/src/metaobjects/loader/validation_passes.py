@@ -962,6 +962,34 @@ def _relationships_by_name(obj: MetaObject) -> dict[str, MetaData]:
     return result
 
 
+def _find_reference(obj: MetaObject, name: str) -> MetaData | None:
+    """Find an ``identity.reference`` (a forward FK) by name — the "reference hop"
+    FR-024 allows in a ``@via`` path. The reference IS the FK (single source of truth
+    for direction + join column), so naming it navigates its many-to-one edge without
+    a redundant ``relationship.*``. Effective (inherited via extends:/super:)."""
+    for child in obj.children():
+        if (
+            child.type == TYPE_IDENTITY
+            and child.sub_type == IDENTITY_SUBTYPE_REFERENCE
+            and child.name == name
+        ):
+            return child
+    return None
+
+
+def _is_reference_hop(hop: MetaData) -> bool:
+    """True for an ``identity.reference`` node (a ``@via`` reference hop)."""
+    return hop.type == TYPE_IDENTITY and hop.sub_type == IDENTITY_SUBTYPE_REFERENCE
+
+
+def _hop_target_name(hop: MetaData) -> object:
+    """The target entity a ``@via`` hop points at: @objectRef (relationship) or
+    @references (reference hop)."""
+    if _is_reference_hop(hop):
+        return hop.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+    return hop.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)
+
+
 def _validate_entity_field_ref(
     ref: str,
     attr_name: str,
@@ -1078,13 +1106,15 @@ def _validate_via_path(
     hops: list[MetaData] = []
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
-        rel_node = rels.get(rel_name)
+        # FR-024: a hop may name a relationship OR a reference-only FK
+        # (identity.reference) — the reference IS a navigable many-to-one edge.
+        rel_node = rels.get(rel_name) or _find_reference(current_entity, rel_name)
         if rel_node is None:
             prefix = ".".join(valid_segments)
             errors.append(
                 MetaError(
                     f"{context} @via='{via}' — entity '{current_entity.name}' has no "
-                    f"relationship '{rel_name}' (known relationships: {sorted(rels)}). "
+                    f"relationship or reference '{rel_name}' (known relationships: {sorted(rels)}). "
                     f'Deepest valid prefix was "{prefix}".',
                     ErrorCode.ERR_INVALID_ORIGIN,
                     envelope=resolved_source(origin_node.source, referrer, via),
@@ -1093,15 +1123,17 @@ def _validate_via_path(
             return None
 
         # Advance to the referenced entity.
-        # ADR-0039: resolving — a relationship may inherit @objectRef via extends
-        # (mirrors the TS _validateViaPath `rel.attr`, which resolves —
-        # validation-passes.ts:522).
-        obj_ref = rel_node.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)
+        # ADR-0039: resolving — a relationship/reference may inherit its target via
+        # extends (mirrors the TS _validateViaPath which resolves). Target entity:
+        # @objectRef (relationship) or @references (reference hop).
+        obj_ref = _hop_target_name(rel_node)
         if not isinstance(obj_ref, str):
+            missing = "@references" if _is_reference_hop(rel_node) else "@objectRef"
+            kind = "reference" if _is_reference_hop(rel_node) else "relationship"
             errors.append(
                 MetaError(
-                    f"{context} @via='{via}' — relationship '{rel_name}' on entity "
-                    f"'{current_entity.name}' has no @objectRef",
+                    f"{context} @via='{via}' — {kind} '{rel_name}' on entity "
+                    f"'{current_entity.name}' has no {missing}",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     envelope=resolved_source(origin_node.source, referrer, via),
                 )
@@ -1110,11 +1142,11 @@ def _validate_via_path(
 
         next_entity = object_index.get(obj_ref)
         if next_entity is None:
-            # FR5d — relationship's @objectRef points at a missing entity.
-            # target=the @objectRef value (mirrors TS validation-passes.ts L342-353).
+            # FR5d — the hop's target points at a missing entity.
+            kind = "reference" if _is_reference_hop(rel_node) else "relationship"
             errors.append(
                 MetaError(
-                    f"{context} @via='{via}' — relationship '{rel_name}' on entity "
+                    f"{context} @via='{via}' — {kind} '{rel_name}' on entity "
                     f"'{current_entity.name}' references unknown entity '{obj_ref}'",
                     ErrorCode.ERR_INVALID_ORIGIN,
                     envelope=resolved_source(origin_node.source, referrer, obj_ref),
@@ -1137,7 +1169,10 @@ def _validate_via_path(
 
 
 def _hop_cardinality(rel: MetaData) -> str | None:
-    """A hop relationship's effective @cardinality, or None when not declared."""
+    """A hop's effective @cardinality, or None when not declared. A reference hop
+    (a forward FK) is inherently to-one — a child names the parent it points at."""
+    if _is_reference_hop(rel):
+        return CARDINALITY_ONE
     # ADR-0039: resolving (@cardinality may be inherited via extends) — mirrors the
     # TS _hopCardinality which reads `rel.attr()` (resolving), NOT ownAttr.
     v = rel.get_meta_attr(RELATIONSHIP_ATTR_CARDINALITY)

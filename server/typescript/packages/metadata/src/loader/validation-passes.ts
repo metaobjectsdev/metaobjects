@@ -82,6 +82,7 @@ import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
 } from "../core/identity/identity-constants.js";
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
@@ -381,6 +382,33 @@ function _findRelationship(obj: MetaData, name: string): MetaData | undefined {
   return obj.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === name);
 }
 
+/**
+ * Find an `identity.reference` (a forward-FK) by name — the "reference hop"
+ * FR-024 allows in a `@via` path. The reference IS the FK (single source of
+ * truth for direction + join column via findReferenceBetween), so naming it in
+ * `@via` navigates its many-to-one edge without a redundant `relationship.*`.
+ * Inherited via extends:/super: — use children().
+ */
+function _findReference(obj: MetaData, name: string): MetaData | undefined {
+  return obj
+    .children()
+    .find(
+      (c) => c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_REFERENCE && c.name === name,
+    );
+}
+
+/** True for an `identity.reference` node (a `@via` reference hop). */
+function _isReferenceHop(hop: MetaData): boolean {
+  return hop.type === TYPE_IDENTITY && hop.subType === IDENTITY_SUBTYPE_REFERENCE;
+}
+
+/** The target entity a `@via` hop points at: @objectRef (relationship) or @references (reference). */
+function _hopTargetName(hop: MetaData): unknown {
+  return _isReferenceHop(hop)
+    ? hop.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)
+    : hop.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+}
+
 /** Resolved `Entity.field` reference target: the entity AND the field node.
  *  FR-024 B5 inference needs the entity; the B6 extends/origin agreement
  *  check compares against the field node identity. */
@@ -509,12 +537,14 @@ function _validateViaPath(
   const validSegments: string[] = [entityName];
   const hops: MetaData[] = [];
   for (const relName of relSegments) {
-    const rel = _findRelationship(currentObj, relName);
+    // FR-024: a hop may name a relationship OR a reference-only FK
+    // (identity.reference) — the reference IS a navigable many-to-one edge.
+    const rel = _findRelationship(currentObj, relName) ?? _findReference(currentObj, relName);
     if (!rel) {
       const prefix = validSegments.join(".");
       errors.push(
         new ParseError(
-          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship "${relName}" on ${currentObj.name}. ` +
+          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship or reference "${relName}" on ${currentObj.name}. ` +
           `Deepest valid prefix was "${prefix}".`,
           {
             code: "ERR_INVALID_ORIGIN",
@@ -524,12 +554,15 @@ function _validateViaPath(
       );
       return undefined;
     }
-    // ADR-0039: resolving — a relationship may inherit @objectRef via extends.
-    const refTarget = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+    // ADR-0039: resolving — a relationship/reference may inherit its target via extends.
+    // Target entity: @objectRef (relationship) or @references (reference hop).
+    const refTarget = _hopTargetName(rel);
     if (typeof refTarget !== "string" || refTarget === "") {
+      const missingAttr = _isReferenceHop(rel) ? "@references" : "@objectRef";
+      const kind = _isReferenceHop(rel) ? "reference" : "relationship";
       errors.push(
         new ParseError(
-          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" on ${currentObj.name} is missing @objectRef.`,
+          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: ${kind} "${relName}" on ${currentObj.name} is missing ${missingAttr}.`,
           {
             code: "ERR_INVALID_ORIGIN",
             source: resolvedSource(originSource, referrer, viaAttr),
@@ -546,7 +579,7 @@ function _validateViaPath(
       // transitively).
       errors.push(
         new ParseError(
-          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: relationship "${relName}" points to non-existent entity "${refTarget}".`,
+          `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: ${_isReferenceHop(rel) ? "reference" : "relationship"} "${relName}" points to non-existent entity "${refTarget}".`,
           {
             code: "ERR_INVALID_ORIGIN",
             source: resolvedSource(originSource, referrer, refTarget),
@@ -567,8 +600,10 @@ function _validateViaPath(
 // origin cardinality checks (spec §5–§6; ADR-0029 decisions 5–6).
 // ---------------------------------------------------------------------------
 
-/** A hop relationship's effective @cardinality, or undefined when not declared. */
+/** A hop's effective @cardinality, or undefined when not declared. A reference
+ *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
 function _hopCardinality(rel: MetaData): string | undefined {
+  if (_isReferenceHop(rel)) return CARDINALITY_ONE;
   const v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
   return typeof v === "string" ? v : undefined;
 }
