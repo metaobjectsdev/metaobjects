@@ -57,8 +57,10 @@ export function renderInferredTypes(entity: MetaObject, tphBase = false, ctx?: R
   // ctx is optional for bare unit-test calls — those fall back to the default
   // always-pluralize spelling.
   const varName = ctx ? ctx.collectionName(entity.name) : variableNameFromEntity(entity.name);
-  const selectSym = imp("InferSelectModel@drizzle-orm");
-  const insertSym = imp("InferInsertModel@drizzle-orm");
+  // Type-only symbols (t: prefix) so ts-poet emits `import type` — otherwise a
+  // value import of these types fails tsc under `verbatimModuleSyntax` (TS1484). (#165)
+  const selectSym = imp("t:InferSelectModel@drizzle-orm");
+  const insertSym = imp("t:InferInsertModel@drizzle-orm");
   const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
   const rowName = tphBase ? `${entity.name}Row` : entity.name;

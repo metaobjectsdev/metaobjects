@@ -344,7 +344,9 @@ function renderColumn(
     // initializer") under `strict`. The annotation is a harmless explicit supertype
     // for acyclic FKs, so emitting it unconditionally is safe.
     const anyColType = ctx.dialect === "sqlite" ? "AnySQLiteColumn" : "AnyPgColumn";
-    const anyColSym = imp(`${anyColType}@${spec.importModule}`);
+    // Used only as a return-type annotation → type-only import (t:) so it emits
+    // `import type` and doesn't fail tsc under `verbatimModuleSyntax` (TS1484). (#165)
+    const anyColSym = imp(`t:${anyColType}@${spec.importModule}`);
     if (fkInfo.targetEntityName === currentEntityName) {
       // Self-referential FK (e.g. createdBy → this same table): reference the local
       // table const directly — NOT a self-import.
