@@ -7,7 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [0.15.5] — 2026-07-04
+## [0.15.6] — 2026-07-04
+
+_Coordinated cross-port patch: npm `0.15.6` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates) · PyPI `0.15.7` (Python stays a patch ahead) · NuGet `0.15.5` · Maven Central `7.7.4`. A loader-ordering bug-fix that hardens a latent fragility in every port._
+
+### Fixed
+- **Loader — an overlay-only file could be merged *before* the base file that declares the entity it re-opens, breaking order-dependent super-resolution (all four loader ports).** When a directory scan surfaced an `overlay: true` file ahead of the file declaring the base object (e.g. a top-level `meta.a-presentation.json` presentation overlay sorting before a subdir `meta.z-model.json` base), the overlaid node preceded the entities it depends on — so `object.projection` re-opens (and any overlay reaching for a not-yet-loaded `extends`/`origin` target) failed to resolve, producing spurious `ERR_INVALID_ORIGIN` / `ERR_UNRESOLVED_SUPER` / `ERR_MISSING_REQUIRED_ATTR`. This surfaced as a **cross-port divergence** — the TS loader tolerated one discovery order that the Python loader rejected — but the fragility was latent in all ports (a single-file projection-declared-before-its-base repro fails identically everywhere). Each loader now **stable-partitions overlay-only sources/roots to merge last**, deterministically, so base declarations are always present before any overlay re-opens them. Gated by a new shared cross-port conformance fixture (`projection-overlay-abstract-identity`, whose overlay basename deliberately sorts first) that all five ports serialize identically. (#160)
 
 _npm `0.15.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates). NuGet unchanged at `0.15.4`, PyPI `0.15.6` (the Python-only #158 fix ships there), Maven Central unchanged at `7.7.3`. A TypeScript-only patch._
 
