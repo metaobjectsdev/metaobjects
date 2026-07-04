@@ -43,23 +43,24 @@ export function inheritanceTree(rows: { name: string; level: number; self?: bool
 // ---- v2 diagram system: domain palette + rich/simple emitters ----
 export const RICH_MAX = 8;
 const ROLE_STROKE: Record<string, string> = { focal: "#60a5fa", view: "#2dd4bf", external: "#334155", normal: "#3b5170" };
-const CURATED: Record<string, { fill: string; stroke: string; text: string }> = {
-  session: { fill: "#1e3a5f", stroke: "#60a5fa", text: "#93c5fd" },
-  npc:     { fill: "#3b2f1e", stroke: "#fbbf24", text: "#fde68a" },
-  player:  { fill: "#3f2d5c", stroke: "#a78bfa", text: "#ede9fe" },
-  arc:     { fill: "#3f1f2e", stroke: "#fb7185", text: "#fecdd3" },
-  world:   { fill: "#14342b", stroke: "#34d399", text: "#a7f3d0" },
-  engine_misc: { fill: "#1f2937", stroke: "#94a3b8", text: "#e2e8f0" },
-  memory:  { fill: "#2a2440", stroke: "#818cf8", text: "#e0e7ff" },
-  turn:    { fill: "#1a2e35", stroke: "#22d3ee", text: "#cffafe" },
-  realm:   { fill: "#332018", stroke: "#fb923c", text: "#fed7aa" },
-  common:  { fill: "#1c2431", stroke: "#64748b", text: "#cbd5e1" },
-};
-const PALETTE: { fill: string; stroke: string; text: string }[] = Object.values(CURATED);
+// Deterministic domain palette — a fixed set of dark-surface color slots. Every
+// package's leaf name hashes into a slot, so the same package always renders the
+// same color, with no hardcoded domain→color vocabulary baked in.
+const PALETTE: { fill: string; stroke: string; text: string }[] = [
+  { fill: "#1e3a5f", stroke: "#60a5fa", text: "#93c5fd" },
+  { fill: "#3b2f1e", stroke: "#fbbf24", text: "#fde68a" },
+  { fill: "#3f2d5c", stroke: "#a78bfa", text: "#ede9fe" },
+  { fill: "#3f1f2e", stroke: "#fb7185", text: "#fecdd3" },
+  { fill: "#14342b", stroke: "#34d399", text: "#a7f3d0" },
+  { fill: "#1f2937", stroke: "#94a3b8", text: "#e2e8f0" },
+  { fill: "#2a2440", stroke: "#818cf8", text: "#e0e7ff" },
+  { fill: "#1a2e35", stroke: "#22d3ee", text: "#cffafe" },
+  { fill: "#332018", stroke: "#fb923c", text: "#fed7aa" },
+  { fill: "#1c2431", stroke: "#64748b", text: "#cbd5e1" },
+];
 export function domainColor(pkg: string): { fill: string; stroke: string; text: string } {
   const leaf = pkg.split("::").pop() ?? pkg;
-  if (CURATED[leaf]) return CURATED[leaf];
-  // stable slot for unmapped packages: hash the leaf name deterministically into the palette
+  // stable slot: hash the leaf name deterministically into the palette
   let h = 0; for (let i = 0; i < leaf.length; i++) h = (h * 31 + leaf.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length]!;
 }
