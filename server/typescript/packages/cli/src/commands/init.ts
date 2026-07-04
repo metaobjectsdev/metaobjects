@@ -5,7 +5,7 @@ import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
-  AGENT_CONTEXT_MANIFEST_PATH, type Manifest,
+  AGENT_CONTEXT_MANIFEST_PATH, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
 import { resolveStack } from "../lib/detect-stack.js";
 import { parseInitArgs } from "../lib/args.js";
@@ -156,13 +156,36 @@ function warnIfMonorepoSubdir(opts: InitOptions, result: InitResult): void {
   );
 }
 
+/**
+ * Resolve the stack for agent-context (re)scaffolding. Precedence:
+ *   1. explicit --server/--client overrides — the user is (re)declaring the stack;
+ *   2. the stack persisted in the prior manifest — ground truth from the last
+ *      init/refresh, reused so a correct multi-package stack line is never REGRESSED
+ *      by re-detecting from a root-only probe (issue #163: a monorepo's sibling-
+ *      package client and its Maven-built Kotlin are invisible at the root);
+ *   3. best-effort detection from the root probe — a fresh project with no prior.
+ * This governs EVERY path that runs writeAgentContext — refresh, `init --force`, and
+ * `--docs-only` — so a declared stack survives on all of them unless the user passes
+ * explicit overrides. resolveStack filters servers/clients to the valid vocabularies
+ * and self-detects when handed empty arrays, so passing the manifest's persisted
+ * string[]s (or nothing) straight through is safe — no need to special-case an empty
+ * or absent prior.
+ */
+function stackForAgentContext(opts: InitOptions, prior: Manifest | undefined): Stack {
+  const hasOverride = (opts.servers?.length ?? 0) > 0 || (opts.clients?.length ?? 0) > 0;
+  const overrides = hasOverride
+    ? { servers: opts.servers ?? [], clients: opts.clients ?? [] }
+    : { servers: prior?.servers ?? [], clients: prior?.clients ?? [] };
+  return resolveStack(opts.cwd, overrides);
+}
+
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
   warnIfMonorepoSubdir(opts, result);
-  const stack = resolveStack(opts.cwd, { servers: opts.servers ?? [], clients: opts.clients ?? [] });
+  const prior = await readManifest(opts.cwd);
+  const stack = stackForAgentContext(opts, prior);
   let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack });
   if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
 
-  const prior = await readManifest(opts.cwd);
   const decision = planScaffold({
     stack, assembled, prior,
     readCurrent: (rel) => {
@@ -172,13 +195,23 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     generatedBy: cliVersion(),
   });
 
-  for (const w of decision.writes) {
+  // --force: overwrite hand-edited docs in place rather than parking the fresh copy
+  // at <path>.new (issue #163 — a forced (re)scaffold means "I mean it"; applies to
+  // refresh and full-init alike). planScaffold already hashed every assembled file
+  // into the manifest, so the in-place write stays tracked and a later non-forced
+  // refresh sees it as unmodified.
+  const writes = opts.force
+    ? [...decision.writes, ...decision.conflicts.map((c) => ({ path: c.path, contents: c.contents }))]
+    : decision.writes;
+  const conflicts = opts.force ? [] : decision.conflicts;
+
+  for (const w of writes) {
     const abs = join(opts.cwd, w.path);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, w.contents, "utf8");
     result.created.push(w.path);
   }
-  for (const c of decision.conflicts) {
+  for (const c of conflicts) {
     const abs = join(opts.cwd, c.newPath);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, c.contents, "utf8");
@@ -255,8 +288,14 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     return result;
   }
 
-  if (opts.refreshDocs && exists && !opts.force) {
-    // Refresh-only path: scaffold the agent-context, leave everything else alone.
+  if (opts.refreshDocs && exists) {
+    // Refresh-only path: (re)write the agent-context docs and NOTHING else — never
+    // the project scaffold (metaobjects/, config.json, codegen/generators/,
+    // metaobjects.config.ts). `--force` on this path means "overwrite hand-edited
+    // docs in place instead of writing <path>.new" (handled in writeAgentContext),
+    // NOT a full re-init — so refresh must short-circuit BEFORE the scaffold path
+    // even when --force is set (issue #163). A refresh on a not-yet-initialized
+    // repo (!exists) still falls through to a full init, matching prior behavior.
     await writeAgentContext(opts, result);
     return result;
   }
