@@ -39,12 +39,12 @@ export function buildIndexPage(g: LinkGraph, cov: CoverageTracker, opts: { title
   }
   // edges among the shown set — collapse parallel edges between a pair to ONE unlabeled edge
   // (a projection can join a source object on 6-12 fields; the overview only needs the connection).
-  const heroEdges: { from: string; to: string; label: string }[] = [];
+  const heroEdges: { from: string; to: string; label: string; style?: "dashed" }[] = [];
   const seenEdge = new Set<string>();
   for (const [f, dn] of shown) for (const e of g.refsFrom(f)) if (shown.has(e.to)) {
     const to = g.byFqn(e.to)!.name;
     const key = `${dn.name}|${to}`;
-    if (!seenEdge.has(key)) { seenEdge.add(key); heroEdges.push({ from: dn.name, to, label: "" }); }
+    if (!seenEdge.has(key)) { seenEdge.add(key); heroEdges.push({ from: dn.name, to, label: "", ...(e.cardinality === "many" ? { style: "dashed" as const } : {}) }); }
   }
   const connected = new Set(heroEdges.flatMap((e) => [e.from, e.to]));
   const heroNodes = [...shown.values()].filter((dn) => connected.has(dn.name));

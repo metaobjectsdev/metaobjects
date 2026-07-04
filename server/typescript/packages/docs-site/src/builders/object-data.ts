@@ -1,5 +1,5 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { LinkGraph, fqnOf } from "../link-graph";
+import { LinkGraph, fqnOf, type Ref } from "../link-graph";
 import type { CoverageTracker } from "../coverage";
 import { esc, badge } from "../badges";
 import { inheritanceTree, erDiagramRich, flowchartDomain, RICH_MAX, type ErEdge, type ErNode, type ErAttr } from "../mermaid";
@@ -90,6 +90,17 @@ function fieldRow(f: MetaData, ownerHref: string, g: LinkGraph, cov: CoverageTra
   }
   const desc = esc(a("description") ?? "");
   return { name: f.name, type: f.subType, isArray: f.resolvedIsArray(), required, badgesHtml: bits.join(" "), desc, enumValues, refHref, refName, inheritedFrom: undefined, anchor: `f-${f.name}` };
+}
+
+// Neighborhood edge label: relationship edges show their name + (M:N) junction + onDelete; extends/others show via.
+function edgeLabelFor(r: Ref): string {
+  if (r.kind === "extends") return "extends";
+  if (r.kind === "relationship") {
+    const junction = r.through ? ` · M:N via ${r.through.split("::").pop()}` : "";
+    const od = r.onDelete ? ` · ${r.onDelete}` : "";
+    return `${r.via}${junction}${od}`;
+  }
+  return r.via;
 }
 
 export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker): ObjectPageData {
@@ -200,8 +211,8 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
   // include every traversal kind (fk, field.object, origin, relationship, extends) so projections and
   // value objects are never orphaned; the dedicated Inheritance section still shows the full chain.
   const nbCandidates = new Map<string, { node: typeof dn; edge: ErEdge }>();
-  for (const r of g.refsFrom(fqn)) { const t = g.byFqn(r.to); if (t && !nbCandidates.has(r.to)) nbCandidates.set(r.to, { node: t, edge: { parent: t.name, child: dn.name, label: r.kind === "extends" ? "extends" : r.via } }); }
-  for (const r of g.refsTo(fqn)) { const s = g.byFqn(r.from); if (s && s.kind === "object" && !nbCandidates.has(r.from)) nbCandidates.set(r.from, { node: s, edge: { parent: dn.name, child: s.name, label: r.kind === "extends" ? "extends" : r.via } }); }
+  for (const r of g.refsFrom(fqn)) { const t = g.byFqn(r.to); if (t && !nbCandidates.has(r.to)) nbCandidates.set(r.to, { node: t, edge: { parent: t.name, child: dn.name, label: edgeLabelFor(r), cardinality: r.cardinality } }); }
+  for (const r of g.refsTo(fqn)) { const s = g.byFqn(r.from); if (s && s.kind === "object" && !nbCandidates.has(r.from)) nbCandidates.set(r.from, { node: s, edge: { parent: dn.name, child: s.name, label: edgeLabelFor(r), cardinality: r.cardinality } }); }
   const sortedNeighbors = [...nbCandidates.entries()].sort(([, a], [, b]) => a.node.name.localeCompare(b.node.name));
   const neighborhoodMore = Math.max(0, sortedNeighbors.length - NB_MAX);
   const nbNodes = new Map<string, typeof dn>(); const nbEdges: ErEdge[] = [];
@@ -218,7 +229,7 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
       const erNodes: ErNode[] = [...nbNodes.values()].map((n) => { const { attrs, more } = neighborAttrs(n.node); return { name: n.name, pkg: n.pkg, role: roleOf(n), kind: n.node.subType, attrs, more }; });
       neighborhoodMermaid = erDiagramRich(erNodes, nbEdges);
     } else {
-      const r = flowchartDomain([...nbNodes.values()].map((n) => ({ name: n.name, pkg: n.pkg, kind: n.node.subType })), nbEdges.map((e) => ({ from: e.parent, to: e.child, label: e.label })));
+      const r = flowchartDomain([...nbNodes.values()].map((n) => ({ name: n.name, pkg: n.pkg, kind: n.node.subType })), nbEdges.map((e) => ({ from: e.parent, to: e.child, label: e.label, ...(e.cardinality === "many" ? { style: "dashed" as const } : {}) })));
       neighborhoodMermaid = r.mermaid; neighborhoodLegend = r.legend;
     }
   }

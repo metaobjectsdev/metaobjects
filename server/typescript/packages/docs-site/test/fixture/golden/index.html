@@ -71,7 +71,7 @@ flowchart LR
   OrderProduct["OrderProduct"]
   Product["Product"]
   Customer --> BaseEntity
-  Customer --> Customer
+  Customer -.-> Customer
   CustomerFriend --> BaseEntity
   CustomerFriend --> Customer
   CustomerReferral --> BaseEntity
@@ -81,7 +81,7 @@ flowchart LR
   NpcPayload --> ItemView
   Order --> BaseEntity
   Order --> Customer
-  Order --> Product
+  Order -.-> Product
   OrderLine --> Order
   OrderProduct --> BaseEntity
   OrderProduct --> Order

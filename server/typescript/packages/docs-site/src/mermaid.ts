@@ -1,4 +1,4 @@
-export interface ErEdge { parent: string; child: string; label: string; }
+export interface ErEdge { parent: string; child: string; label: string; cardinality?: "one" | "many" | undefined; }
 
 // base theme is the only theme that honors custom themeVariables; the built-in `dark`
 // theme renders attribute-bearing ERDs unreadably. Surfaces match the site's dark palette.
@@ -83,7 +83,10 @@ export function erDiagramRich(nodes: ErNode[], edges: ErEdge[]): string {
     if (n.more > 0) lines.push(`    _ plus "+${n.more} more"`);
     lines.push("  }");
   }
-  for (const e of [...edges].sort(edgeSort)) lines.push(`  ${nodeId(e.parent)} ||--o{ ${nodeId(e.child)} : "${safe(e.label)}"`);
+  for (const e of [...edges].sort(edgeSort)) {
+    const conn = e.cardinality === "many" ? "}o--o{" : "||--o{";
+    lines.push(`  ${nodeId(e.parent)} ${conn} ${nodeId(e.child)} : "${safe(e.label)}"`);
+  }
   // one classDef per entity: fill = domain, stroke = role
   for (const n of [...nodes].sort((a, b) => a.name.localeCompare(b.name))) {
     const dc = domainColor(n.pkg);
@@ -104,7 +107,7 @@ function shapeDecl(id: string, label: string, kind?: string): string {
 
 export function flowchartDomain(
   nodes: { name: string; pkg: string; kind?: string }[],
-  edges: { from: string; to: string; label?: string }[],
+  edges: { from: string; to: string; label?: string; style?: "dashed" | undefined }[],
 ): { mermaid: string; legend: { pkg: string; fill: string; stroke: string }[] } {
   const lines = [THEME_INIT + "flowchart LR"];
   const kindByName = new Map(nodes.map((n) => [n.name, n.kind]));
@@ -118,7 +121,8 @@ export function flowchartDomain(
   const edgeLabel = (s: string) => s.replace(/["|(){}\[\]]/g, "").replace(/\s+/g, " ").trim();
   for (const e of [...edges].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to))) {
     const lbl = e.label ? edgeLabel(e.label) : "";
-    lines.push(lbl ? `  ${nodeId(e.from)} -->|${lbl}| ${nodeId(e.to)}` : `  ${nodeId(e.from)} --> ${nodeId(e.to)}`);
+    const arrow = e.style === "dashed" ? "-.->" : "-->";
+    lines.push(lbl ? `  ${nodeId(e.from)} ${arrow}|${lbl}| ${nodeId(e.to)}` : `  ${nodeId(e.from)} ${arrow} ${nodeId(e.to)}`);
   }
   // group node names by domain class, assign, and emit one classDef per used domain
   const byCls = new Map<string, { pkg: string; ids: string[] }>();

@@ -120,11 +120,11 @@ erDiagram
     string sku "req"
   }
   BaseEntity ||--o{ Order : "extends"
-  Customer ||--o{ Order : "customer"
+  Customer ||--o{ Order : "customer · cascade"
   Order ||--o{ LineItemView : "orderId"
   Order ||--o{ OrderLine : "orderId, lineNo"
   Order ||--o{ OrderProduct : "orderId"
-  Product ||--o{ Order : "products"
+  Product }o--o{ Order : "products · M:N via OrderProduct"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#334155,color:#cbd5e1
   Customer:::c_Customer

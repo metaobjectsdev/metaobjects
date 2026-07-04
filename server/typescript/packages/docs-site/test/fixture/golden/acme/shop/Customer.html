@@ -112,11 +112,11 @@ erDiagram
     enum status "enum"
   }
   BaseEntity ||--o{ Customer : "extends"
-  Customer ||--o{ Customer : "referrals"
+  Customer }o--o{ Customer : "referrals · M:N via CustomerReferral"
   Customer ||--o{ CustomerFriend : "friendAId"
   Customer ||--o{ CustomerReferral : "referrerId"
   Customer ||--o{ LineItemView : "customerName (origin)"
-  Customer ||--o{ Order : "customer"
+  Customer ||--o{ Order : "customer · cascade"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#334155,color:#cbd5e1
   Customer:::c_Customer

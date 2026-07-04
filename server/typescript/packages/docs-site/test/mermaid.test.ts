@@ -58,3 +58,27 @@ test("domainColor is deterministic and stable for unmapped packages", () => {
   expect(domainColor("acme::session")).toEqual(domainColor("acme::session"));
   expect(domainColor("acme::zzz_unmapped").fill).toMatch(/^#/);  // assigned a stable slot, not random
 });
+
+test("erDiagramRich uses }o--o{ for M:N edges and ||--o{ otherwise", () => {
+  const { erDiagramRich } = require("../src/mermaid");
+  const nodes = [
+    { name: "Order", pkg: "acme::shop", role: "focal", attrs: [], more: 0 },
+    { name: "Product", pkg: "acme::shop", role: "normal", attrs: [], more: 0 },
+    { name: "Customer", pkg: "acme::shop", role: "normal", attrs: [], more: 0 },
+  ];
+  const out = erDiagramRich(nodes, [
+    { parent: "Order", child: "Product", label: "products", cardinality: "many" },
+    { parent: "Customer", child: "Order", label: "customer", cardinality: "one" },
+  ]);
+  expect(out).toContain("Order }o--o{ Product");
+  expect(out).toContain("Customer ||--o{ Order");
+});
+
+test("flowchartDomain draws a dashed link for style:dashed", () => {
+  const { flowchartDomain } = require("../src/mermaid");
+  const r = flowchartDomain(
+    [{ name: "Order", pkg: "acme::shop" }, { name: "Product", pkg: "acme::shop" }],
+    [{ from: "Order", to: "Product", label: "M:N via OrderProduct", style: "dashed" }],
+  );
+  expect(r.mermaid).toContain("-.->|M:N via OrderProduct|");
+});
