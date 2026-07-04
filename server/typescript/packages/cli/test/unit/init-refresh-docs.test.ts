@@ -71,6 +71,53 @@ describe("init --refresh-docs", () => {
   });
 });
 
+describe("init --refresh-docs --force (issue #163)", () => {
+  test("refreshes docs only — does NOT re-scaffold the project", async () => {
+    await init({ cwd });
+    // Remove scaffold-only artifacts; a refresh must not recreate them.
+    rmSync(join(cwd, "metaobjects.config.ts"), { force: true });
+    rmSync(join(cwd, "metaobjects"), { recursive: true, force: true });
+
+    await init({ cwd, refreshDocs: true, force: true });
+
+    // Docs refreshed …
+    expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md"))).toBe(true);
+    // … but the project scaffold is NOT re-created by a docs refresh.
+    expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);
+    expect(existsSync(join(cwd, "metaobjects"))).toBe(false);
+  });
+
+  test("--force overwrites a hand-edited doc in place (no .new)", async () => {
+    await init({ cwd });
+    writeFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "stale content", "utf8");
+
+    await init({ cwd, refreshDocs: true, force: true });
+
+    expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md.new"))).toBe(false);
+    expect(readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8")).not.toBe("stale content");
+  });
+});
+
+describe("init --refresh-docs preserves the persisted stack (issue #163)", () => {
+  test("refresh reuses the manifest stack instead of re-detecting from the root", async () => {
+    // A multi-package monorepo stack, as an explicit init would record it. The tmp
+    // cwd has no package.json / build files, so root-probe detection would yield an
+    // empty stack — the refresh must NOT regress to that.
+    await init({ cwd, servers: ["java", "kotlin"], clients: ["react", "tanstack"] });
+    const before = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
+    expect(before).toContain("java, kotlin server");
+    expect(before).toContain("react, tanstack client");
+
+    await init({ cwd, refreshDocs: true });
+
+    const after = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
+    expect(after).toContain("java, kotlin server");
+    expect(after).toContain("react, tanstack client");
+    // Same stack + unmodified doc → refreshed in place, never a spurious .new.
+    expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md.new"))).toBe(false);
+  });
+});
+
 describe("metaobjects.config.ts wiring still scaffolded", () => {
   test("init writes metaobjects.config.ts with defineConfig wiring", async () => {
     await init({ cwd });
