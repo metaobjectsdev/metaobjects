@@ -1,0 +1,43 @@
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li>{{{breadcrumbHtml}}}</li></ul></div>
+<h1 class="text-2xl font-bold font-mono">{{title}}</h1>
+{{#descHtml}}<p class="text-sm my-3">{{descHtml}}</p>{{/descHtml}}
+{{#keyCards.length}}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4">
+{{#keyCards}}<a href="{{href}}" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">{{name}}</div><div class="text-xs opacity-50">{{inbound}} refs</div></a>{{/keyCards}}
+</div>
+{{/keyCards.length}}
+{{#erdMermaid}}<div class="card bg-base-100 border border-base-300 p-2 pl-diagram my-4"><pre class="mermaid">{{erdMermaid}}</pre>{{#erdLegend.length}}<div class="flex flex-wrap gap-1 mt-2 text-xs">{{#erdLegend}}<span class="badge badge-xs" style="background:{{fill}};border-color:{{stroke}};color:#cbd5e1">{{pkg}}</span>{{/erdLegend}}</div>{{/erdLegend.length}}<div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div></div>{{/erdMermaid}}
+{{#abstracts.length}}
+<h2 class="text-lg font-semibold mt-6">Abstracts</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Kind</th><th>Fields</th></tr></thead><tbody>
+  {{#abstracts}}<tr><td><a class="link font-mono" href="{{href}}">{{name}}</a></td><td class="opacity-60">{{kind}}</td><td>{{fieldCount}}</td></tr>{{/abstracts}}
+  </tbody></table></div>
+{{/abstracts.length}}
+{{#objects.length}}
+<h2 class="text-lg font-semibold mt-6">Objects</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Kind</th><th>Table</th><th>Fields</th><th>Extends</th></tr></thead><tbody>
+  {{#objects}}<tr><td><a class="link font-mono" href="{{href}}">{{name}}</a></td><td class="opacity-60">{{kind}}</td><td class="font-mono opacity-60">{{table}}</td><td>{{fieldCount}}</td><td class="font-mono opacity-60">{{extendsName}}</td></tr>{{/objects}}
+  </tbody></table></div>
+{{/objects.length}}
+{{#prompts.length}}
+<h2 class="text-lg font-semibold mt-6">Prompts</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Payload</th><th>Format</th><th>textRef</th></tr></thead><tbody>
+  {{#prompts}}<tr><td><a class="link font-mono" href="{{href}}">{{name}}</a></td><td><a class="link font-mono opacity-70" href="{{payloadHref}}">{{payloadName}}</a></td><td class="opacity-60">{{format}}</td><td class="font-mono text-xs opacity-50">{{textRef}}</td></tr>{{/prompts}}
+  </tbody></table></div>
+{{/prompts.length}}
+{{#outputs.length}}
+<h2 class="text-lg font-semibold mt-6">Output contracts</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Payload</th><th>Format</th><th>textRef</th></tr></thead><tbody>
+  {{#outputs}}<tr><td><a class="link font-mono" href="{{href}}">{{name}}</a></td><td><a class="link font-mono opacity-70" href="{{payloadHref}}">{{payloadName}}</a></td><td class="opacity-60">{{format}}</td><td class="font-mono text-xs opacity-50">{{textRef}}</td></tr>{{/outputs}}
+  </tbody></table></div>
+{{/outputs.length}}
+{{#referencedBy.length}}
+<h2 class="text-lg font-semibold mt-6">Referenced by</h2>
+<div class="flex flex-wrap gap-2 mt-2">
+  {{#referencedBy}}<a href="{{href}}" class="badge badge-ghost font-mono">{{pkg}} <span class="opacity-50 ml-1">×{{n}}</span></a>{{/referencedBy}}
+</div>
+{{/referencedBy.length}}

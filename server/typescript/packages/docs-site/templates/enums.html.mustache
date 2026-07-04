@@ -1,0 +1,14 @@
+<h1 class="text-2xl font-bold font-mono">Enums</h1>
+<p class="text-sm opacity-60 mt-1">All enum-valued fields across the metadata.</p>
+{{#rows.length}}
+<div class="overflow-x-auto mt-4"><table class="table table-xs">
+  <thead><tr><th>Owner</th><th>Field</th><th>Values</th><th>Default</th></tr></thead><tbody>
+  {{#rows}}<tr>
+    <td><a class="link font-mono" href="{{relRoot}}{{ownerHref}}">{{owner}}</a></td>
+    <td class="font-mono">{{field}}</td>
+    <td class="flex flex-wrap gap-1">{{#values}}<span class="badge badge-ghost badge-xs font-mono">{{.}}</span>{{/values}}</td>
+    <td class="font-mono opacity-60">{{deflt}}</td>
+  </tr>{{/rows}}
+  </tbody></table></div>
+{{/rows.length}}
+{{^rows.length}}<p class="text-sm opacity-50 mt-4">No enum fields found.</p>{{/rows.length}}

@@ -1,0 +1,39 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        "@description": "A customer <order> with \"items\" & totals."
+        extends: acme::common::BaseEntity
+        children:
+          - field.enum: { name: status, extends: acme::common::statusEnum, default: OPEN }
+          - field.int:
+              name: qty
+              default: "1"
+              children:
+                - validator.numeric: { min: 1, max: 99 }
+          - field.string: { name: customerId, maxLength: 36 }
+          - identity.reference: { name: fkCustomer, fields: customerId, references: acme::shop::Customer }
+          - relationship.association: { name: customer, "@objectRef": "acme::shop::Customer", cardinality: one }
+          - index.lookup: { name: idx_order_qty, fields: qty, orders: [desc], where: "(qty > 0)" }
+          - validator.comparison: { left: qty, op: lte, right: "99" }
+          - source.rdb: { table: orders }
+    - object.entity:
+        name: Customer
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: email, required: true, maxLength: 120 }
+          - source.rdb: { table: customers }
+    - object.entity:
+        name: OrphanLog
+        children:
+          - field.string: { name: line }
+    - object.projection:
+        name: LineItemView
+        children:
+          - field.string: { name: orderId, "@objectRef": "acme::shop::Order" }
+          - field.string:
+              name: customerName
+              children:
+                - origin.passthrough: { "@from": "acme::shop::Customer.email", "@via": "Order.customer" }
+          - source.rdb: { kind: view, table: v_line_item }

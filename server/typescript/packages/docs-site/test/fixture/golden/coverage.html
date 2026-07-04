@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixture</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="min-h-screen bg-base-200 text-base-content">
+<div class="flex">
+<nav class="pl-sidebar hidden lg:flex flex-col w-72 shrink-0 h-screen sticky top-0 border-r border-base-300 bg-base-100 overflow-y-auto p-4 gap-1 text-sm">
+  <a href="index.html" class="font-bold font-mono text-primary">Fixture</a>
+  <button id="search-open" class="btn btn-sm btn-block justify-between my-2 font-normal opacity-80">
+    <span>search…</span><kbd class="kbd kbd-xs">⌘K</kbd></button>
+  <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Data</div>
+<details>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="acme/common/index.html">acme::common</a></summary>
+<a href="acme/common/BaseEntity.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">BaseEntity</a>
+</details>
+<details>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="acme/shop/index.html">acme::shop</a></summary>
+<a href="acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
+<a href="acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+</details>
+<div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
+<details>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="acme/ai/index.html">acme::ai</a></summary>
+<a href="acme/ai/ItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">ItemView</a>
+<a href="acme/ai/NpcPayload.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">NpcPayload</a>
+<a href="acme/ai/NpcResponse.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">NpcResponse</a>
+<a href="acme/ai/npcReview.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">npcReview</a>
+<a href="acme/ai/npcReviewOutput.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">npcReviewOutput</a>
+<a href="acme/ai/OrderLine.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderLine</a>
+<a href="acme/ai/OrphanVO.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanVO</a>
+</details>
+</nav>
+<main class="min-w-0 flex-1 max-w-4xl px-6 lg:px-10 py-8">
+<h1 class="text-2xl font-bold font-mono">Coverage</h1>
+<p class="text-sm opacity-60 mt-1">Which metadata node kinds and attributes are rendered by the doc pages.</p>
+<h2 class="text-lg font-semibold mt-6">Node kinds</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Kind</th><th>Count</th><th>Rendered</th></tr></thead><tbody>
+  <tr><td class="font-mono">field.enum</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field.int</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field.object</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field.string</td><td>10</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field.timestamp</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field.uuid</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">identity.primary</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">identity.reference</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">index.lookup</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">object.entity</td><td>5</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">object.projection</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">object.value</td><td>4</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">origin.passthrough</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">relationship.association</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">source.rdb</td><td>4</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">template.output</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">template.prompt</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator.comparison</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator.numeric</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr>
+  </tbody></table></div>
+<h2 class="text-lg font-semibold mt-6">Attributes</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Attribute</th><th>Count</th><th>Rendered</th></tr></thead><tbody>
+  <tr><td class="font-mono">field:@dbColumnType</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@default</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@description</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@maxLength</td><td>3</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@objectRef</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@required</td><td>3</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@storage</td><td>1</td><td><span class="badge badge-error badge-xs">✗</span></td></tr><tr><td class="font-mono">field:@values</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">field:@xmlText</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">identity:@fields</td><td>3</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">identity:@generation</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">identity:@references</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">index:@fields</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">index:@orders</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">index:@where</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">object:@description</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">origin:@from</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">origin:@via</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">relationship:@cardinality</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">relationship:@objectRef</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">source:@kind</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">source:@table</td><td>4</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">template:@format</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">template:@payloadRef</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">template:@textRef</td><td>2</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator:@left</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator:@max</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator:@min</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator:@op</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr><tr><td class="font-mono">validator:@right</td><td>1</td><td><span class="badge badge-success badge-xs">✓</span></td></tr>
+  </tbody></table></div>
+<h2 class="text-lg font-semibold mt-6">Anomalies</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Kind</th><th>Subject</th><th>Detail</th></tr></thead><tbody>
+  <tr><td class="font-mono opacity-70">orphan</td><td><a class="link font-mono" href="acme/shop/OrphanLog.html">OrphanLog</a></td><td class="text-xs opacity-70">no inbound or outbound references</td></tr><tr><td class="font-mono opacity-70">orphan</td><td><a class="link font-mono" href="acme/ai/OrphanVO.html">OrphanVO</a></td><td class="text-xs opacity-70">no inbound or outbound references</td></tr><tr><td class="font-mono opacity-70">unreachable-vo</td><td><a class="link font-mono" href="acme/ai/OrphanVO.html">OrphanVO</a></td><td class="text-xs opacity-70">value object not reachable from any template payload</td></tr><tr><td class="font-mono opacity-70">unresolved-textref</td><td><a class="link font-mono" href="acme/ai/npcReviewOutput.html">npcReviewOutput</a></td><td class="text-xs opacity-70">@textRef ai/npc-response-format does not resolve (forward-pointing)</td></tr>
+  </tbody></table></div>
+
+</main>
+<aside class="pl-toc hidden xl:block w-56 shrink-0 h-screen sticky top-0 overflow-y-auto py-8 pr-6 text-xs">
+  
+  <div class="opacity-50 mt-6 mb-2 uppercase tracking-wide">Legend</div><div class="flex flex-wrap gap-1"><span class="badge badge-soft badge-info badge-xs">reference (fk)</span> <span class="badge badge-soft badge-secondary badge-xs">contains (nested)</span> <span class="badge badge-soft badge-success badge-xs">indexed / pk</span> <span class="badge badge-soft badge-error badge-xs">required</span> <span class="badge badge-soft badge-warning badge-xs">deprecated</span> <span class="badge badge-soft badge-accent badge-xs">enum</span> <span class="badge badge-soft badge-neutral badge-xs">optional</span></div>
+</aside>
+</div>
+<dialog id="search-modal" class="modal">
+  <div class="modal-box max-w-2xl p-0">
+    <label class="input input-bordered flex items-center gap-2 m-3"><input id="search" type="search" placeholder="search entities, fields, prompts…" class="grow" autofocus><kbd class="kbd kbd-xs">esc</kbd></label>
+    <div id="search-results" class="max-h-96 overflow-y-auto px-3 pb-3 flex flex-col gap-0.5"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<footer class="pl-footer text-xs opacity-40 px-10 pb-6">generated 2026-01-01 · abc1234 · metadata-docs</footer>
+<script>window.__REL_ROOT__ = "";</script>
+<script src="assets/site.js"></script>
+</body></html>

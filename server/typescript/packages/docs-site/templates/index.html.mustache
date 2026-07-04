@@ -1,0 +1,54 @@
+<h1 class="text-2xl font-bold font-mono">{{title}}</h1>
+<div class="stats stats-horizontal shadow my-4 text-sm">
+  <div class="stat"><div class="stat-title">objects</div><div class="stat-value font-mono text-lg">{{stats.objects}}</div></div>
+  <div class="stat"><div class="stat-title">tables</div><div class="stat-value font-mono text-lg">{{stats.tables}}</div></div>
+  <div class="stat"><div class="stat-title">packages</div><div class="stat-value font-mono text-lg">{{stats.packages}}</div></div>
+  <div class="stat"><div class="stat-title">prompt VOs</div><div class="stat-value font-mono text-lg">{{stats.promptVos}}</div></div>
+  <div class="stat"><div class="stat-title">prompts</div><div class="stat-value font-mono text-lg">{{stats.prompts}}</div></div>
+  <div class="stat"><div class="stat-title">contracts</div><div class="stat-value font-mono text-lg">{{stats.contracts}}</div></div>
+  <div class="stat"><div class="stat-title">enums</div><div class="stat-value font-mono text-lg">{{stats.enums}}</div></div>
+</div>
+{{#coreMermaid}}
+<div class="card bg-base-100 border border-base-300 p-4 my-4">
+  <div class="font-semibold mb-2">Core ERD</div>
+  <div class="pl-diagram"><pre class="mermaid">{{coreMermaid}}</pre></div>
+  <div class="text-xs opacity-50 mt-1">{{coreCaption}}</div>
+  {{#coreLegend.length}}<div class="flex flex-wrap gap-1 mt-2 text-xs">{{#coreLegend}}<span class="badge badge-xs" style="background:{{fill}};border-color:{{stroke}};color:#cbd5e1">{{pkg}}</span>{{/coreLegend}}</div>
+  <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div>{{/coreLegend.length}}
+</div>
+{{/coreMermaid}}
+{{#packageMermaid}}
+<div class="card bg-base-100 border border-base-300 p-4 my-4">
+  <div class="font-semibold mb-2">Package dependencies</div>
+  <div class="pl-diagram"><pre class="mermaid">{{packageMermaid}}</pre></div>
+</div>
+{{/packageMermaid}}
+{{#fullEdges.length}}
+<details class="my-4">
+  <summary class="cursor-pointer text-sm font-semibold">All cross-package edges</summary>
+  <div class="overflow-x-auto mt-2"><table class="table table-xs">
+    <thead><tr><th>From</th><th>To</th><th>n</th></tr></thead><tbody>
+    {{#fullEdges}}<tr><td class="font-mono">{{from}}</td><td class="font-mono">{{to}}</td><td>{{n}}</td></tr>{{/fullEdges}}
+    </tbody></table></div>
+</details>
+{{/fullEdges.length}}
+{{#dataPackages.length}}
+<h2 class="text-lg font-semibold mt-6">Data packages</h2>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+{{#dataPackages}}<a href="{{relRoot}}{{href}}" class="card bg-base-100 border border-base-300 p-3 hover:border-primary transition-colors">
+  <div class="font-mono font-semibold text-sm">{{pkg}}</div>
+  <div class="text-xs opacity-60 mt-1">{{objectCount}} objects · {{promptCount}} prompts · {{contractCount}} contracts</div>
+  <div class="text-xs opacity-60 mt-1">{{purpose}}</div>
+</a>{{/dataPackages}}
+</div>
+{{/dataPackages.length}}
+{{#promptPackages.length}}
+<h2 class="text-lg font-semibold mt-6">Prompt packages</h2>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+{{#promptPackages}}<a href="{{relRoot}}{{href}}" class="card bg-base-100 border border-base-300 p-3 hover:border-secondary transition-colors">
+  <div class="font-mono font-semibold text-sm">{{pkg}}</div>
+  <div class="text-xs opacity-60 mt-1">{{objectCount}} objects · {{promptCount}} prompts · {{contractCount}} contracts</div>
+  <div class="text-xs opacity-60 mt-1">{{purpose}}</div>
+</a>{{/promptPackages}}
+</div>
+{{/promptPackages.length}}

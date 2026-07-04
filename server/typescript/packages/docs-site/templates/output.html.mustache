@@ -1,0 +1,16 @@
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li>{{{breadcrumbHtml}}}</li></ul></div>
+<h1 class="text-2xl font-bold font-mono mt-1">{{name}} <span class="badge badge-accent badge-sm align-middle">{{format}}</span> <span class="badge badge-ghost badge-sm align-middle">output</span></h1>
+{{#payloadName}}<div class="text-sm mt-2 opacity-70">payload: <a class="link font-mono" href="{{payloadHref}}">{{payloadName}}</a></div>{{/payloadName}}
+<div class="text-sm mt-1 opacity-60 font-mono">
+  textRef: {{textRef}}
+  {{^textRefResolves}}<span class="badge badge-warning badge-xs ml-2">forward-pointing</span>{{/textRefResolves}}
+</div>
+{{#desc}}<p class="mt-3 text-sm">{{desc}}</p>{{/desc}}
+{{#fields.length}}
+<section id="s-contract" class="mt-6"><h2 class="text-lg font-semibold">Parse contract</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Field</th><th>Type</th><th>Wire</th><th>Meaning</th></tr></thead><tbody>
+  {{#fields}}<tr><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}}</td><td class="opacity-60">{{type}}</td><td class="font-mono text-xs opacity-70">{{wire}}</td><td>{{{refHtml}}}{{#note}} {{note}}{{/note}}</td></tr>{{/fields}}
+  </tbody></table></div>
+</section>
+{{/fields.length}}

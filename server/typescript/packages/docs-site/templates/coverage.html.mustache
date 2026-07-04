@@ -1,0 +1,24 @@
+<h1 class="text-2xl font-bold font-mono">Coverage</h1>
+<p class="text-sm opacity-60 mt-1">Which metadata node kinds and attributes are rendered by the doc pages.</p>
+{{#kinds.length}}
+<h2 class="text-lg font-semibold mt-6">Node kinds</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Kind</th><th>Count</th><th>Rendered</th></tr></thead><tbody>
+  {{#kinds}}<tr><td class="font-mono">{{key}}</td><td>{{count}}</td><td>{{#consumed}}<span class="badge badge-success badge-xs">✓</span>{{/consumed}}{{^consumed}}<span class="badge badge-error badge-xs">✗</span>{{/consumed}}</td></tr>{{/kinds}}
+  </tbody></table></div>
+{{/kinds.length}}
+{{#attrs.length}}
+<h2 class="text-lg font-semibold mt-6">Attributes</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Attribute</th><th>Count</th><th>Rendered</th></tr></thead><tbody>
+  {{#attrs}}<tr><td class="font-mono">{{key}}</td><td>{{count}}</td><td>{{#consumed}}<span class="badge badge-success badge-xs">✓</span>{{/consumed}}{{^consumed}}<span class="badge badge-error badge-xs">✗</span>{{/consumed}}</td></tr>{{/attrs}}
+  </tbody></table></div>
+{{/attrs.length}}
+{{#anomalies.length}}
+<h2 class="text-lg font-semibold mt-6">Anomalies</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Kind</th><th>Subject</th><th>Detail</th></tr></thead><tbody>
+  {{#anomalies}}<tr><td class="font-mono opacity-70">{{kind}}</td><td><a class="link font-mono" href="{{relRoot}}{{href}}">{{subject}}</a></td><td class="text-xs opacity-70">{{detail}}</td></tr>{{/anomalies}}
+  </tbody></table></div>
+{{/anomalies.length}}
+{{^anomalies.length}}<p class="text-sm opacity-50 mt-4">No anomalies detected.</p>{{/anomalies.length}}

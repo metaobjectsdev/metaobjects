@@ -1,0 +1,17 @@
+</main>
+<aside class="pl-toc hidden xl:block w-56 shrink-0 h-screen sticky top-0 overflow-y-auto py-8 pr-6 text-xs">
+  {{#tocHtml}}<div class="opacity-50 mb-2 uppercase tracking-wide">On this page</div><div class="flex flex-col gap-1">{{{tocHtml}}}</div>{{/tocHtml}}
+  <div class="opacity-50 mt-6 mb-2 uppercase tracking-wide">Legend</div><div class="flex flex-wrap gap-1">{{{legendHtml}}}</div>
+</aside>
+</div>
+<dialog id="search-modal" class="modal">
+  <div class="modal-box max-w-2xl p-0">
+    <label class="input input-bordered flex items-center gap-2 m-3"><input id="search" type="search" placeholder="search entities, fields, prompts…" class="grow" autofocus><kbd class="kbd kbd-xs">esc</kbd></label>
+    <div id="search-results" class="max-h-96 overflow-y-auto px-3 pb-3 flex flex-col gap-0.5"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<footer class="pl-footer text-xs opacity-40 px-10 pb-6">generated {{stamp}} · {{commit}} · metadata-docs</footer>
+<script>window.__REL_ROOT__ = "{{relRoot}}";</script>
+<script src="{{relRoot}}assets/site.js"></script>
+</body></html>

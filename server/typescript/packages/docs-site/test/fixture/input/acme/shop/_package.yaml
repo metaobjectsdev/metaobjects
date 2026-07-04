@@ -1,0 +1,4 @@
+metadata:
+  package: acme::shop
+  title: Shop
+  description: The shop package models customers and their orders.

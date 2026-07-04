@@ -1,0 +1,39 @@
+metadata:
+  package: acme::ai
+  children:
+    - object.value:
+        name: ItemView
+        children:
+          - field.string: { name: label }
+    - object.value:
+        name: NpcPayload
+        children:
+          - field.string: { name: npcName, required: true }
+          - field.object: { name: items, isArray: true, "@objectRef": "acme::ai::ItemView", "@storage": jsonb }
+    - object.value:
+        name: NpcResponse
+        children:
+          - field.string: { name: verdict, "@description": "verdict <b>tag</b> & \"quote\"" }   # attr on the wire; use &lt;tag&gt; to embed <tag> & "quotes"
+          - field.string: { name: reason, "@xmlText": true }
+    - template.prompt:
+        name: npcReview
+        "@payloadRef": NpcPayload
+        "@textRef": ai/npc-review
+        "@format": text
+    - template.output:
+        name: npcReviewOutput
+        "@payloadRef": NpcResponse
+        "@textRef": ai/npc-response-format
+        "@format": xml
+    - object.entity:
+        name: OrderLine
+        children:
+          - field.uuid: { name: orderId }
+          - field.int: { name: lineNo }
+          - identity.reference:
+              name: fkOrderLine
+              fields: [orderId, lineNo]
+              references: acme::shop::Order
+          - source.rdb: { table: order_lines }
+    - object.value:
+        name: OrphanVO
