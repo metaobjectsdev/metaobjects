@@ -8,9 +8,22 @@
 #   push to main        -> affected ports only (scripts/ci-affected-ports.sh)
 #   nightly + dispatch  -> full matrix
 #
-# Measured 2026-07-03 (full tier, all ports in parallel, warm caches):
+# Java is split into two parallel jobs — java-fast (java+kotlin conformance, the
+# quick correctness signal ~2-3m) and java-slow (full reactor + docker
+# integration). The split surfaces the conformance verdict fast and means a
+# cancel/OOM mid-integration no longer kills the fast signal. `detect` emits the
+# umbrella token `java`; both jobs gate on it.
+#
+# Integration-running jobs (ts, python, csharp, java-slow) share a Postgres
+# SIDECAR instead of each test booting its own Testcontainers Postgres per
+# scenario (the java+kotlin lanes alone booted ~30-40 serial containers). Each
+# port's PG helper honors METAOBJECTS_TEST_PG_URL and CREATEs a uniquely-named
+# database per scenario against the sidecar. The sidecar publishes 5432 to a
+# DYNAMIC host port (`ports: - 5432`, read back via job.services.*.ports) so
+# concurrent jobs on the shared self-hosted host never collide on a fixed port.
+#
+# Measured 2026-07-03 (pre-split, full tier, all ports in parallel, warm caches):
 #   detect 0.2m · gates 0.1m · csharp 2m · python 2.6m · ts 5.3m · java 9.8m
-#   -> full-matrix wall-clock ~10m (slowest port); single-port pushes ~2-6m.
 name: local-ci
 on:
   push:
@@ -69,47 +82,126 @@ jobs:
     if: contains(needs.detect.outputs.ports, 'ts')
     runs-on: [self-hosted, linux]
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metaobjects
+          POSTGRES_PASSWORD: metaobjects
+          POSTGRES_DB: metaobjects_test
+        ports:
+          - 5432                  # dynamic host port — no fixed-port collision
+        options: >-
+          --health-cmd "pg_isready -U metaobjects"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: scripts/ci-local.sh --only ts --strict-toolchains
+      - env:
+          METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+        run: scripts/ci-local.sh --only ts --strict-toolchains
 
-  java:
+  # Java FAST lane — java + kotlin conformance only (the quick correctness signal).
+  # No docker/integration, so no sidecar.
+  java-fast:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'java')
     runs-on: [self-hosted, linux]
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: scripts/ci-local.sh --only java --strict-toolchains
+      - run: scripts/ci-local.sh --only java-fast --strict-toolchains
+
+  # Java SLOW lane — full reactor + docker integration (java + kotlin). Uses the
+  # shared Postgres sidecar so integration stops booting per-scenario containers.
+  java-slow:
+    needs: detect
+    if: contains(needs.detect.outputs.ports, 'java')
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metaobjects
+          POSTGRES_PASSWORD: metaobjects
+          POSTGRES_DB: metaobjects_test
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U metaobjects"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - env:
+          METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+        run: scripts/ci-local.sh --only java-slow --strict-toolchains
 
   python:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'python')
     runs-on: [self-hosted, linux]
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metaobjects
+          POSTGRES_PASSWORD: metaobjects
+          POSTGRES_DB: metaobjects_test
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U metaobjects"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: scripts/ci-local.sh --only python --strict-toolchains
+      - env:
+          METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+        run: scripts/ci-local.sh --only python --strict-toolchains
 
   csharp:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'csharp')
     runs-on: [self-hosted, linux]
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: metaobjects
+          POSTGRES_PASSWORD: metaobjects
+          POSTGRES_DB: metaobjects_test
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U metaobjects"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: scripts/ci-local.sh --only csharp --strict-toolchains
+      - env:
+          METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+        run: scripts/ci-local.sh --only csharp --strict-toolchains
 
   notify:
-    needs: [detect, gates, ts, java, python, csharp]
+    needs: [detect, gates, ts, java-fast, java-slow, python, csharp]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:
