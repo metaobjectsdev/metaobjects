@@ -78,6 +78,9 @@ export class LinkGraph {
             if (to) addRef({ from: fqn, to, via: f.name, kind: "field" });
           }
         }
+        // dn.node is typed MetaData; the enclosing dn.kind === "object" guard
+        // guarantees it is a MetaObject at runtime. The `unknown` bridge is needed
+        // because MetaData does not structurally narrow to MetaObject for tsc.
         const obj = dn.node as unknown as MetaObject;
         // Relationship edges FIRST, so we can suppress the bare FK edge a belongs-to
         // relationship supersedes. Dedupe is keyed by `${targetFqn}::${fkField}`
