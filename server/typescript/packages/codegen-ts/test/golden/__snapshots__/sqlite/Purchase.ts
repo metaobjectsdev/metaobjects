@@ -2,13 +2,13 @@
 // Source metadata: Purchase (Purchase)
 // Customize via Purchase.extra.ts in this directory.
 import {
-  InferInsertModel,
-  InferSelectModel,
+  type InferInsertModel,
+  type InferSelectModel,
   relations,
   sql,
 } from "drizzle-orm";
 import {
-  AnySQLiteColumn,
+  type AnySQLiteColumn,
   integer,
   sqliteTable,
   text,
