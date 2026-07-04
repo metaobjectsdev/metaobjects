@@ -1,30 +1,39 @@
 import { test, expect } from "bun:test";
 import { run } from "../src/index.js";
 
+// These assert EXIT CODES (help/usage handling), not performance — so they must
+// not be timing-sensitive. `run()` lazily imports each command's (sometimes heavy:
+// migrate-ts, codegen) module on first dispatch; on a cold/contended CI runner that
+// first cold-start import can exceed bun's default 5s test timeout, flaking the
+// suite even though every call returns instantly once warm (~115ms for the whole
+// file locally). A generous explicit timeout eliminates that flake while still
+// failing loudly on a genuine hang or wrong exit code.
+const HELP_TIMEOUT_MS = 30_000;
+
 test("each subcommand supports --help and exits 0", async () => {
   for (const c of ["gen", "migrate", "verify", "export", "docs", "init"]) {
     expect(await run([c, "--help"])).toBe(0);
   }
-});
+}, HELP_TIMEOUT_MS);
 
 test("each subcommand supports -h and exits 0", async () => {
   for (const c of ["gen", "verify", "export", "docs", "init"]) {
     expect(await run([c, "-h"])).toBe(0);
   }
-});
+}, HELP_TIMEOUT_MS);
 
 test("prompt-snapshot supports --help and exits 0", async () => {
   expect(await run(["prompt-snapshot", "--help"])).toBe(0);
-});
+}, HELP_TIMEOUT_MS);
 
 test("prompt-snapshot supports -h and exits 0", async () => {
   expect(await run(["prompt-snapshot", "-h"])).toBe(0);
-});
+}, HELP_TIMEOUT_MS);
 
 test("unknown command exits 2 (usage error)", async () => {
   expect(await run(["bogus"])).toBe(2);
-});
+}, HELP_TIMEOUT_MS);
 
 test("bare meta (no args) exits 0", async () => {
   expect(await run([])).toBe(0);
-});
+}, HELP_TIMEOUT_MS);
