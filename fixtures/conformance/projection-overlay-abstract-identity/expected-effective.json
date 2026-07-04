@@ -1,0 +1,157 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "extends": "demo::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Enrollment",
+          "extends": "demo::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "enrollments"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_program",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "demo::Program"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@cardinality": "one",
+                "@objectRef": "demo::Program"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "EnrollmentView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_enrollment"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "enrollmentId",
+                "extends": "demo::Enrollment.id",
+                "@column": "enrollment_id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "programName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "demo::Program.name",
+                      "@via": "demo::Enrollment.program"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "demo::Enrollment.pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@columns": [
+                  "enrollmentId",
+                  "programName"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -15,10 +15,16 @@
  */
 package com.metaobjects.loader;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
+import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.loader.parser.json.CanonicalJsonParser;
 import com.metaobjects.loader.parser.yaml.ParserYaml;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -1399,6 +1405,19 @@ public class MetaDataLoader implements LoaderConfigurable {
         clearEnvelopeWarnings();
         pendingExtends.clear();
 
+        // #160 — this loader merges DURING parse (each source is streamed into the
+        // accumulating MetaRoot). A source that ONLY re-opens objects declared
+        // elsewhere (every top-level object carries `overlay: true`) must therefore
+        // be parsed AFTER the sources that declare those base objects, or the
+        // overlaid node lands ahead of its base entities — leaving a projection
+        // before its base so order-dependent super-resolution can't resolve its
+        // `extends`/`@via`, and the streaming merge errors ERR_OVERLAY_NO_TARGET.
+        // Directory discovery order is not guaranteed to present base files first
+        // (basename sort can put an overlay-only file first), so stable-partition
+        // overlay-only sources to the END here, making the merge order-independent.
+        // Stable within each group preserves last-writer-wins overlay semantics.
+        sources = partitionOverlayLast(sources);
+
         for (MetaDataSource source : sources) {
             String content;
             try {
@@ -1435,6 +1454,89 @@ public class MetaDataLoader implements LoaderConfigurable {
         ValidationPhase.run(root, this);
 
         return this;
+    }
+
+    // ------------------------------------------------------------------------
+    // #160 — overlay-only source partition (stable, overlay-only sources last)
+    // ------------------------------------------------------------------------
+
+    /**
+     * Stable-partition {@code sources} so that "overlay-only" sources — every
+     * top-level object declaration carries {@code overlay: true}, i.e. the source
+     * declares no base objects of its own and only re-opens objects declared
+     * elsewhere — are parsed LAST. Preserves original order within each group.
+     *
+     * <p>A source whose content can't be read or structurally scanned stays in the
+     * base group (never overlay-only) — this partition must never crash the loader;
+     * any genuine read/parse failure surfaces later, in the real parse loop.</p>
+     */
+    private static List<MetaDataSource> partitionOverlayLast(List<MetaDataSource> sources) {
+        List<MetaDataSource> base = new ArrayList<>();
+        List<MetaDataSource> overlayOnly = new ArrayList<>();
+        for (MetaDataSource source : sources) {
+            boolean isOverlayOnly = false;
+            try {
+                isOverlayOnly = isOverlayOnlySource(source.read(), source.getFormat());
+            } catch (Exception e) {
+                isOverlayOnly = false;
+            }
+            (isOverlayOnly ? overlayOnly : base).add(source);
+        }
+        base.addAll(overlayOnly);
+        return base;
+    }
+
+    /**
+     * Structurally scan a source's raw content (JSON via Gson; sigil-free authoring
+     * YAML via SnakeYAML → Gson — {@code overlay: true} is a bare key before desugar)
+     * and report whether every top-level object declaration under
+     * {@code metadata.root.children} carries {@code overlay: true} (and there is at
+     * least one).
+     */
+    private static boolean isOverlayOnlySource(String content, MetaDataSource.MetaDataFormat format) {
+        if (content == null) return false;
+        // Strip UTF-8 BOM (mirrors CanonicalJsonParser / ParserYaml).
+        String normalized = (!content.isEmpty() && content.charAt(0) == '﻿')
+            ? content.substring(1) : content;
+        JsonElement parsed;
+        if (format == MetaDataSource.MetaDataFormat.YAML) {
+            Object loaded = new org.yaml.snakeyaml.Yaml().load(normalized);
+            parsed = new Gson().toJsonTree(loaded);
+        } else {
+            parsed = JsonParser.parseString(normalized);
+        }
+        return rootIsOverlayOnly(parsed);
+    }
+
+    /**
+     * True when the structurally-parsed root has &ge;1 child and every top-level
+     * child node carries {@code overlay: true} (declares no base objects).
+     */
+    private static boolean rootIsOverlayOnly(JsonElement parsed) {
+        if (parsed == null || !parsed.isJsonObject()) return false;
+        JsonElement rootBodyEl = parsed.getAsJsonObject().get("metadata.root");
+        if (rootBodyEl == null || !rootBodyEl.isJsonObject()) return false;
+        JsonElement childrenEl = rootBodyEl.getAsJsonObject().get(BaseMetaDataParser.ATTR_CHILDREN);
+        if (childrenEl == null || !childrenEl.isJsonArray()) return false;
+        JsonArray children = childrenEl.getAsJsonArray();
+        if (children.size() == 0) return false;
+        for (JsonElement childEl : children) {
+            if (childEl == null || !childEl.isJsonObject()) return false;
+            JsonObject child = childEl.getAsJsonObject();
+            if (child.size() == 0) return false;
+            // Each child is a single-key wrapper: { "object.projection": { ... } }.
+            for (Map.Entry<String, JsonElement> entry : child.entrySet()) {
+                JsonElement bodyEl = entry.getValue();
+                if (bodyEl == null || !bodyEl.isJsonObject()) return false;
+                JsonElement overlayEl = bodyEl.getAsJsonObject().get(BaseMetaDataParser.ATTR_OVERLAY);
+                boolean isOverlay = overlayEl != null
+                    && overlayEl.isJsonPrimitive()
+                    && overlayEl.getAsJsonPrimitive().isBoolean()
+                    && overlayEl.getAsBoolean();
+                if (!isOverlay) return false;
+            }
+        }
+        return true;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////

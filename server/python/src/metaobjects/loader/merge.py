@@ -67,10 +67,31 @@ def merge_roots(
         warnings = []
     if envelope_warnings is None:
         envelope_warnings = []
+    # #160 — an overlay-ONLY root (every object child is `overlay: true`) re-opens
+    # objects declared in OTHER files; it must not become the merge accumulator
+    # (`roots[0]`) or the base declarations get appended AFTER the overlaid nodes,
+    # leaving a projection ahead of its base entities so the order-dependent super-
+    # resolution can't resolve its `extends`/`@via`. Directory discovery order is
+    # not guaranteed to present base files first (Python `rglob` can yield a top-
+    # level overlay file before a subdir base file), so stable-partition base roots
+    # ahead of overlay-only roots here — making the merge order-independent and
+    # matching the TS loader's result. Stable within each group preserves the
+    # existing last-writer-wins overlay semantics.
+    roots = [r for r in roots if not _is_overlay_only_root(r)] + [
+        r for r in roots if _is_overlay_only_root(r)
+    ]
     target = roots[0]
     for src in roots[1:]:
         _merge_into(target, src, errors, warnings, envelope_warnings)
     return target
+
+
+def _is_overlay_only_root(root: MetaData) -> bool:
+    """True when every object child of *root* is an `overlay: true` re-open (and
+    there is at least one) — i.e. the root declares no base objects of its own, so
+    it must merge after the base-declaring roots (#160)."""
+    kids = list(root.own_children())
+    return bool(kids) and all(getattr(c, "is_overlay", False) for c in kids)
 
 
 def _source_files(env: ErrorSource) -> tuple[str, ...]:
