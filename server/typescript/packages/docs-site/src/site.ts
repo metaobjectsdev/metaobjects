@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, InMemoryProvider } from "@metaobjectsdev/render";
 import { loadModel } from "./load";
 import { LinkGraph, fqnOf } from "./link-graph";
@@ -60,7 +61,9 @@ function writeOut(outDir: string, relPath: string, content: string | Uint8Array)
 
 // ─── Template loading ──────────────────────────────────────────────────────────
 
-const BUNDLED_TEMPLATES = resolve(import.meta.dir, "../templates");
+const SELF_DIR = dirname(fileURLToPath(import.meta.url));
+
+const BUNDLED_TEMPLATES = resolve(SELF_DIR, "../templates");
 
 function loadTemplate(name: string, overrideDir?: string): string {
   if (overrideDir) {
@@ -70,7 +73,7 @@ function loadTemplate(name: string, overrideDir?: string): string {
   return readFileSync(join(BUNDLED_TEMPLATES, name), "utf8");
 }
 
-const BUNDLED_ASSETS = resolve(import.meta.dir, "../assets");
+const BUNDLED_ASSETS = resolve(SELF_DIR, "../assets");
 
 function loadAsset(name: string, overrideDir?: string): string {
   if (overrideDir) {

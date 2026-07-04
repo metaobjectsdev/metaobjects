@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** The 9 mustache templates the site is built from (basenames under templates/). */
 export const SITE_TEMPLATE_NAMES: readonly string[] = [
@@ -19,6 +20,7 @@ export const SITE_ASSET_NAMES: readonly string[] = ["site.css", "site.js"];
 
 /** Read a bundled template or asset by basename (for scaffolding into a consumer). */
 export function readSiteFile(kind: "template" | "asset", name: string): string {
-  const dir = resolve(import.meta.dir, kind === "template" ? "../templates" : "../assets");
+  const selfDir = dirname(fileURLToPath(import.meta.url));
+  const dir = resolve(selfDir, kind === "template" ? "../templates" : "../assets");
   return readFileSync(join(dir, name), "utf8");
 }

@@ -17,23 +17,29 @@ export function buildIndexPage(g: LinkGraph, cov: CoverageTracker, opts: { title
   // core map = a CONNECTED cluster of the most-connected objects of ALL kinds (entities, projections,
   // value objects), traversing every edge type (fk, field.object, origin, extends, relationship).
   // Seed by total degree, pull in the seeds' neighbors so nothing dangles, cap the total, drop isolates.
-  const CORE_MAX = 28;
+  const CORE_MAX = opts.core?.n ?? 28;
+  const excluded = new Set(opts.core?.exclude ?? []);
   const degOf = (fqn: string) => g.refsFrom(fqn).length + g.refsTo(fqn).length;
   // seed a BALANCED mix so all object kinds appear (payload VOs otherwise dominate by degree):
   // top entities (data-model backbone) + top value objects (payload structure) + projections (views).
-  const topByType = (st: string, k: number) => objs.filter((n) => !n.node.isAbstract && n.node.subType === st)
+  const topByType = (st: string, k: number) => objs.filter((n) => !n.node.isAbstract && n.node.subType === st && !excluded.has(fqnOf(n.node)))
     .map((dn) => ({ dn, fqn: fqnOf(dn.node), deg: degOf(fqnOf(dn.node)) }))
     .sort((a, b) => b.deg - a.deg || a.dn.name.localeCompare(b.dn.name)).slice(0, k);
   const seeds = [...topByType("entity", 8), ...topByType("value", 5), ...topByType("projection", 3)];
   const shown = new Map<string, (typeof seeds)[0]["dn"]>();
-  for (const s of seeds) shown.set(s.fqn, s.dn);
-  // rank candidate neighbors by how many seeds touch them, add until the cap
-  const cand = new Map<string, number>();
-  for (const s of seeds) {
-    for (const e of g.refsFrom(s.fqn)) cand.set(e.to, (cand.get(e.to) ?? 0) + 1);
-    for (const e of g.refsTo(s.fqn)) cand.set(e.from, (cand.get(e.from) ?? 0) + 1);
+  // pinned objects are force-included (author override), never excluded.
+  for (const f of opts.core?.pin ?? []) {
+    if (excluded.has(f)) continue;
+    const dn = g.byFqn(f); if (dn && dn.kind === "object") shown.set(f, dn);
   }
-  for (const [f] of [...cand.entries()].filter(([f]) => !shown.has(f)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+  for (const s of seeds) { if (shown.size >= CORE_MAX) break; if (!shown.has(s.fqn)) shown.set(s.fqn, s.dn); }
+  // rank candidate neighbors by how many shown nodes touch them, add until the cap
+  const cand = new Map<string, number>();
+  for (const f of shown.keys()) {
+    for (const e of g.refsFrom(f)) cand.set(e.to, (cand.get(e.to) ?? 0) + 1);
+    for (const e of g.refsTo(f)) cand.set(e.from, (cand.get(e.from) ?? 0) + 1);
+  }
+  for (const [f] of [...cand.entries()].filter(([f]) => !shown.has(f) && !excluded.has(f)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
     if (shown.size >= CORE_MAX) break;
     const dn = g.byFqn(f); if (dn && dn.kind === "object") shown.set(f, dn);
   }
