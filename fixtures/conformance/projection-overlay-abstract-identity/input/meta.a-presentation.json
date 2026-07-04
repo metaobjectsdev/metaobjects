@@ -1,0 +1,5 @@
+{ "metadata.root": { "package": "demo", "children": [
+  { "object.projection": { "name": "EnrollmentView", "overlay": true, "children": [
+    { "layout.dataGrid": { "name": "default", "@columns": ["enrollmentId", "programName"] } }
+  ]}}
+]}}

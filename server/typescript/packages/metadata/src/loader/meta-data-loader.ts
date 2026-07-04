@@ -13,6 +13,7 @@ import { TypeId, TypeRegistry } from "../registry.js";
 import { coreProviders } from "../core-types.js";
 import { composeRegistry } from "../provider.js";
 import { TYPE_METADATA, SUBTYPE_ROOT } from "../shared/base-types.js";
+import { RESERVED_KEY_CHILDREN, RESERVED_KEY_OVERLAY } from "../shared/structural.js";
 import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
@@ -328,6 +329,92 @@ export class MetaDataLoader {
   }
 
   // ---------------------------------------------------------------------------
+  // #160 — overlay-only source partition (stable, overlay-only sources last)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Stable-partition `sources` so that "overlay-only" sources — every top-level
+   * object declaration carries `overlay: true`, i.e. the source declares no base
+   * objects of its own and only re-opens objects declared elsewhere — are parsed
+   * LAST. Preserves original order within each group.
+   *
+   * A source whose content can't be read or structurally scanned stays in the
+   * base group (never overlay-only) — this partition must never crash the loader;
+   * any genuine read/parse failure surfaces later, in the real parse loop.
+   */
+  private static async _partitionOverlayLast(
+    sources: MetaDataSource[],
+  ): Promise<MetaDataSource[]> {
+    const base: MetaDataSource[] = [];
+    const overlayOnly: MetaDataSource[] = [];
+    for (const source of sources) {
+      let isOverlayOnly = false;
+      try {
+        const content = await source.read();
+        isOverlayOnly = await MetaDataLoader._isOverlayOnlySource(
+          content,
+          source.format,
+        );
+      } catch {
+        isOverlayOnly = false;
+      }
+      (isOverlayOnly ? overlayOnly : base).push(source);
+    }
+    return [...base, ...overlayOnly];
+  }
+
+  /**
+   * Structurally scan a source's raw content (JSON via JSON.parse; sigil-free
+   * authoring YAML via the raw YAML walker — `overlay: true` is a bare key
+   * before desugar) and report whether every top-level object declaration under
+   * `metadata.root.children` carries `overlay: true` (and there is at least one).
+   */
+  private static async _isOverlayOnlySource(
+    content: string,
+    format: MetaDataFormat,
+  ): Promise<boolean> {
+    // Strip UTF-8 BOM if present (mirrors parseJson / parseYaml).
+    const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+    let parsed: unknown;
+    if (format === "json") {
+      parsed = JSON.parse(normalized);
+    } else if (format === "yaml") {
+      const { parseYamlWithPositions } = await import(
+        "../core/yaml-positions-walker.js"
+      );
+      parsed = parseYamlWithPositions(normalized).value;
+    } else {
+      return false;
+    }
+    return MetaDataLoader._rootIsOverlayOnly(parsed);
+  }
+
+  /** True when the structurally-parsed root has ≥1 child and every top-level
+   * child node carries `overlay: true` (declares no base objects). */
+  private static _rootIsOverlayOnly(parsed: unknown): boolean {
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const rootKey = `${TYPE_METADATA}.${SUBTYPE_ROOT}`; // "metadata.root"
+    const rootBody = (parsed as Record<string, unknown>)[rootKey];
+    if (typeof rootBody !== "object" || rootBody === null) return false;
+    const children = (rootBody as Record<string, unknown>)[RESERVED_KEY_CHILDREN];
+    if (!Array.isArray(children) || children.length === 0) return false;
+    return children.every((child) => {
+      if (typeof child !== "object" || child === null) return false;
+      // Each child is a single-key wrapper: { "object.projection": { ... } }.
+      const bodies = Object.values(child as Record<string, unknown>);
+      return (
+        bodies.length > 0 &&
+        bodies.every(
+          (body) =>
+            typeof body === "object" &&
+            body !== null &&
+            (body as Record<string, unknown>)[RESERVED_KEY_OVERLAY] === true,
+        )
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // load — async pipeline over MetaDataSource[]
   // ---------------------------------------------------------------------------
 
@@ -367,6 +454,19 @@ export class MetaDataLoader {
     if (sources.some((s) => s.format === "yaml")) {
       await MetaDataLoader._ensureYamlParser();
     }
+
+    // #160 — this loader merges DURING parse (each source is streamed into the
+    // accumulating `root` via parseOpts.intoRoot). A source that ONLY re-opens
+    // objects declared elsewhere (every top-level object carries `overlay: true`)
+    // must therefore be parsed AFTER the sources that declare those base objects,
+    // or the overlaid node lands ahead of its base entities — leaving a projection
+    // before its base so order-dependent super-resolution can't resolve its
+    // `extends`/`@via`, and the streaming merge errors ERR_OVERLAY_NO_TARGET.
+    // Directory discovery order is not guaranteed to present base files first
+    // (basename sort can put an overlay-only file first), so stable-partition
+    // overlay-only sources to the END here, making the merge order-independent.
+    // Stable within each group preserves last-writer-wins overlay semantics.
+    sources = await MetaDataLoader._partitionOverlayLast(sources);
 
     let root: MetaRoot | undefined;
 
