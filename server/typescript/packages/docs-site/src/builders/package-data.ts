@@ -42,7 +42,7 @@ export interface PackagePageData {
 export function buildPackagePage(pkg: string, g: LinkGraph, cov: CoverageTracker, sourceDirs?: string[]): PackagePageData {
   const dirs = sourceDirs ?? [];
   const members = g.nodes().filter((n) => n.pkg === pkg);
-  const pageHref = `${members[0].pkgPath}/index.html`;
+  const pageHref = `${members[0]!.pkgPath}/index.html`;
   const objRow = (n: (typeof members)[0]): ObjRow => ({
     name: n.name, href: `${n.name}.html`, kind: n.node.subType,
     table: String(n.node.childrenOfType("source").map((s) => s.attr("table")).find((t) => t !== undefined) ?? ""),
@@ -125,7 +125,7 @@ export function buildPackagePage(pkg: string, g: LinkGraph, cov: CoverageTracker
   const referencedBy = [...inbound.entries()].sort().map(([p, n]) => ({ pkg: p, href: g.relHref(pageHref, `${p.split("::").join("/")}/index.html`), n }));
 
   return {
-    pkg, pkgPath: members[0].pkgPath, tree: members[0].tree,
+    pkg, pkgPath: members[0]!.pkgPath, tree: members[0]!.tree,
     breadcrumbHtml: `<a href="${g.relHref(pageHref, "index.html")}">index</a> / ${esc(pkg)}`,
     title, descHtml, keyCards,
     erdMermaid, erdLegend,

@@ -13,20 +13,20 @@ export function harvestComments(sourceDirs: string[]): CommentDocs {
     const lines = readFileSync(f, "utf8").split("\n");
     let current: string | undefined;
     for (let i = 0; i < lines.length; i++) {
-      const m = lines[i].match(/^\s*-\s*object\.\w+:/);
+      const m = lines[i]!.match(/^\s*-\s*object\.\w+:/);
       if (m) {
         current = undefined;
         for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-          const nm = lines[j].match(/^\s*name:\s*(\S+)/); if (nm) { current = nm[1]; break; }
+          const nm = lines[j]!.match(/^\s*name:\s*(\S+)/); if (nm) { current = nm[1]; break; }
         }
         if (current) {
           const desc: string[] = [];
-          for (let k = i - 1; k >= 0 && lines[k].trim().startsWith("#"); k--) { const c = clean(lines[k].trim()); if (c) desc.unshift(c); }
+          for (let k = i - 1; k >= 0 && lines[k]!.trim().startsWith("#"); k--) { const c = clean(lines[k]!.trim()); if (c) desc.unshift(c); }
           if (desc.length) objectDesc.set(current, desc.join(" ").replace(/\s+/g, " ").slice(0, 400));
         }
       }
-      const fm = lines[i].match(/^\s*-\s*field\.\w+:\s*\{\s*name:\s*(\w+)[^}]*\}\s*#\s*(.+)$/);
-      if (fm && current) fieldNote.set(`${current}.${fm[1]}`, clean(fm[2]).slice(0, 160));
+      const fm = lines[i]!.match(/^\s*-\s*field\.\w+:\s*\{\s*name:\s*(\w+)[^}]*\}\s*#\s*(.+)$/);
+      if (fm && current) fieldNote.set(`${current}.${fm[1]}`, clean(fm[2]!).slice(0, 160));
     }
   }
   return { objectDesc, fieldNote };

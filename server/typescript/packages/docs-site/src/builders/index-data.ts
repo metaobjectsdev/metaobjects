@@ -8,7 +8,7 @@ export interface PkgCard { pkg: string; href: string; objectCount: number; promp
 export interface CoreConfig { pin?: string[]; exclude?: string[]; n?: number; }
 export interface IndexPageData { title: string; stamp: string; commit: string; stats: { objects: number; tables: number; packages: number; promptVos: number; prompts: number; contracts: number; enums: number }; coreMermaid: string; coreCaption: string; coreLegend: { pkg: string; fill: string; stroke: string }[]; packageMermaid: string; fullEdges: { from: string; to: string; n: number }[]; dataPackages: PkgCard[]; promptPackages: PkgCard[]; }
 
-export function buildIndexPage(g: LinkGraph, cov: CoverageTracker, opts: { title: string; stamp: string; commit: string; core?: CoreConfig; sourceDirs?: string[] }): IndexPageData {
+export function buildIndexPage(g: LinkGraph, cov: CoverageTracker, opts: { title: string; stamp: string; commit: string; core?: CoreConfig | undefined; sourceDirs?: string[] | undefined }): IndexPageData {
   const objs = g.nodes().filter((n) => n.kind === "object");
   const tpls = g.nodes().filter((n) => n.kind !== "object");
   const pkgs = [...new Set(g.nodes().map((n) => n.pkg))].sort();
@@ -60,7 +60,7 @@ export function buildIndexPage(g: LinkGraph, cov: CoverageTracker, opts: { title
     const t = g.byFqn(r.to); if (!t || t.pkg === o.pkg) continue;
     const k = `${shortPkg(o.pkg)}→${shortPkg(t.pkg)}`; pkgEdges.set(k, (pkgEdges.get(k) ?? 0) + 1);
   }
-  const fullEdges = [...pkgEdges.entries()].sort().map(([k, n]) => { const [from, to] = k.split("→"); return { from, to, n }; });
+  const fullEdges = [...pkgEdges.entries()].sort().map(([k, n]) => { const [from = "", to = ""] = k.split("→"); return { from, to, n }; });
   const counts = new Map<string, number>(); for (const o of objs) counts.set(shortPkg(o.pkg), (counts.get(shortPkg(o.pkg)) ?? 0) + 1);
   const card = (p: string): PkgCard => {
     const doc = pdocs.get(p);

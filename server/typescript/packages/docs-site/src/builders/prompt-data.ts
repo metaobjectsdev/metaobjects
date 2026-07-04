@@ -6,7 +6,7 @@ import { highlightMustache } from "../mustache-highlight";
 import { esc } from "../badges";
 
 export interface PayloadTreeRow { indent: number; name: string; type: string; isArray: boolean; anchor: string; desc: string; refHtml: string; }
-export interface PromptPageData { name: string; pkg: string; href: string; breadcrumbHtml: string; attrsHtml: string; desc: string; payloadName: string; payloadHref: string; payloadTree: PayloadTreeRow[]; sourceHtml?: string; sourceMissingNote?: string; tocHtml?: string; packageFiles: { file: string; html: string }[]; }
+export interface PromptPageData { name: string; pkg: string; href: string; breadcrumbHtml: string; attrsHtml: string; desc: string; payloadName: string; payloadHref: string; payloadTree: PayloadTreeRow[]; sourceHtml?: string | undefined; sourceMissingNote?: string | undefined; tocHtml?: string | undefined; packageFiles: { file: string; html: string }[]; }
 
 export function buildPromptPage(fqn: string, g: LinkGraph, cov: CoverageTracker, sourceDirs: string[]): PromptPageData {
   const dn = g.byFqn(fqn)!;

@@ -17,8 +17,8 @@ test("unconsumed kinds and attrs are reported", async () => {
 test("attr consumption is tracked accurately", async () => {
   const model = await loadModel([join(import.meta.dir, "fixture/input/acme")]);
   const cov2 = new CoverageTracker();
-  const first = model.root.objects()[0];
-  const field = first.childrenOfType("field")[0];
+  const first = model.root.objects()[0]!;
+  const field = first.childrenOfType("field")[0]!;
   cov2.consumeAttr(field, "maxLength");
   const rep2 = cov2.report(model.root);
   expect(rep2.attrs.length).toBeGreaterThan(0);

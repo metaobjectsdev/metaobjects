@@ -32,9 +32,9 @@ export function inheritanceTree(rows: { name: string; level: number; self?: bool
   for (const r of ordered) (byLevel.get(r.level) ?? byLevel.set(r.level, []).get(r.level)!).push(nodeId(r.name));
   const levels = [...byLevel.keys()].sort((a, b) => a - b);
   for (let i = 1; i < levels.length; i++) {
-    const parents = byLevel.get(levels[i - 1])!;
+    const parents = byLevel.get(levels[i - 1]!)!;
     const parent = parents[parents.length - 1]; // the chain node at the shallower level
-    for (const child of byLevel.get(levels[i])!.sort()) lines.push(`  ${parent} --> ${child}`);
+    for (const child of byLevel.get(levels[i]!)!.sort()) lines.push(`  ${parent} --> ${child}`);
   }
   lines.push("  classDef self fill:#1e3a5f,stroke:#60a5fa,color:#e2e8f0,font-weight:bold");
   return lines.join("\n");
@@ -61,7 +61,7 @@ export function domainColor(pkg: string): { fill: string; stroke: string; text: 
   if (CURATED[leaf]) return CURATED[leaf];
   // stable slot for unmapped packages: hash the leaf name deterministically into the palette
   let h = 0; for (let i = 0; i < leaf.length; i++) h = (h * 31 + leaf.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
+  return PALETTE[h % PALETTE.length]!;
 }
 const cls = (pkg: string) => `d_${(pkg.split("::").pop() ?? pkg).replace(/[^a-zA-Z0-9]/g, "_")}`;
 

@@ -27,7 +27,7 @@ function neighborAttrs(o: MetaData): { attrs: ErAttr[]; more: number } {
 }
 
 export interface EnumValue { value: string; deflt: boolean; desc: string; }
-export interface FieldRow { name: string; type: string; isArray: boolean; required: boolean; badgesHtml: string; desc: string; enumValues: EnumValue[]; refHref?: string; refName?: string; inheritedFrom?: { name: string; href: string }; anchor: string; }
+export interface FieldRow { name: string; type: string; isArray: boolean; required: boolean; badgesHtml: string; desc: string; enumValues: EnumValue[]; refHref?: string | undefined; refName?: string | undefined; inheritedFrom?: { name: string; href: string } | undefined; anchor: string; }
 export interface IndexRow { name: string; kind: string; fields: string; extra: string; unique: boolean; }
 export interface ValidatorRow { scope: "field" | "object"; subject: string; rule: string; // human-readable, HTML-escaped
 }
@@ -36,10 +36,10 @@ export interface OriginRow { field: string; from: string; via: string; }
 export interface HierRow { name: string; href: string; level: number; self: boolean; }
 export interface ObjectPageData {
   name: string; kindBadge: string; isAbstract: boolean; isView: boolean; generation: string;
-  pkg: string; href: string; breadcrumbHtml: string; desc: string; tableName?: string; pkHtml?: string;
+  pkg: string; href: string; breadcrumbHtml: string; desc: string; tableName?: string | undefined; pkHtml?: string | undefined;
   ownFields: FieldRow[]; inheritedFields: FieldRow[]; indexes: IndexRow[]; validators: ValidatorRow[];
-  relations: RelationRow[]; origins: OriginRow[]; hierarchy: HierRow[]; inheritanceMermaid?: string;
-  neighborhoodMermaid?: string; neighborhoodLegend?: { pkg: string; fill: string; stroke: string }[]; neighborhoodMore?: number;
+  relations: RelationRow[]; origins: OriginRow[]; hierarchy: HierRow[]; inheritanceMermaid?: string | undefined;
+  neighborhoodMermaid?: string | undefined; neighborhoodLegend?: { pkg: string; fill: string; stroke: string }[] | undefined; neighborhoodMore?: number | undefined;
   referencedBy: { name: string; href: string; via: string }[];
   references: { name: string; href: string; via: string }[]; usedByTemplates: { name: string; href: string }[];
   sourceFile: string;
