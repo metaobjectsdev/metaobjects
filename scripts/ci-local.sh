@@ -26,6 +26,11 @@
 #                                    #            doc-template drift, embedded-library drift
 #                                    #   ts     → ts build+typecheck, ts conformance,
 #                                    #            completeness-gate, integration-tests ts
+#                                    #   ts-fast → build+typecheck, conformance,
+#                                    #            completeness (the pure-code signal)
+#                                    #   ts-slow → build + integration-tests ts
+#                                    #            (docker); CI runs the two lanes as
+#                                    #            separate parallel jobs
 #                                    #   java   → java+kotlin conformance, reactor,
 #                                    #            integration-tests java+kotlin
 #                                    #   java-fast → java+kotlin conformance only
@@ -64,8 +69,8 @@ while [ $# -gt 0 ]; do
     --quick) QUICK=1 ;;
     --strict-toolchains) STRICT=1 ;;
     --only) shift; case "${1:-}" in
-        gates|ts|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|ts|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+        gates|ts|ts-fast|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|ts|ts-fast|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -125,6 +130,9 @@ gate_fixture_lint() {
 # bun_install first: under `--only ts` this gate runs without fixture-lint
 # (whose install it historically piggybacked on), so it must install itself.
 gate_ts_build_typecheck() { bun_install && bun run --filter '*' build && bun run --filter '*' typecheck; }
+# Build only (no typecheck) — the ts-slow lane needs the workspace dist/ to run the
+# integration tests, but the typecheck already runs in ts-fast, so don't repeat it.
+gate_ts_build() { bun_install && bun run --filter '*' build; }
 
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
@@ -232,9 +240,15 @@ fi
 if want gates; then step    "leak-scan (security)"             gate_leak_scan;             fi
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
-if want ts;    then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
-if want ts;    then step_if bun "conformance: typescript"      gate_conf_ts;                fi
-if want ts;    then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
+# The ts port is split into two lanes so CI can run them as separate jobs (see
+# .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
+# completeness — the pure-code correctness signal, no docker) and a SLOW lane
+# (docker/sidecar integration). Isolating integration means a docker/sidecar
+# hiccup no longer fails the code signal, and vice versa. `--only ts` (and a plain
+# local run) still runs both lanes, so it stays byte-equivalent to before.
+if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
+if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
 if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi
 if want gates; then step_if bun "embedded-library drift"       gate_embedded_library_drift; fi
 
@@ -270,7 +284,11 @@ else
       FAIL+=("integration-tests (docker down)")
     fi
   else
-    want ts                    && run_integration_for ts     ts
+    # ts-slow needs the workspace dist/ to run integration. When the fast lane also
+    # runs (umbrella `ts` / local full), its build already produced it — only build
+    # here when ts-slow runs in isolation (the CI ts-slow job).
+    if want_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
+    want_any ts ts-slow        && run_integration_for ts     ts
     want_any java java-slow    && run_integration_for java   java kotlin
     want python                && run_integration_for python python
     want csharp                && run_integration_for csharp csharp
