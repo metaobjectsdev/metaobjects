@@ -116,7 +116,7 @@ erDiagram
   Customer ||--o{ CustomerFriend : "friendAId"
   Customer ||--o{ CustomerReferral : "referrerId"
   Customer ||--o{ LineItemView : "customerName (origin)"
-  Customer ||--o{ Order : "customerId"
+  Customer ||--o{ Order : "customer"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#334155,color:#cbd5e1
   Customer:::c_Customer
@@ -133,7 +133,7 @@ erDiagram
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
 </section>
 
-<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="Customer.html" title="friends">Customer</a> <a class="link font-mono text-xs" href="Customer.html" title="referrals">Customer</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendAId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendBId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referredId">CustomerReferral</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referrerId">CustomerReferral</a> <a class="link font-mono text-xs" href="LineItemView.html" title="customerName (origin)">LineItemView</a> <a class="link font-mono text-xs" href="Order.html" title="customer">Order</a> <a class="link font-mono text-xs" href="Order.html" title="customerId">Order</a> </section>
+<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="Customer.html" title="friends">Customer</a> <a class="link font-mono text-xs" href="Customer.html" title="referrals">Customer</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendAId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendBId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referredId">CustomerReferral</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referrerId">CustomerReferral</a> <a class="link font-mono text-xs" href="LineItemView.html" title="customerName (origin)">LineItemView</a> <a class="link font-mono text-xs" href="Order.html" title="customer">Order</a> </section>
 
 <div class="text-[10px] opacity-40 mt-6 font-mono">meta.shop.yaml</div>
 </main>

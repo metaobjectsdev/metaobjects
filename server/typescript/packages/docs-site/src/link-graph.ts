@@ -1,8 +1,19 @@
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject, MetaRelationship } from "@metaobjectsdev/metadata";
+import { deriveM2MFields, stripPackage } from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load";
 
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
-export interface Ref { from: string; to: string; via: string; kind: "field" | "fk" | "extends" | "payload" | "relationship" | "origin"; cardinality?: string; }
+export interface Ref {
+  from: string; to: string; via: string;
+  kind: "field" | "fk" | "extends" | "payload" | "relationship" | "origin";
+  cardinality?: "one" | "many" | undefined;
+  through?: string | undefined;         // junction FQN (M:N)
+  sourceJoinField?: string | undefined; // junction source FK (M:N)
+  targetJoinField?: string | undefined; // junction target FK (M:N)
+  symmetric?: boolean | undefined;      // undirected self-join (M:N)
+  onDelete?: string | undefined;        // referential action
+  subtype?: string | undefined;         // association / aggregation / composition
+}
 export interface OriginRef { field: string; from: string; via: string; }
 
 export function pkgOf(node: MetaData): string {
@@ -41,6 +52,10 @@ export class LinkGraph {
       const cand = raw.includes("::") ? raw : `${ctxPkg}::${raw}`;
       return this._nodes.has(cand) ? cand : (this._nodes.has(raw) ? raw : undefined);
     };
+    // TEMP stub — replaced in Task 3. For now, emit a plain (un-derived) M:N edge.
+    const addM2mEdge = (from: string, to: string, rel: MetaRelationship, _obj: MetaObject, _pkg: string, onDelete: string | undefined, subtype: string | undefined): void => {
+      addRef({ from, to, via: rel.name, kind: "relationship", cardinality: "many", through: rel.through, symmetric: rel.symmetric, onDelete, subtype });
+    };
     for (const dn of this._nodes.values()) {
       const fqn = fqnOf(dn.node);
       if (dn.kind === "object") {
@@ -51,6 +66,32 @@ export class LinkGraph {
             if (to) addRef({ from: fqn, to, via: f.name, kind: "field" });
           }
         }
+        const obj = dn.node as unknown as MetaObject;
+        // Relationship edges FIRST, so we can suppress the bare FK edge a belongs-to
+        // relationship supersedes. Dedupe is keyed by `${targetFqn}::${fkField}`
+        // (a string, robust to node-instance identity) — the FK loop skips any
+        // reference whose (target, first-field) a belongs-to relationship covered.
+        const coveredFk = new Set<string>();
+        for (const rel of obj.relationships()) {
+          const objectRef = rel.objectRef;
+          if (typeof objectRef !== "string") continue;
+          const to = resolveRef(objectRef, dn.pkg);
+          if (!to) continue;
+          const cardinality = rel.cardinality === "many" ? "many" : rel.cardinality === "one" ? "one" : undefined;
+          const onDelete = rel.onDelete;
+          const subtype = rel.subType;
+          if (cardinality === "many" && rel.through !== undefined) {
+            addM2mEdge(fqn, to, rel, obj, dn.pkg, onDelete, subtype);   // Task 3 helper
+            continue;
+          }
+          // belongs-to (1:N, one) — find the matching identity.reference to dedupe (mirrors
+          // relation-resolver: first reference whose target matches, package-stripped).
+          const target = stripPackage(objectRef);
+          const match = obj.referenceIdentities().find((r) => stripPackage(r.targetEntity ?? "") === target);
+          const fkField = match?.fields?.[0];
+          if (fkField) coveredFk.add(`${to}::${fkField}`);
+          addRef({ from: fqn, to, via: rel.name, kind: "relationship", cardinality, onDelete, subtype });
+        }
         for (const id of dn.node.childrenOfType("identity")) {
           if (id.subType !== "reference") continue;
           const ref = id.attr("references");
@@ -58,16 +99,11 @@ export class LinkGraph {
             const to = resolveRef(ref, dn.pkg);
             if (to) {
               const fieldsValue = id.attr("fields") ?? id.name;
+              const firstField = Array.isArray(fieldsValue) ? String(fieldsValue[0] ?? "") : String(fieldsValue);
+              if (coveredFk.has(`${to}::${firstField}`)) continue;   // superseded by a relationship edge
               const via = Array.isArray(fieldsValue) ? fieldsValue.join(", ") : String(fieldsValue);
               addRef({ from: fqn, to, via, kind: "fk" });
             }
-          }
-        }
-        for (const rel of dn.node.childrenOfType("relationship")) {
-          const ref = rel.attr("objectRef");
-          if (typeof ref === "string") {
-            const to = resolveRef(ref, dn.pkg);
-            if (to) addRef({ from: fqn, to, via: rel.name, kind: "relationship", cardinality: String(rel.attr("cardinality") ?? "") });
           }
         }
         for (const f of dn.node.childrenOfType("field")) {

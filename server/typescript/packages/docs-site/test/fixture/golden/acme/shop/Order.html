@@ -120,7 +120,7 @@ erDiagram
     string sku "req"
   }
   BaseEntity ||--o{ Order : "extends"
-  Customer ||--o{ Order : "customerId"
+  Customer ||--o{ Order : "customer"
   Order ||--o{ LineItemView : "orderId"
   Order ||--o{ OrderLine : "orderId, lineNo"
   Order ||--o{ OrderProduct : "orderId"

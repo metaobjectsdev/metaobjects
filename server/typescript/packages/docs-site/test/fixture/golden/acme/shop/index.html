@@ -49,7 +49,7 @@
 <h1 class="text-2xl font-bold font-mono">Fixture</h1>
 <p class="text-sm my-3">The shop package models customers and their orders.</p>
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4">
-<a href="Customer.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Customer</div><div class="text-xs opacity-50">9 refs</div></a><a href="Order.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Order</div><div class="text-xs opacity-50">3 refs</div></a><a href="Product.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Product</div><div class="text-xs opacity-50">2 refs</div></a><a href="CustomerFriend.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">CustomerFriend</div><div class="text-xs opacity-50">0 refs</div></a>
+<a href="Customer.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Customer</div><div class="text-xs opacity-50">8 refs</div></a><a href="Order.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Order</div><div class="text-xs opacity-50">3 refs</div></a><a href="Product.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Product</div><div class="text-xs opacity-50">2 refs</div></a><a href="CustomerFriend.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">CustomerFriend</div><div class="text-xs opacity-50">0 refs</div></a>
 </div>
 <div class="card bg-base-100 border border-base-300 p-2 pl-diagram my-4"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
 flowchart LR
@@ -69,7 +69,6 @@ flowchart LR
   Customer -->|referrerId| CustomerReferral
   Customer -->|referredId| CustomerReferral
   Customer -->|customerName origin| LineItemView
-  Customer -->|customerId| Order
   Customer -->|customer| Order
   Order -->|orderId| LineItemView
   Order -->|orderId, lineNo| OrderLine
