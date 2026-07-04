@@ -24,9 +24,13 @@
 <details>
 <summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="acme/shop/index.html">acme::shop</a></summary>
 <a href="acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="acme/shop/CustomerFriend.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerFriend</a>
+<a href="acme/shop/CustomerReferral.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerReferral</a>
 <a href="acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
 <a href="acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="acme/shop/OrderProduct.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderProduct</a>
 <a href="acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+<a href="acme/shop/Product.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Product</a>
 </details>
 <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
 <details>
@@ -43,8 +47,8 @@
 <main class="min-w-0 flex-1 max-w-4xl px-6 lg:px-10 py-8">
 <h1 class="text-2xl font-bold font-mono">Fixture</h1>
 <div class="stats stats-horizontal shadow my-4 text-sm">
-  <div class="stat"><div class="stat-title">objects</div><div class="stat-value font-mono text-lg">10</div></div>
-  <div class="stat"><div class="stat-title">tables</div><div class="stat-value font-mono text-lg">4</div></div>
+  <div class="stat"><div class="stat-title">objects</div><div class="stat-value font-mono text-lg">14</div></div>
+  <div class="stat"><div class="stat-title">tables</div><div class="stat-value font-mono text-lg">8</div></div>
   <div class="stat"><div class="stat-title">packages</div><div class="stat-value font-mono text-lg">3</div></div>
   <div class="stat"><div class="stat-title">prompt VOs</div><div class="stat-value font-mono text-lg">5</div></div>
   <div class="stat"><div class="stat-title">prompts</div><div class="stat-value font-mono text-lg">1</div></div>
@@ -57,25 +61,39 @@
 flowchart LR
   BaseEntity["BaseEntity"]
   Customer["Customer"]
+  CustomerFriend["CustomerFriend"]
+  CustomerReferral["CustomerReferral"]
   ItemView(["ItemView"])
   LineItemView[/"LineItemView"/]
   NpcPayload(["NpcPayload"])
   Order["Order"]
   OrderLine["OrderLine"]
+  OrderProduct["OrderProduct"]
+  Product["Product"]
   Customer --> BaseEntity
+  Customer --> Customer
+  CustomerFriend --> BaseEntity
+  CustomerFriend --> Customer
+  CustomerReferral --> BaseEntity
+  CustomerReferral --> Customer
   LineItemView --> Customer
   LineItemView --> Order
   NpcPayload --> ItemView
   Order --> BaseEntity
   Order --> Customer
+  Order --> Product
   OrderLine --> Order
+  OrderProduct --> BaseEntity
+  OrderProduct --> Order
+  OrderProduct --> Product
+  Product --> BaseEntity
   class ItemView,NpcPayload,OrderLine d_ai
   classDef d_ai fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe
   class BaseEntity d_common
   classDef d_common fill:#1c2431,stroke:#64748b,color:#cbd5e1
-  class Customer,LineItemView,Order d_shop
+  class Customer,CustomerFriend,CustomerReferral,LineItemView,Order,OrderProduct,Product d_shop
   classDef d_shop fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe</pre></div>
-  <div class="text-xs opacity-50 mt-1">7 of the most-connected objects (entities, views, and payloads), colored by domain.</div>
+  <div class="text-xs opacity-50 mt-1">11 of the most-connected objects (entities, views, and payloads), colored by domain.</div>
   <div class="flex flex-wrap gap-1 mt-2 text-xs"><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::ai</span><span class="badge badge-xs" style="background:#1c2431;border-color:#64748b;color:#cbd5e1">acme::common</span><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::shop</span></div>
   <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div>
 </div>
@@ -99,7 +117,7 @@ flowchart LR</pre></div>
   <div class="text-xs opacity-60 mt-1"></div>
 </a><a href="acme/shop/index.html" class="card bg-base-100 border border-base-300 p-3 hover:border-primary transition-colors">
   <div class="font-mono font-semibold text-sm">acme::shop</div>
-  <div class="text-xs opacity-60 mt-1">4 objects · 0 prompts · 0 contracts</div>
+  <div class="text-xs opacity-60 mt-1">8 objects · 0 prompts · 0 contracts</div>
   <div class="text-xs opacity-60 mt-1">Shop — The shop package models customers and their orders.</div>
 </a>
 </div>

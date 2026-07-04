@@ -24,9 +24,13 @@
 <details>
 <summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/shop/index.html">acme::shop</a></summary>
 <a href="../../acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="../../acme/shop/CustomerFriend.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerFriend</a>
+<a href="../../acme/shop/CustomerReferral.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerReferral</a>
 <a href="../../acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
 <a href="../../acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="../../acme/shop/OrderProduct.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderProduct</a>
 <a href="../../acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+<a href="../../acme/shop/Product.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Product</a>
 </details>
 <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
 <details>
@@ -76,9 +80,17 @@
 flowchart TD
   BaseEntity["BaseEntity"]:::self
   Customer["Customer"]
+  CustomerFriend["CustomerFriend"]
+  CustomerReferral["CustomerReferral"]
   Order["Order"]
+  OrderProduct["OrderProduct"]
+  Product["Product"]
   BaseEntity --> Customer
+  BaseEntity --> CustomerFriend
+  BaseEntity --> CustomerReferral
   BaseEntity --> Order
+  BaseEntity --> OrderProduct
+  BaseEntity --> Product
   classDef self fill:#1e3a5f,stroke:#60a5fa,color:#e2e8f0,font-weight:bold</pre></div></section>
 
 <section id="s-neighborhood" class="mt-6"><h2 class="text-lg font-semibold">Neighborhood</h2>
@@ -91,19 +103,50 @@ erDiagram
     string id PK ""
     string email "req"
   }
+  CustomerFriend["▭ CustomerFriend"] {
+    string id PK ""
+    string friendAId FK "Customer"
+    string friendBId FK "Customer"
+  }
+  CustomerReferral["▭ CustomerReferral"] {
+    string id PK ""
+    string referrerId FK "Customer"
+    string referredId FK "Customer"
+  }
   Order["▭ Order"] {
     string id PK ""
     string customerId FK "Customer"
     enum status "enum"
   }
+  OrderProduct["▭ OrderProduct"] {
+    string id PK ""
+    string orderId FK "Order"
+    string productId FK "Product"
+  }
+  Product["▭ Product"] {
+    string id PK ""
+    string sku "req"
+  }
   BaseEntity ||--o{ Customer : "extends"
+  BaseEntity ||--o{ CustomerFriend : "extends"
+  BaseEntity ||--o{ CustomerReferral : "extends"
   BaseEntity ||--o{ Order : "extends"
+  BaseEntity ||--o{ OrderProduct : "extends"
+  BaseEntity ||--o{ Product : "extends"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#60a5fa,color:#cbd5e1
   Customer:::c_Customer
   classDef c_Customer fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  CustomerFriend:::c_CustomerFriend
+  classDef c_CustomerFriend fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  CustomerReferral:::c_CustomerReferral
+  classDef c_CustomerReferral fill:#3f2d5c,stroke:#334155,color:#cbd5e1
   Order:::c_Order
-  classDef c_Order fill:#3f2d5c,stroke:#334155,color:#cbd5e1</pre></div>
+  classDef c_Order fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  OrderProduct:::c_OrderProduct
+  classDef c_OrderProduct fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  Product:::c_Product
+  classDef c_Product fill:#3f2d5c,stroke:#334155,color:#cbd5e1</pre></div>
 
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
 </section>

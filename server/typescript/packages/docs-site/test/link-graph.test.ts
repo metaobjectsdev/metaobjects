@@ -24,3 +24,11 @@ test("builds nodes, refs, backlinks, degree, hrefs", async () => {
   expect(g.relHref("acme/shop/Order.html", "acme/ai/NpcPayload.html")).toBe("../ai/NpcPayload.html");
   expect(g.relHref("index.html", "acme/shop/Order.html")).toBe("acme/shop/Order.html");
 });
+
+test("phase-2 fixture loads the M:N + self-join entities", async () => {
+  const model = await loadModel([join(FIX, "acme")]);
+  const g = new LinkGraph(model);
+  for (const fqn of ["acme::shop::Product", "acme::shop::OrderProduct", "acme::shop::CustomerReferral", "acme::shop::CustomerFriend"]) {
+    expect(g.byFqn(fqn), fqn).toBeDefined();
+  }
+});

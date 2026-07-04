@@ -24,9 +24,13 @@
 <details open>
 <summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/shop/index.html">acme::shop</a></summary>
 <a href="../../acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="../../acme/shop/CustomerFriend.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerFriend</a>
+<a href="../../acme/shop/CustomerReferral.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerReferral</a>
 <a href="../../acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
 <a href="../../acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="../../acme/shop/OrderProduct.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderProduct</a>
 <a href="../../acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+<a href="../../acme/shop/Product.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Product</a>
 </details>
 <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
 <details>
@@ -45,46 +49,41 @@
 <h1 class="text-2xl font-bold font-mono">Fixture</h1>
 <p class="text-sm my-3">The shop package models customers and their orders.</p>
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4">
-<a href="Customer.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Customer</div><div class="text-xs opacity-50">3 refs</div></a><a href="Order.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Order</div><div class="text-xs opacity-50">2 refs</div></a><a href="LineItemView.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">LineItemView</div><div class="text-xs opacity-50">0 refs</div></a><a href="OrphanLog.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">OrphanLog</div><div class="text-xs opacity-50">0 refs</div></a>
+<a href="Customer.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Customer</div><div class="text-xs opacity-50">9 refs</div></a><a href="Order.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Order</div><div class="text-xs opacity-50">3 refs</div></a><a href="Product.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">Product</div><div class="text-xs opacity-50">2 refs</div></a><a href="CustomerFriend.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">CustomerFriend</div><div class="text-xs opacity-50">0 refs</div></a>
 </div>
 <div class="card bg-base-100 border border-base-300 p-2 pl-diagram my-4"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
-erDiagram
-  Customer["▭ Customer"] {
-    string id PK ""
-    string email "req"
-  }
-  LineItemView["▱ LineItemView"] {
-  }
-  Order["▭ Order"] {
-    string id PK ""
-    string customerId FK "Customer"
-    enum status "enum"
-  }
-  OrderLine["▭ OrderLine"] {
-    uuid orderId FK "Order"
-    int lineNo FK "Order"
-  }
-  OrphanLog["▭ OrphanLog"] {
-  }
-  Customer ||--o{ LineItemView : "customerName (origin)"
-  Customer ||--o{ Order : "customer"
-  Customer ||--o{ Order : "customerId"
-  Order ||--o{ LineItemView : "orderId"
-  Order ||--o{ OrderLine : "orderId, lineNo"
-  Customer:::c_Customer
-  classDef c_Customer fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
-  LineItemView:::c_LineItemView
-  classDef c_LineItemView fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1,stroke-dasharray:2 2
-  Order:::c_Order
-  classDef c_Order fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
-  OrderLine:::c_OrderLine
-  classDef c_OrderLine fill:#3f2d5c,stroke:#334155,color:#cbd5e1
-  OrphanLog:::c_OrphanLog
-  classDef c_OrphanLog fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1</pre><div class="flex flex-wrap gap-1 mt-2 text-xs"><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::ai</span><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::shop</span></div><div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div></div>
+flowchart LR
+  Customer["Customer"]
+  CustomerFriend["CustomerFriend"]
+  CustomerReferral["CustomerReferral"]
+  LineItemView[/"LineItemView"/]
+  Order["Order"]
+  OrderLine["OrderLine"]
+  OrderProduct["OrderProduct"]
+  OrphanLog["OrphanLog"]
+  Product["Product"]
+  Customer -->|referrals| Customer
+  Customer -->|friends| Customer
+  Customer -->|friendAId| CustomerFriend
+  Customer -->|friendBId| CustomerFriend
+  Customer -->|referrerId| CustomerReferral
+  Customer -->|referredId| CustomerReferral
+  Customer -->|customerName origin| LineItemView
+  Customer -->|customerId| Order
+  Customer -->|customer| Order
+  Order -->|orderId| LineItemView
+  Order -->|orderId, lineNo| OrderLine
+  Order -->|orderId| OrderProduct
+  Product -->|products| Order
+  Product -->|productId| OrderProduct
+  class OrderLine d_ai
+  classDef d_ai fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe
+  class Customer,CustomerFriend,CustomerReferral,LineItemView,Order,OrderProduct,OrphanLog,Product d_shop
+  classDef d_shop fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe</pre><div class="flex flex-wrap gap-1 mt-2 text-xs"><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::ai</span><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::shop</span></div><div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div></div>
 <h2 class="text-lg font-semibold mt-6">Objects</h2>
 <div class="overflow-x-auto"><table class="table table-xs">
   <thead><tr><th>Name</th><th>Kind</th><th>Table</th><th>Fields</th><th>Extends</th></tr></thead><tbody>
-  <tr><td><a class="link font-mono" href="Customer.html">Customer</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">customers</td><td>3</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="LineItemView.html">LineItemView</a></td><td class="opacity-60">projection</td><td class="font-mono opacity-60">v_line_item</td><td>2</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="Order.html">Order</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">orders</td><td>5</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="OrphanLog.html">OrphanLog</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60"></td><td>1</td><td class="font-mono opacity-60"></td></tr>
+  <tr><td><a class="link font-mono" href="Customer.html">Customer</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">customers</td><td>3</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="CustomerFriend.html">CustomerFriend</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">customer_friends</td><td>4</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="CustomerReferral.html">CustomerReferral</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">customer_referrals</td><td>4</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="LineItemView.html">LineItemView</a></td><td class="opacity-60">projection</td><td class="font-mono opacity-60">v_line_item</td><td>2</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="Order.html">Order</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">orders</td><td>5</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="OrderProduct.html">OrderProduct</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">order_products</td><td>4</td><td class="font-mono opacity-60">BaseEntity</td></tr><tr><td><a class="link font-mono" href="OrphanLog.html">OrphanLog</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60"></td><td>1</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="Product.html">Product</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">products</td><td>3</td><td class="font-mono opacity-60">BaseEntity</td></tr>
   </tbody></table></div>
 <h2 class="text-lg font-semibold mt-6">Referenced by</h2>
 <div class="flex flex-wrap gap-2 mt-2">

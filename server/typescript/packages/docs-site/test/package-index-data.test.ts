@@ -10,7 +10,7 @@ test("package page: abstracts grouped, ERD variants, prompt rows", async () => {
   const model = await loadModel([join(import.meta.dir, "fixture/input/acme")]);
   const g = new LinkGraph(model);
   const shop = buildPackagePage("acme::shop", g, new CoverageTracker());
-  expect(shop.objects.map((o) => o.name)).toEqual(["Customer", "LineItemView", "Order", "OrphanLog"]);
+  expect(shop.objects.map((o) => o.name)).toEqual(["Customer", "CustomerFriend", "CustomerReferral", "LineItemView", "Order", "OrderProduct", "OrphanLog", "Product"]);
   // v2: single erdMermaid replaces the erdInternal/erdExternals toggle
   expect(shop.erdMermaid).toContain("Customer");
   expect(shop.erdMermaid).toContain("Order");
@@ -26,7 +26,7 @@ test("index page: stats, hero flowchart, package cards", async () => {
   const model = await loadModel([join(import.meta.dir, "fixture/input/acme")]);
   const g = new LinkGraph(model);
   const d = buildIndexPage(g, new CoverageTracker(), { title: "Fixture", stamp: "S", commit: "C", core: { n: 2 } });
-  expect(d.stats.objects).toBe(10);
+  expect(d.stats.objects).toBe(14);
   expect(d.stats.contracts).toBe(1);
   expect(d.coreMermaid).toContain("flowchart");        // hero is now a domain-colored flowchart
   expect(d.coreCaption).toContain("most-connected");   // connected-cluster core map (all object types)

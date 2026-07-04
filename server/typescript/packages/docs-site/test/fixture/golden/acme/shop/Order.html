@@ -24,9 +24,13 @@
 <details open>
 <summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/shop/index.html">acme::shop</a></summary>
 <a href="../../acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="../../acme/shop/CustomerFriend.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerFriend</a>
+<a href="../../acme/shop/CustomerReferral.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerReferral</a>
 <a href="../../acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
 <a href="../../acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="../../acme/shop/OrderProduct.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderProduct</a>
 <a href="../../acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+<a href="../../acme/shop/Product.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Product</a>
 </details>
 <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
 <details>
@@ -73,7 +77,7 @@
 <table class="table table-xs"><tbody><tr><td class="font-mono text-xs opacity-70">comparison</td><td class="font-mono text-xs">qty lte 99</td></tr></tbody></table></section>
 
 <section id="s-relationships" class="mt-6"><h2 class="text-lg font-semibold">Relationships</h2>
-<table class="table table-xs"><tbody><tr><td class="font-mono">customer</td><td class="text-xs opacity-60">one</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td></tr></tbody></table></section>
+<table class="table table-xs"><tbody><tr><td class="font-mono">customer</td><td class="text-xs opacity-60">one</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td></tr><tr><td class="font-mono">products</td><td class="text-xs opacity-60">many</td><td><a class="link font-mono text-xs" href="Product.html">Product</a></td></tr></tbody></table></section>
 
 
 
@@ -106,10 +110,21 @@ erDiagram
     uuid orderId FK "Order"
     int lineNo FK "Order"
   }
+  OrderProduct["▭ OrderProduct"] {
+    string id PK ""
+    string orderId FK "Order"
+    string productId FK "Product"
+  }
+  Product["▭ Product"] {
+    string id PK ""
+    string sku "req"
+  }
   BaseEntity ||--o{ Order : "extends"
   Customer ||--o{ Order : "customerId"
   Order ||--o{ LineItemView : "orderId"
   Order ||--o{ OrderLine : "orderId, lineNo"
+  Order ||--o{ OrderProduct : "orderId"
+  Product ||--o{ Order : "products"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#334155,color:#cbd5e1
   Customer:::c_Customer
@@ -119,12 +134,16 @@ erDiagram
   Order:::c_Order
   classDef c_Order fill:#3f2d5c,stroke:#60a5fa,color:#cbd5e1
   OrderLine:::c_OrderLine
-  classDef c_OrderLine fill:#3f2d5c,stroke:#334155,color:#cbd5e1</pre></div>
+  classDef c_OrderLine fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  OrderProduct:::c_OrderProduct
+  classDef c_OrderProduct fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
+  Product:::c_Product
+  classDef c_Product fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1</pre></div>
 
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
 </section>
 
-<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="LineItemView.html" title="orderId">LineItemView</a> <a class="link font-mono text-xs" href="../ai/OrderLine.html" title="orderId, lineNo">OrderLine</a> </section>
+<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="LineItemView.html" title="orderId">LineItemView</a> <a class="link font-mono text-xs" href="../ai/OrderLine.html" title="orderId, lineNo">OrderLine</a> <a class="link font-mono text-xs" href="OrderProduct.html" title="orderId">OrderProduct</a> </section>
 
 <div class="text-[10px] opacity-40 mt-6 font-mono">meta.shop.yaml</div>
 </main>

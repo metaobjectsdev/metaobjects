@@ -45,19 +45,19 @@
 </details>
 </nav>
 <main class="min-w-0 flex-1 max-w-4xl px-6 lg:px-10 py-8">
-<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li><a href="../../index.html">index</a> / <a href="index.html">acme::shop</a> / Customer</li></ul></div>
-<h1 class="text-2xl font-bold font-mono mt-1">Customer
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li><a href="../../index.html">index</a> / <a href="index.html">acme::shop</a> / Product</li></ul></div>
+<h1 class="text-2xl font-bold font-mono mt-1">Product
   <span class="badge badge-primary badge-sm align-middle">entity</span>
   
   </h1>
 <div class="font-mono text-xs opacity-60 mt-1">
-  table <code>customers</code>
+  table <code>products</code>
    · pk <code>id</code> · gen uuid</div>
 
 
 <section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
-<tr id="f-email"><td class="font-mono">email</td><td class="opacity-60">string</td><td><span class="badge badge-soft badge-error badge-xs">required</span> <span class="badge badge-soft badge-neutral badge-xs">≤120</span></td><td class="text-xs"></td></tr>
+<tr id="f-sku"><td class="font-mono">sku</td><td class="opacity-60">string</td><td><span class="badge badge-soft badge-error badge-xs">required</span> <span class="badge badge-soft badge-neutral badge-xs">≤40</span></td><td class="text-xs"></td></tr>
 
 </tbody></table></div>
 <div class="collapse collapse-arrow bg-base-100 border border-base-300 mt-2"><input type="checkbox"><div class="collapse-title text-sm font-semibold opacity-70">Inherited fields (2)</div><div class="collapse-content"><table class="table table-xs opacity-80"><tbody>
@@ -71,8 +71,7 @@
 
 
 
-<section id="s-relationships" class="mt-6"><h2 class="text-lg font-semibold">Relationships</h2>
-<table class="table table-xs"><tbody><tr><td class="font-mono">friends</td><td class="text-xs opacity-60">many</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td></tr><tr><td class="font-mono">referrals</td><td class="text-xs opacity-60">many</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td></tr></tbody></table></section>
+
 
 
 
@@ -80,8 +79,8 @@
 <div class="card bg-base-100 border border-base-300 p-2 pl-diagram"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
 flowchart TD
   BaseEntity["BaseEntity"]
-  Customer["Customer"]:::self
-  BaseEntity --> Customer
+  Product["Product"]:::self
+  BaseEntity --> Product
   classDef self fill:#1e3a5f,stroke:#60a5fa,color:#e2e8f0,font-weight:bold</pre></div></section>
 
 <section id="s-neighborhood" class="mt-6"><h2 class="text-lg font-semibold">Neighborhood</h2>
@@ -90,57 +89,42 @@ erDiagram
   BaseEntity["▭ BaseEntity"] {
     string id PK ""
   }
-  Customer["▭ Customer"] {
-    string id PK ""
-    string email "req"
-  }
-  CustomerFriend["▭ CustomerFriend"] {
-    string id PK ""
-    string friendAId FK "Customer"
-    string friendBId FK "Customer"
-  }
-  CustomerReferral["▭ CustomerReferral"] {
-    string id PK ""
-    string referrerId FK "Customer"
-    string referredId FK "Customer"
-  }
-  LineItemView["▱ LineItemView"] {
-  }
   Order["▭ Order"] {
     string id PK ""
     string customerId FK "Customer"
     enum status "enum"
   }
-  BaseEntity ||--o{ Customer : "extends"
-  Customer ||--o{ Customer : "referrals"
-  Customer ||--o{ CustomerFriend : "friendAId"
-  Customer ||--o{ CustomerReferral : "referrerId"
-  Customer ||--o{ LineItemView : "customerName (origin)"
-  Customer ||--o{ Order : "customerId"
+  OrderProduct["▭ OrderProduct"] {
+    string id PK ""
+    string orderId FK "Order"
+    string productId FK "Product"
+  }
+  Product["▭ Product"] {
+    string id PK ""
+    string sku "req"
+  }
+  BaseEntity ||--o{ Product : "extends"
+  Product ||--o{ Order : "products"
+  Product ||--o{ OrderProduct : "productId"
   BaseEntity:::c_BaseEntity
   classDef c_BaseEntity fill:#1c2431,stroke:#334155,color:#cbd5e1
-  Customer:::c_Customer
-  classDef c_Customer fill:#3f2d5c,stroke:#60a5fa,color:#cbd5e1
-  CustomerFriend:::c_CustomerFriend
-  classDef c_CustomerFriend fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
-  CustomerReferral:::c_CustomerReferral
-  classDef c_CustomerReferral fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
-  LineItemView:::c_LineItemView
-  classDef c_LineItemView fill:#3f2d5c,stroke:#2dd4bf,color:#cbd5e1,stroke-dasharray:2 2
   Order:::c_Order
-  classDef c_Order fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1</pre></div>
+  classDef c_Order fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
+  OrderProduct:::c_OrderProduct
+  classDef c_OrderProduct fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
+  Product:::c_Product
+  classDef c_Product fill:#3f2d5c,stroke:#60a5fa,color:#cbd5e1</pre></div>
 
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
 </section>
 
-<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="Customer.html" title="friends">Customer</a> <a class="link font-mono text-xs" href="Customer.html" title="referrals">Customer</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendAId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerFriend.html" title="friendBId">CustomerFriend</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referredId">CustomerReferral</a> <a class="link font-mono text-xs" href="CustomerReferral.html" title="referrerId">CustomerReferral</a> <a class="link font-mono text-xs" href="LineItemView.html" title="customerName (origin)">LineItemView</a> <a class="link font-mono text-xs" href="Order.html" title="customer">Order</a> <a class="link font-mono text-xs" href="Order.html" title="customerId">Order</a> </section>
+<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> <a class="link font-mono text-xs" href="Order.html" title="products">Order</a> <a class="link font-mono text-xs" href="OrderProduct.html" title="productId">OrderProduct</a> </section>
 
 <div class="text-[10px] opacity-40 mt-6 font-mono">meta.shop.yaml</div>
 </main>
 <aside class="pl-toc hidden xl:block w-56 shrink-0 h-screen sticky top-0 overflow-y-auto py-8 pr-6 text-xs">
   <div class="opacity-50 mb-2 uppercase tracking-wide">On this page</div><div class="flex flex-col gap-1"><a href="#s-fields" class="link opacity-70 hover:opacity-100">Fields</a>
 <a href="#s-indexes" class="link opacity-70 hover:opacity-100">Indexes &amp; keys</a>
-<a href="#s-relationships" class="link opacity-70 hover:opacity-100">Relationships</a>
 <a href="#s-inheritance" class="link opacity-70 hover:opacity-100">Inheritance</a>
 <a href="#s-neighborhood" class="link opacity-70 hover:opacity-100">Neighborhood</a>
 <a href="#s-referenced-by" class="link opacity-70 hover:opacity-100">Referenced by</a></div>
