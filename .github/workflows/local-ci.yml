@@ -8,13 +8,15 @@
 #   push to main        -> affected ports only (scripts/ci-affected-ports.sh)
 #   nightly + dispatch  -> full matrix
 #
-# Java is split into two parallel jobs — java-fast (java+kotlin conformance, the
-# quick correctness signal ~2-3m) and java-slow (full reactor + docker
-# integration). The split surfaces the conformance verdict fast and means a
-# cancel/OOM mid-integration no longer kills the fast signal. `detect` emits the
-# umbrella token `java`; both jobs gate on it.
+# The ts and java ports are each split into two parallel jobs — a FAST lane (the
+# quick pure-code correctness signal: ts-fast = build+typecheck/conformance/
+# completeness, java-fast = java+kotlin conformance) and a SLOW lane (docker
+# integration + heavy build: ts-slow, java-slow = reactor + integration). The
+# split surfaces the verdict fast and means a cancel/OOM/flake mid-integration no
+# longer kills the fast signal. `detect` emits the umbrella token (`ts` / `java`);
+# both of that port's jobs gate on it.
 #
-# Integration-running jobs (ts, python, csharp, java-slow) share a Postgres
+# Integration-running jobs (ts-slow, python, csharp, java-slow) share a Postgres
 # SIDECAR instead of each test booting its own Testcontainers Postgres per
 # scenario (the java+kotlin lanes alone booted ~30-40 serial containers). Each
 # port's PG helper honors METAOBJECTS_TEST_PG_URL and CREATEs a uniquely-named
@@ -77,7 +79,22 @@ jobs:
           persist-credentials: false
       - run: scripts/ci-local.sh --only gates --strict-toolchains
 
-  ts:
+  # TS FAST lane — build+typecheck, conformance, completeness (the pure-code
+  # correctness signal). No docker/integration, so no sidecar.
+  ts-fast:
+    needs: detect
+    if: contains(needs.detect.outputs.ports, 'ts')
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: scripts/ci-local.sh --only ts-fast --strict-toolchains
+
+  # TS SLOW lane — build + docker/sidecar integration tests. Uses the shared
+  # Postgres sidecar (dynamic host port; see the note above the integration jobs).
+  ts-slow:
     needs: detect
     if: contains(needs.detect.outputs.ports, 'ts')
     runs-on: [self-hosted, linux]
@@ -102,7 +119,7 @@ jobs:
           persist-credentials: false
       - env:
           METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
-        run: scripts/ci-local.sh --only ts --strict-toolchains
+        run: scripts/ci-local.sh --only ts-slow --strict-toolchains
 
   # Java FAST lane — java + kotlin conformance only (the quick correctness signal).
   # No docker/integration, so no sidecar.
@@ -201,7 +218,7 @@ jobs:
         run: scripts/ci-local.sh --only csharp --strict-toolchains
 
   notify:
-    needs: [detect, gates, ts, java-fast, java-slow, python, csharp]
+    needs: [detect, gates, ts-fast, ts-slow, java-fast, java-slow, python, csharp]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:
