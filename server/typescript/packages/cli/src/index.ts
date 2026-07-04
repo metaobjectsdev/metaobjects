@@ -146,6 +146,7 @@ FLAGS:
   --api                 Emit the markdown api surface (generated SDK reference)
   --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
   --site                Generate the browsable HTML documentation site (<out>/site/)
+  --scaffold-site      copy the site's templates + assets into codegen/docs-site/ to own (theme) them
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --help, -h            Print this help
 `,

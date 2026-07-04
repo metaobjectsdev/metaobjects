@@ -33,7 +33,7 @@ import type {
 } from "@metaobjectsdev/codegen-ts";
 import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
-import { generateSite } from "@metaobjectsdev/docs-site";
+import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 
 type DocsLayout = "flat" | "package";
 
@@ -68,6 +68,8 @@ interface DocsFlags {
    *  is the ONLY surface flag, markdown emission is suppressed; combined with
    *  `--model`/`--api`, both are emitted. */
   site: boolean;
+  /** Copy the docs-site templates + assets into codegen/docs-site/ so the consumer owns them. */
+  scaffoldSite: boolean;
 }
 
 function parseLayout(v: string | undefined, flag: string): DocsLayout {
@@ -88,6 +90,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let wantApi = false;
   let wantMetamodel = false;
   let wantSite = false;
+  let wantScaffoldSite = false;
   let outProvided = false;
   let layoutProvided = false;
   for (let i = 0; i < argv.length; i++) {
@@ -114,6 +117,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       wantMetamodel = true;
     } else if (a === "--site") {
       wantSite = true;
+    } else if (a === "--scaffold-site") {
+      wantScaffoldSite = true;
     } else if (a === "--base-url") {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${a} requires a URL argument`);
@@ -154,6 +159,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     layout: layout ?? "flat",
     metamodel: wantMetamodel,
     site: wantSite,
+    scaffoldSite: wantScaffoldSite,
     outProvided,
     layoutProvided,
     ...(surfaces.length > 0 || wantSite ? { surfaces } : {}),
@@ -180,6 +186,14 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   }
 
   const metaRoot = resolvePath(cwd, flags.metadata);
+
+  // `--scaffold-site`: copy the docs-site templates + assets into codegen/docs-site/
+  // so the consumer owns them (ADR-0034 scaffold-and-own). Scaffold and return —
+  // it does not also generate.
+  if (flags.scaffoldSite) {
+    return scaffoldSiteCommand(metaRoot);
+  }
+
   // The project root used to resolve adopter `templates/` overrides; the
   // framework defaults sit underneath via projectProvider's chain.
   const projectRoot = flags.templates !== undefined
@@ -246,7 +260,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(metaRoot, outDir, projectRoot, flags);
+    return emitSite(metaRoot, outDir, flags);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -413,7 +427,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(metaRoot, outDir, projectRoot, flags);
+    const siteRc = await emitSite(metaRoot, outDir, flags);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -436,22 +450,59 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 }
 
 /**
+ * ADR-0034 scaffold-and-own for the docs-site: copy the bundled templates + assets
+ * into `<root>/codegen/docs-site/{templates,assets}`, writing each file ONLY if
+ * absent so a re-run never clobbers a hand-edited file.
+ */
+async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
+  const tplDir = join(metaRoot, "codegen/docs-site/templates");
+  const astDir = join(metaRoot, "codegen/docs-site/assets");
+  const created: string[] = [];
+  const preserved: string[] = [];
+  try {
+    await mkdir(tplDir, { recursive: true });
+    await mkdir(astDir, { recursive: true });
+    for (const name of SITE_TEMPLATE_NAMES) {
+      const abs = join(tplDir, name);
+      const rel = `codegen/docs-site/templates/${name}`;
+      if (existsSync(abs)) { preserved.push(rel); continue; }
+      await writeFile(abs, readSiteFile("template", name), "utf8");
+      created.push(rel);
+    }
+    for (const name of SITE_ASSET_NAMES) {
+      const abs = join(astDir, name);
+      const rel = `codegen/docs-site/assets/${name}`;
+      if (existsSync(abs)) { preserved.push(rel); continue; }
+      await writeFile(abs, readSiteFile("asset", name), "utf8");
+      created.push(rel);
+    }
+  } catch (err) {
+    log.error(`docs: failed to scaffold site templates: ${(err as Error).message}`);
+    return 1;
+  }
+  log.info(
+    `meta docs --scaffold-site — ${created.length} created, ${preserved.length} preserved ` +
+      `→ ${join(metaRoot, "codegen/docs-site")} (edit these to own your theme)`,
+  );
+  return 0;
+}
+
+/**
  * Emit the browsable HTML documentation site via `@metaobjectsdev/docs-site`.
  * The site loads the model with its OWN loader from the metadata source dir
  * (`<metaRoot>/metaobjects`), so this is independent of the sdk loadMemory path
  * used for the markdown surfaces. Writes under `<outDir>/site` so it can coexist
- * with the markdown output. `--templates <dir>` (if given) is threaded as the
- * template override dir (a consumer template of the same basename wins over the
- * bundled one) — the scaffold-and-own seam.
+ * with the markdown output. Scaffold-and-own: when the consumer has copied
+ * templates/assets into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`),
+ * those win over the bundled defaults.
  */
-async function emitSite(
-  metaRoot: string,
-  outDir: string,
-  projectRoot: string,
-  flags: DocsFlags,
-): Promise<number> {
+async function emitSite(metaRoot: string, outDir: string, flags: DocsFlags): Promise<number> {
   const siteOutDir = resolvePath(outDir, "site");
   const sourceDirs = [join(metaRoot, DEFAULT_METADATA_DIR)];
+  // Scaffold-and-own: when the consumer has copied templates/assets into
+  // codegen/docs-site/ (via --scaffold-site), use those; else the bundled defaults.
+  const ownedTemplates = join(metaRoot, "codegen/docs-site/templates");
+  const ownedAssets = join(metaRoot, "codegen/docs-site/assets");
   try {
     const r = await generateSite({
       sourceDirs,
@@ -460,7 +511,8 @@ async function emitSite(
       stamp: new Date().toISOString().slice(0, 10),
       commit: "",
       core: { n: 15 },
-      ...(flags.templates !== undefined ? { templatesDir: projectRoot } : {}),
+      ...(existsSync(ownedTemplates) ? { templatesDir: ownedTemplates } : {}),
+      ...(existsSync(ownedAssets) ? { assetsDir: ownedAssets } : {}),
     });
     log.info(`meta docs --site — wrote ${r.pages.length} page(s) → ${siteOutDir}`);
     return 0;

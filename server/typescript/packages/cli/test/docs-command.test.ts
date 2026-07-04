@@ -438,3 +438,49 @@ describe("meta docs --site — HTML documentation site", () => {
     expect(a).toBe(b);
   });
 });
+
+describe("meta docs --scaffold-site — own your theme", () => {
+  test("scaffolds the 9 templates + 2 assets into codegen/docs-site, preserving existing", async () => {
+    const root = await project();
+    // pre-place one edited template to prove it is preserved (not clobbered)
+    await mkdir(join(root, "codegen/docs-site/templates"), { recursive: true });
+    await writeFile(join(root, "codegen/docs-site/templates/chrome-head.mustache"), "OWNED HEAD", "utf8");
+
+    const code = await docsCommand([root, "--scaffold-site"], root);
+    expect(code).toBe(0);
+
+    // all 9 templates + 2 assets exist
+    for (const n of ["chrome-head.mustache", "coverage.html.mustache", "object.html.mustache"]) {
+      expect(existsSync(join(root, "codegen/docs-site/templates", n))).toBe(true);
+    }
+    expect(existsSync(join(root, "codegen/docs-site/assets/site.css"))).toBe(true);
+    expect(existsSync(join(root, "codegen/docs-site/assets/site.js"))).toBe(true);
+    // the pre-existing edited template is PRESERVED (not overwritten)
+    expect(await readFile(join(root, "codegen/docs-site/templates/chrome-head.mustache"), "utf8")).toBe("OWNED HEAD");
+    // summary reports created + preserved
+    expect(logged.join("\n")).toMatch(/scaffold-site/);
+  });
+
+  test("--site auto-detects owned templates: an edited template wins in the output", async () => {
+    const root = await project();
+    await docsCommand([root, "--scaffold-site"], root);
+    // edit the scaffolded index template with a unique marker
+    const tpl = join(root, "codegen/docs-site/templates/index.html.mustache");
+    const orig = await readFile(tpl, "utf8");
+    await writeFile(tpl, orig + "\n<!-- OWNED-TEMPLATE-MARKER -->", "utf8");
+
+    const out = join(root, "out-owned");
+    const code = await docsCommand([root, "--site", "--out", out], root);
+    expect(code).toBe(0);
+    expect(await readFile(join(out, "site/index.html"), "utf8")).toContain("OWNED-TEMPLATE-MARKER");
+  });
+
+  test("--site auto-detects owned assets: an edited site.css wins in the output", async () => {
+    const root = await project();
+    await docsCommand([root, "--scaffold-site"], root);
+    await writeFile(join(root, "codegen/docs-site/assets/site.css"), "/* OWNED-ASSET-MARKER */", "utf8");
+    const out = join(root, "out-owned-asset");
+    expect(await docsCommand([root, "--site", "--out", out], root)).toBe(0);
+    expect(await readFile(join(out, "site/assets/site.css"), "utf8")).toBe("/* OWNED-ASSET-MARKER */");
+  });
+});
