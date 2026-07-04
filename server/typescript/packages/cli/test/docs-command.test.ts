@@ -385,3 +385,56 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(code).toBe(2); // arg parse error
   });
 });
+
+describe("meta docs --site — HTML documentation site", () => {
+  test("emits a browsable site under <out>/site and SUPPRESSES markdown when --site is the only surface", async () => {
+    const root = await project();
+    const out = join(root, "out-site-only");
+
+    const code = await docsCommand([root, "--site", "--out", out], root);
+    expect(code).toBe(0);
+
+    // The site lands under <out>/site with its chrome + assets.
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+    expect(existsSync(join(out, "site", "assets", "site.css"))).toBe(true);
+    expect(existsSync(join(out, "site", "assets", "site.js"))).toBe(true);
+
+    // --site alone is NOT additive-with-markdown: no markdown pages at the root.
+    const rootEntries = (await readdir(out)).sort();
+    expect(rootEntries).toContain("site");
+    expect(rootEntries).not.toContain("Welcome.md");
+    expect(rootEntries).not.toContain("README.md");
+
+    // Summary line names the site surface + destination.
+    const summary = logged.join("\n");
+    expect(summary).toMatch(/meta docs --site — wrote \d+ page/);
+    expect(summary).toContain(join(out, "site"));
+  });
+
+  test("--site is ADDITIVE with --model: emits BOTH the markdown pages and the site", async () => {
+    const root = await project();
+    const out = join(root, "out-site-model");
+
+    const code = await docsCommand([root, "--site", "--model", "--out", out], root);
+    expect(code).toBe(0);
+
+    // Markdown surface still emits at the root...
+    expect(existsSync(join(out, "Welcome.md"))).toBe(true);
+    expect(existsSync(join(out, "README.md"))).toBe(true);
+    // ...alongside the site under <out>/site.
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+  });
+
+  test("site output is deterministic across regenerations (byte-identical index.html)", async () => {
+    const root = await project();
+    const out1 = join(root, "out-site-det-1");
+    const out2 = join(root, "out-site-det-2");
+
+    expect(await docsCommand([root, "--site", "--out", out1], root)).toBe(0);
+    expect(await docsCommand([root, "--site", "--out", out2], root)).toBe(0);
+
+    const a = await readFile(join(out1, "site", "index.html"), "utf8");
+    const b = await readFile(join(out2, "site", "index.html"), "utf8");
+    expect(a).toBe(b);
+  });
+});

@@ -13,7 +13,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
-  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
+  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files

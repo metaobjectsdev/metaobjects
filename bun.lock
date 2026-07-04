@@ -148,6 +148,7 @@
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/codegen-ts-react": "workspace:*",
         "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+        "@metaobjectsdev/docs-site": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
