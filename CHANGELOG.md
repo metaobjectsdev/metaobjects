@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.5] — 2026-07-04
+
+_npm `0.15.5` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates). NuGet unchanged at `0.15.4`, PyPI `0.15.6` (the Python-only #158 fix ships there), Maven Central unchanged at `7.7.3`. A TypeScript-only patch._
+
+### Fixed
+- **Offline `meta migrate` now threads consumer providers (#157).** `migrate baseline` and the offline `migrate` generate path called `loadMemory` without the `providers` from `metaobjects.config.ts` — so a project registering a custom subtype via a config provider hit `Unknown type` on offline migration, even though `meta gen` and the DB migrate paths loaded the same metadata fine. Both offline functions now load the config once up front and pass its providers to the loader (mirroring the DB path), and the offline generate path folds the later `columnNamingStrategy` read into that same load.
+
 ## [0.15.4] — 2026-07-03
 
 _npm `0.15.4` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates) · NuGet `0.15.4` · PyPI `0.15.5` (Python stays a patch ahead) · Maven Central unchanged at `7.7.3` (the Java loader was already correct). A coordinated loader bug-fix patch._
