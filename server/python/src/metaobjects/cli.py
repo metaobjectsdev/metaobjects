@@ -103,8 +103,76 @@ def _default_generators() -> list[Generator]:
     ]
 
 
+def _resolve_providers(specs: list[str] | None) -> tuple[list[object], list[str]]:
+    """Import consumer providers named as ``module:symbol`` (repeatable ``--provider``).
+
+    The symbol must be a metaobjects ``Provider`` (or a list of them, or a zero-arg
+    factory returning either). A provider carries CODE — factories and optional
+    validators — so it is loaded as a native Python object, not a JSON file (#158).
+    This is the Python CLI's idiomatic parity with TS ``metaobjects.config.ts``
+    ``providers``; the underlying loader already accepts providers.
+    """
+    if not specs:
+        return [], []
+    import importlib
+
+    from metaobjects.provider import Provider
+
+    providers: list[object] = []
+    errors: list[str] = []
+    for spec in specs:
+        module_name, sep, symbol = spec.partition(":")
+        if not sep or not module_name or not symbol:
+            errors.append(
+                f"--provider '{spec}' must be in 'module:symbol' form "
+                "(e.g. myapp.providers:my_provider)"
+            )
+            continue
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:  # ImportError + anything raised at import time
+            errors.append(f"--provider '{spec}': cannot import '{module_name}': {exc}")
+            continue
+        try:
+            obj = getattr(module, symbol)
+        except AttributeError:
+            errors.append(
+                f"--provider '{spec}': '{module_name}' has no attribute '{symbol}'"
+            )
+            continue
+        # A zero-arg factory is supported: call it to obtain the provider(s).
+        if callable(obj) and not isinstance(obj, Provider):
+            try:
+                obj = obj()
+            except Exception as exc:
+                errors.append(f"--provider '{spec}': factory '{symbol}()' raised: {exc}")
+                continue
+        for item in obj if isinstance(obj, list) else [obj]:
+            if isinstance(item, Provider):
+                providers.append(item)
+            else:
+                errors.append(
+                    f"--provider '{spec}': '{symbol}' resolved to "
+                    f"{type(item).__name__}, expected a metaobjects Provider"
+                )
+    return providers, errors
+
+
+def _providers_from_args(args: argparse.Namespace) -> tuple[list[object], bool]:
+    """Resolve ``--provider`` specs; print resolution errors. Returns (providers, ok)."""
+    providers, errors = _resolve_providers(getattr(args, "provider", None))
+    if errors:
+        print("error: invalid --provider:", file=sys.stderr)
+        for msg in errors:
+            print(f"  {msg}", file=sys.stderr)
+        return providers, False
+    return providers, True
+
+
 def _load_root(
-    metadata_dir: str, strict: bool = False
+    metadata_dir: str,
+    strict: bool = False,
+    providers: list[object] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
     """Load metadata; return ``(root, error_messages)``. ``root`` is None on error.
 
@@ -112,8 +180,20 @@ def _load_root(
     ``ERR_UNKNOWN_ATTR``. Defaults False so ``gen`` / ``docs`` keep the legacy
     open-attr load; only ``verify`` opts in (strict-by-default with a ``--lax``
     escape).
+
+    ``providers`` (#158) — consumer providers (from ``--provider module:symbol``)
+    composed ON TOP of the core set, so a config-registered custom subtype resolves
+    through the standalone CLI just as it does when an app loads the loader directly.
+    Empty/None keeps the core-providers-only default (``from_directory`` convenience).
     """
-    result = MetaDataLoader.from_directory(metadata_dir, strict=strict)
+    if providers:
+        from metaobjects.core_types import core_providers
+
+        result = MetaDataLoader.from_directory(
+            metadata_dir, providers=[*core_providers, *providers], strict=strict
+        )
+    else:
+        result = MetaDataLoader.from_directory(metadata_dir, strict=strict)
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
@@ -193,6 +273,7 @@ def _generate(
     entity_filter: list[str] | None = None,
     emit_package_init: bool = True,
     strict: bool = False,
+    providers: list[object] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run the generator suite into ``out_dir``.
 
@@ -208,7 +289,7 @@ def _generate(
     files are written. ``strict`` (ADR-0023, #96) is threaded to the load — the
     ``verify --codegen`` caller passes True; ``gen`` keeps the default False.
     """
-    root, errors = _load_root(metadata_dir, strict=strict)
+    root, errors = _load_root(metadata_dir, strict=strict, providers=providers)
     if root is None:
         return [], errors
     return _run_suite(root, out_dir, generators, entity_filter, emit_package_init), []
@@ -237,7 +318,10 @@ def _cmd_docs(args: argparse.Namespace) -> int:
         model_cross_href,
     )
 
-    root, errors = _load_root(args.metadata_dir)
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
+    root, errors = _load_root(args.metadata_dir, providers=providers)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -364,9 +448,12 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         spec_gens = template_spec_to_generators(spec, provider)
 
     entities = _parse_entities(getattr(args, "entities", None))
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
     # Load the metadata ONCE; both the default suite and the (optional)
     # --template-spec pass run against this single loaded root.
-    root, load_errors = _load_root(args.metadata_dir)
+    root, load_errors = _load_root(args.metadata_dir, providers=providers)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
@@ -431,10 +518,13 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     # ADR-0023 strict-by-default (#96): verify loads strict unless --lax is given,
     # so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
     strict = not getattr(args, "lax", False)
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
     with tempfile.TemporaryDirectory() as tmp:
         entities = _parse_entities(getattr(args, "entities", None))
         written, errors = _generate(
-            args.metadata_dir, tmp, None, entities, strict=strict
+            args.metadata_dir, tmp, None, entities, strict=strict, providers=providers
         )
         if errors:
             print("error: failed to load metadata:", file=sys.stderr)
@@ -508,7 +598,10 @@ def _verify_templates(args: argparse.Namespace) -> int:
     # ADR-0023 strict-by-default (#96) — same as --codegen: an undeclared @attr
     # fails verify unless --lax is passed.
     strict = not getattr(args, "lax", False)
-    root, errors = _load_root(args.metadata_dir, strict=strict)
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
+    root, errors = _load_root(args.metadata_dir, strict=strict, providers=providers)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -717,6 +810,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "named entities are written. Omit to emit every entity."
         ),
     )
+    gen.add_argument(
+        "--provider",
+        action="append",
+        metavar="module:symbol",
+        help=(
+            "load a consumer metadata Provider as 'module:symbol' (repeatable) — the "
+            "Python parity of TS metaobjects.config.ts providers, so a custom subtype "
+            "resolves through the standalone CLI (#158)"
+        ),
+    )
     gen.set_defaults(func=_cmd_gen)
 
     docs = sub.add_parser(
@@ -748,6 +851,12 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="model_base_url",
         default=None,
         help="federate the model back-links to an absolute base URL (default: relative)",
+    )
+    docs.add_argument(
+        "--provider",
+        action="append",
+        metavar="module:symbol",
+        help="load a consumer metadata Provider as 'module:symbol' (repeatable; #158)",
     )
     docs.set_defaults(func=_cmd_docs)
 
@@ -802,6 +911,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "default — an undeclared/typo'd @attr fails. --lax restores the legacy "
             "open-attr load."
         ),
+    )
+    verify.add_argument(
+        "--provider",
+        action="append",
+        metavar="module:symbol",
+        help="load a consumer metadata Provider as 'module:symbol' (repeatable; #158)",
     )
     verify.set_defaults(func=_cmd_verify)
 

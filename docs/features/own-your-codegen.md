@@ -45,6 +45,31 @@ ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
   the declarative template surface). This split follows each ecosystem's norms
   rather than forcing a single mechanism.
 
+## Custom types (custom providers)
+
+Beyond owning the *generators*, you can extend the *metamodel itself* — register your
+own type/subtype (a project-specific `view.*`, `field.*`, `validator.*`, …) through a
+**consumer provider**. The metadata **loaders already accept consumer providers in
+every language**: a runtime/library app that loads the metamodel plugs its provider in
+and it merges on top of the core set. The only per-port question is how the **CLI /
+build tool** hands that provider to the loader it already uses.
+
+A provider carries **code**, not just declarations — a `factory` (how to construct the
+node) plus an optional imperative validator. So the mechanism must load your **native
+provider class** in each language: a JSON file could express the declarative surface
+(types / attrs / child-rules) but not the factory or validator.
+
+| Port | How the CLI / build tool loads your provider |
+|---|---|
+| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen`, `meta verify`, `meta docs`, **and** the offline `meta migrate` paths (baseline + generate). |
+| **Python** | `metaobjects gen \| verify \| docs --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen ./metaobjects --out ./gen --provider myapp.providers:view_provider`. |
+| **Java / Kotlin** | Put your compiled `MetaDataTypeProvider` on the **project classpath** with a `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` entry. `metaobjects-maven-plugin` builds the loader with the project classloader, so **Java ServiceLoader auto-discovers it** — no plugin config needed. |
+| **C#** | The loader accepts providers like every port; a first-class `dotnet meta` consumer-provider hook is tracked for a future release ([#158](https://github.com/metaobjectsdev/metaobjects/issues/158)). Today, extend the metamodel from an app that constructs the loader directly. |
+
+This split follows each ecosystem's norms — interpreted ports (TS / Python) name or
+import the provider module; compiled ports (JVM) discover it on the build classpath —
+the same "idiomatic per port" principle as generator ownership (ADR-0035 §3).
+
 ## Deprecated (removed at 1.0)
 
 Importing the built-in generators from `@metaobjectsdev/codegen-ts/generators`
