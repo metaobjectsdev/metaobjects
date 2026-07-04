@@ -31,6 +31,14 @@ import { Client } from "pg";
 /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
 const SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
 
+/** Per-attempt connect timeout so a stalled connection fails fast instead of
+ *  hanging (pg's default has no client-side connect timeout). */
+const CONNECT_TIMEOUT_MS = 10_000;
+/** Total budget for the shared sidecar to start answering real connections. Kept
+ *  under the scenarios' 60s test timeout so the retry loop has headroom to succeed
+ *  (and to leave time for CREATE DATABASE + server boot) rather than racing it. */
+const SHARED_READY_DEADLINE_MS = 45_000;
+
 export interface RunningPg {
   readonly connectionUri: string;
   stop(): Promise<void>;
@@ -62,8 +70,17 @@ export async function startPostgres(image = "postgres:16-alpine"): Promise<Runni
 // on stop. A dedicated database per scenario preserves the per-container path's
 // "pristine empty DB" isolation.
 async function startOnSharedPostgres(adminUri: string): Promise<RunningPg> {
+  // Gate on a REAL connection before doing anything. The CI `services: postgres`
+  // health-check uses `pg_isready`, which — like the per-container path documents
+  // (waitForPgReady) — can report success during postgres' first-boot init window;
+  // and under CI host contention the server can be transiently slow to accept
+  // connections. Without this gate the first admin.connect() below hangs until the
+  // scenario's 60s test timeout (the intermittent ts-integration flake). Retrying a
+  // short-timeout probe waits the sidecar out gracefully instead.
+  await waitForSharedReady(adminUri);
+
   const dbName = `mo_test_${randomUUID().replace(/-/g, "")}`;
-  const admin = new Client({ connectionString: adminUri });
+  const admin = new Client({ connectionString: adminUri, connectionTimeoutMillis: CONNECT_TIMEOUT_MS });
   await admin.connect();
   try {
     // Identifier is a fixed-shape generated name (no user input) — safe to inline.
@@ -75,7 +92,7 @@ async function startOnSharedPostgres(adminUri: string): Promise<RunningPg> {
   return {
     connectionUri,
     stop: async () => {
-      const drop = new Client({ connectionString: adminUri });
+      const drop = new Client({ connectionString: adminUri, connectionTimeoutMillis: CONNECT_TIMEOUT_MS });
       await drop.connect();
       try {
         await drop.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
@@ -84,6 +101,20 @@ async function startOnSharedPostgres(adminUri: string): Promise<RunningPg> {
       }
     },
   };
+}
+
+// Poll a real client connection to the shared sidecar until it answers or the
+// deadline elapses — the shared-mode analogue of waitForPgReady (mode 2). Cheap
+// (~ms) when the sidecar is already healthy; only retries when it is genuinely slow.
+async function waitForSharedReady(adminUri: string): Promise<void> {
+  const deadline = Date.now() + SHARED_READY_DEADLINE_MS;
+  while (Date.now() < deadline) {
+    if (await canConnect(adminUri)) return;
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  throw new Error(
+    `shared Postgres sidecar (${SHARED_PG_URL_ENV}) did not accept a connection within ${SHARED_READY_DEADLINE_MS / 1000}s`,
+  );
 }
 
 /** Replace the database (path) component of a postgres:// URL. */
@@ -113,7 +144,7 @@ async function waitForPgReady(name: string, uri: string): Promise<void> {
 }
 
 async function canConnect(uri: string): Promise<boolean> {
-  const client = new Client({ connectionString: uri });
+  const client = new Client({ connectionString: uri, connectionTimeoutMillis: CONNECT_TIMEOUT_MS });
   try {
     await client.connect();
     await client.query("SELECT 1");
