@@ -135,7 +135,13 @@ gate_conf_ts() {
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
   ( cd server/typescript/packages/codegen-ts && bun test ) || return 1
-  ( cd server/typescript/packages/cli && bun test ) || return 1
+  # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
+  # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
+  # use. On a cold/contended self-hosted runner that first cold-start import can
+  # exceed bun's default 5s per-test timeout, flaking otherwise-instant exit-code /
+  # --format tests (bunfig.toml `[test] timeout` is NOT honored by bun, so it must
+  # be the CLI flag). 30s keeps a real hang loud while removing the timing flake.
+  ( cd server/typescript/packages/cli && bun test --timeout 30000 ) || return 1
 }
 gate_conf_csharp() {
   ( cd server/csharp \
