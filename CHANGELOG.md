@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.7] — 2026-07-04
+
+_npm `0.15.7` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates). A TypeScript-only patch — NuGet stays at `0.15.5`, Maven Central at `7.7.4`, PyPI at `0.15.7`._
+
+### Fixed
+- **codegen-ts — generated Drizzle DAOs failed `tsc` under `verbatimModuleSyntax` (#165).** The default `entityFile()` output imported Drizzle's type-only symbols as value imports — `InferSelectModel` / `InferInsertModel` (`drizzle-orm`) and `AnyPgColumn` / `AnySQLiteColumn` (`*-core`, used only as a `.references()` return-type annotation). Under `verbatimModuleSyntax: true` (a common default in modern Vite/TS app templates) tsc rejects each with **TS1484**, so a generated DAO failed `tsc -b` with hundreds of errors even though it ran fine under a bundler. Those symbols now emit as type-only imports (`import type` / inline `type` modifier), fixing both the built-in generator and the ADR-0034 scaffold-and-own reference template. Gated by a real-`tsc` compile guard with `verbatimModuleSyntax` on.
+- **CLI — `meta init --refresh-docs` re-scaffolded the project and regressed stack detection in a monorepo (#163).** `--refresh-docs --force` fell through to a full project re-scaffold (re-creating `metaobjects/`, `metaobjects.config.ts`, `codegen/generators/`, config, manifest — and scaffolding into sibling packages) because the refresh short-circuit was gated on `!force`; refresh now short-circuits regardless of `--force`, which instead means "overwrite hand-edited docs in place." And refresh re-detected the tech stack from a root-only probe — collapsing a monorepo's `java, kotlin server, react, tanstack client` to `java server, no client` (sibling-package client deps and Maven-built Kotlin are invisible at the root) — so it now reuses the stack persisted in `.metaobjects/.agent-context.json` (precedence: explicit `--server`/`--client` > persisted manifest > detection).
+
 ## [0.15.6] — 2026-07-04
 
 _Coordinated cross-port patch: npm `0.15.6` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates) · PyPI `0.15.7` (Python stays a patch ahead) · NuGet `0.15.5` · Maven Central `7.7.4`. A loader-ordering bug-fix that hardens a latent fragility in every port._
