@@ -148,6 +148,7 @@
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/codegen-ts-react": "workspace:*",
         "@metaobjectsdev/codegen-ts-tanstack": "workspace:*",
+        "@metaobjectsdev/docs-site": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
@@ -259,6 +260,19 @@
       },
       "dependencies": {
         "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
+    "server/typescript/packages/docs-site": {
+      "name": "@metaobjectsdev/docs-site",
+      "version": "0.15.6",
+      "dependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+        "@metaobjectsdev/render": "workspace:*",
+        "yaml": "^2.9.0",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -634,6 +648,8 @@
     "@metaobjectsdev/codegen-ts-tanstack": ["@metaobjectsdev/codegen-ts-tanstack@workspace:server/typescript/packages/codegen-ts-tanstack"],
 
     "@metaobjectsdev/conformance": ["@metaobjectsdev/conformance@workspace:server/typescript/packages/conformance"],
+
+    "@metaobjectsdev/docs-site": ["@metaobjectsdev/docs-site@workspace:server/typescript/packages/docs-site"],
 
     "@metaobjectsdev/forge": ["@metaobjectsdev/forge@workspace:server/typescript/packages/forge"],
 

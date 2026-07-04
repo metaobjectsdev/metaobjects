@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="night">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixture</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>
+<link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body class="min-h-screen bg-base-200 text-base-content">
+<div class="flex">
+<nav class="pl-sidebar hidden lg:flex flex-col w-72 shrink-0 h-screen sticky top-0 border-r border-base-300 bg-base-100 overflow-y-auto p-4 gap-1 text-sm">
+  <a href="../../index.html" class="font-bold font-mono text-primary">Fixture</a>
+  <button id="search-open" class="btn btn-sm btn-block justify-between my-2 font-normal opacity-80">
+    <span>search…</span><kbd class="kbd kbd-xs">⌘K</kbd></button>
+  <div class="text-xs font-semibold opacity-50 mt-3 mb-1">Data</div>
+<details>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/common/index.html">acme::common</a></summary>
+<a href="../../acme/common/BaseEntity.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">BaseEntity</a>
+</details>
+<details>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/shop/index.html">acme::shop</a></summary>
+<a href="../../acme/shop/Customer.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Customer</a>
+<a href="../../acme/shop/CustomerFriend.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerFriend</a>
+<a href="../../acme/shop/CustomerReferral.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">CustomerReferral</a>
+<a href="../../acme/shop/LineItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">LineItemView</a>
+<a href="../../acme/shop/Order.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Order</a>
+<a href="../../acme/shop/OrderProduct.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderProduct</a>
+<a href="../../acme/shop/OrphanLog.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanLog</a>
+<a href="../../acme/shop/Product.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">Product</a>
+</details>
+<div class="text-xs font-semibold opacity-50 mt-3 mb-1">Prompts</div>
+<details open>
+<summary class="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"><a href="../../acme/ai/index.html">acme::ai</a></summary>
+<a href="../../acme/ai/ItemView.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">ItemView</a>
+<a href="../../acme/ai/NpcPayload.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">NpcPayload</a>
+<a href="../../acme/ai/NpcResponse.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">NpcResponse</a>
+<a href="../../acme/ai/npcReview.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">npcReview</a>
+<a href="../../acme/ai/npcReviewOutput.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">npcReviewOutput</a>
+<a href="../../acme/ai/OrderLine.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrderLine</a>
+<a href="../../acme/ai/OrphanVO.html" class="link font-mono text-xs opacity-70 hover:opacity-100 pl-3 block">OrphanVO</a>
+</details>
+</nav>
+<main class="min-w-0 flex-1 max-w-4xl px-6 lg:px-10 py-8">
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li><a href="../../index.html">index</a> / acme::ai</li></ul></div>
+<h1 class="text-2xl font-bold font-mono">Fixture</h1>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4">
+<a href="ItemView.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">ItemView</div><div class="text-xs opacity-50">1 refs</div></a><a href="NpcPayload.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">NpcPayload</div><div class="text-xs opacity-50">1 refs</div></a><a href="NpcResponse.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">NpcResponse</div><div class="text-xs opacity-50">1 refs</div></a><a href="OrderLine.html" class="card bg-base-100 border border-base-300 p-3"><div class="font-mono font-semibold">OrderLine</div><div class="text-xs opacity-50">0 refs</div></a>
+</div>
+<div class="card bg-base-100 border border-base-300 p-2 pl-diagram my-4"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
+erDiagram
+  ItemView["⬭ ItemView"] {
+  }
+  NpcPayload["⬭ NpcPayload"] {
+    string npcName "req"
+  }
+  NpcResponse["⬭ NpcResponse"] {
+  }
+  Order["▭ Order"] {
+    string id PK ""
+    string customerId FK "Customer"
+    enum status "enum"
+  }
+  OrderLine["▭ OrderLine"] {
+    uuid orderId FK "Order"
+    int lineNo FK "Order"
+  }
+  OrphanVO["⬭ OrphanVO"] {
+  }
+  ItemView ||--o{ NpcPayload : "items"
+  Order ||--o{ OrderLine : "orderId, lineNo"
+  ItemView:::c_ItemView
+  classDef c_ItemView fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1,stroke-dasharray:5 3
+  NpcPayload:::c_NpcPayload
+  classDef c_NpcPayload fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1,stroke-dasharray:5 3
+  NpcResponse:::c_NpcResponse
+  classDef c_NpcResponse fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1,stroke-dasharray:5 3
+  Order:::c_Order
+  classDef c_Order fill:#3f2d5c,stroke:#334155,color:#cbd5e1
+  OrderLine:::c_OrderLine
+  classDef c_OrderLine fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1
+  OrphanVO:::c_OrphanVO
+  classDef c_OrphanVO fill:#3f2d5c,stroke:#3b5170,color:#cbd5e1,stroke-dasharray:5 3</pre><div class="flex flex-wrap gap-1 mt-2 text-xs"><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::ai</span><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::shop</span></div><div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div></div>
+<h2 class="text-lg font-semibold mt-6">Objects</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Kind</th><th>Table</th><th>Fields</th><th>Extends</th></tr></thead><tbody>
+  <tr><td><a class="link font-mono" href="ItemView.html">ItemView</a></td><td class="opacity-60">value</td><td class="font-mono opacity-60"></td><td>1</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="NpcPayload.html">NpcPayload</a></td><td class="opacity-60">value</td><td class="font-mono opacity-60"></td><td>2</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="NpcResponse.html">NpcResponse</a></td><td class="opacity-60">value</td><td class="font-mono opacity-60"></td><td>2</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="OrderLine.html">OrderLine</a></td><td class="opacity-60">entity</td><td class="font-mono opacity-60">order_lines</td><td>2</td><td class="font-mono opacity-60"></td></tr><tr><td><a class="link font-mono" href="OrphanVO.html">OrphanVO</a></td><td class="opacity-60">value</td><td class="font-mono opacity-60"></td><td>0</td><td class="font-mono opacity-60"></td></tr>
+  </tbody></table></div>
+<h2 class="text-lg font-semibold mt-6">Prompts</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Payload</th><th>Format</th><th>textRef</th></tr></thead><tbody>
+  <tr><td><a class="link font-mono" href="npcReview.html">npcReview</a></td><td><a class="link font-mono opacity-70" href="NpcPayload.html">NpcPayload</a></td><td class="opacity-60">text</td><td class="font-mono text-xs opacity-50">ai/npc-review</td></tr>
+  </tbody></table></div>
+<h2 class="text-lg font-semibold mt-6">Output contracts</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Name</th><th>Payload</th><th>Format</th><th>textRef</th></tr></thead><tbody>
+  <tr><td><a class="link font-mono" href="npcReviewOutput.html">npcReviewOutput</a></td><td><a class="link font-mono opacity-70" href="NpcResponse.html">NpcResponse</a></td><td class="opacity-60">xml</td><td class="font-mono text-xs opacity-50">ai/npc-response-format</td></tr>
+  </tbody></table></div>
+</main>
+<aside class="pl-toc hidden xl:block w-56 shrink-0 h-screen sticky top-0 overflow-y-auto py-8 pr-6 text-xs">
+  
+  <div class="opacity-50 mt-6 mb-2 uppercase tracking-wide">Legend</div><div class="flex flex-wrap gap-1"><span class="badge badge-soft badge-info badge-xs">reference (fk)</span> <span class="badge badge-soft badge-secondary badge-xs">contains (nested)</span> <span class="badge badge-soft badge-success badge-xs">indexed / pk</span> <span class="badge badge-soft badge-error badge-xs">required</span> <span class="badge badge-soft badge-warning badge-xs">deprecated</span> <span class="badge badge-soft badge-accent badge-xs">enum</span> <span class="badge badge-soft badge-neutral badge-xs">optional</span></div>
+</aside>
+</div>
+<dialog id="search-modal" class="modal">
+  <div class="modal-box max-w-2xl p-0">
+    <label class="input input-bordered flex items-center gap-2 m-3"><input id="search" type="search" placeholder="search entities, fields, prompts…" class="grow" autofocus><kbd class="kbd kbd-xs">esc</kbd></label>
+    <div id="search-results" class="max-h-96 overflow-y-auto px-3 pb-3 flex flex-col gap-0.5"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+<footer class="pl-footer text-xs opacity-40 px-10 pb-6">generated 2026-01-01 · abc1234 · metadata-docs</footer>
+<script>window.__REL_ROOT__ = "../../";</script>
+<script src="../../assets/site.js"></script>
+</body></html>

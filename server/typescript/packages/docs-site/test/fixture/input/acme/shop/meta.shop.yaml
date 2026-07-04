@@ -1,0 +1,75 @@
+metadata:
+  package: acme::shop
+  children:
+    - object.entity:
+        name: Order
+        "@description": "A customer <order> with \"items\" & totals."
+        extends: acme::common::BaseEntity
+        children:
+          - field.enum: { name: status, extends: acme::common::statusEnum, default: OPEN }
+          - field.int:
+              name: qty
+              default: "1"
+              children:
+                - validator.numeric: { min: 1, max: 99 }
+          - field.string: { name: customerId, maxLength: 36 }
+          - identity.reference: { name: fkCustomer, fields: customerId, references: acme::shop::Customer }
+          - relationship.association: { name: customer, "@objectRef": "acme::shop::Customer", cardinality: one, "@onDelete": cascade }
+          - relationship.association: { name: products, "@objectRef": "acme::shop::Product", cardinality: many, "@through": "acme::shop::OrderProduct" }
+          - index.lookup: { name: idx_order_qty, fields: qty, orders: [desc], where: "(qty > 0)" }
+          - validator.comparison: { left: qty, op: lte, right: "99" }
+          - source.rdb: { table: orders }
+    - object.entity:
+        name: Customer
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: email, required: true, maxLength: 120 }
+          - relationship.association: { name: referrals, "@objectRef": "acme::shop::Customer", cardinality: many, "@through": "acme::shop::CustomerReferral", "@sourceRefField": referrerId }
+          - relationship.association: { name: friends, "@objectRef": "acme::shop::Customer", cardinality: many, "@through": "acme::shop::CustomerFriend", "@symmetric": true }
+          - source.rdb: { table: customers }
+    - object.entity:
+        name: OrphanLog
+        children:
+          - field.string: { name: line }
+    - object.entity:
+        name: Product
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: sku, required: true, maxLength: 40 }
+          - source.rdb: { table: products }
+    - object.entity:
+        name: OrderProduct
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: orderId, maxLength: 36 }
+          - field.string: { name: productId, maxLength: 36 }
+          - identity.reference: { name: fkOrder, fields: orderId, references: acme::shop::Order }
+          - identity.reference: { name: fkProduct, fields: productId, references: acme::shop::Product }
+          - source.rdb: { table: order_products }
+    - object.entity:
+        name: CustomerReferral
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: referrerId, maxLength: 36 }
+          - field.string: { name: referredId, maxLength: 36 }
+          - identity.reference: { name: fkReferrer, fields: referrerId, references: acme::shop::Customer }
+          - identity.reference: { name: fkReferred, fields: referredId, references: acme::shop::Customer }
+          - source.rdb: { table: customer_referrals }
+    - object.entity:
+        name: CustomerFriend
+        extends: acme::common::BaseEntity
+        children:
+          - field.string: { name: friendAId, maxLength: 36 }
+          - field.string: { name: friendBId, maxLength: 36 }
+          - identity.reference: { name: fkFriendA, fields: friendAId, references: acme::shop::Customer }
+          - identity.reference: { name: fkFriendB, fields: friendBId, references: acme::shop::Customer }
+          - source.rdb: { table: customer_friends }
+    - object.projection:
+        name: LineItemView
+        children:
+          - field.string: { name: orderId, "@objectRef": "acme::shop::Order" }
+          - field.string:
+              name: customerName
+              children:
+                - origin.passthrough: { "@from": "acme::shop::Customer.email", "@via": "Order.customer" }
+          - source.rdb: { kind: view, table: v_line_item }

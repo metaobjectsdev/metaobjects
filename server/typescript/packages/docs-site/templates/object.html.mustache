@@ -1,0 +1,46 @@
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li>{{{breadcrumbHtml}}}</li></ul></div>
+<h1 class="text-2xl font-bold font-mono mt-1">{{name}}
+  <span class="badge badge-primary badge-sm align-middle">{{kindBadge}}</span>
+  {{#isView}}<span class="badge badge-info badge-sm align-middle">view</span>{{/isView}}
+  {{#isAbstract}}<span class="badge badge-ghost badge-sm align-middle">abstract</span>{{/isAbstract}}</h1>
+<div class="font-mono text-xs opacity-60 mt-1">
+  {{#tableName}}{{#isView}}view{{/isView}}{{^isView}}table{{/isView}} <code>{{tableName}}</code>{{/tableName}}
+  {{#pkHtml}} · pk {{{pkHtml}}}{{/pkHtml}}{{#generation}} · gen {{generation}}{{/generation}}</div>
+{{#desc}}<section id="s-overview" class="mt-4"><p class="text-sm leading-relaxed">{{desc}}</p></section>{{/desc}}
+
+<section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
+<div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
+{{#ownFields}}<tr id="{{anchor}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}}</td><td class="opacity-60">{{type}}</td><td>{{{badgesHtml}}}</td><td class="text-xs">{{desc}}</td></tr>
+{{#enumValues.length}}<tr><td></td><td colspan="3" class="pl-4">{{#enumValues}}<span class="badge badge-soft badge-accent badge-xs mr-1">{{value}}{{#deflt}} ★{{/deflt}}</span>{{/enumValues}}</td></tr>{{/enumValues.length}}
+{{/ownFields}}
+</tbody></table></div>
+{{#inheritedFields.length}}<div class="collapse collapse-arrow bg-base-100 border border-base-300 mt-2"><input type="checkbox"><div class="collapse-title text-sm font-semibold opacity-70">Inherited fields ({{inheritedFields.length}})</div><div class="collapse-content"><table class="table table-xs opacity-80"><tbody>
+{{#inheritedFields}}<tr id="{{anchor}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}} <span class="text-[10px] opacity-50">↑ <a class="link" href="{{inheritedFrom.href}}">{{inheritedFrom.name}}</a></span></td><td class="opacity-60">{{type}}</td><td>{{{badgesHtml}}}</td></tr>{{/inheritedFields}}
+</tbody></table></div></div>{{/inheritedFields.length}}</section>
+
+{{#indexes.length}}<section id="s-indexes" class="mt-6"><h2 class="text-lg font-semibold">Indexes &amp; keys</h2>
+<table class="table table-xs"><thead><tr><th>Name</th><th>Kind</th><th>Fields</th><th>Detail</th></tr></thead><tbody>
+{{#indexes}}<tr><td class="font-mono">{{name}}</td><td><span class="badge badge-soft {{#unique}}badge-success{{/unique}}{{^unique}}badge-neutral{{/unique}} badge-xs">{{kind}}</span></td><td class="font-mono text-xs">{{fields}}</td><td class="text-xs opacity-70">{{extra}}</td></tr>{{/indexes}}
+</tbody></table></section>{{/indexes.length}}
+
+{{#validators.length}}<section id="s-validators" class="mt-6"><h2 class="text-lg font-semibold">Validators</h2>
+<table class="table table-xs"><tbody>{{#validators}}<tr><td class="font-mono text-xs opacity-70">{{subject}}</td><td class="font-mono text-xs">{{rule}}</td></tr>{{/validators}}</tbody></table></section>{{/validators.length}}
+
+{{#relations.length}}<section id="s-relationships" class="mt-6"><h2 class="text-lg font-semibold">Relationships</h2>
+<table class="table table-xs"><tbody>{{#relations}}<tr><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{cardinality}}</td><td><a class="link font-mono text-xs" href="{{toHref}}">{{toName}}</a></td></tr>{{/relations}}</tbody></table></section>{{/relations.length}}
+
+{{#origins.length}}<section id="s-provenance" class="mt-6"><h2 class="text-lg font-semibold">Field provenance</h2>
+<table class="table table-xs"><thead><tr><th>Field</th><th>From</th><th>Via</th></tr></thead><tbody>{{#origins}}<tr><td class="font-mono">{{field}}</td><td class="font-mono text-xs opacity-70">{{from}}</td><td class="font-mono text-xs opacity-70">{{via}}</td></tr>{{/origins}}</tbody></table></section>{{/origins.length}}
+
+{{#inheritanceMermaid}}<section id="s-inheritance" class="mt-6"><h2 class="text-lg font-semibold">Inheritance</h2>
+<div class="card bg-base-100 border border-base-300 p-2 pl-diagram"><pre class="mermaid">{{inheritanceMermaid}}</pre></div></section>{{/inheritanceMermaid}}
+
+{{#neighborhoodMermaid}}<section id="s-neighborhood" class="mt-6"><h2 class="text-lg font-semibold">Neighborhood</h2>
+<div class="card bg-base-100 border border-base-300 p-2 pl-diagram"><pre class="mermaid">{{neighborhoodMermaid}}</pre></div>
+{{#neighborhoodLegend.length}}<div class="flex flex-wrap gap-1 mt-2 text-xs">{{#neighborhoodLegend}}<span class="badge badge-xs" style="background:{{fill}};border-color:{{stroke}};color:#cbd5e1">{{pkg}}</span>{{/neighborhoodLegend}}</div>{{/neighborhoodLegend.length}}
+<div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
+{{#neighborhoodMore}}<div class="text-xs opacity-50 mt-1">+{{neighborhoodMore}} more neighbor(s) — see <a class="link" href="#s-referenced-by">Referenced by</a>.</div>{{/neighborhoodMore}}</section>{{/neighborhoodMermaid}}
+
+{{#referencedBy.length}}<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> {{#referencedBy}}<a class="link font-mono text-xs" href="{{href}}" title="{{via}}">{{name}}</a> {{/referencedBy}}</section>{{/referencedBy.length}}
+{{#usedByTemplates.length}}<div class="text-sm mt-1"><span class="opacity-50">used by templates</span> {{#usedByTemplates}}<a class="link font-mono text-xs" href="{{href}}">{{name}}</a> {{/usedByTemplates}}</div>{{/usedByTemplates.length}}
+<div class="text-[10px] opacity-40 mt-6 font-mono">{{sourceFile}}</div>

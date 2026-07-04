@@ -1,0 +1,14 @@
+metadata:
+  package: acme::common
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.string: { name: id, required: true, maxLength: 36, dbColumnType: uuid }
+          - field.timestamp: { name: createdAt }
+          - identity.primary: { name: id, fields: id, generation: uuid }
+    - field.enum:
+        name: statusEnum
+        abstract: true
+        values: [OPEN, CLOSED]

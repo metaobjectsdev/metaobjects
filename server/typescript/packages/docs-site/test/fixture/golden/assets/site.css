@@ -1,0 +1,13 @@
+.pl-mu { background:#0b1220; color:#cbd5e1; font-family:ui-monospace,monospace; font-size:.78rem; line-height:1.55; padding:1rem; border-radius:.5rem; overflow-x:auto; white-space:pre; }
+.mu-sec { color:#f472b6; font-weight:600; } .mu-var { color:#7dd3fc; } .mu-raw { color:#fbbf24; }
+.mu-par { color:#4ade80; } .mu-com { color:#64748b; font-style:italic; }
+.mu-unresolved { text-decoration: underline dotted #ef4444; }
+/* diagrams fit the container WIDTH (mermaid useMaxWidth), and the box scrolls if a diagram is tall.
+   Native scroll = mobile-friendly; caps runaway height so a diagram never dominates the page. */
+.pl-diagram { max-height: min(72vh, 560px); overflow: auto; border-radius: .5rem; }
+.pl-diagram pre.mermaid { margin: 0; }
+.pl-diagram svg { width: 100%; height: auto; max-width: none; display: block; }
+.pl-toc a { display:block; opacity:.6; border-left:2px solid transparent; padding-left:.5rem; }
+.pl-toc a:hover, .pl-toc a.active { opacity:1; border-left-color:#60a5fa; }
+section[id] { scroll-margin-top:1rem; }
+@media print { .pl-sidebar, .pl-toc { display:none } }

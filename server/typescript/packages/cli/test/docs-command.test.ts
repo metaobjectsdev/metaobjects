@@ -385,3 +385,102 @@ describe("meta docs — standalone neutral metadata docs", () => {
     expect(code).toBe(2); // arg parse error
   });
 });
+
+describe("meta docs --site — HTML documentation site", () => {
+  test("emits a browsable site under <out>/site and SUPPRESSES markdown when --site is the only surface", async () => {
+    const root = await project();
+    const out = join(root, "out-site-only");
+
+    const code = await docsCommand([root, "--site", "--out", out], root);
+    expect(code).toBe(0);
+
+    // The site lands under <out>/site with its chrome + assets.
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+    expect(existsSync(join(out, "site", "assets", "site.css"))).toBe(true);
+    expect(existsSync(join(out, "site", "assets", "site.js"))).toBe(true);
+
+    // --site alone is NOT additive-with-markdown: no markdown pages at the root.
+    const rootEntries = (await readdir(out)).sort();
+    expect(rootEntries).toContain("site");
+    expect(rootEntries).not.toContain("Welcome.md");
+    expect(rootEntries).not.toContain("README.md");
+
+    // Summary line names the site surface + destination.
+    const summary = logged.join("\n");
+    expect(summary).toMatch(/meta docs --site — wrote \d+ page/);
+    expect(summary).toContain(join(out, "site"));
+  });
+
+  test("--site is ADDITIVE with --model: emits BOTH the markdown pages and the site", async () => {
+    const root = await project();
+    const out = join(root, "out-site-model");
+
+    const code = await docsCommand([root, "--site", "--model", "--out", out], root);
+    expect(code).toBe(0);
+
+    // Markdown surface still emits at the root...
+    expect(existsSync(join(out, "Welcome.md"))).toBe(true);
+    expect(existsSync(join(out, "README.md"))).toBe(true);
+    // ...alongside the site under <out>/site.
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+  });
+
+  test("site output is deterministic across regenerations (byte-identical index.html)", async () => {
+    const root = await project();
+    const out1 = join(root, "out-site-det-1");
+    const out2 = join(root, "out-site-det-2");
+
+    expect(await docsCommand([root, "--site", "--out", out1], root)).toBe(0);
+    expect(await docsCommand([root, "--site", "--out", out2], root)).toBe(0);
+
+    const a = await readFile(join(out1, "site", "index.html"), "utf8");
+    const b = await readFile(join(out2, "site", "index.html"), "utf8");
+    expect(a).toBe(b);
+  });
+});
+
+describe("meta docs --scaffold-site — own your theme", () => {
+  test("scaffolds the 9 templates + 2 assets into codegen/docs-site, preserving existing", async () => {
+    const root = await project();
+    // pre-place one edited template to prove it is preserved (not clobbered)
+    await mkdir(join(root, "codegen/docs-site/templates"), { recursive: true });
+    await writeFile(join(root, "codegen/docs-site/templates/chrome-head.mustache"), "OWNED HEAD", "utf8");
+
+    const code = await docsCommand([root, "--scaffold-site"], root);
+    expect(code).toBe(0);
+
+    // all 9 templates + 2 assets exist
+    for (const n of ["chrome-head.mustache", "coverage.html.mustache", "object.html.mustache"]) {
+      expect(existsSync(join(root, "codegen/docs-site/templates", n))).toBe(true);
+    }
+    expect(existsSync(join(root, "codegen/docs-site/assets/site.css"))).toBe(true);
+    expect(existsSync(join(root, "codegen/docs-site/assets/site.js"))).toBe(true);
+    // the pre-existing edited template is PRESERVED (not overwritten)
+    expect(await readFile(join(root, "codegen/docs-site/templates/chrome-head.mustache"), "utf8")).toBe("OWNED HEAD");
+    // summary reports created + preserved
+    expect(logged.join("\n")).toMatch(/scaffold-site/);
+  });
+
+  test("--site auto-detects owned templates: an edited template wins in the output", async () => {
+    const root = await project();
+    await docsCommand([root, "--scaffold-site"], root);
+    // edit the scaffolded index template with a unique marker
+    const tpl = join(root, "codegen/docs-site/templates/index.html.mustache");
+    const orig = await readFile(tpl, "utf8");
+    await writeFile(tpl, orig + "\n<!-- OWNED-TEMPLATE-MARKER -->", "utf8");
+
+    const out = join(root, "out-owned");
+    const code = await docsCommand([root, "--site", "--out", out], root);
+    expect(code).toBe(0);
+    expect(await readFile(join(out, "site/index.html"), "utf8")).toContain("OWNED-TEMPLATE-MARKER");
+  });
+
+  test("--site auto-detects owned assets: an edited site.css wins in the output", async () => {
+    const root = await project();
+    await docsCommand([root, "--scaffold-site"], root);
+    await writeFile(join(root, "codegen/docs-site/assets/site.css"), "/* OWNED-ASSET-MARKER */", "utf8");
+    const out = join(root, "out-owned-asset");
+    expect(await docsCommand([root, "--site", "--out", out], root)).toBe(0);
+    expect(await readFile(join(out, "site/assets/site.css"), "utf8")).toBe("/* OWNED-ASSET-MARKER */");
+  });
+});

@@ -36,7 +36,7 @@ previous version" (a sed/grep over `*/package.json`):
 | Tier | Packages |
 |---|---|
 | 0 | `metadata`, `render` |
-| 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `runtime-web` |
+| 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `runtime-web`, `docs-site` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |
 | 4 | `cli`, `ai-runtime` (leaves — nothing depends on them; publish last) |

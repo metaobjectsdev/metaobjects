@@ -19,7 +19,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from metaobjects/ entities
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
-  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages)
+  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -142,6 +142,11 @@ USAGE:
 FLAGS:
   <metadata>            Project root holding metaobjects/ (default: current directory)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
+  --model               Emit the markdown model surface (entity + template pages)
+  --api                 Emit the markdown api surface (generated SDK reference)
+  --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
+  --site                Generate the browsable HTML documentation site (<out>/site/)
+  --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --help, -h            Print this help
 `,

@@ -1,0 +1,28 @@
+<div class="text-xs breadcrumbs font-mono opacity-70"><ul><li>{{{breadcrumbHtml}}}</li></ul></div>
+<h1 class="text-2xl font-bold font-mono mt-1">{{name}} <span class="badge badge-secondary badge-sm align-middle">prompt</span></h1>
+<div class="flex flex-wrap gap-1 mt-2">{{{attrsHtml}}}</div>
+{{#payloadName}}<div class="text-sm mt-2 opacity-70">payload: <a class="link font-mono" href="{{payloadHref}}">{{payloadName}}</a></div>{{/payloadName}}
+{{#desc}}<p class="text-sm mb-3">{{desc}}</p>{{/desc}}
+{{#payloadTree.length}}
+<section id="s-payload" class="mt-6"><h2 class="text-lg font-semibold">Payload tree</h2>
+<div class="overflow-x-auto"><table class="table table-xs">
+  <thead><tr><th>Field</th><th>Type</th><th>Ref</th><th>Description</th></tr></thead><tbody>
+  {{#payloadTree}}<tr id="{{anchor}}" class="pl-indent-{{indent}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}}</td><td class="opacity-60">{{type}}</td><td>{{{refHtml}}}</td><td class="text-xs opacity-70">{{desc}}</td></tr>{{/payloadTree}}
+  </tbody></table></div>
+</section>
+{{/payloadTree.length}}
+{{#sourceHtml}}
+<section id="s-source" class="mt-6"><h2 class="text-lg font-semibold">Source</h2>
+<pre class="pl-mu">{{{sourceHtml}}}</pre>
+</section>
+{{/sourceHtml}}
+{{#sourceMissingNote}}<div class="alert alert-warning text-sm mt-4">{{sourceMissingNote}}</div>{{/sourceMissingNote}}
+{{#packageFiles.length}}
+<h2 class="text-lg font-semibold mt-6">Other files in package</h2>
+{{#packageFiles}}
+<details class="mt-2">
+  <summary class="cursor-pointer font-mono text-sm opacity-70">{{file}}</summary>
+  <pre class="pl-mu mt-1">{{{html}}}</pre>
+</details>
+{{/packageFiles}}
+{{/packageFiles.length}}
