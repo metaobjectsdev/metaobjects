@@ -28,6 +28,11 @@
 #                                    #            completeness-gate, integration-tests ts
 #                                    #   java   → java+kotlin conformance, reactor,
 #                                    #            integration-tests java+kotlin
+#                                    #   java-fast → java+kotlin conformance only
+#                                    #            (the quick correctness signal)
+#                                    #   java-slow → reactor + integration-tests
+#                                    #            (java+kotlin); CI runs the two
+#                                    #            lanes as separate parallel jobs
 #                                    #   python → python conformance + integration-tests
 #                                    #   csharp → csharp conformance + integration-tests
 #   scripts/ci-local.sh --strict-toolchains
@@ -59,8 +64,8 @@ while [ $# -gt 0 ]; do
     --quick) QUICK=1 ;;
     --strict-toolchains) STRICT=1 ;;
     --only) shift; case "${1:-}" in
-        gates|ts|java|python|csharp) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|ts|java|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+        gates|ts|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|ts|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -72,6 +77,9 @@ done
 want() { # want <section> — true when the section should run
   [ -z "$ONLY" ] && return 0
   case " $ONLY " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+want_any() { # want_any <section...> — true when ANY listed section should run
+  local s; for s in "$@"; do want "$s" && return 0; done; return 1
 }
 
 PASS=(); FAIL=(); SKIP=()
@@ -158,7 +166,11 @@ gate_conf_kotlin() {
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────
-gate_java_reactor() { ( cd server/java && mvn -q clean install ); }
+# JaCoCo is skipped here: its coverage gate is haltOnFailure=false (pom.xml), so it
+# never fails the build — it is pure instrumentation overhead for a pass/fail CI
+# signal. `clean` stays: self-hosted workspaces persist and actions/checkout wipes
+# only git-tracked state, so a stale target/ can otherwise leak between runs.
+gate_java_reactor() { ( cd server/java && mvn -q clean install -Djacoco.skip=true ); }
 gate_completeness() { ( cd server/typescript/packages/metadata && bun run conformance:mutation ); }
 gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
@@ -230,13 +242,19 @@ if [ "$QUICK" -eq 1 ]; then
   SKIP+=("integration-tests (--quick)")
 else
   # Heavy tier — other-language ports + full reactor + docker integration suite.
-  if want csharp; then step_if dotnet "conformance: csharp"          gate_conf_csharp;   fi
-  if want java;   then step_if mvn "conformance: java"               gate_conf_java;     fi
-  if want python; then step_if uv "conformance: python"              gate_conf_python;   fi
-  if want java;   then
-    step_if mvn "conformance: kotlin"            gate_conf_kotlin
-    step_if mvn "java-reactor (clean install)"   gate_java_reactor
-  fi
+  #
+  # The Java port is split into two lanes so CI can run them as separate jobs
+  # (see .github/workflows/local-ci.yml): a FAST lane (java+kotlin conformance,
+  # ~2-3m — the correctness signal) and a SLOW lane (full reactor + docker
+  # integration). Running them as parallel jobs surfaces the conformance verdict
+  # quickly and means a cancel/OOM mid-integration no longer kills the fast
+  # signal. `--only java` (local, unqualified) still runs BOTH lanes, in order,
+  # so a plain local run is byte-equivalent to before.
+  if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
+  if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
+  if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
+  if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
+  if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
   # Docker integration — full suite when no --only, per-port otherwise.
   if [ -z "$ONLY" ]; then
     if docker info >/dev/null 2>&1; then
@@ -246,10 +264,10 @@ else
       FAIL+=("integration-tests (docker down)")
     fi
   else
-    want ts     && run_integration_for ts     ts
-    want java   && run_integration_for java   java kotlin
-    want python && run_integration_for python python
-    want csharp && run_integration_for csharp csharp
+    want ts                    && run_integration_for ts     ts
+    want_any java java-slow    && run_integration_for java   java kotlin
+    want python                && run_integration_for python python
+    want csharp                && run_integration_for csharp csharp
   fi
 fi
 
