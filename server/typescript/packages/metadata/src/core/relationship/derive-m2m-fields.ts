@@ -66,7 +66,14 @@ export function deriveM2MFields(
       `relationship "${source.name}.${rel.name}" is missing @through (required for M:N derivation)`,
     );
   }
-  const junction = root.findObject(throughName);
+  // @through may be package-qualified (FQN); findObject is keyed by bare name,
+  // so fall back to the bare suffix after the last "::". Mirrors the
+  // resolvedTargetPkField fix (meta-identity.ts); without it a FQN @through
+  // (which passes the loader's own FQN-aware validation) fails to resolve here.
+  const junction = root.findObject(throughName)
+    ?? (throughName.includes("::")
+      ? root.findObject(throughName.slice(throughName.lastIndexOf("::") + 2))
+      : undefined);
   if (junction === undefined) {
     throw new M2MDerivationError(
       `relationship "${source.name}.${rel.name}" @through "${throughName}" does not resolve to an entity`,

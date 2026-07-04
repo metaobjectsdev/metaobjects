@@ -123,6 +123,38 @@ describe("FR-017 deriveM2MFields", () => {
     expect(derived.targetField).toBe("tagId");
   });
 
+  // Regression: @through is written FULLY-QUALIFIED (package::name), same as
+  // the loader's own FQN-aware validation accepts (refMatchesObject). Before
+  // the fix, deriveM2MFields resolved the junction via the bare-name-only
+  // root.findObject and threw M2MDerivationError for every FQN @through, even
+  // though the model loads cleanly. Mirrors resolvedTargetPkField's FQN
+  // fallback (meta-identity.ts).
+  test("hetero with a fully-qualified @through resolves the junction (not just a bare name)", async () => {
+    const { root, errors } = await loadDoc({ "metadata.root": { package: "acme::shop", children: [
+      { "object.entity": { name: "Post", children: [
+        { "field.long": { name: "id" } },
+        { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "acme::shop::Tag", "@through": "acme::shop::PostTag" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Tag", children: [
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "PostTag", children: [
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "postId" } },
+        { "field.long": { name: "tagId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "postRef", "@fields": ["postId"], "@references": "acme::shop::Post" } },
+        { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "acme::shop::Tag" } } ] } },
+    ] } });
+    expect(errors).toHaveLength(0);
+    const post = findObj(root, "Post");
+    const rel = post.ownRelationships()[0] as MetaRelationship;
+    expect(rel.through).toBe("acme::shop::PostTag");
+    const derived = deriveM2MFields(rel, post, root);
+    expect(derived.sourceField).toBe("postId");
+    expect(derived.targetField).toBe("tagId");
+  });
+
   test("directed self-join: @sourceRefField names the source side; the other ref is the target", async () => {
     const { root } = await loadDoc({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "User", children: [
