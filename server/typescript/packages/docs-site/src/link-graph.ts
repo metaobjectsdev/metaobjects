@@ -52,9 +52,21 @@ export class LinkGraph {
       const cand = raw.includes("::") ? raw : `${ctxPkg}::${raw}`;
       return this._nodes.has(cand) ? cand : (this._nodes.has(raw) ? raw : undefined);
     };
-    // TEMP stub — replaced in Task 3. For now, emit a plain (un-derived) M:N edge.
-    const addM2mEdge = (from: string, to: string, rel: MetaRelationship, _obj: MetaObject, _pkg: string, onDelete: string | undefined, subtype: string | undefined): void => {
-      addRef({ from, to, via: rel.name, kind: "relationship", cardinality: "many", through: rel.through, symmetric: rel.symmetric, onDelete, subtype });
+    // M:N through-junction edge. Derives the junction FK fields via the metadata
+    // SSOT (deriveM2MFields) — hetero, directed (@sourceRefField), or symmetric
+    // (@symmetric). On a derivation failure (ambiguous self-join) the edge is
+    // SKIPPED — generation never fails.
+    const addM2mEdge = (from: string, to: string, rel: MetaRelationship, obj: MetaObject, ctxPkg: string, onDelete: string | undefined, subtype: string | undefined): void => {
+      const through = rel.through ? (resolveRef(rel.through, ctxPkg) ?? rel.through) : undefined;
+      let sourceJoinField: string | undefined, targetJoinField: string | undefined;
+      try {
+        const f = deriveM2MFields(rel, obj, model.root);
+        sourceJoinField = f.sourceField;
+        targetJoinField = f.targetField;
+      } catch {
+        return;  // ambiguous junction — skip the logical edge (the two FK edges still show)
+      }
+      addRef({ from, to, via: rel.name, kind: "relationship", cardinality: "many", through, sourceJoinField, targetJoinField, symmetric: rel.symmetric, onDelete, subtype });
     };
     for (const dn of this._nodes.values()) {
       const fqn = fqnOf(dn.node);

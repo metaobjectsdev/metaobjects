@@ -47,3 +47,38 @@ test("belongs-to relationship edge carries cardinality/onDelete/subtype and supe
   expect(rel.subtype).toBe("association");
   expect(rel.via).toBe("customer");
 });
+
+test("M:N through-junction edge carries the derived join fields (hetero)", async () => {
+  const model = await loadModel([join(FIX, "acme")]);
+  const g = new LinkGraph(model);
+  const e = g.refsFrom("acme::shop::Order").find((r) => r.to === "acme::shop::Product");
+  expect(e).toBeDefined();
+  expect(e!.kind).toBe("relationship");
+  expect(e!.cardinality).toBe("many");
+  expect(e!.through).toBe("acme::shop::OrderProduct");
+  expect(e!.sourceJoinField).toBe("orderId");
+  expect(e!.targetJoinField).toBe("productId");
+  // the junction is still its own node with its two FK edges (neither covered by a relationship)
+  expect(g.refsFrom("acme::shop::OrderProduct").filter((r) => r.kind === "fk").map((r) => r.to).sort())
+    .toEqual(["acme::shop::Order", "acme::shop::Product"]);
+});
+
+test("directed self-join (@sourceRefField) resolves source/target join fields", async () => {
+  const model = await loadModel([join(FIX, "acme")]);
+  const g = new LinkGraph(model);
+  const e = g.refsFrom("acme::shop::Customer").find((r) => r.to === "acme::shop::Customer" && r.via === "referrals");
+  expect(e).toBeDefined();
+  expect(e!.through).toBe("acme::shop::CustomerReferral");
+  expect(e!.sourceJoinField).toBe("referrerId");
+  expect(e!.targetJoinField).toBe("referredId");
+  expect(e!.symmetric).toBeFalsy();
+});
+
+test("symmetric self-join (@symmetric) is flagged symmetric", async () => {
+  const model = await loadModel([join(FIX, "acme")]);
+  const g = new LinkGraph(model);
+  const e = g.refsFrom("acme::shop::Customer").find((r) => r.to === "acme::shop::Customer" && r.via === "friends");
+  expect(e).toBeDefined();
+  expect(e!.through).toBe("acme::shop::CustomerFriend");
+  expect(e!.symmetric).toBe(true);
+});
