@@ -31,6 +31,8 @@ export interface SiteOptions {
   core?: CoreConfig;
   /** Override dir; if a file of the same basename exists here, it wins over the bundled templates/ dir. */
   templatesDir?: string;
+  /** Override dir for assets; if a file of the same basename exists here, it wins over the bundled assets/ dir. */
+  assetsDir?: string | undefined;
 }
 
 export interface SiteResult {
@@ -66,6 +68,16 @@ function loadTemplate(name: string, overrideDir?: string): string {
     if (existsSync(candidate)) return readFileSync(candidate, "utf8");
   }
   return readFileSync(join(BUNDLED_TEMPLATES, name), "utf8");
+}
+
+const BUNDLED_ASSETS = resolve(import.meta.dir, "../assets");
+
+function loadAsset(name: string, overrideDir?: string): string {
+  if (overrideDir) {
+    const candidate = join(overrideDir, name);
+    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
+  }
+  return readFileSync(join(BUNDLED_ASSETS, name), "utf8");
 }
 
 // ─── Nav HTML ─────────────────────────────────────────────────────────────────
@@ -258,10 +270,9 @@ export async function generateSite(opts: SiteOptions): Promise<SiteResult> {
   };
   renderPage("coverage.html.mustache", "coverage.html", coverageData as Record<string, unknown>);
 
-  // 10. Write assets
-  const assetsDir = resolve(import.meta.dir, "../assets");
-  writeOut(opts.outDir, "assets/site.css", readFileSync(join(assetsDir, "site.css"), "utf8"));
-  writeOut(opts.outDir, "assets/site.js", readFileSync(join(assetsDir, "site.js"), "utf8"));
+  // 10. Write assets (consumer assetsDir wins over the bundled dir)
+  writeOut(opts.outDir, "assets/site.css", loadAsset("site.css", opts.assetsDir));
+  writeOut(opts.outDir, "assets/site.js", loadAsset("site.js", opts.assetsDir));
 
   // 11. Search index
   const searchIndex = buildSearchIndex(g);
