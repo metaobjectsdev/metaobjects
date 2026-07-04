@@ -260,7 +260,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(metaRoot, outDir, flags);
+    return emitSite(metaRoot, outDir);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -427,7 +427,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(metaRoot, outDir, flags);
+    const siteRc = await emitSite(metaRoot, outDir);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -496,7 +496,7 @@ async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
  * templates/assets into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`),
  * those win over the bundled defaults.
  */
-async function emitSite(metaRoot: string, outDir: string, flags: DocsFlags): Promise<number> {
+async function emitSite(metaRoot: string, outDir: string): Promise<number> {
   const siteOutDir = resolvePath(outDir, "site");
   const sourceDirs = [join(metaRoot, DEFAULT_METADATA_DIR)];
   // Scaffold-and-own: when the consumer has copied templates/assets into
