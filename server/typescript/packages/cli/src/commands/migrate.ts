@@ -509,18 +509,27 @@ export async function runBaseline(
     }
   } else {
     let metadata;
-    try {
-      metadata = await loadMemory(metaRoot);
-    } catch (err) {
-      log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
-      return 2;
-    }
+    // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers
+    // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
+    // offline baseline resolves config-registered custom subtypes too (#157).
+    let baselineConfigProviders:
+      | readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[]
+      | undefined;
     let baselineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
       const cfg = await loadMetaobjectsConfig(metaRoot);
+      baselineConfigProviders = cfg.providers;
       if (cfg.columnNamingStrategy) baselineStrategy = cfg.columnNamingStrategy;
     } catch {
-      // config absent — default snake_case
+      // config absent — no custom providers, default snake_case
+    }
+    try {
+      metadata = await loadMemory(metaRoot, {
+        ...(baselineConfigProviders !== undefined ? { providers: baselineConfigProviders } : {}),
+      });
+    } catch (err) {
+      log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
+      return 2;
     }
     const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: baselineStrategy });
     snapshot = baselineFromMetadata(metadata, config.dialect, baselineStrategy, baselineViews);
@@ -553,9 +562,26 @@ export async function runOfflineGenerate(
     log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
     return 2;
   }
+  // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers
+  // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
+  // offline generate resolves config-registered custom subtypes too (#157).
+  let offlineConfigProviders:
+    | readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[]
+    | undefined;
+  let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
+  try {
+    const cfg = await loadMetaobjectsConfig(metaRoot);
+    offlineConfigProviders = cfg.providers;
+    if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
+  } catch {
+    // config absent — no custom providers, default snake_case
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot);
+    metadata = await loadMemory(metaRoot, {
+      ...(offlineConfigProviders !== undefined ? { providers: offlineConfigProviders } : {}),
+    });
   } catch (err) {
     log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
     return 2;
@@ -584,13 +610,6 @@ export async function runOfflineGenerate(
   const collectedAmbiguous: AmbiguousChange[] = [];
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
-  let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
-  try {
-    const cfg = await loadMetaobjectsConfig(metaRoot);
-    if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
-  } catch {
-    // config absent — default snake_case
-  }
   const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
 
   let plan;
