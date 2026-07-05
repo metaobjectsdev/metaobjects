@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "xpkg::sales",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "customer",
+                "@cardinality": "one",
+                "@objectRef": "Customer"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

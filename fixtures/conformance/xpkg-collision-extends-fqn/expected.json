@@ -1,0 +1,70 @@
+{
+  "metadata.root": {
+    "package": "xpkg::a",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "aOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "bOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "xpkg::b::Base",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "widgets"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

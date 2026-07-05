@@ -107,6 +107,7 @@ from ..meta.core.object.object_constants import (
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP
 from ..source import resolved_source
+from ..naming_refs import CHILD_REF_SEP, REF_BEARING_ATTR_NAMES, resolve_object_ref
 
 # A subtype-specific template attr is valid ONLY on the subtype it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
@@ -179,6 +180,8 @@ def run_validations(
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
     _validate_templates(root, errors)
+    # ADR-0041 — cross-package bare-reference ambiguity (the object-ref contract).
+    _validate_cross_package_refs(root, errors)
     _validate_subtype_rules(root, errors, warnings)
     # FR-024 B3 — projection identity pass-through + key correspondence.
     _validate_identity_passthrough(root, errors)
@@ -206,6 +209,68 @@ def _walk(root: MetaData) -> list[MetaData]:
         result.append(node)
         queue.extend(node.own_children())
     return result
+
+
+# ---------------------------------------------------------------------------
+# Pass: cross-package reference ambiguity (the object-ref contract, ADR-0041)
+# ---------------------------------------------------------------------------
+
+
+def _validate_cross_package_refs(root: MetaData, errors: list[MetaError]) -> None:
+    """ADR-0041 — a BARE object reference (no ``::``) that names an object present
+    in MORE THAN ONE package, with NO match in the referrer's own package, is
+    ambiguous → ERR_AMBIGUOUS_REF (the author must qualify it with the package).
+
+    An FQN ref is exact (never ambiguous); a bare ref matching the referrer's own
+    package, or exactly one package anywhere, resolves fine. Covers every
+    object-ref-bearing attr in ``REF_BEARING_ATTR_NAMES`` (@objectRef / @references
+    / @from / @of / @via / @parameterRef / @payloadRef / @responseRef) — the dotted
+    ``.child`` tail of the origin heads is stripped to the entity OWNER. ``extends``
+    is intentionally NOT covered: its same-package/root-strict super-resolver never
+    matches a packaged object by bare name, so a bare cross-package ``extends`` is
+    unresolved (ERR_UNRESOLVED_SUPER), not ambiguous. Mirrors the TS reference
+    ``validateCrossPackageRefs``.
+    """
+
+    def _visit(node: MetaData, obj: MetaData, referrer_pkg: str) -> None:
+        for attr_name in REF_BEARING_ATTR_NAMES:
+            # ADR-0039 sanctioned own: judge the ref AUTHORED on THIS node; an
+            # inherited ref was judged on its declaring node. Mirrors the TS
+            # `node.ownAttr(attrName)`.
+            raw = node.attr(attr_name)
+            if not isinstance(raw, str):
+                continue
+            # Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
+            # owner (has `::`) is resolved exactly and can never be ambiguous.
+            dot = raw.find(CHILD_REF_SEP)
+            owner = raw if dot == -1 else raw[:dot]
+            if PACKAGE_SEP in owner or owner == "":
+                continue
+            if not resolve_object_ref(root, owner, referrer_pkg).ambiguous:
+                continue
+            pkgs = [
+                c.resolution_key()
+                for c in root.children()
+                if c.type == TYPE_OBJECT and c.name == owner
+            ]
+            errors.append(
+                MetaError(
+                    f'@{attr_name} "{raw}" on {obj.fqn()}: bare reference "{owner}" '
+                    f"is ambiguous — it names an object in multiple packages "
+                    f"({', '.join(pkgs)}) and none is in the referrer's package "
+                    f'"{referrer_pkg}". Qualify it with the package (FQN).',
+                    ErrorCode.ERR_AMBIGUOUS_REF,
+                    envelope=resolved_source(node.source, obj.fqn(), owner),
+                )
+            )
+        for c in node.own_children():
+            _visit(c, obj, referrer_pkg)
+
+    for obj in root.children():
+        if obj.type != TYPE_OBJECT:
+            continue
+        referrer_pkg = obj.package or obj.file_default_package or ""
+        _visit(obj, obj, referrer_pkg)
 
 
 # ---------------------------------------------------------------------------

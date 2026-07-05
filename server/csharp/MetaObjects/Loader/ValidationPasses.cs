@@ -494,6 +494,121 @@ public static class ValidationPasses
         || node.Fqn() == reference
         || node.Name == reference;
 
+    // =========================================================================
+    // ADR-0041 — cross-package OBJECT reference resolution + ambiguity pass.
+    //   Ported from typescript/packages/metadata/src/naming-refs.ts
+    //   (resolveObjectRef) + loader/validation-passes.ts (validateCrossPackageRefs).
+    // =========================================================================
+
+    /// <summary>The inline (bare) attribute names whose VALUE names another OBJECT and is
+    /// therefore subject to the ADR-0041 cross-package resolution contract. Mirrors TS
+    /// <c>REF_BEARING_ATTR_NAMES</c>. <c>extends</c> is intentionally absent — its super-
+    /// resolver is same-package/root-strict (a bare cross-package extends is
+    /// ERR_UNRESOLVED_SUPER, not ambiguous). Attrs are keyed bare (no <c>@</c>) on the node.</summary>
+    private static readonly IReadOnlyList<string> RefBearingAttrNames = new[]
+    {
+        RELATIONSHIP_ATTR_OBJECT_REF,          // = FIELD_ATTR_OBJECT_REF ("objectRef")
+        IDENTITY_REFERENCE_ATTR_REFERENCES,    // "references"
+        ORIGIN_PASSTHROUGH_ATTR_FROM,          // "from"
+        ORIGIN_PASSTHROUGH_ATTR_VIA,           // = ORIGIN_AGGREGATE_ATTR_VIA ("via")
+        ORIGIN_AGGREGATE_ATTR_OF,              // "of"
+        SOURCE_ATTR_PARAMETER_REF,             // "parameterRef"
+        TEMPLATE_ATTR_PAYLOAD_REF,             // "payloadRef"
+        TEMPLATE_ATTR_RESPONSE_REF,            // "responseRef"
+    };
+
+    /// <summary>The effective package of a root-level object (its <see cref="MetaData.ResolutionKey"/>
+    /// minus the trailing <c>::&lt;name&gt;</c>; "" for a root-level/empty-package object).
+    /// Mirrors TS <c>objectPackage</c>.</summary>
+    private static string ObjectPackage(MetaData node)
+    {
+        string key = node.ResolutionKey();
+        int i = key.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        return i == -1 ? "" : key[..i];
+    }
+
+    /// <summary>Outcome of <see cref="ResolveObjectRef"/>: the uniquely resolved object
+    /// (<see cref="Node"/>) or a cross-package-ambiguous bare ref (<see cref="Ambiguous"/>).</summary>
+    private readonly record struct ObjectRefResolution(MetaData? Node, bool Ambiguous);
+
+    /// <summary>
+    /// Resolve a metadata OBJECT reference under the ADR-0041 cross-package contract:
+    ///   - <b>FQN</b> (<paramref name="reference"/> contains <c>::</c>) → EXACT match on
+    ///     ResolutionKey()/Fqn(); never a bare-tail fallback, so an FQN pointing at one
+    ///     package never binds a same-named object in another.
+    ///   - <b>bare</b> (no <c>::</c>) → prefer an object of that name in the REFERRER's own
+    ///     package; else a UNIQUE object of that name anywhere; else (&gt;1 across OTHER
+    ///     packages, none in the referrer's) → ambiguous.
+    /// Mirrors TS <c>resolveObjectRef(root, ref, referrerPkg)</c>.
+    /// </summary>
+    private static ObjectRefResolution ResolveObjectRef(MetaData root, string reference, string referrerPkg)
+    {
+        var objects = root.Children().Where(c => c.Type == TYPE_OBJECT).ToList();
+        if (reference.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+        {
+            return new ObjectRefResolution(
+                objects.FirstOrDefault(c => c.ResolutionKey() == reference || c.Fqn() == reference),
+                false);
+        }
+        var matches = objects.Where(c => c.Name == reference).ToList();
+        if (matches.Count <= 1) return new ObjectRefResolution(matches.Count == 1 ? matches[0] : null, false);
+        var own = matches.FirstOrDefault(c => ObjectPackage(c) == referrerPkg);
+        if (own is not null) return new ObjectRefResolution(own, false);
+        return new ObjectRefResolution(null, true);
+    }
+
+    /// <summary>
+    /// ADR-0041 — a BARE object reference (no <c>::</c>) that names an object present in
+    /// MORE THAN ONE package, with NO match in the referrer's own package, is ambiguous →
+    /// ERR_AMBIGUOUS_REF (the author must qualify it with the package). An FQN ref is exact
+    /// (never ambiguous); a bare ref matching the referrer's own package, or unique anywhere,
+    /// resolves fine. Covers every object-ref-bearing attr in <see cref="RefBearingAttrNames"/>
+    /// — the dotted <c>.child</c> tail of the origin heads is stripped to the entity OWNER.
+    /// <c>extends</c> is intentionally NOT covered (see <see cref="RefBearingAttrNames"/>).
+    /// Mirrors TS <c>validateCrossPackageRefs</c>.
+    /// </summary>
+    public static IReadOnlyList<MetaError> ValidateCrossPackageRefs(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Referrer package = the object's own package, else its file-default —
+            // ObjectPackage(obj) folds both (ResolutionKey minus ::name), matching
+            // TS `obj.package ?? obj.fileDefaultPackage ?? ""`.
+            string referrerPkg = ObjectPackage(obj);
+            VisitCrossPackageRefs(obj, obj, root, referrerPkg, errors);
+        }
+        return errors.AsReadOnly();
+    }
+
+    private static void VisitCrossPackageRefs(
+        MetaData node, MetaData obj, MetaData root, string referrerPkg, List<MetaError> errors)
+    {
+        foreach (var attrName in RefBearingAttrNames)
+        {
+            if (node.OwnAttr(attrName) is not string raw) continue;
+            // Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
+            // owner (has `::`) is resolved exactly and can never be ambiguous.
+            int dot = raw.IndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
+            string owner = dot == -1 ? raw : raw[..dot];
+            if (owner.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal) || owner == "") continue;
+            if (!ResolveObjectRef(root, owner, referrerPkg).Ambiguous) continue;
+            var pkgs = root.Children()
+                .Where(c => c.Type == TYPE_OBJECT && c.Name == owner)
+                .Select(c => c.ResolutionKey());
+            errors.Add(new MetaError(
+                $"{attrName} \"{raw}\" on {obj.Fqn()}: bare reference \"{owner}\" is ambiguous — it names an object " +
+                $"in multiple packages ({string.Join(", ", pkgs)}) and none is in the referrer's package \"{referrerPkg}\". " +
+                "Qualify it with the package (FQN).",
+                ErrorCode.ERR_AMBIGUOUS_REF,
+                Envelope: ResolvedSource.From(node.Source, obj.Fqn(), owner)));
+        }
+        foreach (var child in node.OwnChildren())
+        {
+            VisitCrossPackageRefs(child, obj, root, referrerPkg, errors);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Origin helper: _findField
     // -------------------------------------------------------------------------

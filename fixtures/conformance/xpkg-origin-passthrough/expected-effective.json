@@ -1,0 +1,119 @@
+{
+  "metadata.root": {
+    "package": "xpkg::catalog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Enrollment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "enrollments"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_program",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "xpkg::catalog::Program"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "EnrollmentView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_enrollment"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "enrollmentId",
+                "extends": "xpkg::enroll::Enrollment.id",
+                "@column": "enrollment_id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "programName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "xpkg::catalog::Program.name",
+                      "@via": "xpkg::enroll::Enrollment.ref_program"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "xpkg::enroll::Enrollment.id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

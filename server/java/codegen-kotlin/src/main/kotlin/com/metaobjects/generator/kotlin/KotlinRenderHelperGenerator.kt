@@ -260,10 +260,15 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
         val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
         if (ref.isNullOrEmpty()) return null
-        val refShort = ref.substringAfterLast("::")
+        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on the
+        // value-object's package-qualified name — never a bare-tail fallback (the closed
+        // bug: an FQN ref binding a same-named object.value in the WRONG package). A bare
+        // ref matches the object.value's short name (the cross-port render-helper consensus).
+        val fqn = ref.contains("::")
         for (obj in loader.metaObjects) {
             if (MetaObject.SUBTYPE_VALUE != obj.subType) continue
-            if (obj.name.substringAfterLast("::") == refShort) return obj
+            val matches = if (fqn) obj.name == ref else obj.name.substringAfterLast("::") == ref
+            if (matches) return obj
         }
         return null
     }

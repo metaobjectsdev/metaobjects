@@ -28,6 +28,7 @@
 
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
+import { TYPE_OBJECT } from "./shared/base-types.js";
 import { RELATIONSHIP_ATTR_OBJECT_REF } from "./core/relationship/relationship-constants.js";
 import { FIELD_ATTR_OBJECT_REF } from "./core/field/field-constants.js";
 import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "./core/identity/identity-constants.js";
@@ -159,4 +160,42 @@ export function expandRef(raw: string, packageContext: string): string {
  */
 export function refMatchesObject(node: MetaData, ref: string): boolean {
   return node.resolutionKey() === ref || node.fqn() === ref || node.name === ref;
+}
+
+/** The effective package of a root-level object (its `resolutionKey()` minus the
+ *  trailing `::<name>`; "" for a root-level/empty-package object). */
+function objectPackage(node: MetaData): string {
+  const key = node.resolutionKey();
+  const i = key.lastIndexOf(PACKAGE_SEPARATOR);
+  return i === -1 ? "" : key.slice(0, i);
+}
+
+/**
+ * Resolve a metadata OBJECT reference under the cross-package contract:
+ *   - **FQN** (`ref` contains `::`) → EXACT match on `resolutionKey()`/`fqn()`.
+ *     Never a bare-tail fallback, so an FQN pointing at one package never binds a
+ *     same-named object in another (the cross-port bug this closes).
+ *   - **bare** (no `::`) → prefer an object of that name in the REFERRER's own
+ *     package; else a UNIQUE object of that name across all packages; else
+ *     (>1 across OTHER packages, none in the referrer's) → `ambiguous`.
+ *
+ * `referrerPkg` is the effective package of the node carrying the ref. Returns
+ * `{ node }` on a unique resolution, `{ ambiguous: true }` when a bare ref is
+ * cross-package-ambiguous, or `{}` (node undefined) when nothing matches. The
+ * SINGLE resolver every object-ref site shares so the contract is uniform.
+ */
+export function resolveObjectRef(
+  root: MetaData,
+  ref: string,
+  referrerPkg: string,
+): { node?: MetaData | undefined; ambiguous?: boolean } {
+  const objects = root.children().filter((c) => c.type === TYPE_OBJECT);
+  if (ref.includes(PACKAGE_SEPARATOR)) {
+    return { node: objects.find((c) => c.resolutionKey() === ref || c.fqn() === ref) };
+  }
+  const matches = objects.filter((c) => c.name === ref);
+  if (matches.length <= 1) return { node: matches[0] };
+  const own = matches.find((c) => objectPackage(c) === referrerPkg);
+  if (own !== undefined) return { node: own };
+  return { ambiguous: true };
 }

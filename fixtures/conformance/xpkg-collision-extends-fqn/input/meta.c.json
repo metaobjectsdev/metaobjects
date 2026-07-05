@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "xpkg::c",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "xpkg::b::Base",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "widgets"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

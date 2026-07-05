@@ -18,7 +18,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateCrossPackageRefs } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
@@ -579,6 +579,7 @@ export class MetaDataLoader {
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.
       errors.push(...validateOriginPaths(root));
+      errors.push(...validateCrossPackageRefs(root));
 
       // FR-024 B6 — derived-field providability: an entity field carrying an
       // origin.* is derived (read-only) and must be providable by at least one

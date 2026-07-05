@@ -84,6 +84,15 @@ public enum ErrorCode
     // identity.reference @references names an FK target object that does not resolve
     // to any object in the loaded tree (a dangling cross-reference between metadata).
     ERR_INVALID_REFERENCE,
+    // ADR-0041 — cross-package reference contract. A BARE reference (no "::") names
+    // an object present in MORE THAN ONE package with NO match in the referrer's own
+    // package → ambiguous; the author must qualify it with the package (FQN). An FQN
+    // ref resolves exactly (never ambiguous); a bare ref unique anywhere, or matching
+    // the referrer's own package, resolves fine. Covers every object-ref-bearing attr
+    // (@objectRef / @references / @from|@of|@via heads / @payloadRef / @responseRef /
+    // @parameterRef). `extends` is EXCLUDED — its super-resolver is same-package/root-
+    // strict, so a bare cross-package extends is ERR_UNRESOLVED_SUPER, not ambiguous.
+    ERR_AMBIGUOUS_REF,
     ERR_BAD_ATTR_FILTER,
     ERR_STORAGE_WITHOUT_OBJECT_REF,
     // ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the

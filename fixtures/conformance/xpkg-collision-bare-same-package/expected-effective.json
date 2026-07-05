@@ -1,0 +1,80 @@
+{
+  "metadata.root": {
+    "package": "xpkg::home",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "homeOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "extends": "Base",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "homeOnly"
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "gadgets"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "otherOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
