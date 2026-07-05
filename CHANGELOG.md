@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.10] — 2026-07-05
+
+_npm `0.15.10` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+### Fixed
+- **`meta docs --site` now honors `metaobjects.config.ts` `providers`.** The HTML site surface had its own loader (`docs-site`'s `loadModel`) with a fixed provider registry, so a model using consumer subtypes (custom `field.*`/`view.*`/`object.*` registered via a project's `providers`) failed on `--site` alone with `Unknown type "…" — not registered`, even though the markdown surfaces (which load via `loadMemory`) resolved them. `docs-site`'s `loadModel`/`generateSite` gain an additive `extraProviders` option (composed after the built-in bundle, mirroring `loadMemory`'s `providers`), and the CLI threads the config's `providers` into the site path. Additive — config-less callers are unchanged (the `acme` golden is byte-identical).
+
 ## [0.15.9] — 2026-07-05
 
 _Coordinated cross-language release: npm `0.15.9` (full lockstep across all `@metaobjectsdev/*` publish candidates) · PyPI `0.15.8` · NuGet `0.15.6` · Maven Central `7.7.5`. A new cross-language reference-resolution contract (ADR-0041)._
