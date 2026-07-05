@@ -39,7 +39,7 @@
 <div class="card bg-base-100 border border-base-300 p-2 pl-diagram"><pre class="mermaid">{{neighborhoodMermaid}}</pre></div>
 {{#neighborhoodLegend.length}}<div class="flex flex-wrap gap-1 mt-2 text-xs">{{#neighborhoodLegend}}<span class="badge badge-xs" style="background:{{fill}};border-color:{{stroke}};color:#cbd5e1">{{pkg}}</span>{{/neighborhoodLegend}}</div>{{/neighborhoodLegend.length}}
 <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view <span class="opacity-70">(ER boxes: dashed = value, dotted = view)</span></div>
-{{#neighborhoodMore}}<div class="text-xs opacity-50 mt-1">+{{neighborhoodMore}} more neighbor(s) — see <a class="link" href="#s-referenced-by">Referenced by</a>.</div>{{/neighborhoodMore}}</section>{{/neighborhoodMermaid}}
+{{#neighborhoodMore}}<div class="text-xs opacity-50 mt-1">+{{neighborhoodMore}} more neighbor(s){{#referencedBy.length}} — see <a class="link" href="#s-referenced-by">Referenced by</a>{{/referencedBy.length}}.</div>{{/neighborhoodMore}}</section>{{/neighborhoodMermaid}}
 
 {{#referencedBy.length}}<section id="s-referenced-by" class="mt-6 text-sm"><span class="opacity-50">referenced by</span> {{#referencedBy}}<a class="link font-mono text-xs" href="{{href}}" title="{{via}}">{{name}}</a> {{/referencedBy}}</section>{{/referencedBy.length}}
 {{#usedByTemplates.length}}<div class="text-sm mt-1"><span class="opacity-50">used by templates</span> {{#usedByTemplates}}<a class="link font-mono text-xs" href="{{href}}">{{name}}</a> {{/usedByTemplates}}</div>{{/usedByTemplates.length}}
