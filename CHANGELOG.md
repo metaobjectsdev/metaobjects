@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.13] — 2026-07-05
+
+_npm `0.15.13` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **`meta docs --site` renders every remaining authored `@attr`.** Building on the `view.*` attr rendering (0.15.12), the site now documents relationship `@onDelete`/`@onUpdate`, origin `@of`/`@agg`/`@filter`, a view source's `@view`, grid `@layout` attrs, object-level `@attrs` (e.g. a consumer's `@dataflow`/`@neo4j`), field-level `@attrs` (`@column`/`@storage`/…), identity `@constraintName`, and non-standard template attrs on prompt + output pages. A generic `otherAttrs` catch-all consumes + renders whatever a bespoke renderer doesn't, so a consumer's own metamodel vocabulary is documented from a bare registration and new attrs never silently go un-rendered. On a real ~280-page model, coverage now reports zero "not rendered by any page" warnings.
+
 ## [0.15.12] — 2026-07-05
 
 _npm `0.15.12` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
