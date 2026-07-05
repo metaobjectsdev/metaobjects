@@ -1,5 +1,6 @@
 <div class="text-xs breadcrumbs font-mono opacity-70"><ul><li>{{{breadcrumbHtml}}}</li></ul></div>
 <h1 class="text-2xl font-bold font-mono mt-1">{{name}} <span class="badge badge-accent badge-sm align-middle">{{format}}</span> <span class="badge badge-ghost badge-sm align-middle">output</span></h1>
+{{#extraAttrsHtml}}<div class="flex flex-wrap gap-1 mt-2">{{{extraAttrsHtml}}}</div>{{/extraAttrsHtml}}
 {{#payloadName}}<div class="text-sm mt-2 opacity-70">payload: <a class="link font-mono" href="{{payloadHref}}">{{payloadName}}</a></div>{{/payloadName}}
 <div class="text-sm mt-1 opacity-60 font-mono">
   textRef: {{textRef}}

@@ -4,6 +4,11 @@ import { LinkGraph } from "../link-graph.js";
 import type { CoverageTracker } from "../coverage.js";
 import { highlightMustache } from "../mustache-highlight.js";
 import { esc } from "../badges.js";
+import { fmtAttrValue } from "./object-data.js";
+
+// Template attrs rendered specifically (as their own badges) — everything else a
+// template authors (e.g. a consumer's @dataflow) is rendered generically below.
+const PROMPT_KNOWN_ATTRS = new Set(["format", "maxTokens", "requiredSlots", "model", "responseRef", "maxChars", "promptStyle", "payloadRef", "textRef", "description"]);
 
 export interface PayloadTreeRow { indent: number; name: string; type: string; isArray: boolean; anchor: string; desc: string; refHtml: string; }
 export interface PromptPageData { name: string; pkg: string; href: string; breadcrumbHtml: string; attrsHtml: string; desc: string; payloadName: string; payloadHref: string; payloadTree: PayloadTreeRow[]; sourceHtml?: string | undefined; sourceMissingNote?: string | undefined; tocHtml?: string | undefined; packageFiles: { file: string; html: string }[]; }
@@ -17,6 +22,12 @@ export function buildPromptPage(fqn: string, g: LinkGraph, cov: CoverageTracker,
     const v = t.attr(a); if (v !== undefined) { cov.consumeAttr(t, a); attrs.push(`<span class="badge badge-ghost badge-sm">@${esc(a)} ${esc(v)}</span>`); }
   }
   cov.consumeAttr(t, "payloadRef"); cov.consumeAttr(t, "textRef");
+  // any other authored attrs (e.g. a consumer's @dataflow) rendered generically
+  for (const [n, v] of [...t.ownAttrs()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    if (PROMPT_KNOWN_ATTRS.has(n)) continue;
+    cov.consumeAttr(t, n);
+    attrs.push(`<span class="badge badge-ghost badge-sm font-mono">@${esc(n)}=${esc(fmtAttrValue(v))}</span>`);
+  }
   // payload tree (root + one nested level)
   const pRef = g.refsFrom(fqn).find((r) => r.kind === "payload");
   const payload = pRef ? g.byFqn(pRef.to) : undefined;

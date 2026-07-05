@@ -4,6 +4,7 @@ metadata:
     - object.entity:
         name: Order
         "@description": "A customer <order> with \"items\" & totals."
+        "@team": platform
         extends: acme::common::BaseEntity
         children:
           - field.enum: { name: status, extends: acme::common::statusEnum, default: OPEN }
@@ -12,9 +13,9 @@ metadata:
               default: "1"
               children:
                 - validator.numeric: { min: 1, max: 99 }
-          - field.string: { name: customerId, maxLength: 36 }
-          - identity.reference: { name: fkCustomer, fields: customerId, references: acme::shop::Customer }
-          - relationship.association: { name: customer, "@objectRef": "acme::shop::Customer", cardinality: one, "@onDelete": cascade }
+          - field.string: { name: customerId, maxLength: 36, "@column": customer_id }
+          - identity.reference: { name: fkCustomer, fields: customerId, references: acme::shop::Customer, "@constraintName": fk_order_customer }
+          - relationship.association: { name: customer, "@objectRef": "acme::shop::Customer", cardinality: one, "@onDelete": cascade, "@onUpdate": restrict }
           - relationship.association: { name: products, "@objectRef": "acme::shop::Product", cardinality: many, "@through": "acme::shop::OrderProduct" }
           - index.lookup: { name: idx_order_qty, fields: qty, orders: [desc], where: "(qty > 0)" }
           - validator.comparison: { left: qty, op: lte, right: "99" }
@@ -75,5 +76,5 @@ metadata:
           - field.string:
               name: customerName
               children:
-                - origin.passthrough: { "@from": "acme::shop::Customer.email", "@via": "Order.customer" }
-          - source.rdb: { kind: view, table: v_line_item }
+                - origin.passthrough: { "@from": "acme::shop::Customer.email", "@via": "Order.customer", "@agg": max }
+          - source.rdb: { kind: view, view: v_line_item }

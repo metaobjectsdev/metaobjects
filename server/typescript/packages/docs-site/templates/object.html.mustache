@@ -5,8 +5,9 @@
   {{#isAbstract}}<span class="badge badge-ghost badge-sm align-middle">abstract</span>{{/isAbstract}}</h1>
 <div class="font-mono text-xs opacity-60 mt-1">
   {{#tableName}}{{#isView}}view{{/isView}}{{^isView}}table{{/isView}} <code>{{tableName}}</code>{{/tableName}}
-  {{#pkHtml}} · pk {{{pkHtml}}}{{/pkHtml}}{{#generation}} · gen {{generation}}{{/generation}}</div>
+  {{#pkHtml}} · pk {{{pkHtml}}}{{/pkHtml}}{{#generation}} · gen {{generation}}{{/generation}}{{#storageAttrs}} · {{name}} <code>{{value}}</code>{{/storageAttrs}}</div>
 {{#desc}}<section id="s-overview" class="mt-4"><p class="text-sm leading-relaxed">{{desc}}</p></section>{{/desc}}
+{{#objectAttrs.length}}<section id="s-attributes" class="mt-4 text-xs"><span class="opacity-50 mr-1">attributes</span>{{#objectAttrs}}<span class="badge badge-soft badge-ghost badge-xs mr-1 font-mono">@{{name}}={{value}}</span>{{/objectAttrs}}</section>{{/objectAttrs.length}}
 
 <section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
@@ -28,10 +29,13 @@
 <table class="table table-xs"><tbody>{{#validators}}<tr><td class="font-mono text-xs opacity-70">{{subject}}</td><td class="font-mono text-xs">{{rule}}</td></tr>{{/validators}}</tbody></table></section>{{/validators.length}}
 
 {{#relations.length}}<section id="s-relationships" class="mt-6"><h2 class="text-lg font-semibold">Relationships</h2>
-<table class="table table-xs"><tbody>{{#relations}}<tr><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{cardinality}}</td><td><a class="link font-mono text-xs" href="{{toHref}}">{{toName}}</a></td></tr>{{/relations}}</tbody></table></section>{{/relations.length}}
+<table class="table table-xs"><tbody>{{#relations}}<tr><td class="font-mono">{{name}}</td><td class="text-xs opacity-60">{{cardinality}}</td><td><a class="link font-mono text-xs" href="{{toHref}}">{{toName}}</a></td><td class="text-xs opacity-60">{{#attrs}}<span class="font-mono mr-2">@{{name}}={{value}}</span>{{/attrs}}</td></tr>{{/relations}}</tbody></table></section>{{/relations.length}}
 
 {{#origins.length}}<section id="s-provenance" class="mt-6"><h2 class="text-lg font-semibold">Field provenance</h2>
-<table class="table table-xs"><thead><tr><th>Field</th><th>From</th><th>Via</th></tr></thead><tbody>{{#origins}}<tr><td class="font-mono">{{field}}</td><td class="font-mono text-xs opacity-70">{{from}}</td><td class="font-mono text-xs opacity-70">{{via}}</td></tr>{{/origins}}</tbody></table></section>{{/origins.length}}
+<table class="table table-xs"><thead><tr><th>Field</th><th>From</th><th>Via</th><th></th></tr></thead><tbody>{{#origins}}<tr><td class="font-mono">{{field}}</td><td class="font-mono text-xs opacity-70">{{from}}</td><td class="font-mono text-xs opacity-70">{{via}}</td><td class="text-xs opacity-60">{{#attrs}}<span class="font-mono mr-2">@{{name}}={{value}}</span>{{/attrs}}</td></tr>{{/origins}}</tbody></table></section>{{/origins.length}}
+
+{{#layouts.length}}<section id="s-layout" class="mt-6"><h2 class="text-lg font-semibold">Layout</h2>
+<table class="table table-xs"><tbody>{{#layouts}}<tr><td class="font-mono text-xs opacity-70">{{kind}}</td><td class="text-xs">{{#attrs}}<span class="font-mono opacity-60 mr-2">@{{name}}={{value}}</span>{{/attrs}}</td></tr>{{/layouts}}</tbody></table></section>{{/layouts.length}}
 
 {{#inheritanceMermaid}}<section id="s-inheritance" class="mt-6"><h2 class="text-lg font-semibold">Inheritance</h2>
 <div class="card bg-base-100 border border-base-300 p-2 pl-diagram"><pre class="mermaid">{{inheritanceMermaid}}</pre></div></section>{{/inheritanceMermaid}}

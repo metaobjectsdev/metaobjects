@@ -20,11 +20,13 @@ metadata:
         "@payloadRef": NpcPayload
         "@textRef": ai/npc-review
         "@format": text
+        "@dataflow": ingest
     - template.output:
         name: npcReviewOutput
         "@payloadRef": NpcResponse
         "@textRef": ai/npc-response-format
         "@format": xml
+        "@dataflow": emit
     - object.entity:
         name: OrderLine
         children:
