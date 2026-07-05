@@ -437,6 +437,19 @@ describe("meta docs --site — HTML documentation site", () => {
     const b = await readFile(join(out2, "site", "index.html"), "utf8");
     expect(a).toBe(b);
   });
+
+  test("--site threads metaobjects.config.ts providers so custom-subtype metadata renders", async () => {
+    const root = await customTypeProject();
+    const out = join(root, "out-site-custom");
+
+    // Place uses field.geopoint, resolvable ONLY via the provider declared in
+    // metaobjects.config.ts. The site surface has its OWN loader (docs-site's
+    // loadModel); before it threaded the config providers, this rejected the
+    // unknown subtype and returned non-zero.
+    const code = await docsCommand([root, "--site", "--out", out], root);
+    expect(code).toBe(0);
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+  });
 });
 
 describe("meta docs --scaffold-site — own your theme", () => {

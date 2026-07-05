@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { render, InMemoryProvider } from "@metaobjectsdev/render";
+import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { loadModel } from "./load.js";
 import { LinkGraph, fqnOf } from "./link-graph.js";
 import { CoverageTracker } from "./coverage.js";
@@ -34,6 +35,10 @@ export interface SiteOptions {
   templatesDir?: string;
   /** Override dir for assets; if a file of the same basename exists here, it wins over the bundled assets/ dir. */
   assetsDir?: string | undefined;
+  /** Consumer-supplied metamodel providers, composed AFTER the built-in bundle
+   *  (core-types + db + doc + prompt + ui) so a site can document metadata that
+   *  uses custom field/view/object subtypes. Mirrors loadMemory's `providers`. */
+  extraProviders?: readonly MetaDataTypeProvider[];
 }
 
 export interface SiteResult {
@@ -131,7 +136,7 @@ function buildNavHtml(
 
 export async function generateSite(opts: SiteOptions): Promise<SiteResult> {
   // 1. Load + graph + comments
-  const loaded = await loadModel(opts.sourceDirs);
+  const loaded = await loadModel(opts.sourceDirs, opts.extraProviders);
   const g = new LinkGraph(loaded);
   const docs = harvestComments(opts.sourceDirs);
   const cov = new CoverageTracker();

@@ -33,6 +33,7 @@ import type {
 } from "@metaobjectsdev/codegen-ts";
 import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
+import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
 
 type DocsLayout = "flat" | "package";
@@ -260,7 +261,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(metaRoot, outDir);
+    return emitSite(metaRoot, outDir, configProviders);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -427,7 +428,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(metaRoot, outDir);
+    const siteRc = await emitSite(metaRoot, outDir, configProviders);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -496,7 +497,11 @@ async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
  * templates/assets into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`),
  * those win over the bundled defaults.
  */
-async function emitSite(metaRoot: string, outDir: string): Promise<number> {
+async function emitSite(
+  metaRoot: string,
+  outDir: string,
+  configProviders?: readonly MetaDataTypeProvider[],
+): Promise<number> {
   const siteOutDir = resolvePath(outDir, "site");
   const sourceDirs = [join(metaRoot, DEFAULT_METADATA_DIR)];
   // Scaffold-and-own: when the consumer has copied templates/assets into
@@ -511,6 +516,10 @@ async function emitSite(metaRoot: string, outDir: string): Promise<number> {
       stamp: new Date().toISOString().slice(0, 10),
       commit: "",
       core: { n: 15 },
+      // Thread any consumer providers from metaobjects.config.ts so the site's
+      // own loader resolves custom field/view/object subtypes — same providers
+      // the markdown surfaces get via loadMemory.
+      ...(configProviders !== undefined ? { extraProviders: configProviders } : {}),
       ...(existsSync(ownedTemplates) ? { templatesDir: ownedTemplates } : {}),
       ...(existsSync(ownedAssets) ? { assetsDir: ownedAssets } : {}),
     });
