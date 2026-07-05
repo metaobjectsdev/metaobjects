@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { MetaDataLoader, composeRegistry, coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaRoot, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { FileSource } from "@metaobjectsdev/metadata/core";
 
 export interface LoadedModel {
   root: MetaRoot;
@@ -35,7 +36,17 @@ export async function loadModel(
       symlinkSync(resolve(dir), join(staging, baseName));
     }
     const registry = composeRegistry([coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider, ...extraProviders]);
-    const result = await MetaDataLoader.fromDirectory(staging, { registry, strict: false });
+    // Feed files in files-before-subdirs order (the same order the sdk's loadMemory
+    // uses), NOT fromDirectory's flat basename sort. Cross-file overlays require the
+    // base (typically a top-level file) to load before an overlay that lives in a
+    // nested dir; the basename sort can otherwise process e.g.
+    // `admin-ui/x.admin.yaml` before its base `x.yaml` and fail with
+    // ERR_OVERLAY_NO_TARGET. (fromDirectory's basename order is a cross-port
+    // DirectorySource contract, so we order at this boundary rather than change it.)
+    const files = collectOrderedMetadataFiles(staging);
+    const result = await new MetaDataLoader({ registry, strict: false }).load(
+      files.map((f) => new FileSource(f)),
+    );
     if (result.errors.length > 0) {
       throw new Error(`metadata load failed:\n${result.errors.map((e) => String(e)).join("\n")}`);
     }
@@ -47,6 +58,24 @@ export async function loadModel(
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
+}
+
+/** Metadata files under `dir`, files-before-subdirs with each level sorted — the
+ *  overlay-safe order the sdk's loadMemory uses, so a base loads before an overlay
+ *  nested under it. Symlinks (the staging dir uses them) are followed. */
+function collectOrderedMetadataFiles(dir: string): string[] {
+  const files: string[] = [];
+  const subdirs: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const s = statSync(full); // follows symlinks — staging entries are symlinked source dirs
+    if (s.isDirectory()) subdirs.push(full);
+    else if (s.isFile() && /\.(json|ya?ml)$/i.test(entry)) files.push(full);
+  }
+  files.sort();
+  const out = [...files];
+  for (const sub of subdirs.sort()) out.push(...collectOrderedMetadataFiles(sub));
+  return out;
 }
 
 /** Which top-level source dir a node came from (first file path segment of its source envelope). */
