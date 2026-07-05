@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.12] — 2026-07-05
+
+_npm `0.15.12` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+### Added
+- **`meta docs --site` renders a field's `view.*` subtypes + their attributes.** Object pages now show each field's presentation view children (`view.currency`/`view.badge`/`view.meter`/`view.duration`/…) as a per-field sub-row — `view.<subType>` badges plus `@attr=value` pairs (object-valued attrs like `@variantMap` render as sorted `k: v` lists). The field builder consumes the view node + its `ownAttrs`, so they no longer surface as "not rendered by any page" in coverage. Attrs are read directly off the node, so a custom view subtype registered via `extraProviders` renders its attrs from a bare registration (no per-attr schema needed in the consumer's provider).
+
 ## [0.15.11] — 2026-07-05
 
 _npm `0.15.11` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
