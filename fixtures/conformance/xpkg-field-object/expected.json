@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "package": "xpkg::common",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Shipment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "shipments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "shipTo",
+                "@objectRef": "xpkg::common::Address",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "xpkg::blog",
+    "overlay": true,
+    "children": [
+      {
+        "object.entity": {
+          "name": "Post",
+          "overlay": true,
+          "children": [
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "xpkg::blog::Tag",
+                "@through": "xpkg::join::PostTag"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "xpkg::b",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "bOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

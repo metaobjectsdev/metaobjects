@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_AMBIGUOUS_REF",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.sales.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[4]['relationship.association']",
+        "referrer": "Order",
+        "target": "Customer"
+      }
+    }
+  ],
+  "warnings": []
+}

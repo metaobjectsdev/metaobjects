@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "xpkg::common",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "xpkg::orders",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Shipment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "shipments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "shipTo",
+                "@objectRef": "xpkg::common::Address",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

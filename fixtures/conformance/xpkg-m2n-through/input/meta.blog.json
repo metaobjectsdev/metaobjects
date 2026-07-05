@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "package": "xpkg::blog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Post",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "posts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Tag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk2",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

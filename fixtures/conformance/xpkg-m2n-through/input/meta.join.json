@@ -1,0 +1,60 @@
+{
+  "metadata.root": {
+    "package": "xpkg::join",
+    "children": [
+      {
+        "object.entity": {
+          "name": "PostTag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "post_tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "postId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "tagId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk3",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_post",
+                "@fields": [
+                  "postId"
+                ],
+                "@references": "xpkg::blog::Post"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_tag",
+                "@fields": [
+                  "tagId"
+                ],
+                "@references": "xpkg::blog::Tag"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

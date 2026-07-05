@@ -1,0 +1,8 @@
+{ "metadata.root": { "package": "xpkg::crm", "children": [
+  { "object.entity": { "name": "Customer", "children": [
+    { "source.rdb": { "@table": "customers" } },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "email" } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+  ]}}
+]}}

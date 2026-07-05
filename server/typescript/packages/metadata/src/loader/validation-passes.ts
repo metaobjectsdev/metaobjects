@@ -14,7 +14,8 @@ import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { ParseError } from "../errors.js";
-import { refMatchesObject } from "../naming-refs.js";
+import { refMatchesObject, resolveObjectRef, REF_BEARING_ATTR_NAMES } from "../naming-refs.js";
+import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
   TYPE_OBJECT,
@@ -276,6 +277,57 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
         );
       }
     }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-package reference ambiguity (the object-ref contract)
+// ---------------------------------------------------------------------------
+
+/**
+ * A BARE object reference (no `::`) that names an object present in MORE THAN ONE
+ * package, with NO match in the referrer's own package, is ambiguous → emit
+ * ERR_AMBIGUOUS_REF (the author must qualify it with the package). An FQN ref is
+ * exact (never ambiguous); a bare ref that matches the referrer's own package, or
+ * exactly one package anywhere, resolves fine. Covers every object-ref-bearing
+ * attr in `REF_BEARING_ATTR_NAMES` (@objectRef / @references / @from / @of / @via
+ * / @parameterRef / @payloadRef / @responseRef) — the dotted `.child` tail of the
+ * origin heads is stripped to the entity OWNER. `extends` is intentionally NOT
+ * covered: its FR-032 super-resolver is same-package/root-strict and never
+ * matches a packaged object by bare name, so a bare cross-package `extends` is
+ * unresolved (ERR_UNRESOLVED_SUPER), not ambiguous.
+ */
+export function validateCrossPackageRefs(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+    const visit = (node: MetaData): void => {
+      for (const attrName of REF_BEARING_ATTR_NAMES) {
+        const raw = node.ownAttr(attrName);
+        if (typeof raw !== "string") continue;
+        // Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
+        // owner (has `::`) is resolved exactly and can never be ambiguous.
+        const dot = raw.indexOf(CHILD_REF_SEPARATOR);
+        const owner = dot === -1 ? raw : raw.slice(0, dot);
+        if (owner.includes(PACKAGE_SEPARATOR) || owner === "") continue;
+        if (!resolveObjectRef(root, owner, referrerPkg).ambiguous) continue;
+        const pkgs = root
+          .children()
+          .filter((c) => c.type === TYPE_OBJECT && c.name === owner)
+          .map((c) => c.resolutionKey());
+        errors.push(
+          new ParseError(
+            `${attrName} "${raw}" on ${obj.fqn()}: bare reference "${owner}" is ambiguous — it names an object ` +
+              `in multiple packages (${pkgs.join(", ")}) and none is in the referrer's package "${referrerPkg}". ` +
+              `Qualify it with the package (FQN).`,
+            { code: "ERR_AMBIGUOUS_REF", source: resolvedSource(node.source, obj.fqn(), owner) },
+          ),
+        );
+      }
+      for (const c of node.ownChildren()) visit(c);
+    };
+    visit(obj);
   }
   return errors;
 }

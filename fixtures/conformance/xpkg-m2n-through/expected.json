@@ -1,0 +1,119 @@
+{
+  "metadata.root": {
+    "package": "xpkg::blog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Post",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "posts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "xpkg::blog::Tag",
+                "@through": "xpkg::join::PostTag"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Tag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk2",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PostTag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "post_tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "postId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "tagId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk3",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_post",
+                "@fields": [
+                  "postId"
+                ],
+                "@references": "xpkg::blog::Post"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "ref_tag",
+                "@fields": [
+                  "tagId"
+                ],
+                "@references": "xpkg::blog::Tag"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
