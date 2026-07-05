@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.11] — 2026-07-05
+
+_npm `0.15.11` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+### Fixed
+- **`meta docs --site` resolves cross-file overlays.** The site loader fed metadata via `fromDirectory`, whose `DirectorySource` sorts by basename (a cross-port ordering contract). A base object in a top-level file plus an `overlay: true` extension in a subdir whose basename sorts earlier parsed the overlay before its base and failed with `ERR_OVERLAY_NO_TARGET` — even though the sdk's `loadMemory` (and thus `meta gen`/`migrate`) loads the same model fine via files-before-subdirs. The site loader now collects files-before-subdirs and feeds `MetaDataLoader.load` directly, leaving the cross-port `DirectorySource` order untouched. `acme` golden byte-identical.
+
 ## [0.15.10] — 2026-07-05
 
 _npm `0.15.10` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
