@@ -482,6 +482,11 @@ public class MetaDataLoader
             // cardinality, extends/origin agreement)
             errors.AddRange(ValidationPasses.ValidateOriginPaths(root));
 
+            // Pass 5a: ADR-0041 — cross-package OBJECT-reference ambiguity. A bare
+            // ref (@objectRef/@references/@from|@of|@via head/@payloadRef/…) naming
+            // an object in multiple packages, none in the referrer's, → ERR_AMBIGUOUS_REF.
+            errors.AddRange(ValidationPasses.ValidateCrossPackageRefs(root));
+
             // Pass 5b: FR-024 B6 — derived-field providability on entities
             errors.AddRange(ValidationPasses.ValidateDerivedFieldProvidability(root));
 

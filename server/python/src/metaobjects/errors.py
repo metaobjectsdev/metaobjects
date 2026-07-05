@@ -132,6 +132,17 @@ class ErrorCode(str, Enum):
     # emit this yet (the T6 guard is deferred — like TS, it belongs in the parser);
     # the enum tracks the shared corpus code so resolution/desugar stay aligned.
     ERR_RELATIVE_REF_IN_CANONICAL = "ERR_RELATIVE_REF_IN_CANONICAL"
+    # ADR-0041 — cross-package reference resolution contract. A BARE object
+    # reference (no ``::``) that names an object present in MORE THAN ONE package,
+    # with NO match in the referrer's own package, is ambiguous — the author must
+    # qualify it with the package (FQN). Applies to every object-ref-bearing attr
+    # (@objectRef / @references / @from / @of / @via heads / @parameterRef /
+    # @payloadRef / @responseRef). An FQN ref resolves exactly and is never
+    # ambiguous; a bare ref that matches the referrer's own package, or exactly one
+    # package anywhere, resolves fine. ``extends`` is intentionally NOT covered
+    # (its same-package/root-strict super-resolver yields ERR_UNRESOLVED_SUPER on a
+    # bare cross-package miss, not ambiguity).
+    ERR_AMBIGUOUS_REF = "ERR_AMBIGUOUS_REF"
     # FR-033 — strict structural-placement vocabulary. ERR_CHILD_NOT_ALLOWED: a
     # structural child (field/identity/source/validator/… — not an attr) is placed
     # under a parent whose registered childRules do not admit it (the structural

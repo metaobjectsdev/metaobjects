@@ -166,6 +166,19 @@ public enum ErrorCode {
     ERR_AMBIGUOUS_PATH,
 
     /**
+     * ADR-0041 (cross-package reference resolution): a BARE object reference (no
+     * {@code ::}) names an object that exists in MORE THAN ONE package, and NONE of
+     * those candidates is in the referrer's own package. The reference is ambiguous;
+     * the author must qualify it with the package (FQN). Applies to every
+     * object-ref-bearing attribute ({@code @objectRef}, {@code @references}, the
+     * {@code @from}/{@code @of}/{@code @via} heads, {@code @payloadRef}/{@code @responseRef},
+     * {@code @parameterRef}). {@code extends} is excluded — its same-package/root-strict
+     * super-resolver never matches a packaged object by bare name, so a bare
+     * cross-package {@code extends} is {@code ERR_UNRESOLVED_SUPER}, not ambiguous.
+     */
+    ERR_AMBIGUOUS_REF,
+
+    /**
      * FR-024 (ADR-0029): origin cardinality contract broken — a passthrough
      * {@code @via} path crosses a to-many hop (row-multiplying passthrough — you meant
      * aggregate), or an aggregate {@code @via} path is to-one at every hop (you meant

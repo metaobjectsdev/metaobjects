@@ -108,17 +108,18 @@ public final class SpringM2mSupport {
 
     private static MetaObject findEntity(MetaRoot root, String name) {
         if (name == null) return null;
-        String bare = stripPackage(name);
+        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
+        // object's package-qualified name — it never falls back to a bare-tail match
+        // (the closed bug: an FQN @objectRef / @through binding a same-named object
+        // in the WRONG package). A bare ref matches the object's short name (first
+        // match wins; cross-package same-package-preference is the deferred codegen
+        // follow-up, mirroring the TS residual note).
+        boolean fqn = name.indexOf("::") >= 0;
         // ADR-0039: root-level entity scan — root is never extended, so own children
         // is correct (entities are declared directly under root, not inherited into it).
         for (MetaObject mo : root.getChildren(MetaObject.class, false)) {
-            if (bare.equals(mo.getShortName())) return mo;
+            if (fqn ? name.equals(mo.getName()) : name.equals(mo.getShortName())) return mo;
         }
         return null;
-    }
-
-    private static String stripPackage(String name) {
-        int idx = name.lastIndexOf("::");
-        return idx >= 0 ? name.substring(idx + 2) : name;
     }
 }

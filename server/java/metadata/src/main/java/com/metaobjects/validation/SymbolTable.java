@@ -39,6 +39,16 @@ public final class SymbolTable {
     }
 
     private static boolean nameMatches(MetaData child, String ref) {
+        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY — it
+        // matches the object whose package-qualified name equals it and NOTHING
+        // else. It must NEVER fall back to a bare-tail match (the closed bug: an
+        // explicit `xpkg::vendor::Customer` wrongly binding `xpkg::crm::Customer`).
+        if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
+            return ref.equals(child.getName());
+        }
+        // Bare ref → match the object's bare (short) name. Cross-package ambiguity
+        // on a bare ref is reported separately by the loader's cross-package pass
+        // (ERR_AMBIGUOUS_REF); resolution here stays lenient (first match wins).
         String bare = child.getShortName();
         if (bare == null || bare.isEmpty()) {
             String full = child.getName();
@@ -46,8 +56,6 @@ public final class SymbolTable {
             int i = full.lastIndexOf(MetaData.PKG_SEPARATOR);
             bare = (i >= 0) ? full.substring(i + MetaData.PKG_SEPARATOR.length()) : full;
         }
-        int idx = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
-        String tail = (idx >= 0) ? ref.substring(idx + MetaData.PKG_SEPARATOR.length()) : ref;
-        return tail.equals(bare) || ref.equals(child.getName());
+        return ref.equals(bare);
     }
 }

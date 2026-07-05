@@ -178,6 +178,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateOnePrimarySource(root));
         pass(collected, () -> validateRelationshipReferentialActions(root));
         pass(collected, () -> validateRelationshipsM2M(root));
+        // ADR-0041 — cross-package reference ambiguity: a BARE object-ref naming an
+        // object in >1 package with none in the referrer's package → ERR_AMBIGUOUS_REF.
+        pass(collected, () -> validateCrossPackageRefs(root));
         // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
         // carries its reference descriptors + imperative validator (relationship @objectRef,
         // identity.reference @references for core; a downstream provider's type carries its
@@ -2463,6 +2466,97 @@ public final class ValidationPhase {
         return hops;
     }
 
+    // =========================================================================
+    // ADR-0041 — cross-package reference ambiguity (ERR_AMBIGUOUS_REF).
+    // Mirrors TS validateCrossPackageRefs (validation-passes.ts).
+    // =========================================================================
+
+    /**
+     * The inline attribute names whose VALUE names an OBJECT and is therefore
+     * subject to the cross-package resolution contract (ADR-0041). Mirrors the TS
+     * {@code REF_BEARING_ATTR_NAMES}: {@code @objectRef} (relationship + field.object,
+     * same spelling), {@code @references}, the origin heads {@code @from}/{@code @of}/{@code @via},
+     * {@code @parameterRef}, and the template {@code @payloadRef}/{@code @responseRef}.
+     * {@code extends} (structural, FQN-strict super-resolver) and {@code @through}
+     * are intentionally NOT in this set (parity with TS).
+     */
+    private static final java.util.Set<String> REF_BEARING_OBJECT_ATTRS = java.util.Set.of(
+        MetaRelationship.ATTR_OBJECT_REF,       // = ObjectField.ATTR_OBJECT_REF ("objectRef")
+        MetaIdentity.ATTR_REFERENCES,           // "references"
+        MetaOrigin.ATTR_FROM,                   // "from"
+        MetaOrigin.ATTR_VIA,                    // "via"
+        MetaOrigin.ATTR_OF,                     // "of"
+        RdbSource.ATTR_PARAMETER_REF,           // "parameterRef"
+        TemplateConstants.ATTR_PAYLOAD_REF,     // "payloadRef"
+        TemplateConstants.ATTR_RESPONSE_REF     // "responseRef"
+    );
+
+    /**
+     * ADR-0041 — a BARE object reference (no {@code ::}) that names an object present
+     * in MORE THAN ONE package, with NO match in the referrer's own package, is
+     * ambiguous → {@code ERR_AMBIGUOUS_REF} (the author must qualify it with the
+     * package). An FQN ref is exact (never ambiguous); a bare ref that matches the
+     * referrer's own package, or exactly one package anywhere, resolves fine. Walks
+     * every {@link #REF_BEARING_OBJECT_ATTRS} attr on each object's OWN subtree — the
+     * dotted {@code .child} tail of the origin heads is stripped to the entity OWNER.
+     * Mirrors the TS {@code validateCrossPackageRefs}.
+     */
+    static void validateCrossPackageRefs(MetaRoot root) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) child;
+            String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
+            visitCrossPackageRefs(root, obj, obj, referrerPkg);
+        }
+    }
+
+    /** Recurse the OWN subtree of {@code obj}, checking each ref-bearing attr on
+     *  {@code node} for a bare cross-package-ambiguous object reference. */
+    private static void visitCrossPackageRefs(MetaRoot root, MetaObject obj, MetaData node,
+                                              String referrerPkg) {
+        for (String attrName : REF_BEARING_OBJECT_ATTRS) {
+            // OWN attr only (mirrors TS node.ownAttr) — an inherited attr is checked
+            // at its own declaration site, reached through that owner's subtree.
+            if (!node.hasMetaAttr(attrName, false)) continue;
+            String raw = node.getMetaAttr(attrName, false).getValueAsString();
+            if (raw == null) continue;
+            // Owner = the object part; strip any FR-024 dotted ".child" tail. An FQN
+            // owner (contains "::") resolves exactly and can never be ambiguous.
+            int dot = raw.indexOf('.');
+            String owner = (dot < 0) ? raw : raw.substring(0, dot);
+            if (owner.isEmpty() || owner.indexOf(MetaData.PKG_SEPARATOR) >= 0) continue;
+            if (!isAmbiguousBareRef(root, owner, referrerPkg)) continue;
+            throw new MetaDataException(
+                "ERR_AMBIGUOUS_REF: " + attrName + " \"" + raw + "\" on " + obj.getName()
+                    + ": bare reference \"" + owner + "\" is ambiguous — it names an object in "
+                    + "multiple packages and none is in the referrer's package \"" + referrerPkg
+                    + "\". Qualify it with the package (FQN).",
+                ErrorCode.ERR_AMBIGUOUS_REF,
+                ResolvedSource.from(node.getSource(), obj.getShortName(), owner));
+        }
+        for (MetaData c : node.getChildren(MetaData.class, false)) {
+            visitCrossPackageRefs(root, obj, c, referrerPkg);
+        }
+    }
+
+    /**
+     * True when a BARE object name resolves ambiguously under ADR-0041: it matches
+     * MORE THAN ONE root object and NONE of them is in {@code referrerPkg}. Mirrors
+     * the ambiguity arm of the TS {@code resolveObjectRef}.
+     */
+    private static boolean isAmbiguousBareRef(MetaRoot root, String bareOwner, String referrerPkg) {
+        int matches = 0;
+        boolean samePackage = false;
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            if (!bareOwner.equals(child.getShortName())) continue;
+            matches++;
+            String pkg = child.getPackage() == null ? "" : child.getPackage();
+            if (pkg.equals(referrerPkg)) samePackage = true;
+        }
+        return matches > 1 && !samePackage;
+    }
+
     /**
      * Find a top-level MetaObject child of the root whose bare entity name
      * matches. Origin reference paths ({@code @from}, {@code @of}, {@code @via})
@@ -2545,15 +2639,17 @@ public final class ValidationPhase {
     private static boolean nameMatches(MetaData child, String name) {
         String bare = shortNameOf(child);
         if (bare == null) return false;
-        // FR-032 (ADR-0032): origin/template ref values are FULLY QUALIFIED after
-        // the desugar/sweep (e.g. "acme::commerce::Program.title" → entity head
-        // "acme::commerce::Program"). Match the ref's tail segment (after the last
-        // "::") against the child's bare name — covers a bare ref (tail == whole)
-        // AND an FQN ref — and also match the child's full FQN name directly.
-        // Mirrors the TS refMatchesObject helper.
-        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
-        String nameTail = (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
-        return nameTail.equals(bare) || name.equals(child.getName());
+        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY against
+        // the child's package-qualified name and NEVER falls back to a bare-tail
+        // match. (The closed bug: an FQN origin/object head like "xpkg::vendor::Customer"
+        // stripping to "Customer" and binding the first same-named object in ANY
+        // package.) A bare ref (relationship/field name in a @via path, or a bare
+        // object head) matches the child's bare name; cross-package ambiguity on a
+        // bare OBJECT ref is reported separately (ERR_AMBIGUOUS_REF).
+        if (name.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
+            return name.equals(child.getName());
+        }
+        return name.equals(bare);
     }
 
     /**

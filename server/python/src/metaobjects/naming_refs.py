@@ -29,6 +29,8 @@ NEVER expanded — it is the node's identity.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, NamedTuple, Optional
+
 from .meta.core.field.field_constants import FIELD_ATTR_OBJECT_REF
 from .meta.core.identity.identity_constants import IDENTITY_REFERENCE_ATTR_REFERENCES
 from .meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
@@ -42,7 +44,11 @@ from .meta.template.template_constants import (
     TEMPLATE_ATTR_PAYLOAD_REF,
     TEMPLATE_ATTR_RESPONSE_REF,
 )
+from .shared.base_types import TYPE_OBJECT
 from .shared.separators import PACKAGE_SEP
+
+if TYPE_CHECKING:
+    from .meta.meta_data import MetaData
 
 # Structural separator literals (Python has no PACKAGE_PARENT / CHILD_REF_SEPARATOR
 # constant module; the TS values are "::" / "." / ".." — PACKAGE_SEP already
@@ -139,3 +145,64 @@ def expand_ref(raw: str, package_context: str) -> str:
     """
     owner, tail = _split_child_tail(raw)
     return _expand_owner(owner, package_context) + tail
+
+
+# ---------------------------------------------------------------------------
+# ADR-0041 — cross-package OBJECT reference resolution contract
+# ---------------------------------------------------------------------------
+# The SINGLE resolver every object-ref site shares so the same-package-preference
+# contract is uniform. Mirrors the TS reference ``resolveObjectRef`` /
+# ``objectPackage`` in naming-refs.ts.
+
+
+class ObjectRefResolution(NamedTuple):
+    """Result of :func:`resolve_object_ref` — mirrors the TS ``{ node?, ambiguous? }``.
+
+    * ``node`` — the uniquely-resolved object (``None`` when nothing matched, or
+      when a bare ref is cross-package-ambiguous).
+    * ``ambiguous`` — True ONLY for a BARE ref that names an object in more than
+      one OTHER package with none in the referrer's own package.
+    """
+
+    node: Optional["MetaData"]
+    ambiguous: bool
+
+
+def _object_package(node: "MetaData") -> str:
+    """The effective package of a root-level object — its ``resolution_key()`` minus
+    the trailing ``::<name>`` ("" for a root-level/empty-package object). Mirrors
+    the TS ``objectPackage``.
+    """
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
+
+
+def resolve_object_ref(
+    root: "MetaData", ref: str, referrer_pkg: str
+) -> ObjectRefResolution:
+    """Resolve a metadata OBJECT reference under the ADR-0041 cross-package contract.
+
+    * **FQN** (``ref`` contains ``::``) → EXACT match on ``resolution_key()``/
+      ``fqn()``. Never a bare-tail fallback, so an FQN pointing at one package never
+      binds a same-named object in another (the cross-port bug ADR-0041 closes).
+    * **bare** (no ``::``) → prefer an object of that name in the REFERRER's own
+      package; else a UNIQUE object of that name across all packages; else (>1
+      across OTHER packages, none in the referrer's) → ``ambiguous``.
+
+    *referrer_pkg* is the effective package of the node carrying the ref. Returns an
+    :class:`ObjectRefResolution`. Mirrors the TS ``resolveObjectRef``.
+    """
+    objects = [c for c in root.children() if c.type == TYPE_OBJECT]
+    if PACKAGE_SEP in ref:
+        for c in objects:
+            if c.resolution_key() == ref or c.fqn() == ref:
+                return ObjectRefResolution(c, False)
+        return ObjectRefResolution(None, False)
+    matches = [c for c in objects if c.name == ref]
+    if len(matches) <= 1:
+        return ObjectRefResolution(matches[0] if matches else None, False)
+    for c in matches:
+        if _object_package(c) == referrer_pkg:
+            return ObjectRefResolution(c, False)
+    return ObjectRefResolution(None, True)
