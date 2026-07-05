@@ -109,6 +109,7 @@ public final class M2MFields {
                 "relationship \"" + source.getShortName() + "." + rel.getShortName()
                     + "\" is missing @objectRef (the M:N target)");
         }
+        MetaObject target = findObject(root, targetName);
 
         List<MetaIdentity> refs = referenceIdentities(junction);
         if (refs.size() != 2) {
@@ -118,12 +119,22 @@ public final class M2MFields {
                     + " identity.reference children (found " + refs.size() + ")");
         }
 
-        boolean isSelfJoin = stripPackage(targetName).equals(source.getShortName());
+        // ADR-0041: classify the self-join by RESOLVED object identity (FQN-exact),
+        // never a stripped bare tail. A cross-package hetero M:N whose target shares
+        // a bare name with the source (or an unrelated entity) must NOT be mis-read
+        // as a self-join, and an FQN @objectRef must bind the correct package. Falls
+        // back to a bare-name compare only when @objectRef is unresolvable (defensive
+        // — loader validation normally guarantees resolution before derive runs).
+        boolean isSelfJoin = (target != null)
+            ? target.getName().equals(source.getName())
+            : stripPackage(targetName).equals(source.getShortName());
 
         if (!isSelfJoin) {
-            // Hetero: match each reference by the entity it resolves to.
-            MetaIdentity sourceRef = findRefToEntity(refs, source.getShortName());
-            MetaIdentity targetRef = findRefToEntity(refs, stripPackage(targetName));
+            // Hetero: match each reference by the ENTITY OBJECT its @references
+            // resolves to (FQN-exact), so a same-bare-name cross-package reference
+            // binds the correct package rather than the first bare-tail match.
+            MetaIdentity sourceRef = findRefToObject(root, refs, source);
+            MetaIdentity targetRef = findRefToObject(root, refs, target);
             String sourceField = sourceRef != null ? refFkField(sourceRef) : null;
             String targetField = targetRef != null ? refFkField(targetRef) : null;
             if (sourceField == null || targetField == null) {
@@ -212,33 +223,55 @@ public final class M2MFields {
         return fields.isEmpty() ? null : fields.get(0);
     }
 
-    /** The bare entity name a reference's {@code @references} resolves to, or {@code null}. */
-    private static String refTargetEntity(MetaIdentity ref) {
+    /**
+     * The entity object a reference's {@code @references} resolves to (FQN-exact),
+     * or {@code null}. ADR-0041: resolve to an actual object and compare identity —
+     * a bare-tail string compare mis-binds a same-named cross-package target.
+     */
+    private static MetaObject refTargetObject(MetaRoot root, MetaIdentity ref) {
         // ADR-0039: @references is an inheritable effective identity attr — RESOLVE
         // (default includeParentData=true); own-only would miss an inherited target.
         if (!ref.hasMetaAttr(MetaIdentity.ATTR_REFERENCES)) return null;
         String v = ref.getMetaAttr(MetaIdentity.ATTR_REFERENCES).getValueAsString();
         if (v == null || v.isEmpty()) return null;
-        // @references may carry a dotted Entity.field form — the entity is the head segment.
+        // @references may carry a dotted Entity.field form — the entity is the head
+        // segment (packages use "::", never ".", so the first "." splits it off).
         int dot = v.indexOf('.');
         String entity = dot >= 0 ? v.substring(0, dot) : v;
-        return stripPackage(entity);
+        return findObject(root, entity);
     }
 
-    private static MetaIdentity findRefToEntity(List<MetaIdentity> refs, String entityShortName) {
+    /**
+     * The reference whose {@code @references} resolves to {@code entity} (compared by
+     * FQN identity), or {@code null}. ADR-0041: identity compare, never a stripped
+     * bare tail — two junction references to same-bare-name entities in different
+     * packages must be distinguished by their full package-qualified name.
+     */
+    private static MetaIdentity findRefToObject(MetaRoot root, List<MetaIdentity> refs, MetaObject entity) {
+        if (entity == null) return null;
         for (MetaIdentity ref : refs) {
-            String t = refTargetEntity(ref);
-            if (t != null && t.equals(entityShortName)) return ref;
+            MetaObject t = refTargetObject(root, ref);
+            if (t != null && t.getName().equals(entity.getName())) return ref;
         }
         return null;
     }
 
     private static MetaObject findObject(MetaRoot root, String name) {
-        String bare = stripPackage(name);
+        if (name == null) return null;
+        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
+        // object's package-qualified name — never a bare-tail fallback (the closed
+        // bug: an FQN @objectRef / @through binding a same-named object in the WRONG
+        // package). A bare ref matches the object's short name (first match wins; the
+        // same-package preference for a bare collision is the deferred follow-up,
+        // issue #174, mirroring SpringM2mSupport.findEntity and the TS residual note).
+        boolean fqn = name.contains(MetaData.PKG_SEPARATOR);
         // ADR-0039: root-level scan — root is never extended, so own children is correct.
         for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (child instanceof MetaObject && bare.equals(child.getShortName())) {
-                return (MetaObject) child;
+            if (child instanceof MetaObject) {
+                MetaObject mo = (MetaObject) child;
+                if (fqn ? name.equals(mo.getName()) : stripPackage(name).equals(mo.getShortName())) {
+                    return mo;
+                }
             }
         }
         return null;

@@ -160,11 +160,17 @@ public final class M2MResolver {
     }
 
     private static MetaObject mustGetEntity(MetaRoot root, String name) {
-        String bare = stripPackage(name);
+        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
+        // object's package-qualified name — never a bare-tail fallback (the closed
+        // bug: an FQN @objectRef / @through binding a same-named entity in the WRONG
+        // package). A bare ref matches the entity's short name.
+        boolean fqn = name != null && name.contains(com.metaobjects.MetaData.PKG_SEPARATOR);
         // ADR-0039: root-level entity scan — root is never extended, so own children
         // is correct (entities are declared directly under root, not inherited into it).
         for (var child : root.getChildren(MetaObject.class, false)) {
-            if (bare.equals(child.getShortName())) return child;
+            if (fqn ? name.equals(child.getName()) : stripPackage(name).equals(child.getShortName())) {
+                return child;
+            }
         }
         throw new IllegalStateException("Entity '" + name + "' not found in model root");
     }

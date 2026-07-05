@@ -338,4 +338,131 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         assertEquals("postId", f.getSourceField());
         assertEquals("tagId", f.getTargetField());
     }
+
+    // --- 5. ADR-0041 — FQN references resolve EXACTLY, never a bare-tail fallback -------
+    //
+    // These gate the M:N derivation-path FQN-discard bug (the shared cross-port
+    // xpkg-m2n-collision conformance fixture LOADS + round-trips the same model, but
+    // the canonical serializer only preserves the declared @objectRef/@through strings —
+    // it does NOT surface M2MFields.derive's result — so the collision cannot be
+    // distinguished at the conformance layer; these unit tests ARE the derive gate).
+
+    private MetaDataLoader loadTwo(String a, String aId, String b, String bId) {
+        MetaDataLoader loader = newTestLoader();
+        loader.load(List.of(new InMemoryStringSource(a, aId), new InMemoryStringSource(b, bId)));
+        return loader;
+    }
+
+    /** Root object whose FULL package-qualified name matches (never a bare-tail match). */
+    private static MetaObject objExact(MetaDataLoader loader, String fqn) {
+        for (MetaObject mo : loader.getRoot().getChildren(MetaObject.class, false)) {
+            if (fqn.equals(mo.getName())) return mo;
+        }
+        throw new IllegalStateException("no object " + fqn);
+    }
+
+    private static MetaRelationship relOf(MetaObject obj, String relName) {
+        for (MetaRelationship r : obj.getRelationships()) {
+            if (relName.equals(r.getShortName())) return r;
+        }
+        throw new IllegalStateException("no relationship " + relName + " on " + obj.getName());
+    }
+
+    /** Decoy package: an unrelated {@code Account} + {@code AccountLink} sharing the bare
+     *  names used by the real M:N in {@link #STORE_PKG}. Loaded FIRST so a bare-tail match
+     *  would bind THIS package. */
+    private static final String PARTNER_PKG =
+        "{ \"metadata.root\": { \"package\": \"xpkg::partner\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Account\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"AccountLink\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"aId\" } },"
+        + "    { \"field.long\": { \"name\": \"bId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"aRef\", \"@fields\": \"aId\", \"@references\": \"xpkg::partner::Account\" } },"
+        + "    { \"identity.reference\": { \"name\": \"bRef\", \"@fields\": \"bId\", \"@references\": \"xpkg::partner::Account\" } } ] } }"
+        + "] } }";
+
+    /** Real M:N: store::Account --partners--> partner::Account (a DIFFERENT entity that shares
+     *  the bare name "Account") through store::AccountLink (whose bare name also collides). */
+    private static final String STORE_PKG =
+        "{ \"metadata.root\": { \"package\": \"xpkg::store\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Account\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"relationship.association\": { \"name\": \"partners\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"xpkg::partner::Account\", \"@through\": \"xpkg::store::AccountLink\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"AccountLink\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"ownerId\" } },"
+        + "    { \"field.long\": { \"name\": \"partnerId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"ownerRef\", \"@fields\": \"ownerId\", \"@references\": \"xpkg::store::Account\" } },"
+        + "    { \"identity.reference\": { \"name\": \"partnerRef\", \"@fields\": \"partnerId\", \"@references\": \"xpkg::partner::Account\" } } ] } }"
+        + "] } }";
+
+    @Test
+    public void deriveCrossPackageHeteroBindsCorrectPackage() {
+        // ADR-0041: same-bare-name entities/junctions in different packages. Under the
+        // pre-fix bare-tail resolution, findObject binds the WRONG junction
+        // (partner::AccountLink, loaded first) AND stripPackage("...::Account")=="Account"
+        // mis-reads the cross-package hetero M:N as a self-join → throws "ambiguous". The
+        // FQN-exact fix binds store::AccountLink and derives ownerId/partnerId.
+        MetaDataLoader loader = loadTwo(PARTNER_PKG, "partner.json", STORE_PKG, "store.json");
+        MetaObject storeAccount = objExact(loader, "xpkg::store::Account");
+        M2MFields f = M2MFields.derive(relOf(storeAccount, "partners"), storeAccount, loader.getRoot());
+        assertEquals("ownerId", f.getSourceField());
+        assertEquals("partnerId", f.getTargetField());
+    }
+
+    /** Decoy package whose junction bare name "PostTag" collides but carries DIFFERENT
+     *  FK field names — so binding it (vs the real blog::PostTag) is observable. */
+    private static final String ARCHIVE_PKG =
+        "{ \"metadata.root\": { \"package\": \"xpkg::archive\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Post\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } }, { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Tag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } }, { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"PostTag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"archivedPostId\" } },"
+        + "    { \"field.long\": { \"name\": \"archivedTagId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"pRef\", \"@fields\": \"archivedPostId\", \"@references\": \"xpkg::archive::Post\" } },"
+        + "    { \"identity.reference\": { \"name\": \"tRef\", \"@fields\": \"archivedTagId\", \"@references\": \"xpkg::archive::Tag\" } } ] } }"
+        + "] } }";
+
+    /** Real M:N: blog::Post --tags--> blog::Tag through blog::PostTag, FQN @through. */
+    private static final String BLOG_PKG =
+        "{ \"metadata.root\": { \"package\": \"xpkg::blog\", \"children\": ["
+        + "  { \"object.entity\": { \"name\": \"Post\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"relationship.association\": { \"name\": \"tags\", \"@cardinality\": \"many\","
+        + "        \"@objectRef\": \"xpkg::blog::Tag\", \"@through\": \"xpkg::blog::PostTag\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"Tag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } }, { \"identity.primary\": { \"@fields\": \"id\" } } ] } },"
+        + "  { \"object.entity\": { \"name\": \"PostTag\", \"children\": ["
+        + "    { \"field.long\": { \"name\": \"id\" } },"
+        + "    { \"field.long\": { \"name\": \"postId\" } },"
+        + "    { \"field.long\": { \"name\": \"tagId\" } },"
+        + "    { \"identity.primary\": { \"@fields\": \"id\" } },"
+        + "    { \"identity.reference\": { \"name\": \"postRef\", \"@fields\": \"postId\", \"@references\": \"xpkg::blog::Post\" } },"
+        + "    { \"identity.reference\": { \"name\": \"tagRef\", \"@fields\": \"tagId\", \"@references\": \"xpkg::blog::Tag\" } } ] } }"
+        + "] } }";
+
+    @Test
+    public void deriveCrossPackageJunctionCollisionBindsCorrectPackage() {
+        // ADR-0041: the @through junction bare name "PostTag" collides with an unrelated
+        // xpkg::archive::PostTag (loaded FIRST, DIFFERENT FK field names). A bare-tail match
+        // binds the decoy and derives archivedPostId/archivedTagId; FQN-exact resolution
+        // binds xpkg::blog::PostTag and derives postId/tagId.
+        MetaDataLoader loader = loadTwo(ARCHIVE_PKG, "archive.json", BLOG_PKG, "blog.json");
+        MetaObject blogPost = objExact(loader, "xpkg::blog::Post");
+        M2MFields f = M2MFields.derive(relOf(blogPost, "tags"), blogPost, loader.getRoot());
+        assertEquals("postId", f.getSourceField());
+        assertEquals("tagId", f.getTargetField());
+    }
 }
