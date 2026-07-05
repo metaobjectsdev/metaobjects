@@ -54,6 +54,7 @@
   table <code>orders</code>
    · pk <code>id</code> · gen uuid</div>
 <section id="s-overview" class="mt-4"><p class="text-sm leading-relaxed">A customer &lt;order&gt; with &quot;items&quot; &amp; totals.</p></section>
+<section id="s-attributes" class="mt-4 text-xs"><span class="opacity-50 mr-1">attributes</span><span class="badge badge-soft badge-ghost badge-xs mr-1 font-mono">@team=platform</span></section>
 
 <section id="s-fields" class="mt-6"><h2 class="text-lg font-semibold">Fields</h2>
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
@@ -63,7 +64,7 @@
 <tr id="f-qty"><td class="font-mono">qty</td><td class="opacity-60">int</td><td><span class="badge badge-soft badge-neutral badge-xs">default 1</span> <span class="badge badge-soft badge-neutral badge-xs">min=1 max=99</span></td><td class="text-xs"></td></tr>
 
 
-<tr id="f-customerId"><td class="font-mono">customerId</td><td class="opacity-60">string</td><td><span class="badge badge-soft badge-neutral badge-xs">≤36</span></td><td class="text-xs"></td></tr>
+<tr id="f-customerId"><td class="font-mono">customerId</td><td class="opacity-60">string</td><td><span class="badge badge-soft badge-neutral badge-xs">≤36</span> <span class="badge badge-soft badge-ghost badge-xs">@column=customer_id</span></td><td class="text-xs"></td></tr>
 
 
 </tbody></table></div>
@@ -73,14 +74,16 @@
 
 <section id="s-indexes" class="mt-6"><h2 class="text-lg font-semibold">Indexes &amp; keys</h2>
 <table class="table table-xs"><thead><tr><th>Name</th><th>Kind</th><th>Fields</th><th>Detail</th></tr></thead><tbody>
-<tr><td class="font-mono">fkCustomer</td><td><span class="badge badge-soft badge-neutral badge-xs">fk</span></td><td class="font-mono text-xs">customerId</td><td class="text-xs opacity-70">→ acme::shop::Customer</td></tr><tr><td class="font-mono">idx_order_qty</td><td><span class="badge badge-soft badge-neutral badge-xs">index</span></td><td class="font-mono text-xs">qty</td><td class="text-xs opacity-70">orders desc · where (qty &gt; 0)</td></tr><tr><td class="font-mono">id</td><td><span class="badge badge-soft badge-success badge-xs">primary</span></td><td class="font-mono text-xs">id</td><td class="text-xs opacity-70"></td></tr>
+<tr><td class="font-mono">fkCustomer</td><td><span class="badge badge-soft badge-neutral badge-xs">fk</span></td><td class="font-mono text-xs">customerId</td><td class="text-xs opacity-70">→ acme::shop::Customer · @constraintName=fk_order_customer</td></tr><tr><td class="font-mono">idx_order_qty</td><td><span class="badge badge-soft badge-neutral badge-xs">index</span></td><td class="font-mono text-xs">qty</td><td class="text-xs opacity-70">orders desc · where (qty &gt; 0)</td></tr><tr><td class="font-mono">id</td><td><span class="badge badge-soft badge-success badge-xs">primary</span></td><td class="font-mono text-xs">id</td><td class="text-xs opacity-70"></td></tr>
 </tbody></table></section>
 
 <section id="s-validators" class="mt-6"><h2 class="text-lg font-semibold">Validators</h2>
 <table class="table table-xs"><tbody><tr><td class="font-mono text-xs opacity-70">comparison</td><td class="font-mono text-xs">qty lte 99</td></tr></tbody></table></section>
 
 <section id="s-relationships" class="mt-6"><h2 class="text-lg font-semibold">Relationships</h2>
-<table class="table table-xs"><tbody><tr><td class="font-mono">customer</td><td class="text-xs opacity-60">one</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td></tr><tr><td class="font-mono">products</td><td class="text-xs opacity-60">many</td><td><a class="link font-mono text-xs" href="Product.html">Product</a></td></tr></tbody></table></section>
+<table class="table table-xs"><tbody><tr><td class="font-mono">customer</td><td class="text-xs opacity-60">one</td><td><a class="link font-mono text-xs" href="Customer.html">Customer</a></td><td class="text-xs opacity-60"><span class="font-mono mr-2">@onDelete=cascade</span><span class="font-mono mr-2">@onUpdate=restrict</span></td></tr><tr><td class="font-mono">products</td><td class="text-xs opacity-60">many</td><td><a class="link font-mono text-xs" href="Product.html">Product</a></td><td class="text-xs opacity-60"></td></tr></tbody></table></section>
+
+
 
 
 

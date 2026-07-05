@@ -35,7 +35,7 @@ export interface FieldRow { name: string; type: string; isArray: boolean; requir
 
 /** Render an attr value for display: an object (e.g. view.badge @variantMap) as
  *  ordered `k: v` pairs, an array as a comma list, else the scalar. */
-function fmtAttrValue(v: unknown): string {
+export function fmtAttrValue(v: unknown): string {
   if (v !== null && typeof v === "object" && !Array.isArray(v)) {
     return Object.entries(v as Record<string, unknown>)
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -45,15 +45,45 @@ function fmtAttrValue(v: unknown): string {
   if (Array.isArray(v)) return v.map(String).join(", ");
   return String(v);
 }
+
+/** A node's authored attrs not already rendered by a specific renderer, as
+ *  escaped key/value pairs — consumed so they don't surface as "not rendered by
+ *  any page" in coverage. `skip` names the attrs a specific renderer handles.
+ *  Deterministic (sorted by name). This is the generic catch-all that documents
+ *  a consumer's own attrs (e.g. object.@dataflow) + the structural ones a
+ *  bespoke renderer doesn't (e.g. relationship.@onDelete). */
+function otherAttrs(node: MetaData, cov: CoverageTracker, skip: Set<string>): ViewAttr[] {
+  return [...node.ownAttrs()]
+    .filter(([n]) => !skip.has(n))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([n, v]) => { cov.consumeAttr(node, n); return { name: esc(n), value: esc(fmtAttrValue(v)) }; });
+}
+
+/** Consume a node + its whole subtree (nodes + attrs) so a section that renders
+ *  only a summary (e.g. a grid layout's top-level attrs) doesn't leave its nested
+ *  config flagged as un-rendered. */
+function consumeSubtree(node: MetaData, cov: CoverageTracker): void {
+  cov.consumeNode(node);
+  for (const [n] of node.ownAttrs()) cov.consumeAttr(node, n);
+  for (const c of node.ownChildren()) consumeSubtree(c, cov);
+}
+
 export interface IndexRow { name: string; kind: string; fields: string; extra: string; unique: boolean; }
 export interface ValidatorRow { scope: "field" | "object"; subject: string; rule: string; // human-readable, HTML-escaped
 }
-export interface RelationRow { name: string; toName: string; toHref: string; cardinality: string; }
-export interface OriginRow { field: string; from: string; via: string; }
+export interface RelationRow { name: string; toName: string; toHref: string; cardinality: string; attrs: ViewAttr[]; }
+export interface OriginRow { field: string; from: string; via: string; attrs: ViewAttr[]; }
+export interface LayoutRow { kind: string; attrs: ViewAttr[]; }
+
+// Field attrs fieldRow renders specifically (as their own badges / enum / ref);
+// everything else authored on a field (e.g. @column, @storage) is rendered
+// generically as a badge so it isn't flagged "not rendered" in coverage.
+const FIELD_KNOWN_ATTRS = new Set(["required", "deprecated", "maxLength", "dbColumnType", "default", "xmlText", "values", "objectRef", "description"]);
 export interface HierRow { name: string; href: string; level: number; self: boolean; }
 export interface ObjectPageData {
   name: string; kindBadge: string; isAbstract: boolean; isView: boolean; generation: string;
   pkg: string; href: string; breadcrumbHtml: string; desc: string; tableName?: string | undefined; pkHtml?: string | undefined;
+  objectAttrs: ViewAttr[]; storageAttrs: ViewAttr[]; layouts: LayoutRow[];
   ownFields: FieldRow[]; inheritedFields: FieldRow[]; indexes: IndexRow[]; validators: ValidatorRow[];
   relations: RelationRow[]; origins: OriginRow[]; hierarchy: HierRow[]; inheritanceMermaid?: string | undefined;
   neighborhoodMermaid?: string | undefined; neighborhoodLegend?: { pkg: string; fill: string; stroke: string }[] | undefined; neighborhoodMore?: number | undefined;
@@ -115,6 +145,12 @@ function fieldRow(f: MetaData, ownerHref: string, g: LinkGraph, cov: CoverageTra
       .map(([an, av]) => { cov.consumeAttr(v, an); return { name: esc(an), value: esc(fmtAttrValue(av)) }; });
     views.push({ subType: esc(v.subType), attrs: vAttrs });
   }
+  // any other authored field attrs (e.g. @column DB name, @storage) as badges
+  for (const [n, val] of [...f.ownAttrs()].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) {
+    if (FIELD_KNOWN_ATTRS.has(n)) continue;
+    cov.consumeAttr(f, n);
+    bits.push(badge({ text: `@${n}=${fmtAttrValue(val)}`, cls: "badge-soft badge-ghost" }));
+  }
   const desc = esc(a("description") ?? "");
   return { name: f.name, type: f.subType, isArray: f.resolvedIsArray(), required, badgesHtml: bits.join(" "), desc, enumValues, views, refHref, refName, inheritedFrom: undefined, anchor: `f-${f.name}` };
 }
@@ -136,6 +172,8 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
   const o = dn.node;
   cov.consumeNode(o);
   cov.consumeAttr(o, "description");
+  // consumer/structural attrs authored on the object itself (e.g. @dataflow, @neo4j)
+  const objectAttrs = otherAttrs(o, cov, new Set(["description"]));
 
   // inheritance hierarchy rows (ancestors nearest-last so level increases downward) + self + direct children
   const anc = g.ancestors(fqn);            // nearest-first
@@ -150,10 +188,13 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
 
   // storage: table vs view, generation, pk
   let tableName: string | undefined, isView = false, pkHtml: string | undefined, generation = "";
+  const storageAttrs: ViewAttr[] = [];
   for (const s of o.childrenOfType("source")) {
     cov.consumeNode(s);
     const t = s.attr("table"); if (t !== undefined) { cov.consumeAttr(s, "table"); tableName = String(t); }
     const kind = s.attr("kind"); if (kind !== undefined) { cov.consumeAttr(s, "kind"); if (String(kind) === "view") isView = true; }
+    // extra source attrs — e.g. a view source's @view (view name) — rendered in the storage section
+    storageAttrs.push(...otherAttrs(s, cov, new Set(["table", "kind"])));
   }
   // indexes: identity (pk/secondary) + index.lookup with tuning detail
   const indexes: IndexRow[] = [];
@@ -161,16 +202,18 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     cov.consumeNode(id);
     const flds = id.attr("fields"); if (flds !== undefined) cov.consumeAttr(id, "fields");
     const fields = Array.isArray(flds) ? flds.join(", ") : String(flds ?? "");
+    // other authored identity attrs (e.g. @constraintName) rendered into the detail cell
+    const idExtra = otherAttrs(id, cov, new Set(["fields", "references", "enforce", "generation"])).map((x) => `@${x.name}=${x.value}`).join(" · ");
     if (id.subType === "primary") {
       pkHtml = `<code>${esc(fields)}</code>`;
       const gen = id.attr("generation"); if (gen !== undefined) { cov.consumeAttr(id, "generation"); generation = String(gen); }
-      indexes.push({ name: id.name, kind: "primary", fields, extra: "", unique: true });
+      indexes.push({ name: id.name, kind: "primary", fields, extra: idExtra, unique: true });
     } else if (id.subType === "secondary") {
-      indexes.push({ name: id.name, kind: "unique", fields, extra: "", unique: true });
+      indexes.push({ name: id.name, kind: "unique", fields, extra: idExtra, unique: true });
     } else if (id.subType === "reference") {
       const ref = id.attr("references"); if (ref !== undefined) cov.consumeAttr(id, "references");
       const enf = id.attr("enforce"); if (enf !== undefined) cov.consumeAttr(id, "enforce");
-      indexes.push({ name: id.name, kind: "fk", fields, extra: [ref ? `→ ${esc(String(ref))}` : "", enf === false || enf === "false" ? "logical" : ""].filter(Boolean).join(" · "), unique: false });
+      indexes.push({ name: id.name, kind: "fk", fields, extra: [ref ? `→ ${esc(String(ref))}` : "", enf === false || enf === "false" ? "logical" : "", idExtra].filter(Boolean).join(" · "), unique: false });
     }
   }
   for (const ix of o.childrenOfType("index")) {
@@ -201,17 +244,38 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
   }
   validators.sort((a, b) => a.subject.localeCompare(b.subject));
 
-  // relationships
+  // relationships — bespoke name/target/cardinality + generic extras (@onDelete/@onUpdate/…)
+  const relAttrs = new Map<string, ViewAttr[]>();
+  for (const rel of o.childrenOfType("relationship")) {
+    cov.consumeNode(rel); cov.consumeAttr(rel, "objectRef"); cov.consumeAttr(rel, "cardinality");
+    relAttrs.set(rel.name, otherAttrs(rel, cov, new Set(["objectRef", "cardinality", "through", "sourceRefField", "symmetric"])));
+  }
   const relations: RelationRow[] = g.relationshipsOf(fqn).map((r) => {
     const t = g.byFqn(r.toFqn);
-    return { name: r.name, toName: t?.name ?? r.toFqn, toHref: t ? g.relHref(dn.href, t.href) : "", cardinality: r.cardinality };
+    return { name: r.name, toName: t?.name ?? r.toFqn, toHref: t ? g.relHref(dn.href, t.href) : "", cardinality: r.cardinality, attrs: relAttrs.get(r.name) ?? [] };
   });
-  for (const rel of o.childrenOfType("relationship")) { cov.consumeNode(rel); cov.consumeAttr(rel, "objectRef"); cov.consumeAttr(rel, "cardinality"); }
 
-  // origin provenance
-  const origins: OriginRow[] = g.originsOf(fqn).map((r) => ({ field: r.field, from: esc(r.from), via: esc(r.via) }))
+  // origin provenance — bespoke field/from/via + generic extras (@of/@agg/@filter/…)
+  const originAttrs = new Map<string, ViewAttr[]>();
+  for (const f of o.childrenOfType("field")) for (const org of f.childrenOfType("origin")) {
+    cov.consumeNode(org); cov.consumeAttr(org, "from"); cov.consumeAttr(org, "via");
+    const cur = originAttrs.get(f.name) ?? [];
+    cur.push(...otherAttrs(org, cov, new Set(["from", "via"])));
+    originAttrs.set(f.name, cur);
+  }
+  const origins: OriginRow[] = g.originsOf(fqn).map((r) => ({ field: r.field, from: esc(r.from), via: esc(r.via), attrs: originAttrs.get(r.field) ?? [] }))
     .sort((a, b) => a.field.localeCompare(b.field));
-  for (const f of o.childrenOfType("field")) for (const org of f.childrenOfType("origin")) { cov.consumeNode(org); cov.consumeAttr(org, "from"); cov.consumeAttr(org, "via"); }
+
+  // grid/form layout (admin-ui presentation on projections): render the layout node's
+  // own attrs (@pageSize/@defaultSortOrder/…); consume nested column config so it
+  // isn't flagged un-rendered.
+  const layouts: LayoutRow[] = [];
+  for (const l of o.childrenOfType("layout")) {
+    cov.consumeNode(l);
+    const attrs = otherAttrs(l, cov, new Set());
+    for (const c of l.ownChildren()) consumeSubtree(c, cov);
+    layouts.push({ kind: esc(l.subType), attrs });
+  }
 
   // fields own vs inherited
   const ownNames = new Set(o.ownChildren().filter((c) => c.type === "field").map((c) => c.name));
@@ -282,7 +346,7 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
   return {
     name: dn.name, kindBadge: o.subType, isAbstract: o.isAbstract, isView, generation,
     pkg: dn.pkg, href: dn.href, breadcrumbHtml: crumbs.join(" / "), desc: esc(o.attr("description") ?? ""),
-    tableName, pkHtml, ownFields, inheritedFields, indexes, validators, relations, origins,
+    tableName, pkHtml, objectAttrs, storageAttrs, layouts, ownFields, inheritedFields, indexes, validators, relations, origins,
     hierarchy, inheritanceMermaid, neighborhoodMermaid, neighborhoodLegend, neighborhoodMore, referencedBy, references, usedByTemplates, sourceFile: src,
   };
 }
