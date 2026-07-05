@@ -1,8 +1,8 @@
-import { LinkGraph, fqnOf } from "../link-graph";
-import type { CoverageTracker } from "../coverage";
-import { flowchartDomain, packageFlowchart } from "../mermaid";
-import { harvestPackageDocs } from "../package-docs";
-import { esc } from "../badges";
+import { LinkGraph, fqnOf } from "../link-graph.js";
+import type { CoverageTracker } from "../coverage.js";
+import { flowchartDomain, packageFlowchart } from "../mermaid.js";
+import { harvestPackageDocs } from "../package-docs.js";
+import { esc } from "../badges.js";
 
 export interface PkgCard { pkg: string; href: string; objectCount: number; promptCount: number; contractCount: number; purpose: string; }
 export interface CoreConfig { pin?: string[]; exclude?: string[]; n?: number; }

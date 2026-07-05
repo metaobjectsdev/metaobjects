@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { LinkGraph } from "../link-graph";
-import type { CoverageTracker } from "../coverage";
-import type { CommentDocs } from "../yaml-comments";
-import { esc } from "../badges";
+import { LinkGraph } from "../link-graph.js";
+import type { CoverageTracker } from "../coverage.js";
+import type { CommentDocs } from "../yaml-comments.js";
+import { esc } from "../badges.js";
 
 export interface OutputPageData { name: string; pkg: string; href: string; breadcrumbHtml: string; format: string; kind: string; textRef: string; textRefResolves: boolean; payloadName: string; payloadHref: string; desc: string; fields: { name: string; type: string; isArray: boolean; wire: string; note: string; refHtml: string }[]; }
 

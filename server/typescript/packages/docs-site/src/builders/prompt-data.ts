@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { LinkGraph } from "../link-graph";
-import type { CoverageTracker } from "../coverage";
-import { highlightMustache } from "../mustache-highlight";
-import { esc } from "../badges";
+import { LinkGraph } from "../link-graph.js";
+import type { CoverageTracker } from "../coverage.js";
+import { highlightMustache } from "../mustache-highlight.js";
+import { esc } from "../badges.js";
 
 export interface PayloadTreeRow { indent: number; name: string; type: string; isArray: boolean; anchor: string; desc: string; refHtml: string; }
 export interface PromptPageData { name: string; pkg: string; href: string; breadcrumbHtml: string; attrsHtml: string; desc: string; payloadName: string; payloadHref: string; payloadTree: PayloadTreeRow[]; sourceHtml?: string | undefined; sourceMissingNote?: string | undefined; tocHtml?: string | undefined; packageFiles: { file: string; html: string }[]; }

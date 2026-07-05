@@ -1,9 +1,9 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { LinkGraph, fqnOf } from "../link-graph";
-import type { CoverageTracker } from "../coverage";
-import { esc } from "../badges";
-import { erDiagramRich, flowchartDomain, domainColor, RICH_MAX, type ErEdge, type ErAttr, type ErNode } from "../mermaid";
-import { harvestPackageDocs, keyEntities } from "../package-docs";
+import { LinkGraph, fqnOf } from "../link-graph.js";
+import type { CoverageTracker } from "../coverage.js";
+import { esc } from "../badges.js";
+import { erDiagramRich, flowchartDomain, domainColor, RICH_MAX, type ErEdge, type ErAttr, type ErNode } from "../mermaid.js";
+import { harvestPackageDocs, keyEntities } from "../package-docs.js";
 
 // capped box attributes for the rich package ERD: PK → FKs(target) → enums → required, ≤6 + overflow count
 // (mirrors neighborAttrs in object-data.ts — kept local to avoid cross-builder coupling)

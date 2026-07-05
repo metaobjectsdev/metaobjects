@@ -1,6 +1,6 @@
 import type { MetaData, MetaObject, MetaRelationship } from "@metaobjectsdev/metadata";
 import { deriveM2MFields, stripPackage } from "@metaobjectsdev/metadata";
-import { type LoadedModel, treeOf } from "./load";
+import { type LoadedModel, treeOf } from "./load.js";
 
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
 export interface Ref {

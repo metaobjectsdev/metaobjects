@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { LinkGraph, fqnOf } from "./link-graph";
+import { LinkGraph, fqnOf } from "./link-graph.js";
 
 export interface PackageDoc { title: string; description: string; }
 

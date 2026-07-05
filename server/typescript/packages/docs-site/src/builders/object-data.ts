@@ -1,8 +1,8 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { LinkGraph, fqnOf, type Ref } from "../link-graph";
-import type { CoverageTracker } from "../coverage";
-import { esc, badge } from "../badges";
-import { inheritanceTree, erDiagramRich, flowchartDomain, RICH_MAX, type ErEdge, type ErNode, type ErAttr } from "../mermaid";
+import { LinkGraph, fqnOf, type Ref } from "../link-graph.js";
+import type { CoverageTracker } from "../coverage.js";
+import { esc, badge } from "../badges.js";
+import { inheritanceTree, erDiagramRich, flowchartDomain, RICH_MAX, type ErEdge, type ErNode, type ErAttr } from "../mermaid.js";
 
 // capped box attributes for the rich neighborhood ERD: PK → FKs(target) → enums → required, ≤6 + overflow count
 function neighborAttrs(o: MetaData): { attrs: ErAttr[]; more: number } {

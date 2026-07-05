@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { LinkGraph, fqnOf } from "../link-graph";
+import { LinkGraph, fqnOf } from "../link-graph.js";
 
 export interface EnumRow { owner: string; ownerHref: string; field: string; values: string[]; deflt: string; }
 export function buildEnumsPage(g: LinkGraph): EnumRow[] {
