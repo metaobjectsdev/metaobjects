@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.9] — 2026-07-05
+
+_Coordinated cross-language release: npm `0.15.9` (full lockstep across all `@metaobjectsdev/*` publish candidates) · PyPI `0.15.8` · NuGet `0.15.6` · Maven Central `7.7.5`. A new cross-language reference-resolution contract (ADR-0041)._
+
+### Added
+- **Cross-package reference resolution contract (ADR-0041), all five ports.** Every reference that names another object — `@objectRef` (relationship + `field.object`), `@references`, the `@from`/`@of`/`@via` heads of `origin.*`, `extends`, a relationship's `@through`, and `@payloadRef`/`@responseRef` — now resolves under one shared, conformance-gated contract: **a fully-qualified reference (`pkg::Entity`) resolves EXACTLY to its package** (never a bare-tail fallback), and **a bare reference prefers the referrer's own package, else a unique object of that name anywhere, else `ERR_AMBIGUOUS_REF`** (new error). New `fixtures/conformance/xpkg-*` / `error-xpkg-*` corpus covers every ref-bearing attribute cross-package plus the collision cases; all five ports serialize/err byte-identically.
+
+### Fixed
+- **Java resolved an explicit FQN to the wrong same-named package.** `SymbolTable.nameMatches` / `ValidationPhase.nameMatches` matched the reference's bare *tail* before the exact-FQN check, so with same-named entities in different packages an explicit `pkg::Entity` silently bound a different package's entity (wrong FK table). FQN references now resolve exactly. Kotlin bare-name collisions were arbitrary first-match; the shared loader fix corrects both.
+- **Java M:N derivation/runtime resolvers had the same FQN-discard bug.** `M2MFields` (the FK-derivation SSOT) and the OMDB runtime `M2MResolver` stripped an FQN `@objectRef`/`@through` to its bare tail — mis-classifying a cross-package hetero M:N as a self-join / binding the wrong junction. They now resolve by exact FQN + resolved object identity.
+
+**Potentially breaking:** a model that today relies on a *bare* reference silently binding an arbitrarily-chosen same-named entity in another package now fails with `ERR_AMBIGUOUS_REF` — previously undefined, port-divergent behavior. Fix by qualifying the reference with its package (FQN). No change for unique names or explicit FQNs. The remaining bare-collision *same-package preference* in codegen/runtime is tracked as a follow-up (#174).
+
 ## [0.15.8] — 2026-07-04
 
 _npm `0.15.8` (full lockstep across all `@metaobjectsdev/*` publish candidates, now including the new `docs-site` package). A TypeScript-only release — NuGet stays at `0.15.5`, Maven Central at `7.7.4`, PyPI at `0.15.7`._
