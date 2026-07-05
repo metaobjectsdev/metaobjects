@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.8] — 2026-07-04
+
+_npm `0.15.8` (full lockstep across all `@metaobjectsdev/*` publish candidates, now including the new `docs-site` package). A TypeScript-only release — NuGet stays at `0.15.5`, Maven Central at `7.7.4`, PyPI at `0.15.7`._
+
+### Added
+- **`@metaobjectsdev/docs-site` — a browsable HTML documentation-site generator, wired as `meta docs --site`.** Generates a multi-page site from metadata alone (package nav, Cmd+K search, per-object/package/prompt/output pages, kind-aware ER diagrams that encode object kind by shape + domain by color); deterministic + link-checked. `--site` is additive to the markdown `--model`/`--api` surfaces (alone, it suppresses markdown). Relationship edges are sourced from the shared relationship IR, so the diagrams cover M:N-through-junction (the junction is kept as a node **and** a distinct M:N edge is drawn), directed + symmetric self-joins, belongs-to cardinality, and `@onDelete`. **`meta docs --scaffold-site`** copies the templates + CSS/JS into `codegen/docs-site/` (ADR-0034 scaffold-and-own, write-only-if-absent) so a consumer owns its theme; `meta docs --site` auto-detects the owned copies (bundled fallback).
+
+### Fixed
+- **metadata — `deriveM2MFields` resolves the M:N `@through` junction by FQN as well as bare name.** The TS port looked the junction entity up by bare name only, so a fully-qualified `@through` (the codebase convention) threw and callers silently dropped the M:N relation — affecting both the new docs graph and `codegen-ts`'s `buildRelationMap`. It now falls back FQN → package-stripped, matching the Python and Java/Kotlin ports, which already handled both forms.
+- **docs-site — `.js` extensions on relative imports (Node ESM compatibility).** The package initially shipped extensionless relative imports (Bun-tolerant, Node-rejected), so `meta docs --site`/`--scaffold-site` crashed from a real Node install even though every in-workspace bun test passed; all relative imports now carry the `.js` extension every sibling package already uses.
+
 ## [0.15.7] — 2026-07-04
 
 _npm `0.15.7` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates). A TypeScript-only patch — NuGet stays at `0.15.5`, Maven Central at `7.7.4`, PyPI at `0.15.7`._
