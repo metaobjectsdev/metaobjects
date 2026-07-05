@@ -7,7 +7,7 @@
   <parent>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects</artifactId>
-    <version>7.7.5</version>
+    <version>7.7.6-SNAPSHOT</version>
   </parent>
 
   <artifactId>metaobjects-metadata-ktx</artifactId>
