@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "xpkg::store",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            {
+              "relationship.association": {
+                "name": "partners",
+                "@cardinality": "many",
+                "@objectRef": "xpkg::partner::Account",
+                "@through": "xpkg::store::AccountLink"
+              }
+            },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "AccountLink",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "ownerId" } },
+            { "field.long": { "name": "partnerId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.reference": { "name": "ownerRef", "@fields": ["ownerId"], "@references": "xpkg::store::Account" } },
+            { "identity.reference": { "name": "partnerRef", "@fields": ["partnerId"], "@references": "xpkg::partner::Account" } }
+          ]
+        }
+      }
+    ]
+  }
+}

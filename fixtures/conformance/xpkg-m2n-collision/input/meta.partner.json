@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "xpkg::partner",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "region" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "AccountLink",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "aId" } },
+            { "field.long": { "name": "bId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.reference": { "name": "aRef", "@fields": ["aId"], "@references": "xpkg::partner::Account" } },
+            { "identity.reference": { "name": "bRef", "@fields": ["bId"], "@references": "xpkg::partner::Account" } }
+          ]
+        }
+      }
+    ]
+  }
+}
