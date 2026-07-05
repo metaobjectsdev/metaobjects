@@ -36,6 +36,10 @@ metadata:
         extends: acme::common::BaseEntity
         children:
           - field.string: { name: sku, required: true, maxLength: 40 }
+          - field.int:
+              name: priceCents
+              children:
+                - view.currency: { locale: en-US, decimals: 2 }
           - source.rdb: { table: products }
     - object.entity:
         name: OrderProduct

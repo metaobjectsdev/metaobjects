@@ -12,6 +12,7 @@
 <div class="overflow-x-auto"><table class="table table-xs"><thead><tr><th>Field</th><th>Type</th><th></th><th>Description</th></tr></thead><tbody>
 {{#ownFields}}<tr id="{{anchor}}"><td class="font-mono">{{name}}{{#isArray}}[]{{/isArray}}</td><td class="opacity-60">{{type}}</td><td>{{{badgesHtml}}}</td><td class="text-xs">{{desc}}</td></tr>
 {{#enumValues.length}}<tr><td></td><td colspan="3" class="pl-4">{{#enumValues}}<span class="badge badge-soft badge-accent badge-xs mr-1">{{value}}{{#deflt}} ★{{/deflt}}</span>{{/enumValues}}</td></tr>{{/enumValues.length}}
+{{#views.length}}<tr><td></td><td colspan="3" class="pl-4 text-xs">{{#views}}<span class="badge badge-soft badge-info badge-xs mr-1 font-mono">view.{{subType}}</span>{{#attrs}}<span class="opacity-60 font-mono mr-2">@{{name}}={{value}}</span>{{/attrs}}{{/views}}</td></tr>{{/views.length}}
 {{/ownFields}}
 </tbody></table></div>
 {{#inheritedFields.length}}<div class="collapse collapse-arrow bg-base-100 border border-base-300 mt-2"><input type="checkbox"><div class="collapse-title text-sm font-semibold opacity-70">Inherited fields ({{inheritedFields.length}})</div><div class="collapse-content"><table class="table table-xs opacity-80"><tbody>

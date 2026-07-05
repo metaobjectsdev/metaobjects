@@ -27,7 +27,24 @@ function neighborAttrs(o: MetaData): { attrs: ErAttr[]; more: number } {
 }
 
 export interface EnumValue { value: string; deflt: boolean; desc: string; }
-export interface FieldRow { name: string; type: string; isArray: boolean; required: boolean; badgesHtml: string; desc: string; enumValues: EnumValue[]; refHref?: string | undefined; refName?: string | undefined; inheritedFrom?: { name: string; href: string } | undefined; anchor: string; }
+/** A field's presentation view child (e.g. view.currency / view.badge) + its
+ *  attrs, both HTML-escaped in the builder (this render lib does not escape). */
+export interface ViewAttr { name: string; value: string; }
+export interface ViewRow { subType: string; attrs: ViewAttr[]; }
+export interface FieldRow { name: string; type: string; isArray: boolean; required: boolean; badgesHtml: string; desc: string; enumValues: EnumValue[]; views: ViewRow[]; refHref?: string | undefined; refName?: string | undefined; inheritedFrom?: { name: string; href: string } | undefined; anchor: string; }
+
+/** Render an attr value for display: an object (e.g. view.badge @variantMap) as
+ *  ordered `k: v` pairs, an array as a comma list, else the scalar. */
+function fmtAttrValue(v: unknown): string {
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+    return Object.entries(v as Record<string, unknown>)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, vv]) => `${k}: ${vv}`)
+      .join(", ");
+  }
+  if (Array.isArray(v)) return v.map(String).join(", ");
+  return String(v);
+}
 export interface IndexRow { name: string; kind: string; fields: string; extra: string; unique: boolean; }
 export interface ValidatorRow { scope: "field" | "object"; subject: string; rule: string; // human-readable, HTML-escaped
 }
@@ -88,8 +105,18 @@ function fieldRow(f: MetaData, ownerHref: string, g: LinkGraph, cov: CoverageTra
       }));
     }
   }
+  // presentation view children (view.currency / view.badge / view.meter / …) + their
+  // attrs — consumed + rendered so a field's render-semantics appear in the docs.
+  const views: ViewRow[] = [];
+  for (const v of f.childrenOfType("view")) {
+    cov.consumeNode(v);
+    const vAttrs = [...v.ownAttrs()]
+      .sort(([an], [bn]) => (an < bn ? -1 : an > bn ? 1 : 0))
+      .map(([an, av]) => { cov.consumeAttr(v, an); return { name: esc(an), value: esc(fmtAttrValue(av)) }; });
+    views.push({ subType: esc(v.subType), attrs: vAttrs });
+  }
   const desc = esc(a("description") ?? "");
-  return { name: f.name, type: f.subType, isArray: f.resolvedIsArray(), required, badgesHtml: bits.join(" "), desc, enumValues, refHref, refName, inheritedFrom: undefined, anchor: `f-${f.name}` };
+  return { name: f.name, type: f.subType, isArray: f.resolvedIsArray(), required, badgesHtml: bits.join(" "), desc, enumValues, views, refHref, refName, inheritedFrom: undefined, anchor: `f-${f.name}` };
 }
 
 // Neighborhood edge label: relationship edges show their name + (M:N) junction + onDelete; extends/others show via.
