@@ -152,6 +152,117 @@ The fixture
 [`extends-nonexistent`](../../fixtures/conformance/error-extends-nonexistent/)
 covers this.
 
+## Discriminator-based inheritance (TPH) with persistence
+
+The two use cases above share *shape* — an abstract contributes columns to its
+extenders, but each extender is still its **own** table. **Table-per-hierarchy
+(TPH)** inheritance is the persistence-bearing form: several concrete entities are
+variants of one thing and **share a single physical table**, told apart by a
+**discriminator** column.
+
+Declare it with two attributes:
+
+- On the **base** entity, `@discriminator` names the discriminator field — a
+  `field.enum` whose `@values` are the subtype tags.
+- On each concrete **subtype**, `extends` the base and `@discriminatorValue` gives
+  the tag (one of the base enum's members).
+
+```yaml
+metadata:
+  package: acme::auth
+  children:
+    - object.entity:
+        name: Auth                       # the TPH base — owns the single table
+        "@discriminator": type
+        children:
+          - source.rdb: { "@table": auths }
+          - field.long: { name: id }
+          - field.enum:
+              name: type
+              "@values": ["Bridge", "Copay", "PriorAuth"]
+          - field.string: { name: reference, "@required": true }
+          - identity.primary: { "@fields": id }
+
+    - object.entity:
+        name: BridgeAuth                 # subtype → folded into `auths`
+        extends: Auth
+        "@discriminatorValue": Bridge
+        children:
+          - field.int: { name: quantity, "@required": true }
+
+    - object.entity:
+        name: CopayAuth
+        extends: Auth
+        "@discriminatorValue": Copay
+        children:
+          - field.decimal: { name: copayAmount, "@precision": 10, "@scale": 2 }
+
+    - object.entity:
+        name: PriorAuthAuth
+        extends: Auth
+        "@discriminatorValue": PriorAuth
+        children:
+          - field.string: { name: approver }
+```
+
+### Single-table persistence
+
+Every subtype persists to the base's one table (`auths`). Subtype-only columns
+(`quantity`, `copay_amount`, `approver`) are folded into that table **nullable** —
+a row of any other subtype stores `NULL` there, **even when the field is
+`@required`** on its subtype (a required rule can't hold across the shared table, so
+it is dropped on the folded column; an enum `CHECK` still passes because `NULL IN
+(...)` is `NULL`, not false). The base row shape is the **union** of all subtype
+columns. Subtype entities emit **no** table of their own.
+
+### What codegen emits (all five ports)
+
+TPH is supported and conformance-gated in **all five ports** — codegen lowers it to
+each port's idiomatic single-table mapping:
+
+| Port | Single-table persistence | Polymorphic API |
+|---|---|---|
+| TypeScript | one Drizzle table (subtype cols nullable) + discriminated-union type + `parse<Base>` dispatcher | Fastify polymorphic + per-subtype routes; `runtime-ts` ObjectManager scopes by subtype |
+| C# | EF Core `.HasDiscriminator(e => e.Type).HasValue<Sub>(...)` on the single table | ASP.NET minimal-API polymorphic + per-subtype routes |
+| Java | union DTO (subtype cols nullable) + polymorphic / per-subtype-scoped repository seam | Spring Web MVC polymorphic + per-subtype controller |
+| Python | Pydantic subtype pins the discriminator to a `Literal`; subtype-keyed repository `Protocol` | FastAPI polymorphic + per-subtype router |
+| Kotlin | one Exposed `Table` (subtype cols `.nullable()`) + union data class | Spring polymorphic + per-subtype controller |
+
+Where a port owns persistence (TS Drizzle, C# EF Core, Kotlin Exposed) the
+single-table mapping is generated directly; where persistence is consumer-owned
+(Java Spring, Python FastAPI) codegen emits the polymorphic controller/router plus a
+subtype-scoped repository seam you implement (idiomatically a Spring-JPA
+single-table mapping / a SQLAlchemy polymorphic mapping).
+
+### Runtime behavior (the subtype contract)
+
+The generated polymorphic surface enforces a consistent subtype contract across
+every port:
+
+- **Per-subtype route segment** = the `@discriminatorValue` **lowercased**:
+  `/auths/bridge`, `/auths/copay`, `/auths/priorauth` (not the subtype entity
+  name). There is intentionally **no polymorphic `POST /auths`** — you can't create
+  the abstract base.
+- **Create injects the discriminator** from the URL — `POST /auths/bridge` stamps
+  `type = "Bridge"`; the request body omits it.
+- **Reads/updates/deletes are scoped to the subtype** — `GET|PATCH|DELETE
+  /auths/bridge/{id}` on a `Copay` row → **404** (a different-subtype row is
+  invisible to a subtype-scoped operation).
+- **The discriminator is immutable** — an update can't move a row to another
+  subtype (the field is stripped from update patches).
+- **Polymorphic reads** — `GET /auths` and `GET /auths/{id}` return the union across
+  subtypes, each row tagged by its discriminator value.
+
+### Conformance
+
+- [`fixtures/api-contract-conformance/tph/`](../../fixtures/api-contract-conformance/tph/)
+  pins the HTTP wire shape (polymorphic + per-subtype URLs, discriminator-by-value,
+  cross-subtype 404), run in two lanes — a reference server AND the *generated*
+  routes booted over HTTP.
+- [`fixtures/persistence-conformance/`](../../fixtures/persistence-conformance/)
+  `tph-*.yaml` scenarios pin the single-table runtime semantics (create injects the
+  discriminator, subtype-scoped find, no cross-subtype update).
+
 ## Overlays vs. extends — different concepts
 
 Both look like they're "merging shape" but they do different things:

@@ -94,10 +94,10 @@ All live in `metaobjects-codegen-kotlin` under
 
 | Generator | Output |
 |---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` per `object.entity` / `object.value` |
-| `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object (PK + FK + `@storage` columns) for entities with `source.rdb` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` per `object.entity` / `object.value`. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
+| `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object (PK + FK + `@storage` columns) for entities with `source.rdb`. A TPH `@discriminator` base emits ONE `Table` for the whole hierarchy — every subtype-only column folded in `.nullable()` (a row of another subtype stores null there) — single-table inheritance; subtype entities emit no table of their own. |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `@cardinality="many"` query helpers |
-| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`) |
+| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload data class from a template's `@payloadRef` |
 | `KotlinOutputParserGenerator` | the `template.output` parser-on-receipt (see the prompts reference) |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` (once per project) |
@@ -108,3 +108,19 @@ All live in `metaobjects-codegen-kotlin` under
 Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
+
+## Discriminator inheritance (TPH)
+
+`codegen-kotlin` fully supports **table-per-hierarchy (TPH) inheritance**.
+`KotlinTphPlan` is the shared descriptor every TPH-aware generator reads: an
+`object.entity` carrying `@discriminator` (naming a `field.enum`) is the base;
+concrete entities that `extends` it and declare `@discriminatorValue` are its
+subtypes, all persisted to the base's **single** Exposed `Table` (single-table
+inheritance). `KotlinExposedTableGenerator` folds each subtype's own columns into
+that table as `.nullable()`; `KotlinEntityGenerator` builds the base data class as
+the union of subtype columns; `KotlinFilterAllowlistGenerator` unions the
+subtypes' filterable columns; `KotlinSpringControllerGenerator` mounts the
+polymorphic reads + per-subtype CRUD scoped by the discriminator (inject on create,
+subtype-scope + cross-subtype 404 on get/update/delete, immutable discriminator).
+Conformance-gated by `fixtures/api-contract-conformance/tph` (HTTP wire shape) and
+`fixtures/persistence-conformance/tph-*` (single-table runtime semantics).

@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme::auth",
+    "children": [
+      { "object.entity": {
+        "name": "Auth",
+        "@discriminator": "type",
+        "children": [
+          { "source.rdb":       { "@table": "auths" } },
+          { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
+          { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
+          { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "BridgeAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "Bridge",
+        "children": [
+          { "field.int": { "name": "quantity", "@required": true, "@filterable": true, "@sortable": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "CopayAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "Copay",
+        "children": [
+          { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "PriorAuthAuth",
+        "extends": "Auth",
+        "@discriminatorValue": "PriorAuth",
+        "children": [
+          { "field.string": { "name": "priorAuthNumber", "@maxLength": 80, "@filterable": true, "@sortable": true } }
+        ]
+      }}
+    ]
+  }
+}

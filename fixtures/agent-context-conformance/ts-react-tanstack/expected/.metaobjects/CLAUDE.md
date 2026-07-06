@@ -7,6 +7,7 @@ spine; generated code is the disposable artifact. Regenerate with `npx meta gen`
 
 ## Principles
 - Pattern-derivable from metadata = codegen, never hand-write — FKs, CRUD, validators, finders, and the database schema and migrations. The schema is a disposable, generated artifact: change the metadata and regenerate, never hand-write SQL.
+- The **live database** is a derived artifact too — never hand-apply a schema change to a running DB (ad-hoc `psql`/console `ALTER`/`CREATE`/`DROP`), not even to preview a column or unblock a boot. Apply schema only through `meta migrate` (metadata → DDL). A hand-applied change drifts the live DB from the metadata + migration history and collides at the next migrate/boot ("column already exists") — a state no migration can reproduce. Run `meta verify --db` after any DB-touching work to catch that drift early.
 - Never hand-edit generated files — change the metadata and regenerate (three-way merge preserves hand-written regions).
 - Use the generated constants for any string that names metadata.
 - The loaded metadata model is READ-ONLY — never inject nodes or mutate the tree at load time (no "enrich the model on load" hooks). Need an extra field/column? Author it in the metadata, or derive it during codegen (read the metadata, emit output). Mutating the loaded model makes it diverge from what's declared — a bad practice reserved for very rare cases.

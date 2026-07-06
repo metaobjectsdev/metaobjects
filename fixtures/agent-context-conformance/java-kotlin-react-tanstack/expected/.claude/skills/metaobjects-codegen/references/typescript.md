@@ -69,12 +69,30 @@ From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):
 
 | Generator | Emits per entity |
 |---|---|
-| `entityFile()` | `<Entity>.ts` — Drizzle table + FK `.references()` + `relations()` + inferred types + Zod insert/update schemas + `<Entity>FilterAllowlist` / `<Entity>SortAllowlist` |
+| `entityFile()` | `<Entity>.ts` — Drizzle table + FK `.references()` + `relations()` + inferred types + Zod insert/update schemas + `<Entity>FilterAllowlist` / `<Entity>SortAllowlist`. A TPH `@discriminator` base folds every subtype's columns into ONE Drizzle table (subtype-only columns nullable, no default — single-table inheritance) and emits a discriminated-union type + per-subtype Zod schemas + a `parse<Base>` dispatcher; subtype entities emit no table of their own. |
 | `queriesFile()` | `<Entity>.queries.ts` — typed CRUD (`findPostById`, `listPosts`, `createPost`, `updatePost`, `deletePostById`) |
-| `routesFile()` | `<Entity>.routes.ts` — Fastify CRUD routes on the cross-port REST contract. `routesFileHono()` is the Hono/Workers variant |
+| `routesFile()` | `<Entity>.routes.ts` — Fastify CRUD routes on the cross-port REST contract. `routesFileHono()` is the Hono/Workers variant. A TPH `@discriminator` base mounts polymorphic `GET /<base>(+/:id)` plus a per-subtype CRUD set at `<basePath>/<discriminatorValue lowercased>` — create omits the discriminator (the URL names the subtype; the runtime injects it); get/update/delete scoped to the subtype (cross-subtype → 404); discriminator immutable via the runtime `discriminator` option. |
 | `barrel()` | `index.ts` re-exporting each `<Entity>.ts` (one-shot, not per-entity) |
 | `promptRender()` | `render<Name>()` per `template.prompt` |
 | `outputParser()` | `<Name>.output.ts` (`parse*` / `safeParse*`) per `template.output` |
+
+## Discriminator inheritance (TPH)
+
+The TS reference implementation fully supports **table-per-hierarchy (TPH)
+inheritance** (`tph-discriminator.ts` is the shared descriptor): an `object.entity`
+carrying `@discriminator` (naming a `field.enum`) is the base; concrete entities
+that `extends` it and declare `@discriminatorValue` are its subtypes, all persisted
+to the base's **single** Drizzle table (single-table inheritance). `entityFile()`
+folds each subtype's columns into that table nullable and emits the
+discriminated-union type + per-subtype Zod schemas + a `parse<Base>` dispatcher;
+`routesFile()` mounts polymorphic reads + per-subtype CRUD scoped by the
+discriminator. At runtime, `@metaobjectsdev/runtime-ts`'s ObjectManager enforces the
+subtype contract: it injects the discriminator on create, scopes every
+read/update/delete to the subtype (a foreign-subtype row is invisible), and treats
+the discriminator as immutable — mirroring the generated per-subtype route's
+cross-subtype 404. Conformance-gated by `fixtures/api-contract-conformance/tph`
+(HTTP wire shape) and `fixtures/persistence-conformance/tph-*` (single-table
+runtime semantics).
 
 ## Docs — `meta docs` (one door, two surfaces)
 

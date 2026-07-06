@@ -37,11 +37,27 @@ a renamed physical column).
 
 | Stable name | Output |
 |---|---|
-| `entity` | one **Pydantic model** per `object.entity` / projection (the `entity-model` generator): typed fields from the metadata, nullability from `@required`, `@maxLength`/validators, enum fields → a Python `Enum`. This is the typed data model. |
-| `routes` | a **FastAPI `APIRouter`** per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). The router declares a repository **`Protocol`** you implement and inject. |
+| `entity` | one **Pydantic model** per `object.entity` / projection (the `entity-model` generator): typed fields from the metadata, nullability from `@required`, `@maxLength`/validators, enum fields → a Python `Enum`. This is the typed data model. A TPH concrete subtype (`@discriminatorValue`) pins the inherited `@discriminator` field to a `Literal[...]` so the model rejects a foreign-subtype tag. |
+| `routes` | a **FastAPI `APIRouter`** per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). The router declares a repository **`Protocol`** you implement and inject. A TPH `@discriminator` base emits ONE polymorphic router: `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete scoped to the subtype (cross-subtype → 404); discriminator immutable. Its repository `Protocol` is subtype-keyed (`subtype=None` for the polymorphic base) so your implementation applies the single-table discriminator scope. |
 | `filter-allowlist` | per-entity filter allowlist (FR-009 — the server-side field+operator allowlist the routes validate against). |
 | `payload` / `output-parser` / `output-prompt` / `extractor` / `render-helper` / `trace-helper` | the `template.output` prompt-pillar artifacts — see the **prompts** reference. |
 | `template` | the generic Mustache `template` primitive. |
+
+## Discriminator inheritance (TPH)
+
+Python codegen fully supports **table-per-hierarchy (TPH) inheritance**
+(`tph_plan.py` is the shared descriptor): an `object.entity` carrying
+`@discriminator` (naming a `field.enum`) is the base; concrete entities that
+`extends` it and declare `@discriminatorValue` are its subtypes, all persisted to
+the base's **single** table (single-table inheritance). The `entity` generator
+pins each subtype's inherited discriminator to a `Literal`; the `routes` generator
+emits the polymorphic router + per-subtype CRUD scoped by the discriminator (inject
+on create, subtype-scope + cross-subtype 404 on get/update/delete, immutable
+discriminator). Because Python owns no ORM (see below), your repository — keyed by
+subtype — applies the single-table discriminator scope (idiomatically a
+SQLAlchemy polymorphic/single-table mapping). Conformance-gated by
+`fixtures/api-contract-conformance/tph` (HTTP wire shape) and
+`fixtures/persistence-conformance/tph-*` (single-table runtime semantics).
 
 ## No ORM — you own persistence (unlike the C# port)
 
