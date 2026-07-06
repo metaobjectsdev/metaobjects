@@ -376,6 +376,84 @@ public class GeneratedRenderHelperCompileRunTest extends SharedRegistryTestBase 
     }
 
     // -------------------------------------------------------------------------
+    // Symmetry lock (spec test 4) — the {{#has<Field>}} sections the STATIC
+    // render-helper drift gate (render.Verify) accepts are EXACTLY the has<Field>()
+    // accessors SpringPayloadGenerator emits on the payload record, because both
+    // consult the one shared rule (render.PayloadAccessors). If the generator's
+    // accessor-naming rule and the verifier's acceptance rule ever diverge, this
+    // fails.
+    // -------------------------------------------------------------------------
+
+    @Test
+    public void generatedHasAccessorsMatchStaticVerifyAcceptance() throws Exception {
+        // Three accessor-eligibility classes: bio (String) + items (array-of-object)
+        // get a has*() accessor; count (int primitive) does not.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "Item", "children": [
+                    { "field.string": { "name": "sku" } }
+                ] } },
+                { "object.value": { "name": "AccessorVO", "children": [
+                    { "field.string": { "name": "bio" } },
+                    { "field.int":    { "name": "count" } },
+                    { "field.object": { "name": "items", "isArray": true, "@objectRef": "Item" } }
+                ] } },
+                { "template.output": {
+                    "name": "AccessorDoc",
+                    "@kind": "document",
+                    "@payloadRef": "AccessorVO",
+                    "@textRef": "pages/accessor",
+                    "@format": "text"
+                } }
+              ] }
+            }
+            """;
+        Path gen = tmp.newFolder("acc-gen").toPath();
+        Path ws  = tmp.newFolder("acc-ws").toPath();
+        Path templates = tmp.newFolder("acc-templates").toPath();
+        // Gates on EXACTLY the derived accessors; the build-time Verify gate must be clean.
+        writeTemplate(templates, "pages/accessor.mustache",
+            "{{#hasBio}}{{bio}}{{/hasBio}}{{#hasItems}}{{#items}}{{sku}}{{/items}}{{/hasItems}}");
+
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "acc", fixture);
+
+        // Must NOT throw — static Verify accepts the generator's derived accessors.
+        generate(loader, gen, templates);
+
+        // Parse the emitted has*() method names off the generated payload record.
+        File payload = collectSources(gen).stream()
+            .filter(f -> f.getName().equals("AccessorDocPayload.java"))
+            .findFirst().orElseThrow(() -> new AssertionError("AccessorDocPayload.java not generated"));
+        String src = Files.readString(payload.toPath());
+
+        java.util.Set<String> emitted = new java.util.TreeSet<>();
+        java.util.regex.Matcher mm =
+            java.util.regex.Pattern.compile("public boolean (has\\w+)\\(\\)").matcher(src);
+        while (mm.find()) emitted.add(mm.group(1));
+
+        // The generator emits accessors for the String + array-of-object fields, named
+        // by the shared rule; the int scalar gets none.
+        assertEquals(new java.util.TreeSet<>(java.util.List.of(
+            com.metaobjects.render.PayloadAccessors.hasAccessorName("bio"),
+            com.metaobjects.render.PayloadAccessors.hasAccessorName("items"))), emitted);
+
+        // And every emitted accessor verifies clean through the SAME static engine.
+        var tree = java.util.List.of(
+            com.metaobjects.render.PayloadField.scalar("bio"),
+            com.metaobjects.render.PayloadField.object("items",
+                java.util.List.of(com.metaobjects.render.PayloadField.scalar("sku"))));
+        for (String acc : emitted) {
+            assertTrue(acc + " must verify clean",
+                com.metaobjects.render.Verify.check("{{#" + acc + "}}x{{/" + acc + "}}",
+                    tree, com.metaobjects.render.VerifyOptions.empty()).isEmpty());
+        }
+        // A name that is NOT a shared-rule accessor over a present field is still drift.
+        assertEquals(1, com.metaobjects.render.Verify.check("{{#hasNope}}x{{/hasNope}}",
+            tree, com.metaobjects.render.VerifyOptions.empty()).size());
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

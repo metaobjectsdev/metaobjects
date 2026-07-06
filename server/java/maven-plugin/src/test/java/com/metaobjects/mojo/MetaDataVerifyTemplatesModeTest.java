@@ -52,6 +52,36 @@ public class MetaDataVerifyTemplatesModeTest {
     }
 
     @Test
+    public void templatesModePassesForAutoAccessorSection() throws Exception {
+        // `body` (optional String on MessagePayload) yields a derived hasBody()
+        // accessor; a section gated on it must NOT be flagged as drift.
+        Path templateRoot = writeTemplate("ai/greeting",
+                "Hello {{title}}{{#hasBody}} — {{body}}{{/hasBody}}");
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configureTemplates(verify, templateRoot);
+        // Clean → no exception.
+        verify.execute();
+    }
+
+    @Test
+    public void templatesModeFailsForAccessorOverMissingField() throws Exception {
+        // hasSubject has no underlying `subject` field on MessagePayload → real drift.
+        Path templateRoot = writeTemplate("ai/greeting",
+                "Hello {{title}}{{#hasSubject}}x{{/hasSubject}}");
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configureTemplates(verify, templateRoot);
+        try {
+            verify.execute();
+            fail("expected MojoFailureException for a has-accessor over a missing field");
+        } catch (MojoFailureException e) {
+            assertTrue(e.getMessage().contains("ERR_VAR_NOT_ON_PAYLOAD"));
+            assertTrue(e.getMessage().contains("hasSubject"));
+        }
+    }
+
+    @Test
     public void templatesModeFailsForUnresolvedTextRef() throws Exception {
         // Do not write ai/greeting.mustache → @textRef cannot resolve.
         Path templateRoot = Files.createTempDirectory("verify-templates-missing");
