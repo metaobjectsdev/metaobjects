@@ -207,6 +207,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (scalarFields.any { it.elementType == "Instant" }) {
                 append("import java.time.Instant\n")
             }
+            // FR-009 (#179): a filterable enum column is compared as its stored string via
+            // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
+            // so entities without a filterable enum stay byte-identical.
+            if (scalarFields.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+                append("import org.jetbrains.exposed.sql.TextColumnType\n")
+                append("import org.jetbrains.exposed.sql.castTo\n")
+            }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
             append("import java.time.LocalTime\n")
@@ -474,6 +481,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // byte-identical.
             if (filterSpecs.any { it.elementType == "Instant" }) {
                 append("import java.time.Instant\n")
+            }
+            // FR-009 (#179): a non-discriminator filterable enum in the union is compared as its
+            // stored string via `col.castTo<String>(TextColumnType())` — same conditional imports
+            // as the vanilla controller. (The discriminator enum is excluded from filterSpecs.)
+            if (filterSpecs.any { it.subType == EnumField.SUBTYPE_ENUM }) {
+                append("import org.jetbrains.exposed.sql.TextColumnType\n")
+                append("import org.jetbrains.exposed.sql.castTo\n")
             }
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
@@ -843,6 +857,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 elementType = elementType,
                 isStringLike = isStringLike,
                 isBoolean = isBoolean,
+                isEnum = (subType == EnumField.SUBTYPE_ENUM),
             )
         }
         out.append("                else -> continue\n")
@@ -867,28 +882,37 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         elementType: String,
         isStringLike: Boolean,
         isBoolean: Boolean,
+        isEnum: Boolean,
     ) {
         // Exposed's typed `Column<T>.eq(t: T)` / `.neq` / `.inList(Iterable<T>)` reject a
         // bare `Any?` — cast each predicate value to the column's element Kotlin type so
         // the comparison resolves. (Surfaced by the SP-F generated-controller HTTP lane:
         // `(p.value as Any?)` was an `Unresolved reference: eq` compile error.) The
         // coercer already produced a value of exactly this type; the cast is total.
+        //
+        // FR-009 enum columns (#179): an Exposed enum column is typed `Column<Enum>`, so a
+        // String-valued predicate would not resolve `eq`/`like`. Filter it by its STORED STRING
+        // via `CAST(col AS text)` (`.castTo<String>(TextColumnType())`) — matching every other
+        // port's string-band enum-filter semantics — so eq/ne/in/like all compare Strings.
+        // (`isNull` still checks the raw column's nullability.)
+        val col = if (isEnum) "${tableObjectName}.${fieldName}.castTo<String>(TextColumnType())"
+                  else "${tableObjectName}.${fieldName}"
         out.append("                \"$fieldName\" -> when (p.op) {\n")
-        out.append("                    \"eq\" -> ${tableObjectName}.${fieldName} eq (p.value as $elementType)\n")
+        out.append("                    \"eq\" -> $col eq (p.value as $elementType)\n")
         if (!isBoolean) {
-            out.append("                    \"ne\" -> ${tableObjectName}.${fieldName} neq (p.value as $elementType)\n")
+            out.append("                    \"ne\" -> $col neq (p.value as $elementType)\n")
         }
         if (!isStringLike && !isBoolean) {
-            out.append("                    \"gt\" -> ${tableObjectName}.${fieldName} greater (p.value as $elementType)\n")
-            out.append("                    \"gte\" -> ${tableObjectName}.${fieldName} greaterEq (p.value as $elementType)\n")
-            out.append("                    \"lt\" -> ${tableObjectName}.${fieldName} less (p.value as $elementType)\n")
-            out.append("                    \"lte\" -> ${tableObjectName}.${fieldName} lessEq (p.value as $elementType)\n")
+            out.append("                    \"gt\" -> $col greater (p.value as $elementType)\n")
+            out.append("                    \"gte\" -> $col greaterEq (p.value as $elementType)\n")
+            out.append("                    \"lt\" -> $col less (p.value as $elementType)\n")
+            out.append("                    \"lte\" -> $col lessEq (p.value as $elementType)\n")
         }
         if (!isBoolean) {
-            out.append("                    \"in\" -> ${tableObjectName}.${fieldName} inList (p.value as List<$elementType>)\n")
+            out.append("                    \"in\" -> $col inList (p.value as List<$elementType>)\n")
         }
         if (isStringLike) {
-            out.append("                    \"like\" -> ${tableObjectName}.${fieldName} like (p.value as String)\n")
+            out.append("                    \"like\" -> $col like (p.value as String)\n")
         }
         out.append("                    \"isNull\" -> if (p.value as Boolean) ${tableObjectName}.${fieldName}.isNull() else ${tableObjectName}.${fieldName}.isNotNull()\n")
         out.append("                    else -> throw IllegalStateException(\"unsupported op for $fieldName: \" + p.op)\n")
@@ -981,11 +1005,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * The element Kotlin type the generated `<Entity>Table`'s column for [field] holds —
      * the cast target for the eq/ne/in predicate value. For scalar fields this is the same
      * simple type name the DTO property uses ([KotlinTypeMapper.kotlinTypeName]); for an
-     * [EnumField] it is the generated typed enum class (the column is
-     * `enumerationByName(..., <Enum>::class)`), keeping the cast aligned with the column type.
+     * [EnumField] it is `String`, since the column is filtered by its stored string
+     * (a CAST-to-text — see [emitPerFieldDispatchArm]).
      */
     private fun columnElementType(field: com.metaobjects.field.MetaField<*>): String {
-        KotlinTypeMapper.enumTypeName(field, null)?.let { return it.simpleName }
+        // FR-009 (#179): an enum column is filtered by its stored string (compared against a
+        // `CAST(col AS text)` in the WHERE arm — see emitPerFieldDispatchArm), so the predicate
+        // VALUE type is String. The coercer already produces String / List<String> for enums.
+        if (field is EnumField) return "String"
         return KotlinTypeMapper.kotlinTypeName(field).let { tn ->
             (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
         }
