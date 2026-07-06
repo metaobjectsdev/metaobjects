@@ -28,8 +28,9 @@ import kotlin.test.assertFalse
  * to fold a subtype into the base — the table's back-FK inference (`buildGlobalFkMap`), the relations
  * helper, or the validator registry — it would emit a reference to a `BridgeAuthTable` /
  * `CopayAuthTable` / `PriorAuthAuthTable` that the table generator no longer emits, and this compile
- * would fail. (No subtype `field.enum`: the controller's enum-filter emission is a separate
- * pre-existing bug tracked elsewhere; this gate targets the TPH subtype-fold, not that.)
+ * would fail. `CopayAuth` also carries a non-discriminator `@filterable field.enum` (`tier`) that
+ * folds into the union, so the TPH controller emits `castTo<String>(TextColumnType())` for it — this
+ * gate also covers the #179 enum-filter import block on the TPH controller path.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class TphFullSuiteCompilesTest {
@@ -48,7 +49,8 @@ class TphFullSuiteCompilesTest {
             { "field.int": { "name": "quantity", "@required": true, "@filterable": true } }
         ] } },
         { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } },
+            { "field.enum":    { "name": "tier", "@values": ["Standard", "Premium"], "@filterable": true } }
         ] } },
         { "object.entity": { "name": "PriorAuthAuth", "extends": "Auth", "@discriminatorValue": "PriorAuth", "children": [
             { "field.string": { "name": "priorAuthNumber", "@maxLength": 80, "@filterable": true } }
