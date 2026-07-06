@@ -184,10 +184,13 @@ The `tph-*.yaml` scenarios exercise single-table inheritance through the runtime
 (`Auth` base + `BridgeAuth` / `CopayAuth` / `PriorAuthAuth` subtypes over the one
 `auths` table). They require the port's **runtime TPH support** (resolving a
 subtype's inherited fields/identity/table via `extends`, plus discriminator
-inject/scope/strip). **TypeScript** ships it (runtime-ts ObjectManager); the
-**Java / Kotlin / Python / C#** runtimes gain it in their Tier-4 slice. Until
-then those ports skip the `tph-*` scenarios — do not delete them; implement the
-runtime support, then run them green.
+inject/scope/strip). **All five ports run the `tph-*` scenarios green** — TypeScript
+(runtime-ts ObjectManager), Java (OMDB + `TphHelper`), Python (`runtime/tph.py`),
+C# (EF `DbContextAdapter` CLR-type discrimination), and Kotlin (the Exposed
+persistence lane's `QueryScenarioRunner` inject/scope/project). The generated code's
+TPH behavior is gated separately by the **api-contract** generated-controller lanes
+(e.g. Kotlin's `TphGeneratedApiContractConformanceTest` boots the unmodified
+generated controller over HTTP).
 
 ### `op: roundtrip` — runtime WRITE round-trip
 
