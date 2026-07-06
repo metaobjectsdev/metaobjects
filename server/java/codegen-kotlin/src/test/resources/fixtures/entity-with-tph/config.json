@@ -1,1 +1,1 @@
-{ "generators": ["entity", "table", "controller", "filter-allowlist"] }
+{ "generators": ["entity", "table", "controller", "filter-allowlist", "validator", "relations"], "validatorPackage": "acme.auth.validation" }

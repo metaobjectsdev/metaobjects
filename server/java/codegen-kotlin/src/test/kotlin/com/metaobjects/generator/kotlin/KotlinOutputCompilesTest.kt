@@ -55,6 +55,55 @@ class KotlinOutputCompilesTest {
       ] }
     }""".trimIndent()
 
+    // FR-017 TPH regression guard: a subtype's OWN field.enum (CopayAuth.tier) folds into the base
+    // Auth union data class, so the base must emit that enum class (owner = base) — else the union
+    // references a type no generated file defines. The subtypes themselves emit nothing.
+    private val tphSubtypeEnumFixture = """{
+      "metadata.root": { "package": "acme::auth", "children": [
+        { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":   { "@table": "auths" } },
+            { "field.long":   { "name": "id" } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+        ] } },
+        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
+            { "field.enum": { "name": "tier", "@values": ["Standard", "Premium"] } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `FR-017 TPH base union with a folded subtype enum compiles`() {
+        val outDir = Files.createTempDirectory("compile-tph-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("tph-test", tphSubtypeEnumFixture))
+
+            val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
+            val names = emitted.map { it.fileName.toString() }.toSet()
+            // The base emits the union + the discriminator enum + the folded subtype enum; the
+            // subtypes emit nothing (they fold into the base — the whole point of the skip).
+            assertTrue("AuthTier.kt" in names,
+                "the folded subtype enum (CopayAuth.tier) must be emitted by the base; got $names")
+            assertFalse(names.any { it.startsWith("BridgeAuth") || it.startsWith("CopayAuth") },
+                "TPH subtypes must emit no data class / enum of their own; got $names")
+
+            val result = KotlinCompilation().apply {
+                this.sources = emitted.map { SourceFile.kotlin(it.fileName.toString(), it.readText()) }
+                inheritClassPath = true
+                messageOutputStream = System.out
+            }.compile()
+
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+                "TPH union with a folded subtype enum failed to compile:\n${result.messages}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `generated Author kt compiles`() {
         val outDir = Files.createTempDirectory("compile-")
         try {

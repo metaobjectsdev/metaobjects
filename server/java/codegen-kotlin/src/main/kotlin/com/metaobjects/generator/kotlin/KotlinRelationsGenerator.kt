@@ -66,6 +66,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // Abstract entities are inheritance scaffolding — never emit relation helpers.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
+            // FR-017 TPH: a subtype folds into its base — its inherited relationships are emitted on
+            // the base's helper; a per-subtype helper would reference the missing <Sub>Table. Mirror
+            // the table/controller skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
             // No source.rdb → no persistence layer → no FK column to query against.
             // ADR-0039: resolving (an inherited source.rdb still means the entity is persisted).
             if (!KotlinGenUtil.hasRdbSource(entity)) continue

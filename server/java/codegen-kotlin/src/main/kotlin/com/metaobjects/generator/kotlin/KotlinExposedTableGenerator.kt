@@ -82,6 +82,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 entity.subType != MetaObject.SUBTYPE_PROJECTION) continue
             // Abstract entities are inheritance scaffolding — never emit a persistence table.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
+            // FR-017 TPH: a discriminator subtype folds into its base's single table — the base
+            // emits the union table. A per-subtype table would map the SAME physical table with
+            // a partial column set (a footgun). The subtype inherits source.rdb via extends, so
+            // the resolving lookup below would otherwise emit one — mirror the controller's skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
             // ADR-0039: resolving source lookup — an entity inheriting its source.rdb via
             // extends must still emit a table (own-only .children returned null → no table).
             val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
@@ -854,6 +859,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // FR-017 TPH: a subtype shares its base's single table, so its INHERITED to-many
+            // composition is already covered by the base's inverse FK — emitting one per subtype
+            // would target the folded-away <Sub>Table. Mirror the table-emission skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
             // ADR-0039: relationships are inheritable — RESOLVE via entity.relationships;
             // entity.children (own-only) would miss an inherited relationship.
             for (child in entity.relationships) {

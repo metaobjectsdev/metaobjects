@@ -55,6 +55,10 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         val outRoot = Paths.get(outDir.absolutePath)
         for (entity in loader.metaObjects) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
+            // FR-017 TPH: a discriminator subtype folds into its base — the base's allowlist
+            // (unioned across subtype columns via isTphBase) is the only one the polymorphic
+            // controller uses; a per-subtype allowlist is dead. Mirror the controller/table skip.
+            if (KotlinTphPlan.isTphSubtype(entity)) continue
             // ADR-0039: resolving source lookup (inherited source.rdb via extends).
             val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             // Only writable tables get a filter allowlist (the controller is also
