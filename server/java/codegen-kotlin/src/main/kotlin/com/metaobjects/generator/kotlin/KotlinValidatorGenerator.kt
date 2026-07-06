@@ -40,6 +40,9 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             .filter { it.subType == MetaObject.SUBTYPE_ENTITY }
             // Abstract entities are inheritance scaffolding — never register a validator for them.
             .filter { !KotlinGenUtil.isAbstractEntity(it) }
+            // FR-017 TPH: a subtype folds into its base's single table — never register a per-
+            // subtype table (it no longer exists). Mirror the table/controller skip.
+            .filter { !KotlinTphPlan.isTphSubtype(it) }
             // ADR-0039: resolving source lookup (inherited source.rdb via extends).
             .filter { KotlinGenUtil.hasRdbSource(it) }
             .map { entity ->

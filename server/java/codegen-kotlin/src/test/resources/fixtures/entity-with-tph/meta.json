@@ -10,6 +10,7 @@
           { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
           { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
           { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
+          { "relationship.composition": { "name": "lines", "@cardinality": "many", "@objectRef": "AuthLine", "@onDelete": "cascade" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},
@@ -35,6 +36,15 @@
         "@discriminatorValue": "PriorAuth",
         "children": [
           { "field.string": { "name": "priorAuthNumber", "@maxLength": 80, "@filterable": true, "@sortable": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "AuthLine",
+        "children": [
+          { "source.rdb":       { "@table": "auth_lines" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "label", "@maxLength": 40 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}
     ]

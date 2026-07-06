@@ -88,6 +88,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 if (emitAbstractShapes) emitAbstractShape(obj, outRoot, loader, emittedEnumFqns)
                 continue
             }
+            // FR-017 TPH: a discriminator subtype folds into its base's union data class +
+            // discriminator enum. A per-subtype data class is dead and re-emits the inherited
+            // enum under a spurious name. Mirror the controller/table skip.
+            if (KotlinTphPlan.isTphSubtype(obj)) continue
             emit(obj, outRoot, loader, emittedEnumFqns)
         }
     }
@@ -97,6 +101,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // so the resolved property type (a ClassName) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
             // FR-019: a @provided shared enum is referenced externally, never materialized — skip it.
+            if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
+                KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
+        }
+        // FR-017 TPH: the base union folds in subtype-only fields (below). A folded field.enum
+        // resolves to a typed enum ClassName, so its enum file must be emitted here (owner = base,
+        // matching the fold's type resolution) — the declaring subtype is skipped in execute(), so
+        // no other pass emits it. No-op for a non-TPH entity (collectSubtypeFields is empty).
+        for (field in KotlinTphPlan.collectSubtypeFields(obj, loader)) {
             if (field is EnumField && !Fr019SharedEnum.isProvidedEnumField(field))
                 KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns)
         }
