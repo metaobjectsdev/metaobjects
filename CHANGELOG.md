@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [Maven 7.7.6] — 2026-07-06
+
+_Maven Central `7.7.6` (Java + Kotlin, lockstep). A Kotlin-codegen-only patch — npm / PyPI / NuGet are unaffected (they carry no Kotlin) and stay on their current lines._
+
+### Fixed
+- **`codegen-kotlin` folds TPH (table-per-hierarchy) discriminator subtypes into the base — no dead per-subtype artifacts (#180).** A discriminator base already emitted the union table + data class + enum + polymorphic controller, but five other generation paths still emitted dead, partly non-compiling per-subtype artifacts (`<Sub>Table` mapping the same physical table with a partial column set; a phantom per-subtype inverse FK from `buildGlobalFkMap`; dead `<Sub>` data class / filter allowlist / validator registry entry / relations helper — the latter referencing the folded-away `<Sub>Table`). Every entity-iterating generator now skips `isTphSubtype` (matching the controller), and the base union emits the enum class for any subtype-only `field.enum` it folds in. Brings Kotlin in line with the Java (`codegen-spring`) port. Gated by an expanded snapshot fixture + a full-suite compile test (Exposed + Spring).
+- **`codegen-kotlin` generated controller now filters `@filterable field.enum` columns (#179).** The Exposed enum column is typed `Column<Enum>`, but the controller emitted `col eq (p.value as <BareEnum>)` — an unresolved un-prefixed enum type + a `String`→enum cast — so any filterable enum column produced a non-compiling controller. Enum columns are now filtered by their stored string via `CAST(col AS text)` (`castTo<String>(TextColumnType())`), matching every other port's string-band enum-filter semantics (`eq/ne/in/like/isNull`). Gated by a compile-and-run test (eq/ne/in/like against Postgres-mode H2 over MockMvc). Non-enum controllers stay byte-identical.
+
 ## [0.15.13] — 2026-07-05
 
 _npm `0.15.13` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
