@@ -182,10 +182,22 @@ public final class TemplateVerify {
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
         String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
+        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on
+        // the value-object's package-qualified name — never a bare-tail fallback. A
+        // bare-tail match binds a same-named object.value in the WRONG package when
+        // the short name collides across packages (e.g. two prompt trees each declare
+        // their own `PlayerActionView`/`MemoryView`), yielding the wrong element
+        // field-tree and spurious ERR_VAR_NOT_ON_PAYLOAD on the inner {{fields}}. A
+        // bare ref (no "::") still matches the object.value's short name (the
+        // cross-port render-helper consensus). Mirrors the Kotlin render helper.
+        boolean fqn = ref.contains("::");
         String refShort = shortName(ref);
         for (MetaObject obj : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (shortName(obj.getName()).equals(refShort)) return obj;
+            boolean matches = fqn
+                    ? obj.getName().equals(ref)
+                    : shortName(obj.getName()).equals(refShort);
+            if (matches) return obj;
         }
         return null;
     }

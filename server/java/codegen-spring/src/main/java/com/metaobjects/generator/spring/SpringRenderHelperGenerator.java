@@ -332,10 +332,19 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF)) return null;
         String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
+        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on
+        // the package-qualified name — never a bare-tail fallback that would bind a
+        // same-named object.value in the WRONG package on a cross-package short-name
+        // collision. A bare ref matches the object.value's short name. Mirrors the
+        // Kotlin render helper + the templates-mode TemplateVerify resolver.
+        boolean fqn = ref.contains("::");
         String refShort = SpringNaming.splitFqn(ref)[1];
         for (MetaObject obj : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (SpringNaming.splitFqn(obj.getName())[1].equals(refShort)) return obj;
+            boolean matches = fqn
+                ? obj.getName().equals(ref)
+                : SpringNaming.splitFqn(obj.getName())[1].equals(refShort);
+            if (matches) return obj;
         }
         return null;
     }

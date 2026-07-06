@@ -243,7 +243,11 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 src.append("    ").append(decl).append('\n');
             }
             for (String[] h : helpers) {
-                String methodName = "has" + SpringNaming.capitalize(h[0]);
+                // Shared naming rule (render.PayloadAccessors) — the static template
+                // drift check (render.Verify) accepts {{#has<Field>}} sections by the
+                // SAME rule, so the emitted method name and the accepted section name
+                // can never drift apart.
+                String methodName = com.metaobjects.render.PayloadAccessors.hasAccessorName(h[0]);
                 src.append("    public boolean ").append(methodName).append("() { ")
                    .append(h[1]).append(" }\n");
             }

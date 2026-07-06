@@ -147,7 +147,7 @@ public final class Verify {
                 case VarTok v -> {
                     if (".".equals(v.value())) break;   // implicit iterator — always valid
                     if (atRoot) ctx.referencedAtRoot().add(v.value().split("\\.")[0]);
-                    if (resolve(stack, v.value()) == null) {
+                    if (resolve(stack, v.value()) == null && !isBooleanAccessor(stack, v.value())) {
                         ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.value()));
                     }
                 }
@@ -159,6 +159,15 @@ public final class Verify {
                     if (atRoot) ctx.referencedAtRoot().add(s.value().split("\\.")[0]);
                     PayloadField field = resolve(stack, s.value());
                     if (field == null) {
+                        // An auto-derived boolean accessor ({{#hasAbilities}}) is a
+                        // presence GATE over an optional/collection field reachable on
+                        // the current scope — not a payload slot of its own. It keeps
+                        // the current context (no push); its body still resolves against
+                        // the enclosing scope.
+                        if (isBooleanAccessor(stack, s.value())) {
+                            walk(s.children(), stack, seen, ctx);
+                            break;
+                        }
                         // Unresolved section head is itself drift; skip the body
                         // (its context is unknowable; walking it cascades false errors).
                         ctx.errors().add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, s.value()));
@@ -218,6 +227,33 @@ public final class Verify {
             current = current.fields() != null ? find(current.fields(), segs[i]) : null;
         }
         return current;
+    }
+
+    /**
+     * True when {@code name} is an auto-derived boolean accessor
+     * ({@code has<Field>}) over a field reachable on the current context stack —
+     * i.e. the codegen'd payload record exposes a {@code has<Field>()} method for
+     * an optional/collection field {@code <field>} that IS declared on scope. The
+     * accessor name is computed by the SAME rule the generator emits
+     * ({@link PayloadAccessors#hasAccessorName}) so the static verifier accepts
+     * exactly the {@code {{#has…}}} sections the generated record resolves at
+     * runtime. A {@code {{#hasX}}} with no corresponding field {@code x} on any
+     * scope is NOT an accessor and remains {@link #ERR_VAR_NOT_ON_PAYLOAD} drift.
+     *
+     * <p>Accessors are simple (undotted) names; a dotted path is never an
+     * accessor and is left to normal field resolution.
+     */
+    private static boolean isBooleanAccessor(List<List<PayloadField>> stack, String name) {
+        if (name.indexOf('.') >= 0) return false;
+        if (!name.startsWith(PayloadAccessors.HAS_PREFIX)) return false;
+        // Mustache outward walk (innermost → outermost) — the accessor is reachable
+        // exactly where its underlying field is.
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            for (PayloadField f : stack.get(i)) {
+                if (name.equals(PayloadAccessors.hasAccessorName(f.name()))) return true;
+            }
+        }
+        return false;
     }
 
     // ---------------- Tokenizer ----------------

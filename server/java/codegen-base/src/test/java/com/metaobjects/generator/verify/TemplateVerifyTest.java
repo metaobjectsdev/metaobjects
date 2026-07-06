@@ -114,6 +114,75 @@ public class TemplateVerifyTest {
         assertTrue(out.unresolvedText().get(0).contains("ai/greeting"));
     }
 
+    // === Nested @objectRef FQN resolution across a cross-package short-name
+    // === collision (ADR-0041). Two prompt trees each declare their OWN value
+    // === object with the SAME short name `Row`, in different packages. The
+    // === payload's collection field carries a FULLY-QUALIFIED @objectRef; the
+    // === derived element field-tree must be the RIGHT package's Row — a bare-tail
+    // === match would bind the wrong Row and spuriously flag the inner {{field}}.
+
+    /** Package host::a — the payload + its OWN Row (has `order`). */
+    private static final String HOST_A_FIXTURE = """
+        {
+          "metadata.root": { "package": "host::a", "children": [
+            { "object.value": { "name": "Row", "children": [
+                { "field.string": { "name": "order" } }
+            ] } },
+            { "object.value": { "name": "HostPayload", "children": [
+                { "field.string": { "name": "title" } },
+                { "field.object": { "name": "rows", "isArray": true, "@objectRef": "host::a::Row" } }
+            ] } },
+            { "template.prompt": {
+                "name": "HostPrompt",
+                "@payloadRef": "HostPayload",
+                "@textRef": "host/tmpl"
+            } }
+          ] }
+        }
+        """;
+
+    /** Package host::b — a DIFFERENT Row (same short name, field `somethingElse`, NOT `order`). */
+    private static final String HOST_B_FIXTURE = """
+        {
+          "metadata.root": { "package": "host::b", "children": [
+            { "object.value": { "name": "Row", "children": [
+                { "field.string": { "name": "somethingElse" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void nestedFqnObjectRefResolvesRightRowAcrossShortNameCollision() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-fqn-clean-templates");
+        // {{order}} is on host::a::Row (the FQN target), NOT on host::b::Row.
+        writeTemplate(templateRoot, "host/tmpl", "{{title}}\n{{#rows}}- {{order}}\n{{/rows}}");
+
+        MetaDataLoader loader = loadFixtures("fqn-clean", HOST_A_FIXTURE, HOST_B_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertTrue("FQN @objectRef must resolve host::a::Row so {{order}} is clean; got: " + out,
+            out.ok());
+    }
+
+    @Test
+    public void nestedFqnObjectRefRejectsFieldFromTheCollidingRow() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-fqn-drift-templates");
+        // {{somethingElse}} is on the OTHER (host::b) Row — proving we resolved the
+        // FQN target (host::a::Row) and not the short-name collision.
+        writeTemplate(templateRoot, "host/tmpl", "{{#rows}}- {{somethingElse}}\n{{/rows}}");
+
+        MetaDataLoader loader = loadFixtures("fqn-drift", HOST_A_FIXTURE, HOST_B_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertFalse("a field from the colliding Row must NOT resolve", out.ok());
+        assertEquals(1, out.errors().size());
+        assertEquals("ERR_VAR_NOT_ON_PAYLOAD", out.errors().get(0).code());
+        assertEquals("somethingElse", out.errors().get(0).path());
+    }
+
     // === helpers ============================================================
 
     private static void writeTemplate(Path root, String ref, String body) throws IOException {
@@ -123,16 +192,28 @@ public class TemplateVerifyTest {
     }
 
     private static MetaDataLoader loadFixture(String baseName, String fixtureJson) throws IOException {
+        return loadFixtures(baseName, fixtureJson);
+    }
+
+    /**
+     * Load one or more JSON fixtures into a single loader — each fixture may carry
+     * its OWN {@code package}, which is how a cross-package short-name collision
+     * (two {@code Row}s under different packages) is set up in one metadata graph.
+     */
+    private static MetaDataLoader loadFixtures(String baseName, String... fixtureJsons) throws IOException {
         Path tmp = Files.createTempDirectory("tv-fixture-" + baseName);
-        Path fixture = tmp.resolve(baseName + ".json");
-        Files.writeString(fixture, fixtureJson);
-        URI uri = URIHelper.toURI("model:file:"
-                + fixture.toAbsolutePath().toString().replace('\\', '/'));
+        List<URI> uris = new java.util.ArrayList<>();
+        for (int i = 0; i < fixtureJsons.length; i++) {
+            Path fixture = tmp.resolve(baseName + "-" + i + ".json");
+            Files.writeString(fixture, fixtureJsons[i]);
+            uris.add(URIHelper.toURI("model:file:"
+                    + fixture.toAbsolutePath().toString().replace('\\', '/')));
+        }
         MetaDataLoader loader = new MetaDataLoader(
                 LoaderOptions.create(false, false, true),
                 MetaDataLoader.SUBTYPE_MANUAL,
                 "tv-test-" + baseName);
-        loader.setSourceURIs(List.of(uri));
+        loader.setSourceURIs(uris);
         loader.init();
         return loader;
     }
