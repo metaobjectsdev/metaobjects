@@ -6,6 +6,7 @@ MetaObjects is a metadata standard: typed metadata in `metaobjects/` is the dura
 spine; generated code is the disposable artifact. Regenerate with `npx meta gen`.
 
 ## Principles
+- **Adopting onto existing code? Metadata FOLLOWS the code.** On a migration (existing working code / live DB), author metadata + tune codegen to *reproduce* what the code already is — native types (`field.uuid` when the code uses `UUID`, not `field.string`), names, nullability — so regen changes as little existing code as possible. The only existing code that should change is the hand-written layer codegen replaces; ask when a modeling choice is ambiguous. (Greenfield: model-first, below.)
 - Pattern-derivable from metadata = codegen, never hand-write — FKs, CRUD, validators, finders, and the database schema and migrations. The schema is a disposable, generated artifact: change the metadata and regenerate, never hand-write SQL.
 - The **live database** is a derived artifact too — never hand-apply a schema change to a running DB (ad-hoc `psql`/console `ALTER`/`CREATE`/`DROP`), not even to preview a column or unblock a boot. Apply schema only through `meta migrate` (metadata → DDL). A hand-applied change drifts the live DB from the metadata + migration history and collides at the next migrate/boot ("column already exists") — a state no migration can reproduce. Run `meta verify --db` after any DB-touching work to catch that drift early.
 - Never hand-edit generated files — change the metadata and regenerate (three-way merge preserves hand-written regions).
