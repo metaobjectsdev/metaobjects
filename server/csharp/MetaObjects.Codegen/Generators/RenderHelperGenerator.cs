@@ -241,7 +241,7 @@ public class RenderHelperGenerator : IGenerator
     private static IReadOnlyList<PayloadField> DerivePayloadFieldTree(
         MetaRoot root, MetaData vo, HashSet<string> seen)
     {
-        if (vo is null || !seen.Add(vo.Name)) return [];
+        if (vo is null || !seen.Add(vo.ResolutionKey())) return [];
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {

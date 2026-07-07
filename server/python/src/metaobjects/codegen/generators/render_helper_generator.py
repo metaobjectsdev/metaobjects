@@ -115,9 +115,9 @@ def _derive_payload_field_tree(
     resolvable ``@objectRef`` to an ``object.value`` becomes a context-pushing node whose
     children are the target VO's tree (recursed, cycle-guarded). Every other field is a
     leaf."""
-    if vo is None or vo.name in seen:
+    if vo is None or vo.resolution_key() in seen:
         return []
-    next_seen = seen | {vo.name}
+    next_seen = seen | {vo.resolution_key()}
     fields: list[PayloadField] = []
     for f in vo.children():
         if f.type != TYPE_FIELD or not isinstance(f, MetaField):
