@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.15] — 2026-07-07
+
+_npm `@metaobjectsdev/sdk` + `@metaobjectsdev/cli` `0.15.15` (isolated patch; the other 12 packages stay `0.15.14`). Ships updated agent-context skills — a docs/content change bundled into the SDK and delivered through the CLI (`meta agent-docs` / `meta init`). No runtime or generated-code change; PyPI / NuGet / Maven are unaffected._
+
+### Changed
+- **Agent-context skills now teach the correct direction for a brownfield migration/adoption (#183).** The `metaobjects-*` skills were framed greenfield-only ("metadata is the spine, generated code is disposable"), which licensed a backward loop: change metadata → regenerate → fix the resulting errors in existing code as if they were bugs. When adopting MetaObjects onto existing working code / a live database, the direction reverses — **metadata FOLLOWS the code**: author metadata + tune codegen to reproduce the existing native types, names, and nullability; minimize churn to code the generator isn't replacing; ask on ambiguity; default to the least existing-code change. `metaobjects-authoring` gains the adoption-direction section + a hardened UUID rule (`field.string` + `@dbColumnType: uuid` is a forbidden smell that generates a `String` over a uuid column — use `field.uuid`); `metaobjects-audit` promotes UUID-as-string from non-failing advisory to a real correctness-adjacent finding (axis H2) with blast-radius counting; `metaobjects-codegen` adds "make codegen match the code, not the code match codegen"; `metaobjects-verify` documents the semantic-mismodeling gap + a project-local CI ratchet lint; the always-on doc carries a one-line direction principle.
+
 ## [0.15.14] — 2026-07-07
 
 _npm `0.15.14` (TypeScript, full lockstep). A codegen bug-fix patch. Java/Kotlin (Maven) carry no production change and stay on their current line; PyPI `0.15.9` and NuGet `0.15.7` ship the same fix on their own lines._
