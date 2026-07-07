@@ -1,0 +1,15 @@
+{
+  "metadata.root": {
+    "package": "acme::beta",
+    "children": [
+      {
+        "object.value": {
+          "name": "Note",
+          "children": [
+            { "field.string": { "name": "betaText", "@required": true } }
+          ]
+        }
+      }
+    ]
+  }
+}

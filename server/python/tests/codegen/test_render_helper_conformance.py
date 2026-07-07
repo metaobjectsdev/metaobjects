@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
-from metaobjects import MetaDataLoader
+from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
 from metaobjects.codegen.generators.render_helper_generator import RenderHelperGenerator
@@ -41,6 +41,15 @@ CORPUS = Path(__file__).resolve().parents[4] / "fixtures" / "template-output-ren
 
 def _load_root(meta_json: Path):
     res = MetaDataLoader.from_string(meta_json.read_text())
+    assert res.errors == [], res.errors
+    return res.root
+
+
+def _load_root_from_files(*meta_jsons: Path):
+    # Multi-file (multi-package) load — one InMemoryStringSource per file, merged into a
+    # single root (mirrors fixtures/conformance/loader-same-name-distinct-packages).
+    sources = [InMemoryStringSource(p.read_text()) for p in meta_jsons]
+    res = MetaDataLoader().load(sources)
     assert res.errors == [], res.errors
     return res.root
 
@@ -154,6 +163,35 @@ def test_email_order_email_renders_nested_array_loop_and_partial(tmp_path) -> No
     assert doc.text_body == "Order for Ada: A1 x2; B2 x1;"
     # the partial resolved into the html body.
     assert "<hr/>Sent by Acme" in doc.html_body
+
+
+# ---------------------------------------------------------------------------
+# xpkg-collision/ — cross-package short-name collision (ADR-0041). Two packages
+# each declare an object.value `Note` (alpha: alphaText, beta: betaText); the
+# payload `Digest` references BOTH by FULLY-QUALIFIED @objectRef. A bare-tail
+# resolver binds both refs to whichever Note loads first → one field lands on the
+# wrong element type → the drift gate raises. FQN-exact resolution renders both.
+# ---------------------------------------------------------------------------
+
+
+def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp_path) -> None:
+    dir_root = CORPUS / "xpkg-collision"
+    root = _load_root_from_files(
+        dir_root / "meta.alpha.json",
+        dir_root / "meta.beta.json",
+        dir_root / "meta.app.json",
+    )
+    templates = str(CORPUS / "templates")
+    # Must NOT raise: the FQN refs resolve to their own package's Note.
+    files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
+             if f.path == "digest_doc_render_helper.py"]
+    assert len(files) == 1
+    _materialize_and_import(files, tmp_path)
+    helper = import_module("_rh_conf_pkg.digest_doc_render_helper")
+
+    payload = {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
+    out = helper.render_digest_doc(payload, FilesystemProvider(templates))
+    assert out == "Alpha=AA Beta=BB"
 
 
 # ---------------------------------------------------------------------------

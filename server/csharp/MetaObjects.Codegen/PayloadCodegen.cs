@@ -43,7 +43,22 @@ public static class PayloadCodegen
 
     private static MetaData? FindObject(MetaData root, string name) =>
         // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
+        // Record emission resolves the payload VO by BARE short name (a C# record identifier
+        // is always bare, and EmitRecord derives the record name from this same voName).
         root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
+
+    // ADR-0041: the verify field-tree resolver — a FULLY-QUALIFIED ref (contains ::) resolves
+    // EXACTLY on the package-qualified name (ResolutionKey()/Fqn()), never a bare-tail fallback
+    // that would bind a same-named object.value in the WRONG package on a cross-package
+    // short-name collision. A bare ref matches by short name (first-wins). Kept SEPARATE from
+    // FindObject so record emission (bare identifiers) is unaffected. Mirrors the render-helper
+    // ResolveNestedObjectRef + Java/Kotlin + TS refMatchesObject.
+    private static MetaData? ResolveObjectRef(MetaData root, string reference)
+    {
+        bool fqn = reference.Contains("::");
+        return root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT &&
+            (fqn ? c.ResolutionKey() == reference || c.Fqn() == reference : c.Name == reference));
+    }
 
     // ADR-0039: resolve array-ness through the super chain (isArray is a native
     // property, not an attr; the former OwnAttr("isArray") clause was dead code).
@@ -55,9 +70,10 @@ public static class PayloadCodegen
         {
             // ADR-0039: resolving — @objectRef may be inherited via extends.
             var refAttr = field.Attr(FIELD_ATTR_OBJECT_REF);
-            // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare;
-            // the generated record type + the nested-record lookup key are the BARE
-            // short name (FindObject matches bare names — every other caller strips too).
+            // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
+            // generated record TYPE name is the BARE short name (StripPkg). (The verify
+            // field-tree path — BuildTree — resolves the FULL ref FQN-exact via ResolveObjectRef
+            // per ADR-0041; record emission here stays bare: one C# type per short name.)
             string refName = refAttr is string s ? CSharpNaming.StripPkg(s) : "object";
             string? refVo = refAttr is string r ? CSharpNaming.StripPkg(r) : null;
             return (IsArrayField(field) ? $"IReadOnlyList<{refName}>" : refName, refVo);
@@ -155,14 +171,17 @@ public static class PayloadCodegen
 
     private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, HashSet<string> visiting)
     {
-        var vo = FindObject(root, voName);
+        // ADR-0041: FQN-exact resolution for the verify field-tree (NOT the bare FindObject
+        // used by record emission) so a fully-qualified nested @objectRef binds its own package.
+        var vo = ResolveObjectRef(root, voName);
         if (vo is null || !visiting.Add(voName)) return [];
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
             // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
+            // ADR-0041: pass the FULL (possibly FQN) ref — ResolveObjectRef resolves it exactly.
             if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
-                fields.Add(new PayloadField(f.Name, BuildTree(root, CSharpNaming.StripPkg(refName), visiting)));
+                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, visiting)));
             else
                 fields.Add(new PayloadField(f.Name));
         }

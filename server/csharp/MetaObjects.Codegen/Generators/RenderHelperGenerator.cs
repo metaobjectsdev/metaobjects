@@ -22,10 +22,10 @@
 // Reuse, not reimplementation: Renderer.Render (the emitted runtime call), Verify
 // (the build-time gate), FilesystemProvider (build-time ref resolution), and
 // EmailDocument (email return type). The payload field tree is walked from the VO
-// the same way the other generators walk it — but a nested field.object's
-// @objectRef is resolved by BARE short-name (cross-port render-helper consensus:
-// TS findObject / Java resolveNestedObjectRef), only recursing into object.value
-// (SUBTYPE_VALUE) targets, cycle-guarded.
+// the same way the other generators walk it — a nested field.object's @objectRef is
+// resolved FQN-exact when fully-qualified (ADR-0041) else by short name (cross-port
+// render-helper consensus: TS refMatchesObject / Java+Kotlin resolveNestedObjectRef),
+// only recursing into object.value (SUBTYPE_VALUE) targets, cycle-guarded.
 //
 // The emitted <fieldTree> literal is baked into the RenderRequest.Verify argument
 // so Renderer's runtime drift check matches the build-time gate that ran here.
@@ -231,16 +231,17 @@ public class RenderHelperGenerator : IGenerator
     }
 
     // -------------------------------------------------------------------------
-    // Payload field-tree walk — nested @objectRef resolved by BARE short-name
-    // (cross-port render-helper consensus: TS findObject / Java
-    // resolveNestedObjectRef). Object-ref fields recurse into their target
-    // object.value (SUBTYPE_VALUE only); a `seen` set guards reference cycles.
+    // Payload field-tree walk — nested @objectRef resolved FQN-exact when
+    // fully-qualified (ADR-0041) else by short name (cross-port render-helper
+    // consensus: TS refMatchesObject / Java+Kotlin resolveNestedObjectRef). Object-ref
+    // fields recurse into their target object.value (SUBTYPE_VALUE only); a `seen` set
+    // guards reference cycles.
     // -------------------------------------------------------------------------
 
     private static IReadOnlyList<PayloadField> DerivePayloadFieldTree(
         MetaRoot root, MetaData vo, HashSet<string> seen)
     {
-        if (vo is null || !seen.Add(vo.Name)) return [];
+        if (vo is null || !seen.Add(vo.ResolutionKey())) return [];
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
@@ -263,20 +264,24 @@ public class RenderHelperGenerator : IGenerator
 
     /// <summary>
     /// Resolve a <c>field.object</c>'s <c>@objectRef</c> to its target
-    /// <c>object.value</c> by BARE short-name — mirroring the TS render-helper's
-    /// <c>findObject(root, ref)</c> (<c>c.type === OBJECT &amp;&amp; c.name === ref</c>)
-    /// and the Java <c>resolveNestedObjectRef</c>. If the ref carries a package, only
-    /// the segment after the last <c>::</c> is compared, against each
-    /// <c>object.value</c>'s own short name. Returns null when no match is found.
+    /// <c>object.value</c>. ADR-0041: a FULLY-QUALIFIED ref (contains <c>::</c>) resolves
+    /// EXACTLY on the package-qualified name (<c>ResolutionKey()</c>/<c>Fqn()</c>) — never
+    /// a bare-tail fallback that would bind a same-named <c>object.value</c> in the WRONG
+    /// package on a cross-package short-name collision. A bare ref still matches by short
+    /// name (first-wins). Mirrors the Java/Kotlin <c>resolveNestedObjectRef</c> + TS
+    /// <c>refMatchesObject</c>. Returns null when no match is found.
     /// </summary>
     private static MetaData? ResolveNestedObjectRef(MetaRoot root, string reference)
     {
         if (string.IsNullOrEmpty(reference)) return null;
+        bool fqn = reference.Contains("::");
         var refShort = CSharpNaming.StripPkg(reference);
         // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
         return root.Children().FirstOrDefault(c =>
             c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_VALUE &&
-            CSharpNaming.StripPkg(c.Name) == refShort);
+            (fqn
+                ? c.ResolutionKey() == reference || c.Fqn() == reference
+                : CSharpNaming.StripPkg(c.Name) == refShort));
     }
 
     /// <summary>

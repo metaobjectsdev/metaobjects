@@ -26,6 +26,10 @@ resolves to `templates/emails/welcome.subject.mustache`, and so on.
 - `nested/meta.json` — a **no-package** sub-corpus carrying the nested/array
   email case (`Order` over `Customer` + `Item[]`); see "Nested + array email"
   below. It shares the same `templates/` dir.
+- `xpkg-collision/` — a **multi-package** sub-corpus (`meta.alpha.json` +
+  `meta.beta.json` + `meta.app.json`) gating **FQN-exact** nested `@objectRef`
+  resolution across a cross-package short-name collision (ADR-0041); see
+  "Cross-package short-name collision" below. It also shares `templates/`.
 - `templates/emails/order.subject.mustache` = `Order for {{customer.name}}`
 - `templates/emails/order.html.mustache` =
   `<h1>{{customer.name}}</h1><ul>{{#items}}<li>{{sku}} x{{qty}}</li>{{/items}}</ul>{{> shared/footer}}`
@@ -74,8 +78,10 @@ the XML entity set (`<`→`&lt;`, `>`→`&gt;`, `&`→`&amp;`, `"`→`&quot;`, `
 @objectRef, isArray) }`, plus an `email` template `OrderEmail`
 (`@payloadRef=Order`) over the `order.*` part-refs. It has **no package** on
 purpose: a bare `@objectRef` resolves identically across ports only when there is
-no package (TS resolves an objectRef by short name; the JVM expands a *packaged*
-ref to an FQN, so bare == FQN only at the root package). The shared
+no package: a bare `@objectRef` matches the value-object's short name in every
+port, so this sub-corpus isolates the nested/array/partial shape from any
+package-resolution concern. (The *packaged*/fully-qualified `@objectRef` case is
+gated separately by `xpkg-collision/` below, per ADR-0041.) The shared
 `templates/emails/order.*` + `templates/shared/footer` mustaches are reused.
 
 Rendered with `{ customer: { name: "Ada" }, items: [ { sku: "A1", qty: 2 },
@@ -94,6 +100,38 @@ passes the BUILD-TIME drift gate — and a `{{#items}}{{bogus}}{{/items}}`
 section-context drift (a `{{bogus}}` not on the `Item` element type the section
 pushes) FAILS codegen with `ERR_VAR_NOT_ON_PAYLOAD`, proving the gate walks the
 nested/section context, not just the root.
+
+## Cross-package short-name collision — `xpkg-collision/`, `DigestDoc`
+
+A **multi-package** sub-corpus (loaded as three sources — `meta.alpha.json` +
+`meta.beta.json` + `meta.app.json`, mirroring
+`fixtures/conformance/loader-same-name-distinct-packages`) that gates **FQN-exact**
+nested `@objectRef` resolution (ADR-0041):
+
+- `acme::alpha` declares `object.value Note { alphaText: string }`.
+- `acme::beta` declares `object.value Note { betaText: string }` — a **colliding
+  short name** in a different package.
+- `acme::app` declares payload `object.value Digest` with two `field.object`
+  children referencing the two Notes by **fully-qualified** `@objectRef`
+  (`acme::alpha::Note`, `acme::beta::Note`), and a `document` `template.output`
+  `DigestDoc` (`@format=html`, `@textRef="xpkg/digest"`, `@payloadRef="Digest"`).
+- `templates/xpkg/digest.mustache` = `Alpha={{fromAlpha.alphaText}} Beta={{fromBeta.betaText}}`
+
+Each port must resolve a fully-qualified `@objectRef` **exactly** on the
+package-qualified name — never a bare-tail fallback that binds whichever `Note`
+loads first. A bare-tail resolver collapses BOTH refs to one package's `Note`, so
+one of `{{fromAlpha.alphaText}}`/`{{fromBeta.betaText}}` lands on the wrong element
+type and the build-time drift gate throws `ERR_VAR_NOT_ON_PAYLOAD`. FQN-exact
+resolution binds each ref to its own package, so the clean template passes.
+
+Rendered with `{ fromAlpha: { alphaText: "AA" }, fromBeta: { betaText: "BB" } }`:
+
+- `renderDigestDoc(...)` = `"Alpha=AA Beta=BB"`
+
+(The two colliding VOs share the BARE payload-record type name `Note`; each port's
+runner hand-authors — or otherwise reconciles — the payload record for that reason.
+The record-name collision is an orthogonal concern; this sub-corpus gates the
+`@objectRef` **resolver**, not payload-record naming.)
 
 ## Expected build-time drift FAILURE — `drift/`
 
