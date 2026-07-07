@@ -60,6 +60,56 @@ aggregate — that is almost always **metadata you have not declared yet.** In o
 Rule of thumb: **if the metadata could describe it, declaring it is never the wrong
 call** — even when a one-off hand-write would be faster today.
 
+## Adopting onto an existing codebase — metadata FOLLOWS the code
+
+The principle above is the **greenfield** default: declare the model, generate the
+code. **Adoption reverses the direction.** When you are introducing MetaObjects into
+a project that already has **working code and/or a live database** — a migration, not
+a fresh start — the existing code and schema are the specification, and the metadata's
+first job is to **reproduce them**. You are documenting a reality that already runs, not
+redefining it. (The metadata is still the durable spine *going forward*; only the
+*direction of fit on the way in* changes. Once adopted, the greenfield rules resume.)
+
+**The observable predicate:** does working code or a populated schema already exist for
+what you're modeling? If yes, you are in adoption mode and these rules apply.
+
+**Author metadata to match what the code ALREADY IS — not what you'd design fresh.**
+Read the existing code and schema *first*, then model to reproduce them:
+- The **native types the code uses** are the spec — model `field.uuid` when the code
+  uses `UUID`, `field.decimal` when it uses `BigDecimal`, etc. Do **not** pick a
+  metadata shape whose generated type differs from the type already in use (that is the
+  exact mistake that turned a `UUID` column into a `String` and forced coercions across
+  hundreds of fields — see the UUID rule below).
+- The existing **column names, table names, nullability, and field shapes** are the
+  spec — carry them over (`@column`, `@table`, `@required`, `@maxLength`) so the
+  generated schema matches the live one and `verify --db` is clean.
+
+**Customize the CODEGEN to match the existing code before you change the existing code.**
+If generated output doesn't match the code's shape (naming, file layout, imports,
+signatures), **tune the generator/template/config to reproduce it** — that is the
+intended adoption path (owned generators, `outputPattern`, naming strategy — see the
+`metaobjects-codegen` skill), **not a hack**. Reshaping working call sites to satisfy
+the generator's defaults is the *last* resort, not the first.
+
+**Minimize churn to code the generator is not replacing.** The ONLY existing code that
+should change is the hand-written layer codegen now **owns** (the hand-rolled
+CRUD/DTO/validator/mapper you're deleting) — parity-gate it, then delete it; that is the
+point of adopting. Everything else — call sites, business logic, adjacent modules —
+stays untouched. **If a metadata choice would force a wide edit across code the
+generator isn't replacing, treat that as a signal the metadata is modeling the wrong
+thing** and re-check it against the code, rather than editing the code to fit the
+metadata.
+
+**When a modeling choice is genuinely ambiguous, ask — don't pick the churnier option.**
+If two metadata shapes both fit the existing code and they imply different amounts of
+existing-code change, surface the tradeoff to the user rather than choosing silently.
+**Default to the choice that changes the least existing code.**
+
+Do NOT: change metadata, regenerate, and then work through the resulting compile/type
+errors in the existing code as if they were bugs. On an adoption those "errors" are the
+metadata failing to match the code — fix the *metadata* (or the codegen customization),
+not the code.
+
 
 ## The fused-key encoding (non-negotiable)
 
@@ -224,7 +274,7 @@ Canonical form for common field needs — reach for these before inventing anyth
 
 | Need | Author it as | Note |
 |---|---|---|
-| IDs / unique keys | `field.uuid` | native UUID; use `@dbColumnType: uuid` only to force a string-typed value over a uuid column on purpose |
+| IDs / unique keys / **any UUID column** | `field.uuid` | native UUID type. **NEVER `field.string` + `@dbColumnType: uuid`** — see the smell callout below |
 | Money | `field.currency` | integer minor units; never a float |
 | Closed set of symbols | `field.enum` | `@values` required |
 | Instant / event time (created/updated) | `field.timestamp` | instant / tz-aware by default (Postgres `timestamptz`; native `Instant`/`DateTimeOffset`/aware `datetime`) |
@@ -236,6 +286,28 @@ Canonical form for common field needs — reach for these before inventing anyth
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; URL validation — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
+
+**UUID columns are `field.uuid` — `field.string` + `@dbColumnType: uuid` is a forbidden smell.**
+A UUID column is modeled with the **`field.uuid`** subtype (native `UUID` / `Guid` /
+`uuid.UUID`, canonical lowercase-hex on the wire). Do **not** reach for `field.string` +
+`@dbColumnType: uuid`: that pairing makes the *DB column* a uuid but generates a **`String`
+property in code**, so every consumer must coerce `String ↔ UUID` at every boundary. It reads
+"correct" because `verify --db` passes (the column really is uuid) — the defect is invisible to
+the schema gate and only shows up as wrong native types rippling through the code. Left in a
+`BaseEntity`, it is inherited by every `id`/`tenantId`/FK — hundreds of fields across a repo, a
+staged multi-PR migration to undo. So:
+
+```json
+{ "field.uuid": { "name": "id" } }                                  // ✅ native UUID
+{ "field.string": { "name": "id", "@dbColumnType": "uuid" } }       // ❌ generates String over a uuid column
+```
+
+The `field.string` + `@dbColumnType: uuid` form is legitimate **only** in the genuinely rare
+case where your code truly wants a *string-typed* value stored in a uuid column (you handle the
+uuid as text everywhere and never as a native UUID). That is an explicit, justified exception —
+not a default, and never the way to model an identifier. When adopting an existing schema whose
+code already uses `UUID`, `field.uuid` is the match-the-code choice (see "Adopting onto an
+existing codebase" above).
 
 **Timestamps — instant by default, `@localTime` for naive wall-clock (ADR-0036 Wave 2).**
 `field.timestamp` is **instant / timezone-aware by default** (Postgres `timestamptz`;

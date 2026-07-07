@@ -109,6 +109,21 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   in committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (ADR-0013); per-port
   migration engine where schema is Node-`meta`-owned (ADR-0015).
 
+- [ ] **H2. Wrong native type — `field.<x>` + `@dbColumnType` that hides the real type
+  (CORRECTNESS-ADJACENT finding, NOT advisory axis-I).** The headline instance is a **UUID
+  column modeled `field.string` + `@dbColumnType: uuid`**: the DB column is uuid but the
+  generated property is a **`String`**, so the code coerces `String↔UUID` at every boundary
+  and the native type is wrong everywhere the field is used. `verify --db` **cannot** catch it
+  (the column type matches), so it hides in plain sight. When it sits in a shared
+  `BaseEntity`/`BaseAuditedEntity`, **every inheriting `id`/`tenantId`/FK is wrong** — count the
+  blast radius (grep every `field.string` paired with `@dbColumnType: uuid`; it is often
+  hundreds of fields). This is a **real finding**, not a modernization nudge: recommend
+  `field.uuid` and flag it as a **staged migration** (re-typing `id`/FK ripples through
+  repositories, finders, and call sites) — tier by blast radius, not buried as advisory. The
+  ONLY non-finding is a field the code genuinely handles as a *string* over a uuid column
+  (explicitly justified). Report the total pair count so the migration has a completion
+  criterion (see the CI ratchet gate in `metaobjects-verify`).
+
 - [ ] **I. Vocabulary hygiene / modernization (ADVISORY).** Flag already-retired or
   deprecated authoring patterns and recommend the canonical form (see § Vocabulary
   hygiene). Advisory severity — scored as modernization opportunities, **never a
@@ -133,9 +148,12 @@ such, surfaced in the roadmap, but **non-failing** (the code works; the form is 
   the array column type is retired.
 - The `@kind: text` hack (forcing text via a kind override) → **bare `field.string`**
   (text is the default; no override needed).
-- `@dbColumnType: uuid` where a native UUID type is actually wanted → **`field.uuid`**
-  (a distinct native type is a subtype, not a physical override). Keep `@dbColumnType:
-  uuid` ONLY for the deliberate string-over-uuid-column case.
+- `@dbColumnType: uuid_array` was covered above. **`field.string` + `@dbColumnType: uuid`
+  is NOT advisory — it is a real mismodeling finding (see axis H).** It generates a `String`
+  where the code uses/wants a native `UUID`, forcing `String↔UUID` coercions at every
+  boundary; `verify --db` passes (the column really is uuid), so the schema gate can't see it.
+  The genuine string-over-uuid-column case (code truly handles the value as text) is the ONE
+  legitimate use and must be explicitly justified — otherwise recommend **`field.uuid`**.
 - `@dbColumnType: timestamp_with_tz` (ADR-0036 Wave 2) → **drop it.** `field.timestamp` is
   instant / timezone-aware **by default** now; the `timestamp_with_tz` column-type override
   is **retired**. Timezone-awareness lives in `field.timestamp` + the `@localTime` opt-out.
@@ -329,6 +347,15 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
 
 ## Guardrails
 
+- **Adoption direction — metadata follows the code.** This is a brownfield project: existing
+  code and the live schema are the spec. Every `metadata_sketch` must **reproduce the code's
+  existing native types, names, and nullability** (model `field.uuid` where the code uses
+  `UUID`, carry over `@column`/`@table`/`@required`) and every cutover must **minimize churn to
+  code the generator is not replacing** — customize the codegen to match the existing shape
+  before proposing edits to working call sites. A sketch that would re-type or rename working
+  code the generator isn't replacing is modeling the wrong thing; when a choice is ambiguous,
+  flag it for the human rather than proposing the churnier option. (Full doctrine:
+  `metaobjects-authoring` → "Adopting onto an existing codebase".)
 - **Parity-gate every cutover** — prove behavior-equivalent before deleting hand-written code; generated schemas are often looser.
 - **Verify, don't assume** — read the code behind a grep hit.
 - **Verify the DB artifact, not just the types** — the contract may claim a column the view DDL dropped.

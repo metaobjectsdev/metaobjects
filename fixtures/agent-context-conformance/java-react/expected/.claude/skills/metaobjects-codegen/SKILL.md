@@ -90,6 +90,22 @@ the data access too.
 `meta gen --list` prints every generator by stable name; the `generators` array in
 `metaobjects.config.ts` is where you opt each one in or out.
 
+### Adopting onto existing code — make codegen match the code, not the code match codegen
+
+On a **brownfield adoption** (existing working code / live schema — see
+`metaobjects-authoring` → "Adopting onto an existing codebase"), the goal of codegen is to
+**reproduce the shape the code already has** so the generated output drops in with minimal
+churn. When generated output doesn't match — different names, file layout, imports, or
+signatures than the existing code — **customize the codegen to match the existing code first**,
+using the à-la-carte layers, `outputPattern`/target layout, naming strategy, template
+customization, and owned/custom generators described here. That is the intended adoption path,
+**not a hack** — the whole point of owned generators + three-way merge is to shape output to
+your codebase. Reshaping working call sites to fit the generator's defaults is the **last**
+resort, and only for the layer codegen is actually replacing (the hand-rolled CRUD/DTO/mapper
+you're deleting behind a parity gate). If matching the existing shape would require a genuinely
+hacky generator contortion, that is the moment to **ask the human** which side should give —
+don't silently churn the existing code.
+
 ## Write your own generators — the built-ins rarely fit an app exactly
 
 The built-in generators (entity, queries, routes, form, grid, barrel) cover the

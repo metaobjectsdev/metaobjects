@@ -70,6 +70,32 @@ and (for templates) the missing reference. **Bias toward trusting the tool** —
 verify failure almost always means the metadata changed and a derived artifact
 didn't follow.
 
+## What `verify` can't catch — semantic mismodeling (add a CI ratchet lint)
+
+The three subverbs check that derived artifacts *match the metadata*. They do **not**
+check that the metadata *models the right thing* — so a semantically wrong metadata
+choice that is internally consistent passes clean. The canonical case: a UUID column
+modeled **`field.string` + `@dbColumnType: uuid`**. The generated property is a `String`,
+the DB column is genuinely `uuid`, so **`verify --db` passes** while every consumer coerces
+`String↔UUID` and the native type is wrong throughout the code (see `metaobjects-authoring`
+→ the UUID smell). No drift subverb can see it, because nothing has drifted — the model
+itself is wrong.
+
+For semantic invariants like this, add a **project-local CI ratchet lint** over the
+metadata sources — a grep-level gate is enough:
+
+```
+# fail the build if any field.string carries @dbColumnType: uuid (a UUID-column-as-string smell).
+# Illustrative — tune the matcher to your source format (canonical JSON vs sigil-free YAML) and
+# tighten to per-node scope if a coarse co-occurrence match is too broad for your files.
+! grep -rEzl '"field\.string"[^}]*"@dbColumnType"[^}]*"uuid"' metaobjects/
+```
+
+Make it a **ratchet**: it can't go green until the last offending field is migrated to
+`field.uuid`, so it doubles as the migration's completion criterion **and** a permanent
+backstop against reintroducing the smell. The same pattern generalizes to any semantic
+metadata rule your project wants enforced that `verify` structurally can't express.
+
 ## Schema migrations are the shared TypeScript engine — for every port
 
 This is the load-bearing architectural fact (ADR-0015): **schema migrations are
