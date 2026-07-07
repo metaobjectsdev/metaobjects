@@ -11,12 +11,16 @@ import {
   TYPE_FIELD,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import type { PayloadField } from "@metaobjectsdev/render";
 
 function findObject(root: MetaData, name: string): MetaData | undefined {
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
-  return root.children().find((c) => c.type === TYPE_OBJECT && c.name === name);
+  // ADR-0041: FQN-exact — a "::"-qualified @objectRef binds the exact package (never a
+  // bare-tail fallback), so a same-named object.value in another package can't be wrongly
+  // bound. The SAME resolver render-helper.ts's findObject uses (the two must not drift).
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
 }
 
 /**

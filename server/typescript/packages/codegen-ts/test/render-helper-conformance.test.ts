@@ -34,6 +34,15 @@ async function loadRootFromFile(metaJsonPath: string) {
   return res.root;
 }
 
+// Multi-file (multi-package) load — one InMemoryStringSource per file, merged into
+// a single root (mirrors fixtures/conformance/loader-same-name-distinct-packages).
+async function loadRootFromFiles(...metaJsonPaths: string[]) {
+  const sources = metaJsonPaths.map((p) => new InMemoryStringSource(readFileSync(p, "utf-8")));
+  const res = await new MetaDataLoader().load(sources);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
 describe("render-helper conformance — shared cross-port corpus", () => {
   test("document WelcomePage renders \"Hello Ada\"", async () => {
     const root = await loadRootFromFile(join(CORPUS, "meta.json"));
@@ -97,10 +106,10 @@ describe("render-helper conformance — shared cross-port corpus", () => {
   // builder + build-time drift gate handle the nested/array shape (clean → no
   // throw) and that section loops + partials render for email.
   test("email OrderEmail renders nested customer + array items loop + partial footer", async () => {
-    // The nested/array VOs live in nested/meta.json (a NO-PACKAGE sub-corpus) so
-    // a BARE @objectRef resolves identically in both ports' render-helper field-tree
-    // walks (TS resolves objectRef by short name; the JVM expands a packaged ref to
-    // an FQN — bare == FQN only when there is no package). Both share templates/.
+    // The nested/array VOs live in nested/meta.json (a NO-PACKAGE sub-corpus) so a
+    // BARE @objectRef resolves by short name identically across ports — isolating the
+    // nested/array/partial shape from package resolution. (The fully-qualified @objectRef
+    // case is gated separately by xpkg-collision/ below, per ADR-0041.) Both share templates/.
     const root = await loadRootFromFile(join(CORPUS, "nested", "meta.json"));
     const provider = new FileSystemProvider(join(CORPUS, "templates"));
     // The clean nested template must pass the build-time drift gate (no throw).
@@ -129,6 +138,43 @@ describe("render-helper conformance — shared cross-port corpus", () => {
     expect(email.textBody).toBe("Order for Ada: A1 x2; B2 x1;");
     // Gap 3 — the partial resolved into the html body.
     expect(email.htmlBody).toContain("<hr/>Sent by Acme");
+  });
+
+  // Cross-package short-name collision (ADR-0041): xpkg-collision/ declares an
+  // object.value `Note` in BOTH acme::alpha (field alphaText) and acme::beta (field
+  // betaText), and a payload `Digest` whose two field.object children reference them
+  // by FULLY-QUALIFIED @objectRef (acme::alpha::Note / acme::beta::Note). A bare-tail
+  // resolver strips both refs to `Note` and binds BOTH to whichever package's Note
+  // loads first, so exactly one of {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands
+  // on the wrong element type and the build-time drift gate throws ERR_VAR_NOT_ON_PAYLOAD.
+  // FQN-exact resolution binds each ref to its own package, so the clean template passes
+  // and renders both fields. Render-tier analogue of loader-same-name-distinct-packages.
+  test("document DigestDoc resolves FQN nested @objectRef across a cross-package short-name collision", async () => {
+    const dirRoot = join(CORPUS, "xpkg-collision");
+    const root = await loadRootFromFiles(
+      join(dirRoot, "meta.alpha.json"),
+      join(dirRoot, "meta.beta.json"),
+      join(dirRoot, "meta.app.json"),
+    );
+    const provider = new FileSystemProvider(join(CORPUS, "templates"));
+    // Must NOT throw: the FQN refs resolve to their own package's Note.
+    const src = renderRenderHelper(root, "DigestDoc", provider);
+
+    const dir = mkdtempSync(join(import.meta.dir, "rh-conf-xpkg-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(
+      join(dir, "payloads.ts"),
+      "export interface Note { alphaText?: string; betaText?: string; }\n" +
+        "export interface Digest { fromAlpha: Note; fromBeta: Note; }\n",
+    );
+    writeFileSync(join(dir, "DigestDoc.render.ts"), src);
+
+    const mod = await import(join(dir, "DigestDoc.render.ts"));
+    const out: string = mod.renderDigestDoc(
+      { fromAlpha: { alphaText: "AA" }, fromBeta: { betaText: "BB" } },
+      provider,
+    );
+    expect(out).toBe("Alpha=AA Beta=BB");
   });
 
   test("drift case THROWS ERR_VAR_NOT_ON_PAYLOAD (fails codegen)", async () => {

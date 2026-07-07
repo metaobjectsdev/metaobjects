@@ -21,12 +21,24 @@
 import {
   type MetaObject,
   type MetaRoot,
+  TYPE_OBJECT,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   stripPackage,
+  refMatchesObject,
 } from "@metaobjectsdev/metadata";
 import { isFieldRequired, neutralTypeStr } from "./docs-data-builder.js";
 import type { AnnotatePayloadField } from "./template-source-annotate.js";
+
+// ADR-0041: FQN-exact object resolution — a "::"-qualified @objectRef binds the exact
+// package (never a bare-tail fallback), so a same-named object.value in another package
+// can't be wrongly bound (which would attach the wrong owner/type/link to a doc node).
+// Mirrors render-helper.ts's findObject + the CLI payload-field-tree resolver.
+function findObject(root: MetaRoot, ref: string): MetaObject | undefined {
+  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, ref)) as
+    | MetaObject
+    | undefined;
+}
 
 /**
  * Walk the payload VO `voName` into an enriched `AnnotatePayloadField[]`. Each
@@ -45,7 +57,7 @@ export function buildEnrichedPayloadTree(
   seen: ReadonlySet<string> = new Set(),
 ): AnnotatePayloadField[] {
   if (seen.has(voName)) return [];
-  const vo: MetaObject | undefined = root.findObject(voName);
+  const vo: MetaObject | undefined = findObject(root, voName);
   if (vo === undefined) return [];
   const owner = stripPackage(vo.name);
   const nextSeen = new Set(seen).add(voName);
@@ -61,8 +73,9 @@ export function buildEnrichedPayloadTree(
       const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string" && ref.length > 0) {
         // Owner switches to the nested VO for its fields (the recursion below
-        // re-derives `owner` from the resolved VO's own name).
-        node.fields = buildEnrichedPayloadTree(root, stripPackage(ref), nextSeen);
+        // re-derives `owner` from the resolved VO's own name). Pass the FULL ref
+        // (not stripPackage) so findObject resolves it FQN-exact (ADR-0041).
+        node.fields = buildEnrichedPayloadTree(root, ref, nextSeen);
       }
     }
     out.push(node);

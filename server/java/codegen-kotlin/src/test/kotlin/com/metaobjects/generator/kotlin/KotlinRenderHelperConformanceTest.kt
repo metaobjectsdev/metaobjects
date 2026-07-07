@@ -202,6 +202,43 @@ class KotlinRenderHelperConformanceTest {
     }
 
     // -------------------------------------------------------------------------
+    // xpkg-collision/ → FQN-exact nested @objectRef resolution across a cross-package
+    // short-name collision (ADR-0041). Two packages each declare an object.value `Note`
+    // (alpha: alphaText, beta: betaText); the payload `Digest` references BOTH by
+    // FULLY-QUALIFIED @objectRef. A bare-tail resolver binds both refs to whichever Note
+    // loads first → one of {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands on the wrong
+    // element type and the drift gate throws ERR_VAR_NOT_ON_PAYLOAD. Kotlin's render helper
+    // already resolves FQN-exact, so generation must NOT throw and must emit the helper.
+    // Loaded as three sources (multi-package), mirroring loader-same-name-distinct-packages.
+    // -------------------------------------------------------------------------
+    @Test fun `xpkg collision resolves FQN nested objectRef`() {
+        val outDir = Files.createTempDirectory("krhc-xpkg-")
+        val dir = corpus.resolve("xpkg-collision")
+        val templates = corpus.resolve("templates")
+        try {
+            val loader = com.metaobjects.loader.MetaDataLoader.createManual(false, "rh-conf-xpkg")
+            loader.init()
+            loader.load(listOf(
+                com.metaobjects.loader.InMemoryStringSource(Files.readString(dir.resolve("meta.alpha.json")), "alpha"),
+                com.metaobjects.loader.InMemoryStringSource(Files.readString(dir.resolve("meta.beta.json")), "beta"),
+                com.metaobjects.loader.InMemoryStringSource(Files.readString(dir.resolve("meta.app.json")), "app"),
+            ))
+            loader.register()
+            // Must NOT throw: the FQN refs resolve to their own package's Note.
+            KotlinRenderHelperGenerator().apply {
+                setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to templates.toString()))
+            }.execute(loader)
+            val produced = Files.walk(outDir).filter { it.isRegularFile() }.toList()
+            assertTrue(
+                produced.any { it.fileName.toString() == "DigestDocRenderHelper.kt" },
+                "DigestDocRenderHelper.kt must be generated; files=$produced",
+            )
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // drift/ → the GENERATOR throws GeneratorException (ERR_VAR_NOT_ON_PAYLOAD).
     // -------------------------------------------------------------------------
     @Test fun `drift case fails codegen`() {

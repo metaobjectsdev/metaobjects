@@ -50,6 +50,18 @@ public sealed class RenderHelperConformanceTests
         return r.Root;
     }
 
+    // Multi-file (multi-package) load — one InMemoryStringSource per file, merged into a
+    // single root (mirrors fixtures/conformance/loader-same-name-distinct-packages).
+    private static MetaRoot LoadFromFiles(params string[] metaJsonPaths)
+    {
+        var sources = metaJsonPaths
+            .Select((p, i) => (IMetaDataSource)new InMemoryStringSource(File.ReadAllText(p), id: $"corpus{i}.json"))
+            .ToArray();
+        var r = new MetaDataLoader().Load(sources);
+        Assert.Empty(r.Errors);
+        return r.Root;
+    }
+
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(),
@@ -190,6 +202,53 @@ public sealed class RenderHelperConformanceTests
         Assert.Equal("Order for Ada: A1 x2; B2 x1;", email.TextBody);
         // the partial resolved into the html body.
         Assert.Contains("<hr/>Sent by Acme", email.HtmlBody);
+    }
+
+    // ---------------------------------------------------------------------
+    // xpkg-collision/ — cross-package short-name collision (ADR-0041). Two packages
+    // each declare an object.value `Note` (alpha: alphaText, beta: betaText); the
+    // payload `Digest` references BOTH by FULLY-QUALIFIED @objectRef. A bare-tail
+    // resolver binds both refs to whichever Note loads first → one of
+    // {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands on the wrong element type and
+    // the build-time drift gate throws ERR_VAR_NOT_ON_PAYLOAD. FQN-exact resolution binds
+    // each ref to its own package. The two colliding VOs share the BARE record type name
+    // `Note`, so (like the TS payloads.ts) the payload record is hand-authored with both
+    // fields — the record-name collision is an orthogonal concern; this test gates the
+    // render-helper's FQN-exact @objectRef resolver.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void Document_DigestDoc_resolves_fqn_nested_objectRef_across_collision()
+    {
+        var corpus = Corpus();
+        var dir = Path.Combine(corpus, "xpkg-collision");
+        var root = LoadFromFiles(
+            Path.Combine(dir, "meta.alpha.json"),
+            Path.Combine(dir, "meta.beta.json"),
+            Path.Combine(dir, "meta.app.json"));
+        var templates = Path.Combine(corpus, "templates");
+
+        // Must NOT throw: the FQN refs resolve to their own package's Note.
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "DigestDoc.render.cs");
+
+        var payloadSrc = "namespace Acme.Generated;\n"
+            + "public sealed record Note { public string? alphaText { get; init; } public string? betaText { get; init; } }\n"
+            + "public sealed record Digest { public Note fromAlpha { get; init; } public Note fromBeta { get; init; } }\n";
+        var asm = CompileToAssembly(file.Content, payloadSrc);
+
+        var noteType = asm.GetType("Acme.Generated.Note")!;
+        var digestType = asm.GetType("Acme.Generated.Digest")!;
+        var fromAlpha = Activator.CreateInstance(noteType)!;
+        noteType.GetProperty("alphaText")!.SetValue(fromAlpha, "AA");
+        var fromBeta = Activator.CreateInstance(noteType)!;
+        noteType.GetProperty("betaText")!.SetValue(fromBeta, "BB");
+        var digest = Activator.CreateInstance(digestType)!;
+        digestType.GetProperty("fromAlpha")!.SetValue(digest, fromAlpha);
+        digestType.GetProperty("fromBeta")!.SetValue(digest, fromBeta);
+
+        var helper = asm.GetType("Acme.Generated.DigestDocRenderHelper")!;
+        var outText = (string)helper.GetMethod("Render")!.Invoke(null, [digest, new FilesystemProvider(templates)])!;
+        Assert.Equal("Alpha=AA Beta=BB", outText);
     }
 
     // ---------------------------------------------------------------------

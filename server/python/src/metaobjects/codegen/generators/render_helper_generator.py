@@ -26,10 +26,10 @@ build fail when a mustache references a field the payload VO doesn't declare.
 Reuse, not reimplementation: ``render`` (the emitted runtime call), ``verify`` (the
 build-time gate), ``FilesystemProvider`` (build-time ref resolution), and
 ``EmailDocument`` (email return type). The payload field tree is walked from the VO
-the same way the other generators walk it — but a nested ``field.object``'s
-``@objectRef`` is resolved by BARE short-name (cross-port render-helper consensus:
-TS ``findObject`` / Java ``resolveNestedObjectRef`` / C# ``ResolveNestedObjectRef``),
-only recursing into ``object.value`` targets, cycle-guarded.
+the same way the other generators walk it — a nested ``field.object``'s ``@objectRef``
+is resolved FQN-exact when fully-qualified (ADR-0041) else by short name (cross-port
+render-helper consensus: TS ``refMatchesObject`` / Java+Kotlin ``resolveNestedObjectRef``
+/ C# ``ResolveNestedObjectRef``), only recursing into ``object.value`` targets, cycle-guarded.
 
 Python divergence vs TS / Java / C#: Python's ``RenderRequest`` has NO ``verify``
 field — the Python render engine does not run a runtime drift pass — so the emitted
@@ -75,19 +75,24 @@ def _py_str(s: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Payload field-tree walk — nested @objectRef resolved by BARE short-name
-# (cross-port render-helper consensus). Object-ref fields recurse into their
-# target object.value (SUBTYPE_VALUE only); a `seen` set guards reference cycles.
+# Payload field-tree walk — nested @objectRef resolved FQN-exact (ADR-0041).
+# Object-ref fields recurse into their target object.value (SUBTYPE_VALUE only);
+# a `seen` set guards reference cycles.
 # ---------------------------------------------------------------------------
 
 
 def _resolve_nested_object_ref(root: MetaData, reference: str) -> MetaObject | None:
-    """Resolve a ``field.object``'s ``@objectRef`` to its target ``object.value`` by BARE
-    short-name — mirroring the C# ``ResolveNestedObjectRef`` / TS ``findObject`` / Java
-    ``resolveNestedObjectRef``. If the ref carries a package, only the segment after the
-    last ``::`` is compared, against each ``object.value``'s own short name."""
+    """Resolve a ``field.object``'s ``@objectRef`` to its target ``object.value``.
+
+    ADR-0041: a FULLY-QUALIFIED ref (contains ``::``) resolves EXACTLY on the
+    package-qualified name (``resolution_key()``/``fqn()``) — never a bare-tail
+    fallback that would bind a same-named ``object.value`` in the WRONG package on a
+    cross-package short-name collision. A bare ref still matches by short name
+    (first-wins). Mirrors the Java/Kotlin ``resolveNestedObjectRef`` + TS
+    ``refMatchesObject``."""
     if not reference:
         return None
+    fqn = PACKAGE_SEP in reference
     ref_short = reference.rsplit(PACKAGE_SEP, 1)[-1]
     # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
     for child in root.own_children():
@@ -95,7 +100,10 @@ def _resolve_nested_object_ref(root: MetaData, reference: str) -> MetaObject | N
             continue
         if child.sub_type != OBJECT_SUBTYPE_VALUE:
             continue
-        if child.name.rsplit(PACKAGE_SEP, 1)[-1] == ref_short:
+        if fqn:
+            if child.resolution_key() == reference or child.fqn() == reference:
+                return child
+        elif child.name.rsplit(PACKAGE_SEP, 1)[-1] == ref_short:
             return child
     return None
 
