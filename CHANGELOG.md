@@ -7,6 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.14] — 2026-07-07
+
+_npm `0.15.14` (TypeScript, full lockstep). A codegen bug-fix patch. Java/Kotlin (Maven) carry no production change and stay on their current line; PyPI `0.15.9` and NuGet `0.15.7` ship the same fix on their own lines._
+
+### Fixed
+- **Nested `@objectRef` now resolves FQN-exact across ports (ADR-0041).** The `verify --templates` prompt-drift gate and the render-helper payload field-tree derivation resolved a nested `field.object` `@objectRef` by BARE short-name, so a fully-qualified ref (`pkg::Name`) bound the WRONG same-named `object.value` on a cross-package short-name collision — emptying the element subtree and raising a spurious `ERR_VAR_NOT_ON_PAYLOAD` on its inner `{{fields}}`. The CLI verify walk (`payload-field-tree.ts`) and the docs-source annotator (`template-payload-tree.ts`) now route through the shared `refMatchesObject` resolver (FQN-exact when the ref contains `::`, else bare short-name first-wins); the render-helper resolver was already FQN-safe. The Python and C# render-tier walks also key their cycle guard by the fully-qualified name so a nested collision chain isn't falsely deduped. Gated by a new multi-package `xpkg-collision` sub-corpus under `fixtures/template-output-render-conformance/` that also drives the Python / C# / Kotlin render-helper conformance runners. (#182)
+
 ## [Maven 7.7.6] — 2026-07-06
 
 _Maven Central `7.7.6` (Java + Kotlin, lockstep). A Kotlin-codegen-only patch — npm / PyPI / NuGet are unaffected (they carry no Kotlin) and stay on their current lines._
