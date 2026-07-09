@@ -187,16 +187,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun entityNeedsJacksonMapper(entity: MetaObject, loader: MetaDataLoader): Boolean {
         for (field in entity.metaFields) {
-            if (field is MapField) return true
-            if (field is ObjectField && readStorage(field) != STORAGE_FLATTENED) return true
-        }
-        // Flattened object sub-fields can themselves be field.map (a jsonb Jackson column).
-        for (field in entity.metaFields) {
-            if (field !is ObjectField) continue
-            if (readStorage(field) != STORAGE_FLATTENED) continue
-            val ref = readObjectRef(field) ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
-            if (target.metaFields.any { it is MapField }) return true
+            if (field is MapField) return true          // field.map is always a jsonb Jackson column
+            if (field is ObjectField) {
+                if (readStorage(field) != STORAGE_FLATTENED) return true   // typed jsonb object column
+                // A flattened object.value sub-field can itself be a field.map (a jsonb Jackson column).
+                val ref = readObjectRef(field) ?: continue
+                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                if (target.metaFields.any { it is MapField }) return true
+            }
         }
         return false
     }
@@ -214,18 +212,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `com.fasterxml.jackson.module:jackson-module-kotlin`, and
      * `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` on its runtime classpath.
      */
-    private fun emitJsonbMapperSupportFile(pkg: String, outRoot: Path) {
-        val body = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
-            }
-            append(JSONB_MAPPER_SUPPORT_BLOCK)
-            append("\n")
-        }
-        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$JSONB_MAPPER_SUPPORT_FILE_NAME.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, body)
-    }
+    private fun emitJsonbMapperSupportFile(pkg: String, outRoot: Path) =
+        // The jsonb block is fully-qualified (no imports needed).
+        emitSupportFile(pkg, outRoot, JSONB_MAPPER_SUPPORT_FILE_NAME, imports = "", block = JSONB_MAPPER_SUPPORT_BLOCK)
 
     /**
      * Emit the per-package `MetaInetUriColumnType.kt` support file (ADR-0036/0037 Wave 3):
@@ -235,20 +224,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * extensions the generated tables call. `internal` keeps it package+module-private while
      * every `*Table.kt` in the package shares the one declaration.
      */
-    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
-        val body = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
-            }
-            append(INET_URI_SUPPORT_FILE_IMPORTS)
-            append("\n")
-            append(INET_URI_SUPPORT_BLOCK)
-            append("\n")
-        }
-        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$INET_URI_SUPPORT_FILE_NAME.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, body)
-    }
+    private fun emitInetUriSupportFile(pkg: String, outRoot: Path) =
+        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, INET_URI_SUPPORT_FILE_IMPORTS, INET_URI_SUPPORT_BLOCK)
 
     /**
      * Emit the per-package `MetaInstantWithTimeZoneColumnType.kt` support file for
@@ -259,17 +236,23 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * the single shared declaration — fixing the multi-table-per-package redeclaration that the
      * earlier inline-per-file emission caused.
      */
-    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) {
+    private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) =
+        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME, INSTANT_TZ_SUPPORT_FILE_IMPORTS, INSTANT_TZ_SUPPORT_BLOCK)
+
+    /**
+     * Emit one `internal` per-package support file (`<fileName>.kt`): a package header (when the
+     * package is non-empty), optional import lines, then the declaration block. Shared by the
+     * jsonb-mapper / inet-uri / instant-tz emitters, which differ only in file name, imports, and
+     * block — the `internal` declarations let every `*Table.kt` in the package reuse one copy.
+     */
+    private fun emitSupportFile(pkg: String, outRoot: Path, fileName: String, imports: String, block: String) {
         val body = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
-            }
-            append(INSTANT_TZ_SUPPORT_FILE_IMPORTS)
-            append("\n")
-            append(INSTANT_TZ_SUPPORT_BLOCK)
+            if (pkg.isNotEmpty()) append("package $pkg\n\n")
+            if (imports.isNotEmpty()) { append(imports); append("\n") }
+            append(block)
             append("\n")
         }
-        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$INSTANT_TZ_SUPPORT_FILE_NAME.kt")
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$fileName.kt")
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, body)
     }
@@ -690,9 +673,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val ref = readObjectRef(field)
                 val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
                 val decode = if (target != null) {
-                    val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
-                    // Fully-qualify the VO so the emitted column needs no extra import.
-                    val voFqn = if (targetPkg.isEmpty()) targetShort else "$targetPkg.$targetShort"
+                    // Fully-qualify the VO (Kotlin dotted form) so the emitted column needs no extra import.
+                    val voFqn = PackageMapping.toKotlin(target.name)
                     if (field.isArrayType) {
                         // List<VO> → a Jackson TypeReference captures the erased generic.
                         "metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<List<$voFqn>>() {})"
@@ -736,10 +718,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun mapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
         val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
-        if (target != null) {
-            val (p, s) = PackageMapping.splitFqn(target.name)
-            return if (p.isEmpty()) s else "$p.$s"
-        }
+        if (target != null) return PackageMapping.toKotlin(target.name)
         return KotlinTypeMapper.mapValueScalarTypeName(field)?.toString() ?: "Any"
     }
 
