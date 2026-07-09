@@ -14,12 +14,12 @@ human-readable explanation somewhere, look it up in the
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 91 | 91 / 91 | 91 / 91 | inherits via `metadata-ktx` | 91 / 91 | 91 / 91 |
-| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 13 | 13 / 13 | 12 / 13 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 12 / 13 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 13 / 13 |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 219 | 219 / 219 | 219 / 219 | inherits via `metadata-ktx` | 219 / 219 | 219 / 219 |
+| [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 14 | 14 / 14 | 14 / 14 | inherits via Java | 14 / 14 | 14 / 14 |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 12 (9 query + 3 migration) | 12 / 12 | 12 / 12 | 12 / 12 (via Exposed) | 12 / 12 | 12 / 12 |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 20 | 20 / 20 (Fastify reference runner) | 20 / 20 (embedded HTTP + JDBC reference runner) | 20 / 20 (embedded HTTP + Exposed reference runner) | 20 / 20 (HttpListener + Npgsql reference runner) | 20 / 20 (FastAPI + pg8000 reference runner) |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | 15 / 15 | 15 / 15 | inherits via Java | 15 / 15 | 15 / 15 |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 29 (24 query + 5 migration) | 29 / 29 | 24 / 24 query (migrations TS-only) | 24 / 24 query (via Exposed) | 24 / 24 query | 24 / 24 query |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 21 | 21 / 21 (Fastify reference runner) | 21 / 21 (embedded HTTP + JDBC reference runner) | 21 / 21 (embedded HTTP + Exposed reference runner) | 21 / 21 (HttpListener + Npgsql reference runner) | 21 / 21 (FastAPI + pg8000 reference runner) |
 | `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
 
 The two ledgered YAML fixtures are documented library-vs-pipeline divergences (see the
@@ -45,7 +45,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (91)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (219)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -67,17 +67,17 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `origin-*`, `error-origin-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) (payload origins) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
-### `fixtures/yaml-conformance/` (13)
+### `fixtures/yaml-conformance/` (15)
 
-All 13 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
+All 15 fixtures → [features/yaml-authoring.md](features/yaml-authoring.md). The corpus
 splits into 7 happy-path fixtures (sigil-free attrs, array suffix, anchor/alias,
 block scalars, mixed bare-and-prefixed, quoted leading zero, etc.) and 6
 `error-yaml-*` fixtures that pin the YAML 1.1 coercion guards (bool / null / hex
 in string contexts; numeric in enum contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (14)
+### `fixtures/render-conformance/` (15)
 
-All 14 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+All 15 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
 (render engine output section). 4 are end-to-end shape examples (prompt / email /
 spreadsheet / CSV-injection escape); 10 pin Mustache-engine semantics — dotted-path
 lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
@@ -89,14 +89,14 @@ trailing-newline preservation, and unicode multibyte handling.
 All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
 (template drift section — `Renderer.verify`).
 
-### `fixtures/persistence-conformance/` (12)
+### `fixtures/persistence-conformance/` (29 — 24 query + 5 migration)
 
 - `migrations/*` (3) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (9) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (20)
+### `fixtures/api-contract-conformance/` (21)
 
-All 20 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 21 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -112,7 +112,8 @@ Python — satisfy all 20 scenarios today.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-All 181 fixtures across the 6 active corpora map to a feature doc. None are
+All 330 fixtures across the 6 active corpora (metamodel 219 + yaml 15 + verify 31
++ render 15 + persistence 29 + api-contract 21) map to a feature doc. None are
 orphaned today.
 
 If you add a new fixture and don't see a clear home for it, either:
