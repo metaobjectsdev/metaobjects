@@ -3,7 +3,7 @@
 Idiomatic Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed +
 Flyway. The Kotlin port is a **codegen tier built on top of the Java port** — the
 loader, OMDB persistence engine, render engine, Maven plugin, and conformance
-runners are all Java; Kotlin emits idiomatic Kotlin (`@Serializable data class`,
+runners are all Java; Kotlin emits idiomatic Kotlin (`data class`,
 Exposed `Table` objects, extension-fn relationship helpers, Spring `@Configuration`
 wiring) via KotlinPoet.
 
@@ -39,6 +39,26 @@ Two modules:
     <artifactId>exposed-core</artifactId>
     <version>${exposed.version}</version>
   </dependency>
+  <!-- Generated typed `field.object @storage:jsonb` / `field.map` columns serialize through a
+       generated per-package `MetaJsonbMapper.kt` Jackson `ObjectMapper` (no kotlinx-serialization
+       compiler plugin required). -->
+  <dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>${jackson.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>com.fasterxml.jackson.module</groupId>
+    <artifactId>jackson-module-kotlin</artifactId>
+    <version>${jackson.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>com.fasterxml.jackson.datatype</groupId>
+    <artifactId>jackson-datatype-jsr310</artifactId>
+    <version>${jackson.version}</version>
+  </dependency>
+  <!-- FR-006 output parser + prompt-payload lane; also backs the open-bag
+       `field.string @dbColumnType:jsonb` → kotlinx `JsonElement` path. -->
   <dependency>
     <groupId>org.jetbrains.kotlinx</groupId>
     <artifactId>kotlinx-serialization-json</artifactId>
@@ -53,7 +73,7 @@ The 9 generators in `codegen-kotlin`:
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` | every `object.entity` + `object.value` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity` + `object.value` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
@@ -139,7 +159,6 @@ emits:
 
 ```kotlin
 // generated/acme/blog/Author.kt
-@Serializable
 data class Author(
     val id: Long,
     val name: String,
