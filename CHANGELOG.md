@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.17] — 2026-07-09
+
+_Coordinated release across all four registries: npm `0.15.17` (14-package lockstep) · PyPI `metaobjects 0.15.10` · NuGet `MetaObjects* 0.15.8` · Maven Central `com.metaobjects:* 7.7.8`. Three merged efforts: the breaking `origin.passthrough` type-preservation metamodel change (#185/#186), typed value-object jsonb columns across all ports (#187), and load-order-independent super-resolution (#188/#189)._
+
+> ⚠️ **BREAKING (despite the patch version — pre-1.0):** `origin.passthrough` is now **type-preserving**. Metadata where a passthrough field's declared type differs from its `@from` source (e.g. a `field.uuid` source surfaced as `field.string`) now **fails to load** with `ERR_PASSTHROUGH_TYPE_MISMATCH`. The narrow `ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH` is retired. **Migration:** declare the source's type (usually the fix), or add `@convert: true` to acknowledge a deliberate type change. See the Changed entry below.
+>
+> **Also fixed a latent build-portability bug (#188):** a dotted `extends: Owner.member` targeting an inherited member could fail with `ERR_UNRESOLVED_SUPER` under one directory-scan order but not another (Node vs Bun) — resolution is now order-independent. If a corpus failed to load only under Bun/CI, this release fixes it.
+
 ### Added
 - **`@convert` on `origin.passthrough` — acknowledge a deliberate passthrough type change (#185).** A new optional boolean attr. Absent/false (the default), a passthrough is type-preserving (see Changed, below); `@convert: true` opts a field out of the type-equality check when its type intentionally differs from its `@from` source. It is an **acknowledgement only — it does NOT generate a cast**; the value flows through unchanged and the consumer owns any coercion. Real type-converting projections remain `origin.expression`'s job (#159). Registered on `origin.passthrough` in all five ports (cross-port registry-conformance gated).
 - **Typed value-object jsonb columns work end-to-end across all persistence ports (single + array-of-VO).** A `field.object @storage:jsonb` column — a single value-object OR an `@isArray` array-of-VO — now round-trips through every port's runtime/ORM write+read codec (TS Kysely, C# EF Core, Java OMDB/Gson, Kotlin Exposed, Python pg8000). Gated by a new array-of-VO dimension in the persistence-conformance `AllTypes` `op: roundtrip` scenario: a `labels` column (`field.object @isArray @storage:jsonb`) written as a 2-element, empty-`[]` (≠ `null`), and single-element array across three rows — the gap that had let a non-compiling / wrong array serializer ship in three ports. The single-VO jsonb path was already cross-port green; this closes the array-of-VO half.
