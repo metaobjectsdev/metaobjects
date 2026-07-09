@@ -90,6 +90,7 @@ import {
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
+  ORIGIN_PASSTHROUGH_ATTR_CONVERT,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
 } from "../persistence/origin/origin-constants.js";
@@ -933,6 +934,55 @@ function _checkExtendsOriginAgreement(
   );
 }
 
+/**
+ * #185 — passthrough is type-preserving. A field forwarding another field's
+ * value via origin.passthrough must declare the SAME field.<subType> and the
+ * same array-ness as its resolved @from source — otherwise the projected type
+ * silently diverges from its source (e.g. a field.uuid surfaced as field.string,
+ * forcing hand-written String↔UUID bridging). Compares the RESOLVING/effective
+ * subType + isArray (ADR-0039), so a field inheriting its shape via `extends`
+ * is judged on its effective type.
+ *
+ * Nullability is deliberately NOT judged: a view over an outer join legitimately
+ * widens a NOT NULL source column to nullable, so a nullability check would
+ * false-positive on valid projections.
+ *
+ * Escape hatch: @convert: true on the origin.passthrough acknowledges a
+ * deliberate type change and suppresses the error (it does NOT emit a cast —
+ * the consumer owns any coercion; real converting projections are #159's
+ * origin.expression). Host-agnostic (projections, entities, values, and the
+ * FR-015 stored-proc parameter refs the retired ERR_PARAMETER_REF_PASSTHROUGH_
+ * TYPE_MISMATCH used to cover).
+ */
+function _checkPassthroughType(
+  field: MetaData,
+  fromField: MetaData,
+  fromAttr: string,
+  convert: boolean,
+  obj: MetaData,
+  originSource: ErrorSource,
+  errors: ParseError[],
+): void {
+  if (convert) return; // deliberate type change acknowledged
+  // Compare both axes at once via the type-label: subtype names never contain
+  // "[]", so equal labels ⇔ same subType AND same array-ness (nullability is
+  // deliberately not judged — an outer-join view legitimately widens NOT NULL).
+  const declared = `field.${field.subType}${field.resolvedIsArray() ? "[]" : ""}`;
+  const source = `field.${fromField.subType}${fromField.resolvedIsArray() ? "[]" : ""}`;
+  if (declared === source) return;
+  errors.push(
+    new ParseError(
+      `origin.passthrough on ${obj.name}.${field.name}: field is ${declared} but its @from source ` +
+        `"${fromAttr}" is ${source} — a passthrough forwards the value unchanged, so the types must ` +
+        `match. Declare ${source}, or set @convert: true to acknowledge a deliberate type change.`,
+      {
+        code: "ERR_PASSTHROUGH_TYPE_MISMATCH",
+        source: resolvedSource(originSource, `${obj.fqn()}::${field.name}`, fromAttr),
+      },
+    ),
+  );
+}
+
 export function validateOriginPaths(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
@@ -965,6 +1015,10 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // @via is explicit, inferred, or a base-relation column).
           if (fromTarget !== undefined) {
             _checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.source, errors);
+            // #185 — passthrough is type-preserving unless @convert acknowledges a change.
+            // ADR-0039: own — origin.* never inherits (ADR-0029).
+            const convert = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_CONVERT) === true;
+            _checkPassthroughType(field, fromTarget.field, from, convert, obj, origin.source, errors);
           }
           // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);

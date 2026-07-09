@@ -102,7 +102,13 @@ class ErrorCode(str, Enum):
     ERR_PARAMETER_REF_UNRESOLVED = "ERR_PARAMETER_REF_UNRESOLVED"
     ERR_PARAMETER_REF_NOT_VALUE_OBJECT = "ERR_PARAMETER_REF_NOT_VALUE_OBJECT"
     ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND = "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND"
-    ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH = "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH"
+    # #185 — a field forwarding another field's value via origin.passthrough must
+    # declare the SAME field.<subType> and array-ness as its resolved @from source
+    # (a passthrough forwards the value unchanged). A differing subType or array-ness
+    # → this error, unless @convert: true acknowledges a deliberate type change. This
+    # GENERALIZES and RETIRES the FR-015-narrow ERR_PARAMETER_REF_PASSTHROUGH_TYPE_
+    # MISMATCH (the origin-paths pass runs over every object, value hosts included).
+    ERR_PASSTHROUGH_TYPE_MISMATCH = "ERR_PASSTHROUGH_TYPE_MISMATCH"
     # FR-014 — TPH discriminator cross-attribute validation. Cross-language
     # vocabulary; Python loader does not emit these yet.
     ERR_DISCRIMINATOR_FIELD_NOT_FOUND = "ERR_DISCRIMINATOR_FIELD_NOT_FOUND"

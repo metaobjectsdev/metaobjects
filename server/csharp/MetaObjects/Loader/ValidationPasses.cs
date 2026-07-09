@@ -388,6 +388,10 @@ public static class ValidationPasses
                         if (fromTarget is ResolvedFromTarget ft1)
                         {
                             CheckExtendsOriginAgreement(field, ft1.Field, from, obj, origin.Source, errors);
+                            // #185 — passthrough is type-preserving unless @convert acknowledges a change.
+                            // ADR-0039: own — origin.* never inherits (ADR-0029).
+                            bool convert = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_CONVERT) is true;
+                            CheckPassthroughType(field, ft1.Field, from, convert, obj, origin.Source, errors);
                         }
                         var viaObj = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
                         if (viaObj is string via && via != "")
@@ -1028,6 +1032,41 @@ public static class ValidationPasses
             $"target \"{supOwner.Name}.{sup.Name}\" — extends (shape lineage) and origin.passthrough (data lineage) " +
             "must point at the same entity field (FR-024).",
             ErrorCode.ERR_EXTENDS_ORIGIN_MISMATCH,
+            Envelope: ResolvedSource.From(originSource, $"{obj.Fqn()}::{field.Name}", fromAttr)));
+    }
+
+    /// #185 — origin.passthrough is type-preserving. A field forwarding another
+    /// field's value via origin.passthrough must declare the SAME field.&lt;subType&gt;
+    /// and the same array-ness as its resolved @from source — otherwise the
+    /// projected type silently diverges from its source (e.g. a field.uuid surfaced
+    /// as field.string, forcing hand-written String↔UUID bridging). Compares the
+    /// RESOLVING/effective subType + isArray (ADR-0039), so a field inheriting its
+    /// shape via `extends` is judged on its effective type.
+    ///
+    /// Nullability is deliberately NOT judged: a view over an outer join legitimately
+    /// widens a NOT NULL source column to nullable, so a nullability check would
+    /// false-positive on valid projections.
+    ///
+    /// Escape hatch: @convert: true on the origin.passthrough acknowledges a
+    /// deliberate type change and suppresses the error (it does NOT emit a cast —
+    /// the consumer owns any coercion; real converting projections are #159's
+    /// origin.expression). Host-agnostic (projections, entities, values, and the
+    /// FR-015 stored-proc parameter refs the retired ERR_PARAMETER_REF_PASSTHROUGH_
+    /// TYPE_MISMATCH used to cover).
+    private static void CheckPassthroughType(
+        MetaData field, MetaData fromField, string fromAttr, bool convert, MetaData obj, ErrorSource originSource, List<MetaError> errors)
+    {
+        if (convert) return; // deliberate type change acknowledged
+        // Compare both axes at once via the type-label: subtype names never contain
+        // "[]", so equal labels ⇔ same SubType AND same array-ness.
+        string declared = $"field.{field.SubType}{(field.ResolvedIsArray() ? "[]" : "")}";
+        string source = $"field.{fromField.SubType}{(fromField.ResolvedIsArray() ? "[]" : "")}";
+        if (declared == source) return;
+        errors.Add(new MetaError(
+            $"origin.passthrough on {obj.Name}.{field.Name}: field is {declared} but its @from source " +
+            $"\"{fromAttr}\" is {source} — a passthrough forwards the value unchanged, so the types must " +
+            "match. Declare " + source + ", or set @convert: true to acknowledge a deliberate type change.",
+            ErrorCode.ERR_PASSTHROUGH_TYPE_MISMATCH,
             Envelope: ResolvedSource.From(originSource, $"{obj.Fqn()}::{field.Name}", fromAttr)));
     }
 
@@ -2758,8 +2797,10 @@ public static class ValidationPasses
 
     // =========================================================================
     // FR-015 — source.rdb @parameterRef typed-input rules.
-    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT /
-    //   _PASSTHROUGH_TYPE_MISMATCH. Mirrors TS persistence/source/validate-source-parameter-ref.ts.
+    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT.
+    //   Passthrough type-matching on parameter fields is the universal
+    //   ERR_PASSTHROUGH_TYPE_MISMATCH (retired the narrow parameter-ref code, #185).
+    //   Mirrors TS persistence/source/validate-source-parameter-ref.ts.
     // =========================================================================
 
     private static readonly HashSet<string> CallableKinds = new()
@@ -2826,37 +2867,14 @@ public static class ValidationPasses
                     continue;
                 }
 
-                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
-                // ADR-0039: resolving — the parameter value-object's fields may be inherited
-                // via extends (TS validate-source-parameter-ref.ts:122).
-                foreach (var paramField in target.Children().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>())
-                {
-                    // ADR-0039: own — origin.* never inherits (ADR-0029); the origin child and
-                    // its @from are read own (TS validate-source-parameter-ref.ts:125,130).
-                    var passthrough = paramField.OwnChildren()
-                        .FirstOrDefault(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH);
-                    if (passthrough == null) continue;
-                    if (passthrough.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) is not string from || from.Length == 0) continue;
-                    int dot = from.IndexOf('.');
-                    if (dot < 0) continue;
-                    string targetEntityName = from.Substring(0, dot);
-                    string targetFieldName = from.Substring(dot + 1);
-                    if (!index.TryGetValue(targetEntityName, out var targetEntity)) continue;
-                    // ADR-0039: resolving — the referenced entity's field may be inherited
-                    // via extends (TS validate-source-parameter-ref.ts:139).
-                    var targetField = targetEntity.Children()
-                        .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == targetFieldName) as MetaField;
-                    if (targetField == null) continue;
-                    if (paramField.SubType != targetField.SubType)
-                    {
-                        errors.Add(new MetaError(
-                            $"parameter field \"{paramField.Name}\" (field.{paramField.SubType}) on @parameterRef " +
-                            $"\"{refName}\" uses origin.passthrough @from: \"{from}\", but " +
-                            $"{targetEntity.Name}.{targetFieldName} is field.{targetField.SubType}; types must match",
-                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
-                            Envelope: paramField.Source));
-                    }
-                }
+                // #185 — passthrough type-preservation (parameter fields forwarding an
+                // entity field via origin.passthrough must match its type) is enforced
+                // UNIVERSALLY by CheckPassthroughType in ValidateOriginPaths (which runs
+                // over every object incl. these parameter-ref value-objects), emitting
+                // ERR_PASSTHROUGH_TYPE_MISMATCH. The narrow, subtype-only
+                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH that used to live here was
+                // retired in favour of that single invariant (which also gates array-ness
+                // and honours the @convert opt-out).
             }
         }
 

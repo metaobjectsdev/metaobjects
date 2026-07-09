@@ -26,6 +26,10 @@ export type OriginSubType = (typeof ORIGIN_SUBTYPES)[number];
 // passthrough attrs
 export const ORIGIN_PASSTHROUGH_ATTR_FROM = "from";
 export const ORIGIN_PASSTHROUGH_ATTR_VIA  = "via";
+// @convert (boolean): acknowledges a deliberate type change vs the @from source
+// (#185). Suppresses ERR_PASSTHROUGH_TYPE_MISMATCH. Acknowledgement only — it
+// does NOT generate a cast; real type-converting projections are origin.expression (#159).
+export const ORIGIN_PASSTHROUGH_ATTR_CONVERT = "convert";
 
 // collection attrs — a relationship-derived array of nested view-objects
 // (FR-004 R4). @via is the dotted relationship path (optionally wildcard-

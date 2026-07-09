@@ -30,6 +30,10 @@ public static class OriginConstants
     // passthrough attrs
     public const string ORIGIN_PASSTHROUGH_ATTR_FROM = "from";
     public const string ORIGIN_PASSTHROUGH_ATTR_VIA  = "via";
+    // @convert (boolean): acknowledges a deliberate type change vs the @from source
+    // (#185). Suppresses ERR_PASSTHROUGH_TYPE_MISMATCH. Acknowledgement only — it
+    // does NOT generate a cast; real type-converting projections are origin.expression (#159).
+    public const string ORIGIN_PASSTHROUGH_ATTR_CONVERT = "convert";
 
     // aggregate attrs
     public const string ORIGIN_AGGREGATE_ATTR_AGG = "agg";

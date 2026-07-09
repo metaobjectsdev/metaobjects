@@ -14,6 +14,10 @@ ORIGIN_SUBTYPES = (
 # passthrough attrs
 ORIGIN_ATTR_FROM = "from"
 ORIGIN_ATTR_VIA = "via"
+# #185 — acknowledges a deliberate type change on origin.passthrough (opt out of
+# the type-preserving ERR_PASSTHROUGH_TYPE_MISMATCH check). Mirrors the TS
+# ORIGIN_PASSTHROUGH_ATTR_CONVERT.
+ORIGIN_ATTR_CONVERT = "convert"
 
 # aggregate attrs
 ORIGIN_ATTR_AGG = "agg"

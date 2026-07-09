@@ -74,7 +74,14 @@ warning lists, through these ordered stages. Mirror the order; the mechanism is 
       `@db.indexed` → **warning** (drift detection).
    4. **Origin paths** — `passthrough`/`aggregate` `@from`/`@of` must resolve to
       `Entity.field`; `@via` must hop correctly through relationships
-      (`ERR_INVALID_ORIGIN`).
+      (`ERR_INVALID_ORIGIN`). A `passthrough` field must also be **type-preserving**:
+      its declared `field.<subType>` and array-ness must match the resolved source field
+      (nullability is not judged — an outer-join view legitimately widens `NOT NULL` →
+      nullable). A divergence fails with `ERR_PASSTHROUGH_TYPE_MISMATCH` unless the
+      `origin.passthrough` carries `@convert: true` (an acknowledgement only — it does
+      not generate a cast). This host-agnostic check covers projections, entities,
+      values, and stored-proc parameter refs (it generalizes/retires the FR-015
+      `ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH`).
    5. **Attribute schema** — declared attrs must match their declared value type and
       allowed-values; required attrs must be present (effective: own + inherited). Undeclared
       attrs are **not** rejected (open policy). Errors `ERR_MISSING_REQUIRED_ATTR`,

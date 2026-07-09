@@ -1576,6 +1576,9 @@ public final class ValidationPhase {
                 "origin.passthrough.@from", origin.getSource());
             // FR-024 B6 — extends/origin agreement (host-agnostic; before via/inference).
             checkExtendsOriginAgreement(field, fromTarget.field, from, obj, origin.getSource());
+            // #185 — passthrough is type-preserving unless @convert acknowledges a change
+            // (host-agnostic; runs whether @via is explicit, inferred, or a base column).
+            checkPassthroughType(field, fromTarget.field, from, origin.isConvert(), obj, origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
                 java.util.List<MetaData> hops =
@@ -2859,6 +2862,45 @@ public final class ValidationPhase {
             ResolvedSource.from(originSource, referrer, fromAttr));
     }
 
+    /**
+     * #185 — passthrough is type-preserving. A field forwarding another field's value via
+     * {@code origin.passthrough} must declare the SAME {@code field.<subType>} and the same
+     * array-ness as its resolved {@code @from} source; differ → {@code ERR_PASSTHROUGH_TYPE_MISMATCH}.
+     *
+     * <p>Two axes: subtype ({@link MetaField#getSubType()}, intrinsic to the node) and array-ness
+     * ({@link MetaField#isArrayType()} — the RESOLVING/effective flag, ADR-0039, so a field inheriting
+     * its shape via {@code extends} is judged on its effective type; never the own-only
+     * {@code isArray()}). Nullability is deliberately NOT compared (a view over an outer join
+     * legitimately widens NOT NULL → nullable).</p>
+     *
+     * <p>Escape hatch: {@code @convert: true} on the passthrough acknowledges a deliberate type
+     * change and suppresses the error (acknowledgement only — no generated cast). Host-agnostic
+     * (projections, entities, values, and the FR-015 stored-proc parameter refs the retired
+     * {@code ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH} used to cover). Envelope mirrors
+     * {@link #checkExtendsOriginAgreement} exactly (resolved: referrer = {@code host::field},
+     * target = the raw {@code @from}).</p>
+     */
+    private static void checkPassthroughType(MetaField<?> field, MetaField<?> fromField,
+            String fromAttr, boolean convert, MetaObject obj,
+            com.metaobjects.source.ErrorSource originSource) {
+        if (convert) return; // deliberate type change acknowledged
+        // Compare both axes at once via the type-label: subtype names never contain
+        // "[]", so equal labels <=> same subType AND same array-ness.
+        String declared = "field." + field.getSubType() + (field.isArrayType() ? "[]" : "");
+        String source = "field." + fromField.getSubType() + (fromField.isArrayType() ? "[]" : "");
+        if (declared.equals(source)) return;
+        String referrer = obj.getShortName() + "::" + field.getName();
+        throw new MetaDataException(
+            "ERR_PASSTHROUGH_TYPE_MISMATCH"
+                + ": origin.passthrough on " + obj.getName() + "." + field.getName()
+                + ": field is " + declared + " but its @from source \"" + fromAttr
+                + "\" is " + source + " — a passthrough forwards the value unchanged, so the "
+                + "types must match. Declare " + source + ", or set @convert: true to "
+                + "acknowledge a deliberate type change.",
+            ErrorCode.ERR_PASSTHROUGH_TYPE_MISMATCH,
+            ResolvedSource.from(originSource, referrer, fromAttr));
+    }
+
     // =========================================================================
     // FR-024 B3/B4a — subtype rules: identity-name-required, value purity,
     // projection licensing. Mirrors TS subtype-rules.ts / the Python port.
@@ -3303,8 +3345,10 @@ public final class ValidationPhase {
 
     // =========================================================================
     // FR-015 — source.rdb @parameterRef typed-input rules.
-    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT /
-    //   _PASSTHROUGH_TYPE_MISMATCH. Mirrors TS persistence/source/validate-source-parameter-ref.ts.
+    //   ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND / _UNRESOLVED / _NOT_VALUE_OBJECT.
+    //   Passthrough type-matching on parameter fields is the universal
+    //   ERR_PASSTHROUGH_TYPE_MISMATCH (retired the narrow parameter-ref code, #185).
+    //   Mirrors TS persistence/source/validate-source-parameter-ref.ts.
     // =========================================================================
 
     private static final Set<String> CALLABLE_KINDS = Set.of(
@@ -3363,47 +3407,11 @@ public final class ValidationPhase {
                         ErrorCode.ERR_PARAMETER_REF_NOT_VALUE_OBJECT, source.getSource());
                 }
 
-                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH per parameter field.
-                // ADR-0039: resolving — the parameter value-object's fields may be
-                // inherited via extends (TS reads target.children() resolving).
-                for (MetaField paramField : target.getChildren(MetaField.class, true)) {
-                    MetaOrigin passthrough = null;
-                    // ADR-0039: own — origin.* never inherits (ADR-0029); the origin
-                    // child and its @from are read own (TS: paramField.ownChildren()).
-                    for (MetaData c : paramField.getChildren(MetaData.class, false)) {
-                        if (c instanceof MetaOrigin
-                                && PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(c.getSubType())) {
-                            passthrough = (MetaOrigin) c;
-                            break;
-                        }
-                    }
-                    if (passthrough == null) continue;
-                    String from = passthrough.getFrom();
-                    if (from == null || from.isEmpty()) continue;
-                    int dot = from.indexOf('.');
-                    if (dot < 0) continue;
-                    String targetEntityName = from.substring(0, dot);
-                    String targetFieldName = from.substring(dot + 1);
-                    MetaObject targetEntity = index.get(targetEntityName);
-                    if (targetEntity == null) continue;
-                    MetaField targetField = null;
-                    // ADR-0039: resolving — the referenced entity's field may be
-                    // inherited via extends (TS reads targetEntity.children() resolving).
-                    for (MetaField f : targetEntity.getChildren(MetaField.class, true)) {
-                        if (targetFieldName.equals(shortNameOf(f))) { targetField = f; break; }
-                    }
-                    if (targetField == null) continue;
-                    if (!paramField.getSubType().equals(targetField.getSubType())) {
-                        throw new MetaDataException(
-                            "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH"
-                                + ": parameter field \"" + shortNameOf(paramField) + "\" (field."
-                                + paramField.getSubType() + ") on @parameterRef \"" + ref
-                                + "\" uses origin.passthrough @from: \"" + from + "\", but "
-                                + shortNameOf(targetEntity) + "." + targetFieldName + " is field."
-                                + targetField.getSubType() + "; types must match",
-                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH, paramField.getSource());
-                    }
-                }
+                // #185 — the per-parameter-field passthrough type check (formerly
+                // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH here) is RETIRED: it is
+                // generalized by the universal ERR_PASSTHROUGH_TYPE_MISMATCH, which
+                // validateOrigins already applies to every origin.passthrough — including
+                // the object.value parameter-shape fields resolved via @parameterRef.
             }
         }
     }

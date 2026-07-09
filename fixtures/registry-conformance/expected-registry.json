@@ -3138,6 +3138,13 @@
       "whenToUse": "A projection field just surfaces a field from a related entity. Declare the cross-entity passthrough instead of re-joining and re-selecting it by hand.",
       "attrs": [
         {
+          "name": "convert",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "Acknowledges that this field's declared type deliberately differs from its @from source field's type (#185). Absent/false (the default), a passthrough is type-preserving — a differing field.<subType> or array-ness fails with ERR_PASSTHROUGH_TYPE_MISMATCH. Set true to opt out. This is an acknowledgement only: it does NOT generate a cast — the value flows through unchanged and the consumer owns any coercion. Real type-converting projections are origin.expression's job (#159)."
+        },
+        {
           "name": "from",
           "valueType": "string",
           "isArray": false,

@@ -35,6 +35,14 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks')."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "convert",
+          "min": 0,
+          "max": 1,
+          "description": "Acknowledges that this field's declared type deliberately differs from its @from source field's type (#185). Absent/false (the default), a passthrough is type-preserving — a differing field.<subType> or array-ness fails with ERR_PASSTHROUGH_TYPE_MISMATCH. Set true to opt out. This is an acknowledgement only: it does NOT generate a cast — the value flows through unchanged and the consumer owns any coercion. Real type-converting projections are origin.expression's job (#159)."
         }
       ]
     },

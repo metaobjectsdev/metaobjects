@@ -1,0 +1,36 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "GameCharacter",
+          "children": [
+            { "source.rdb": { "@table": "game_characters" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.uuid": { "name": "currentLocationId" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CharacterView",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_character" } },
+            { "field.uuid": { "name": "id", "extends": "demo::GameCharacter.id" } },
+            {
+              "field.string": {
+                "name": "currentLocationId",
+                "children": [
+                  { "origin.passthrough": { "@from": "demo::GameCharacter.currentLocationId" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "demo::GameCharacter.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

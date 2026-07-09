@@ -1,5 +1,6 @@
 package com.metaobjects.origin;
 
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -49,6 +50,12 @@ public class PassthroughOrigin extends MetaOrigin {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_VIA)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // #185: @convert (optional boolean) — acknowledges a deliberate type
+            // change so passthrough type-preservation is not enforced. Registered
+            // here so the registry-conformance manifest carries it on the
+            // passthrough subtype (description sourced from spec/metamodel/origin.json).
+            def.optionalAttributeWithConstraints(ATTR_CONVERT)
+               .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
         });
     }
 }

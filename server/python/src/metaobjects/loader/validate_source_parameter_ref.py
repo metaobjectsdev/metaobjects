@@ -8,9 +8,13 @@ Codes:
       object.
     * ``ERR_PARAMETER_REF_NOT_VALUE_OBJECT`` — ``@parameterRef`` points at an
       object that is not an ``object.value``.
-    * ``ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH`` — a parameter field uses
-      ``origin.passthrough @from: "Entity.field"`` but its subtype does not match
-      the referenced field's subtype.
+
+Note (#185): the parameter-field passthrough type-match check formerly emitted
+here (``ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH``) is RETIRED. It is subsumed
+by the universal ``ERR_PASSTHROUGH_TYPE_MISMATCH`` in ``validation_passes.py``,
+whose origin-paths pass runs over every object — value hosts (parameter shapes)
+included — so a parameter field's ``origin.passthrough`` type mismatch is now
+caught there (with the ``@convert: true`` opt-out).
 
 Mirrors the TS reference
 ``packages/metadata/src/persistence/source/validate-source-parameter-ref.ts``.
@@ -30,11 +34,7 @@ from ..meta.core.object.object_constants import (
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_VALUE,
 )
-from ..meta.persistence.origin.origin_constants import (
-    ORIGIN_ATTR_FROM,
-    ORIGIN_SUBTYPE_PASSTHROUGH,
-)
-from ..shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_ORIGIN, TYPE_SOURCE
+from ..shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from ..shared.separators import PACKAGE_SEP
 
 _CALLABLE_KINDS = frozenset({SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION})
@@ -122,60 +122,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
                 )
                 continue
 
-            # ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH — each parameter field
-            # with origin.passthrough must match the referenced field's subtype.
-            # ADR-0039: resolving — the parameter value-object's fields may be
-            # inherited via extends (mirrors the TS `target.children()` —
-            # validate-source-parameter-ref.ts:122).
-            for param_field in target.children():
-                if param_field.type != TYPE_FIELD:
-                    continue
-                # ADR-0039 own: origin.* never inherits (ADR-0029); the origin child
-                # is read own (mirrors the TS `paramField.ownChildren()`).
-                passthrough = next(
-                    (
-                        c
-                        for c in param_field.own_children()
-                        if c.type == TYPE_ORIGIN
-                        and c.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH
-                    ),
-                    None,
-                )
-                if passthrough is None:
-                    continue
-                frm = passthrough.attr(ORIGIN_ATTR_FROM)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
-                if not isinstance(frm, str) or frm == "":
-                    continue
-                dot = frm.find(".")
-                if dot < 0:
-                    continue
-                target_entity_name = frm[:dot]
-                target_field_name = frm[dot + 1:]
-                target_entity = object_index.get(target_entity_name)
-                if target_entity is None:
-                    continue  # origin-paths pass surfaces this
-                # ADR-0039: resolving — the referenced entity's field may be
-                # inherited via extends (mirrors the TS `targetEntity.children()` —
-                # validate-source-parameter-ref.ts:139).
-                target_field = next(
-                    (
-                        c
-                        for c in target_entity.children()
-                        if c.type == TYPE_FIELD and c.name == target_field_name
-                    ),
-                    None,
-                )
-                if target_field is None:
-                    continue
-                if param_field.sub_type != target_field.sub_type:
-                    errors.append(
-                        MetaError(
-                            f'parameter field "{param_field.name}" '
-                            f"(field.{param_field.sub_type}) on @parameterRef "
-                            f'"{ref}" uses origin.passthrough @from: "{frm}", but '
-                            f"{target_entity.name}.{target_field_name} is "
-                            f"field.{target_field.sub_type}; types must match",
-                            ErrorCode.ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
-                            envelope=param_field.source,
-                        )
-                    )
+            # #185 — the parameter-field passthrough type-match check formerly here
+            # (ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH) is RETIRED; the universal
+            # ERR_PASSTHROUGH_TYPE_MISMATCH in validation_passes.py now covers it
+            # (its origin-paths pass runs over every object, value hosts included).

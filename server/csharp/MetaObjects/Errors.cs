@@ -71,6 +71,14 @@ public enum ErrorCode
     // (projections and object.value hosts exempt).
     ERR_EXTENDS_ORIGIN_MISMATCH,
     ERR_DERIVED_FIELD_NO_READ_SOURCE,
+    // #185 — origin.passthrough is type-preserving: a field forwarding another
+    // field's value via origin.passthrough must declare the SAME field.<subType>
+    // and array-ness as its resolved @from source (RESOLVING/effective, ADR-0039).
+    // Nullability is NOT judged. Escape hatch: @convert: true acknowledges a
+    // deliberate type change (acknowledgement only — no generated cast). This
+    // UNIVERSAL check replaces the retired narrow ERR_PARAMETER_REF_PASSTHROUGH_
+    // TYPE_MISMATCH (it also covers FR-015 parameter-ref value objects + array-ness).
+    ERR_PASSTHROUGH_TYPE_MISMATCH,
 
     // FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
     // read-only kinds only in non-primary roles; a derived read model is an object.projection.
@@ -124,7 +132,11 @@ public enum ErrorCode
     ERR_PARAMETER_REF_UNRESOLVED,
     ERR_PARAMETER_REF_NOT_VALUE_OBJECT,
     ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
-    ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+    // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH (retired #185): the narrow,
+    // subtype-only parameter-ref passthrough-type check was generalized into the
+    // universal ERR_PASSTHROUGH_TYPE_MISMATCH (above), which runs over every
+    // object — including these parameter-ref value objects — and also gates
+    // array-ness and honours the @convert opt-out.
     // FR-014 — TPH discriminator cross-attribute validation (TS reference).
     // C# port has not yet shipped FR-014.
     ERR_DISCRIMINATOR_FIELD_NOT_FOUND,

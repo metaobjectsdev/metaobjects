@@ -446,6 +446,9 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/origin-collection-simple/`](../../fixtures/conformance/origin-collection-simple/) — `origin.collection` for repeated-row payloads
 - [`fixtures/conformance/error-origin-bad-via-path/`](../../fixtures/conformance/error-origin-bad-via-path/) — unresolvable `@via` rejected
 - [`fixtures/conformance/error-origin-bad-aggregate-fn/`](../../fixtures/conformance/error-origin-bad-aggregate-fn/) — unknown `@agg` rejected
+- [`fixtures/conformance/error-origin-passthrough-type-mismatch/`](../../fixtures/conformance/error-origin-passthrough-type-mismatch/) — a `passthrough` field whose `field.<subType>` differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`
+- [`fixtures/conformance/error-origin-passthrough-array-mismatch/`](../../fixtures/conformance/error-origin-passthrough-array-mismatch/) — a `passthrough` field whose array-ness differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`
+- [`fixtures/conformance/origin-passthrough-convert-optout/`](../../fixtures/conformance/origin-passthrough-convert-optout/) — `@convert: true` acknowledges a deliberate type divergence (no cast generated)
 
 **Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports
 
