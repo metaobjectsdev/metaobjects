@@ -19,7 +19,11 @@ class KotlinEntityGeneratorTest {
       ] }
     }""".trimIndent()
 
-    @Test fun `emits data class with Serializable annotation`() {
+    @Test fun `emits plain data class without Serializable annotation`() {
+        // Entity/value/projection data classes are Jackson-compatible plain data classes —
+        // NO kotlinx @Serializable (that annotation was decorative, and enabling the
+        // kotlinx compiler plugin it needs would break every entity with a java.* field).
+        // Only KotlinPayloadGenerator's payloads + KotlinEnumEmitter's enums keep @Serializable.
         val outDir = Files.createTempDirectory("kgen-")
         try {
             val gen = KotlinEntityGenerator()
@@ -31,12 +35,12 @@ class KotlinEntityGeneratorTest {
                 "expected $emitted to exist; files=${Files.walk(outDir).toList()}")
 
             val src = Files.readString(emitted)
-            assertTrue("@Serializable" in src, "expected @Serializable in:\n$src")
+            assertFalse("@Serializable" in src, "expected NO @Serializable on entity in:\n$src")
+            assertFalse("kotlinx.serialization" in src,
+                "expected NO kotlinx.serialization import on entity in:\n$src")
             assertTrue("data class Author" in src, "expected data class in:\n$src")
             assertTrue("val id: Long" in src, "expected id: Long in:\n$src")
             assertTrue("val name: String" in src, "expected name: String in:\n$src")
-            assertTrue("kotlinx.serialization.Serializable" in src,
-                "expected kotlinx.serialization import in:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -45,7 +49,7 @@ class KotlinEntityGeneratorTest {
     @Test fun fieldObjectEmitsTypedNestedReference() {
         // User has a field.object → Address; Address is an object.value with three fields.
         // Expected: User.kt has `val address: Address?` AND Address.kt is also emitted
-        // as a @Serializable data class.
+        // as a plain (Jackson-compatible) data class.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Address", "children": [

@@ -379,6 +379,16 @@ public class DbContextGenerator : IGenerator
         var nav = CSharpNaming.Pascal(field.Name);
         var parentCol = CSharpNaming.Column(field, strategy);
 
+        // An @isArray object field is a COLLECTION of the value object (the EntityGenerator
+        // emits it as ICollection<VO>), so EF must map it with .OwnsMany(...).ToJson(...) —
+        // .OwnsOne over a collection compiles but fails at EF model finalization ("must be a
+        // non-interface reference type to be used as an entity type"). An array is always a
+        // single JSON column (flattening N objects onto fixed columns is nonsensical), so it
+        // never takes the flattened branch below. ResolvedIsArray per ADR-0039 (array-ness is
+        // inheritable via extends).
+        if (field.ResolvedIsArray())
+            return $"        modelBuilder.Entity<{owner}>().OwnsMany(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
+
         if (field.Storage != STORAGE_FLATTENED)
             return $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson(\"{parentCol}\"));";
 

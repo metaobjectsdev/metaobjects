@@ -40,8 +40,10 @@ import org.junit.Test;
 import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
@@ -73,6 +75,24 @@ public class JsonbFieldDBTest {
         public void setTheme(String theme) { this.theme = theme; }
         public int getFontSize() { return fontSize; }
         public void setFontSize(int fontSize) { this.fontSize = fontSize; }
+    }
+
+    /** Public mutable POJO matching jsonbtest::Label fields (the array-of-VO element). */
+    public static class Label {
+        private String key;
+        private int weight;
+
+        public Label() {}
+
+        public Label(String key, int weight) {
+            this.key = key;
+            this.weight = weight;
+        }
+
+        public String getKey() { return key; }
+        public void setKey(String key) { this.key = key; }
+        public int getWeight() { return weight; }
+        public void setWeight(int weight) { this.weight = weight; }
     }
 
     // ---------------------------------------------------------------------------
@@ -126,7 +146,8 @@ public class JsonbFieldDBTest {
             s.execute(
                 "CREATE TABLE JSONB_ITEM (\n"
                     + "  id BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT JSONB_ITEM_id_PK PRIMARY KEY,\n"
-                    + "  prefs VARCHAR(4000)\n"
+                    + "  prefs VARCHAR(4000),\n"
+                    + "  labels VARCHAR(4000)\n"
                     + ")");
         }
     }
@@ -154,6 +175,7 @@ public class JsonbFieldDBTest {
             public Map<String, Class<?>> bindings() {
                 Map<String, Class<?>> m = new LinkedHashMap<>();
                 m.put("jsonbtest::Prefs", Prefs.class);
+                m.put("jsonbtest::Label", Label.class);
                 return m;
             }
         });
@@ -256,5 +278,93 @@ public class JsonbFieldDBTest {
         ValueObject fallbackVo = (ValueObject) prefsObj;
         assertEquals("solarized", fallbackVo.getString("theme"));
         assertEquals(12, ((Number) fallbackVo.getObject("fontSize")).intValue());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: typed array-of-VO (field.object @storage:jsonb isArray:true) round-trip
+    //
+    // Proves the array-of-VO write+read codec: a List<Label> is serialized to a JSON
+    // array on write and reconstructed into a typed List<Label> on read (element order
+    // preserved). This is the SP-H labels-array wire contract exercised by the
+    // persistence-conformance roundtrip corpus, gated here against a live SQL table.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void testTypedJsonbArrayRoundTrip() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("jsonbtest::Item");
+        assertNotNull("Item MetaObject not found", mo);
+
+        // Create an Item with a typed List<Label> value (2 elements, order significant).
+        ValueObject item = (ValueObject) mo.newInstance();
+        List<Label> labels = new ArrayList<>();
+        labels.add(new Label("alpha", 10));
+        labels.add(new Label("beta", 20));
+        item.setObjectArray("labels", labels);
+        omdb.createObject(oc, item);
+
+        // Reload and assert the array round-tripped as a typed List<Label>, order preserved.
+        Collection<?> items = omdb.getObjects(oc, mo);
+        assertFalse("Expected at least one Item", items.isEmpty());
+        ValueObject loaded = (ValueObject) items.iterator().next();
+
+        Object labelsObj = loaded.getObject("labels");
+        assertNotNull("labels field should not be null", labelsObj);
+        assertTrue("labels should be a List, got: " + labelsObj.getClass().getName(),
+            labelsObj instanceof List);
+        List<?> loadedLabels = (List<?>) labelsObj;
+        assertEquals("labels should have 2 elements", 2, loadedLabels.size());
+
+        assertTrue("element 0 should be a Label, got: " + loadedLabels.get(0).getClass().getName(),
+            loadedLabels.get(0) instanceof Label);
+        Label first = (Label) loadedLabels.get(0);
+        assertEquals("alpha", first.getKey());
+        assertEquals(10, first.getWeight());
+
+        Label second = (Label) loadedLabels.get(1);
+        assertEquals("beta", second.getKey());
+        assertEquals(20, second.getWeight());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: empty-array (`[]` distinct from null) + single-element round-trips.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void testJsonbEmptyAndSingleArrayRoundTrip() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("jsonbtest::Item");
+
+        // (a) empty array must round-trip as an empty List (distinct from null).
+        ValueObject empty = (ValueObject) mo.newInstance();
+        empty.setObjectArray("labels", new ArrayList<Label>());
+        omdb.createObject(oc, empty);
+
+        Collection<?> items = omdb.getObjects(oc, mo);
+        assertFalse("Expected the empty-array row", items.isEmpty());
+        ValueObject loadedEmpty = (ValueObject) items.iterator().next();
+        Object emptyObj = loadedEmpty.getObject("labels");
+        assertNotNull("empty labels array must round-trip as [] not null", emptyObj);
+        assertTrue("empty array must round-trip as a List", emptyObj instanceof List);
+        assertEquals("empty array round-trips as empty List", 0, ((List<?>) emptyObj).size());
+
+        // Clean the row so the single-element assertion below sees exactly one row.
+        try (Connection c = getConnection(); Statement s = c.createStatement()) {
+            s.execute("DELETE FROM JSONB_ITEM");
+        }
+
+        // (b) single-element array.
+        ValueObject solo = (ValueObject) mo.newInstance();
+        List<Label> one = new ArrayList<>();
+        one.add(new Label("solo", 99));
+        solo.setObjectArray("labels", one);
+        omdb.createObject(oc, solo);
+
+        items = omdb.getObjects(oc, mo);
+        assertFalse("Expected the single-element row", items.isEmpty());
+        ValueObject loadedSolo = (ValueObject) items.iterator().next();
+        List<?> soloLabels = (List<?>) loadedSolo.getObject("labels");
+        assertEquals("single-element array size", 1, soloLabels.size());
+        Label only = (Label) soloLabels.get(0);
+        assertEquals("solo", only.getKey());
+        assertEquals(99, only.getWeight());
     }
 }

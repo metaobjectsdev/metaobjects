@@ -216,6 +216,13 @@
           { "field.int":     { "name": "retries" } }
         ]
       }},
+      { "object.value": {
+        "name": "Label",
+        "children": [
+          { "field.string": { "name": "key" } },
+          { "field.int":    { "name": "weight" } }
+        ]
+      }},
       { "object.entity": {
         "name": "AllTypes",
         "children": [
@@ -239,6 +246,7 @@
           { "field.inet":      { "name": "inetVal",  "@required": true } },
           { "field.inet":      { "name": "inet6Val", "@required": true } },
           { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
+          { "field.object":    { "name": "labels", "@objectRef": "Label", "@storage": "jsonb", "isArray": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
         ]
       }}

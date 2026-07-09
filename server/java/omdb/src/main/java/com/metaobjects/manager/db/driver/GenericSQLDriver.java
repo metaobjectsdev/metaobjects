@@ -175,17 +175,27 @@ public class GenericSQLDriver implements DatabaseDriver {
      *       JSON written by Gson's default reflection (e.g. a Map) round-trips cleanly.</li>
      * </ol>
      *
-     * @param f    the jsonb MetaField (carries {@code @objectRef} and the loader)
+     * <p>Array-of-VO ({@code isArray:true} + {@code @storage:jsonb}): the column holds a JSON
+     * <em>array</em> of the referenced value-object, so the target type is {@code List<VO>} —
+     * built here via {@link com.google.gson.reflect.TypeToken#getParameterized}. Gson applies the
+     * per-element class (the registry-bound POJO in step 1, or the MetaObject's declared class via
+     * the {@link MetaObjectDeserializer} adapter in step 2) to each array element, yielding a typed
+     * {@code List}. This mirrors the single-VO branches; the write side already serializes a
+     * {@code List} natively (Gson handles it), so this closes the read half of the round-trip.
+     *
+     * @param f    the jsonb MetaField (carries {@code @objectRef}, {@code isArray}, and the loader)
      * @param json the JSON string read from the database column
-     * @return deserialized object
+     * @return deserialized object — a single VO, or a {@code List<VO>} for an {@code isArray} field
      */
     protected Object deserializeJsonb(MetaField f, String json) {
         try {
+            // isArray:true → the JSON is an array of the referenced VO; target List<VO> instead of VO.
+            boolean isArray = f.isArrayType();
             // Step 1: registry-bound typed POJO wins, deserialized via Gson reflection.
             if (MetaDataUtil.hasObjectRef(f)) {
                 Class<?> bound = ObjectClassRegistry.global().resolve(resolveObjectRefFqn(f));
                 if (bound != null) {
-                    return buildGson(f.getLoader()).fromJson(json, bound);
+                    return buildGson(f.getLoader()).fromJson(json, jsonbTargetType(bound, isArray));
                 }
             }
             // Step 2: fall back to the MetaObject's declared class (e.g. ValueObject).
@@ -197,10 +207,21 @@ public class GenericSQLDriver implements DatabaseDriver {
                     m -> new GsonBuilder()
                             .registerTypeAdapter(refClass, new MetaObjectDeserializer(m))
                             .create());
-            return fallbackGson.fromJson(json, refClass);
+            return fallbackGson.fromJson(json, jsonbTargetType(refClass, isArray));
         } catch (Exception e) {
             throw new IllegalStateException("jsonb deserialize failed for field [" + f + "]: " + e, e);
         }
+    }
+
+    /**
+     * The Gson target type for a jsonb value-object: {@code List<elementClass>} when the field is an
+     * array ({@code isArray:true}), else the bare {@code elementClass}. The parameterized {@code List}
+     * type drives Gson to apply the element deserializer per array element (see {@link #deserializeJsonb}).
+     */
+    private static java.lang.reflect.Type jsonbTargetType(Class<?> elementClass, boolean isArray) {
+        return isArray
+            ? com.google.gson.reflect.TypeToken.getParameterized(java.util.List.class, elementClass).getType()
+            : elementClass;
     }
 
     /**
@@ -1698,6 +1719,10 @@ public class GenericSQLDriver implements DatabaseDriver {
             String json = rs.getString(j);
             if (json == null || rs.wasNull()) {
                 f.setObject(o, null);
+            } else if (f.isArrayType()) {
+                // isArray:true → deserializeJsonb returns a List<VO>; store it via the array
+                // setter (setObject would coerce against the scalar OBJECT type and drop the List).
+                f.setObjectArray(o, (java.util.List<?>) deserializeJsonb(f, json));
             } else {
                 f.setObject(o, deserializeJsonb(f, json));
             }

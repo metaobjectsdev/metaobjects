@@ -7,11 +7,16 @@ import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.RdbSource
 
 /**
- * Internal helpers shared by the codegen-kotlin generators. Extracted to keep
+ * Helpers shared by the codegen-kotlin generators. Extracted to keep
  * the three generators (entity / exposed-table / payload) from carrying near-identical
  * private copies of the same lookups.
+ *
+ * `public` (was `internal`) so that adopters subclassing a generator — e.g. overriding
+ * [KotlinExposedTableGenerator.buildObjectColumns] in another module — can reuse these
+ * lookups instead of re-implementing them (the sibling `KotlinNaming` / `KotlinTypeMapper` /
+ * `PackageMapping` helper objects are already public for the same reason).
  */
-internal object KotlinGenUtil {
+public object KotlinGenUtil {
 
     /**
      * Resolve a MetaObject (entity OR value) by exact FQN match or by short-name match

@@ -268,12 +268,20 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(userTable)
             assertTrue("import org.jetbrains.exposed.sql.json.jsonb" in src,
                 "expected jsonb import; saw:\n$src")
-            assertTrue("import kotlinx.serialization.json.Json" in src,
-                "expected Json import; saw:\n$src")
+            // A typed-VO jsonb column now uses the shared Jackson metaJsonbMapper — NOT kotlinx
+            // (that would require the serialization compiler plugin, which breaks any java.* field).
+            assertTrue("import kotlinx.serialization.json.Json" !in src,
+                "a typed-VO jsonb column must NOT drag in kotlinx Json; saw:\n$src")
             assertTrue(
-                "val address = jsonb(\"address\", { Json.encodeToString(it) }, { Json.decodeFromString(it) }).nullable()" in src,
-                "expected jsonb column initializer; saw:\n$src",
+                "val address = jsonb(\"address\", { metaJsonbMapper.writeValueAsString(it) }, { metaJsonbMapper.readValue(it, acme.demo.Address::class.java) }).nullable()" in src,
+                "expected Jackson jsonb column initializer; saw:\n$src",
             )
+            // The per-package shared Jackson mapper support file is emitted alongside the table.
+            val mapperFile = outDir.resolve("acme/demo/MetaJsonbMapper.kt")
+            assertTrue(Files.exists(mapperFile),
+                "expected per-package MetaJsonbMapper.kt support file; files=${Files.walk(outDir).toList()}")
+            assertTrue("val metaJsonbMapper" in Files.readString(mapperFile),
+                "expected metaJsonbMapper declaration in the support file")
             // Flattened sub-columns must NOT appear in the jsonb case.
             assertTrue("addressStreet" !in src,
                 "should NOT emit flattened sub-columns when storage=jsonb; saw:\n$src")
@@ -294,9 +302,11 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(userTable)
             assertTrue("import org.jetbrains.exposed.sql.json.jsonb" in src,
                 "expected jsonb import (default storage); saw:\n$src")
+            assertTrue("import kotlinx.serialization.json.Json" !in src,
+                "a typed-VO jsonb column must NOT drag in kotlinx Json; saw:\n$src")
             assertTrue(
-                "val address = jsonb(\"address\", { Json.encodeToString(it) }, { Json.decodeFromString(it) }).nullable()" in src,
-                "expected jsonb column when @storage absent; saw:\n$src",
+                "val address = jsonb(\"address\", { metaJsonbMapper.writeValueAsString(it) }, { metaJsonbMapper.readValue(it, acme.demo.Address::class.java) }).nullable()" in src,
+                "expected Jackson jsonb column when @storage absent; saw:\n$src",
             )
         } finally {
             outDir.toFile().deleteRecursively()

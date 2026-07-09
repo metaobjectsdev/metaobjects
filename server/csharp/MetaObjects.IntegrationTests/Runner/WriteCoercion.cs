@@ -47,6 +47,22 @@ public static class WriteCoercion
         if (node is YamlMappingNode map)
             return BuildPoco(map, Nullable.GetUnderlyingType(targetType) ?? targetType);
 
+        // An @isArray object/scalar field authoring form: a YAML sequence → a List<TElement>.
+        // The generated property is ICollection<TElement> (EF maps a VO collection via
+        // .OwnsMany(...).ToJson(...)). Each element is coerced to the collection's element type
+        // (a mapping → an owned POCO; a scalar → its CLR value). An empty sequence yields an
+        // empty (non-null) list — distinct from a null/absent value.
+        if (node is YamlSequenceNode seq)
+        {
+            var elementType = CollectionElementType(targetType)
+                ?? throw new InvalidOperationException(
+                    $"'{prop.Name}' received a YAML sequence but its CLR type {targetType.Name} is not a supported collection");
+            var list = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType))!;
+            foreach (var item in seq.Children)
+                list.Add(CoerceToProperty(item, elementType, prop));
+            return list;
+        }
+
         if (node is not YamlScalarNode scalar)
             throw new InvalidOperationException(
                 $"unsupported write value for '{prop.Name}' (kind {node.GetType().Name})");
@@ -81,6 +97,25 @@ public static class WriteCoercion
 
         throw new InvalidOperationException(
             $"no write coercion for '{prop.Name}' of CLR type {underlying.Name}");
+    }
+
+    // The element type of a generic collection property (ICollection<T>/IList<T>/List<T>/
+    // IEnumerable<T>), or null if targetType is not such a collection. `string` is excluded
+    // (it is IEnumerable<char> but a scalar here). The generated array property is exactly
+    // ICollection<T>, so the direct generic-definition check covers it.
+    private static Type? CollectionElementType(Type targetType)
+    {
+        if (targetType == typeof(string)) return null;
+        if (targetType.IsGenericType)
+        {
+            var def = targetType.GetGenericTypeDefinition();
+            if (def == typeof(ICollection<>) || def == typeof(IList<>) || def == typeof(List<>) ||
+                def == typeof(IEnumerable<>) || def == typeof(IReadOnlyList<>) || def == typeof(IReadOnlyCollection<>))
+                return targetType.GetGenericArguments()[0];
+        }
+        return targetType.GetInterfaces()
+            .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICollection<>))
+            ?.GetGenericArguments()[0];
     }
 
     private static bool ParseBool(string raw) => raw switch

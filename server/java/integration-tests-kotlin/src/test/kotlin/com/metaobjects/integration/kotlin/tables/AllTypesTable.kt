@@ -31,6 +31,7 @@ import org.jetbrains.exposed.sql.json.jsonb
  *   - `field.enum` (@values LOW/MEDIUM/HIGH)            → `varchar("enumVal", 64)` (text + CHECK in DDL)
  *   - `field.uuid` (non-key, @required)                 → `uuid("uuidVal")` (Postgres native uuid)
  *   - `field.object` (@objectRef Settings, @storage jsonb) → `jsonb("settings", …)` (real Postgres JSONB)
+ *   - `field.object` (@objectRef Label, @storage jsonb, isArray) → `jsonb("labels", …)` (JSONB array)
  *
  * The PK's server-side `gen_random_uuid()` DEFAULT lets a row be inserted with NO id
  * (Postgres mints it) — the server-generated-PK proof in `roundtrip-all-types.yaml`.
@@ -76,7 +77,24 @@ object AllTypesTable : Table("all_types") {
     // the JSON text; the runner serializes the authoring map on write and parses it back to a
     // Map on read so it re-serializes with sorted keys per the normalization contract. Nullable
     // to match the canonical DDL (`settings JSONB`, no NOT NULL).
+    //
+    // NOTE ON CODEC DIVERGENCE: this cross-port persistence oracle uses the RAW-JSON-STRING
+    // identity `jsonb(name, { it }, { it })` codec (Column<String>) — the generic runner
+    // pre-serializes the authoring value to a JSON string on write and re-parses it on read, so
+    // the column is String-typed by design and shared across every jsonb column here. The GENERATED
+    // KotlinExposedTableGenerator now emits a TYPED Jackson codec instead
+    // (`jsonb(name, { metaJsonbMapper.writeValueAsString(it) }, { metaJsonbMapper.readValue(...) })`,
+    // Column<VO>/Column<List<VO>>). That generated form is compiled + round-tripped against
+    // Testcontainers PG by com.metaobjects.integration.kotlin.tables.jsonb.GeneratedTypedJsonbRoundTripTest;
+    // reproducing the typed codec here would require the generic runner to bind typed VO instances,
+    // which it deliberately does not.
     val settings = jsonb("settings", { it }, { it }).nullable()
+
+    // `@storage:jsonb` @isArray owned-object column (`labels`, an array of the `Label` VO). Same
+    // raw-JSON-String identity codec as `settings`: the runner serializes the authoring List on
+    // write and parses it back to a List on read. An empty JSON array `[]` round-trips distinct
+    // from null. Nullable to match the canonical DDL (`labels JSONB`, no NOT NULL).
+    val labels = jsonb("labels", { it }, { it }).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

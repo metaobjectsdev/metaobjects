@@ -35,7 +35,8 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * Generator: one @Serializable Kotlin data class per `object.entity` and `object.value`.
+ * Generator: one plain Kotlin data class (Jackson-compatible) per `object.entity` and
+ * `object.value`. No kotlinx `@Serializable` — see [emit] for why.
  *
  * <p>Skips abstract objects and any subType other than `entity` or `value`. KotlinPoet emits
  * whole files; the parent class's print-style writer machinery is bypassed in favour of a
@@ -72,7 +73,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"))
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
-        // emitted as an instantiable @Serializable data class — abstracts are scaffolding.
+        // emitted as an instantiable data class — abstracts are scaffolding.
         val emitAbstractShapes = (getArg("emitAbstractShapes", "false") ?: "false").toBoolean()
         // Run-level dedupe of emitted enum-class files by enum FQN: two fields sharing an
         // abstract enum super (resolved by KotlinTypeMapper.enumTypeName) collapse onto one file.
@@ -114,11 +115,17 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
-        val serializable = ClassName("kotlinx.serialization", "Serializable")
 
+        // NO kotlinx @Serializable: entity/value/projection data classes are plain
+        // (Jackson-compatible) data classes. The annotation was decorative — no build enables
+        // the kotlinx-serialization compiler plugin for these, and the moment one did, every
+        // class carrying a java.util.UUID / java.time.* / java.math.BigDecimal / java.net.* field
+        // would fail to compile (kotlinx has no built-in serializer for those). Jackson (the codec
+        // every consumer actually uses) round-trips them with zero per-type plumbing. Only
+        // KotlinPayloadGenerator's prompt payloads + KotlinEnumEmitter's enums keep @Serializable
+        // (FR-006 parse()/safeParse() genuinely kotlinx-decode those).
         val typeBuilder = TypeSpec.classBuilder(shortName)
             .addModifiers(KModifier.DATA)
-            .addAnnotation(serializable)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
 
         // FR-017 TPH: a discriminator base's data class is the UNION of subtype columns and serves

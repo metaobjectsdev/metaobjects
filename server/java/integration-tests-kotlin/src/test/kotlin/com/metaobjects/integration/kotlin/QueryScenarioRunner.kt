@@ -654,11 +654,13 @@ object QueryScenarioRunner {
             if (v is Timestamp) v = v.toLocalDateTime()
             // `@dbColumnType:jsonb` open-JSON column (#98) reads back as a parsed kotlinx
             // JsonElement (or, for an object/map jsonb column, a raw JSON String). Convert
-            // whatever it is to a Map (via its JSON text — JsonElement.toString() is canonical
-            // JSON) so Normalization sorts the keys and the `expect` block (a YAML object) compares
-            // byte-equal. Detected by the column's SQL type (`jsonb`) so it stays generic.
+            // whatever it is to a plain JSON value (via its JSON text — JsonElement.toString() is
+            // canonical JSON) so Normalization sorts object keys / recurses into arrays and the
+            // `expect` block (a YAML object OR array) compares byte-equal. Read as `Any` (NOT
+            // `Map`) so both a JSON object (→ LinkedHashMap) and a JSON array (→ ArrayList, e.g. the
+            // `labels` array-of-VO column) round-trip. Detected by the column SQL type (`jsonb`).
             if (v != null && col.columnType.sqlType().lowercase().contains("jsonb")) {
-                v = JSON.readValue(v.toString(), Map::class.java)
+                v = JSON.readValue(v.toString(), Any::class.java)
             }
             out[col.name] = v
         }

@@ -56,4 +56,5 @@ public class AllTypes
     [Required]
     public IPAddress Inet6Val { get; set; } = default!;
     public Settings? Settings { get; set; }
+    public ICollection<Label>? Labels { get; set; }
 }

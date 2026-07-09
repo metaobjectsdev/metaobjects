@@ -194,6 +194,16 @@ final class RoundtripWriter {
                 ? Instant.parse(s)
                 : java.time.LocalDateTime.parse(s).toInstant(ZoneOffset.UTC);
             vo.setDate(name, java.util.Date.from(instant));
+        } else if (mf instanceof ObjectField && mf.isArrayType() && raw instanceof java.util.List<?> list) {
+            // An @isArray @objectRef jsonb column → a List<ValueObject> the jsonb write path
+            // serializes as a JSON array (each element built from its nested authoring map, like
+            // the single-VO branch below). setObjectArray (NOT setObject) so the array shape is
+            // preserved through the OMDB write codec.
+            java.util.List<ValueObject> elements = new java.util.ArrayList<>();
+            for (Object element : list) {
+                elements.add(buildValueObject((ObjectField) mf, (Map<String, Object>) element));
+            }
+            vo.setObjectArray(name, elements);
         } else if (mf instanceof ObjectField && raw instanceof Map<?, ?> map) {
             // The @objectRef jsonb value object → a ValueObject the jsonb write path serializes.
             vo.setObject(name, buildValueObject((ObjectField) mf, (Map<String, Object>) map));

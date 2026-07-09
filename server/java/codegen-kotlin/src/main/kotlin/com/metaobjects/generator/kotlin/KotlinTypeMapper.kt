@@ -100,7 +100,7 @@ object KotlinTypeMapper {
      * Note: this is the **raw-string** open-JSON path for `field.string`. The
      * typed-object JSONB path on `field.object` (`@storage=jsonb`) lives in
      * [KotlinExposedTableGenerator]'s object-column emission and uses
-     * `jsonb("col", encoder, decoder)` with kotlinx.serialization.
+     * `jsonb("col", encoder, decoder)` with the shared Jackson `metaJsonbMapper`.
      */
     private val DB_COLUMN_TYPE_JSONB = CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB
 
@@ -109,9 +109,10 @@ object KotlinTypeMapper {
 
     /**
      * The kotlinx-serialization JSON-value type a `field.string @dbColumnType=jsonb` open-bag is
-     * exposed as (issue #98). `JsonElement` is the idiomatic "any JSON value" type for the
-     * `@Serializable` data classes this port emits (kotlinx is already this port's payload
-     * substrate — the same `Json` used by the `jsonb(...)` column codec for `field.map`), so a
+     * exposed as (issue #98). `JsonElement` is the idiomatic "any JSON value" type — kotlinx is
+     * still this port's payload substrate (the FR-006 prompt payloads + enums), and its runtime
+     * `Json.parseToJsonElement` needs no compiler plugin. (The typed `field.object` / `field.map`
+     * jsonb columns, by contrast, now use the shared Jackson `metaJsonbMapper`, not kotlinx.) So a
      * client sends/receives a real JSON object rather than a double-encoded string.
      *
      * Used UNIFORMLY at every layer — the persistence holder ([kotlinTypeName], i.e. the entity
@@ -492,14 +493,20 @@ object KotlinTypeMapper {
         // whose DDL is the Postgres-native `inet`. The helper lives in the package-shared
         // MetaInetUriColumnType.kt support file (emitted once per package).
         is InetField      -> "$EXPOSED_INET_FN(\"$colName\")"
-        // field.map → a single Postgres `JSONB` column holding the JSON object. Same
-        // emission as a `field.object` jsonb column (the typed-object JSONB path) — the
-        // Exposed `jsonb(name, encoder, decoder)` extension with kotlinx.serialization
-        // Json. Never flattened; isArray does not apply to a map. (Map columns are
-        // normally produced by KotlinExposedTableGenerator.buildObjectColumns; this arm
-        // keeps the mapper total for direct callers.)
-        is MapField       ->
-            "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+        // field.map → a single Postgres `JSONB` column holding the JSON object. Same emission
+        // as a `field.object` jsonb column (the typed-object JSONB path) — the Exposed
+        // `jsonb(name, encoder, decoder)` extension encoded/decoded through the shared Jackson
+        // `metaJsonbMapper` (NOT kotlinx — the generated data classes are plain, no compiler
+        // plugin). Never flattened; isArray does not apply to a map. The value type V decodes
+        // via a Jackson `TypeReference<Map<String, V>>`; this loader-free arm can only name the
+        // scalar `@valueType` (an `@objectRef` map falls back to `Any`) — the loader-aware
+        // KotlinExposedTableGenerator.buildObjectColumns is where a typed VO map is emitted, and
+        // is the normal producer of map columns; this arm keeps the mapper total for direct callers.
+        is MapField       -> {
+            val valueType = mapValueScalarTypeName(field)?.toString() ?: "Any"
+            "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, " +
+                "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, $valueType>>() {}) })"
+        }
         else -> throw IllegalArgumentException(
             "unsupported Exposed column mapping for ${field::class.simpleName} '${field.name}'"
         )

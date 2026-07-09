@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MapField
+import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -71,6 +72,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // pass 3 — same multi-table-per-package sharing rationale as the instant-tz helper.
         val packagesNeedingInetUriHelper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a typed `field.object @storage:jsonb`
+        // or `field.map` column. Each such package gets ONE shared `MetaJsonbMapper.kt` support
+        // file (the `internal metaJsonbMapper` ObjectMapper the generated jsonb() codecs call) —
+        // same `internal` per-package sharing rationale as the instant-tz / inet-uri helpers.
+        val packagesNeedingJacksonMapper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
@@ -121,6 +128,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entityNeedsInetUriHelper(entity, loader)) {
                 packagesNeedingInetUriHelper += PackageMapping.splitFqn(entity.name).first
             }
+            // Does this table carry a typed jsonb column (field.object non-flattened, or field.map)?
+            // If so its package needs the shared metaJsonbMapper support file.
+            if (entityNeedsJacksonMapper(entity, loader)) {
+                packagesNeedingJacksonMapper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -137,6 +149,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // per-package sharing rationale as the instant-tz helper above.
         for (pkg in packagesNeedingInetUriHelper) {
             emitInetUriSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3c: emit ONE shared `MetaJsonbMapper.kt` per package that has at least one typed
+        // `field.object @storage:jsonb` / `field.map` column. The `internal metaJsonbMapper`
+        // ObjectMapper is package+module-private, so every `*Table.kt` in the package shares it.
+        for (pkg in packagesNeedingJacksonMapper) {
+            emitJsonbMapperSupportFile(pkg, outRoot)
         }
     }
 
@@ -157,6 +176,55 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (target.metaFields.any { KotlinTypeMapper.usesInetUriHelper(it) }) return true
         }
         return false
+    }
+
+    /**
+     * True iff [entity] contributes at least one typed jsonb column that calls the shared
+     * `metaJsonbMapper` — a `field.map` (always jsonb) OR a `field.object` with jsonb/default
+     * storage (`@storage` != `flattened`) on a direct field, OR a `field.map` nested inside a
+     * flattened `object.value` sub-field. Mirrors what [buildObjectColumns] + the flattened
+     * sub-field path actually emit, so the support file is present exactly when referenced.
+     */
+    private fun entityNeedsJacksonMapper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        for (field in entity.metaFields) {
+            if (field is MapField) return true
+            if (field is ObjectField && readStorage(field) != STORAGE_FLATTENED) return true
+        }
+        // Flattened object sub-fields can themselves be field.map (a jsonb Jackson column).
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            if (target.metaFields.any { it is MapField }) return true
+        }
+        return false
+    }
+
+    /**
+     * Emit the per-package `MetaJsonbMapper.kt` support file: an `internal` shared Jackson
+     * [com.fasterxml.jackson.databind.ObjectMapper] (`metaJsonbMapper`) that the generated typed
+     * `jsonb()` column codecs call to encode/decode `field.object @storage:jsonb` value objects
+     * and `field.map` maps. Jackson (kotlin + jsr310 modules) is used INSTEAD of kotlinx so the
+     * generated data classes stay plain (no `@Serializable`, no compiler plugin) — every java.time
+     * / java.util / java.math / java.net field a jsonb VO may carry round-trips with no per-type
+     * plumbing. `internal` keeps it package+module-private while every `*Table.kt` shares it.
+     *
+     * Consumer classpath: the generated code needs `com.fasterxml.jackson.core:jackson-databind`,
+     * `com.fasterxml.jackson.module:jackson-module-kotlin`, and
+     * `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` on its runtime classpath.
+     */
+    private fun emitJsonbMapperSupportFile(pkg: String, outRoot: Path) {
+        val body = buildString {
+            if (pkg.isNotEmpty()) {
+                append("package $pkg\n\n")
+            }
+            append(JSONB_MAPPER_SUPPORT_BLOCK)
+            append("\n")
+        }
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$JSONB_MAPPER_SUPPORT_FILE_NAME.kt")
+        outFile.parent?.let { Files.createDirectories(it) }
+        Files.writeString(outFile, body)
     }
 
     /**
@@ -282,18 +350,25 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
         // A `field.string @dbColumnType=jsonb` open bag now decodes to a kotlinx `JsonElement`
         // (issue #98) via `{ Json.parseToJsonElement(it) }`, so its table file needs the
-        // `kotlinx.serialization.json.Json` import too (same import block as the object/map jsonb
-        // columns below). Detect it on direct fields AND flattened object sub-fields — the same two
-        // surfaces that contribute columns / imports. Folding it into `needsJsonbImport` (rather
-        // than `columnFunctionImports`) keeps the `jsonb` extension import emitted exactly once.
+        // `kotlinx.serialization.json.Json` import too (that open bag is the ONLY column that still
+        // uses kotlinx — the object/map jsonb columns use the Jackson metaJsonbMapper). Detect it on
+        // direct fields AND flattened object sub-fields — the same two surfaces that contribute
+        // columns / imports. Folding it into the jsonb-import decision (rather than
+        // `columnFunctionImports`) keeps the `jsonb` extension import emitted exactly once.
         val hasStringJsonbOpenBag = entity.metaFields.any { KotlinTypeMapper.isJsonbOpenBag(it) } ||
             entity.metaFields.any { f ->
                 f is ObjectField && readStorage(f) == STORAGE_FLATTENED &&
                     (readObjectRef(f)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
                         ?.metaFields?.any { KotlinTypeMapper.isJsonbOpenBag(it) } ?: false)
             }
-        val needsJsonbImport =
-            objectColumns.any { it.kind == ObjectColumnKind.JSONB } || hasStringJsonbOpenBag
+        // Object/map jsonb columns → the Jackson metaJsonbMapper codec (a same-package `internal`
+        // val in MetaJsonbMapper.kt); the open-bag `field.string @dbColumnType=jsonb` → kotlinx
+        // `Json.parseToJsonElement` (a runtime API needing NO compiler plugin). They share the
+        // `jsonb` extension import but need DIFFERENT codec support: the object/map path needs the
+        // Jackson mapper file, the open-bag path needs the `kotlinx...Json` import.
+        val hasJacksonJsonbColumn = objectColumns.any { it.kind == ObjectColumnKind.JSONB }
+        val needsJsonbExtensionImport = hasJacksonJsonbColumn || hasStringJsonbOpenBag
+        val needsKotlinxJsonImport = hasStringJsonbOpenBag
         val needsRefOptForDecor = refDecorations.values.any { it.hasReferenceOption }
 
         // Does any column on this table use the TZ-aware instant (default, non-`@localTime`)
@@ -328,16 +403,17 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // object sub-fields are walked too — they emit columns of their own.
         val columnFunctionImports = sortedSetOf<String>()
         for (field in entity.metaFields) {
-            // field.object AND field.map columns are produced by buildObjectColumns
-            // (single jsonb column) — their imports are handled via needsJsonbImport, not here.
+            // field.object AND field.map columns are produced by buildObjectColumns (single jsonb
+            // column) — their imports (the `jsonb` extension + the metaJsonbMapper support file) are
+            // handled via the jsonb-import decision above, not here.
             if (field is ObjectField || field is MapField) continue
             // EnumField uses enumerationByName (a Table member) when generated, regardless
             // of what the type-mapper would return for a bare column emission — skip it
             // here so it doesn't accidentally drag in a non-applicable import.
             if (field is EnumField) continue
             // The `field.string @dbColumnType=jsonb` open bag's `jsonb` extension import is
-            // emitted via needsJsonbImport (alongside the `Json` import its codec needs) — skip
-            // here so the `import ...json.jsonb` line isn't emitted twice.
+            // emitted via the jsonb-import decision (alongside the `Json` import its codec needs) —
+            // skip here so the `import ...json.jsonb` line isn't emitted twice.
             if (KotlinTypeMapper.isJsonbOpenBag(field)) continue
             KotlinTypeMapper.exposedColumnImport(field)?.let { columnFunctionImports += it }
         }
@@ -351,7 +427,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
             for (subField in target.metaFields) {
                 if (subField is EnumField) continue
-                // jsonb open bag → its `jsonb`/`Json` imports come via needsJsonbImport (skip here).
+                // jsonb open bag → its `jsonb`/`Json` imports come via the jsonb-import decision (skip here).
                 if (KotlinTypeMapper.isJsonbOpenBag(subField)) continue
                 KotlinTypeMapper.exposedColumnImport(subField)?.let { columnFunctionImports += it }
             }
@@ -391,8 +467,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             for (imp in crossPackageTableImports) {
                 append("import $imp\n")
             }
-            if (needsJsonbImport) {
+            if (needsJsonbExtensionImport) {
                 append("import org.jetbrains.exposed.sql.json.jsonb\n")
+            }
+            // Only the open-bag `field.string @dbColumnType=jsonb` (JsonElement) uses kotlinx Json.
+            // Object/map jsonb columns use the same-package `metaJsonbMapper` (no import needed).
+            if (needsKotlinxJsonImport) {
                 append("import kotlinx.serialization.json.Json\n")
             }
             // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
@@ -543,7 +623,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      *       physical column {@code <parentField>_<subField>} (snake-joined). Nullable
      *       sub-fields → nullable columns.</li>
      *   <li>{@code @storage="jsonb"} or absent (default-to-jsonb per CLAUDE.md):
-     *       one {@code jsonb(name, encoder, decoder)} column using kotlinx.serialization Json.</li>
+     *       one {@code jsonb(name, encoder, decoder)} column encoded/decoded through the shared
+     *       Jackson {@code metaJsonbMapper} (the per-package MetaJsonbMapper.kt support file).</li>
      * </ul>
      *
      * Skips field.object children whose `@objectRef` cannot be resolved (defensive — the loader's
@@ -564,7 +645,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val parentNullable = parentName !in primaryFieldNames &&
                     !KotlinGenUtil.isRequiredField(field)
                 val colName = KotlinGenUtil.camelToSnake(parentName)
-                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+                // Jackson codec: a Map<String, V> stored in one JSONB column, encoded/decoded via
+                // the shared metaJsonbMapper (MetaJsonbMapper.kt support file). A TypeReference
+                // captures the erased generic so the read decodes back to Map<String, V> — NOT the
+                // reified `Json.encodeToString(it)` (which needs the kotlinx compiler plugin).
+                val valueType = mapValueTypeFqn(field, loader)
+                val expr = "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, " +
+                    "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, $valueType>>() {}) })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
                 continue
@@ -591,8 +678,33 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             } else {
                 // jsonb (explicit) OR absent (default per CLAUDE.md back-compat rule).
                 // Physical column name snake_case-d to match the rest of the column emission.
+                // The column stores the referenced value object (or List<VO> for @isArray) as a
+                // single JSONB column, encoded/decoded through the shared Jackson metaJsonbMapper
+                // (the per-package MetaJsonbMapper.kt support file). Jackson — NOT kotlinx — because
+                // the generated entity/value data classes are plain (no @Serializable): a kotlinx
+                // serializer (`VO.serializer()`) would require the compiler plugin, and the moment
+                // that plugin is enabled every VO carrying a java.util.UUID / java.time.* /
+                // java.math.BigDecimal / java.net.* field fails to compile. Jackson round-trips them
+                // via its kotlin + jsr310 modules with zero per-type plumbing.
                 val colName = KotlinGenUtil.camelToSnake(parentName)
-                val expr = "jsonb(\"$colName\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })"
+                val ref = readObjectRef(field)
+                val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                val decode = if (target != null) {
+                    val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
+                    // Fully-qualify the VO so the emitted column needs no extra import.
+                    val voFqn = if (targetPkg.isEmpty()) targetShort else "$targetPkg.$targetShort"
+                    if (field.isArrayType) {
+                        // List<VO> → a Jackson TypeReference captures the erased generic.
+                        "metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<List<$voFqn>>() {})"
+                    } else {
+                        "metaJsonbMapper.readValue(it, $voFqn::class.java)"
+                    }
+                } else {
+                    // No resolvable @objectRef (defensive — validation gates the attr): decode to a
+                    // generic Jackson tree so the column still type-checks without kotlinx.
+                    "metaJsonbMapper.readValue(it, com.fasterxml.jackson.databind.JsonNode::class.java)"
+                }
+                val expr = "jsonb(\"$colName\", { metaJsonbMapper.writeValueAsString(it) }, { $decode })"
                 val full = if (parentNullable) "$expr.nullable()" else expr
                 result.add(ObjectColumnSpec(parentName, full, ObjectColumnKind.JSONB))
             }
@@ -600,20 +712,40 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         return result
     }
 
-    /** Read the `@storage` attr (own-only); null when absent. */
-    private fun readStorage(field: ObjectField): String? {
+    /** Read the `@storage` attr (own-only); null when absent. `protected` so subclasses that
+     *  override [buildObjectColumns] can reuse it. */
+    protected fun readStorage(field: ObjectField): String? {
         if (!field.hasMetaAttr(ATTR_STORAGE, true)) return null
         return runCatching { field.getMetaAttr(ATTR_STORAGE, true).valueAsString }.getOrNull()
     }
 
-    /** Read the `@objectRef` attr (own-only); null when absent. */
-    private fun readObjectRef(field: ObjectField): String? {
+    /** Read the `@objectRef` attr (resolving); null when absent. Accepts any [MetaField] so both
+     *  `field.object` and an `@objectRef`-valued `field.map` can share the lookup. `protected` so
+     *  subclasses that override [buildObjectColumns] can reuse it. */
+    protected fun readObjectRef(field: MetaField<*>): String? {
         if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
         return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
             .getOrNull()
     }
 
-    private companion object {
+    /**
+     * The Kotlin/Java source type of a [MapField]'s value V (the `V` in `Map<String, V>`),
+     * fully-qualified so the emitted Jackson `TypeReference` needs no import. An `@objectRef` map →
+     * the referenced VO's FQN; a scalar `@valueType` map → the scalar's canonical name (e.g.
+     * `kotlin.String`, `java.math.BigDecimal`); neither resolvable → `Any` (an untyped JSON bag).
+     */
+    private fun mapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
+        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        if (target != null) {
+            val (p, s) = PackageMapping.splitFqn(target.name)
+            return if (p.isEmpty()) s else "$p.$s"
+        }
+        return KotlinTypeMapper.mapValueScalarTypeName(field)?.toString() ?: "Any"
+    }
+
+    // `protected companion` (was `private`) so subclasses overriding [buildObjectColumns] can
+    // reference the @storage vocabulary constants.
+    protected companion object {
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"
         const val STORAGE_FLATTENED = "flattened"
@@ -787,6 +919,41 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
             |internal fun Table.inetColumn(name: String): Column<InetAddress> =
             |    registerColumn(name, MetaInetColumnType())
+            |""".trimMargin()
+
+        /**
+         * File name (sans `.kt`) of the per-package support file holding the shared Jackson
+         * `metaJsonbMapper`. One per package that emits ≥1 typed `field.object @storage:jsonb`
+         * or `field.map` column.
+         */
+        const val JSONB_MAPPER_SUPPORT_FILE_NAME = "MetaJsonbMapper"
+
+        /**
+         * Shared support body emitted ONCE PER PACKAGE (into [JSONB_MAPPER_SUPPORT_FILE_NAME].kt).
+         * Declares the `internal metaJsonbMapper` [com.fasterxml.jackson.databind.ObjectMapper] the
+         * generated typed `jsonb()` codecs call. Fully-qualified references so the file needs no
+         * imports. The kotlin module binds Kotlin data classes; jsr310 handles java.time; dates
+         * serialize as ISO-8601 strings (not epoch millis). `internal` → package+module-private,
+         * shared by every `*Table.kt` in the package.
+         */
+        val JSONB_MAPPER_SUPPORT_BLOCK: String = """
+            |/**
+            | * GENERATED — do not hand-edit.
+            | * Shared Jackson ObjectMapper backing the typed `field.object @storage:jsonb` and
+            | * `field.map` Exposed `jsonb()` columns in this package. Jackson (not kotlinx) is the
+            | * codec, so the generated entity/value data classes carry NO `@Serializable` and need
+            | * NO per-type serializer plumbing — every java.time / java.util / java.math / java.net
+            | * field a jsonb value object may carry round-trips through the kotlin + jsr310 modules
+            | * with no compiler plugin.
+            | *
+            | * Consumer classpath: jackson-databind, jackson-module-kotlin, jackson-datatype-jsr310.
+            | */
+            |internal val metaJsonbMapper: com.fasterxml.jackson.databind.ObjectMapper =
+            |    com.fasterxml.jackson.databind.json.JsonMapper.builder()
+            |        .addModule(com.fasterxml.jackson.module.kotlin.kotlinModule())
+            |        .addModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+            |        .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            |        .build()
             |""".trimMargin()
     }
 

@@ -100,6 +100,8 @@ queries:
       inetVal: "192.168.10.20"
       inet6Val: "2001:db8::dead:beef"
       settings: { notify: true, retries: 7, theme: "dark" }
+      # labels (array-of-VO jsonb) is neither seeded nor updated here → reads back null.
+      labels: null
 
   - name: read-back-after-update
     description: re-read by PK; the persisted row carries every re-encoded value.
@@ -126,6 +128,8 @@ queries:
       inetVal: "192.168.10.20"
       inet6Val: "2001:db8::dead:beef"
       settings: { notify: true, retries: 7, theme: "dark" }
+      # labels (array-of-VO jsonb) is neither seeded nor updated here → reads back null.
+      labels: null
 
   - name: delete-by-pk
     description: DELETE the row through the runtime; true = a row was deleted.
