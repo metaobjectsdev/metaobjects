@@ -13,6 +13,12 @@ import type { MetaData } from "../src/shared/meta-data.js";
 import { TypeId } from "../src/registry.js";
 import { resolveSuperRef } from "../src/super-resolve.js";
 import { expandRef } from "../src/naming-refs.js";
+import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
+import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
+import { composeRegistry } from "../src/provider.js";
+import { coreTypesProvider } from "../src/core-types.js";
+import { dbProvider } from "../src/persistence/db/db-provider.js";
+import { canonicalSerialize } from "../src/serializer-json.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -291,5 +297,160 @@ describe("resolveSuperRef — dotted Entity.child refs (FR-024)", () => {
     // ensured this), so the resolver matches the qualified form directly — the
     // `::`-strip branch is gone.
     expect(resolveSuperRef("mypkg::Target", "other", root, { type: TYPE_OBJECT })).toBe(target);
+  });
+});
+
+describe("resolveDeferredSupers — load-order independence (#188)", () => {
+  // Three docs: an abstract base declaring `id` + `pk`, an entity that INHERITS
+  // them via `extends`, and a projection whose `pk`/`id` carry a dotted
+  // `extends: Customer.pk` / `Customer.id` to those INHERITED members. Before
+  // #188 this resolved only when the owner's file was parsed before the
+  // referrer's — green under Node's readdir order, ERR_UNRESOLVED_SUPER under
+  // Bun's. Resolving a corpus must be a pure function of the source SET, so
+  // EVERY permutation must yield the same clean, byte-identical resolved model.
+  const base = JSON.stringify({
+    "metadata.root": {
+      package: "acme::common",
+      children: [
+        {
+          "object.entity": {
+            name: "BaseEntity",
+            abstract: true,
+            children: [
+              { "field.uuid": { name: "id", "@required": true } },
+              { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const customer = JSON.stringify({
+    "metadata.root": {
+      package: "acme::shop",
+      children: [
+        {
+          "object.entity": {
+            name: "Customer",
+            extends: "acme::common::BaseEntity",
+            children: [
+              { "source.rdb": { "@table": "customers" } },
+              { "field.string": { name: "name", "@required": true } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const view = JSON.stringify({
+    "metadata.root": {
+      package: "acme::shop",
+      children: [
+        {
+          "object.projection": {
+            name: "CustomerView",
+            children: [
+              { "source.rdb": { "@kind": "view", "@view": "v_customers" } },
+              {
+                "field.uuid": {
+                  name: "id",
+                  extends: "acme::shop::Customer.id",
+                  children: [{ "origin.passthrough": { "@from": "acme::shop::Customer.id" } }],
+                },
+              },
+              {
+                "field.string": {
+                  name: "name",
+                  children: [{ "origin.passthrough": { "@from": "acme::shop::Customer.name" } }],
+                },
+              },
+              {
+                "identity.primary": {
+                  name: "pk",
+                  extends: "acme::shop::Customer.pk",
+                  "@fields": ["id"],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const docs: Record<string, string> = { base, customer, view };
+  const names = Object.keys(docs);
+  const permutations = (xs: string[]): string[][] =>
+    xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p]));
+
+  async function loadInOrder(order: string[]): Promise<{ ok: boolean; model: string }> {
+    const loader = new MetaDataLoader({ registry: composeRegistry([coreTypesProvider, dbProvider]), strict: true });
+    const result = await loader.load(order.map((n) => new InMemoryStringSource(docs[n]!, { id: `${n}.json` })));
+    if (result.errors.length) return { ok: false, model: "" };
+    // The RESOLVED SEMANTIC model must be order-independent. Whole-tree
+    // canonical serialization is NOT: it preserves the top-level node SEQUENCE,
+    // which legitimately follows load order (base-first lists BaseEntity first;
+    // view-first lists CustomerView first). So compare the order-insensitive
+    // SET of each root child's canonically-serialized subtree — that captures
+    // every resolved relationship (who extends what, which inherited members
+    // are reachable) without pinning the top-level ordering.
+    const subtrees = result.root
+      .children()
+      .map((c) => canonicalSerialize(c).trim())
+      .sort();
+    return { ok: true, model: JSON.stringify(subtrees) };
+  }
+
+  it("every permutation of the source order resolves cleanly AND produces the same resolved model", async () => {
+    const results = await Promise.all(permutations(names).map(loadInOrder));
+    // No permutation errors — the dotted ref to an inherited member resolves in every order.
+    for (const r of results) expect(r.ok).toBe(true);
+    // Every permutation yields the identical order-insensitive resolved model.
+    const first = results[0]!.model;
+    expect(first.length).toBeGreaterThan(2);
+    for (const r of results) expect(r.model).toBe(first);
+  });
+
+  it("reports an unresolvable owner EXACTLY ONCE (no duplicate failures from on-demand recursion)", async () => {
+    // An owner with an unresolvable top-level super, plus a projection whose
+    // dotted `extends: Owner.pk` reaches that owner via recursion. Under the
+    // on-demand resolver the owner is reachable both from the `pending` loop and
+    // from the referrer's owner-recursion — the `attempted` guard must ensure it
+    // is reported only ONCE (the pre-#188 single-visit walk's guarantee).
+    const owner = JSON.stringify({
+      "metadata.root": {
+        package: "p",
+        children: [
+          { "object.entity": { name: "Owner", extends: "p::DoesNotExist", children: [{ "field.uuid": { name: "id" } }] } },
+        ],
+      },
+    });
+    const view = JSON.stringify({
+      "metadata.root": {
+        package: "p",
+        children: [
+          {
+            "object.projection": {
+              name: "V",
+              children: [
+                { "source.rdb": { "@kind": "view", "@view": "v" } },
+                { "identity.primary": { name: "pk", extends: "p::Owner.pk", "@fields": ["id"] } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const loader = new MetaDataLoader({ registry: composeRegistry([coreTypesProvider, dbProvider]), strict: true });
+    const result = await loader.load([
+      new InMemoryStringSource(view, { id: "a.json" }),
+      new InMemoryStringSource(owner, { id: "b.json" }),
+    ]);
+    const seen = new Map<string, number>();
+    for (const e of result.errors) {
+      const err = e as { code?: string; source?: { jsonPath?: string } };
+      const key = `${err.code}@${err.source?.jsonPath ?? "?"}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of seen) expect(`${key} x${count}`).toBe(`${key} x1`);
   });
 });

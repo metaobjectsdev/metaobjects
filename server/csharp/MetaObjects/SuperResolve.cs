@@ -249,22 +249,82 @@ internal static class SuperResolve
         TypeIdentity? Referrer = null);
 
     /// <summary>
-    /// Walk the tree, resolve every node's SuperRef against the full root,
-    /// collect unresolved refs. Idempotent: nodes that already have SuperData set are skipped.
-    /// Tracks an inherited context-package while walking so children whose own Package is
-    /// unset still resolve correctly (mirroring the parser's eager-resolution semantics).
+    /// Resolve every node's SuperRef against the full root, collecting unresolved
+    /// refs. Idempotent: nodes that already have SuperData set are skipped.
+    ///
+    /// <para>
+    /// #188: super-resolution is ORDER-INDEPENDENT. The prior implementation
+    /// resolved each SuperRef in a single pre-order walk — physical (= load)
+    /// order. A dotted ref to an INHERITED member (<c>extends: Owner.member</c>
+    /// where Owner inherits <c>member</c> via its OWN <c>extends</c>) reads the
+    /// owner's EFFECTIVE <see cref="MetaData.Children"/> — inherited members appear
+    /// only once the owner's extends chain is resolved. So it succeeded only when
+    /// the owner happened to resolve first: green under one directory-scan order,
+    /// ERR_UNRESOLVED_SUPER under another. Instead resolve ON DEMAND with
+    /// memoization + cycle detection (topological): before a dotted ref reads the
+    /// owner's children, resolve the owner's whole chain first, and after resolving
+    /// a node also resolve its target's chain (multi-level inheritance). The result
+    /// is a pure function of the source SET, independent of enumeration order.
+    /// </para>
+    ///
+    /// <para>
+    /// An inherited context-package is threaded while collecting the pending set so
+    /// children whose own Package is unset still resolve correctly (mirroring the
+    /// parser's eager-resolution semantics); it is captured per node so a node
+    /// resolved out of collection order still uses the correct package.
+    /// </para>
     /// </summary>
     public static IReadOnlyList<DeferredSuperFailure> ResolveDeferredSupers(MetaData root)
     {
         var failures = new List<DeferredSuperFailure>();
+
+        // Every SuperRef-bearing node over the PHYSICAL declaration tree, plus each
+        // node's effective context-package (node.Package ?? nearest-ancestor
+        // package) — the same value the pre-order walk threaded.
+        var pending = new List<MetaData>();
+        var effectivePkgOf = new Dictionary<MetaData, string>(ReferenceEqualityComparer.Instance);
         Walk(root, "", (node, ctxPkg) =>
         {
             if (node.SuperRef is null) return;
-            if (node.SuperData is not null) return;
-            string effectivePkg = node.Package ?? ctxPkg;
+            effectivePkgOf[node] = node.Package ?? ctxPkg;
+            pending.Add(node);
+        });
+
+        // Nodes already attempted this pass. On-demand resolution can reach a node
+        // via the `pending` loop AND via owner/target recursion — `attempted` makes
+        // each node resolve (and, on failure, report) EXACTLY ONCE, restoring the
+        // single-visit walk's no-duplicate-failures guarantee (a successful node is
+        // deduped by SuperData; this also covers the FAILURE path, which sets no
+        // marker). It is also the cycle guard: `attempted` is never removed, so a
+        // genuine super cycle (A→B→A) terminates on re-entry to the
+        // already-attempted node rather than recursing forever. Mirrors the TS
+        // reference (#188).
+        var attempted = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+
+        void ResolveNode(MetaData node)
+        {
+            if (node.SuperRef is null || node.SuperData is not null) return;
+            if (!attempted.Add(node)) return; // already resolved-or-failed this pass — never re-report
+            string effectivePkg = effectivePkgOf.TryGetValue(node, out var pkg) ? pkg : (node.Package ?? "");
+
+            // For a dotted child-targeting ref, ResolveSuperRef reads the OWNER's
+            // effective Children() — which includes inherited members only once the
+            // owner's own extends chain is resolved. Resolve the owner node's chain
+            // FIRST (memoized), regardless of collection order.
+            if (IsChildTargetingRef(node.SuperRef))
+            {
+                (string OwnerRef, string[] Path)? parsed = ParseChildTargetingRef(node.SuperRef);
+                if (parsed is not null)
+                {
+                    MetaData? ownerNode = ResolveSuperRef(parsed.Value.OwnerRef, effectivePkg, root);
+                    if (ownerNode is not null) ResolveNode(ownerNode);
+                }
+            }
+
             // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
             // type-scoped (a field ref selects fields; an identity ref identities).
             MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root, new ReferrerScope(node.Type));
+
             if (target is not null)
             {
                 // FR-024: a dotted ref must target a node of the SAME type and subtype
@@ -289,12 +349,18 @@ internal static class SuperResolve
                 {
                     // Frozen — ignore; the loader should resolve before freeze.
                 }
+                // Ensure the target's OWN chain is resolved too, so a later Children()
+                // read on `node` (codegen/validation) sees the full multi-level
+                // inherited set (e.g. Base extends AbstractRoot). Memoized — no re-work.
+                ResolveNode(target);
             }
             else
             {
                 failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef, node));
             }
-        });
+        }
+
+        foreach (var node in pending) ResolveNode(node);
         return failures.AsReadOnly();
     }
 

@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            { "field.uuid": { "name": "id", "@required": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

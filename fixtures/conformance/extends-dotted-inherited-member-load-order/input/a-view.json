@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.projection": {
+          "name": "CustomerView",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_customers" } },
+            {
+              "field.uuid": {
+                "name": "id",
+                "extends": "acme::shop::Customer.id",
+                "children": [
+                  { "origin.passthrough": { "@from": "acme::shop::Customer.id" } }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  { "origin.passthrough": { "@from": "acme::shop::Customer.name" } }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "acme::shop::Customer.pk",
+                "@fields": ["id"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

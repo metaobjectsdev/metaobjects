@@ -139,6 +139,11 @@ This means:
 - **Forward references are fine.** A field that `extends: shortSlug` can
   appear in a file the loader processes before the file that declares
   `shortSlug`.
+- **Dotted refs to inherited members resolve in any order.** A field
+  `extends: Owner.member` works even when `member` reaches `Owner` only
+  through `Owner`'s own `extends:`. Super-resolution wires the owner's chain on
+  demand before reading its effective members, so file/enumeration order never
+  changes the result (#188).
 - **Multi-level chains work.** `Author extends BaseEntity extends Auditable`
   flattens to one effective shape. Each level can add children or override
   attrs.
@@ -375,6 +380,10 @@ inheritance chain.
   extends B extends C, full chain flattening
 - [`extends-cross-file`](../../fixtures/conformance/extends-cross-file/) — forward
   reference across files
+- [`extends-dotted-inherited-member-load-order`](../../fixtures/conformance/extends-dotted-inherited-member-load-order/)
+  — a dotted `extends:` to a member the owner reaches only through its own
+  `extends:` resolves regardless of file order (load-order-independent
+  super-resolution, #188)
 - [`extends-abstract-base`](../../fixtures/conformance/extends-abstract-base/) —
   abstract entities aren't instantiable; codegen skips them
 - [`error-extends-nonexistent`](../../fixtures/conformance/error-extends-nonexistent/)

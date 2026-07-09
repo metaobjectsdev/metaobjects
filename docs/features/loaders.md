@@ -142,7 +142,12 @@ name = author.field("name")
 4. **Overlay merge.** Files sharing the same `package` + object `name` are merged.
    Last-writer-wins on attribute conflicts; structural children accumulate.
 5. **Super-resolve.** `extends:` is resolved after all files load (deferred, not
-   eager) so a child can extend a base declared in any other file.
+   eager) so a child can extend a base declared in any other file. Resolution is
+   **order-independent** — a pure function of the source set — so a dotted
+   `extends:` to a member the owner reaches through its OWN `extends:` (e.g.
+   `extends: Owner.member` where `Owner` inherits `member`) resolves regardless of
+   file enumeration order; the owner's chain is wired on demand before its members
+   are read (#188).
 6. **Validate.** Per-node validation runs; reserved-attr collisions, missing
    required attrs, bad enum members all surface here with `ERR_*` codes (see
    [`fixtures/conformance/ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json)).
