@@ -94,7 +94,8 @@ The codegen emits:
 
 - `Author.cs` — record per entity.
 - `AppDbContext.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
-  types via `OwnsOne`, enum-as-string via `HasConversion<string>()`.
+  types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
+  enum-as-string via `HasConversion<string>()`.
 - `Author.routes.cs` — CRUD minimal-API endpoints.
 
 ## Use
@@ -270,7 +271,7 @@ are not yet generated — see
 | Entities + fields | Yes |
 | Relationships + FK | Yes (EF Core + Postgres FK clause) |
 | Source kinds (table / view / storedProc) | `table` + `view` fully shipped; `storedProc` / `tableFunction` / `materializedView` partial |
-| `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. EF Core `OwnsOne` for `flattened`) |
+| `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. EF Core `OwnsOne` for `flattened`; `OwnsMany(...).ToJson(...)` for `@isArray` array-of-VO jsonb) |
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes (`MetaObjects.Codegen`) |

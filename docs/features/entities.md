@@ -169,16 +169,15 @@ public class Author {
 
 ### Kotlin
 
-`metaobjects-codegen-kotlin` (`KotlinEntityGenerator`) emits a `@Serializable
-data class` and (with `KotlinExposedTableGenerator`) an Exposed `Table` object.
+`metaobjects-codegen-kotlin` (`KotlinEntityGenerator`) emits a plain
+`data class` (no `@Serializable` — entities are Jackson-compatible, not
+kotlinx-serialized) and (with `KotlinExposedTableGenerator`) an Exposed
+`Table` object.
 
 ```kotlin
 // generated/acme/blog/Author.kt
 package acme.blog
 
-import kotlinx.serialization.Serializable
-
-@Serializable
 data class Author(
     val id: Long,
     val name: String,
