@@ -225,13 +225,55 @@ export interface DeferredSuperFailure {
  */
 export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   const failures: DeferredSuperFailure[] = [];
-  walk(root, (node) => {
-    if (node.superRef === undefined) return;
-    if (node.superResolved !== undefined) return;
+  // #188: super-resolution must be ORDER-INDEPENDENT. A pre-order walk resolved
+  // each node's superRef in physical-declaration (= load) order, so a dotted
+  // ref to an INHERITED member (`extends: Owner.member` where Owner inherits
+  // `member` via its own `extends`) only succeeded when the owner's extends
+  // chain happened to be wired first — green under Node's readdir order,
+  // ERR_UNRESOLVED_SUPER under Bun's. Instead resolve ON DEMAND with
+  // memoization + cycle detection: before a dotted ref reads `owner.children()`
+  // (effective children — inherited members appear only once the owner's OWN
+  // super is resolved), resolve the owner's whole chain first. The result is a
+  // pure function of the source SET, independent of enumeration order.
+  const inProgress = new Set<MetaData>(); // cycle guard (a genuine super cycle is unresolvable → reported)
+  // Nodes already attempted this pass. Because resolution is now on-demand, a
+  // node can be reached both by the `pending` loop AND by owner/target
+  // recursion from another node — `attempted` makes each node resolve (and, on
+  // failure, report) EXACTLY ONCE, restoring the old single-visit walk's
+  // no-duplicate-failures guarantee (a successful node is already deduped by
+  // `superResolved`; this also covers the FAILURE path, which sets no marker).
+  const attempted = new Set<MetaData>();
+  // Every node carrying a superRef, over the PHYSICAL declaration tree.
+  const pending: MetaData[] = [];
+  walk(root, (n) => {
+    if (n.superRef !== undefined) pending.push(n);
+  });
+
+  const resolveNode = (node: MetaData): void => {
+    if (node.superRef === undefined || node.superResolved !== undefined) return;
+    if (attempted.has(node)) return; // already resolved-or-failed this pass — never re-report
+    if (inProgress.has(node)) return; // cycle — leave unresolved; the failure is reported below
+    attempted.add(node);
+    inProgress.add(node);
     const effectivePkg = node.package ?? node.fileDefaultPackage ?? "";
+
+    // For a dotted child-targeting ref, `resolveSuperRef` reads the OWNER's
+    // effective `children()` — which only includes inherited members once the
+    // owner's own extends chain is resolved. So resolve the owner node's chain
+    // FIRST (memoized), regardless of load order.
+    if (isChildTargetingRef(node.superRef)) {
+      const parsed = parseChildTargetingRef(node.superRef);
+      if (parsed !== undefined) {
+        const ownerNode = resolveSuperRef(parsed.ownerRef, effectivePkg, root);
+        if (ownerNode !== undefined) resolveNode(ownerNode);
+      }
+    }
+
     // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
     // type-scoped (a field ref selects fields; an identity ref identities).
     const target = resolveSuperRef(node.superRef, effectivePkg, root, { type: node.type });
+    inProgress.delete(node);
+
     if (target !== undefined) {
       // FR-024: a dotted ref must target a node of the SAME type and subtype
       // as the extending node. Dotted-only — top-level extends is unchanged.
@@ -254,6 +296,10 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
       } catch {
         // Frozen — ignore; the loader should resolve before freeze.
       }
+      // Ensure the target's OWN chain is resolved too, so a later `children()`
+      // read on `node` (codegen/validation) sees the full multi-level inherited
+      // set (e.g. Base extends AbstractRoot). Memoized — no re-work.
+      resolveNode(target);
     } else {
       failures.push({
         nodeFqn: node.fqn(),
@@ -262,7 +308,9 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
         kind: "unresolved",
       });
     }
-  });
+  };
+
+  for (const node of pending) resolveNode(node);
   return failures;
 }
 

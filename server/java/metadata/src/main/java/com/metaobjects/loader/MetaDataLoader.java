@@ -234,51 +234,132 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     private void resolvePendingExtends() {
         if (pendingExtends.isEmpty()) return;
+        // #188 — deferred super-resolution must be ORDER-INDEPENDENT. The former
+        // single pre-order pass resolved each queued node's `extends` in physical-
+        // declaration (= load) order, so a dotted `extends: Owner.member` ref to an
+        // INHERITED member (Owner gets `member` via its OWN `extends`) only
+        // succeeded when Owner's own chain happened to be wired first — green under
+        // one directory-scan order, ERR_UNRESOLVED_SUPER under another (Node vs Bun
+        // readdir). Instead resolve ON DEMAND with memoization + cycle detection
+        // (topological): before a dotted ref reads the owner's EFFECTIVE children,
+        // resolve the owner node's whole chain first. The result is a pure function
+        // of the source SET, independent of enumeration order. Mirrors the TS
+        // reference (super-resolve.ts, #188).
+        //
+        // Identity-keyed maps/sets: MetaData nodes are compared by reference here
+        // (a queued entry's `child` is the SAME tree-node instance that
+        // resolveOwnerObject / getChildOfType returns), never by value-equality.
+        java.util.IdentityHashMap<MetaData, PendingExtends> byChild =
+            new java.util.IdentityHashMap<>();
         for (PendingExtends p : pendingExtends) {
-            MetaData superData = null;
-            // FR-024 (ADR-0029): dotted child-targeting ref `<ownerRef>.<childName>` —
-            // the final ::-segment containing '.' is unambiguous (names cannot contain
-            // '.'). Resolve the OWNER object with the existing strategies, then select
-            // the child among the owner's EFFECTIVE children (includeParentData) by
-            // name + the REFERRER'S type (type-scoped: a field ref resolves fields,
-            // an identity ref identities). Dotted refs never fall through to the bare
-            // top-level lookup; the multi-dot form (X.y.z) is reserved → unresolved.
-            // A resolved dotted target whose type/subtype differs from the referrer's
-            // is ERR_EXTENDS_TARGET_MISMATCH (dotted-only — top-level extends behavior
-            // is unchanged). Mirrors the TS reference (super-resolve.ts, commit
-            // 809712f8) and C# SuperResolve.cs. The parser's getSuperMetaData never
-            // resolves dotted refs (no top-level node has a dotted name), so every
-            // dotted ref arrives here via the pending queue — single resolution site.
-            if (isChildTargetingRef(p.superName)) {
-                superData = resolveChildTargetingRef(p);
-                if (superData == null) {
-                    throwUnresolvedSuper(p);
-                }
-                p.child.setSuperData(superData);
-                continue;
-            }
-            try {
-                String sn = p.superName;
-                String pkg = p.packageName == null ? "" : p.packageName;
-                if (sn.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
-                    superData = getChildOfType(p.typeName, pkg + PKG_SEPARATOR + sn);
-                }
-            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                // fall through to FQN lookup
-            }
-            if (superData == null) {
-                try {
-                    superData = getChildOfType(p.typeName, p.superName);
-                } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                    // still unresolved
-                }
-            }
-            if (superData == null) {
-                throwUnresolvedSuper(p);
-            }
-            p.child.setSuperData(superData);
+            byChild.put(p.child, p);
+        }
+        java.util.Set<MetaData> inProgress =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        java.util.Set<MetaData> resolved =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (PendingExtends p : pendingExtends) {
+            resolvePendingNode(p, byChild, inProgress, resolved);
         }
         pendingExtends.clear();
+    }
+
+    /**
+     * Resolve ONE deferred {@code extends} entry, ON DEMAND and memoized (#188).
+     *
+     * <p>For a dotted child-targeting ref, the OWNER object's own {@code extends}
+     * chain is resolved FIRST (recursively, memoized) so the owner's EFFECTIVE
+     * children include inherited members before {@link #resolveChildTargetingRef}
+     * reads them — regardless of the order the sources were enumerated. After the
+     * node itself is wired, the resolved TARGET's own chain is resolved too, so a
+     * later effective-children read on this node sees the full multi-level
+     * inherited set (e.g. {@code Base extends AbstractRoot}). Memoization means no
+     * node is resolved twice; the {@code inProgress} set breaks a genuine super
+     * cycle (the node is left for its originating frame, which reports the failure
+     * as {@code ERR_UNRESOLVED_SUPER}).</p>
+     *
+     * <p>The Tier-1 contract is unchanged: an unresolved ref throws
+     * {@code ERR_UNRESOLVED_SUPER} and a type/subtype-mismatched dotted target
+     * throws {@code ERR_EXTENDS_TARGET_MISMATCH}, both via the existing helpers.</p>
+     */
+    private void resolvePendingNode(PendingExtends p,
+                                    java.util.IdentityHashMap<MetaData, PendingExtends> byChild,
+                                    java.util.Set<MetaData> inProgress,
+                                    java.util.Set<MetaData> resolved) {
+        if (resolved.contains(p.child)) return;   // already wired (memoized)
+        if (inProgress.contains(p.child)) return; // cycle — leave to the outer frame
+        inProgress.add(p.child);
+
+        MetaData superData;
+        // FR-024 (ADR-0029): dotted child-targeting ref `<ownerRef>.<childName>` —
+        // the final ::-segment containing '.' is unambiguous (names cannot contain
+        // '.'). Resolve the OWNER object with the existing strategies, then select
+        // the child among the owner's EFFECTIVE children (includeParentData) by
+        // name + the REFERRER'S type (type-scoped: a field ref resolves fields,
+        // an identity ref identities). Dotted refs never fall through to the bare
+        // top-level lookup; the multi-dot form (X.y.z) is reserved → unresolved.
+        // A resolved dotted target whose type/subtype differs from the referrer's
+        // is ERR_EXTENDS_TARGET_MISMATCH (dotted-only — top-level extends behavior
+        // is unchanged). Mirrors the TS reference (super-resolve.ts) and C#
+        // SuperResolve.cs. The parser's getSuperMetaData never resolves dotted refs
+        // (no top-level node has a dotted name), so every dotted ref arrives here
+        // via the pending queue — single resolution site.
+        if (isChildTargetingRef(p.superName)) {
+            // #188: wire the owner's OWN chain first so its effective children
+            // include inherited members before resolveChildTargetingRef reads them.
+            MetaData owner = resolveOwnerObject(p);
+            if (owner != null) {
+                PendingExtends ownerPending = byChild.get(owner);
+                if (ownerPending != null) {
+                    resolvePendingNode(ownerPending, byChild, inProgress, resolved);
+                }
+            }
+            superData = resolveChildTargetingRef(p);
+        } else {
+            superData = resolveTopLevelSuper(p);
+        }
+        if (superData == null) {
+            throwUnresolvedSuper(p);
+        }
+
+        p.child.setSuperData(superData);
+        inProgress.remove(p.child);
+        resolved.add(p.child);
+
+        // #188: resolve the TARGET's own chain too (multi-level inheritance),
+        // memoized — so a subsequent effective read on this node sees every
+        // inherited member. No-op when the target had no deferred extends.
+        PendingExtends targetPending = byChild.get(superData);
+        if (targetPending != null) {
+            resolvePendingNode(targetPending, byChild, inProgress, resolved);
+        }
+    }
+
+    /**
+     * Resolve a non-dotted top-level {@code extends} ref: try the package-prepended
+     * name first, then the raw/FQN name. Returns {@code null} when neither resolves
+     * (the caller throws {@code ERR_UNRESOLVED_SUPER}). Extracted verbatim from the
+     * former inline {@link #resolvePendingExtends} loop body.
+     */
+    private MetaData resolveTopLevelSuper(PendingExtends p) {
+        MetaData superData = null;
+        try {
+            String sn = p.superName;
+            String pkg = p.packageName == null ? "" : p.packageName;
+            if (sn.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
+                superData = getChildOfType(p.typeName, pkg + PKG_SEPARATOR + sn);
+            }
+        } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+            // fall through to FQN lookup
+        }
+        if (superData == null) {
+            try {
+                superData = getChildOfType(p.typeName, p.superName);
+            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
+                // still unresolved
+            }
+        }
+        return superData;
     }
 
     /**
@@ -316,20 +397,15 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
-     * FR-024 (ADR-0029): resolve a dotted child-targeting {@code extends} ref.
-     * Splits {@code <rootRef>.<child>...<child>} (any depth), resolves
-     * the owner OBJECT via the existing pkg-prepend-then-FQN strategies, then
-     * selects the owner's EFFECTIVE child (includeParentData) by name + the
-     * referrer's type. A resolved target whose type/subtype differs from the
-     * referrer's throws {@code ERR_EXTENDS_TARGET_MISMATCH} (dotted-only check).
+     * FR-024 (ADR-0029): resolve just the OWNER object of a dotted child-targeting
+     * ref — the {@code <ownerRef>} before the first {@code .} of the final
+     * {@code ::}-segment. Uses the same pkg-prepend → referrer-ancestry-package →
+     * FQN strategies as {@link #resolveChildTargetingRef}; returns {@code null}
+     * when the owner object is not found (or the ref is not a well-formed dotted
+     * ref). Extracted so #188's order-independent resolver can wire the owner's
+     * OWN {@code extends} chain before the effective-children read.
      */
-    private MetaData resolveChildTargetingRef(PendingExtends p) {
-        // Addressing model (ADR-0029): the package qualifies the ROOT-level node
-        // only; each subsequent segment traverses CHILD NAMES to any depth
-        // (object → field → view: "Customer.priceCents.display"). INTERMEDIATE
-        // segments select by UNIQUE name among the current node's effective
-        // children (a cross-type name collision is ambiguous → unresolved); the
-        // FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
+    private MetaData resolveOwnerObject(PendingExtends p) {
         int lastSep = p.superName.lastIndexOf(PKG_SEPARATOR);
         int segStart = lastSep < 0 ? 0 : lastSep + PKG_SEPARATOR.length();
         String lastSegment = p.superName.substring(segStart);
@@ -379,6 +455,40 @@ public class MetaDataLoader implements LoaderConfigurable {
             } catch (com.metaobjects.MetaDataNotFoundException ignore) {
                 return null;
             }
+        }
+        return owner;
+    }
+
+    /**
+     * FR-024 (ADR-0029): resolve a dotted child-targeting {@code extends} ref.
+     * Splits {@code <rootRef>.<child>...<child>} (any depth), resolves
+     * the owner OBJECT via {@link #resolveOwnerObject}, then selects the owner's
+     * EFFECTIVE child (includeParentData) by name + the referrer's type. A
+     * resolved target whose type/subtype differs from the referrer's throws
+     * {@code ERR_EXTENDS_TARGET_MISMATCH} (dotted-only check).
+     */
+    private MetaData resolveChildTargetingRef(PendingExtends p) {
+        // Addressing model (ADR-0029): the package qualifies the ROOT-level node
+        // only; each subsequent segment traverses CHILD NAMES to any depth
+        // (object → field → view: "Customer.priceCents.display"). INTERMEDIATE
+        // segments select by UNIQUE name among the current node's effective
+        // children (a cross-type name collision is ambiguous → unresolved); the
+        // FINAL segment is type-scoped to the referrer. Mirrors the TS reference.
+        int lastSep = p.superName.lastIndexOf(PKG_SEPARATOR);
+        int segStart = lastSep < 0 ? 0 : lastSep + PKG_SEPARATOR.length();
+        String lastSegment = p.superName.substring(segStart);
+        String[] parts = lastSegment.split("\\.", -1);
+        if (parts.length < 2) {
+            return null;
+        }
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                return null; // degenerate (empty segment)
+            }
+        }
+        MetaData owner = resolveOwnerObject(p);
+        if (owner == null) {
+            return null;
         }
 
         // Traverse INTERMEDIATE segments by unique child name (effective view);

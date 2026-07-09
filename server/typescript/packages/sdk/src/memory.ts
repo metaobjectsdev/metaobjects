@@ -161,7 +161,13 @@ async function listMetadataFiles(dir: string): Promise<string[]> {
   }
   const paths: string[] = [];
   const subdirs: string[] = [];
-  for (const entry of entries) {
+  // #188: sort the raw `readdir` entries so file order is deterministic across
+  // runtimes/filesystems (Node vs Bun return different `readdir` orders), matching
+  // this function's docstring and the metadata package's own `DirectorySource`.
+  // (Resolution is now order-INDEPENDENT — super-resolve.ts #188 — so this is the
+  // deterministic-enumeration FLOOR, not the fix; it keeps every derived artifact
+  // that preserves declaration order, e.g. serialization, stable across runtimes.)
+  for (const entry of [...entries].sort()) {
     if (entry === "_pending") continue;
     const full = join(dir, entry);
     const s = await stat(full);

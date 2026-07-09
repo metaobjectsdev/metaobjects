@@ -1,0 +1,110 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.projection": {
+          "name": "CustomerView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_customers"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id",
+                "extends": "acme::shop::Customer.id",
+                "@required": true,
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::shop::Customer.id"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::shop::Customer.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "acme::shop::Customer.pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "extends": "acme::common::BaseEntity",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
