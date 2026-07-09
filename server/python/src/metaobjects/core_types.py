@@ -35,7 +35,6 @@ from .meta.core.field.field_constants import (
 )
 from .meta.core.field.meta_field import MetaField
 from .meta.persistence.db.db_constants import (
-    FIELD_ATTR_DB_COLUMN_TYPE,
     FIELD_ATTR_DB_INDEXED,
 )
 from .meta.core.identity.identity_constants import (
@@ -49,7 +48,7 @@ from .meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_SECONDARY,
 )
 from .meta.core.identity.meta_identity import MetaIdentity
-from .meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP, INDEX_SUBTYPES
+from .meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPES
 from .meta.core.index.meta_index import MetaIndex
 from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
@@ -57,7 +56,6 @@ from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
-    OBJECT_SUBTYPE_VALUE,
     OBJECT_SUBTYPES,
 )
 from .meta.core.relationship.meta_relationship import MetaRelationship

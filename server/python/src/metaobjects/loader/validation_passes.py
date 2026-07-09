@@ -95,7 +95,6 @@ from ..meta.core.relationship.relationship_constants import (
     RELATIONSHIP_ATTR_THROUGH,
 )
 from ..meta.core.identity.identity_constants import (
-    IDENTITY_SUBTYPE_PRIMARY,
     IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
 )
