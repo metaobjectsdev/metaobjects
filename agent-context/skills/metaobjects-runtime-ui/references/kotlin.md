@@ -20,7 +20,6 @@ emit a data class and an Exposed `Table`:
 
 ```kotlin
 // generated/acme/blog/Author.kt
-@Serializable
 data class Author(
     val id: Long,
     val name: String,

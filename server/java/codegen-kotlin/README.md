@@ -196,4 +196,4 @@ The shared cross-language codegen conformance corpus is **FR-007** — see [`doc
 
 ## Test count
 
-75 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
+272 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
