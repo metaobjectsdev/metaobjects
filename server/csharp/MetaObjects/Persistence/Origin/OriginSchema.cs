@@ -23,6 +23,12 @@ public static class OriginSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks')."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_PASSTHROUGH_ATTR_CONVERT,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description: "Acknowledges that this field's declared type deliberately differs from its @from source field's type (#185). Absent/false (the default), a passthrough is type-preserving — a differing field.<subType> or array-ness fails with ERR_PASSTHROUGH_TYPE_MISMATCH. Set true to opt out. This is an acknowledgement only: it does NOT generate a cast — the value flows through unchanged and the consumer owns any coercion. Real type-converting projections are origin.expression's job (#159)."),
     ];
 
     private static readonly IReadOnlyList<AttrSchema> AggregateOriginAttrs =

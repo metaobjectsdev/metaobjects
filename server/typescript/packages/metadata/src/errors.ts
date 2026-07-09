@@ -90,6 +90,14 @@ export const ERROR_CODES = [
   // compute something new); a top-level abstract extends target is never
   // judged (shape-only reuse makes no lineage claim).
   "ERR_EXTENDS_ORIGIN_MISMATCH",
+  // #185 — a field carrying origin.passthrough @from declares a field.<subType>
+  // or array-ness differing from its resolved source field. A passthrough
+  // forwards the value unchanged, so its type must be identical. Host-agnostic
+  // (projections, entities, values, stored-proc parameter refs). Nullability is
+  // NOT judged (an outer-join view legitimately widens NOT NULL → nullable).
+  // Opt out of a deliberate type change with @convert: true (acknowledgement
+  // only — no generated cast; real conversion is origin.expression, #159).
+  "ERR_PASSTHROUGH_TYPE_MISMATCH",
   // FR-024 (spec §7) — an object.entity field carrying an origin.* child is
   // derived (read-only), so the entity must declare at least one source with
   // a read-only @kind (view/materializedView/storedProc/tableFunction) to
@@ -131,7 +139,6 @@ export const ERROR_CODES = [
   "ERR_PARAMETER_REF_UNRESOLVED",
   "ERR_PARAMETER_REF_NOT_VALUE_OBJECT",
   "ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND",
-  "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH",
   // FR-014 — TPH discriminator cross-attribute validation.
   "ERR_DISCRIMINATOR_FIELD_NOT_FOUND",
   "ERR_DISCRIMINATOR_VALUE_DUPLICATE",

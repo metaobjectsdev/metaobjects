@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "metaobjects"
-version = "0.15.6"
+version = "0.15.9"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },

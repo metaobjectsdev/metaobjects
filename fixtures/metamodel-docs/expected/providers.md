@@ -30,7 +30,7 @@ Core metaobjects metamodel types and subtypes.
 - `object.entity`: `@discriminator`, `@discriminatorValue`
 - `origin.aggregate`: `@agg`, `@of`, `@via`
 - `origin.collection`: `@via`
-- `origin.passthrough`: `@from`, `@via`
+- `origin.passthrough`: `@convert`, `@from`, `@via`
 - `relationship.aggregation`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.base`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`

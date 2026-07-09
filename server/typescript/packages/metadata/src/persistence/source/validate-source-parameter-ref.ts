@@ -9,19 +9,16 @@
 //                                          "view" / "materializedView". Only the
 //                                          callable kinds (storedProc, tableFunction)
 //                                          accept parameters.
-//   ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH
-//                                        — a parameter field uses origin.passthrough
-//                                          @from: "Entity.field" but the parameter's
-//                                          subtype does not match the referenced
-//                                          field's subtype.
+//
+// Passthrough type-matching on parameter fields is NOT emitted here: it was
+// retired (#185) into the universal ERR_PASSTHROUGH_TYPE_MISMATCH enforced in
+// validateOriginPaths, which runs over parameter-ref value objects too.
 
 import type { MetaData } from "../../shared/meta-data.js";
 import { ParseError } from "../../errors.js";
 import {
   TYPE_OBJECT,
   TYPE_SOURCE,
-  TYPE_FIELD,
-  TYPE_ORIGIN,
 } from "../../shared/base-types.js";
 import {
   OBJECT_SUBTYPE_VALUE,
@@ -35,10 +32,6 @@ import {
   SOURCE_KIND_STORED_PROC,
   SOURCE_KIND_TABLE_FUNCTION,
 } from "./source-constants.js";
-import {
-  ORIGIN_SUBTYPE_PASSTHROUGH,
-  ORIGIN_PASSTHROUGH_ATTR_FROM,
-} from "../../persistence/origin/origin-constants.js";
 
 const CALLABLE_KINDS = new Set<string>([
   SOURCE_KIND_STORED_PROC,
@@ -114,43 +107,14 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
         continue;
       }
 
-      // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH — every parameter field
-      // with origin.passthrough must have a subtype matching the referenced
-      // field. The origin path validation pass checks the from-path resolves;
-      // here we just check the subtype alignment.
-      // ADR-0039: resolving — the parameter value-object's fields may be inherited.
-      for (const paramField of target.children().filter((c) => c.type === TYPE_FIELD)) {
-        // ADR-0039: own — origin.* never inherits (ADR-0029); the origin child and
-        // its @from are read own.
-        const passthrough = paramField.ownChildren().find(
-          (c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_PASSTHROUGH,
-        );
-        if (passthrough === undefined) continue;
-        // ADR-0039: own — origin.* never inherits (ADR-0029).
-        const from = passthrough.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
-        if (typeof from !== "string" || from === "") continue;
-        const dot = from.indexOf(".");
-        if (dot < 0) continue;
-        const targetEntityName = from.slice(0, dot);
-        const targetFieldName = from.slice(dot + 1);
-        const targetEntity = objectIndex.get(targetEntityName);
-        if (targetEntity === undefined) continue; // origin-paths pass surfaces this
-        // ADR-0039: resolving — the referenced entity's field may be inherited via extends.
-        const targetField = targetEntity.children().find(
-          (c) => c.type === TYPE_FIELD && c.name === targetFieldName,
-        );
-        if (targetField === undefined) continue;
-        if (paramField.subType !== targetField.subType) {
-          errors.push(
-            new ParseError(
-              `parameter field "${paramField.name}" (field.${paramField.subType}) on @parameterRef ` +
-                `"${ref}" uses origin.passthrough @from: "${from}", but ` +
-                `${targetEntity.name}.${targetFieldName} is field.${targetField.subType}; types must match`,
-              { code: "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH", source: paramField.source },
-            ),
-          );
-        }
-      }
+      // #185 — passthrough type-preservation (parameter fields forwarding an
+      // entity field via origin.passthrough must match its type) is enforced
+      // UNIVERSALLY by _checkPassthroughType in validateOriginPaths (which runs
+      // over every object incl. these parameter-ref value-objects), emitting
+      // ERR_PASSTHROUGH_TYPE_MISMATCH. The narrow, subtype-only
+      // ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH that used to live here was
+      // retired in favour of that single invariant (which also gates array-ness
+      // and honours the @convert opt-out).
     }
   }
 

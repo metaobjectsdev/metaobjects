@@ -1,6 +1,9 @@
 // FR-015 — @parameterRef on source.rdb for typed callable inputs.
 // Loader-level tests: constant export, attr-schema registration, validation
-// (UNRESOLVED, NOT_VALUE_OBJECT, ON_NON_CALLABLE_KIND, PASSTHROUGH_TYPE_MISMATCH).
+// (UNRESOLVED, NOT_VALUE_OBJECT, ON_NON_CALLABLE_KIND). Passthrough type-match
+// on parameter fields is now the universal ERR_PASSTHROUGH_TYPE_MISMATCH (#185),
+// covered by the conformance corpus — the narrow ERR_PARAMETER_REF_PASSTHROUGH_
+// TYPE_MISMATCH was retired.
 
 import { describe, expect, test } from "bun:test";
 import { SOURCE_ATTR_PARAMETER_REF } from "../src/persistence/source/source-constants.js";
@@ -32,8 +35,11 @@ describe("FR-015 constants + error codes", () => {
     expect(ERROR_CODES).toContain("ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND");
   });
 
-  test("ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH registered", () => {
-    expect(ERROR_CODES).toContain("ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH");
+  test("passthrough parameter type-match is the universal ERR_PASSTHROUGH_TYPE_MISMATCH (#185)", () => {
+    // The narrow, parameter-ref-only code was retired in favour of the single
+    // host-agnostic invariant enforced in validateOriginPaths.
+    expect(ERROR_CODES).toContain("ERR_PASSTHROUGH_TYPE_MISMATCH");
+    expect(ERROR_CODES).not.toContain("ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH");
   });
 });
 

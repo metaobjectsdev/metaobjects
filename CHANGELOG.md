@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- **`@convert` on `origin.passthrough` — acknowledge a deliberate passthrough type change (#185).** A new optional boolean attr. Absent/false (the default), a passthrough is type-preserving (see Changed, below); `@convert: true` opts a field out of the type-equality check when its type intentionally differs from its `@from` source. It is an **acknowledgement only — it does NOT generate a cast**; the value flows through unchanged and the consumer owns any coercion. Real type-converting projections remain `origin.expression`'s job (#159). Registered on `origin.passthrough` in all five ports (cross-port registry-conformance gated).
+
+### Changed
+- **BREAKING — `origin.passthrough` is now type-preserving: a passthrough field must match its `@from` source's type (#185).** A field carrying `origin.passthrough @from: "Entity.field"` forwards another field's value unchanged, so its declared `field.<subType>` and array-ness must be identical to the resolved source field. A divergence now fails load with `ERR_PASSTHROUGH_TYPE_MISMATCH` (e.g. a `field.uuid` source surfaced by a projection as `field.string` — the exact mismodeling that forces hand-written `String↔UUID` bridging and defeats a UUID migration). The check compares **subType and array-ness only — nullability is deliberately not judged** (a view over an outer join legitimately widens `NOT NULL` → nullable). Opt out of a deliberate type change with `@convert: true` (see Added). This **generalizes and retires** the narrow, stored-proc-parameter-ref-only `ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH` (FR-015) into one host-agnostic invariant covering projections, entities, values, and parameter refs alike. Enforced in the loader/verify in all five ports (TS / Python / C# / Java / Kotlin), cross-port conformance-gated. **Migration:** if load newly fails, the error names both the declared type and the source type — declare the source type (usually the fix — the projection was wrong), or add `@convert: true` if the divergence is intentional.
+
 ## [0.15.15] — 2026-07-07
 
 _npm `@metaobjectsdev/sdk` + `@metaobjectsdev/cli` `0.15.15` (isolated patch; the other 12 packages stay `0.15.14`). Ships updated agent-context skills — a docs/content change bundled into the SDK and delivered through the CLI (`meta agent-docs` / `meta init`). No runtime or generated-code change; PyPI / NuGet / Maven are unaffected._

@@ -1,0 +1,36 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            { "source.rdb": { "@table": "products" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "tags", "isArray": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProductView",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_product" } },
+            { "field.uuid": { "name": "id", "extends": "demo::Product.id" } },
+            {
+              "field.string": {
+                "name": "tags",
+                "children": [
+                  { "origin.passthrough": { "@from": "demo::Product.tags" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "demo::Product.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

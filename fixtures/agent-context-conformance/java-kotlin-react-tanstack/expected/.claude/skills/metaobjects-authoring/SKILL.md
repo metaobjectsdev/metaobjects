@@ -601,6 +601,18 @@ child (`source.rdb: { kind: view, table: v_author }`) — codegen keys projectio
 detection + view DDL off that read-only source, so without it `meta gen` emits
 nothing for the projection.
 
+**A `passthrough` field must match its `@from` source's type.** A passthrough
+forwards the source value unchanged, so the projection field's `field.<subType>`
+and array-ness must be identical to the source field's — a `field.uuid` source
+declared as `field.string` on the projection fails load with
+`ERR_PASSTHROUGH_TYPE_MISMATCH` (this is exactly the mismodeling that leaves a
+view `String`-typed over a `uuid` column and forces hand-written coercion).
+Declare the source's type. If the type genuinely must differ on purpose, set
+`@convert: true` on the `origin.passthrough` to acknowledge it — an
+acknowledgement only, it does **not** generate a cast (you own any coercion).
+Nullability may differ (an outer-join view legitimately widens `NOT NULL` →
+nullable) — only subType + array-ness are checked.
+
 ## Abstracts + `extends` (deferred resolution) + `overlay`
 
 An **abstract** node (`abstract: true`) describes a shape but is never emitted as

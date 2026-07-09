@@ -78,6 +78,7 @@ from ..meta.presentation.layout.layout_constants import (
     LAYOUT_SUBTYPE_DATA_GRID,
 )
 from ..meta.persistence.origin.origin_constants import (
+    ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_VIA,
@@ -1476,6 +1477,54 @@ def _check_extends_origin_agreement(
     )
 
 
+def _check_passthrough_type(
+    field: MetaData,
+    from_field: MetaData,
+    from_attr: str,
+    convert: bool,
+    obj: MetaData,
+    origin_source: object,
+    referrer: str,
+    errors: list[MetaError],
+) -> None:
+    """#185 — a passthrough is type-preserving. A field forwarding another field's
+    value via origin.passthrough must declare the SAME field.<subType> and the same
+    array-ness as its resolved @from source — otherwise the projected type silently
+    diverges from its source (e.g. a field.uuid surfaced as field.string, forcing
+    hand-written String<->UUID bridging).
+
+    Compares the RESOLVING/effective subType + isArray (ADR-0039), so a field
+    inheriting its shape via ``extends`` is judged on its effective type. Nullability
+    is deliberately NOT judged: a view over an outer join legitimately widens a NOT
+    NULL source column to nullable.
+
+    Escape hatch: ``@convert: true`` on the origin.passthrough acknowledges a
+    deliberate type change and suppresses the error (it does NOT emit a cast — the
+    consumer owns any coercion; real converting projections are #159's
+    origin.expression). Host-agnostic (projections, entities, values, and the
+    FR-015 stored-proc parameter refs the retired ERR_PARAMETER_REF_PASSTHROUGH_
+    TYPE_MISMATCH used to cover). Mirrors the TS reference ``_checkPassthroughType``.
+    """
+    if convert:
+        return  # deliberate type change acknowledged
+    # Compare both axes at once via the type-label: subtype names never contain
+    # "[]", so equal labels <=> same subType AND same array-ness.
+    declared = f"field.{field.sub_type}{'[]' if field.resolved_is_array() else ''}"
+    source = f"field.{from_field.sub_type}{'[]' if from_field.resolved_is_array() else ''}"
+    if declared == source:
+        return
+    errors.append(
+        MetaError(
+            f"origin.passthrough on {obj.name}.{field.name}: field is {declared} but its "
+            f"@from source '{from_attr}' is {source} — a passthrough forwards the value "
+            f"unchanged, so the types must match. Declare {source}, or set @convert: true "
+            f"to acknowledge a deliberate type change.",
+            ErrorCode.ERR_PASSTHROUGH_TYPE_MISMATCH,
+            envelope=resolved_source(origin_source, referrer, from_attr),
+        )
+    )
+
+
 def _validate_origin_paths(
     root: MetaData,
     errors: list[MetaError],
@@ -1532,6 +1581,12 @@ def _validate_origin_paths(
                 if from_target is not None:
                     _check_extends_origin_agreement(
                         node, from_target[1], from_ref, obj, origin.source, referrer, errors
+                    )
+                    # #185 — passthrough is type-preserving unless @convert acknowledges
+                    # a change. ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+                    convert = origin.attr(ORIGIN_ATTR_CONVERT) is True
+                    _check_passthrough_type(
+                        node, from_target[1], from_ref, convert, obj, origin.source, referrer, errors
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:

@@ -76,6 +76,7 @@ A cross-entity field reference: this projection field passes a source entity's v
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@convert` | boolean | no |  |  | metaobjects-core-types | Acknowledges that this field's declared type deliberately differs from its @from source field's type (#185). Absent/false (the default), a passthrough is type-preserving — a differing field.<subType> or array-ness fails with ERR_PASSTHROUGH_TYPE_MISMATCH. Set true to opt out. This is an acknowledgement only: it does NOT generate a cast — the value flows through unchanged and the consumer owns any coercion. Real type-converting projections are origin.expression's job (#159). |
 | `@from` | string | yes |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the source value this projection field passes through (e.g. 'Program.title'). |
 | `@via` | string | no |  |  | metaobjects-core-types | Optional dotted relationship path used to reach the source entity (e.g. 'Program.weeks'). |
 

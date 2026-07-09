@@ -77,6 +77,7 @@ from .meta.meta_root import MetaRoot
 from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_AGG,
+    ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_VIA,
@@ -595,7 +596,7 @@ core_provider.add(
     )
 )
 
-# origin.passthrough — @from required, @via optional
+# origin.passthrough — @from required, @via optional, @convert optional (#185).
 core_provider.add(
     TypeDefinition(
         type=TYPE_ORIGIN,
@@ -604,6 +605,8 @@ core_provider.add(
         attrs=[
             AttrSchema(name=ORIGIN_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            # #185 — opt out of the type-preserving ERR_PASSTHROUGH_TYPE_MISMATCH check.
+            AttrSchema(name=ORIGIN_ATTR_CONVERT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

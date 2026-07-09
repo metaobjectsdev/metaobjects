@@ -70,6 +70,18 @@ public abstract class MetaOrigin extends MetaData {
      */
     public static final String ATTR_OF = "of";
 
+    /**
+     * #185 — boolean acknowledgement that a passthrough field's declared type
+     * deliberately differs from its {@code @from} source field's type. Optional on
+     * {@code origin.passthrough}. Absent/false (the default) ⇒ the passthrough is
+     * type-preserving, so a differing {@code field.<subType>} or array-ness fails
+     * with {@code ERR_PASSTHROUGH_TYPE_MISMATCH}. Set true to opt out — an
+     * acknowledgement ONLY: it does not generate a cast (the value flows through
+     * unchanged and the consumer owns any coercion; real type-converting
+     * projections are {@code origin.expression}'s job, #159).
+     */
+    public static final String ATTR_CONVERT = "convert";
+
     // === AGGREGATE FUNCTION VOCABULARY ===
 
     public static final String AGG_COUNT = "count";
@@ -152,6 +164,18 @@ public abstract class MetaOrigin extends MetaData {
         return hasMetaAttr(ATTR_OF)
             ? getMetaAttr(ATTR_OF).getValueAsString()
             : null;
+    }
+
+    /**
+     * #185 — true iff {@code @convert} is present and true (deliberate type-change
+     * acknowledgement on a {@code origin.passthrough}). Accepts a native boolean or
+     * the string {@code "true"}, mirroring the tolerant boolean-attr reads elsewhere
+     * in the loader.
+     */
+    public boolean isConvert() {
+        // Mirrors MetaRelationship.isSymmetric() — the model-layer boolean-attr idiom.
+        return hasMetaAttr(ATTR_CONVERT)
+            && Boolean.parseBoolean(getMetaAttr(ATTR_CONVERT).getValueAsString());
     }
 
     @Override

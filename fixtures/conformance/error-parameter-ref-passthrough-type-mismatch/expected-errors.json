@@ -1,13 +1,15 @@
 {
   "errors": [
     {
-      "code": "ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH",
+      "code": "ERR_PASSTHROUGH_TYPE_MISMATCH",
       "source": {
-        "format": "json",
+        "format": "resolved",
         "files": [
           "meta.demo.json"
         ],
-        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.int']"
+        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.int'].children[0]['origin.passthrough']",
+        "referrer": "Args::label",
+        "target": "demo::Case.label"
       }
     }
   ],

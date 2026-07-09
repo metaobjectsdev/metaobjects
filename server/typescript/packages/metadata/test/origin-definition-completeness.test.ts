@@ -35,6 +35,9 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
   passthrough: {
     from: { valueType: "string", required: true },
     via: { valueType: "string", required: false },
+    // #185 — @convert acknowledges a deliberate type change vs the @from source
+    // (suppresses ERR_PASSTHROUGH_TYPE_MISMATCH); optional, boolean.
+    convert: { valueType: "boolean", required: false },
   },
   aggregate: {
     agg: {

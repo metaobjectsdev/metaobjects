@@ -198,6 +198,17 @@ public enum ErrorCode {
     ERR_EXTENDS_ORIGIN_MISMATCH,
 
     /**
+     * #185: a field carrying {@code origin.passthrough @from: "Entity.field"} declares a
+     * {@code field.<subType>} or array-ness that differs from its resolved source field —
+     * a passthrough forwards the value unchanged, so the type must be identical. Host-agnostic
+     * (projections, entities, values, and the FR-015 stored-proc parameter refs the retired
+     * {@code ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH} used to cover). Nullability is NOT
+     * judged. Opt out of a deliberate type change with {@code @convert: true} (acknowledgement
+     * only — no generated cast).
+     */
+    ERR_PASSTHROUGH_TYPE_MISMATCH,
+
+    /**
      * FR-024 (spec §7): an object.entity field carrying an origin.* child is derived
      * (read-only) and must be providable — the entity must declare at least one source
      * with a read-only kind (view/materializedView/storedProc/tableFunction) to carry
@@ -300,8 +311,9 @@ public enum ErrorCode {
     /** FR-015: source.rdb @parameterRef set on a non-callable kind (table/view/materializedView). */
     ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND,
 
-    /** FR-015: a parameter field's origin.passthrough @from references a field with a mismatched subtype. */
-    ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH,
+    // #185: ERR_PARAMETER_REF_PASSTHROUGH_TYPE_MISMATCH RETIRED — the narrow FR-015 parameter-ref
+    // passthrough type check is generalized by the universal ERR_PASSTHROUGH_TYPE_MISMATCH (above),
+    // which validateOrigins already applies to every origin.passthrough (value hosts included).
 
     /** FR-014: object.entity @discriminator names a field that does not exist on the entity. */
     ERR_DISCRIMINATOR_FIELD_NOT_FOUND,
