@@ -45,14 +45,15 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
     pkg_of: dict[MetaData, str | None] = {}
     _collect(root, "", pending, pkg_of)
 
-    # Cycle guard (a genuine super cycle is unresolvable → reported as unresolved).
-    in_progress: set[MetaData] = set()
     # Nodes already attempted this pass. On-demand resolution can reach a node
     # via the ``pending`` loop AND via owner/target recursion — ``attempted``
     # makes each node resolve (and, on failure, report) EXACTLY ONCE, restoring
     # the single-visit walk's no-duplicate-failures guarantee (a successful node
     # is deduped by ``super_data``; this also covers the FAILURE path, which
-    # sets no marker). Mirrors the TS reference (#188).
+    # sets no marker). It is also the cycle guard: ``attempted`` is never
+    # removed, so a genuine super cycle (A→B→A) terminates on re-entry to the
+    # already-attempted node rather than recursing forever. Mirrors the TS
+    # reference (#188).
     attempted: set[MetaData] = set()
 
     def resolve_node(node: MetaData) -> None:
@@ -60,10 +61,7 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
             return
         if node in attempted:
             return  # already resolved-or-failed this pass — never re-report
-        if node in in_progress:
-            return  # cycle — leave unresolved; the failure is reported below
         attempted.add(node)
-        in_progress.add(node)
         # Referrer context package: own ``package`` if declared, else the
         # file-default package captured at parse time, else the inherited walk
         # context. Captured during _collect (mirrors the original ``_walk``
@@ -89,7 +87,6 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
         # resolve type-scoped (a field ref selects fields; an identity ref
         # identities).
         target = _resolve(node.super_ref, effective_pkg, index, referrer_type=node.type)
-        in_progress.discard(node)
 
         if target is None:
             # FR5d / ADR-0009: emit a ResolvedSource envelope carrying the

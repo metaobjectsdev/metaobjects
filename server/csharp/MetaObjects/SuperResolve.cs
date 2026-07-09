@@ -290,22 +290,21 @@ internal static class SuperResolve
             pending.Add(node);
         });
 
-        // Cycle guard: a genuine super cycle is unresolvable → the node is left
-        // unresolved and reported as a failure below.
-        var inProgress = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
         // Nodes already attempted this pass. On-demand resolution can reach a node
         // via the `pending` loop AND via owner/target recursion — `attempted` makes
         // each node resolve (and, on failure, report) EXACTLY ONCE, restoring the
         // single-visit walk's no-duplicate-failures guarantee (a successful node is
         // deduped by SuperData; this also covers the FAILURE path, which sets no
-        // marker). Mirrors the TS reference (#188).
+        // marker). It is also the cycle guard: `attempted` is never removed, so a
+        // genuine super cycle (A→B→A) terminates on re-entry to the
+        // already-attempted node rather than recursing forever. Mirrors the TS
+        // reference (#188).
         var attempted = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
 
         void ResolveNode(MetaData node)
         {
             if (node.SuperRef is null || node.SuperData is not null) return;
             if (!attempted.Add(node)) return; // already resolved-or-failed this pass — never re-report
-            if (!inProgress.Add(node)) return; // cycle — leave unresolved; reported below
             string effectivePkg = effectivePkgOf.TryGetValue(node, out var pkg) ? pkg : (node.Package ?? "");
 
             // For a dotted child-targeting ref, ResolveSuperRef reads the OWNER's
@@ -325,7 +324,6 @@ internal static class SuperResolve
             // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
             // type-scoped (a field ref selects fields; an identity ref identities).
             MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root, new ReferrerScope(node.Type));
-            inProgress.Remove(node);
 
             if (target is not null)
             {

@@ -235,13 +235,15 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   // (effective children — inherited members appear only once the owner's OWN
   // super is resolved), resolve the owner's whole chain first. The result is a
   // pure function of the source SET, independent of enumeration order.
-  const inProgress = new Set<MetaData>(); // cycle guard (a genuine super cycle is unresolvable → reported)
   // Nodes already attempted this pass. Because resolution is now on-demand, a
   // node can be reached both by the `pending` loop AND by owner/target
   // recursion from another node — `attempted` makes each node resolve (and, on
   // failure, report) EXACTLY ONCE, restoring the old single-visit walk's
   // no-duplicate-failures guarantee (a successful node is already deduped by
   // `superResolved`; this also covers the FAILURE path, which sets no marker).
+  // It is also the cycle guard: `attempted` is never removed, so a genuine
+  // super cycle (A→B→A) terminates on re-entry to the already-attempted node
+  // rather than recursing forever.
   const attempted = new Set<MetaData>();
   // Every node carrying a superRef, over the PHYSICAL declaration tree.
   const pending: MetaData[] = [];
@@ -252,9 +254,7 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
   const resolveNode = (node: MetaData): void => {
     if (node.superRef === undefined || node.superResolved !== undefined) return;
     if (attempted.has(node)) return; // already resolved-or-failed this pass — never re-report
-    if (inProgress.has(node)) return; // cycle — leave unresolved; the failure is reported below
     attempted.add(node);
-    inProgress.add(node);
     const effectivePkg = node.package ?? node.fileDefaultPackage ?? "";
 
     // For a dotted child-targeting ref, `resolveSuperRef` reads the OWNER's
@@ -272,7 +272,6 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
     // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
     // type-scoped (a field ref selects fields; an identity ref identities).
     const target = resolveSuperRef(node.superRef, effectivePkg, root, { type: node.type });
-    inProgress.delete(node);
 
     if (target !== undefined) {
       // FR-024: a dotted ref must target a node of the SAME type and subtype

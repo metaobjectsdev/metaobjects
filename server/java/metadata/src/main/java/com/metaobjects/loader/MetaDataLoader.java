@@ -314,7 +314,7 @@ public class MetaDataLoader implements LoaderConfigurable {
                     resolvePendingNode(ownerPending, byChild, inProgress, resolved);
                 }
             }
-            superData = resolveChildTargetingRef(p);
+            superData = resolveChildTargetingRef(p, owner);
         } else {
             superData = resolveTopLevelSuper(p);
         }
@@ -461,13 +461,15 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     /**
      * FR-024 (ADR-0029): resolve a dotted child-targeting {@code extends} ref.
-     * Splits {@code <rootRef>.<child>...<child>} (any depth), resolves
-     * the owner OBJECT via {@link #resolveOwnerObject}, then selects the owner's
-     * EFFECTIVE child (includeParentData) by name + the referrer's type. A
-     * resolved target whose type/subtype differs from the referrer's throws
-     * {@code ERR_EXTENDS_TARGET_MISMATCH} (dotted-only check).
+     * Splits {@code <rootRef>.<child>...<child>} (any depth), then selects the
+     * owner's EFFECTIVE child (includeParentData) by name + the referrer's type.
+     * The owner object is supplied by the caller ({@link #resolvePendingNode},
+     * which resolves it first to wire its own {@code extends} chain per #188) —
+     * resolved once, not re-resolved here. A resolved target whose type/subtype
+     * differs from the referrer's throws {@code ERR_EXTENDS_TARGET_MISMATCH}
+     * (dotted-only check).
      */
-    private MetaData resolveChildTargetingRef(PendingExtends p) {
+    private MetaData resolveChildTargetingRef(PendingExtends p, MetaData owner) {
         // Addressing model (ADR-0029): the package qualifies the ROOT-level node
         // only; each subsequent segment traverses CHILD NAMES to any depth
         // (object → field → view: "Customer.priceCents.display"). INTERMEDIATE
@@ -486,7 +488,6 @@ public class MetaDataLoader implements LoaderConfigurable {
                 return null; // degenerate (empty segment)
             }
         }
-        MetaData owner = resolveOwnerObject(p);
         if (owner == null) {
             return null;
         }
